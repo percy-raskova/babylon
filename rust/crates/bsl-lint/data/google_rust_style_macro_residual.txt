@@ -42,7 +42,7 @@ rust/crates/babylon-material-circuit/src/wire/row_limits_tests.rs|crate::wire|ap
 rust/crates/babylon-material-circuit/tests/monetary_wire/delivery_limits.rs|babylon_material_circuit|decode_material_circuit_state
 rust/crates/babylon-material-circuit/tests/monetary_wire/support.rs|babylon_kernel::content_digest|sha256_of
 rust/crates/babylon-material-circuit/tests/monetary_wire/support.rs|babylon_material_circuit|material_circuit_state_digest
-rust/crates/babylon-material-circuit/tests/organizer_funding_control.rs|crate::control|cash,money,public,remaining,stock
+rust/crates/babylon-material-circuit/tests/organizer_funding_control.rs|crate::control|cash,public,remaining,stock
 rust/crates/babylon-material-circuit/tests/period_services/inventory_limits.rs|babylon_material_circuit|decode_material_circuit_state
 rust/crates/babylon-material-circuit/tests/period_services/support.rs|babylon_material_circuit|decode_material_circuit_state
 rust/crates/babylon-material-circuit/tests/property_laws.rs|babylon_material_circuit|material_circuit_state_digest

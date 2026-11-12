@@ -301,7 +301,7 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
     );
     assert_eq!(
         (gift.cash_amount, gift.contribution_hours),
-        (organizer_aid_fixture::money(3), 2)
+        (organizer_aid_fixture::money(0), 2)
     );
     assert_eq!(
         gift.payer,
@@ -312,11 +312,11 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
     assert_eq!(
         paid_amount(
             rows,
-            MoneyTransferPurpose::AidGrant(gift.commitment_id),
-            MoneyLocation::AidReserve(gift.commitment_id),
+            MoneyTransferPurpose::Cash(babylon_material_circuit::CashTransferPurpose::MutualAid),
+            MoneyLocation::Cash(gift.payer),
             AccountId::Household(organizer_aid_fixture::recipient())
         ),
-        3
+        0
     );
     let consumed = rows
         .household_consumption
@@ -345,6 +345,7 @@ fn market_then_aid(cut: MarketProvisionCut) {
     assert!(state.orders.is_empty() && state.freight.is_empty());
     let mut config = organizer_aid_fixture::config();
     config.aid_bindings[0].coordination_hours = 1;
+    config.aid_bindings[0].maximum_food_quantity = 1;
     let mut session = organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
@@ -356,7 +357,14 @@ fn market_then_aid(cut: MarketProvisionCut) {
     // Designed three-close witness: one-period market route, then separately authorized local gift.
     market_preparation(&mut session, &mut sink, cut);
     let positive = matches!(cut, MarketProvisionCut::None);
-    let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::LocalAid);
+    let accepted = organizer_aid_fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::LocalAid,
+        babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        },
+    );
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let rows = material_world::decode_material_receipts(candidate.material().receipt_bytes())
         .expect("the canonical bytes decode into the declared type");
@@ -377,7 +385,7 @@ fn market_then_aid(cut: MarketProvisionCut) {
         if positive {
             OrganizerOutcome::AidPracticeCompleted
         } else {
-            OrganizerOutcome::AidNotProvisioned
+            OrganizerOutcome::NoQualifyingSupport
         }
     );
     let restored = MaterialWorldRegister::decode_external(

@@ -8,7 +8,6 @@
 //! Organizer command admission and atomic campaign publication have separate
 //! `MaterialReplaySession` controls. It is not national play qualification.
 use crate::control::cash;
-use crate::control::money;
 use crate::control::public;
 use crate::control::remaining;
 use crate::control::stock;
@@ -21,17 +20,22 @@ use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidOutcome;
 use babylon_material_circuit::AidResolveInput;
 use babylon_material_circuit::CashTransferPurpose;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::CollectionOutcome;
 use babylon_material_circuit::CollectionReceipt;
 use babylon_material_circuit::CollectionResolveInput;
 use babylon_material_circuit::HouseholdCohort;
 use babylon_material_circuit::IncomeReceipt;
-use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MoneyLocation;
 use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::{
+    MaterialCatalog, MaterialPurchase, OrderId, PricePolicy, SellerOffer, ServiceConnection,
+    ServiceOrder,
+};
 #[path = "support/organizer_funding_control.rs"]
 mod control;
 
@@ -122,7 +126,7 @@ fn assert_opening_accounting(state: &MaterialCircuitState) -> Vec<HouseholdCohor
             .book
             .total_cash_and_reserves()
             .expect("the fixture book totals without overflow"),
-        money(PAPER_CASH)
+        control::money(PAPER_CASH)
     );
     let cohorts = &control::economy(state)
         .recurring
@@ -233,7 +237,7 @@ fn assert_conserved_transfers_and_purchases(
             .book
             .total_cash_and_reserves()
             .expect("the fixture book totals without overflow"),
-        money(PAPER_CASH)
+        control::money(PAPER_CASH)
     );
     for transfer in &completed.money_transfers {
         assert_eq!(
@@ -242,7 +246,7 @@ fn assert_conserved_transfers_and_purchases(
                 .delta
                 .checked_add(transfer.credit.delta)
                 .expect("the fixture arithmetic stays in range"),
-            money(0)
+            control::money(0)
         );
         assert!(transfer.debit.delta.micro_units() < 0);
         assert!(transfer.credit.delta.micro_units() > 0);
@@ -335,23 +339,25 @@ fn assert_taxes_and_closed_reserves(
         if period <= 2 { 2_304_000_000 } else { 0 }
     );
     assert_eq!(tax.collected, tax.assessed);
-    assert_eq!(tax.uncollected, money(0));
+    assert_eq!(tax.uncollected, control::money(0));
     let books = control::economy(&completed.state).book.snapshot();
     assert!(books
         .purchases
         .iter()
-        .all(|r| r.reserved_amount().expect("the fixture reservation exists") == money(0)));
+        .all(
+            |r| r.reserved_amount().expect("the fixture reservation exists") == control::money(0)
+        ));
     assert!(books.shifts.iter().all(|r| r
         .reserved_amount()
         .expect("the fixture reservation exists")
-        == money(0)
+        == control::money(0)
         && r.outstanding_wages()
             .expect("the fixture payroll carries its authored wages")
-            == money(0)));
-    assert!(books
-        .aid
-        .iter()
-        .all(|r| r.reserved_amount().expect("the fixture reservation exists") == money(0)));
+            == control::money(0)));
+    assert!(
+        control::economy(&completed.state).aid.freight.is_empty(),
+        "this local gift leaves no pending physical principal"
+    );
 
     tax.collected.micro_units()
 }
@@ -375,8 +381,14 @@ fn reconcile_income(completed: &MaterialCircuitTransition, totals: &mut ControlT
     totals.donor_net += donor_income.net_income.micro_units();
     totals.organization_gifts += organization_income.statement.gift_income.micro_units();
     totals.recipient_gifts += recipient_income.statement.gift_income.micro_units();
-    assert_eq!(donor_income.statement.public_transfer_income, money(0));
-    assert_eq!(donor_income.statement.distribution_income, money(0));
+    assert_eq!(
+        donor_income.statement.public_transfer_income,
+        control::money(0)
+    );
+    assert_eq!(
+        donor_income.statement.distribution_income,
+        control::money(0)
+    );
 }
 
 fn assert_household_reproduction_and_finite_support(
@@ -427,7 +439,7 @@ fn assert_household_reproduction_and_finite_support(
                     8
                 }
         );
-        assert_eq!(receipt.direct_cost, money(0)); // Explicit WorkingOwner support.
+        assert_eq!(receipt.direct_cost, control::money(0)); // Explicit WorkingOwner support.
     }
 }
 
@@ -456,14 +468,26 @@ fn assert_aid_grant_and_gift_accounts(completed: &MaterialCircuitTransition) {
             grant.carrying_amount,
             grant.contribution_hours
         ),
-        (4, money(COLLECTION), money(1_120_000_000), 8)
+        (4, control::money(0), control::money(1_120_000_000), 8)
     );
+    assert!(completed
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::CashGranted
+            && row.quantity == 0
+            && row.cash_amount == control::money(COLLECTION)));
     assert_eq!(
         organization_income.statement.gift_expense,
-        money(COLLECTION)
+        control::money(COLLECTION)
     );
-    assert_eq!(donor_income.statement.gift_expense, money(1_120_000_000));
-    assert_eq!(recipient_income.statement.gift_income, money(1_120_400_000));
+    assert_eq!(
+        donor_income.statement.gift_expense,
+        control::money(1_120_000_000)
+    );
+    assert_eq!(
+        recipient_income.statement.gift_income,
+        control::money(1_120_400_000)
+    );
 }
 
 fn assert_collection_identity_and_outcome(
@@ -479,7 +503,7 @@ fn assert_collection_identity_and_outcome(
     );
     assert_eq!(result.command_nonce, collections[0].command_nonce);
     assert_eq!(result.admitted_period, period - 1);
-    assert_eq!(result.requested, money(COLLECTION));
+    assert_eq!(result.requested, control::money(COLLECTION));
     assert_eq!(result.source_hash, collections[0].source_hash);
 
     if period == 4 {
@@ -498,7 +522,7 @@ fn assert_protected_service_refusal(
     result: &CollectionReceipt,
 ) {
     assert_eq!(result.outcome, CollectionOutcome::ProtectedServiceUnmet);
-    assert_eq!(result.collected, money(0));
+    assert_eq!(result.collected, control::money(0));
     assert_eq!(result.performed_hours, 0);
     assert_eq!(result.transfer_ordinal, None);
     assert_eq!(result.contribution_use_id, [0; 32]);
@@ -515,16 +539,35 @@ fn assert_protected_service_refusal(
         ),
         (8, 3, 5)
     );
+    let order = completed
+        .service_performance
+        .iter()
+        .find(|row| {
+            row.buyer == AccountId::Household(control::donor()) && row.good_id == control::good(6)
+        })
+        .expect("the P4 household-service order reports its actual admission");
+    assert_eq!(
+        (
+            order.requested_quantity,
+            order.admitted_quantity,
+            order.performed_quantity
+        ),
+        (8, 3, 3)
+    );
     assert!(cash(&completed.state, AccountId::Household(control::donor())) > COLLECTION);
     assert!(remaining(&completed.state, control::donor()) > collections[0].collection_hours);
 }
 
 fn assert_full_collection(completed: &MaterialCircuitTransition, result: &CollectionReceipt) {
+    assert_eq!(result.outcome, CollectionOutcome::Collected);
+    assert_eq!(result.collected, control::money(COLLECTION));
+    assert_eq!(result.performed_hours, 2);
+    assert_gift_postings(completed, result);
+}
+
+fn assert_gift_postings(completed: &MaterialCircuitTransition, result: &CollectionReceipt) {
     let donor_income = income(completed, AccountId::Household(control::donor()));
     let organization_income = income(completed, control::organization());
-    assert_eq!(result.outcome, CollectionOutcome::Collected);
-    assert_eq!(result.collected, money(COLLECTION));
-    assert_eq!(result.performed_hours, 2);
     let transfer = &completed.money_transfers[result
         .transfer_ordinal
         .expect("the fixture value `transfer_ordinal` is present before this read")
@@ -540,6 +583,10 @@ fn assert_full_collection(completed: &MaterialCircuitTransition, result: &Collec
     assert_eq!(
         transfer.credit.location,
         MoneyLocation::Cash(control::organization())
+    );
+    assert_eq!(
+        transfer.debit.delta.micro_units(),
+        -result.collected.micro_units()
     );
     assert_eq!(transfer.credit.delta, result.collected);
     assert_eq!(donor_income.statement.gift_expense, result.collected);
@@ -591,19 +638,19 @@ fn assert_four_period_reconciliation(state: &MaterialCircuitState, totals: &Cont
         .iter()
         .find(|r| r.account == AccountId::Household(control::donor()))
         .expect("the fixture holds the searched element");
-    assert_eq!(account.opening_capital, money(30_576_000_000));
-    assert_eq!(account.retained_earnings, money(donor_net));
+    assert_eq!(account.opening_capital, control::money(30_576_000_000));
+    assert_eq!(account.retained_earnings, control::money(donor_net));
     assert_eq!(
         account
             .opening_capital
             .checked_add(account.retained_earnings)
             .expect("the fixture arithmetic stays in range"),
-        money(2_855_200_000)
+        control::money(2_855_200_000)
     );
 }
 
 #[test]
-fn removing_first_collection_severs_later_aid_from_empty_organization() {
+fn removing_first_collection_severs_cash_but_preserves_independent_food() {
     let (catalog, opening) = control::opening();
     let first = control::close(&catalog, &opening, &[], &[])
         .expect("the fixture call `close` succeeds for the authored inputs");
@@ -611,16 +658,21 @@ fn removing_first_collection_severs_later_aid_from_empty_organization() {
     let (catalog, controlled) = control::controlled_opening(catalog, first.state);
     let second = control::close(&catalog, &controlled, &[control::aid(2)], &[])
         .expect("the fixture call `close` succeeds for the authored inputs");
-    assert!(!second
+    assert!(second.aid.iter().any(|r| r.outcome == AidOutcome::Granted
+        && r.quantity == 4
+        && r.cash_amount == control::money(0)));
+    assert!(second
         .aid
         .iter()
-        .any(|r| r.outcome == AidOutcome::Granted && r.quantity > 0));
+        .any(|r| r.outcome == AidOutcome::CashUnfunded && r.cash_amount == control::money(0)));
     assert!(second
         .aid
         .iter()
         .any(|r| r.outcome == AidOutcome::Requested && r.quantity == 4));
-    assert_eq!(stock(&second.state, control::donor(), FOOD), 8);
-    assert_eq!(remaining(&second.state, control::recipient()), 432);
+    assert_eq!(stock(&second.state, control::donor(), FOOD), 4);
+    // This negative control closes material support without calling coordinate:
+    // four consumed parcels release 80 hours from 432, with no political debit.
+    assert_eq!(remaining(&second.state, control::recipient()), 512);
     assert_eq!(
         cash(&second.state, AccountId::Household(control::recipient())),
         0
@@ -632,7 +684,7 @@ fn removing_first_collection_severs_later_aid_from_empty_organization() {
             .find(|r| r.principal_id == control::recipient())
             .expect("the fixture holds the searched element")
             .consumed_quantity,
-        0
+        4
     );
 }
 
@@ -671,4 +723,489 @@ fn invalid_late_collection_keeps_opening_and_exact_retry_unchanged() {
             .expect("the canonical material state encodes"),
         before
     );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one paired three-close control proves real collection, unchanged gift-close needs and later ordinary settlement"
+)]
+fn collected_cash_only_changes_next_ordinary_food_purchase_in_finite_control() {
+    // Designed finite paper economy with national $280 parcel price; this is a
+    // phase/accounting control, not evidence that the normal national donor can collect.
+    let (catalog, mut opening) = control::opening();
+    let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
+        panic!("monetary control");
+    };
+    economy
+        .recurring
+        .as_mut()
+        .expect("households")
+        .household_purchases
+        .iter_mut()
+        .find(|row| row.principal_id == control::recipient())
+        .expect("recipient policy")
+        .enabled = true;
+    let mut contribution = control::collection(1);
+    contribution.requested = control::money(1_450_000_000);
+    let collected =
+        control::close(&catalog, &opening, &[], &[contribution]).expect("lawful contribution");
+    assert_eq!(
+        collected.collections[0].collected,
+        control::money(1_450_000_000)
+    );
+    assert_eq!(
+        cash(&collected.state, control::organization()),
+        1_450_000_000
+    );
+    assert_eq!(
+        control::economy(&collected.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("cash sum"),
+        control::money(PAPER_CASH)
+    );
+    let (catalog, opening) = control::controlled_opening(catalog, collected.state);
+    let ordinary = control::close(&catalog, &opening, &[], &[]).expect("ordinary close");
+    let mut gift = control::aid(2);
+    gift.quantity = 0;
+    gift.cash = control::money(1_450_000_000);
+    let aided = control::close(&catalog, &opening, &[gift], &[]).expect("cash-only close");
+    assert_eq!(aided.household_consumption, ordinary.household_consumption);
+    assert_eq!(aided.household_services, ordinary.household_services);
+    assert_eq!(aided.household_time, ordinary.household_time);
+    assert_eq!(aided.aid_contributions.len(), 0);
+    assert_eq!(cash(&aided.state, control::organization()), 0);
+    assert_eq!(
+        cash(&aided.state, AccountId::Household(control::recipient())),
+        1_450_000_000
+    );
+    assert_eq!(
+        income(&aided, control::organization())
+            .statement
+            .gift_expense,
+        control::money(1_450_000_000)
+    );
+    assert_eq!(
+        income(&aided, AccountId::Household(control::recipient()))
+            .statement
+            .gift_income,
+        control::money(1_450_000_000)
+    );
+    let saved = babylon_material_circuit::encode_material_circuit_state(&catalog, &aided.state)
+        .expect("saved gift");
+    let reopened = babylon_material_circuit::decode_material_circuit_state(&catalog, &saved)
+        .expect("reopened gift");
+    let (_, ordinary_opening) = control::controlled_opening(catalog.clone(), ordinary.state);
+    let (catalog, aided_opening) = control::controlled_opening(catalog, reopened);
+    let ordinary =
+        control::close(&catalog, &ordinary_opening, &[], &[]).expect("ordinary next close");
+    let aided = control::close(&catalog, &aided_opening, &[], &[]).expect("funded next close");
+    let consumed = |close: &MaterialCircuitTransition| {
+        close
+            .household_consumption
+            .iter()
+            .find(|row| {
+                row.principal_id == control::recipient() && row.good_id == control::good(FOOD)
+            })
+            .expect("food need")
+            .consumed_quantity
+    };
+    assert_eq!(consumed(&ordinary), 0);
+    assert_eq!(consumed(&aided), 4);
+    assert_eq!(
+        cash(&aided.state, AccountId::Household(control::recipient())),
+        330_000_000
+    );
+    assert_eq!(remaining(&ordinary.state, control::recipient()), 432);
+    assert_eq!(remaining(&aided.state, control::recipient()), 512);
+    assert!(
+        aided.aid.is_empty(),
+        "ordinary purchasing is not another gift"
+    );
+    assert_eq!(
+        control::economy(&aided.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("cash sum"),
+        control::money(PAPER_CASH)
+    );
+    let demand = aided
+        .household_demand
+        .iter()
+        .find(|row| row.principal_id == control::recipient() && row.good_id == control::good(FOOD))
+        .expect("ordinary recipient order");
+    assert_eq!(demand.unit_price, control::money(280_000_000));
+    assert_eq!(demand.fulfilled_quantity, 4);
+    let order = OutboundOrderId::LocalFinalDemand(demand.order_id);
+    let payment = aided
+        .money_transfers
+        .iter()
+        .find(|row| row.purpose == MoneyTransferPurpose::DeliverySettlement(order))
+        .expect("actual ordinary settlement");
+    assert_eq!(
+        payment.debit.location,
+        MoneyLocation::PurchaseReserve(order)
+    );
+    assert_eq!(
+        payment.credit.location,
+        MoneyLocation::Cash(AccountId::Site(demand.retailer_site_id))
+    );
+    assert_eq!(payment.debit.delta, control::money(-4 * 280_000_000));
+    assert_eq!(payment.credit.delta, control::money(4 * 280_000_000));
+}
+
+#[test]
+fn funded_utility_shortfall_keeps_refund_and_floor_before_partial_gift() {
+    for capacity in [7, 0] {
+        let (catalog, mut state) = control::opening();
+        state
+            .production_commitments
+            .iter_mut()
+            .find(|row| row.site_id == control::site(3))
+            .expect("utility production commitment")
+            .planned_batches = capacity;
+        state
+            .production_commitments
+            .retain(|row| row.planned_batches > 0);
+        let donor = AccountId::Household(control::donor());
+        let baseline = control::close(&catalog, &state, &[], &[]).expect("ordinary close");
+        let performance = baseline
+            .service_performance
+            .iter()
+            .find(|row| row.buyer == donor && row.good_id == control::good(3))
+            .expect("donor's utility order");
+        assert_eq!(
+            (
+                performance.requested_quantity,
+                performance.admitted_quantity,
+                performance.performed_quantity
+            ),
+            (8, 8, capacity)
+        );
+        let expected_refund = i128::from(8 - capacity) * 75_000_000;
+        let id = OutboundOrderId::Service(performance.order_id);
+        let refund = baseline
+            .money_transfers
+            .iter()
+            .find(|row| row.purpose == MoneyTransferPurpose::PurchaseRefund(id))
+            .expect("cash returned to donor");
+        assert_eq!(refund.credit.location, MoneyLocation::Cash(donor));
+        assert_eq!(refund.credit.delta.micro_units(), expected_refund);
+        let opening_eligible_balance = control::cash(&baseline.state, donor);
+        let mut input = control::collection(1);
+        let floor = opening_eligible_balance - expected_refund - 100_001;
+        input.protected_cash_floor = control::money(floor);
+        let completed = close_and_reexecute(&catalog, &state, &[], std::slice::from_ref(&input));
+        let receipt = &completed.collections[0];
+        assert_eq!(receipt.outcome, CollectionOutcome::PartiallyCollected);
+        assert_eq!(receipt.collected.micro_units(), 100_001);
+        assert_eq!(receipt.performed_hours, 2);
+        assert_eq!(
+            control::cash(&completed.state, donor),
+            floor + expected_refund
+        );
+        assert_eq!(
+            control::cash(&completed.state, control::organization())
+                - control::cash(&baseline.state, control::organization()),
+            100_001
+        );
+        assert_eq!(completed.household_services, baseline.household_services);
+        input.protected_cash_floor = control::money(opening_eligible_balance - expected_refund);
+        let protected = control::close(&catalog, &state, &[], &[input])
+            .expect("floor and refund consume the full remaining balance");
+        let refused = &protected.collections[0];
+        assert_eq!(
+            (
+                refused.outcome,
+                refused.collected,
+                refused.performed_hours,
+                refused.transfer_ordinal
+            ),
+            (
+                CollectionOutcome::InsufficientCash,
+                control::money(0),
+                0,
+                None
+            )
+        );
+        assert_eq!(
+            control::cash(&protected.state, donor),
+            opening_eligible_balance
+        );
+    }
+}
+
+#[test]
+fn carried_service_reserve_and_current_topup_join_their_own_prices() {
+    let (catalog, mut opening) = control::opening();
+    opening
+        .production_commitments
+        .retain(|row| row.site_id != control::site(3));
+    let donor = AccountId::Household(control::donor());
+    let carried_id = OrderId::from_bytes([29; 32]);
+    let (state, opening_reservation) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
+        &opening,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id: carried_id,
+            performance_period: 1,
+            provider_site_id: control::site(3),
+            buyer: donor,
+            good_id: control::good(3),
+            unit_id: control::unit(3),
+            quantity: 3,
+        }),
+        control::money(12_345),
+    )
+    .expect("distinct three-unit commitment at accepted price");
+    assert_eq!(opening_reservation.credit.delta.micro_units(), 37_035);
+    let routine = control::close(&catalog, &state, &[], &[]).expect("ordinary close");
+    let mut input = control::collection(1);
+    let refunded = 37_035 + 5 * 75_000_000;
+    input.protected_cash_floor =
+        control::money(control::cash(&routine.state, donor) - refunded - 11);
+    let closed = close_and_reexecute(&catalog, &state, &[], &[input]);
+    assert_eq!(closed.collections[0].collected, control::money(11));
+    assert_eq!(
+        closed.collections[0].outcome,
+        CollectionOutcome::PartiallyCollected
+    );
+    let carried = OutboundOrderId::Service(carried_id);
+    assert!(!closed
+        .money_transfers
+        .iter()
+        .any(|m| m.purpose == MoneyTransferPurpose::PurchaseReservation(carried)));
+    assert!(closed.money_transfers.iter().any(|m| m.purpose
+        == MoneyTransferPurpose::PurchaseRefund(carried)
+        && m.credit.delta.micro_units() == 37_035));
+}
+
+#[test]
+fn under_requested_essential_service_still_blocks_cash_and_hours() {
+    for maximum in [0, 7] {
+        let (catalog, mut opening) = control::opening();
+        let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
+            panic!("monetary paper economy");
+        };
+        let policy = economy
+            .recurring
+            .as_mut()
+            .expect("recurring purchases")
+            .household_purchases
+            .iter_mut()
+            .find(|p| p.principal_id == control::donor() && p.good_id == control::good(3))
+            .expect("utility purchase policy");
+        policy.enabled = maximum != 0;
+        if maximum != 0 {
+            policy.maximum_purchase = maximum;
+        }
+        let result = close_and_reexecute(&catalog, &opening, &[], &[control::collection(1)]);
+        let row = &result.collections[0];
+        assert_eq!(
+            (row.outcome, row.collected, row.performed_hours),
+            (
+                CollectionOutcome::ProtectedServiceUnmet,
+                control::money(0),
+                0
+            )
+        );
+    }
+}
+
+fn prepaid_and_partly_admitted_opening() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut opening) = control::opening();
+    let donor = AccountId::Household(control::donor());
+    let (good_id, unit_id) = (control::good(6), control::unit(6));
+    let provider_a = control::site(EMPLOYER);
+    let provider_b = control::site(6);
+    // The dormant employer has no production capacity. It can accept a prepaid service order.
+    let mut definition = catalog.into_definition();
+    let output = definition
+        .process_outputs
+        .iter_mut()
+        .find(|r| r.site_id == provider_a)
+        .expect("dormant process");
+    output.good_id = good_id;
+    output.unit_id = unit_id;
+    let catalog = MaterialCatalog::try_new(definition).expect("two connected providers");
+    opening.service_connections.push(ServiceConnection {
+        provider_site_id: provider_a,
+        buyer: donor,
+        good_id,
+        unit_id,
+    });
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary control")
+    };
+    let offers = &mut e.recurring.as_mut().expect("ordinary demand").offers;
+    offers
+        .iter_mut()
+        .find(|r| r.site_id == provider_b && r.good_id == good_id)
+        .expect("second provider's ordinary offer")
+        .unit_price = control::money(10_000_000_000);
+    offers.push(SellerOffer {
+        site_id: provider_a,
+        good_id,
+        unit_id,
+        unit_price: control::money(75_000_000),
+        pricing: PricePolicy::Fixed,
+    });
+    opening
+        .production_commitments
+        .retain(|r| r.site_id != provider_b);
+    let order_id = OrderId::from_bytes([37; 32]);
+    let (opening, prepaid) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
+        &opening,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id,
+            performance_period: 1,
+            provider_site_id: provider_a,
+            buyer: donor,
+            good_id,
+            unit_id,
+            quantity: 8,
+        }),
+        control::money(75_000_000),
+    )
+    .expect("eight units fully prepaid at the first provider");
+    assert_eq!(prepaid.debit.delta, control::money(-600_000_000));
+    (catalog, opening)
+}
+
+#[test]
+fn two_providers_fund_one_need_and_their_refunds_bind_the_partial_gift() {
+    let (catalog, opening) = prepaid_and_partly_admitted_opening();
+    let donor = AccountId::Household(control::donor());
+    let good_id = control::good(6);
+    let provider_a = control::site(EMPLOYER);
+    let provider_b = control::site(6);
+    let routine = control::close(&catalog, &opening, &[], &[]).expect("actual ordinary receipts");
+    let need = routine
+        .household_services
+        .iter()
+        .find(|r| r.principal_id == control::donor() && r.good_id == good_id)
+        .expect("household service need");
+    assert_eq!((need.required_quantity, need.unmet_quantity), (8, 8));
+    let mut refunds = 0;
+    for (provider, admitted, amount) in [
+        (provider_a, 8, 600_000_000),
+        (provider_b, 3, 30_000_000_000),
+    ] {
+        let row = routine
+            .service_performance
+            .iter()
+            .find(|r| r.buyer == donor && r.good_id == good_id && r.provider_site_id == provider)
+            .expect("provider-specific order");
+        assert_eq!(
+            (
+                row.requested_quantity,
+                row.admitted_quantity,
+                row.expired_quantity
+            ),
+            (8, admitted, admitted)
+        );
+        let id = OutboundOrderId::Service(row.order_id);
+        let reserve = routine
+            .money_transfers
+            .iter()
+            .find(|r| r.purpose == MoneyTransferPurpose::PurchaseReservation(id));
+        assert_eq!(
+            reserve.map(|r| r.credit.delta),
+            (provider == provider_b).then(|| control::money(amount))
+        );
+        let refund = routine
+            .money_transfers
+            .iter()
+            .find(|r| r.purpose == MoneyTransferPurpose::PurchaseRefund(id))
+            .expect("expired order refunded in full");
+        assert_eq!(
+            (
+                refund.debit.location,
+                refund.credit.location,
+                refund.credit.delta
+            ),
+            (
+                MoneyLocation::PurchaseReserve(id),
+                MoneyLocation::Cash(donor),
+                control::money(amount)
+            )
+        );
+        refunds += refund.credit.delta.micro_units();
+    }
+    let mut input = control::collection(1);
+    let floor = control::cash(&routine.state, donor) - refunds - 100_001;
+    input.protected_cash_floor = control::money(floor);
+    let closed = close_and_reexecute(&catalog, &opening, &[], &[input]);
+    let receipt = &closed.collections[0];
+    assert_eq!(
+        (receipt.outcome, receipt.collected, receipt.performed_hours),
+        (
+            CollectionOutcome::PartiallyCollected,
+            control::money(100_001),
+            2
+        )
+    );
+    assert_eq!(control::cash(&closed.state, donor), floor + refunds);
+    assert_eq!(
+        control::cash(&closed.state, control::organization())
+            - control::cash(&routine.state, control::organization()),
+        100_001
+    );
+    assert_eq!(
+        remaining(&routine.state, control::donor()) - remaining(&closed.state, control::donor()),
+        2
+    );
+    assert_gift_postings(&closed, receipt);
+}
+
+#[test]
+fn fully_satisfied_need_releases_the_expired_surplus_unit_refund() {
+    let (catalog, opening) = control::opening();
+    let donor = AccountId::Household(control::donor());
+    let order_id = OrderId::from_bytes([47; 32]);
+    let (opening, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
+        &opening,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id,
+            performance_period: 1,
+            provider_site_id: control::site(3),
+            buyer: donor,
+            good_id: control::good(3),
+            unit_id: control::unit(3),
+            quantity: 9,
+        }),
+        control::money(75_000_000),
+    )
+    .expect("nine prepaid units for an eight-unit need");
+    let ordinary = control::close(&catalog, &opening, &[], &[]).expect("ordinary service");
+    let need = ordinary
+        .household_services
+        .iter()
+        .find(|r| r.principal_id == control::donor() && r.good_id == control::good(3))
+        .expect("utility need");
+    assert_eq!(
+        (
+            need.required_quantity,
+            need.satisfied_quantity,
+            need.unmet_quantity
+        ),
+        (8, 8, 0)
+    );
+    let refund = ordinary
+        .money_transfers
+        .iter()
+        .find(|r| {
+            r.purpose == MoneyTransferPurpose::PurchaseRefund(OutboundOrderId::Service(order_id))
+        })
+        .expect("surplus unit expired");
+    assert_eq!(refund.credit.delta, control::money(75_000_000));
+    let mut input = control::collection(1);
+    let floor = control::cash(&ordinary.state, donor) - COLLECTION;
+    input.protected_cash_floor = control::money(floor);
+    let closed = control::close(&catalog, &opening, &[], &[input]).expect("eligible surplus");
+    assert_full_collection(&closed, &closed.collections[0]);
+    assert_eq!(control::cash(&closed.state, donor), floor);
 }

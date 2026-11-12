@@ -1,6 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use crate::national_economy::grain::NationalGrainError;
+use crate::national_economy::grain::NationalGrainPolicy;
 
 use super::admission;
+use babylon_practice_contract::OrganizerSharingBasis;
 
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
@@ -18,6 +21,8 @@ use std::fmt::Result as FmtResult;
 /// One current policy decoded from captured bytes, independent of source paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NationalGamePolicy {
+    pub grain: NationalGrainPolicy,
+    pub source_digest: [u8; 32],
     pub period_days: u64,
     pub work_hours_per_person: u64,
     pub default_wage: Currency,
@@ -147,6 +152,7 @@ pub struct ResidentOpeningCounts {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NationalGamePolicyError {
+    Grain(NationalGrainError),
     Syntax,
     Bounds,
     Evidence,
@@ -296,7 +302,11 @@ pub struct GameAidPolicy {
     pub local_recipient_contributor_id: u64,
     pub remote_recipient_contributor_id: u64,
     pub organization_opening_cash_micros: i128,
-    pub gift_cash_micros_per_unit: i128,
+    pub maximum_cash_micros: i128,
+    pub initial_food_quantity: u64,
+    pub initial_cash_micros: i128,
+    pub local_cash_receiving_consent: OrganizerGiftConsent,
+    pub remote_cash_receiving_consent: OrganizerGiftConsent,
     pub fulfillment_hours_per_unit: u64,
     pub maximum_quantity: u64,
 }
@@ -313,6 +323,8 @@ pub enum VenueLogReader {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameOrganizerPolicy {
+    pub local_report_sharing: GamePartnerReportSharing,
+    pub remote_report_sharing: GamePartnerReportSharing,
     pub evidence_class: String,
     pub venue_log_reader: VenueLogReader,
     pub organization_label: String,
@@ -330,6 +342,7 @@ pub struct GameOrganizerPolicy {
     pub local_receiving_consent: OrganizerGiftConsent,
     pub remote_receiving_consent: OrganizerGiftConsent,
     pub collection_cash_consent: OrganizerGiftConsent,
+    pub collection_initial_cash_micros: i128,
     pub collection_maximum_cash_micros: i128,
     pub collection_protected_cash_floor_micros: i128,
     pub collection_hours: u64,
@@ -337,4 +350,13 @@ pub struct GameOrganizerPolicy {
     pub neighborhood_policy: OrganizerPartnerPolicy,
     pub local_policy: OrganizerPartnerPolicy,
     pub remote_policy: OrganizerPartnerPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GamePartnerReportSharing {
+    pub evidence_class: OrganizerSharingBasis,
+    pub food: Vec<String>,
+    pub essential_services: Vec<String>,
+    pub participation_time: bool,
 }

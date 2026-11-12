@@ -6,9 +6,12 @@ import json
 import socket
 import sys
 import threading
+import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -20,8 +23,12 @@ CAMPAIGN = "81b979ee-a9c1-48fd-8835-06cbfe594675"
 
 def state(tick: int = 0) -> dict[str, Any]:
     return {
+        "advance_request_id": None,
+        "period_proof": None,
         "campaign_id": CAMPAIGN,
         "scope_epoch": 7,
+        "installed_organizer": None,
+        "play_interlock": None,
         "durable_tick": tick,
         "viewed_tick": tick,
         "generation": 1,
@@ -35,6 +42,11 @@ def state(tick: int = 0) -> dict[str, Any]:
         "organizer_status_due": False,
         "organizer_period": tick,
         "choice": "remote_aid",
+        "focused_amount": None,
+        "amount_text": None,
+        "allocation_error": None,
+        "collection_allocation": "none",
+        "aid_allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
         "reviewed_command": None,
         "preview": None,
         "commitment": None,
@@ -44,7 +56,61 @@ def state(tick: int = 0) -> dict[str, Any]:
         "opening_stage": "Game",
         "primary_view": "Organizer",
         "inspector": "Closed",
+        "playing": False,
+        "periods_per_second": 1.0,
+        "perspective": "PlayerKnowledge",
+        "world_hash": None if tick == 0 else "c" * 64,
+        "selected_subject": None,
+        "menu_page": "Home",
+        "selected_report_id": None,
+        "selected_report_observed_period": None,
+        "selected_report_acquired_period": None,
+        "larger_interface": False,
+        "road_layer": "EconomyNetwork",
+        "network_sector": "All",
+        "selected_county": "26163",
+        "selected_site": None,
+        "production_details_open": False,
+        "production_reading": None,
     }
+
+
+def admission_fields(
+    choice: str | dict[str, str],
+    period: int,
+    nonce: int = 42,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    # An explicit Designed command for the socket stand-ins. Frozen producer
+    # bytes below separately exercise the real Rust shapes.
+    allocation = (
+        {"aid": {"food_quantity": 1, "cash_micros": "0"}}
+        if choice in ("remote_aid", "local_aid")
+        else "none"
+    )
+    command = {
+        "choice": choice,
+        "allocation": allocation,
+        "nonce": [nonce] * 16,
+        "campaign_id": list(UUID(CAMPAIGN).bytes),
+        "authority_id": [2] * 16,
+        "actor_id": 101,
+        "expected_period": period,
+        "content_digest": [3] * 32,
+        "resource_digest": [4] * 32,
+    }
+    preview = {
+        "choice": choice,
+        "allocation": allocation,
+        "current_period": period,
+        "resolves_period": period + 1,
+        "available_hours": 4,
+        "required_hours": 2,
+        "replaces_standing_work": True,
+        "refusal": None,
+        "observations": [],
+    }
+    commitment = {"command": command, "commitment_id": [nonce] * 32, "resolves_period": period + 1}
+    return command, preview, commitment
 
 
 def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
@@ -52,17 +118,174 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
     fields.update(changes)
     return (
         json.dumps(
-            {"version": 2, "sequence": sequence, "event": event, "reason": None, "state": fields}
+            {"version": 5, "sequence": sequence, "event": event, "reason": None, "state": fields}
         ).encode()
         + b"\n"
     )
 
 
+def installed_opening_view() -> dict[str, Any]:
+    return {
+        "period": 0,
+        "actor_id": 1,
+        "authority_id": [1] * 16,
+        "content_digest": [1] * 32,
+        "resource_digest": [2] * 32,
+        "standing": {"authorized": True, "partner_actor_id": 10, "paused_reason": None},
+        "available_hours": 2,
+        "contact_hours": 0,
+        "hold_reviewable": True,
+        "pause_reviewable": True,
+        "resume_reviewable": False,
+        "pending_freight": [],
+        "aid_response_history": [],
+    }
+
+
+def test_cold_endpoint_retains_its_actual_ready_poll_after_an_identical_state() -> None:
+    sock, peer = socket.socketpair()
+    with sock, peer:
+        channel = windowed.ControlChannel(sock, CAMPAIGN, 0)
+        view = installed_opening_view()
+        peer.sendall(response(1, installed_organizer=view))
+        first = channel.observe(1)
+        peer.sendall(response(2, installed_organizer=view))
+        installed = windowed.wait_ready(channel, 1, organizer=True, cold=True)
+        assert installed == first
+        assert [(r.sequence, r.action, r.event) for r in channel.records] == [
+            (1, "status", "observed"),
+            (2, "status", "observed"),
+        ]
+
+
+def test_positive_period_ready_endpoint_retains_strict_actionable_status_before_proof() -> None:
+    sock, peer = socket.socketpair()
+    with sock, peer:
+        channel = windowed.ControlChannel(sock, CAMPAIGN, 1)
+        view = installed_opening_view()
+        view["period"] = 1
+        boundary = {**state(1), "installed_organizer": view, "archive_verified_tick": 0}
+        peer.sendall(response(1, **boundary))
+        channel.observe(1)
+        peer.sendall(response(2, **boundary))
+        ready = windowed.wait_period_ready(channel, 1)
+        assert ready.cold_organizer_ready and ready.archive_verified_tick == 0
+        assert [r.sequence for r in channel.records] == [1, 2]
+        assert channel.records[-1].action == "status"
+
+
+def bounded_play_controls(archive_first=False, fault="none"):
+    opening = state(8)
+    opening["installed_organizer"] = {**installed_opening_view(), "period": 8}
+    opening["generation"] = 1
+    arm = {
+        "phase": "armed",
+        "arm_sequence": 2,
+        "play_sequence": None,
+        "campaign_id": CAMPAIGN,
+        "scope_epoch": 7,
+        "start_tick": 8,
+        "start_generation": 1,
+        "target_tick": 9,
+        "request_id": None,
+        "pending_at_pause": False,
+        "playing_after_pause": None,
+    }
+    paused = {
+        **arm,
+        "phase": "paused_after_enqueue",
+        "play_sequence": 3,
+        "request_id": 99,
+        "pending_at_pause": True,
+        "playing_after_pause": False,
+    }
+    ready = {
+        **state(9),
+        "generation": 2,
+        "advance_request_id": 99,
+        "installed_organizer": {**installed_opening_view(), "period": 9},
+        "play_interlock": paused,
+        "archive_verified_tick": 9 if archive_first else 8,
+    }
+    proof = {
+        "campaign_id": CAMPAIGN,
+        "scope_epoch": 7,
+        "foundation_sha256": "a" * 64,
+        "policy_sha256": "d" * 64,
+        "generation": 2,
+        "tick": 9,
+        "tick_content_hash": "b" * 64,
+        "world_hash": "c" * 64,
+        "envelope_digest": "e" * 64,
+        "request_id": 100 if fault != "none" else 99,
+        "archive_verified_tick": 9,
+        "material_record_sha256": "f" * 64,
+    }
+    fenced = {**ready, "archive_verified_tick": 9, "period_proof": proof}
+    if fault == "changed_play_witness":
+        changed = {**paused, "request_id": 100}
+        ready = {**ready, "advance_request_id": 100, "play_interlock": changed}
+        fenced = {**fenced, "advance_request_id": 100, "play_interlock": changed}
+    rows = [
+        ("status", "observed", opening),
+        ("arm_one_play_advance", "applied", {**opening, "play_interlock": arm}),
+        ("play", "applied", {**opening, "playing": True, "play_interlock": arm}),
+        (
+            "pause",
+            "applied",
+            {**opening, "phase": "Advancing", "advance_pending": True, "play_interlock": paused},
+        ),
+        ("status", "observed", ready),
+        ("await_period_proof", "period_proof_published", fenced),
+        ("quit", "quit_requested", {**fenced, "quit_requested": True}),
+    ]
+    controls = windowed.ControlsEvidence.model_validate(
+        {
+            "version": 5,
+            "status": "completed",
+            "campaign": CAMPAIGN,
+            "initial_tick": 8,
+            "foundation_sha256": "a" * 64,
+            "scope": "native_ui_actions_only_not_accounting_or_memory_qualification",
+            "actions": [
+                {
+                    "sequence": n,
+                    "action": action,
+                    "event": event,
+                    "reason": None,
+                    "state": current,
+                    "started_monotonic_ns": n * 10,
+                    "completed_monotonic_ns": n * 10 + 5,
+                }
+                for n, (action, event, current) in enumerate(rows, 1)
+            ],
+        }
+    )
+    return controls
+
+
+@pytest.mark.parametrize("archive_first", [False, True])
+@pytest.mark.parametrize("fault", ["none", "proof_request", "changed_play_witness"])
+def test_walk_trace_binds_bounded_play_pause_ready_and_private_fence(archive_first, fault):
+    from tools.devtools.national_native_evidence import ObservedPlayClose, _walk_trace
+
+    controls = bounded_play_controls(archive_first, fault)
+    if fault != "none":
+        with pytest.raises(ValueError, match="proof|Play"):
+            _walk_trace(controls)
+    else:
+        closes, reopens = _walk_trace(controls)
+        assert not reopens and len(closes) == 1
+        assert isinstance(closes[0].cause, ObservedPlayClose)
+        assert closes[0].actionable.sequence == 5 and closes[0].fence.sequence == 6
+
+
 def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
     from typing import get_args
 
-    actions = set(get_args(windowed.Action))
+    actions = set(get_args(windowed.UnitAction))
     assert {
+        "inspect_practices",
         "inspect_receipts",
         "open_relationships",
         "archive_workplace",
@@ -165,7 +388,7 @@ def test_capture_refusal_preserves_specific_reason_and_trace() -> None:
             peer.sendall(
                 json.dumps(
                     {
-                        "version": 2,
+                        "version": 5,
                         "sequence": request["sequence"],
                         "event": "refused",
                         "reason": "capture_image_invalid",
@@ -250,7 +473,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
     parent, peer = socket.socketpair()
     channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
     fields = state()
-    command = {"choice": wire, "nonce": 42}
+    command, preview, commitment = admission_fields(wire, 0)
     requested: list[str] = []
 
     def reply() -> None:
@@ -261,19 +484,24 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                 event = "applied"
                 if action == "status":
                     event = "observed"
+                elif action == "inspect_practices":
+                    fields["inspector"] = "Practices"
                 elif action == "choose_" + choice:
+                    assert fields["inspector"] == "Practices"
+                    fields["inspector"] = "Closed"
                     fields["choice"] = "collect" if mismatched else wire
                 elif action == "review":
                     fields["reviewed_command"] = command
-                    fields["preview"] = {"refusal": None}
+                    fields["preview"] = preview
                     event = "preview_admitted"
                 elif action == "confirm":
-                    fields["commitment"] = {"command": command}
+                    fields["commitment"] = commitment
+                    fields["reviewed_command"] = fields["preview"] = None
                     event = "acceptance_admitted"
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 2,
+                            "version": 5,
                             "sequence": len(requested),
                             "event": event,
                             "reason": None,
@@ -287,18 +515,23 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
     worker.start()
     try:
         channel.observe(1)
-        planned = windowed.PlannedChoice.model_validate({"period": 1, "choice": choice})
+        planned = windowed.PlannedChoice.model_validate(
+            {"period": 1, "choice": choice, "allocation": "none"}
+        )
         if mismatched:
             with pytest.raises(windowed.ControlRefusal, match="different choice"):
                 windowed.submit_choice(channel, planned, 1)
         else:
             windowed.submit_choice(channel, planned, 1)
-            assert channel.state is not None and channel.state.commitment == {"command": command}
+            assert (
+                channel.state is not None
+                and channel.state.commitment == windowed.Commitment.model_validate(commitment)
+            )
     finally:
         channel.close()
         worker.join(2)
     assert not worker.is_alive()
-    assert requested == ["status", "choose_" + choice] + (
+    assert requested == ["status", "inspect_practices", "choose_" + choice] + (
         [] if mismatched else ["review", "confirm", "status"]
     )
 
@@ -327,7 +560,7 @@ def test_transport_preserves_fragmented_frames_and_exact_preconditions() -> None
         worker.join(2)
     assert not worker.is_alive()
     assert requests[0] == {
-        "version": 2,
+        "version": 5,
         "sequence": 1,
         "campaign_id": CAMPAIGN,
         "scope_epoch": None,
@@ -455,9 +688,9 @@ def test_reopen_refuses_changed_or_incomplete_restored_identity(changes: dict[st
     "raw",
     [
         response(2),
-        response(1).replace(b'"version": 2', b'"version": 1'),
-        response(1).replace(b'"version": 2', b'"version": true'),
-        response(1).replace(b'"version": 2', b'"version": 2, "version": 2'),
+        response(1).replace(b'"version": 5', b'"version": 1'),
+        response(1).replace(b'"version": 5', b'"version": true'),
+        response(1).replace(b'"version": 5', b'"version": 5, "version": 5'),
         response(1, campaign_id="b4fcf361-af16-489f-83a6-3d9815a73844"),
         response(1, durable_tick=True),
         response(1, foundation_sha256="A" * 64),
@@ -513,6 +746,349 @@ def test_slow_fragments_cannot_reset_the_overall_response_deadline(
     assert not channel.records
     assert peer.closed
     assert peer.timeouts == pytest.approx([0.05, 0.05, 0.03, 0.01])
+
+
+@pytest.mark.parametrize(
+    ("initial_phase", "organizer", "outcome", "warning_visible", "menu_open"),
+    [
+        ("Loading", False, "ready", True, False),
+        ("Ready", False, "ready", True, False),
+        ("Loading", False, "refused", True, False),
+        ("Loading", False, "late", True, False),
+        ("Loading", True, "ready", True, False),
+        ("Ready", True, "ready", True, False),
+        ("Ready", False, "ready", False, False),
+        ("Ready", False, "ready", False, True),
+    ],
+)
+def test_opening_warning_uses_fresh_scoped_loading_status(
+    monkeypatch: pytest.MonkeyPatch,
+    initial_phase: str,
+    organizer: bool,
+    outcome: str,
+    warning_visible: bool,
+    menu_open: bool,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(windowed.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(windowed.time, "monotonic_ns", lambda: int(clock[0] * 1e9))
+    monkeypatch.setattr(
+        windowed.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay)
+    )
+
+    class OpeningPeer:
+        def __init__(self) -> None:
+            self.requests: list[dict[str, Any]] = []
+            self.timeouts: list[tuple[float, float]] = []
+            self.reply = b""
+            self.statuses = 0
+            self.continued = False
+            self.closed = False
+
+        def settimeout(self, timeout: float) -> None:
+            self.timeouts.append((clock[0], timeout))
+
+        def sendall(self, frame: bytes) -> None:
+            request = json.loads(frame)
+            self.requests.append(request)
+            fields = state()
+            fields.update(
+                phase="Loading",
+                foundation_sha256=None,
+                lifecycle_pending=True,
+                organizer_period=None,
+                splash_visible=warning_visible,
+                menu_open=menu_open,
+                opening_stage="Warning",
+                generation=3,
+            )
+            event, reason = "observed", None
+            if request["action"] == "status":
+                self.statuses += 1
+                if self.statuses == 1:
+                    fields.update(scope_epoch=None, generation=0)
+                elif self.statuses == 2:
+                    event, reason = "refused", "control_stale_or_unavailable"
+                    if initial_phase == "Ready":
+                        fields = state() | {
+                            "generation": 3,
+                            "splash_visible": warning_visible,
+                            "menu_open": menu_open,
+                            "opening_stage": "Warning",
+                        }
+                else:
+                    # Ready arrives independently of clearing the warning.
+                    fields = state() | {
+                        "generation": 4,
+                        "splash_visible": warning_visible,
+                        "menu_open": menu_open,
+                        "opening_stage": "Title" if self.continued else "Warning",
+                    }
+            else:
+                assert request["action"] == "continue_warning"
+                event = "refused" if outcome == "refused" else "applied"
+                reason = "control_stale_or_unavailable" if outcome == "refused" else None
+                self.continued = outcome != "refused"
+                if initial_phase == "Ready":
+                    fields = state() | {"generation": 3, "splash_visible": True}
+                fields["opening_stage"] = "Production" if self.continued else "Warning"
+            clock[0] += 10 if outcome == "late" and request["action"] == "continue_warning" else 0.1
+            self.reply = (
+                json.dumps(
+                    {
+                        "version": 5,
+                        "sequence": request["sequence"],
+                        "event": event,
+                        "reason": reason,
+                        "state": fields,
+                    }
+                ).encode()
+                + b"\n"
+            )
+
+        def recv(self, size: int) -> bytes:
+            part, self.reply = self.reply[:size], self.reply[size:]
+            return part
+
+        def close(self) -> None:
+            self.closed = True
+
+    peer = OpeningPeer()
+    channel = windowed.ControlChannel(cast(socket.socket, peer), CAMPAIGN, 0)
+    try:
+        if outcome == "ready":
+            ready = windowed.wait_ready(channel, 1, organizer=organizer)
+            assert ready.phase == "Ready"
+            if organizer or not warning_visible:
+                assert ready.opening_stage == "Warning"
+                assert all(row["action"] == "status" for row in peer.requests)
+            elif initial_phase == "Loading":
+                assert ready.opening_stage == "Title"
+                assert [row["action"] for row in peer.requests] == [
+                    "status",
+                    "status",
+                    "continue_warning",
+                    "status",
+                ]
+                assert channel.records[2].state.phase == "Loading"
+                assert channel.records[3].state.phase == "Ready"
+            else:
+                assert ready.opening_stage == "Production"
+                assert [row["action"] for row in peer.requests] == [
+                    "status",
+                    "status",
+                    "continue_warning",
+                ]
+        else:
+            with pytest.raises(windowed.ControlRefusal) as failed:
+                windowed.wait_ready(channel, 1, organizer=organizer)
+            assert [row["action"] for row in peer.requests] == [
+                "status",
+                "status",
+                "continue_warning",
+            ]
+            assert peer.closed and not channel.ready
+            assert (
+                failed.value.reason
+                == {
+                    "late": "response_deadline",
+                    "refused": "control_refused",
+                }[outcome]
+            )
+        if not organizer and warning_visible:
+            continued = peer.requests[2]
+            assert continued["campaign_id"] == CAMPAIGN
+            assert (
+                continued["scope_epoch"],
+                continued["expected_tick"],
+                continued["expected_generation"],
+            ) == (7, 0, 3)
+        assert peer.requests[0]["scope_epoch"] is None
+        assert peer.requests[1]["scope_epoch"] is None
+        assert [at + timeout for at, timeout in peer.timeouts] == pytest.approx(
+            [101.0] * len(peer.timeouts)
+        )
+    finally:
+        channel.close()
+
+
+def test_listener_bind_failure_is_diagnosed_before_first_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = PermissionError("private transport detail")
+    seen: list[dict[str, Any] | None] = []
+
+    class Listener(socket.socket):
+        def bind(self, _address: str) -> None:
+            raise original
+
+        def close(self) -> None:
+            path = tmp_path / "native-control-failure.json"
+            seen.append(json.loads(path.read_bytes()) if path.is_file() else None)
+            super().close()
+
+    monkeypatch.setattr(windowed.socket, "socket", Listener)
+    with pytest.raises(PermissionError) as failed:
+        windowed.drive_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines",
+            initial_target=windowed.launcher.OpenCampaignTarget(UUID(CAMPAIGN)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=2,
+            on_started=lambda *_args: None,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            cold_window=windowed.ColdControlWindow(time.monotonic_ns(), 180),
+        )
+    assert failed.value is original
+    assert len(seen) == 1 and seen[0] is not None
+    assert (seen[0]["phase"], seen[0]["reason"]) == ("socket_admission", "transport_error")
+    assert "private transport detail" not in json.dumps(seen[0])
+
+
+def first_reply_standins(tmp_path: Path) -> tuple[Path, Path]:
+    runtime = tmp_path / "runtime"
+    client = tmp_path / "client"
+    runtime.write_text(f"#!{sys.executable}\nimport sys\nsys.stdin.buffer.read()\n")
+    client.write_text(
+        f"#!{sys.executable}\nimport sys,socket\n"
+        "s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n"
+        "s.connect(sys.argv[sys.argv.index('--qualification-control')+1])\n"
+        "r=s.makefile('rb'); r.readline(); r.readline(); s.close()\n"
+    )
+    runtime.chmod(0o700)
+    client.chmod(0o700)
+    return runtime, client
+
+
+@pytest.mark.parametrize("phase", ["socket_admission", "initial_readiness"])
+def test_real_smoke_budget_refusal_keeps_wall_diagnosis_and_divergence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    from tools.devtools import national_native_runner as runner
+
+    run = object.__new__(runner.NativeRun)
+    run.directory = tmp_path
+    run.mode = "normal_play"
+    run.wayne_profile = "smoke-01"
+    diagnoses: list[dict[str, Any] | None] = []
+    refusals: list[runner.NativeRunRefusal] = []
+
+    def expired() -> None:
+        path = tmp_path / "native-control-failure.json"
+        diagnoses.append(json.loads(path.read_bytes()) if path.is_file() else None)
+        try:
+            run.check_budget("smoke-wall", 900_000_000_000, 900, None, strict=True)
+        except runner.NativeRunRefusal as error:
+            refusals.append(error)
+            raise
+
+    runtime, client = first_reply_standins(tmp_path)
+    start = time.monotonic_ns()
+    wall = start / 1e9
+    if phase == "initial_readiness":
+        wall += 900
+        receive = windowed.ControlChannel._receive
+
+        def expire_on_first_reply(channel: windowed.ControlChannel, deadline: float):
+            with monkeypatch.context() as clock:
+                clock.setattr(windowed.time, "monotonic", lambda: wall)
+                return receive(channel, deadline)
+
+        monkeypatch.setattr(windowed.ControlChannel, "_receive", expire_on_first_reply)
+    with pytest.raises(runner.NativeRunRefusal) as failed:
+        windowed.drive_pair(
+            runtime,
+            client,
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines",
+            initial_target=windowed.launcher.OpenCampaignTarget(UUID(CAMPAIGN)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=2,
+            on_started=lambda *_args: None,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            cold_window=windowed.ColdControlWindow(start, 180),
+            wall_deadline=wall,
+            on_wall_expired=expired,
+        )
+    assert refusals == [failed.value]
+    divergence = json.loads((tmp_path / "first-budget-divergence.json").read_bytes())
+    assert (
+        divergence["stage"] == "smoke-wall" and divergence["elapsed_ns"] == divergence["ceiling_ns"]
+    )
+    final = json.loads((tmp_path / "native-control-failure.json").read_bytes())
+    assert final["reason"] == "wall_deadline" and final["phase"] == phase
+    assert diagnoses == [final]
+
+
+def test_cold_first_reply_failure_is_private_and_precedes_capture_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_ns = time.monotonic_ns()
+    runtime, client = first_reply_standins(tmp_path)
+    seen = []
+    diagnosis_before_close: list[bool] = []
+    original_close = windowed.ControlChannel.close
+
+    def close(channel: windowed.ControlChannel) -> None:
+        diagnosis_before_close.append((tmp_path / "native-control-failure.json").is_file())
+        original_close(channel)
+
+    monkeypatch.setattr(windowed.ControlChannel, "close", close)
+
+    @contextmanager
+    def monitor(*_children):
+        try:
+            yield None
+        finally:
+            path = tmp_path / "native-control-failure.json"
+            seen.append(json.loads(path.read_bytes()))
+            assert path.stat().st_mode & 0o077 == 0
+
+    with pytest.raises(windowed.ControlRefusal):
+        windowed.drive_pair(
+            runtime,
+            client,
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "d",
+            initial_target=windowed.launcher.OpenCampaignTarget(windowed.UUID(CAMPAIGN)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=2,
+            on_started=lambda *_args: None,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            capture_lifecycle=monitor,
+            cold_window=windowed.ColdControlWindow(started_ns, 180),
+        )
+    assert diagnosis_before_close and all(diagnosis_before_close)
+    assert len(seen) == 1
+    failed = seen[0]
+    assert failed.pop("failed_monotonic_ns") >= started_ns
+    assert failed == {
+        "version": 1,
+        "phase": "initial_readiness",
+        "reason": "response_ended",
+        "cold_started_monotonic_ns": started_ns,
+        "cold_deadline_monotonic_ns": started_ns + 180_000_000_000,
+    }
 
 
 def test_failed_evidence_write_still_closes_and_preserves_original_failure(
@@ -592,8 +1168,11 @@ def test_changed_foundation_cannot_be_credited() -> None:
         (
             "confirm",
             "acceptance_admitted",
-            {"reviewed_command": {"nonce": "original"}},
-            {"commitment": {"command": {"nonce": "different"}}},
+            {
+                "reviewed_command": admission_fields("local_aid", 0)[0],
+                "preview": admission_fields("local_aid", 0)[1],
+            },
+            {"commitment": admission_fields("local_aid", 0, nonce=43)[2]},
         ),
     ],
 )
@@ -645,13 +1224,13 @@ def test_driver_uses_actual_owned_children_and_private_socket(tmp_path: Path) ->
         f"state={state()!r}\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':2,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':5,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         f"    __import__('pathlib').Path({str(tmp_path / 'startup-admitted')!r}).write_text('admitted')\n"
         "    for line in source:\n"
         "        request=json.loads(line)\n"
         "        quitting=request['action']=='quit'\n"
         "        state['quit_requested']=quitting\n"
-        "        reply={'version':2,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
+        "        reply={'version':5,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if quitting: break\n"
     )
@@ -740,39 +1319,74 @@ def test_failed_capture_stops_controls_before_another_request() -> None:
         peer.close()
 
 
-def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mode", ["normal_play", "memory_capture"])
+@pytest.mark.parametrize("play_close", [False, True])
+def test_driver_reviews_and_confirms_the_three_period_aid_schedule(
+    tmp_path: Path, mode: str, play_close: bool
+) -> None:
     """Control transport only; stand-ins cannot establish aid accounting."""
     runtime = tmp_path / "runtime-standin"
     client = tmp_path / "client-standin"
     runtime.write_text(f"#!{sys.executable}\nimport sys\nsys.stdin.buffer.read()\n")
+    admissions = [
+        admission_fields("remote_aid", 0),
+        admission_fields("pause_standing", 1),
+        admission_fields("local_aid", 2),
+    ]
     client.write_text(
         f"#!{sys.executable}\n"
         "import json,socket,sys\n"
         "connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n"
         "connection.connect(sys.argv[sys.argv.index('--qualification-control')+1])\n"
-        f"state={state()!r}\n"
+        f"state={state()!r}\nadmissions={admissions!r}\n"
+        f"state['installed_organizer']={installed_opening_view()!r}\n"
+        "def close_period():\n"
+        "    state['advance_request_id']=state['durable_tick']+1\n"
+        "    state['archive_verified_tick']=state['durable_tick']\n"
+        "    state['durable_tick']+=1; state['generation']+=1\n"
+        "    state['viewed_tick']=state['organizer_period']=state['durable_tick']\n"
+        "    state['installed_organizer']['period']=state['durable_tick']\n"
+        "    state['tick_content_hash']='b'*64; state['world_hash']='c'*64\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':2,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':5,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         "    for line in source:\n"
         "        request=json.loads(line); action=request['action']; event='applied'\n"
         "        if action=='status': event='observed'\n"
         "        elif action=='open_direction': state['inspector']='Direction'\n"
+        "        elif action=='inspect_practices': state['inspector']='Practices'\n"
         "        elif action.startswith('choose_'):\n"
+        "            assert state['inspector'] in ('Direction', 'Practices')\n"
         "            state['choice']=action.removeprefix('choose_'); state['inspector']='Closed'\n"
         "        elif action=='review':\n"
-        "            state['reviewed_command']={'nonce':request['sequence'],'choice':state['choice']}\n"
-        "            state['preview']={'refusal':None}; event='preview_admitted'\n"
+        "            state['reviewed_command'],state['preview'],accepted=admissions[state['durable_tick']]\n"
+        "            event='preview_admitted'\n"
         "        elif action=='confirm':\n"
-        "            state['commitment']={'command':state['reviewed_command']}; event='acceptance_admitted'\n"
-        "        elif action=='step':\n"
-        "            state['durable_tick']+=1; state['generation']+=1\n"
-        "            state['viewed_tick']=state['organizer_period']=state['archive_verified_tick']=state['durable_tick']\n"
-        "            state['tick_content_hash']='b'*64; event='committed_and_installed'\n"
+        "            state['commitment']=accepted; state['reviewed_command']=state['preview']=None; event='acceptance_admitted'\n"
+        "        elif action=='step': close_period(); event='committed_and_installed'\n"
+        "        elif action=='arm_one_play_advance':\n"
+        "            state['play_interlock']={'phase':'armed','arm_sequence':request['sequence'],'play_sequence':None,\n"
+        "                'campaign_id':state['campaign_id'],'scope_epoch':state['scope_epoch'],'start_tick':state['durable_tick'],\n"
+        "                'start_generation':state['generation'],'target_tick':state['durable_tick']+1,'request_id':None,\n"
+        "                'pending_at_pause':False,'playing_after_pause':None}\n"
+        "        elif action=='play':\n"
+        "            close_period(); state['play_interlock'].update(phase='paused_after_enqueue',\n"
+        "                play_sequence=request['sequence'],request_id=state['advance_request_id'],pending_at_pause=True,playing_after_pause=False)\n"
+        "        elif action=='pause': assert not state['playing']\n"
+        "        elif action=='await_period_proof':\n"
+        "            assert state['archive_verified_tick']==state['durable_tick']-1\n"
+        "            state['archive_verified_tick']=state['durable_tick']; event='period_proof_published'\n"
+        "            state['period_proof']={'campaign_id':state['campaign_id'],'scope_epoch':state['scope_epoch'],\n"
+        "                'foundation_sha256':state['foundation_sha256'],'policy_sha256':'d'*64,'generation':state['generation'],\n"
+        "                'tick':state['durable_tick'],'tick_content_hash':state['tick_content_hash'],'world_hash':state['world_hash'],\n"
+        "                'envelope_digest':'e'*64,'request_id':state['advance_request_id'],'archive_verified_tick':state['durable_tick'],\n"
+        "                'material_record_sha256':'f'*64}\n"
         "        elif action=='reopen':\n"
+        "            assert state['period_proof'] is not None\n"
+        "            state['period_proof']=state['advance_request_id']=state['play_interlock']=None\n"
         "            state['scope_epoch']+=1; state['generation']+=3; event='reopened_and_installed'\n"
         "        elif action=='quit': state['quit_requested']=True; event='quit_requested'\n"
-        "        reply={'version':2,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
+        "        reply={'version':5,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if action=='quit': break\n"
     )
@@ -781,7 +1395,13 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     boundaries: list[windowed.ControlState] = []
     recoveries: list[windowed.ControlState] = []
     plan = tuple(
-        windowed.PlannedChoice(period=period, choice=choice)
+        windowed.PlannedChoice.model_validate(
+            {
+                "period": period,
+                "choice": choice,
+                "allocation": admission_fields(choice, period - 1)[0]["allocation"],
+            }
+        )
         for period, choice in [(1, "remote_aid"), (2, "pause_standing"), (3, "local_aid")]
     )
     assert (
@@ -790,7 +1410,10 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
             client,
             tmp_path,
             {},
-            {},
+            {
+                "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY": str(tmp_path),
+                "BABYLON_NATIVE_MEASUREMENT_MODE": mode,
+            },
             defines_path=tmp_path / "unused-defines.toml",
             initial_target=windowed.launcher.OpenCampaignTarget(windowed.UUID(CAMPAIGN)),
             initial_tick=0,
@@ -801,6 +1424,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
             on_boundary=boundaries.append,
             on_recovery=recoveries.append,
             choices=plan,
+            play_penultimate_close=play_close,
         )
         == 0
     )
@@ -808,25 +1432,46 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     assert [(r.durable_tick, r.scope_epoch) for r in recoveries] == [(1, 8), (2, 9), (3, 10)]
     saved = json.loads((tmp_path / "native-controls.json").read_bytes())
     applied = [entry["action"] for entry in saved["actions"] if entry["action"] != "status"]
-    assert applied == [
+    expected = [
+        "inspect_practices",
         "choose_remote_aid",
         "review",
         "confirm",
         "step",
+        "await_period_proof",
         "reopen",
         "open_direction",
         "choose_pause_standing",
         "review",
         "confirm",
         "step",
+        "await_period_proof",
         "reopen",
+        "inspect_practices",
         "choose_local_aid",
         "review",
         "confirm",
         "step",
+        "await_period_proof",
         "reopen",
         "quit",
     ]
+    if play_close:
+        second = expected.index("step", expected.index("step") + 1)
+        expected[second : second + 1] = ["arm_one_play_advance", "play", "pause"]
+    assert applied == expected
+    for tick in (1, 2, 3):
+        rows = saved["actions"]
+        fence = next(
+            row
+            for row in rows
+            if row["action"] == "await_period_proof" and row["state"]["durable_tick"] == tick
+        )
+        index = rows.index(fence)
+        assert rows[index - 1]["action"] == "status"
+        assert rows[index - 1]["state"]["archive_verified_tick"] == tick - 1
+        assert rows[index + 1]["action"] == "reopen"
+        assert boundaries[tick].period_proof is not None
 
 
 @pytest.mark.parametrize("choice", ["pause_standing", "resume_standing"])
@@ -838,7 +1483,7 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
     parent, peer = socket.socketpair()
     channel = windowed.ControlChannel(parent, CAMPAIGN, 1)
     fields = state(1)
-    command = {"choice": choice, "nonce": 42}
+    command, preview, commitment = admission_fields(choice, 1)
     requested: list[str] = []
 
     def reply() -> None:
@@ -862,17 +1507,18 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
                         fields["inspector"] = "Closed"
                 elif action == "review":
                     fields["reviewed_command"] = command
-                    fields["preview"] = {"refusal": None}
+                    fields["preview"] = preview
                     event = "preview_admitted"
                 elif action == "confirm":
-                    fields["commitment"] = {"command": command}
+                    fields["commitment"] = commitment
+                    fields["reviewed_command"] = fields["preview"] = None
                     event = "acceptance_admitted"
                 else:
                     event, reason = "refused", "control_stale_or_unavailable"
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 2,
+                            "version": 5,
                             "sequence": request["sequence"],
                             "event": event,
                             "reason": reason,
@@ -886,9 +1532,11 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
     worker.start()
     try:
         channel.observe(1)
-        windowed.submit_choice(channel, windowed.PlannedChoice(period=2, choice=choice), 1)
+        windowed.submit_choice(
+            channel, windowed.PlannedChoice(period=2, choice=choice, allocation="none"), 1
+        )
         assert channel.state is not None
-        assert channel.state.commitment == {"command": command}
+        assert channel.state.commitment == windowed.Commitment.model_validate(commitment)
         assert all(record.event != "refused" for record in channel.records)
     finally:
         channel.close()
@@ -912,7 +1560,13 @@ def test_duplicate_choice_schedule_refuses_before_launch(
     monkeypatch.setattr(
         windowed.launcher, "run_pair", lambda *args, **_kwargs: launched.append(args)
     )
-    entry = windowed.PlannedChoice(period=1, choice="remote_aid")
+    entry = windowed.PlannedChoice.model_validate(
+        {
+            "period": 1,
+            "choice": "remote_aid",
+            "allocation": admission_fields("remote_aid", 0)[0]["allocation"],
+        }
+    )
     with pytest.raises(windowed.ControlRefusal, match="schedule"):
         windowed.drive_pair(
             tmp_path / "runtime",
@@ -932,3 +1586,1081 @@ def test_duplicate_choice_schedule_refuses_before_launch(
             choices=(entry, entry),
         )
     assert not launched
+
+
+def test_automatic_progress_requires_admitted_playback_and_settles_once() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    try:
+        peer.sendall(response(1))
+        channel.observe(1)
+        peer.sendall(response(2, "applied", playing=True))
+        channel.perform("play", 1)
+        peer.sendall(
+            response(
+                3,
+                durable_tick=1,
+                viewed_tick=1,
+                generation=2,
+                organizer_period=1,
+                playing=True,
+                tick_content_hash="b" * 64,
+                world_hash="c" * 64,
+            )
+        )
+        assert channel.observe(1).durable_tick == 1
+        peer.sendall(
+            response(
+                4,
+                "applied",
+                durable_tick=1,
+                viewed_tick=1,
+                generation=2,
+                organizer_period=1,
+                playing=False,
+                advance_pending=True,
+                tick_content_hash="b" * 64,
+                world_hash="c" * 64,
+            )
+        )
+        channel.perform("pause", 1)
+        peer.sendall(
+            response(
+                5,
+                durable_tick=2,
+                viewed_tick=2,
+                generation=3,
+                organizer_period=2,
+                tick_content_hash="d" * 64,
+                world_hash="e" * 64,
+            )
+        )
+        assert channel.observe(1).durable_tick == 2
+        peer.sendall(
+            response(
+                6,
+                durable_tick=3,
+                viewed_tick=3,
+                generation=4,
+                organizer_period=3,
+                tick_content_hash="f" * 64,
+                world_hash="0" * 64,
+            )
+        )
+        with pytest.raises(windowed.ControlRefusal, match="period"):
+            channel.observe(1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"campaign_id": "b56caf73-d034-491c-a837-901fa40b1577"},
+        {"scope_epoch": 8},
+        {"foundation_sha256": "d" * 64},
+        {"tick_content_hash": "d" * 64},
+        {"world_hash": "e" * 64},
+        {"generation": 0},
+    ],
+)
+def test_playback_keeps_campaign_scope_and_stationary_identity(changes: dict[str, Any]) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 1)
+    try:
+        peer.sendall(response(1, **state(1)))
+        channel.observe(1)
+        peer.sendall(response(2, "applied", **(state(1) | {"playing": True})))
+        channel.perform("play", 1)
+        peer.sendall(response(3, **(state(1) | {"playing": True} | changes)))
+        with pytest.raises(windowed.ControlRefusal):
+            channel.observe(1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("delta", [0, 1, 2])
+def test_paused_manual_step_keeps_its_exact_single_period_contract(delta: int) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 1)
+    try:
+        peer.sendall(response(1, **state(1)))
+        channel.observe(1)
+        peer.sendall(response(2, "committed_and_installed", **state(1 + delta)))
+        if delta == 1:
+            assert channel.perform("step", 1).durable_tick == 2
+        else:
+            with pytest.raises(windowed.ControlRefusal, match="period"):
+                channel.perform("step", 1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+def test_stationary_inspection_cannot_credit_automatic_progress() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    try:
+        peer.sendall(response(1))
+        channel.observe(1)
+        peer.sendall(response(2, "applied", playing=True))
+        channel.perform("play", 1)
+        peer.sendall(response(3, "applied", **state(1)))
+        with pytest.raises(windowed.ControlRefusal, match="period"):
+            channel.perform("inspect_evidence", 1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        windowed.FocusAmount(focus_amount="cash"),
+        windowed.AmountKey(amount_key="home"),
+        windowed.AmountKey(amount_key=windowed.CharacterKey(character="3")),
+        windowed.SelectAidPartner(select_aid_partner="remote"),
+    ],
+)
+def test_tagged_action_socket_encodes_exact_variant_and_records_it(
+    action: windowed.FocusAmount | windowed.AmountKey | windowed.SelectAidPartner,
+) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    try:
+        with peer, peer.makefile("rb") as reader:
+            with pytest.raises(windowed.ControlRefusal):
+                channel.perform(cast("windowed.Action", "unknown"), 1)
+            peer.sendall(response(1, event="applied"))
+            channel.perform(action, 1)
+            sent = json.loads(reader.readline())
+            assert sent["sequence"] == 1
+            assert sent["action"] == action.model_dump(mode="json")
+            assert channel.records[-1].action == action
+    finally:
+        channel.close()
+
+
+OrganizerChannel = tuple[windowed.ControlChannel, socket.socket]
+
+
+@pytest.fixture
+def organizer_channel() -> Iterator[OrganizerChannel]:
+    local, peer = socket.socketpair()
+    channel = windowed.ControlChannel(local, CAMPAIGN, 0)
+    with peer:
+        try:
+            yield channel, peer
+        finally:
+            channel.close()
+
+
+@pytest.mark.parametrize("choice", ["local_aid", "collect"])
+@pytest.mark.parametrize(
+    "fault", ["matching", "changed_amount", "changed_choice", "invalid_edit", "missing_slot"]
+)
+def test_review_matches_prior_applicable_selection(
+    organizer_channel: OrganizerChannel, choice: str, fault: str
+) -> None:
+    channel, peer = organizer_channel
+    # Both persisted slots exist independently of the selected practice.
+    selected = state()
+    selected.update(
+        choice=choice, collection_allocation={"collection": {"target_cash_micros": "280000000"}}
+    )
+    applicable = "collection_allocation" if choice == "collect" else "aid_allocation"
+    receipt_choice = "remote_aid" if fault == "changed_choice" else choice
+    command, preview, _ = admission_fields(receipt_choice, 0)
+    if receipt_choice == "collect":
+        allocation = {
+            "collection": {
+                "target_cash_micros": "290000000" if fault == "changed_amount" else "280000000"
+            }
+        }
+    else:
+        allocation = {
+            "aid": {"food_quantity": 2 if fault == "changed_amount" else 1, "cash_micros": "0"}
+        }
+    command["allocation"] = preview["allocation"] = allocation
+    receipt_slot = "collection_allocation" if receipt_choice == "collect" else "aid_allocation"
+    reviewed = {
+        **selected,
+        "choice": receipt_choice,
+        receipt_slot: allocation,
+        "reviewed_command": command,
+        "preview": preview,
+    }
+    if fault == "invalid_edit":
+        selected.update(
+            focused_amount="contribution" if choice == "collect" else "food",
+            amount_text="1-",
+            allocation_error="invalid quantity",
+        )
+    if fault == "missing_slot":
+        selected[applicable] = None
+    peer.sendall(response(1, **selected))
+    channel.observe(1)
+    peer.sendall(response(2, "preview_admitted", **reviewed))
+    if fault == "matching":
+        assert channel.perform("review", 1).reviewed_command == windowed.Command.model_validate(
+            command
+        )
+    else:
+        with pytest.raises(windowed.ControlRefusal):
+            channel.perform("review", 1)
+        assert channel.sequence == (1 if fault in ("invalid_edit", "missing_slot") else 2)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "status_only",
+        "changed_then_restored",
+        "generation",
+        "cleared_review",
+        "consumed",
+        "matching",
+    ],
+)
+def test_only_witnessed_unchanged_review_can_send_confirm(
+    organizer_channel: OrganizerChannel, fault: str
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, commitment = admission_fields("local_aid", 0)
+    reviewed = {"choice": "local_aid", "reviewed_command": command, "preview": preview}
+    peer.sendall(response(1, **(reviewed if fault == "status_only" else {"choice": "local_aid"})))
+    channel.observe(1)
+    if fault != "status_only":
+        peer.sendall(response(2, "preview_admitted", **reviewed))
+        channel.perform("review", 1)
+    if fault == "changed_then_restored":
+        changed = {**reviewed, "aid_allocation": {"aid": {"food_quantity": 2, "cash_micros": "0"}}}
+        peer.sendall(response(3, **changed))
+        channel.observe(1)
+        peer.sendall(response(4, **reviewed))
+        channel.observe(1)
+    if fault == "generation":
+        peer.sendall(response(3, **reviewed, generation=2))
+        channel.observe(1)
+    if fault == "cleared_review":
+        peer.sendall(response(3, choice="local_aid"))
+        channel.observe(1)
+    if fault in ("matching", "consumed"):
+        peer.sendall(response(3, **reviewed))
+        channel.observe(1)
+        peer.sendall(response(4, "acceptance_admitted", choice="local_aid", commitment=commitment))
+        assert channel.perform("confirm", 1).commitment == windowed.Commitment.model_validate(
+            commitment
+        )
+        if fault == "matching":
+            return
+        peer.sendall(response(5, **reviewed))
+        channel.observe(1)
+    sequence = channel.sequence
+    with pytest.raises(windowed.ControlRefusal, match="requires this channel's current review"):
+        channel.perform("confirm", 1)
+    assert channel.sequence == sequence
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "uncleared_command",
+        "uncleared_preview",
+        "changed_nonce",
+        "changed_resolves_period",
+        "changed_generation",
+    ],
+)
+def test_witnessed_acceptance_must_clear_and_match_original(
+    organizer_channel: OrganizerChannel, fault: str
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, commitment = admission_fields("local_aid", 0)
+    peer.sendall(response(1, choice="local_aid"))
+    channel.observe(1)
+    peer.sendall(
+        response(
+            2, "preview_admitted", choice="local_aid", reviewed_command=command, preview=preview
+        )
+    )
+    channel.perform("review", 1)
+    accepted = {"choice": "local_aid", "commitment": commitment}
+    if fault == "uncleared_command":
+        accepted["reviewed_command"] = command
+    elif fault == "uncleared_preview":
+        accepted["preview"] = preview
+    elif fault == "changed_nonce":
+        commitment["command"]["nonce"] = [98] * 16
+    elif fault == "changed_resolves_period":
+        commitment["resolves_period"] += 1
+    else:
+        accepted["generation"] = 2
+    peer.sendall(response(3, "acceptance_admitted", **accepted))
+    with pytest.raises(windowed.ControlRefusal):
+        channel.perform("confirm", 1)
+    assert channel.sequence == 3
+
+
+@pytest.mark.parametrize("case", ["matching", "changed", "unwitnessed", "refused"])
+def test_capture_preserves_only_its_witnessed_review(
+    organizer_channel: OrganizerChannel, case: str
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, commitment = admission_fields("local_aid", 0, nonce=87)
+    reviewed = {"choice": "local_aid", "reviewed_command": command, "preview": preview}
+    peer.sendall(response(1, **(reviewed if case == "unwitnessed" else {"choice": "local_aid"})))
+    channel.observe(1)
+    if case != "unwitnessed":
+        peer.sendall(response(2, "preview_admitted", **reviewed))
+        channel.perform("review", 1)
+    sequence = channel.sequence + 1
+    if case == "refused":
+        frame = json.loads(response(sequence, "refused", **reviewed))
+        frame["reason"] = "capture_image_invalid"
+        peer.sendall(json.dumps(frame).encode() + b"\n")
+        with pytest.raises(windowed.ControlRefusal, match="capture_image_invalid"):
+            channel.perform("capture_frame", 1)
+    else:
+        captured = {**reviewed, "generation": 2} if case == "changed" else reviewed
+        peer.sendall(response(sequence, "frame_captured", **captured))
+        pictured = channel.perform("capture_frame", 1)
+        if case == "matching":
+            peer.sendall(
+                response(
+                    sequence + 1, "acceptance_admitted", choice="local_aid", commitment=commitment
+                )
+            )
+            accepted = channel.perform("confirm", 1).commitment
+            assert accepted == windowed.Commitment.model_validate(commitment)
+            assert accepted is not None and accepted.command == pictured.reviewed_command
+            with peer.makefile("rb") as requests:
+                assert [
+                    json.loads(requests.readline())["action"] for _ in range(channel.sequence)
+                ] == ["status", "review", "capture_frame", "confirm"]
+            # Replaying the pictured readback cannot revive the consumed Review.
+            peer.sendall(response(channel.sequence + 1, **reviewed))
+            channel.observe(1)
+    last_sent = channel.sequence
+    with pytest.raises(windowed.ControlRefusal, match="requires this channel's current review"):
+        channel.perform("confirm", 1)
+    assert channel.sequence == last_sent
+
+
+def test_collected_plan_requires_an_exact_positive_allocation() -> None:
+    with pytest.raises(ValueError):
+        windowed.PlannedChoice.model_validate({"period": 1, "choice": "remote_aid"})
+    with pytest.raises(ValueError):
+        windowed.PlannedChoice.model_validate(
+            {
+                "period": 1,
+                "choice": "collect",
+                "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
+            }
+        )
+    plan = windowed.PlannedChoice.model_validate(
+        {
+            "period": 1,
+            "choice": "collect",
+            "allocation": {"collection": {"target_cash_micros": "1450000000"}},
+        }
+    )
+    assert isinstance(plan.allocation, windowed.CollectionAllocation)
+    assert windowed.whole_dollars(plan.allocation.collection.target_cash_micros) == "1450"
+    with pytest.raises(windowed.ControlRefusal):
+        windowed.whole_dollars("1500000")
+
+
+def test_editor_refuses_a_mutation_that_preserves_the_review() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    fields = state()
+    command, preview, _ = admission_fields("hold", 0)
+    fields.update(
+        focused_amount="contribution", amount_text="2", reviewed_command=command, preview=preview
+    )
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            for raw in source:
+                request = json.loads(raw)
+                if request["action"] == {"amount_key": "delete"}:
+                    fields["amount_text"] = ""
+                peer.sendall(
+                    json.dumps(
+                        {
+                            "version": 5,
+                            "sequence": request["sequence"],
+                            "event": "applied",
+                            "reason": None,
+                            "state": fields,
+                        }
+                    ).encode()
+                    + b"\n"
+                )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        with pytest.raises(windowed.ControlRefusal, match="obsolete review"):
+            windowed.edit_amount(channel, "contribution", "1450", 1)
+    finally:
+        channel.close()
+        worker.join(2)
+    assert not worker.is_alive()
+
+
+def test_observed_unavailable_offer_never_arms_confirmation(
+    organizer_channel: OrganizerChannel,
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, _ = admission_fields("local_aid", 0)
+    selected = state()
+    selected.update(choice="local_aid", aid_allocation=command["allocation"])
+    peer.sendall(response(1, **selected))
+    channel.observe(1)
+    refused = json.loads(
+        response(
+            2,
+            "refused",
+            **{
+                **selected,
+                "reviewed_command": command,
+                "preview": {**preview, "refusal": "aid_unavailable"},
+            },
+        )
+    )
+    refused["reason"] = "ordinary_response_refused"
+    peer.sendall(json.dumps(refused).encode() + b"\n")
+    result = channel.perform("review", 1, allow_review_refusal=True)
+    assert result.preview is not None and result.preview.refusal == "aid_unavailable"
+    assert channel.records[-1].event == "refused"
+    with pytest.raises(windowed.ControlRefusal, match="current review"):
+        channel.perform("confirm", 1)
+    assert channel.sequence == 2
+
+
+@pytest.mark.parametrize("raced_tick", [8, 9])
+def test_delayed_one_play_acknowledgement_preserves_authenticated_pending(raced_tick):
+    start = state(8)
+    arm = {
+        "phase": "armed",
+        "arm_sequence": 2,
+        "play_sequence": None,
+        "campaign_id": CAMPAIGN,
+        "scope_epoch": 7,
+        "start_tick": 8,
+        "start_generation": 1,
+        "target_tick": 9,
+        "request_id": None,
+        "pending_at_pause": False,
+        "playing_after_pause": None,
+    }
+    stopped = {
+        **arm,
+        "phase": "paused_after_enqueue",
+        "play_sequence": 3,
+        "request_id": 41,
+        "pending_at_pause": True,
+        "playing_after_pause": False,
+    }
+    frames = [
+        (1, "observed", start),
+        (2, "applied", {**start, "play_interlock": arm}),
+        (3, "applied", {**state(raced_tick), "play_interlock": stopped}),
+        (4, "applied", {**state(9), "play_interlock": stopped}),
+    ]
+    left, right = socket.socketpair()
+    with left, right:
+        channel = windowed.ControlChannel(left, CAMPAIGN, 8)
+        for seq, event, body in frames:
+            right.sendall(
+                (
+                    json.dumps(
+                        {
+                            "version": 5,
+                            "sequence": seq,
+                            "event": event,
+                            "reason": None,
+                            "state": {"installed_organizer": None, "play_interlock": None, **body},
+                        }
+                    )
+                    + "\n"
+                ).encode()
+            )
+            if seq == 1:
+                channel.observe(1)
+            else:
+                channel.perform(("arm_one_play_advance", "play", "pause")[seq - 2], 1)
+        assert channel.state.play_interlock.request_id == 41
+
+
+@pytest.mark.parametrize("crossing", ["between_requests", "while_waiting"])
+@pytest.mark.parametrize("action", ["status", "await_period_proof"])
+def test_smoke_clock_bounds_next_send_and_outstanding_reply(crossing, action, monkeypatch):
+    import time
+
+    stream, peer = socket.socketpair()
+    try:
+        deadline = time.monotonic() + 0.1
+        channel = windowed.ControlChannel(stream, CAMPAIGN, 0, wall_deadline=deadline)
+        peer.sendall(response(1, "observed", **state()))
+        installed = channel.observe(2)
+        assert json.loads(peer.recv(4096))["sequence"] == 1
+        if crossing == "between_requests":
+            monkeypatch.setattr(windowed.time, "monotonic", lambda: deadline + 1)
+        with pytest.raises(windowed.ControlRefusal, match="smoke wall"):
+            channel.perform(action, 2)
+        assert channel.state == installed
+        peer.setblocking(False)
+        remaining = peer.recv(4096)
+        assert (
+            remaining == b""
+            if crossing == "between_requests"
+            else json.loads(remaining)["sequence"] == 2
+        )
+    finally:
+        stream.close()
+        peer.close()
+
+
+class OrdinaryPrefixPeer:
+    """Bounded native-control stand-in with actual sequenced socket responses."""
+
+    def __init__(self, peer, frames, pixels, fault):
+        self.peer, self.frames, self.pixels, self.fault = peer, frames, pixels, fault
+        self.current = state()
+        # Rust publishes the default selected assessment even with no inspector open.
+        self.current.update(
+            selected_report_id="d" * 64,
+            selected_report_observed_period=0,
+            selected_report_acquired_period=0,
+        )
+        self.current["installed_organizer"] = installed_opening_view()
+        self.calls, self.failures = [], []
+        self.accepted = None
+
+    def select(self, action):
+        planned = windowed.WALK_FIXED_DECISIONS[self.current["durable_tick"]]
+        assert action == "choose_" + planned.choice
+        self.current.update(choice=planned.choice, inspector="Closed")
+        allocation = (
+            "none" if planned.allocation == "none" else planned.allocation.model_dump(mode="json")
+        )
+        self.current["collection_allocation"] = (
+            allocation if planned.choice == "collect" else "none"
+        )
+        self.current["aid_allocation"] = (
+            allocation if planned.choice in ("local_aid", "remote_aid") else "none"
+        )
+
+    def review(self):
+        tick = self.current["durable_tick"]
+        planned = windowed.WALK_FIXED_DECISIONS[tick]
+        command, preview, self.accepted = admission_fields(planned.choice, tick, 42 + tick)
+        allocation = (
+            "none" if planned.allocation == "none" else planned.allocation.model_dump(mode="json")
+        )
+        command["allocation"] = preview["allocation"] = allocation
+        self.accepted["command"] = command
+        self.current["reviewed_command"], self.current["preview"] = command, preview
+
+    def close(self):
+        tick = self.current["durable_tick"] + 1
+        self.current.update(
+            durable_tick=tick,
+            viewed_tick=tick,
+            organizer_period=tick,
+            generation=self.current["generation"] + 1,
+            tick_content_hash="b" * 64,
+            world_hash="c" * 64,
+            commitment=None,
+        )
+        self.current["installed_organizer"]["period"] = tick
+        mutations = {
+            "generation": ("generation", self.current["generation"] - 1),
+            "period": ("viewed_tick", tick - 1),
+            "source": ("foundation_sha256", "f" * 64),
+            "complete": ("phase", "Complete"),
+            "overlay": ("inspector", "Evidence"),
+        }
+        if self.fault in mutations:
+            key, value = mutations[self.fault]
+            self.current[key] = value
+
+    def capture(self, request):
+        path = self.frames / f"frame-{request['sequence']}.png"
+        path.write_bytes(self.pixels)
+        path.chmod(0o600)
+        if self.fault == "capture_context":
+            self.current["selected_subject"] = "changed"
+        return (
+            ("refused", "capture_context_changed")
+            if self.fault == "capture_refused"
+            else ("frame_captured", None)
+        )
+
+    def dispatch(self, request):
+        import copy
+
+        action = request["action"]
+        self.calls.append(action)
+        event = "applied"
+        if action == "status":
+            event = "observed"
+        elif action == "inspect_practices":
+            self.current["inspector"] = "Practices"
+        elif action == "open_direction":
+            self.current["inspector"] = "Direction"
+        elif action == "close_inspector":
+            self.current["inspector"] = "Closed"
+        elif action.startswith("choose_"):
+            self.select(action)
+        elif action == "review":
+            self.review()
+            event = "preview_admitted"
+        elif action == "confirm":
+            self.current["commitment"] = copy.deepcopy(self.accepted)
+            if self.fault == "nonce" and self.current["durable_tick"] == 1:
+                self.current["commitment"]["command"]["nonce"] = [99] * 16
+            self.current["reviewed_command"] = self.current["preview"] = None
+            event = "acceptance_admitted"
+        elif action == "step":
+            self.close()
+            event = "committed_and_installed"
+        elif action == "capture_frame":
+            return self.capture(request)
+        else:
+            assert action in ("standard_interface", "resize1366x768")
+        return event, None
+
+    def serve(self):
+        try:
+            with self.peer, self.peer.makefile("rb") as source:
+                for line in source:
+                    request = json.loads(line)
+                    event, reason = self.dispatch(request)
+                    self.peer.sendall(
+                        json.dumps(
+                            {
+                                "version": 5,
+                                "sequence": request["sequence"],
+                                "event": event,
+                                "reason": reason,
+                                "state": self.current,
+                            }
+                        ).encode()
+                        + b"\n"
+                    )
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except BaseException as error:
+            self.failures.append(error)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "late",
+        "capture_refused",
+        "capture_context",
+        "generation",
+        "period",
+        "source",
+        "complete",
+        "overlay",
+        "nonce",
+    ],
+)
+def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_path, fault):
+    """Real control transport and capture; no native process or accounting proof."""
+    import io
+    from types import SimpleNamespace
+
+    from PIL import Image
+    from tools.devtools import national_native_runner as runner
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir(mode=0o700)
+    (tmp_path / "raw").mkdir(mode=0o700)
+    frames = tmp_path / "frames"
+    frames.mkdir(mode=0o700)
+    image = io.BytesIO()
+    Image.new("RGB", (1366, 768)).save(image, format="PNG")
+    pixels = image.getvalue()
+    sock, peer = socket.socketpair()
+    standin = OrdinaryPrefixPeer(peer, frames, pixels, fault)
+    calls, peer_failures = standin.calls, standin.failures
+    companion = runner.OrdinaryWarmPrefix(SimpleNamespace(directory=evidence, timeout=1))
+    thread = threading.Thread(target=standin.serve)
+    thread.start()
+    channel = windowed.ControlChannel(sock, CAMPAIGN, 0)
+    opening = channel.observe(1)
+    assert opening.selected_report_id is not None and opening.inspector == "Closed"
+    # Deterministic exact boundary and over-budget evidence, without wall-clock sleeps.
+    if fault in (None, "late"):
+        original_capture = companion.walk.capture_frame
+
+        def capture(*args):
+            result = original_capture(*args)
+            observation = channel.records[-1]
+            step = next(r for r in reversed(channel.records) if r.action == "step")
+            changed = observation.model_dump()
+            changed["completed_monotonic_ns"] = (
+                step.started_monotonic_ns + 30_000_000_000 + int(fault == "late")
+            )
+            channel.records[-1] = windowed.ActionObservation.model_validate(changed)
+            return result
+
+        companion.walk.capture_frame = capture
+    try:
+        if fault is None:
+            companion(channel, frames, opening)
+        else:
+            with pytest.raises(ValueError):
+                companion(channel, frames, opening)
+    finally:
+        channel.close()
+        thread.join(2)
+    assert not thread.is_alive() and not peer_failures
+    saved = json.loads((evidence / "ordinary-warm-prefix.json").read_bytes())
+    assert saved["maximum_usable_elapsed_ns"] == 30_000_000_000
+    assert saved["status"] == ("completed" if fault is None else "incomplete")
+    assert "await_period_proof" not in calls and "reopen" not in calls
+    assert all(record["state"]["period_proof"] is None for record in saved["actions"])
+    if fault in (None, "late"):
+        assert calls.count("step") == 3 and calls.count("confirm") == 4
+        assert [sample["period"] for sample in saved["samples"]] == [1, 2, 3]
+        for sample in saved["samples"]:
+            assert all(
+                sample[endpoint]["state"]["selected_report_id"] is not None
+                and sample[endpoint]["state"]["inspector"] == "Closed"
+                for endpoint in ("ready", "capture", "next_acceptance")
+            )
+            assert sample["usable_elapsed_ns"] == 30_000_000_000 + int(fault == "late")
+            assert (
+                sample["step"]["sequence"]
+                < sample["ready"]["sequence"]
+                < sample["capture"]["sequence"]
+                < sample["next_acceptance"]["sequence"]
+            )
+            assert (tmp_path / "raw" / sample["png"]["path"]).read_bytes() == pixels
+            assert (
+                sample["next_acceptance"]["state"]["commitment"]["resolves_period"]
+                == sample["period"] + 1
+            )
+        assert saved["samples"][-1]["next_acceptance"]["state"]["choice"] == "pause_standing"
+    if fault == "overlay":
+        assert calls.count("step") == 1 and "capture_frame" not in calls
+        assert saved["actions"][-1]["state"]["inspector"] == "Evidence"
+    if fault in ("capture_context", "capture_refused"):
+        assert list((tmp_path / "raw").glob("incomplete-*.json"))
+    with pytest.raises(ValueError):
+        companion(channel, frames, opening)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        None,
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "control_context_changed",
+        "control_stale_or_unavailable",
+    ],
+)
+def test_window_diagnostic_resize_keeps_only_expected_refusals_open_for_quit(reason):
+    """Use actual authenticated exchanges; no socket reset or refusal weakening."""
+    stream, peer = socket.socketpair()
+    requests = []
+    failures = []
+
+    def serve():
+        try:
+            with peer, peer.makefile("rb") as source:
+                for line in source:
+                    request = json.loads(line)
+                    requests.append(request["action"])
+                    current = state()
+                    event, refusal = "applied", None
+                    if request["action"] == "status":
+                        event = "observed"
+                    elif request["action"] == "resize1366x768":
+                        event, refusal = ("refused", reason) if reason else ("applied", None)
+                    elif request["action"] == "quit":
+                        current["quit_requested"] = True
+                        event = "quit_requested"
+                    else:
+                        raise AssertionError(request)
+                    peer.sendall(
+                        json.dumps(
+                            {
+                                "version": 5,
+                                "sequence": request["sequence"],
+                                "event": event,
+                                "reason": refusal,
+                                "state": current,
+                            }
+                        ).encode()
+                        + b"\n"
+                    )
+        except BaseException as error:
+            failures.append(error)
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    channel = windowed.ControlChannel(stream, CAMPAIGN, 0)
+    try:
+        channel.observe(1)
+        if reason in (None, "primary_window_resize_timeout", "primary_window_extent_unobserved"):
+            if reason:
+                with pytest.raises(windowed.ControlRefusal):
+                    channel._diagnose_window_resize(1)
+            else:
+                channel._diagnose_window_resize(1)
+            assert channel.records[-1].reason == reason
+            assert not channel.closed
+            channel.perform("quit", 1)
+            assert channel.records[-1].state.quit_requested
+        else:
+            with pytest.raises(windowed.ControlRefusal):
+                channel._diagnose_window_resize(1)
+            assert channel.closed
+    finally:
+        channel.close()
+        thread.join(2)
+    assert not thread.is_alive() and not failures
+    assert requests == ["status", "resize1366x768"] + (
+        ["quit"]
+        if reason in (None, "primary_window_resize_timeout", "primary_window_extent_unobserved")
+        else []
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "control_context_changed",
+        "missing_log",
+        "changed_marker",
+        "startup",
+        "startup_marker",
+    ],
+)
+def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
+    tmp_path, monkeypatch, fault
+):
+    from tools.devtools import national_native_runner as runner
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir(mode=0o700)
+    (tmp_path / "raw").mkdir(mode=0o700)
+    (evidence / "source-head").write_text("a" * 40 + "\n")
+    log = tmp_path / "xdg/data/babylon/logs/babylon-client.log"
+    log.parent.mkdir(parents=True, mode=0o700)
+    run = object.__new__(runner.NativeRun)
+    run.directory, run.root = evidence, tmp_path
+    run.window_diagnostic = True
+    run.wayne_profile, run.mode, run.periods = "ordinary-01", "normal_play", 10
+    run.campaign, run.timeout = CAMPAIGN, 1
+    run.runtime, run.client = tmp_path / "runtime", tmp_path / "client"
+    run.owner_fields = ("owned",)
+    from types import SimpleNamespace
+
+    run.policy = SimpleNamespace(maximum_cold_open_seconds=180)
+    run.process_identity = lambda process, binary: (process.pid, 42, binary.name)
+    run.record_processes = lambda _segment: None
+    run.verify_live = run.verify_sources = run.publish_verification_diagnostics = lambda: None
+    monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_args: None)
+    markers = []
+    startup_failure = runner.NativeRunRefusal("startup fixture failure")
+    marker_failure = OSError("marker unavailable")
+
+    def marker():
+        if fault == "startup_marker":
+            raise marker_failure
+        result = memory.CampaignMemoryMarker(
+            campaign=CAMPAIGN,
+            foundation_sha256="a" * 64,
+            campaign_age_ticks=int(fault == "changed_marker" and bool(markers)),
+            tick_content_hash="b" * 64 if fault == "changed_marker" and markers else None,
+        )
+        markers.append(result)
+        return result
+
+    run.marker = marker
+    calls = []
+
+    def pair(_runtime, _client, _root, writer, reader, **options):
+        assert runner.WINDOW_DIAGNOSTIC_SELECTOR not in writer
+        assert reader[runner.WINDOW_DIAGNOSTIC_SELECTOR] == "1"
+        assert reader["RUST_LOG"] == "off,babylon_client=off,babylon_window_diagnostic=info"
+        assert "BABYLON_QUALIFICATION_POLICY" not in reader
+        assert options["periods"] == 0 and options["choices"] == ()
+        assert options["capture_lifecycle"] is None
+        options["on_started"](SimpleNamespace(pid=10), SimpleNamespace(pid=11))
+        stream, peer = socket.socketpair()
+
+        class DiagnosticPeer(OrdinaryPrefixPeer):
+            def dispatch(self, request):
+                if request["action"] == "quit":
+                    self.calls.append("quit")
+                    self.current["quit_requested"] = True
+                    return "quit_requested", None
+                if request["action"] == "resize1366x768" and fault in (
+                    "primary_window_resize_timeout",
+                    "primary_window_extent_unobserved",
+                    "control_context_changed",
+                ):
+                    self.calls.append(request["action"])
+                    return "refused", fault
+                return super().dispatch(request)
+
+        standin = DiagnosticPeer(peer, tmp_path, b"", None)
+        thread = threading.Thread(target=standin.serve)
+        thread.start()
+        channel = windowed.ControlChannel(stream, CAMPAIGN, 0)
+        failure = None
+        try:
+            opening = channel.observe(1)
+            if fault in ("startup", "startup_marker"):
+                raise startup_failure
+            options["on_installed"](channel, tmp_path, opening)
+            channel.perform("quit", 1)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            windowed.finish_observations(
+                evidence / "native-controls.json",
+                channel,
+                "incomplete" if failure else "completed",
+                failure,
+            )
+            channel.close()
+            thread.join(2)
+            assert not thread.is_alive() and not standin.failures
+            calls.extend(standin.calls)
+            if fault not in ("missing_log", "startup", "startup_marker"):
+                sequence = next(
+                    row.sequence for row in channel.records if row.action == "resize1366x768"
+                )
+                log.write_text(
+                    "".join(
+                        "INFO window_diagnostic "
+                        + json.dumps({"sequence": sequence, "phase": phase})
+                        + "\n"
+                        for phase in (
+                            ("request", "final")
+                            if fault == "primary_window_extent_unobserved"
+                            else ("request", "first_complete", "post_last", "final")
+                        )
+                    )
+                )
+                log.chmod(0o600)
+        return 0
+
+    monkeypatch.setattr(runner, "drive_pair", pair)
+    writer = {runner.WINDOW_DIAGNOSTIC_SELECTOR: "stale"}
+    reader = {"RUST_LOG": "off,babylon_client=off", "BABYLON_QUALIFICATION_POLICY": "absent"}
+    if fault == "startup_marker":
+        with pytest.raises(BaseExceptionGroup) as caught:
+            run.ordinary(writer, reader)
+        assert caught.value.exceptions == (startup_failure, marker_failure)
+    elif fault in ("control_context_changed", "missing_log", "changed_marker", "startup"):
+        with pytest.raises(ValueError):
+            run.ordinary(writer, reader)
+    else:
+        assert run.ordinary(writer, reader) == 0
+    report = runner.read_record(
+        tmp_path / "raw/window-diagnostic.json", runner.WindowDiagnosticEvidence
+    )
+    expected = (
+        "incomplete"
+        if fault
+        in ("control_context_changed", "missing_log", "changed_marker", "startup", "startup_marker")
+        else "refused"
+        if fault
+        else "applied"
+    )
+    assert report.outcome == expected
+    assert report.steps == report.plays == report.captures == report.commitment_acceptances == 0
+    assert report.gameplay_qualified is False
+    assert calls == (
+        ["status"]
+        if fault in ("startup", "startup_marker")
+        else ["status", "standard_interface", "resize1366x768"]
+        + ([] if fault == "control_context_changed" else ["quit"])
+    )
+    assert tuple(row.action for row in report.actions) == tuple(calls)
+    assert not (evidence / "ordinary-terminal.json").exists()
+    assert not (evidence / "ordinary-warm-prefix.json").exists()
+    assert writer[runner.WINDOW_DIAGNOSTIC_SELECTOR] == "stale"
+    if fault == "startup_marker":
+        assert report.final_marker is None
+        assert report.final == report.actions[-1].state
+        assert report.native_controls == runner.PrivateEvidence(evidence).reference(
+            "native-controls.json"
+        )
+        assert [leaf.failure_type for leaf in report.failures] == ["NativeRunRefusal", "OSError"]
+        assert report.failures[0].safe_reason == "startup fixture failure"
+    if expected == "incomplete":
+        assert report.failures
+    else:
+        assert report.opening_marker == report.final_marker
+        assert report.final.quit_requested
+        assert report.native_window_log_records == (
+            2 if fault == "primary_window_extent_unobserved" else 4
+        )
+        assert (
+            report.native_window_log.sha256
+            == __import__("hashlib").sha256(log.read_bytes()).hexdigest()
+        )
+
+
+@pytest.mark.parametrize(
+    "native_reason",
+    [
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "primary_window_unavailable",
+        "postgresql://private-user:private-password@private-host/private-database",
+        "unrecognized_reason",
+        "primary_window_future",
+    ],
+)
+def test_ordinary_resize_carries_only_allowlisted_native_reason(native_reason):
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    peer.sendall(response(1))
+    channel.observe(1)
+    peer.sendall(
+        response(2, "refused").replace(
+            b'"reason": null', json.dumps({"reason": native_reason})[1:-1].encode()
+        )
+    )
+    try:
+        with pytest.raises(windowed.ControlRefusal) as raised:
+            channel.perform("resize1366x768", 1)
+        expected = (
+            native_reason
+            if native_reason
+            in (
+                "primary_window_resize_timeout",
+                "primary_window_extent_unobserved",
+                "primary_window_unavailable",
+            )
+            else "control_refused"
+        )
+        assert raised.value.reason == expected
+        assert channel.records[-1].reason == native_reason
+        assert channel.closed
+    finally:
+        channel.close()
+        peer.close()

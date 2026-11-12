@@ -1,18 +1,24 @@
 //! Actor-safe material facts; no forecast of admission, delivered quantity or practice.
 use crate::runtime_session::RuntimeSessionErrorCode;
-use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CorridorId;
 use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::MonetaryError;
 use babylon_material_circuit::RecurringEconomy;
 use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{AccountId, AidMandate, MaterialCircuitError};
 use babylon_material_circuit::{
     AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCatalog, MaterialCircuitState,
 };
+use babylon_practice_contract::OrganizerAidCashStatus;
+use babylon_practice_contract::OrganizerAidMaterialPostings;
+use babylon_practice_contract::OrganizerAidSupportStatus;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAidSupport, OrganizerConfig, OrganizerGiftConsent,
     OrganizerPendingAidPractice, OrganizerPeriodJournalEntries, OrganizerReceipt,
 };
+use babylon_practice_contract::{OrganizerChoice, OrganizerCommand};
 use serde::{Deserialize, Serialize};
 type Result<T> = std::result::Result<T, RuntimeSessionErrorCode>;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,25 +28,63 @@ pub struct OrganizerMaterialAidPreview {
     pub mandate_id: [u8; 32],
     pub period: u64,
     pub donor_id: [u8; 32],
-    pub recipient_id: [u8; 32],
+    pub recipient_actor_id: u64,
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
+    #[serde(deserialize_with = "required_food")]
+    pub food: Option<OrganizerAidFoodPreview>,
+    pub funding: OrganizerAidFunding,
+    pub maximum_quantity: u64,
+    #[serde(with = "decimal_i128")]
+    pub maximum_cash_micros: i128,
+    pub initial_food_quantity: u64,
+    #[serde(with = "decimal_i128")]
+    pub initial_cash_micros: i128,
+    pub cash_receiving_consent: OrganizerGiftConsent,
+    pub coordination_hours: u64,
+    pub receiving_consent: OrganizerGiftConsent,
+}
+
+/// Authority to attempt a cash gift and, for a controlled treasury, read its balance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerAidFunding {
+    Unavailable,
+    Mandated,
+    Organization {
+        #[serde(with = "decimal_i128")]
+        cash_micros: i128,
+    },
+}
+
+impl OrganizerAidFunding {
+    /// Whether the original can attempt a positive cash gift.
+    #[must_use]
+    pub fn available(self) -> bool {
+        !matches!(self, Self::Unavailable)
+    }
+}
+
+/// Available physical food facts. Absence on the parent means that leg is unwired.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerAidFoodPreview {
     pub donor_stock: u64,
     pub own_need: u64,
     pub grams_per_unit: u64,
-    #[serde(with = "decimal_i128")]
-    pub payer_cash: i128,
     pub ordinary_offer: Option<OrganizerAidOrdinaryOffer>,
-    pub maximum_quantity: u64,
-    #[serde(with = "decimal_i128")]
-    pub gift_cash_per_unit: i128,
     pub labor_unit_id: [u8; 32],
     pub fulfillment_hours_per_unit: u64,
-    pub coordination_hours: u64,
-    pub receiving_consent: OrganizerGiftConsent,
     pub time: Option<OrganizerAidTime>,
     pub transport: OrganizerAidTransportPreview,
 }
+
+fn required_food<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<OrganizerAidFoodPreview>, D::Error> {
+    Option::<OrganizerAidFoodPreview>::deserialize(deserializer)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidOrdinaryOffer {
@@ -83,6 +127,72 @@ pub struct OrganizerAidCapacity {
     pub corridor_id: [u8; 32],
     pub remaining_grams: Option<u64>,
 }
+/// Food movements observable by the sender under its practice receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerFoodDelivery {
+    NotRequested,
+    AwaitingDelivery,
+    ReceivingRefused,
+    TerminalFailure,
+    Granted { granted_quantity: u64 },
+}
+
+impl From<OrganizerAidSupportStatus> for OrganizerFoodDelivery {
+    fn from(status: OrganizerAidSupportStatus) -> Self {
+        match status {
+            OrganizerAidSupportStatus::NotRequested => Self::NotRequested,
+            OrganizerAidSupportStatus::AwaitingDelivery => Self::AwaitingDelivery,
+            OrganizerAidSupportStatus::ReceivingRefused => Self::ReceivingRefused,
+            OrganizerAidSupportStatus::TerminalFailure => Self::TerminalFailure,
+            OrganizerAidSupportStatus::Granted {
+                granted_quantity, ..
+            } => Self::Granted { granted_quantity },
+        }
+    }
+}
+
+/// The sender can follow its own original commitment, transfers and delivery dates.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerAidTransfer {
+    pub original_commitment_id: [u8; 32],
+    pub material_commitment_id: [u8; 32],
+    pub mandate_id: [u8; 32],
+    pub dispatch_period: u64,
+    pub period: u64,
+    pub good_id: [u8; 32],
+    pub unit_id: [u8; 32],
+    pub status: OrganizerFoodDelivery,
+    pub cash_status: OrganizerAidCashStatus,
+    pub material_postings: OrganizerAidMaterialPostings,
+}
+
+impl From<&OrganizerAidSupport> for OrganizerAidTransfer {
+    fn from(row: &OrganizerAidSupport) -> Self {
+        Self {
+            original_commitment_id: row.original_commitment_id,
+            material_commitment_id: row.material_commitment_id,
+            mandate_id: row.mandate_id,
+            dispatch_period: row.dispatch_period,
+            period: row.period,
+            good_id: row.good_id,
+            unit_id: row.unit_id,
+            status: row.status.into(),
+            cash_status: row.cash_status,
+            material_postings: row.material_postings.clone(),
+        }
+    }
+}
+
+fn owned_practice(receipt: &OrganizerReceipt) -> OrganizerReceipt {
+    let mut disclosed = receipt.clone();
+    disclosed
+        .time_use
+        .retain(|row| row.actor_id == receipt.actor_id);
+    disclosed
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidPending {
@@ -94,12 +204,16 @@ pub struct OrganizerAidPending {
     pub dispatch_period: u64,
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
+    pub allocation: OrganizerAllocation,
+    pub dispatch_support: OrganizerAidTransfer,
+    pub response: Option<OrganizerReceipt>,
+    pub lost_quantity: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidResolution {
     pub pending: OrganizerAidPending,
-    pub support: OrganizerAidSupport,
+    pub support: OrganizerAidTransfer,
     pub practice: OrganizerReceipt,
 }
 fn refused() -> RuntimeSessionErrorCode {
@@ -107,6 +221,10 @@ fn refused() -> RuntimeSessionErrorCode {
 }
 pub(super) fn pending(row: &OrganizerPendingAidPractice) -> OrganizerAidPending {
     OrganizerAidPending {
+        allocation: row.gift.commitment.command.allocation,
+        dispatch_support: (&row.dispatch_support).into(),
+        response: row.response.as_ref().map(owned_practice),
+        lost_quantity: row.lost_quantity,
         kind: row.gift.kind,
         original_commitment_id: row.gift.commitment.commitment_id,
         material_commitment_id: row.material_commitment_id,
@@ -147,63 +265,125 @@ pub(super) fn projections(
         {
             return Err(refused());
         }
-        let (donor_stock, own_need) = pantry_amounts(catalog, recurring, mandate)?;
-        let ordinary_offer = recurring
-            .household_purchases
-            .iter()
-            .find(|p| {
-                p.principal_id == mandate.donor
-                    && p.good_id == mandate.good_id
-                    && p.unit_id == mandate.unit_id
-            })
-            .and_then(|p| {
-                recurring.offers.iter().find(|o| {
-                    o.site_id == p.retailer_site_id
-                        && o.good_id == mandate.good_id
-                        && o.unit_id == mandate.unit_id
-                })
-            })
-            .map(|o| OrganizerAidOrdinaryOffer {
-                seller_id: o.site_id.as_bytes(),
-                unit_price: o.unit_price.micro_units(),
-            });
-        let time = remaining_time(state, mandate.donor, mandate.labor_unit_id, period)?;
-        let transport = transport(catalog, state, mandate.transport)?;
+        let food = food_projection(catalog, state, recurring, mandate, period)?;
+        let controlled = config.collection.as_ref().is_some_and(|collection| {
+            collection.actor_id == config.controlled_actor_id
+                && matches!(mandate.payer, AccountId::Organization(id) if id.as_bytes() == collection.organization_account_id)
+        });
+        let funding = match economy.book.cash(mandate.payer) {
+            Ok(cash) if controlled => OrganizerAidFunding::Organization {
+                cash_micros: cash.micro_units(),
+            },
+            Ok(_) => OrganizerAidFunding::Mandated,
+            Err(MonetaryError::UnknownAccount) => OrganizerAidFunding::Unavailable,
+            Err(_) => return Err(refused()),
+        };
         result.push(OrganizerMaterialAidPreview {
             kind: binding.kind,
             mandate_id: mandate.id,
             period,
             donor_id: mandate.donor.as_bytes(),
-            recipient_id: mandate.recipient.as_bytes(),
+            recipient_actor_id: binding.partner.actor_id,
             good_id: mandate.good_id.as_bytes(),
             unit_id: mandate.unit_id.as_bytes(),
-            donor_stock,
-            own_need,
-            grams_per_unit: catalog
-                .commodities
-                .iter()
-                .find(|r| r.good_id == mandate.good_id && r.unit_id == mandate.unit_id)
-                .ok_or_else(refused)?
-                .grams_per_unit()
-                .map_err(|_| refused())?,
-            payer_cash: economy
-                .book
-                .cash(mandate.payer)
-                .map_err(|_| refused())?
-                .micro_units(),
-            ordinary_offer,
+            food,
+            funding,
             maximum_quantity: mandate.maximum_quantity,
-            gift_cash_per_unit: mandate.cash_per_unit.micro_units(),
-            labor_unit_id: mandate.labor_unit_id.as_bytes(),
-            fulfillment_hours_per_unit: mandate.hours_per_unit,
+            maximum_cash_micros: mandate.maximum_cash.micro_units(),
+            initial_food_quantity: mandate.initial_quantity,
+            initial_cash_micros: mandate.initial_cash.micro_units(),
+            cash_receiving_consent: binding.cash_receiving_consent,
             coordination_hours: binding.coordination_hours,
             receiving_consent: binding.receiving_consent,
-            time,
-            transport,
         });
     }
     Ok(result)
 }
+pub(crate) fn validate_selected(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    config: &OrganizerConfig,
+    period: u64,
+    command: &OrganizerCommand,
+) -> Result<()> {
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = command.allocation
+    else {
+        return Ok(());
+    };
+    let kind = match command.choice {
+        OrganizerChoice::LocalAid => OrganizerAidKind::Local,
+        OrganizerChoice::RemoteAid => OrganizerAidKind::Remote,
+        _ => return Err(refused()),
+    };
+    let offers = projections(catalog, state, config, period)?;
+    let offer = offers
+        .iter()
+        .find(|row| row.kind == kind)
+        .ok_or_else(refused)?;
+    if (food_quantity > 0 && offer.food.is_none())
+        || (cash_micros > 0 && !offer.funding.available())
+    {
+        return Err(refused());
+    }
+    Ok(())
+}
+
+fn food_projection(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    recurring: &RecurringEconomy,
+    mandate: &AidMandate,
+    period: u64,
+) -> Result<Option<OrganizerAidFoodPreview>> {
+    let Some(commodity) = catalog
+        .commodities
+        .iter()
+        .find(|row| row.good_id == mandate.good_id && row.unit_id == mandate.unit_id)
+    else {
+        return Ok(None);
+    };
+    match babylon_material_circuit::validate_aid_food_wiring(catalog, state, mandate) {
+        Ok(()) => {}
+        Err(MaterialCircuitError::AidAuthority) => return Ok(None),
+        Err(_) => return Err(refused()),
+    }
+    let (donor_stock, own_need) = pantry_amounts(catalog, recurring, mandate)?;
+    let ordinary_offer = recurring
+        .household_purchases
+        .iter()
+        .find(|p| {
+            p.principal_id == mandate.donor
+                && p.good_id == mandate.good_id
+                && p.unit_id == mandate.unit_id
+        })
+        .and_then(|p| {
+            recurring.offers.iter().find(|o| {
+                o.site_id == p.retailer_site_id
+                    && o.good_id == mandate.good_id
+                    && o.unit_id == mandate.unit_id
+            })
+        })
+        .map(|o| OrganizerAidOrdinaryOffer {
+            seller_id: o.site_id.as_bytes(),
+            unit_price: o.unit_price.micro_units(),
+        });
+    let time = remaining_time(state, mandate.donor, mandate.labor_unit_id, period)?;
+    let transport = transport(catalog, state, mandate.transport)?;
+    Ok(Some(OrganizerAidFoodPreview {
+        donor_stock,
+        own_need,
+        grams_per_unit: commodity.grams_per_unit().map_err(|_| refused())?,
+        ordinary_offer,
+        labor_unit_id: mandate.labor_unit_id.as_bytes(),
+        fulfillment_hours_per_unit: mandate.hours_per_unit,
+        time,
+        transport,
+    }))
+}
+
 fn pantry_amounts(
     catalog: &MaterialCatalog,
     recurring: &RecurringEconomy,
@@ -343,8 +523,8 @@ pub(super) fn resolutions(entries: &OrganizerPeriodJournalEntries) -> Vec<Organi
         .filter(|r| r.practice.period == entries.period)
         .map(|r| OrganizerAidResolution {
             pending: pending(&r.authorization),
-            support: r.support.clone(),
-            practice: r.practice.clone(),
+            support: (&r.support).into(),
+            practice: owned_practice(&r.practice),
         })
         .collect()
 }

@@ -1,8 +1,10 @@
 use super::support;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_practice_contract::OrganizerReportSharing;
 use babylon_practice_contract::ResolvedOrganizerPeriod;
 use babylon_practice_contract::{
-    OrganizerAidBinding, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidSupport,
-    OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionFact,
+    OrganizerAidBinding, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
+    OrganizerAidSupport, OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionFact,
     OrganizerCollectionMandate, OrganizerCollectionOutcome, OrganizerCommitment, OrganizerConfig,
     OrganizerContribution, OrganizerError, OrganizerGiftConsent, OrganizerHouseholdBinding,
     OrganizerOutcome, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
@@ -12,6 +14,7 @@ use babylon_practice_contract::{
     PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
     PracticeResourceOwner, PracticeTargetTag, ORGANIZER_SCHEMA_VERSION,
 };
+use babylon_practice_contract::{OrganizerCommand, OrganizerObservation};
 use std::collections::BTreeSet;
 
 fn captured() -> OrganizerConfig {
@@ -45,6 +48,7 @@ fn captured() -> OrganizerConfig {
     ]
     .into_iter()
     .map(|(kind, actor, contributor, tag)| OrganizerAidBinding {
+        report_sharing: OrganizerReportSharing::withheld(),
         kind,
         mandate_id: [tag; 32],
         source_hash: [tag + 10; 32],
@@ -55,6 +59,11 @@ fn captured() -> OrganizerConfig {
             .expect("the fixture value fits the target range"); 32],
         social_class_target: [tag + 20; 32],
         receiving_consent: OrganizerGiftConsent::Accept,
+        cash_receiving_consent: OrganizerGiftConsent::Accept,
+        maximum_food_quantity: 4,
+        maximum_cash_micros: 1_450_000_000,
+        initial_food_quantity: 1,
+        initial_cash_micros: 0,
         partner: OrganizerPartner {
             actor_id: actor,
             authority_id: [tag; 16],
@@ -224,7 +233,11 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
             row.intent.target.identity.as_bytes(),
             config.aid_bindings[0].social_class_target
         );
-        assert_eq!(row.intent.parameters.len(), 0);
+        assert_eq!(
+            row.intent.parameters.len(),
+            2,
+            "both selected legs are authenticated semantic parameters"
+        );
         assert_eq!(row.intent.evidence_digests, vec![[51; 32], [61; 32]]);
         authorities.insert(row.intent.input_authority_id);
     }
@@ -313,15 +326,34 @@ fn missing_or_refused_receiving_capture_is_not_fallback_authorization() {
     config.aid_bindings[0].receiving_consent = OrganizerGiftConsent::Refuse;
     let opening = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
+    let command = support::command(&config, &opening, OrganizerChoice::LocalAid);
+    let accepted = babylon_practice_contract::admit_organizer(&config, &opening, &command)
+        .expect("receiving refusal is adjudicated per selected leg");
+    let refused = support_for(
+        &config,
+        &accepted,
+        1,
+        OrganizerAidSupportStatus::TerminalFailure,
+    );
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &opening,
+        &support::facts(1, 160),
+        Some(&accepted),
+        &time(&config, 204, 8),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[refused],
+            collection: None,
+        },
+    )
+    .expect("refused food settles without political authority");
     assert_eq!(
-        babylon_practice_contract::admit_organizer(
-            &config,
-            &opening,
-            &support::command(&config, &opening, OrganizerChoice::LocalAid)
-        ),
-        Err(OrganizerError::Refused(
-            OrganizerRefusal::AidReceivingRefused
-        ))
+        next.journal.aid_receipts[0].practice.outcome,
+        OrganizerOutcome::NoQualifyingSupport
+    );
+    assert!(
+        next.journal.aid_receipts[0].practice.time_use.is_empty(),
+        "refused receiving never spends coordination time"
     );
 }
 
@@ -434,7 +466,12 @@ fn support_for(
     };
     let dispatched = if current {
         match status {
-            OrganizerAidSupportStatus::AwaitingDelivery => 1,
+            OrganizerAidSupportStatus::AwaitingDelivery => match accepted.command.allocation {
+                babylon_practice_contract::OrganizerAllocation::Aid { food_quantity, .. } => {
+                    food_quantity
+                }
+                _ => panic!("aid fixture requires selected food"),
+            },
             _ => granted,
         }
     } else {
@@ -453,11 +490,11 @@ fn support_for(
         material_postings: OrganizerAidMaterialPostings {
             dispatched_quantity: dispatched,
             fulfillment_hours: dispatched * 2,
-            payer_cash_reserved_micros: i128::from(dispatched) * 3,
-            payer_cash_granted_micros: i128::from(granted) * 3,
-            payer_cash_refunded_micros: 0,
+            payer_cash_granted_micros: 0,
+            lost_quantity: 0,
         },
         status,
+        cash_status: OrganizerAidCashStatus::NotRequested,
     }
 }
 fn resolve_supported_aid(
@@ -473,6 +510,7 @@ fn resolve_supported_aid(
         facts.period,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -570,6 +608,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -684,6 +723,7 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
         OrganizerAidSupportStatus::TerminalFailure,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 0,
             consumed_quantity: 0,
         },
     ] {
@@ -717,7 +757,7 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
                 .expect("the fixture sequence is non-empty")
                 .practice
                 .outcome,
-            OrganizerOutcome::AidNotProvisioned
+            OrganizerOutcome::NoQualifyingSupport
         );
         assert_eq!(organizer_actual_time_uses(&next, 1).count(), 0);
         assert_eq!(
@@ -743,6 +783,7 @@ fn missing_foreign_duplicate_future_and_changed_support_fail_without_mutating_op
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -827,21 +868,9 @@ fn delayed_partner_authority_tamper_and_third_pending_slot_refuse() {
         .iter()
         .filter(|row| row.intent.practice_id == PracticeId::MutualAid)
         .collect::<Vec<_>>();
-    assert_eq!(delayed.len(), 2);
-    for row in &delayed {
-        assert_eq!(row.intent.resolve_tick, 2);
-        assert!(row
-            .intent
-            .evidence_digests
-            .contains(&opening.pending_aid[0].gift.commitment.commitment_id));
-        assert!(row
-            .intent
-            .evidence_digests
-            .contains(&opening.pending_aid[0].material_commitment_id));
-    }
-    assert_ne!(
-        delayed[0].intent.input_authority_id,
-        delayed[1].intent.input_authority_id
+    assert!(
+        delayed.is_empty(),
+        "pending material authority must not submit another consumed gift input"
     );
 }
 
@@ -867,6 +896,7 @@ fn later_ordinary_work_precedes_aid_and_cannot_double_spend_actual_supply() {
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -945,6 +975,7 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1030,6 +1061,7 @@ fn dropped_aid_resolution_period_is_refused_by_the_window_chain() {
         3,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1103,6 +1135,7 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
         OrganizerAidSupportStatus::TerminalFailure,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 0,
             consumed_quantity: 0,
         },
     ] {
@@ -1124,7 +1157,7 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty");
-        assert_eq!(row.practice.outcome, OrganizerOutcome::AidNotProvisioned);
+        assert_eq!(row.practice.outcome, OrganizerOutcome::NoQualifyingSupport);
         assert_eq!(row.practice.time_use.len(), 0);
         assert_eq!(next.pending_aid.len(), 0);
         // Ordinary authorized standing work still ran; it is not aid completion.
@@ -1153,9 +1186,8 @@ fn current_aid_support_requires_actual_postings_and_exact_decimal_money() {
     support["material_postings"] = serde_json::json!({
         "dispatched_quantity": 1,
         "fulfillment_hours": 2,
-        "payer_cash_reserved_micros": "9007199254740993",
-        "payer_cash_granted_micros": "0",
-        "payer_cash_refunded_micros": "0"
+        "payer_cash_granted_micros": "9007199254740993",
+        "lost_quantity": 0
     });
     let decoded: OrganizerAidSupport =
         serde_json::from_value(support.clone()).expect("the JSON value matches the declared type");
@@ -1173,7 +1205,7 @@ fn current_aid_support_requires_actual_postings_and_exact_decimal_money() {
         serde_json::json!("170141183460469231731687303715884105728"),
     ] {
         let mut malformed = support.clone();
-        malformed["material_postings"]["payer_cash_reserved_micros"] = invalid;
+        malformed["material_postings"]["payer_cash_granted_micros"] = invalid;
         assert!(serde_json::from_value::<OrganizerAidSupport>(malformed).is_err());
     }
 }
@@ -1187,13 +1219,14 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
     for (field, value) in [
         ("dispatched_quantity", serde_json::json!(1)),
         ("fulfillment_hours", serde_json::json!(1)),
-        ("payer_cash_reserved_micros", serde_json::json!("3")),
+        ("payer_cash_granted_micros", serde_json::json!("3")),
     ] {
         let mut row = serde_json::to_value(&valid).expect("the value serializes to JSON");
         row["material_postings"][field] = value;
@@ -1222,7 +1255,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 8);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 12);
     let mut prior = support::config();
     prior.schema_version = 6;
     assert_eq!(
@@ -1244,12 +1277,7 @@ fn current_organizer_refuses_prior_schema_even_without_aid() {
     assert!(babylon_practice_contract::decode_organizer_state(&state_bytes).is_err());
 }
 
-#[test]
-#[allow(
-    clippy::too_many_lines,
-    reason = "one scenario asserts the whole capture-to-resolution chain; splitting it would duplicate the fixture setup"
-)]
-fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
+fn captured_collection() -> OrganizerConfig {
     let mut config = captured();
     config.collection = Some(OrganizerCollectionMandate {
         mandate_id: [93; 32],
@@ -1261,10 +1289,79 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         social_class_target: [98; 32],
         labor_unit_id: babylon_practice_contract::organizer_time_unit_id().as_bytes(),
         cash_consent: OrganizerGiftConsent::Accept,
+        initial_cash_micros: 2,
         maximum_cash_micros: 2,
         protected_cash_floor_micros: 0,
         collection_hours: 2,
     });
+    config
+}
+
+#[test]
+fn collection_allocation_binds_exact_target_to_admission_and_commitment() {
+    let config = captured_collection();
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the captured organizer opens");
+    let make = |target: &str| {
+        let mut wire =
+            serde_json::to_value(support::command(&config, &state, OrganizerChoice::Collect))
+                .expect("the command serializes");
+        wire["allocation"] = serde_json::json!({"collection":{"target_cash_micros":target}});
+        serde_json::from_value::<OrganizerCommand>(wire)
+    };
+    let one = make("1").expect("a selected positive target decodes");
+    let two = make("2").expect("a selected target equal to the cap decodes");
+    let first = babylon_practice_contract::admit_organizer(&config, &state, &one)
+        .expect("a target below the captured cap admits");
+    let second = babylon_practice_contract::admit_organizer(&config, &state, &two)
+        .expect("the captured cap admits");
+    assert_eq!(first.command.nonce, second.command.nonce);
+    assert_ne!(first.commitment_id, second.commitment_id);
+    let first_intent =
+        babylon_practice_contract::organizer_practice_intent(&config, &state, &first)
+            .expect("the first collection has an authenticated action");
+    let second_intent =
+        babylon_practice_contract::organizer_practice_intent(&config, &state, &second)
+            .expect("the second collection has an authenticated action");
+    assert_ne!(
+        babylon_practice_contract::encode_practice_intent(&first_intent)
+            .expect("first action encodes"),
+        babylon_practice_contract::encode_practice_intent(&second_intent)
+            .expect("second action encodes"),
+        "the actual consumed action input must bind the selected target"
+    );
+    assert_eq!(
+        babylon_practice_contract::admit_organizer(&config, &state, &one),
+        Ok(first.clone())
+    );
+    let mut changed = first;
+    changed.command = two;
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_commitment(&changed),
+        Err(OrganizerError::InvalidCommitment)
+    );
+    for target in ["0", "3", "170141183460469231731687303715884105727"] {
+        let command = make(target).expect("nonnegative exact money decodes before cap admission");
+        assert_eq!(
+            babylon_practice_contract::admit_organizer(&config, &state, &command),
+            Err(OrganizerError::Refused(OrganizerRefusal::InvalidCommand))
+        );
+    }
+    for target in ["-1", "170141183460469231731687303715884105728", "01", "1.0"] {
+        assert!(
+            make(target).is_err(),
+            "noncanonical or out-of-range money must reject: {target}"
+        );
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scenario asserts the whole capture-to-resolution chain; splitting it would duplicate the fixture setup"
+)]
+fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
+    let config = captured_collection();
     let first = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
     let gift = babylon_practice_contract::admit_organizer(
@@ -1303,6 +1400,7 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1400,4 +1498,580 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         );
     }
     assert_eq!(pending.pending_aid.len(), 1);
+}
+
+#[test]
+fn independent_aid_allocation_requires_complete_selected_legs() {
+    let config = captured();
+    let opening =
+        babylon_practice_contract::initial_organizer_state(&config).expect("valid capture");
+    let command = support::command(&config, &opening, OrganizerChoice::LocalAid);
+    let mut raw = serde_json::to_value(&command).expect("command serializes");
+    let mut commitments = std::collections::BTreeSet::new();
+    let mut actions = std::collections::BTreeSet::new();
+    for (food, cash) in [(0, "7"), (2, "0"), (1, "9")] {
+        raw["allocation"] =
+            serde_json::json!({"aid": {"food_quantity": food, "cash_micros": cash}});
+        let selected: OrganizerCommand =
+            serde_json::from_value(raw.clone()).expect("independent aid allocation is supported");
+        let accepted = babylon_practice_contract::admit_organizer(&config, &opening, &selected)
+            .expect("selected legs admit");
+        assert!(commitments.insert(accepted.commitment_id));
+        let batch = babylon_practice_contract::organizer_action_batch(
+            &config,
+            &opening,
+            Some(&accepted),
+            ReplaySessionId::try_from("independent-aid-amounts").expect("session"),
+        )
+        .expect("selected consumed action");
+        assert!(
+            actions.insert(batch.canonical_bytes().to_vec()),
+            "both selected amounts bind consumed action identity"
+        );
+    }
+    assert_eq!(commitments.len(), 3);
+    assert_eq!(actions.len(), 3);
+}
+
+#[test]
+fn independent_aid_allocation_rejects_missing_zero_and_wrong_variant() {
+    let config = captured();
+    let opening =
+        babylon_practice_contract::initial_organizer_state(&config).expect("valid capture");
+    let command = support::command(&config, &opening, OrganizerChoice::LocalAid);
+    let mut raw = serde_json::to_value(&command).expect("command serializes");
+    raw["allocation"] = serde_json::json!("none");
+    let empty: OrganizerCommand =
+        serde_json::from_value(raw.clone()).expect("explicit None parses");
+    assert!(
+        babylon_practice_contract::admit_organizer(&config, &opening, &empty).is_err(),
+        "aid cannot silently use a fixed allocation"
+    );
+    for allocation in [
+        serde_json::json!({"aid": {"food_quantity": 0, "cash_micros": "0"}}),
+        serde_json::json!({"aid": {"food_quantity": 1, "cash_micros": "-1"}}),
+        serde_json::json!({"aid": {"food_quantity": 5, "cash_micros": "0"}}),
+        serde_json::json!({"aid": {"food_quantity": 0, "cash_micros": "1450000001"}}),
+        serde_json::json!({"aid": {"food_quantity": 1}}),
+        serde_json::json!({"aid": {"cash_micros": "1"}}),
+    ] {
+        raw["allocation"] = allocation;
+        assert!(
+            serde_json::from_value::<OrganizerCommand>(raw.clone()).map_or(true, |candidate| {
+                babylon_practice_contract::admit_organizer(&config, &opening, &candidate).is_err()
+            }),
+            "invalid allocation must refuse"
+        );
+    }
+}
+
+#[test]
+fn independent_cash_first_retains_one_response_through_delayed_food_restart() {
+    for (policy, hours, outcome) in [
+        (
+            OrganizerPartnerPolicy::Participate,
+            8,
+            OrganizerOutcome::AidPracticeCompleted,
+        ),
+        (
+            OrganizerPartnerPolicy::Refuse,
+            8,
+            OrganizerOutcome::AidPracticeUncompleted,
+        ),
+        (
+            OrganizerPartnerPolicy::NoResponse,
+            8,
+            OrganizerOutcome::AidPracticeUncompleted,
+        ),
+        (
+            OrganizerPartnerPolicy::Participate,
+            0,
+            OrganizerOutcome::InsufficientTime,
+        ),
+    ] {
+        for consumed_quantity in [0, 1] {
+            retained_cash_response(policy, hours, outcome, consumed_quantity);
+        }
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "one retained-response control follows original identity through thirteen periods, pruning and cold restart"
+)]
+fn retained_cash_response(
+    policy: OrganizerPartnerPolicy,
+    recipient_hours: u64,
+    outcome: OrganizerOutcome,
+    consumed_quantity: u64,
+) {
+    let mut config = captured();
+    config.aid_bindings[1].partner.policy = policy;
+    let opening =
+        babylon_practice_contract::initial_organizer_state(&config).expect("valid capture");
+    let mut command = support::command(&config, &opening, OrganizerChoice::RemoteAid);
+    command.allocation = babylon_practice_contract::OrganizerAllocation::Aid {
+        food_quantity: 2,
+        cash_micros: 7,
+    };
+    let accepted = babylon_practice_contract::admit_organizer(&config, &opening, &command)
+        .expect("selected mixed gift");
+    let mut dispatch = support_for(
+        &config,
+        &accepted,
+        1,
+        OrganizerAidSupportStatus::AwaitingDelivery,
+    );
+    dispatch.cash_status = OrganizerAidCashStatus::Granted;
+    dispatch.material_postings.payer_cash_granted_micros = 7;
+    let first = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &opening,
+        &support::facts(1, 160),
+        Some(&accepted),
+        &time(&config, 205, recipient_hours),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[dispatch],
+            collection: None,
+        },
+    )
+    .expect("cash qualifies while food is pending");
+    assert_eq!(first.pending_aid.len(), 1);
+    let response = first.pending_aid[0]
+        .response
+        .clone()
+        .expect("first qualifying close retains response");
+    assert_eq!(response.outcome, outcome);
+    assert_eq!(
+        response.hours_spent,
+        if outcome == OrganizerOutcome::InsufficientTime {
+            0
+        } else {
+            3
+        }
+    );
+    let mut missing_response = first.state.clone();
+    missing_response.pending_aid[0].response = None;
+    assert!(
+        babylon_practice_contract::encode_organizer_state(&missing_response).is_err(),
+        "settled cash cannot lose its response on reopen"
+    );
+    let bytes = babylon_practice_contract::encode_organizer_state(&first.state)
+        .expect("pending state encodes");
+    let mut restored =
+        babylon_practice_contract::decode_organizer_state(&bytes).expect("pending state reopens");
+    let mut journal = OrganizerPeriodJournal::empty();
+    journal
+        .append(first.journal.clone())
+        .expect("dispatch history");
+    for period in 2..=12 {
+        let mut waiting = support_for(
+            &config,
+            &accepted,
+            period,
+            OrganizerAidSupportStatus::AwaitingDelivery,
+        );
+        waiting.cash_status = OrganizerAidCashStatus::Granted;
+        let continued = babylon_practice_contract::resolve_organizer_period_with_time(
+            &config,
+            &restored,
+            &support::facts(period, 160),
+            None,
+            &next_resources(&config, period),
+            babylon_practice_contract::OrganizerMaterialSupport {
+                aid: &[waiting],
+                collection: None,
+            },
+        )
+        .expect("long pending close");
+        assert_eq!(continued.pending_aid[0].response.as_ref(), Some(&response));
+        assert_eq!(continued.journal.aid_receipts[0].practice.hours_spent, 0);
+        journal
+            .append(continued.journal.clone())
+            .expect("pending history");
+        babylon_practice_contract::validate_organizer_journal(&config, &continued.state, &journal)
+            .expect("original dispatch remains authoritative beyond recent view rows");
+        restored = babylon_practice_contract::decode_organizer_state(
+            &babylon_practice_contract::encode_organizer_state(&continued.state)
+                .expect("pending bytes"),
+        )
+        .expect("cold pending state");
+    }
+    let mut arrival = support_for(
+        &config,
+        &accepted,
+        13,
+        OrganizerAidSupportStatus::Granted {
+            granted_quantity: 1,
+            household_consumed_quantity: consumed_quantity,
+            consumed_quantity,
+        },
+    );
+    arrival.cash_status = OrganizerAidCashStatus::Granted;
+    let second = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &restored,
+        &support::facts(13, 160),
+        None,
+        &next_resources(&config, 13),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[arrival],
+            collection: None,
+        },
+    )
+    .expect("later food retains the original response");
+    journal
+        .append(second.journal.clone())
+        .expect("terminal history");
+    babylon_practice_contract::validate_organizer_journal(&config, &second.state, &journal)
+        .expect("complete original response chain");
+    assert!(
+        second.pending_aid.is_empty(),
+        "both material legs and response are terminal"
+    );
+    let final_row = &second.journal.aid_receipts[0];
+    assert_eq!(final_row.authorization.response.as_ref(), Some(&response));
+    assert_eq!(
+        final_row
+            .authorization
+            .dispatch_support
+            .material_postings
+            .payer_cash_granted_micros,
+        7
+    );
+    assert_eq!(
+        final_row.practice.outcome,
+        OrganizerOutcome::AidResponseRetained
+    );
+    assert_eq!(final_row.practice.hours_spent, 0);
+    assert!(
+        final_row.practice.time_use.is_empty(),
+        "later delivery cannot charge another coordination attempt"
+    );
+}
+
+#[test]
+fn disclosed_aid_partner_survives_pending_freight_and_withheld_reports() {
+    let (config, _, pending) = remote_pending();
+    let opening = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let mut journal = babylon_practice_contract::OrganizerPeriodJournal::empty();
+    let before = babylon_practice_contract::organizer_view(
+        &config,
+        &opening,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("known opening partners");
+    journal.append(pending.journal).expect("dated evidence");
+    let after = babylon_practice_contract::organizer_view(
+        &config,
+        &pending.state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("known pending partners");
+    assert_eq!(before.aid_partners.len(), 2);
+    assert_eq!(after.aid_partners, before.aid_partners);
+    assert_eq!((before.aid_options.len(), after.aid_options.len()), (2, 1));
+    assert!(after.observations.iter().all(|o| after
+        .aid_partners
+        .iter()
+        .all(|p| p.actor_id != o.subject_id)));
+}
+
+#[test]
+fn receiving_and_practice_do_not_authorize_unshared_topics_or_relabel_evidence() {
+    use babylon_practice_contract::{OrganizerPartnerFacts, OrganizerReportCommodity};
+    let mut config = captured();
+    let food = OrganizerReportCommodity {
+        good_id: [4; 32],
+        unit_id: [5; 32],
+        label: "Food".into(),
+        unit_label: "parcel".into(),
+    };
+    let opening = OrganizerPartnerFacts::OpeningAssessment {
+        commodity: food.clone(),
+        opening_stock: 2,
+        required: 4,
+    };
+    let time = OrganizerPartnerFacts::ParticipationTime {
+        labor_unit: [6; 32],
+        attended: 4,
+        protected: 2,
+        unpaid: 1,
+        contributed: 1,
+        remaining: 2,
+    };
+    let actor = config.aid_bindings[0].partner.actor_id;
+    assert!(
+        babylon_practice_contract::partner_observation(&config, actor, 0, 0, opening.clone())
+            .is_err()
+    );
+    assert!(
+        babylon_practice_contract::partner_observation(&config, actor, 1, 1, time.clone()).is_err()
+    );
+    config.aid_bindings[0].report_sharing.food.push(food);
+    let evidence =
+        babylon_practice_contract::partner_observation(&config, actor, 0, 0, opening.clone())
+            .expect("explicit food sharing");
+    assert!(
+        babylon_practice_contract::partner_observation(&config, actor, 1, 1, time.clone()).is_err()
+    );
+    assert!(babylon_practice_contract::partner_observation(
+        &config,
+        config.aid_bindings[1].partner.actor_id,
+        0,
+        0,
+        opening
+    )
+    .is_err());
+    config.initial_observations.push(evidence);
+    assert!(babylon_practice_contract::initial_organizer_state(&config).is_ok());
+    config.initial_observations[0].subject_id = config.aid_bindings[1].partner.actor_id;
+    assert!(babylon_practice_contract::initial_organizer_state(&config).is_err());
+    config.aid_bindings[0]
+        .report_sharing
+        .participation_time
+        .push([6; 32]);
+    let delayed =
+        babylon_practice_contract::partner_observation(&config, actor, 1, 3, time.clone())
+            .expect("independent time sharing");
+    assert_eq!((delayed.observed_period, delayed.acquired_period), (1, 3));
+    assert!(babylon_practice_contract::partner_observation(&config, actor, 1, 0, time).is_err());
+}
+
+fn dated_report_config() -> OrganizerConfig {
+    let mut config = captured();
+    let commodity = babylon_practice_contract::OrganizerReportCommodity {
+        good_id: [4; 32],
+        unit_id: [5; 32],
+        label: "Food".into(),
+        unit_label: "parcel".into(),
+    };
+    for binding in &mut config.aid_bindings {
+        binding.report_sharing.food.push(commodity.clone());
+    }
+    config
+}
+
+fn dated_food(
+    config: &OrganizerConfig,
+    partner: usize,
+    observed: u64,
+    acquired: u64,
+    stock: u64,
+) -> OrganizerObservation {
+    use babylon_practice_contract::OrganizerPartnerFacts;
+    let binding = &config.aid_bindings[partner];
+    let commodity = binding.report_sharing.food[0].clone();
+    let facts = if observed == 0 {
+        OrganizerPartnerFacts::OpeningAssessment {
+            commodity,
+            opening_stock: stock,
+            required: 3,
+        }
+    } else {
+        OrganizerPartnerFacts::FoodProvision {
+            commodity,
+            required: 3,
+            consumed: 2,
+            unmet: 1,
+            closing: stock,
+            purchased: 1,
+            settled_micros: 4,
+        }
+    };
+    babylon_practice_contract::partner_observation(
+        config,
+        binding.partner.actor_id,
+        observed,
+        acquired,
+        facts,
+    )
+    .expect("dated permitted report")
+}
+
+#[test]
+fn captured_topic_labels_and_nested_services_obey_organizer_bounds() {
+    let mut config = dated_report_config();
+    for invalid in ["one\ntwo".to_owned(), " ".to_owned(), "x".repeat(513)] {
+        config.aid_bindings[0].report_sharing.food[0].unit_label = invalid;
+        assert_eq!(
+            babylon_practice_contract::validate_organizer_config(&config),
+            Err(OrganizerError::InvalidConfig)
+        );
+    }
+    let sharing = &mut config.aid_bindings[0].report_sharing;
+    sharing.food[0].unit_label = "parcel".into();
+    let template = sharing.food[0].clone();
+    sharing.essential_services = (1..=65_537_u64)
+        .map(|id| {
+            let mut commodity = template.clone();
+            commodity.good_id = [0; 32];
+            commodity.good_id[24..].copy_from_slice(&id.to_be_bytes());
+            commodity
+        })
+        .collect();
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_config(&config),
+        Err(OrganizerError::InvalidConfig)
+    );
+    config.aid_bindings[0]
+        .report_sharing
+        .essential_services
+        .pop()
+        .expect("single excess service");
+    babylon_practice_contract::validate_organizer_config(&config)
+        .expect("exact contract collection bound");
+}
+
+#[test]
+fn dated_opening_refuses_conflicting_captured_stock() {
+    let mut config = dated_report_config();
+    config.initial_observations = vec![
+        dated_food(&config, 0, 0, 0, 2),
+        dated_food(&config, 0, 0, 0, 3),
+    ];
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_config(&config),
+        Err(OrganizerError::InvalidConfig)
+    );
+}
+
+// Frame the typed payload independently of either validating encoder.
+fn journal_frame(domain_with_nul: &[u8], body: &impl serde::Serialize) -> Vec<u8> {
+    let mut bytes = domain_with_nul.to_vec();
+    serde_json::to_writer(&mut bytes, body).expect("typed evidence serializes");
+    bytes
+}
+
+#[test]
+fn dated_completed_refuses_conflict_within_and_across_acquisitions() {
+    let config = dated_report_config();
+    let mut state = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let first = dated_food(&config, 0, 1, 1, 3);
+    let mut entry = OrganizerPeriodJournalEntries::new(1);
+    entry.observations = vec![first, dated_food(&config, 0, 1, 1, 4)];
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_period_entries(&config, &entry),
+        Err(OrganizerError::InvalidState)
+    );
+    entry.observations.pop();
+    let mut journal = OrganizerPeriodJournal {
+        periods: vec![entry, OrganizerPeriodJournalEntries::new(2)],
+    };
+    state.period = 2;
+    journal.periods[1]
+        .observations
+        .push(dated_food(&config, 0, 1, 2, 3));
+    journal.periods[1]
+        .observations
+        .push(dated_food(&config, 0, 2, 2, 4));
+    assert!(
+        babylon_practice_contract::validate_organizer_journal(&config, &state, &journal).is_ok()
+    );
+    let domain = b"babylon.organizer-journal.v5\0";
+    let valid_bytes = journal_frame(domain, &journal);
+    let decoded = babylon_practice_contract::decode_organizer_journal(&config, &valid_bytes)
+        .expect("identical reacquired P1 facts and independent P2 facts");
+    assert_eq!(decoded, journal);
+    assert_eq!(
+        babylon_practice_contract::encode_organizer_journal(&config, &decoded)
+            .expect("valid journal re-encodes"),
+        valid_bytes
+    );
+    journal.periods[1].observations[0] = dated_food(&config, 0, 1, 2, 4);
+    let conflicting_bytes = journal_frame(domain, &journal);
+    let failures = [
+        babylon_practice_contract::validate_organizer_journal(&config, &state, &journal).err(),
+        babylon_practice_contract::encode_organizer_journal(&config, &journal).err(),
+        babylon_practice_contract::decode_organizer_journal(&config, &conflicting_bytes).err(),
+    ];
+    assert_eq!(failures, [Some(OrganizerError::InvalidState); 3]);
+}
+
+#[test]
+fn dated_period_codec_compares_reacquired_opening_assessment_with_captured_seed() {
+    let mut config = dated_report_config();
+    config.initial_observations = vec![dated_food(&config, 0, 0, 0, 3)];
+    let mut entry = OrganizerPeriodJournalEntries::new(2);
+    entry.observations.push(dated_food(&config, 0, 0, 2, 3));
+    let domain = b"babylon.organizer-period-entries.v5\0";
+    let valid_bytes = journal_frame(domain, &entry);
+    let decoded = babylon_practice_contract::decode_organizer_period_entries(&config, &valid_bytes)
+        .expect("reacquired opening assessment agrees with its seed");
+    assert_eq!(decoded, entry);
+    assert_eq!(
+        babylon_practice_contract::encode_organizer_period_entries(&config, &decoded)
+            .expect("valid period re-encodes"),
+        valid_bytes
+    );
+    entry.observations[0] = dated_food(&config, 0, 0, 2, 4);
+    let conflicting_bytes = journal_frame(domain, &entry);
+    let failures = [
+        babylon_practice_contract::validate_organizer_period_entries(&config, &entry).err(),
+        babylon_practice_contract::encode_organizer_period_entries(&config, &entry).err(),
+        babylon_practice_contract::decode_organizer_period_entries(&config, &conflicting_bytes)
+            .err(),
+    ];
+    assert_eq!(failures, [Some(OrganizerError::InvalidState); 3]);
+}
+
+#[test]
+fn dated_opening_authority_is_exact_even_without_period_journal() {
+    let mut config = dated_report_config();
+    config.initial_observations = vec![dated_food(&config, 0, 0, 0, 3)];
+    let state = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let mut missing = state.clone();
+    missing.learned_authority_index.clear();
+    assert!(babylon_practice_contract::validate_organizer_journal(
+        &config,
+        &missing,
+        &OrganizerPeriodJournal::empty()
+    )
+    .is_err());
+    let mut other = config.clone();
+    other.initial_observations = vec![dated_food(&other, 0, 0, 0, 4)];
+    let changed = babylon_practice_contract::initial_organizer_state(&other)
+        .expect("different lawful capture");
+    assert!(babylon_practice_contract::validate_organizer_pair(&config, &changed).is_err());
+    assert!(babylon_practice_contract::validate_organizer_pair(&config, &state).is_ok());
+}
+
+#[test]
+fn dated_retention_keeps_two_latest_distinct_observed_periods_after_delayed_acquisition() {
+    let config = dated_report_config();
+    let mut state = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let mut journal = OrganizerPeriodJournal::empty();
+    for period in 1..=21 {
+        state.period = period;
+        let mut row = OrganizerPeriodJournalEntries::new(period);
+        if [9, 10, 11, 12, 13].contains(&period) {
+            let observed = match period {
+                11 => 1,
+                12 => 2,
+                13 => 10,
+                _ => period,
+            };
+            row.observations
+                .push(dated_food(&config, 0, observed, period, observed));
+        }
+        row.observations
+            .push(dated_food(&config, 1, period, period, 0));
+        journal.append(row).expect("ordered periods");
+    }
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("acquired history");
+    let retained: Vec<_> = view
+        .observations
+        .iter()
+        .filter(|r| r.subject_id == config.aid_bindings[0].partner.actor_id)
+        .map(|r| (r.observed_period, r.acquired_period))
+        .collect();
+    assert_eq!(retained, [(9, 9), (10, 13)]);
 }

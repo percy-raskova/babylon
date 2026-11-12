@@ -1,5 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::OrganizerKnownAidPartner;
+use super::OrganizerPartnerFacts;
+use super::OrganizerReportBasis;
 use super::{
     OrganizerAidBinding, OrganizerAidOption, OrganizerAidResolutionReceipt, OrganizerAidSupport,
     OrganizerCollectionFact, OrganizerCollectionMandate, OrganizerCollectionResolution,
@@ -13,7 +16,7 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 8;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 12;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +123,45 @@ pub enum OrganizerChoice {
     ResumeStanding,
 }
 
+/// Exact selected material request, authenticated with its practice kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerAllocation {
+    None,
+    Aid {
+        food_quantity: u64,
+        #[serde(with = "super::nonnegative_decimal_i128")]
+        cash_micros: i128,
+    },
+    Collection {
+        #[serde(with = "super::nonnegative_decimal_i128")]
+        target_cash_micros: i128,
+    },
+}
+
+impl OrganizerAllocation {
+    pub(super) fn matches_choice(self, choice: OrganizerChoice) -> bool {
+        match (choice, self) {
+            (OrganizerChoice::Collect, Self::Collection { target_cash_micros }) => {
+                target_cash_micros > 0
+            }
+            (
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid,
+                Self::Aid {
+                    food_quantity,
+                    cash_micros,
+                },
+            ) => cash_micros >= 0 && (food_quantity > 0 || cash_micros > 0),
+            (
+                OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid,
+                Self::None,
+            )
+            | (_, Self::Collection { .. } | Self::Aid { .. }) => false,
+            (_, Self::None) => true,
+        }
+    }
+}
+
 /// A command binds a ruling to the exact current campaign and contracts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -132,6 +174,7 @@ pub struct OrganizerCommand {
     pub resource_digest: [u8; 32],
     pub nonce: [u8; 16],
     pub choice: OrganizerChoice,
+    pub allocation: OrganizerAllocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +210,7 @@ pub enum OrganizerRefusal {
 #[serde(deny_unknown_fields)]
 pub struct OrganizerPreview {
     pub choice: OrganizerChoice,
+    pub allocation: OrganizerAllocation,
     pub current_period: u64,
     pub resolves_period: u64,
     pub available_hours: u64,
@@ -218,6 +262,10 @@ pub struct OrganizerWorkplaceFacts {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OrganizerReport {
+    Partner {
+        evidence_class: OrganizerReportBasis,
+        facts: OrganizerPartnerFacts,
+    },
     ReducedWork {
         previous_labor_hours: u64,
         performed_labor_hours: u64,
@@ -269,7 +317,8 @@ pub enum OrganizerOutcome {
     CollectionRefused,
     AidScheduled,
     AidAwaitingSupport,
-    AidNotProvisioned,
+    NoQualifyingSupport,
+    AidResponseRetained,
     AidPracticeCompleted,
     AidPracticeUncompleted,
     InsufficientTime,
@@ -323,7 +372,14 @@ impl OrganizerLearnedAuthority {
     /// Stable report kind, used to deduplicate the current index.
     #[must_use]
     pub const fn report_kind(&self) -> u8 {
-        match self.report {
+        self.report.kind_index()
+    }
+}
+
+impl OrganizerReport {
+    pub(super) const fn kind_index(&self) -> u8 {
+        match self {
+            OrganizerReport::Partner { facts, .. } => facts.report_kind(),
             OrganizerReport::Work { .. } => 0,
             OrganizerReport::ReducedWork { .. } => 1,
             OrganizerReport::Maintenance { .. } => 2,
@@ -533,7 +589,28 @@ pub struct OrganizerView {
     pub total_receipt_count: u32,
     pub receipts: Vec<OrganizerReceipt>,
     pub positions: Vec<OrganizerPosition>,
+    pub aid_partners: Vec<OrganizerKnownAidPartner>,
     pub aid_options: Vec<OrganizerAidOption>,
+}
+
+impl OrganizerView {
+    /// Resolve only a report from its known subject and its disclosed source.
+    #[must_use]
+    pub fn knows_report_subject(&self, observation: &OrganizerObservation) -> bool {
+        match &observation.report {
+            OrganizerReport::Partner { .. } => {
+                observation.subject_id == observation.source_actor_id
+                    && self
+                        .aid_partners
+                        .iter()
+                        .any(|p| p.actor_id == observation.subject_id)
+            }
+            _ => {
+                observation.subject_id == self.workplace_id
+                    && observation.source_actor_id == self.workplace_partner_id
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

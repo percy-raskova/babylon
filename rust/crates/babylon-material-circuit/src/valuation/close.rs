@@ -333,7 +333,6 @@ impl CostClose {
         mandate: &AidMandate,
         available: u64,
         quantity: u64,
-        cash: Currency,
     ) -> Result<Currency> {
         let active = self
             .active
@@ -348,7 +347,7 @@ impl CostClose {
             available,
             quantity,
         )?;
-        self.grant_aid(mandate, carrying, cash)?;
+        self.grant_aid(mandate, carrying)?;
         Ok(carrying)
     }
 
@@ -372,12 +371,7 @@ impl CostClose {
         Ok(())
     }
 
-    pub(crate) fn grant_aid(
-        &mut self,
-        mandate: &AidMandate,
-        carrying: Currency,
-        cash: Currency,
-    ) -> Result<()> {
+    pub(crate) fn grant_aid(&mut self, mandate: &AidMandate, carrying: Currency) -> Result<()> {
         let active = self
             .active
             .as_mut()
@@ -390,13 +384,10 @@ impl CostClose {
             ),
             carrying,
         )?;
-        let total = super::add(carrying, cash)?;
         let donor = active.statement(AccountId::Household(mandate.donor))?;
         donor.gift_expense = super::add(donor.gift_expense, carrying)?;
-        let payer = active.statement(mandate.payer)?;
-        payer.gift_expense = super::add(payer.gift_expense, cash)?;
         let recipient = active.statement(AccountId::Household(mandate.recipient))?;
-        recipient.gift_income = super::add(recipient.gift_income, total)?;
+        recipient.gift_income = super::add(recipient.gift_income, carrying)?;
         Ok(())
     }
 

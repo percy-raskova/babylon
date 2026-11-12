@@ -6,16 +6,24 @@ mod aid;
 
 mod read;
 
+mod proof;
+
 mod recovery;
 
 #[path = "qualification/state.rs"]
 mod state;
 
+#[cfg(test)]
+pub(super) use proof::tests::installed_close as installed_close_fixture;
+#[cfg(test)]
+pub(crate) use proof::tests::with_source as with_source_fixture;
+pub(super) use proof::InstalledKnown;
+pub(super) use state::elapsed;
 pub(crate) use state::NativeAudit;
 #[cfg(test)]
 use state::{admit_tick, publication_matches, RECORD_BYTES};
 pub(super) use state::{awaiting_archive, Candidate, Configuration, Work};
-use state::{elapsed, hex, write_named_record, KnownBinding, Opening, Record, Scope};
+use state::{hex, write_named_record, KnownBinding, Opening, Record, Scope};
 
 use super::PreparedObservation;
 use crate::observer::{ObservationContext, Perspective};
@@ -133,6 +141,7 @@ mod tests {
             boundary: None,
             recovery: None,
             advance: None,
+            proof: None,
         };
         let mut session = ObserverSession::new(campaign);
         session.connected_fixture();
@@ -358,6 +367,67 @@ mod tests {
         session.archive_verified_tick = 0;
         session.viewed_tick = 0;
         assert!(!awaiting_archive(&session, true));
+    }
+
+    #[test]
+    fn positive_live_known_presentation_starts_before_archive_without_requesting_private_work() {
+        use super::super::{ObservationCache, PendingObservation};
+        use crate::observer_ui::ObserverFrame;
+        use bevy::prelude::*;
+
+        let (_directory, mut audit, mut session, _status) = recovery::tests::source();
+        session.perspective = Perspective::PlayerKnowledge;
+        let request = session.begin_advance().expect("admitted close");
+        let wire = babylon_persistence::runtime_session::RuntimeSessionRequest::Advance {
+            protocol_version:
+                babylon_persistence::runtime_session::RUNTIME_SESSION_PROTOCOL_VERSION,
+            scope: session.runtime_scope().expect("scope").clone(),
+            request_id: request,
+            expected_tail: babylon_persistence::runtime_session::RuntimeSessionTail {
+                resolve_tick: 0,
+                tick_content_hash: None,
+                world_hash: None,
+            },
+        };
+        audit.advance_sent(
+            audit
+                .prepare_advance(&session, &wire)
+                .expect("original custody"),
+        );
+        assert!(session.acknowledge(request, 1, Some("ab".repeat(32))));
+        audit
+            .advance_committed(&session, request)
+            .expect("accepted commit");
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(session)
+        .insert_resource(audit)
+        .init_resource::<ObservationCache>()
+        .init_resource::<PendingObservation>()
+        .init_resource::<ObserverFrame>()
+        .add_systems(Update, super::super::runtime::start_observation);
+        app.update();
+        assert!(
+            app.world().resource::<PendingObservation>().0.is_some(),
+            "ordinary restricted presentation must start while Archive is lagging"
+        );
+        assert_eq!(
+            app.world()
+                .resource::<ObserverSession>()
+                .archive_verified_tick,
+            0
+        );
+        assert_eq!(
+            app.world()
+                .resource::<NativeAudit>()
+                .audit
+                .as_ref()
+                .map(MaterialAudit::completed_tick),
+            Some(0)
+        );
     }
 
     #[test]

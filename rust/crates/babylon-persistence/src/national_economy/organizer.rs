@@ -3,10 +3,15 @@ use crate::economic_catalog::{
     EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
 };
 use crate::national_economy::{NationalAidCapture, NationalGamePolicy, NATIONAL_SCENARIO_ID};
+use babylon_material_circuit::AidMandate;
+use babylon_practice_contract::OrganizerObservation;
+use babylon_practice_contract::OrganizerReportSharing;
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::AidReceiving;
 use babylon_practice_contract::OrganizerCollectionMandate;
+use babylon_practice_contract::OrganizerGiftConsent;
 use babylon_practice_contract::{
     OrganizerAidBinding, OrganizerAidKind, OrganizerConfig, OrganizerContribution,
     OrganizerHouseholdBinding, OrganizerParticipant, OrganizerPartner, OrganizerTimeBindingMode,
@@ -119,7 +124,7 @@ pub(crate) fn assemble(
     bindings.sort_unstable_by_key(|b| b.contributor_id);
     let aid_bindings = aid_bindings(campaign, aid, &policy)?;
     let collection = collection_mandate(campaign, source.digest(), aid, &policy)?;
-    let config = OrganizerConfig {
+    let mut config = OrganizerConfig {
         schema_version: ORGANIZER_SCHEMA_VERSION,
         campaign_id: campaign,
         controlled_actor_id: donor.actor,
@@ -142,6 +147,7 @@ pub(crate) fn assemble(
         content_digest: source_basis.0,
         initial_observations: vec![],
     };
+    config.initial_observations = opening_reports(&config, opening)?;
     babylon_practice_contract::initial_organizer_state(&config)
         .map_err(|_| EconomicCatalogError::Identity)?;
     Ok(config)
@@ -187,6 +193,7 @@ fn collection_mandate(
         ),
         labor_unit_id: first.labor_unit_id.as_bytes(),
         cash_consent: d.collection_cash_consent,
+        initial_cash_micros: d.collection_initial_cash_micros,
         maximum_cash_micros: d.collection_maximum_cash_micros,
         protected_cash_floor_micros: d.collection_protected_cash_floor_micros,
         collection_hours: d.collection_hours,
@@ -220,6 +227,7 @@ fn aid_bindings(
             }
             let local = i == 0;
             Ok(OrganizerAidBinding {
+                report_sharing: report_sharing(policy, mandate, local)?,
                 kind: if local {
                     OrganizerAidKind::Local
                 } else {
@@ -242,6 +250,14 @@ fn aid_bindings(
                 } else {
                     d.remote_receiving_consent
                 },
+                cash_receiving_consent: match mandate.cash_receiving {
+                    AidReceiving::Accept => OrganizerGiftConsent::Accept,
+                    AidReceiving::Refuse => OrganizerGiftConsent::Refuse,
+                },
+                maximum_food_quantity: mandate.maximum_quantity,
+                maximum_cash_micros: mandate.maximum_cash.micro_units(),
+                initial_food_quantity: mandate.initial_quantity,
+                initial_cash_micros: mandate.initial_cash.micro_units(),
                 partner: ordinary_partner(
                     child.actor,
                     if local {
@@ -276,4 +292,146 @@ fn participants(
     }).collect::<Vec<_>>();
     rows.sort_unstable_by_key(|r| r.contributor_id);
     rows
+}
+
+fn opening_reports(
+    config: &OrganizerConfig,
+    opening: &EconomicOpening,
+) -> Result<Vec<OrganizerObservation>> {
+    use babylon_material_circuit::{HouseholdCohort, HouseholdNeed};
+    let mut reports = Vec::new();
+    for binding in &config.aid_bindings {
+        let household = opening
+            .households
+            .iter()
+            .find(|h| h.principal_id.as_bytes() == binding.recipient_principal_id)
+            .ok_or(EconomicCatalogError::Identity)?;
+        let template = opening
+            .household_templates
+            .iter()
+            .find(|t| t.id == household.template)
+            .ok_or(EconomicCatalogError::Identity)?;
+        for commodity in binding
+            .report_sharing
+            .food
+            .iter()
+            .chain(&binding.report_sharing.essential_services)
+        {
+            let coefficient = template
+                .needs
+                .iter()
+                .find(|n| {
+                    n.good_id.as_bytes() == commodity.good_id
+                        && n.unit_id.as_bytes() == commodity.unit_id
+                })
+                .ok_or(EconomicCatalogError::Identity)?;
+            if !binding.report_sharing.food.contains(commodity) {
+                continue;
+            }
+            let cohort = HouseholdCohort {
+                kind: household.kind,
+                principal_id: household.principal_id,
+                persons: household.persons,
+                households: household.households,
+            };
+            let need = HouseholdNeed {
+                principal_id: household.principal_id,
+                good_id: coefficient.good_id,
+                unit_id: coefficient.unit_id,
+                basis: coefficient.basis,
+                units_per_basis: coefficient.units_per_basis,
+            };
+            let required = need
+                .required_quantity(&cohort)
+                .map_err(|_| EconomicCatalogError::Identity)?;
+            let opening_stock = household
+                .opening_stock
+                .iter()
+                .filter(|s| {
+                    s.amount.good_id == coefficient.good_id
+                        && s.amount.unit_id == coefficient.unit_id
+                })
+                .try_fold(0u64, |n, s| n.checked_add(s.amount.quantity))
+                .ok_or(EconomicCatalogError::Identity)?;
+            reports.push(
+                babylon_practice_contract::partner_observation(
+                    config,
+                    binding.partner.actor_id,
+                    0,
+                    0,
+                    babylon_practice_contract::OrganizerPartnerFacts::OpeningAssessment {
+                        commodity: commodity.clone(),
+                        required,
+                        opening_stock,
+                    },
+                )
+                .map_err(|_| EconomicCatalogError::Identity)?,
+            );
+        }
+    }
+    Ok(reports)
+}
+
+fn report_sharing(
+    policy: &NationalGamePolicy,
+    mandate: &AidMandate,
+    local: bool,
+) -> Result<OrganizerReportSharing> {
+    let authored = if local {
+        &policy.organizer.local_report_sharing
+    } else {
+        &policy.organizer.remote_report_sharing
+    };
+    let commodity = |key: &String| -> Result<_> {
+        let c = policy
+            .commodities
+            .get(key)
+            .ok_or(EconomicCatalogError::Identity)?;
+        if !policy.household_needs.iter().any(|n| &n.key == key) {
+            return Err(EconomicCatalogError::Identity);
+        }
+        Ok(babylon_practice_contract::OrganizerReportCommodity {
+            good_id: c.good_id.as_bytes(),
+            unit_id: c.unit_id.as_bytes(),
+            label: c.label.clone(),
+            unit_label: c.unit_label.clone(),
+        })
+    };
+    let food = authored
+        .food
+        .iter()
+        .map(commodity)
+        .collect::<Result<Vec<_>>>()?;
+    if food
+        .iter()
+        .any(|f| f.good_id != mandate.good_id.as_bytes() || f.unit_id != mandate.unit_id.as_bytes())
+    {
+        return Err(EconomicCatalogError::Identity);
+    }
+    let mut essential_services = authored
+        .essential_services
+        .iter()
+        .map(|key| {
+            if !policy.commodities.get(key).is_some_and(|c| {
+                matches!(
+                    c.kind,
+                    babylon_material_circuit::CommodityKind::PeriodService { .. }
+                )
+            }) {
+                return Err(EconomicCatalogError::Identity);
+            }
+            commodity(key)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    essential_services.sort_by_key(|s| s.good_id);
+    Ok(OrganizerReportSharing {
+        evidence_class: authored.evidence_class,
+        food,
+        essential_services,
+        participation_time: authored
+            .participation_time
+            .then_some(mandate.labor_unit_id.as_bytes())
+            .into_iter()
+            .collect(),
+    })
 }

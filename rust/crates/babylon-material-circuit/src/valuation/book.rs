@@ -243,9 +243,6 @@ impl HistoricalCostBook {
         for purchase in snapshot.purchases {
             accumulate(&mut totals, purchase.buyer, purchase.reserved_amount()?)?;
         }
-        for gift in snapshot.aid {
-            accumulate(&mut totals, gift.payer, gift.reserved_amount()?)?;
-        }
         for shift in snapshot.shifts {
             accumulate(&mut totals, shift.employer, shift.reserved_amount()?)?;
             let owed = shift.outstanding_wages()?;

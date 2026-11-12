@@ -30,7 +30,7 @@ OBSERVER_CAPTURE_FILTER = "session=debug,babylon_client=debug"
 # The runtime's database statement timeout is 120 seconds. EOF/Stop gets time
 # to finish a transaction before any exact-child termination is attempted.
 RUNTIME_SHUTDOWN_GRACE_SECONDS = 150
-RUNTIME_SESSION_PROTOCOL_VERSION: int = 13
+RUNTIME_SESSION_PROTOCOL_VERSION: int = 19
 ADVANCE_STAGES = (
     "preparing_commitments",
     "resolving_economy",
@@ -835,12 +835,17 @@ def run_pair(
     initial_target: NewCampaignTarget | OpenCampaignTarget,
     qualification_control: Path | None = None,
     on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None] | None = None,
+    on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
+    | None = None,
+    on_stopped: Callable[[], None] | None = None,
 ) -> int:
     """Cross-connect two anonymous pipes; the parent never reads or forwards protocol bytes."""
     if (qualification_control is None) != (on_started is None):
         raise ObserverLaunchError(
             "qualification requires its control socket and owned-process observer"
         )
+    if (on_spawned is not None or on_stopped is not None) and on_started is None:
+        raise ObserverLaunchError("qualification process observations require the owned pair")
     if qualification_control is not None and not qualification_control.is_absolute():
         raise ObserverLaunchError("qualification control socket must be absolute")
     descriptors: list[int] = []
@@ -861,6 +866,8 @@ def run_pair(
             stderr=None,
             close_fds=True,
         )
+        if on_spawned is not None:
+            on_spawned("runtime", runtime)
         if isinstance(initial_target, NewCampaignTarget):
             client_args = [
                 str(client_binary),
@@ -882,6 +889,8 @@ def run_pair(
             stderr=None,
             close_fds=True,
         )
+        if on_spawned is not None:
+            on_spawned("client", client)
         for descriptor in descriptors:
             os.close(descriptor)
         descriptors.clear()
@@ -908,11 +917,17 @@ def run_pair(
         for descriptor in descriptors:
             os.close(descriptor)
         try:
-            if client is not None:
-                _stop(client)
+            try:
+                if client is not None:
+                    _stop(client)
+            finally:
+                if runtime is not None and not runtime_shutdown_started:
+                    _finish_runtime(runtime)
         finally:
-            if runtime is not None and not runtime_shutdown_started:
-                _finish_runtime(runtime)
+            if on_stopped is not None and all(
+                child is None or child.poll() is not None for child in (client, runtime)
+            ):
+                on_stopped()
 
 
 def main(argv: list[str] | None = None) -> int:

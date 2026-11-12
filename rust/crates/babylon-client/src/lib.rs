@@ -12,6 +12,7 @@ pub mod cli;
 pub mod decision_surface;
 pub mod dossier;
 mod economy_status;
+mod human_numbers;
 pub mod logging;
 pub mod map;
 pub mod map_economy_lens;

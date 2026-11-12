@@ -1,44 +1,18 @@
 //! Captured opening terms with Designed pending-status interventions.
-use babylon_persistence::runtime_session::OrganizerAidPending;
 use babylon_persistence::runtime_session::{OrganizerAidKind, OrganizerSnapshot};
 
 fn opening() -> OrganizerSnapshot {
     serde_json::from_str(include_str!(
-        "../fixtures/national_organizer_opening_v13.json"
+        "../fixtures/national_organizer_opening_v19.json"
     ))
     .expect("the authored JSON matches the declared schema")
 }
 
 fn remote_in_transit() -> OrganizerSnapshot {
-    let mut snapshot = opening();
-    snapshot.view.period = 1;
-    for preview in &mut snapshot.aid {
-        preview.period = 1;
-        if let Some(time) = &mut preview.time {
-            time.period = 1;
-        }
-    }
-    let remote = snapshot
-        .aid
-        .iter()
-        .find(|row| row.kind == OrganizerAidKind::Remote)
-        .expect("the fixture holds the searched element");
-    snapshot.pending_aid.push(OrganizerAidPending {
-        kind: remote.kind,
-        original_commitment_id: [10; 32],
-        material_commitment_id: babylon_material_circuit::aid_commitment_id(remote.mandate_id, 1)
-            .as_bytes(),
-        mandate_id: remote.mandate_id,
-        admitted_period: 0,
-        dispatch_period: 1,
-        good_id: remote.good_id,
-        unit_id: remote.unit_id,
-    });
-    snapshot
-        .view
-        .aid_options
-        .retain(|row| row.kind != OrganizerAidKind::Remote);
-    snapshot
+    serde_json::from_str(include_str!(
+        "../fixtures/national_organizer_pending_v19.json"
+    ))
+    .expect("the actual engine pending snapshot matches the current schema")
 }
 
 #[test]
@@ -86,7 +60,7 @@ fn second_actionable_offer_is_refused() {
 #[test]
 fn captured_pending_boundary_retains_both_terms_and_only_the_local_action() {
     let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-        "../fixtures/national_organizer_pending_v13.json"
+        "../fixtures/national_organizer_pending_v19.json"
     ))
     .expect("the authored JSON matches the declared schema");
     assert_eq!(snapshot.view.period, 1);

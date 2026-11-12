@@ -9,7 +9,7 @@ use bevy::camera::{NormalizedRenderTarget, RenderTarget};
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::window::{PrimaryWindow, WindowCloseRequested};
+use bevy::window::{MonitorSelection, PrimaryWindow, WindowCloseRequested, WindowPosition};
 
 use crate::cli::CliCommand;
 use crate::dossier::HeadlessInvocation;
@@ -86,6 +86,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                         primary_window: Some(Window {
                             title: "Babylon — The Fall of America".into(),
                             resolution: (1366, 768).into(),
+                            position: WindowPosition::Centered(MonitorSelection::Primary),
                             ..default()
                         }),
                         ..default()
@@ -201,6 +202,11 @@ fn install_window_camera_coherence(app: &mut App) {
         )
             .chain()
             .run_if(window_camera_mismatch),
+    );
+    app.add_systems(
+        WindowCameraCoherence,
+        crate::organizer::qualification_input::observe_window_after_last
+            .after(bevy::render::camera::camera_system),
     );
 }
 

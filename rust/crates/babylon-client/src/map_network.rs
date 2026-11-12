@@ -198,7 +198,7 @@ fn setup_network(
 
 fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
     if !projection.available {
-        return "ECONOMY NETWORK\nUnavailable in this observation".into();
+        return "ECONOMY NETWORK\nUnavailable in this observation. The full network requires an Observer campaign.\nOpen Map lens → Observer Campaigns for a separate saved world.\nYour organizer world remains available through Load Game.".into();
     }
     let Some(county) = &projection.selected_county else {
         return "ECONOMY NETWORK\nSelect a county to inspect its direct suppliers and buyers."
@@ -219,6 +219,17 @@ fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
     format!("{county} + direct counterparts\n{cohorts} / {} disclosed cohorts · {counties} mapped counties\n{} / {} disclosed links · {}\n{} counterparts listed outside this map\nArrows: supplier → buyer; county aggregates, not factories\nClick a dot or counterpart to inspect · county selection changes scope",
         projection.total_cohorts, projection.links.len(), projection.total_links,
         filter.label(), projection.external.len())
+}
+
+fn heading_bundle(projection: &NetworkProjection, filter: NetworkSector) -> impl Bundle {
+    (
+        super::label_bundle(heading(projection, filter), None, 0, theme::PAPER),
+        // At fractional UI scales, rounding the final content width can add a
+        // wrapped line after height measurement. Keep both on the same width.
+        LayoutConfig {
+            use_rounding: false,
+        },
+    )
 }
 
 fn spawn_legend(commands: &mut Commands) {
@@ -304,12 +315,7 @@ fn rebuild_network(
         }
     }
     commands
-        .spawn(super::label_bundle(
-            heading(&projection, observation.ui.network_sector),
-            None,
-            0,
-            theme::PAPER,
-        ))
+        .spawn(heading_bundle(&projection, observation.ui.network_sector))
         .remove::<RelationshipEntity>()
         .insert((EconomyEntity, Pickable::IGNORE));
     if projection.available {
@@ -885,3 +891,6 @@ mod tests {
 #[cfg(test)]
 #[path = "map_network_focus_tests.rs"]
 mod focus_tests;
+#[cfg(test)]
+#[path = "map_network_render_tests.rs"]
+mod render_tests;

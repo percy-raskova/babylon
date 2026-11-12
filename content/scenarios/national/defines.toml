@@ -359,7 +359,11 @@ donor_contributor_id = 2616301
 local_recipient_contributor_id = 2616302
 remote_recipient_contributor_id = 1703101
 organization_opening_cash_micros = 1000000
-gift_cash_micros_per_unit = 100000
+maximum_cash_micros = 1450000000
+initial_food_quantity = 1
+initial_cash_micros = 0
+local_cash_receiving_consent = "accept"
+remote_cash_receiving_consent = "accept"
 fulfillment_hours_per_unit = 2
 maximum_quantity = 4
 
@@ -383,10 +387,31 @@ local_receiving_consent = "accept"
 remote_receiving_consent = "accept"
 # Independent Designed cash consent; protected material needs remain mandatory.
 collection_cash_consent = "accept"
-collection_maximum_cash_micros = 400000
+collection_initial_cash_micros = 280000000
+collection_maximum_cash_micros = 1450000000
 collection_protected_cash_floor_micros = 0
 collection_hours = 2
 workplace_policy = "participate"
 neighborhood_policy = "participate"
 local_policy = "participate"
 remote_policy = "participate"
+
+[organizer.local_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[organizer.remote_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[grain]
+evidence_class = "Designed"
+generation = "state_faf_reserve_positions"
+protected_counties = ["17031", "26163"]
+hub_selection = "largest_observed_population_then_geoid"
+access_capacity = "captured_hub_lane"
+capacity_refinement = "essential_food_lower_bound_first_fit"

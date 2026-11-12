@@ -1,0 +1,103 @@
+ADR293_wayne_resource_allocations:
+  status: accepted
+  date: '2026-11-06'
+  title: Authenticated Wayne allocations preserve requests, material legs and one response
+  issue: PER-364
+  authority: Director approval of the Wayne solidarity loop on 2026-11-06
+  evidence_class: Designed
+  context: |
+    Fixed collection and linked cash-per-food terms prevent the player from
+    choosing a contribution target or independently choosing food and cash.
+    National policy is already a separately admitted source. Numeric authoring
+    belongs to the selected scenario's existing defines.toml, not exclusively
+    to the Michigan fixture. This clarification changes no game law.
+  decision: |
+    Bind each selected allocation to the required organizer command, preview,
+    nonce, original commitment, material input, receipt and retained history.
+    Collection selects a positive signed i128 amount in currency micros, bounded
+    by its captured maximum. National whole-dollar input runs from $1 to $1450,
+    initially $280. The national defines file authors both initial and maximum
+    targets; the captured collection terms supply the new personal draft.
+    A partial gift records exact actual micros and still costs the existing
+    two hours. Protected needs, due payments, floor and time remain binding.
+    The uncollected remainder is terminal and never retries automatically.
+    Under the Director's Designed collection rule, aggregate paid units across
+    providers for the same household, essential service and unit. An unmet need
+    blocks a gift if paid units fall short of its requirement. If paid units
+    cover an unmet need, protect its actual current-close refunds alongside
+    the cash floor. A satisfied need adds no refund protection.
+    Each order binds its admitted units, accepted price, reservation, performed
+    units, settlement and refund. Every due opening order must reconcile once
+    against its own carried reserve.
+    The household retains its cash for ordinary later purchasing.
+
+    The approved complete aid allocation independently selects food from zero
+    to four person-period packages (initially one) and cash from $0 to $1450
+    (initially zero), excluding zero/zero. Food retains actual stock, protection,
+    fulfillment, freight, arrival and consumption. Cash grants once at the
+    existing P+1 support close, after household order admission, and can fund
+    ordinary P+2 purchasing. Cash grants use matching transfer and gift-cost
+    accounting. Neither leg substitutes for, reverses or fabricates the other.
+
+    Retain original requests separately from actual results, independent leg
+    outcomes and dates, and one separately retained response attempt. The first
+    positive received cash or actually consumed food permits one independently
+    adjudicated response. Refusal or insufficient time is final; later arrivals
+    never retry the response. All legs terminal without qualifying support
+    records NoQualifyingSupport and charges no coordination time. Retain the
+    authorization until both requested legs and that response are terminal.
+    Preserve the real opening $1 treasury, household endowments, consent,
+    political pledges and actual household time. No gift grants participation,
+    knowledge rights, membership or released time by itself.
+  implementation_stage: |
+    Task 1A supplies complete selected collection. Task 1B adds required Aid
+    { food_quantity, cash_micros }, independent material settlement and one
+    retained response. Food freight remains physical; AidCashReserve and linked
+    cash-per-unit reserve/grant/refund paths are removed. Captured mandate terms
+    seed the personal draft and authenticate the selected command and preview.
+    The normal national close applies the Designed refund protection before
+    distribution. Task 2 supplies authorized partner reports. Task 3 owns
+    the amount editor. Native acceptance and live publication remain open.
+    Food qualification uses a bounded credit per original commitment. Within one
+    recipient, good, unit and close, ascending original commitment identity takes
+    at most its actual grant from the remaining actual household consumption.
+    The household aggregate remains a separate fact. Credit is deterministic
+    across receipt order and restart; it is not parcel lineage or proof of a
+    marginal consumption increase. Cash qualifies independently, and a retained
+    first response remains final even if a later food credit is zero.
+  current_contract: |
+    Organizer schema 12, config domain v11, state v10, commitment v3, journal and
+    period-entry domains v5, receipt domain v2, runtime protocol 18, personal
+    draft schema 4. Material catalog schema 2/domain v2, circuit state schema
+    22, world register v7 and tick receipts v20 are the only current formats.
+    Runtime food preview and payer cash are required nullable facts. An absent
+    unselected leg cannot block the selected independent leg; selected missing
+    material wiring refuses. Aid audit boundary v2 distinguishes qualifying
+    received support, bounded food consumption credit and actual cash dates.
+    Missing allocations/initial terms and unsupported old formats refuse.
+    Collection MUTUAL_AID has exactly key 3, kind 2, length 16, positive signed
+    i128 big-endian micros. Aid MUTUAL_AID has exactly key 4, kind 3, length 8,
+    u64 big-endian food and key 5, kind 2, length 16, i128 big-endian cash.
+    Existing practice-intent v2 framing remains. Original retained commitments
+    recover selected values on restart, never current caps or retimed input.
+  verification: |
+    Required-allocation and mismatched-choice RED/GREEN, cap and canonical-money
+    bounds, target-sensitive command and consumed-action identity, exact original
+    restart joins, real collection/accounting/time controls, protected refusals,
+    partial terminal remainder, failed publication and replay. Independent Aid
+    controls cover unselected-leg wiring, receiving refusal, cash surviving food
+    loss, retained response across delayed arrival and cold checkpoints, and
+    actual cash followed by ordinary later purchase in a finite Designed economy.
+    Ten prior national collection closes produced no contribution under the
+    earlier blanket refusal. In the repaired Wayne witness the household
+    reserved $600 for eight utility units, received seven, settled $525 and
+    kept its $75 refund. A $1,450 collection raised the treasury from $1 to
+    $1,451. A separate cash-only local ruling gave $1,450 the following close.
+    Ordinary subsequent purchasing settled eight supplies bundles at $147.
+    The recipient consumed four and retained four. Food stayed unmet.
+    The $1,450 gift does not identify the source of any fungible unit bought.
+    Eight economic hash pins changed only through current catalog/state framing;
+    reversing that framing exactly reproduces all eight prior hashes.
+  related:
+    - ADR262_native_organizer_practice
+    - ADR275_material_gifts_and_delayed_practice

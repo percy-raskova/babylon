@@ -1,7 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::amount_editor::AmountEdits;
+use super::developments::Developments;
 use super::scene::{OrganizerScene, OrganizerSceneMode, OrganizerSubject};
 use super::{draft, evidence, presentation, ui};
+use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::ArchiveEvidenceClass;
 
 use babylon_persistence::runtime_session::{
@@ -37,6 +40,8 @@ pub(crate) enum OrganizerInspector {
     Direction,
     Receipts,
     Notes,
+    Review,
+    Practices,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,6 +190,8 @@ fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
 #[derive(Resource, Default)]
 pub(crate) struct OrganizerClient {
+    pub(super) developments: Developments,
+    pub(super) amounts: AmountEdits,
     pub view: Option<OrganizerView>,
     pub(super) body: Option<OrganizerBodyDisclosure>,
     pub(super) body_scope: Option<OrganizerBodyScope>,
@@ -248,6 +255,19 @@ impl OrganizerClient {
             return None;
         }
         Some((self.body.as_ref()?, self.body_scope.as_ref()?))
+    }
+
+    /// Show a paused message only under the same exact live admission as resources.
+    pub(crate) fn paused_message_for(&self, session: &ObserverSession) -> Option<&str> {
+        if session.playing
+            || !session.organizer_enabled
+            || !matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+            || self.message.is_empty()
+        {
+            return None;
+        }
+        super::workspace::resources(self, session)?;
+        Some(&self.message)
     }
 
     pub(super) fn status_refusal(&self, session: &ObserverSession) -> Option<&str> {
@@ -395,10 +415,10 @@ impl OrganizerClient {
         };
         self.view.as_ref().is_some_and(|view| {
             view.aid_options.iter().any(|option| {
-                option.kind == preview.kind
-                    && option.receiving_consent == OrganizerGiftConsent::Accept
+                option.kind == preview.kind && option.receiving_consent == preview.receiving_consent
             })
-        }) && preview.receiving_consent == OrganizerGiftConsent::Accept
+        }) && (preview.receiving_consent == OrganizerGiftConsent::Accept
+            || preview.cash_receiving_consent == OrganizerGiftConsent::Accept)
             && !self.pending_aid.iter().any(|row| row.kind == preview.kind)
     }
 
@@ -408,7 +428,36 @@ impl OrganizerClient {
         choice: OrganizerChoice,
     ) -> Option<OrganizerCommand> {
         let view = self.view.as_ref()?;
+        let allocation = if choice == OrganizerChoice::Collect {
+            let allocation = self.draft.as_ref()?.collection_allocation;
+            if !matches!(allocation, OrganizerAllocation::Collection { .. }) {
+                return None;
+            }
+            allocation
+        } else if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            let allocation = self.draft.as_ref()?.aid_allocation;
+            let OrganizerAllocation::Aid {
+                food_quantity,
+                cash_micros,
+            } = allocation
+            else {
+                return None;
+            };
+            let offer = self.aid_preview(choice)?;
+            if (food_quantity > 0 && offer.food.is_none())
+                || (cash_micros > 0 && !offer.funding.available())
+            {
+                return None;
+            }
+            allocation
+        } else {
+            OrganizerAllocation::None
+        };
         Some(OrganizerCommand {
+            allocation,
             campaign_id: *session.campaign.as_uuid().as_bytes(),
             actor_id: view.actor_id,
             authority_id: view.authority_id,
@@ -496,7 +545,9 @@ impl OrganizerClient {
         });
         self.outbox = Some(request);
         session.set_organizer_control_pending(true);
-        session.pause_playback();
+        if kind != RequestKind::Status {
+            session.pause_playback();
+        }
     }
 
     fn take_response(
@@ -524,6 +575,8 @@ impl OrganizerClient {
         snapshot: OrganizerSnapshot,
         session: &mut ObserverSession,
     ) -> Result<StatusDisposition, String> {
+        use std::fmt::Write as _;
+
         let pending = self.take_response(request_id, RequestKind::Status)?;
         let context = pending
             .status_context
@@ -546,6 +599,7 @@ impl OrganizerClient {
             previous.period == snapshot.view.period
                 && (previous.actor_id != snapshot.view.actor_id
                     || previous.authority_id != snapshot.view.authority_id
+                    || previous.aid_partners != snapshot.view.aid_partners
                     || previous.workplace_id != snapshot.view.workplace_id
                     || previous.content_digest != snapshot.view.content_digest
                     || previous.resource_digest != snapshot.view.resource_digest)
@@ -576,38 +630,72 @@ impl OrganizerClient {
             return Ok(StatusDisposition::Superseded);
         }
         if self.draft.is_none() {
-            match draft::load(*session.campaign.as_uuid(), snapshot.view.workplace_id) {
-                Ok(value) => {
-                    self.draft = Some(value);
-                    self.draft_writable = true;
-                }
-                Err(error) => {
-                    self.message = error;
-                    self.draft = Some(OrganizerDraft::new(snapshot.view.workplace_id));
-                    self.draft_writable = false;
-                }
-            }
+            self.initialize_draft(*session.campaign.as_uuid(), &snapshot);
         }
         self.clear_review();
         session.duration = Some(snapshot.duration);
         if session.phase == SessionPhase::Ready && snapshot.duration.complete(session.viewed_tick) {
             session.complete();
         }
+        let new_city_pd_notice = self.new_city_pd_notice(&snapshot, &context);
+        let development = if context.observation.tick == context.durable_tick {
+            self.developments.install(
+                &snapshot.view,
+                &snapshot.collection_resolutions,
+                &snapshot.aid_resolutions,
+            )
+        } else {
+            None
+        };
         self.collection = snapshot.collection;
         self.city_pd_encounters = snapshot.city_pd_encounters;
         self.collection_resolutions = snapshot.collection_resolutions;
         self.aid = snapshot.aid;
         self.pending_aid = snapshot.pending_aid;
         self.aid_resolutions = snapshot.aid_resolutions;
+        self.install_body(context, snapshot.body, snapshot.body_scope);
+        self.view = Some(snapshot.view);
+        self.commitment = snapshot.pending;
+        self.status_due = false;
+        session.set_organizer_control_pending(false);
+        // The fixed footer renders acknowledgement. Keep the message line for
+        // new developments, pending operations and actionable failures.
+        if new_city_pd_notice {
+            self.pause_for_city_pd_notice(session);
+            if development.is_some() {
+                let _ = write!(
+                    self.message,
+                    " · P{} dispatch updated. Read the period dispatch.",
+                    session.durable_tick
+                );
+            }
+        } else if development.is_some() {
+            session.pause_playback();
+            self.message = format!(
+                "P{} dispatch updated. Read the period dispatch.",
+                session.durable_tick
+            );
+        } else if self.draft_writable {
+            self.message.clear();
+        }
+        Ok(StatusDisposition::Installed)
+    }
+
+    fn install_body(
+        &mut self,
+        context: StatusContext,
+        body: OrganizerBodyDisclosure,
+        scope: OrganizerBodyScope,
+    ) {
         if context.observation.tick == context.durable_tick {
-            self.body = Some(snapshot.body);
-            self.body_scope = Some(snapshot.body_scope);
+            self.body = Some(body);
+            self.body_scope = Some(scope);
         } else {
             self.body = Some(OrganizerBodyDisclosure::Unavailable);
             self.body_scope = Some(OrganizerBodyScope {
                 period: context.observation.tick,
                 source: None,
-                ..snapshot.body_scope
+                ..scope
             });
         }
         self.body_context = Some(context.observation);
@@ -616,16 +704,47 @@ impl OrganizerClient {
         self.body_content_hash = context.content_hash;
         self.body_world_hash = context.world_hash;
         self.body_foundation_digest = context.foundation_digest;
-        self.view = Some(snapshot.view);
-        self.commitment = snapshot.pending;
-        self.status_due = false;
-        session.set_organizer_control_pending(false);
-        if self.draft_writable {
-            // The fixed decision footer renders the acknowledged state. Keep
-            // the message line for pending operations and actionable failures.
-            self.message.clear();
+    }
+
+    fn initialize_draft(&mut self, campaign: Uuid, snapshot: &OrganizerSnapshot) {
+        let captured = OrganizerDraft::captured(snapshot);
+        match draft::load(
+            campaign,
+            snapshot.view.workplace_id,
+            captured.collection_allocation,
+            captured.aid_allocation,
+        ) {
+            Ok(value) => {
+                self.draft = Some(value);
+                self.draft_writable = true;
+            }
+            Err(error) => {
+                self.message = error;
+                self.draft = Some(captured);
+                self.draft_writable = false;
+            }
         }
-        Ok(StatusDisposition::Installed)
+    }
+
+    // Call only after status scope, actor, period and context admission.
+    // The retained rows supply notice identity without another event ledger.
+    fn new_city_pd_notice(&self, snapshot: &OrganizerSnapshot, context: &StatusContext) -> bool {
+        context.observation.tick == context.durable_tick
+            && snapshot.city_pd_encounters.iter().any(|notice| {
+                notice.resolve_period == context.durable_tick
+                    && !self
+                        .city_pd_encounters
+                        .iter()
+                        .any(|previous| previous.receipt_id == notice.receipt_id)
+            })
+    }
+
+    fn pause_for_city_pd_notice(&mut self, session: &mut ObserverSession) {
+        session.pause_playback();
+        self.message = format!(
+            "Play paused: new City PD notice in period {}. Read the period dispatch or Archive.",
+            session.durable_tick
+        );
     }
 
     pub(crate) fn previewed(
@@ -637,6 +756,7 @@ impl OrganizerClient {
         let pending = self.take_response(request_id, RequestKind::Preview)?;
         let command = pending.command.ok_or("Organizer preview had no command.")?;
         if preview.choice != command.choice
+            || preview.allocation != command.allocation
             || preview.current_period != command.expected_period
             || preview.resolves_period
                 != command
@@ -711,6 +831,7 @@ impl OrganizerClient {
         self.outbox = None;
         self.clear_review();
         session.set_organizer_control_pending(false);
+        session.pause_playback();
         true
     }
 }

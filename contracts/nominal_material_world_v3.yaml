@@ -7,11 +7,11 @@ encoding:
   fields:
     - u32_big_endian_version_3
     - exact_32_byte_graph_nominal_world_v1_hash
-    - exact_32_byte_material_world_register_v5_digest
+    - exact_32_byte_material_world_register_v7_digest
   digest: sha256_exact_bytes
 graph_component: Graph hash, completed time, allocator cursors and phase schedule.
-material_component: Complete canonical register V5, including circuit schema21, its catalog digest, aid freight,
-  reserves, gift accounting and the optional organizer journal.
+material_component: Complete canonical register V7, including circuit schema22, its catalog digest, aid freight,
+  independent gift accounting and the optional organizer journal with retained original response.
 tick_identity:
   version: 3
   domain: "babylon.material-tick-content.v3\0"
@@ -24,11 +24,11 @@ tick_identity:
     - exact_32_byte_graph_nominal_world_after_hash
     - exact_32_byte_prior_nominal_material_world_v3_hash
     - exact_32_byte_result_nominal_material_world_v3_hash
-    - exact_32_byte_material_tick_receipts_v19_digest
+    - exact_32_byte_material_tick_receipts_v20_digest
   digest: sha256_exact_bytes
   database_campaign_uuid: Excluded from mechanics identity; included in the durable envelope.
 related_contracts:
-  - contracts/material_world_register_v5.yaml
+  - contracts/material_world_register_v7.yaml
   - contracts/material_campaign_foundation_v3.yaml
   - contracts/committed_material_tick_v3.yaml
 history:

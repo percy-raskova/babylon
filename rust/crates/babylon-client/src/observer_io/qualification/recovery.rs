@@ -223,6 +223,7 @@ impl NativeAudit {
             || !matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
             || session.advance_pending()
             || self.advance.is_some()
+            || !self.proof_allows_next_source()
             || session.organizer_control_pending()
             || session.archive_verified_tick != source.tick
         {
@@ -334,6 +335,8 @@ impl NativeAudit {
 pub(super) mod tests {
     use super::super::tests::Directory;
     use super::super::{aid, Candidate};
+    use babylon_persistence::runtime_session::OrganizerAidFunding;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
 
     use super::super::tests;
     use super::*;
@@ -345,7 +348,7 @@ pub(super) mod tests {
         let directory = Directory::new();
         let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
         ))
         .expect("the authored JSON matches the declared schema");
         session.ready(0, None);
@@ -467,7 +470,7 @@ pub(super) mod tests {
             identity: audit.boundary.clone().expect("the fixture value clones"),
             recovery: work.recovery,
             record: Record {
-                version: 4,
+                version: 5,
                 scope: "authenticated_native_material_and_aid_facts_only",
                 runtime_epoch: session
                     .runtime_scope()
@@ -547,7 +550,10 @@ pub(super) mod tests {
             1
         );
         let mut wrong = status.clone();
-        wrong.aid[0].payer_cash += 1;
+        let OrganizerAidFunding::Organization { cash_micros } = &mut wrong.aid[0].funding else {
+            panic!("controlled treasury")
+        };
+        *cash_micros += 1;
         assert!(audit.status(&session, wrong).is_err());
         assert!(audit.awaiting_recovery_status());
         audit
@@ -722,6 +728,7 @@ pub(super) mod tests {
         let (_directory, mut audit, mut session, mut status) = source();
         let commitment = OrganizerCommitment {
             command: OrganizerCommand {
+                allocation: OrganizerAllocation::None,
                 campaign_id: *session.campaign.canonical_bytes(),
                 actor_id: status.view.actor_id,
                 authority_id: status.view.authority_id,

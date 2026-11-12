@@ -23,7 +23,10 @@ use relationships::CountyAnchors;
 pub(super) struct MapScene;
 
 #[derive(Component)]
-struct InsetLabel(Vec3);
+struct GeographicLabel {
+    anchor: Vec3,
+    view: PrimaryView,
+}
 
 #[derive(SystemParam)]
 pub(super) struct SceneAssets<'w> {
@@ -68,6 +71,49 @@ pub(super) fn setup_map(
         &mut assets.materials,
     );
     spawn_insets(&mut commands, &atlas, counties, origin);
+    let Some(wayne_index) = atlas
+        .index_of_fips("26163")
+        .filter(|index| counties.contains(index))
+    else {
+        return;
+    };
+    let adjacent = atlas
+        .neighbors(wayne_index)
+        .iter()
+        .map(|index| *index as usize);
+    for index in std::iter::once(wayne_index)
+        .chain(adjacent)
+        .filter(|index| counties.contains(index))
+    {
+        let Some(county) = atlas.county(index) else {
+            continue;
+        };
+        let anchor = super::scene_point(county.centroid, origin, BASE_HEIGHT);
+        let wayne = index == wayne_index;
+        commands.spawn((
+            Text::new(county.name.to_uppercase()),
+            TextFont {
+                font_size: FontSize::Px(if wayne { 22.0 } else { 13.0 }),
+                ..default()
+            },
+            TextColor(if wayne { theme::PAPER } else { theme::GRAY }),
+            ObserverFontRole::Display,
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            BackgroundColor(theme::INK.with_alpha(if wayne { 0.72 } else { 0.5 })),
+            ZIndex(4),
+            Pickable::IGNORE,
+            Visibility::Hidden,
+            GeographicLabel {
+                anchor,
+                view: PrimaryView::Organizer,
+            },
+            MapScene,
+            DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+        ));
+    }
 }
 
 fn scope_bounds(atlas: &CountyAtlas, counties: &[usize]) -> Option<Rect> {
@@ -265,7 +311,10 @@ fn spawn_insets(commands: &mut Commands, atlas: &CountyAtlas, counties: &[usize]
             ZIndex(4),
             Pickable::IGNORE,
             Visibility::Hidden,
-            InsetLabel(anchor),
+            GeographicLabel {
+                anchor,
+                view: PrimaryView::Map,
+            },
             MapScene,
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ));
@@ -284,7 +333,7 @@ pub(super) struct InsetPlacement<'w, 's> {
         'w,
         's,
         (
-            &'static InsetLabel,
+            &'static GeographicLabel,
             &'static ComputedNode,
             &'static mut Node,
             &'static mut Visibility,
@@ -292,14 +341,13 @@ pub(super) struct InsetPlacement<'w, 's> {
     >,
 }
 
-pub(super) fn place_insets(mut placement: InsetPlacement) {
-    let active = *placement.view == PrimaryView::Map
-        && !placement.ui.menu_open
+pub(super) fn place_geographic_labels(mut placement: InsetPlacement) {
+    let active = !placement.ui.menu_open
         && !placement.ui.splash_visible
         && !placement.ui.comparison_open
         && placement.ui.disclosure.is_none();
     for (label, computed, mut node, mut visibility) in &mut placement.labels {
-        let rect = if active {
+        let rect = if active && label.view == *placement.view {
             match (
                 placement.viewport.0,
                 placement.camera.single(),
@@ -310,7 +358,7 @@ pub(super) fn place_insets(mut placement: InsetPlacement) {
                     (size.is_finite() && size.min_element() > 0.0)
                         .then(|| {
                             camera
-                                .world_to_viewport(&GlobalTransform::from(*transform), label.0)
+                                .world_to_viewport(&GlobalTransform::from(*transform), label.anchor)
                                 .ok()
                                 .and_then(|anchor| {
                                     crate::production_layout::place_label(anchor, bounds, size, &[])

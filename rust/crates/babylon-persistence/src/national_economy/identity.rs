@@ -1,4 +1,6 @@
 //! Material actor identities; location, technical function and ownership are separate.
+use super::grain::RepresentativeHouseholdKey;
+use super::grain::RepresentativeWorkplaceKey;
 
 use super::NationalGamePolicyError;
 use crate::national_cohorts::CohortKey;
@@ -17,6 +19,7 @@ pub const NATIONAL_SCENARIO_ID: &str = "economy/national-world";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResidentWorkplaceSource {
     Qcew(CohortKey),
+    Representative(RepresentativeWorkplaceKey),
     HouseholdEnterprise,
     ResidentEmployerFallback,
 }
@@ -166,4 +169,65 @@ fn target(
         allocation_weight,
         source,
     }
+}
+
+/// Construct the current representative from the complete occupied source key.
+pub(super) fn representative_workplace(
+    key: RepresentativeWorkplaceKey,
+    location: EconomicLocation,
+) -> ResidentWorkplaceTarget {
+    let mut bytes = b"NationalRepresentativeWorkplaceV1\0".to_vec();
+    bytes.extend_from_slice(&key.catchment.0);
+    bytes.push(key.position as u8);
+    bytes.extend_from_slice(key.function.source_key().as_bytes());
+    bytes.push(0);
+    bytes.extend_from_slice(key.ownership.source_code().as_bytes());
+    bytes.push(key.source_kind as u8);
+    let digest = content_digest::sha256_of(&bytes);
+    target(
+        location,
+        key.function,
+        key.ownership,
+        0,
+        &bytes,
+        format!("site-{}", base32(&digest)),
+        ResidentWorkplaceSource::Representative(key),
+    )
+}
+/// Household ownership is fixed by catchment, position and captured budget kind.
+pub(super) fn representative_household(
+    key: RepresentativeHouseholdKey,
+) -> (FinalDemandPrincipalId, StableElementKey) {
+    let mut bytes = b"NationalRepresentativeHouseholdV1\0".to_vec();
+    bytes.extend_from_slice(&key.catchment.0);
+    bytes.push(key.position as u8);
+    bytes.push(key.budget as u8);
+    let principal = FinalDemandPrincipalId::from_bytes(content_digest::sha256_of(&bytes));
+    (principal, principal_subject(principal))
+}
+pub(super) fn principal_subject(principal: FinalDemandPrincipalId) -> StableElementKey {
+    StableElementKey::Node {
+        scenario: NATIONAL_SCENARIO_ID.into(),
+        local_name: format!("household-{}", base32(&principal.as_bytes())),
+    }
+}
+pub(super) fn base32(bytes: &[u8; 32]) -> String {
+    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let mut result = String::with_capacity(52);
+    let mut bits = 0_u16;
+    let mut count = 0;
+    for byte in bytes {
+        bits = (bits << 8) | u16::from(*byte);
+        count += 8;
+        while count >= 5 {
+            count -= 5;
+            result.push(char::from(ALPHABET[usize::from((bits >> count) & 31)]));
+        }
+    }
+    if count > 0 {
+        result.push(char::from(
+            ALPHABET[usize::from((bits << (5 - count)) & 31)],
+        ));
+    }
+    result
 }

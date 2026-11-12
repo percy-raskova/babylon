@@ -32,11 +32,11 @@ use crate::map::SelectedCounty;
 use crate::map_economy_lens::{CycleDirection, MapLens, ScopeTransition};
 use crate::observer_audio::ObserverAudioSettings;
 use crate::observer_controls;
-use crate::observer_opening::OpeningPresentation;
+use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_progress::OperationProgress;
 use crate::observer_ui::ProductionEvidenceOutcome;
 use crate::observer_ui::RoadLayer;
-use crate::organizer::qualification_input::HandlerReceipt;
+use crate::organizer::qualification_input::{HandlerReceipt, PlayInterlock};
 use crate::organizer::{OrganizerClient, StatusDisposition};
 use crate::production::PrimaryView;
 use crate::ui::dossier_card::{
@@ -56,6 +56,7 @@ use mpsc::TryRecvError;
 use qualification::Candidate;
 use qualification::Configuration;
 use qualification::NativeAudit;
+use qualification::Work;
 use std::path::PathBuf;
 use std::thread::Builder;
 use std::time::Instant;
@@ -119,9 +120,42 @@ pub(crate) struct PendingObservation(
 );
 
 pub(crate) struct ObservationRead {
-    result: Result<PreparedObservation, String>,
-    cursor: Option<ObserverMaterialCursor>,
-    qualification: Option<Candidate>,
+    result: Result<ObservationOutput, String>,
+    cursor: ReadCursor,
+}
+
+// Known-only work has no authority to consume or replace the private cursor.
+enum ReadCursor {
+    KnownPreview,
+    Returned(Option<Box<ObserverMaterialCursor>>),
+}
+
+impl ReadCursor {
+    fn into_material(self) -> Option<ObserverMaterialCursor> {
+        match self {
+            Self::Returned(cursor) => cursor.map(|cursor| *cursor),
+            Self::KnownPreview => None,
+        }
+    }
+
+    fn install(self, cache: &mut ObservationCache) {
+        if let Self::Returned(cursor) = self {
+            cache.cursor = cursor.map(|cursor| *cursor);
+        }
+    }
+}
+
+enum ObservationOutput {
+    Frame {
+        prepared: Box<PreparedObservation>,
+        source: FrameSource,
+    },
+    PeriodProof(Box<Candidate>),
+}
+
+enum FrameSource {
+    Ordinary { presentation_read_elapsed_ns: u64 },
+    Qualified(Box<Candidate>),
 }
 
 pub(crate) struct PreparedObservation {
@@ -309,10 +343,8 @@ pub(crate) fn send_advance(
     pipe: &RuntimePipe,
     state: &mut ObserverSession,
     qualification: Option<&mut NativeAudit>,
-) {
-    let Some(request_id) = state.begin_advance() else {
-        return;
-    };
+) -> Option<u64> {
+    let request_id = state.begin_advance()?;
     let request = RuntimeSessionRequest::Advance {
         protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
         scope: state
@@ -334,7 +366,7 @@ pub(crate) fn send_advance(
         Ok(timing) => timing,
         Err(error) => {
             state.fail(error);
-            return;
+            return None;
         }
     };
     match pipe.requests.try_send(request) {
@@ -342,8 +374,12 @@ pub(crate) fn send_advance(
             if let (Some(audit), Some(timing)) = (qualification, timing) {
                 audit.advance_sent(timing);
             }
+            Some(request_id)
         }
-        Err(error) => state.fail(format!("Cannot request next period: {error}")),
+        Err(error) => {
+            state.fail(format!("Cannot request next period: {error}"));
+            None
+        }
     }
 }
 
@@ -810,7 +846,6 @@ pub(crate) fn apply_committed_response(
         audit.advance_committed(state, request_id)?;
     }
     if state.organizer_enabled {
-        state.pause_playback();
         state.set_organizer_control_pending(true);
         reset.organizer()?.committed();
     }
@@ -835,6 +870,7 @@ pub(crate) struct CommandContext<'w> {
 pub(crate) fn handle_commands(
     mut commands: MessageReader<ObserverCommand>,
     mut context: CommandContext,
+    mut interlock: Option<ResMut<PlayInterlock>>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
 ) {
     for (command, message_id) in commands.read_with_id() {
@@ -877,9 +913,33 @@ pub(crate) fn handle_commands(
             context.feedback.reject(reason, now);
             continue;
         }
+        if command == ObserverCommand::TogglePlay
+            && interlock.as_deref_mut().is_some_and(|lock| {
+                !lock.allows_toggle(
+                    message_id.id,
+                    &context.state,
+                    context.qualification.as_deref(),
+                )
+            })
+        {
+            if let Some(receipt) = qualification.as_deref_mut() {
+                receipt.observer_finished(
+                    message_id,
+                    false,
+                    context.state.pending_advance_request(),
+                    &context.state,
+                );
+            }
+            continue;
+        }
         context.feedback.message = None;
         let before = context.state.pending_advance_request();
         apply_command(command, &mut context);
+        if command == ObserverCommand::TogglePlay {
+            if let Some(lock) = interlock.as_deref_mut() {
+                lock.toggle_handled(message_id.id, &context.state);
+            }
+        }
         if let Some(receipt) = qualification.as_deref_mut() {
             receipt.observer_finished(message_id, true, before, &context.state);
         }
@@ -895,9 +955,20 @@ pub(crate) fn apply_command(command: ObserverCommand, context: &mut CommandConte
         refresh,
         feedback,
         time,
+        opening,
         ..
     } = context;
     match command {
+        ObserverCommand::ObserverCampaigns => {
+            if let Some(opening) = opening {
+                opening.stage = OpeningStage::Title;
+                opening.menu_page = MenuPage::Campaigns;
+                ui.menu_open = true;
+                ui.disclosure = None;
+                state.pause_playback();
+            }
+        }
+
         ObserverCommand::Quit => {
             state.pause_playback();
             state.quit_requested = true;
@@ -917,7 +988,7 @@ pub(crate) fn apply_command(command: ObserverCommand, context: &mut CommandConte
         ObserverCommand::Step => {
             state.pause_playback();
             if let Some(pipe) = pipe {
-                send_advance(pipe, state, qualification.as_deref_mut());
+                let _ = send_advance(pipe, state, qualification.as_deref_mut());
             } else {
                 feedback.reject(
                     "No campaign connection. Reopen the campaign from Menu.",
@@ -1133,6 +1204,103 @@ pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut
     }
 }
 
+fn read_frame(
+    reader: Result<ObserverEconomyReader, ObserverEconomyError>,
+    audit_work: Option<Work>,
+    requested: ObservationContext,
+    cursor: ReadCursor,
+) -> ObservationRead {
+    let known_preview = matches!(cursor, ReadCursor::KnownPreview);
+    let mut cursor = cursor.into_material();
+    let started = Instant::now();
+    let resumed_after = cursor.as_ref().map(ObserverMaterialCursor::completed_tick);
+    let result = (|| {
+        let reader = reader.map_err(|error| error.to_string())?;
+        if let Some(work) = audit_work {
+            let (prepared, candidate) = work.read(reader, &requested, &mut cursor)?;
+            return Ok(ObservationOutput::Frame {
+                prepared: Box::new(prepared),
+                source: FrameSource::Qualified(Box::new(candidate)),
+            });
+        }
+        // A known-only refresh has no material cursor. Preserve the private
+        // authenticated cursor for the next qualification boundary.
+        let snapshot = if known_preview {
+            reader.snapshot(requested.campaign, requested.tick)
+        } else {
+            reader.snapshot_with_cursor(requested.campaign, requested.tick, &mut cursor)
+        };
+        let presentation_read_elapsed_ns = qualification::elapsed(started)?;
+        snapshot
+            .map(PreparedObservation::new)
+            .map(|prepared| ObservationOutput::Frame {
+                prepared: Box::new(prepared),
+                source: FrameSource::Ordinary {
+                    presentation_read_elapsed_ns,
+                },
+            })
+            .map_err(|error| error.to_string())
+    })();
+    bevy::log::info!(target: "babylon_client::timing",
+        stage = "authenticated_observer_read",
+        resumed_after = ?resumed_after,
+        campaign = %requested.campaign.as_uuid(),
+        tick = requested.tick,
+        generation = requested.generation,
+        perspective = ?requested.perspective,
+        elapsed_us = started.elapsed().as_micros(),
+        success = result.is_ok(),
+        "observer read completed");
+    ObservationRead {
+        result,
+        cursor: if known_preview {
+            ReadCursor::KnownPreview
+        } else {
+            ReadCursor::Returned(cursor.map(Box::new))
+        },
+    }
+}
+
+fn start_period_proof(
+    state: &ObserverSession,
+    pending: &mut PendingObservation,
+    cache: &mut ObservationCache,
+    frame: &ObserverFrame,
+    audit: &mut NativeAudit,
+) -> bool {
+    match audit.take_proof_work(state, frame.for_session(state)) {
+        Ok(Some((work, installed))) => {
+            let context = state.context();
+            let requested = context.clone();
+            let reader = cache.reader(
+                ObserverVisibility::FullObserver,
+                ObserverEconomyReader::from_observer_env,
+            );
+            let mut cursor = cache.cursor.clone();
+            let task = AsyncComputeTaskPool::get().spawn(async move {
+                let result = reader
+                    .map_err(|e| e.to_string())
+                    .and_then(|reader| {
+                        work.read_private(reader, &requested, &mut cursor, &installed)
+                    })
+                    .map(|candidate| ObservationOutput::PeriodProof(Box::new(candidate)));
+                ObservationRead {
+                    result,
+                    cursor: ReadCursor::Returned(cursor.map(Box::new)),
+                }
+            });
+            pending.0 = Some((context, task));
+            true
+        }
+        Ok(None) => false,
+        Err(error) => {
+            audit.refuse_period_proof("period_proof_private_read_failed");
+            bevy::log::error!(reason = %error, "private period proof refused");
+            true
+        }
+    }
+}
+
 pub(crate) fn start_observation(
     mut state: ResMut<ObserverSession>,
     mut pending: ResMut<PendingObservation>,
@@ -1140,13 +1308,32 @@ pub(crate) fn start_observation(
     mut frame: ResMut<ObserverFrame>,
     mut qualification: Option<ResMut<NativeAudit>>,
 ) {
-    let key = ObservationCacheKey::from_session(&state, qualification.as_deref());
-    cache.reconcile(key);
     if state.quit_requested {
-        pending.0 = None;
-        *cache = ObservationCache::default();
+        if let Some(audit) = qualification.as_deref_mut() {
+            audit.refuse_period_proof("period_proof_quit");
+        }
+        // A blocking qualified read retains its owner until collect drains it.
+        if qualification.is_none() || pending.0.is_none() {
+            pending.0 = None;
+            *cache = ObservationCache::default();
+        }
         return;
     }
+    if qualification
+        .as_ref()
+        .is_some_and(|audit| !audit.proof_context_current(&state))
+    {
+        // A conflicting view cannot acquire/rekey a source or replace the old
+        // authenticated cursor while its admitted blocking task drains.
+        if pending.0.is_none() {
+            if let Some(audit) = qualification.as_deref_mut() {
+                audit.refuse_period_proof("period_proof_context_changed");
+            }
+        }
+        return;
+    }
+    let key = ObservationCacheKey::from_session(&state, qualification.as_deref());
+    cache.reconcile(key);
     if let Some((context, _)) = &pending.0 {
         if !state.accepts(context) {
             *frame = ObserverFrame::default();
@@ -1159,6 +1346,13 @@ pub(crate) fn start_observation(
             pending.0 = None;
         }
     }
+    if pending.0.is_none() && !state.quit_requested {
+        if let Some(audit) = qualification.as_deref_mut() {
+            if start_period_proof(&state, &mut pending, &mut cache, &frame, audit) {
+                return;
+            }
+        }
+    }
     if state.phase != SessionPhase::Loading
         || pending.0.is_some()
         || state.lifecycle_pending()
@@ -1167,7 +1361,10 @@ pub(crate) fn start_observation(
     {
         return;
     }
-    if qualification::awaiting_archive(&state, qualification.is_some()) {
+    let ordinary_close = qualification
+        .as_ref()
+        .is_some_and(|audit| audit.live_known_close(&state));
+    if !ordinary_close && qualification::awaiting_archive(&state, qualification.is_some()) {
         return;
     }
     if qualification
@@ -1178,6 +1375,7 @@ pub(crate) fn start_observation(
     }
     let audit_work = match qualification
         .as_deref_mut()
+        .filter(|_| !ordinary_close)
         .map(|audit| audit.begin(&state))
         .transpose()
     {
@@ -1201,46 +1399,49 @@ pub(crate) fn start_observation(
             ObserverEconomyReader::from_known_env,
         ),
     };
-    let mut cursor = cache.cursor.take();
-    let task = AsyncComputeTaskPool::get().spawn(async move {
-        let started = Instant::now();
-        let resumed_after = cursor.as_ref().map(ObserverMaterialCursor::completed_tick);
-        let mut qualification = None;
-        let result = (|| {
-            let reader = reader.map_err(|error| error.to_string())?;
-            if let Some(work) = audit_work {
-                let (prepared, candidate) = work.read(reader, &requested, &mut cursor)?;
-                qualification = Some(candidate);
-                return Ok(prepared);
-            }
-            // A known-only refresh has no material cursor. Preserve the private
-            // authenticated cursor for the next qualification boundary.
-            let snapshot = if qualified && requested.perspective == Perspective::PlayerKnowledge {
-                reader.snapshot(requested.campaign, requested.tick)
-            } else {
-                reader.snapshot_with_cursor(requested.campaign, requested.tick, &mut cursor)
-            };
-            snapshot
-                .map(PreparedObservation::new)
-                .map_err(|error| error.to_string())
-        })();
-        bevy::log::info!(target: "babylon_client::timing",
-            stage = "authenticated_observer_read",
-            resumed_after = ?resumed_after,
-            campaign = %requested.campaign.as_uuid(),
-            tick = requested.tick,
-            generation = requested.generation,
-            perspective = ?requested.perspective,
-            elapsed_us = started.elapsed().as_micros(),
-            success = result.is_ok(),
-            "observer read completed");
-        ObservationRead {
-            result,
-            cursor,
-            qualification,
-        }
-    });
+    let cursor = if qualified
+        && requested.perspective == Perspective::PlayerKnowledge
+        && audit_work.is_none()
+    {
+        // Leave private history in the cache on known success, failure or stale drain.
+        ReadCursor::KnownPreview
+    } else {
+        ReadCursor::Returned(cache.cursor.take().map(Box::new))
+    };
+    let task = AsyncComputeTaskPool::get()
+        .spawn(async move { read_frame(reader, audit_work, requested, cursor) });
     pending.0 = Some((context, task));
+}
+
+fn join_period_proof(
+    audit: &mut NativeAudit,
+    state: &ObserverSession,
+    frame: &ObserverFrame,
+    cache: &mut ObservationCache,
+) {
+    if state.quit_requested {
+        audit.refuse_period_proof("period_proof_quit");
+        return;
+    }
+    match audit.join_period_proof(state, frame.for_session(state)) {
+        Ok(Some(cursor)) => cache.cursor = Some(cursor),
+        Ok(None) => {}
+        Err(error) => {
+            bevy::log::error!(reason = %error, "private period proof publication refused");
+        }
+    }
+}
+
+fn capture_installed_known(
+    audit: &mut NativeAudit,
+    state: &ObserverSession,
+    frame: &ObserverFrame,
+    presentation_read_elapsed_ns: u64,
+) -> Result<(), String> {
+    let snapshot = frame
+        .for_session(state)
+        .ok_or_else(|| "native installed presentation absent".to_string())?;
+    audit.installed_known(state, snapshot, presentation_read_elapsed_ns)
 }
 
 pub(crate) fn collect_observation(
@@ -1251,6 +1452,10 @@ pub(crate) fn collect_observation(
     ui: Res<ObserverUiState>,
     mut qualification: Option<ResMut<NativeAudit>>,
 ) {
+    let quitting = state.quit_requested && qualification.is_some();
+    if let Some(audit) = qualification.as_deref_mut() {
+        join_period_proof(audit, &state, &frame, &mut cache);
+    }
     let Some((context, task)) = &mut pending.0 else {
         return;
     };
@@ -1259,35 +1464,82 @@ pub(crate) fn collect_observation(
     };
     let context = context.clone();
     pending.0 = None;
+    if quitting {
+        return;
+    }
     if !state.accepts(&context) {
+        if let Some(audit) = qualification
+            .as_deref_mut()
+            .filter(|a| a.proof_reading(&context))
+        {
+            audit.refuse_period_proof("period_proof_context_changed");
+        }
         return;
     }
     match result.result {
-        Ok(snapshot) => {
+        Ok(ObservationOutput::PeriodProof(candidate)) => {
+            if let Some(audit) = qualification.as_deref_mut() {
+                let cursor = result.cursor.into_material();
+                if let Err(error) = audit.proof_read_finished(&state, *candidate, cursor) {
+                    audit.refuse_period_proof("period_proof_private_read_failed");
+                    bevy::log::error!(reason = %error, "private period proof refused");
+                    return;
+                }
+                join_period_proof(audit, &state, &frame, &mut cache);
+            }
+        }
+        Ok(ObservationOutput::Frame { prepared, source }) => {
             let installed = install_observation(
                 &mut state,
                 &context,
-                snapshot,
+                *prepared,
                 &mut frame,
                 ui.stop_on_delivery,
             );
             if installed {
-                if let Some(candidate) = result.qualification {
+                if let FrameSource::Qualified(candidate) = source {
                     let published = qualification
                         .as_deref_mut()
                         .ok_or_else(|| "native audit publication capability absent".to_string())
-                        .and_then(|audit| audit.commit(&state, candidate));
+                        .and_then(|audit| audit.commit(&state, *candidate));
                     if let Err(error) = published {
                         state.fail(error);
                         return;
                     }
+                } else if let FrameSource::Ordinary {
+                    presentation_read_elapsed_ns,
+                } = source
+                {
+                    if let Some(audit) = qualification
+                        .as_deref_mut()
+                        .filter(|a| a.live_known_close(&state))
+                    {
+                        let capture = capture_installed_known(
+                            audit,
+                            &state,
+                            &frame,
+                            presentation_read_elapsed_ns,
+                        );
+                        if let Err(error) = capture {
+                            state.fail(error);
+                            return;
+                        }
+                    }
                 }
-                cache.cursor = result.cursor;
+                result.cursor.install(&mut cache);
             }
         }
         Err(error) => {
+            if let Some(audit) = qualification
+                .as_deref_mut()
+                .filter(|a| a.proof_reading(&context))
+            {
+                audit.refuse_period_proof("period_proof_private_read_failed");
+                bevy::log::error!(reason = %error, "private period proof read refused");
+                return;
+            }
             // Reader failures leave the previously authenticated cursor intact.
-            cache.cursor = result.cursor;
+            result.cursor.install(&mut cache);
             bevy::log::error!(target: "babylon_client::timing",
                 campaign = %context.campaign.as_uuid(),
                 tick = context.tick,
@@ -1365,6 +1617,7 @@ pub(crate) fn playback(
     mut clock: ResMut<PlaybackClock>,
     mut state: ResMut<ObserverSession>,
     mut qualification: Option<ResMut<NativeAudit>>,
+    mut interlock: Option<ResMut<PlayInterlock>>,
 ) {
     if state.quit_requested {
         return;
@@ -1382,7 +1635,24 @@ pub(crate) fn playback(
         clock.elapsed += time.delta_secs_f64();
         if clock.elapsed >= state.periods_per_second.recip() {
             clock.elapsed = 0.0;
-            send_advance(&pipe, &mut state, qualification.as_deref_mut());
+            if interlock
+                .as_ref()
+                .is_some_and(|lock| !lock.allows_enqueue(&state))
+            {
+                state.pause_playback();
+                return;
+            }
+            if let Some(id) = send_advance(&pipe, &mut state, qualification.as_deref_mut()) {
+                if let Some(lock) = interlock.as_deref_mut() {
+                    if lock.enqueued(&mut state, id) {
+                        if let Some(audit) = qualification.as_deref_mut() {
+                            if let Err(error) = audit.bounded_play_enqueued(&state, id) {
+                                state.fail(error);
+                            }
+                        }
+                    }
+                }
+            }
         }
     } else {
         clock.elapsed = 0.0;
@@ -1420,6 +1690,8 @@ pub(crate) fn send_campaign_switch(
 
 pub(crate) fn finish_shutdown(
     pipe: Option<Res<RuntimePipe>>,
+    qualification: Option<Res<NativeAudit>>,
+    pending: Option<Res<PendingObservation>>,
     mut state: ResMut<ObserverSession>,
     mut shutdown: ResMut<ShutdownProgress>,
     time: Res<Time<Real>>,
@@ -1437,7 +1709,11 @@ pub(crate) fn finish_shutdown(
             "Runtime shutdown timed out; reopen to reconcile committed progress.".into(),
         );
     }
+    let draining = qualification.is_some() && pending.is_some_and(|pending| pending.0.is_some());
     if pipe.is_none() || state.runtime_disconnected() || state.phase == SessionPhase::Closed {
+        if draining {
+            return;
+        }
         shutdown.exit_sent = true;
         exits.write(AppExit::Success);
         return;
@@ -1460,8 +1736,10 @@ pub(crate) fn finish_shutdown(
         Err(mpsc::TrySendError::Full(_)) => {}
         Err(mpsc::TrySendError::Disconnected(_)) => {
             state.disconnect("Runtime disconnected during shutdown; reopen to reconcile.".into());
-            shutdown.exit_sent = true;
-            exits.write(AppExit::Success);
+            if !draining {
+                shutdown.exit_sent = true;
+                exits.write(AppExit::Success);
+            }
         }
     }
 }
@@ -1509,5 +1787,280 @@ impl Plugin for ObserverIoPlugin {
                     .chain()
                     .in_set(ObserverSet::Install),
             );
+    }
+}
+
+#[cfg(test)]
+mod proof_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn completed_failure() -> Task<ObservationRead> {
+        let task = AsyncComputeTaskPool::get().spawn(async {
+            ObservationRead {
+                result: Err("controlled private proof refusal".into()),
+                cursor: ReadCursor::Returned(None),
+            }
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !task.is_finished() {
+            assert!(Instant::now() < deadline, "controlled proof task stalled");
+            std::thread::yield_now();
+        }
+        task
+    }
+
+    #[test]
+    fn known_preview_read_disposition_survives_actual_error_and_stale_collection() {
+        for stale in [false, true] {
+            qualification::with_source_fixture(|audit, mut session, _status| {
+                session.perspective = Perspective::PlayerKnowledge;
+                let context = session.context();
+                let result = read_frame(
+                    Err(ObserverEconomyError::MissingDsn),
+                    None,
+                    context.clone(),
+                    ReadCursor::KnownPreview,
+                );
+                assert!(matches!(result.cursor, ReadCursor::KnownPreview));
+                assert!(result.result.is_err());
+                if stale {
+                    session.generation += 1;
+                }
+                let key = ObservationCacheKey::from_session(&session, Some(&audit));
+                let mut cache = ObservationCache::default();
+                cache.reconcile(key.clone());
+                let config = "host=127.0.0.1 dbname=babylon user=babylon_observer"
+                    .parse()
+                    .expect("valid configuration only");
+                cache.full_reader = Some(
+                    ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver)
+                        .expect("pure target validation; no read is invoked"),
+                );
+                let mut app = App::new();
+                app.add_plugins((
+                    MinimalPlugins,
+                    crate::test_support::HeadlessVisibilityPlugin,
+                ))
+                .insert_resource(session)
+                .insert_resource(audit)
+                .insert_resource(cache)
+                .init_resource::<ObserverFrame>()
+                .init_resource::<ObserverUiState>()
+                .add_systems(Update, (start_observation, collect_observation).chain());
+                let task = AsyncComputeTaskPool::get().spawn(async move { result });
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while !task.is_finished() {
+                    assert!(Instant::now() < deadline, "controlled known read stalled");
+                    std::thread::yield_now();
+                }
+                app.insert_resource(PendingObservation(Some((context, task))));
+                app.update();
+                assert!(app.world().resource::<PendingObservation>().0.is_none());
+                let cache = app.world().resource::<ObservationCache>();
+                assert!(cache.key.as_ref() == Some(&key));
+                assert_eq!(
+                    cache
+                        .full_reader
+                        .as_ref()
+                        .expect("retained actual owner")
+                        .visibility(),
+                    ObserverVisibility::FullObserver
+                );
+                assert_eq!(
+                    app.world().resource::<ObserverSession>().phase,
+                    if stale {
+                        SessionPhase::Ready
+                    } else {
+                        SessionPhase::Failed
+                    }
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn quit_drains_private_task_before_clearing_cache_or_exiting() {
+        for archive_first in [false, true] {
+            let (directory, mut audit, mut session, frame) =
+                qualification::installed_close_fixture();
+            if archive_first {
+                session.archive_verified_tick = 1;
+                audit
+                    .advance_archive_progress(&session)
+                    .expect("matching Archive");
+            }
+            audit.request_period_proof(&session, 7).expect("fence");
+            let (work, _) = audit
+                .take_proof_work(&session, frame.for_session(&session))
+                .expect("admitted read")
+                .expect("requested work");
+            drop(work);
+            let context = session.context();
+            let key = ObservationCacheKey::from_session(&session, Some(&audit));
+            let mut cache = ObservationCache::default();
+            cache.reconcile(key.clone());
+            let config = "host=127.0.0.1 dbname=babylon user=babylon_observer"
+                .parse()
+                .expect("valid configuration only");
+            cache.full_reader = Some(
+                ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver)
+                    .expect("pure target validation"),
+            );
+            let mut app = App::new();
+            app.add_plugins((
+                MinimalPlugins,
+                crate::test_support::HeadlessVisibilityPlugin,
+            ))
+            .insert_resource(session)
+            .insert_resource(audit)
+            .insert_resource(frame)
+            .insert_resource(cache)
+            .init_resource::<ObserverUiState>()
+            .init_resource::<ShutdownProgress>()
+            .add_message::<AppExit>()
+            .add_systems(
+                Update,
+                (start_observation, collect_observation, finish_shutdown).chain(),
+            );
+            let task = AsyncComputeTaskPool::get().spawn(async {
+                bevy::tasks::futures_lite::future::pending::<ObservationRead>().await
+            });
+            app.insert_resource(PendingObservation(Some((context.clone(), task))));
+            app.world_mut()
+                .resource_mut::<ObserverSession>()
+                .quit_requested = true;
+            app.update();
+            assert!(
+                app.world().resource::<PendingObservation>().0.is_some(),
+                "the admitted blocking read must be drained after Quit"
+            );
+            assert!(!app.world().resource::<ShutdownProgress>().exit_sent);
+            assert!(app.world().resource::<ObservationCache>().key == Some(key));
+            assert!(app
+                .world()
+                .resource::<ObservationCache>()
+                .full_reader
+                .is_some());
+            assert_eq!(
+                app.world()
+                    .resource::<NativeAudit>()
+                    .period_proof_outcome(7),
+                Some(Err("period_proof_quit"))
+            );
+            app.world_mut().resource_mut::<PendingObservation>().0 =
+                Some((context, completed_failure()));
+            app.update();
+            assert!(app.world().resource::<PendingObservation>().0.is_none());
+            assert!(app.world().resource::<ShutdownProgress>().exit_sent);
+            assert!(!directory.0.join("material-1.json").exists());
+            assert!(!directory.0.join("advance-1.json").exists());
+            app.update();
+            assert!(app.world().resource::<ObservationCache>().key.is_none());
+        }
+    }
+
+    #[test]
+    fn private_proof_drain_preserves_frame_context_and_prefix_for_both_archive_orders() {
+        use bevy::ecs::system::RunSystemOnce;
+
+        for archive_first in [false, true] {
+            for fault in ["private_refusal", "generation", "perspective"] {
+                let (directory, mut audit, mut session, frame) =
+                    qualification::installed_close_fixture();
+                if archive_first {
+                    session.archive_verified_tick = 1;
+                    audit
+                        .advance_archive_progress(&session)
+                        .expect("accepted Archive first");
+                }
+                audit
+                    .request_period_proof(&session, 7)
+                    .expect("explicit private fence");
+                let (work, _) = audit
+                    .take_proof_work(&session, frame.for_session(&session))
+                    .expect("one admitted private task")
+                    .expect("requested work");
+                drop(work);
+                let context = session.context();
+                let old_frame = frame.0.clone();
+                let key = ObservationCacheKey::from_session(&session, Some(&audit));
+                let mut cache = ObservationCache::default();
+                cache.reconcile(key.clone());
+                let mut app = App::new();
+                app.add_plugins((
+                    MinimalPlugins,
+                    crate::test_support::HeadlessVisibilityPlugin,
+                ))
+                .insert_resource(session)
+                .insert_resource(audit)
+                .insert_resource(frame)
+                .insert_resource(cache)
+                .init_resource::<ObserverUiState>()
+                .init_resource::<DossierRefresh>()
+                .add_systems(Update, (start_observation, collect_observation).chain());
+                let task = AsyncComputeTaskPool::get().spawn(async {
+                    bevy::tasks::futures_lite::future::pending::<ObservationRead>().await
+                });
+                app.insert_resource(PendingObservation(Some((context.clone(), task))));
+                app.update();
+                assert!(app.world().resource::<PendingObservation>().0.is_some());
+                assert!(app
+                    .world()
+                    .resource::<NativeAudit>()
+                    .period_proof_outcome(7)
+                    .is_none());
+                if !archive_first {
+                    app.world_mut()
+                        .run_system_once(
+                            |mut session: ResMut<ObserverSession>,
+                             mut refresh: ResMut<DossierRefresh>,
+                             mut audit: ResMut<NativeAudit>| {
+                                apply_archive_progress(&mut session, &mut refresh, 1, 1)
+                                    .expect("later Archive");
+                                audit
+                                    .advance_archive_progress(&session)
+                                    .expect("same original Archive clock");
+                            },
+                        )
+                        .expect("runtime Archive consumer");
+                    app.update();
+                    assert!(app
+                        .world()
+                        .resource::<NativeAudit>()
+                        .period_proof_outcome(7)
+                        .is_none());
+                }
+                match fault {
+                    "generation" => {
+                        app.world_mut().resource_mut::<ObserverSession>().generation += 1;
+                    }
+                    "perspective" => {
+                        app.world_mut()
+                            .resource_mut::<ObserverSession>()
+                            .perspective = Perspective::FullObserver;
+                    }
+                    "private_refusal" => {}
+                    _ => unreachable!(),
+                }
+                app.world_mut().resource_mut::<PendingObservation>().0 =
+                    Some((context, completed_failure()));
+                app.update();
+                let audit = app.world().resource::<NativeAudit>();
+                assert_eq!(
+                    audit.period_proof_outcome(7),
+                    Some(Err(if fault == "private_refusal" {
+                        "period_proof_private_read_failed"
+                    } else {
+                        "period_proof_context_changed"
+                    }))
+                );
+                assert!(!audit.can_arm_play(app.world().resource::<ObserverSession>()));
+                assert_eq!(app.world().resource::<ObserverFrame>().0, old_frame);
+                assert!(app.world().resource::<ObservationCache>().key == Some(key));
+                assert!(!directory.0.join("material-1.json").exists());
+                assert!(!directory.0.join("advance-1.json").exists());
+            }
+        }
     }
 }

@@ -464,12 +464,27 @@ Defer marginal storage redesign when measured development limits allow play.
 The 23 MB storage target remains an optimization target.
 The earlier 10 MB ambition is not an acceptance gate.
 
+* Ordinary national P1–P3 warm response: at most thirty seconds for each
+  complete usable endpoint.
 * Focused economic and game play controls: under sixty seconds, excluding compilation.
 * National committed advance: aim for sixty to ninety seconds. The p95 limit is 120 seconds.
 * Cold load: under 180 seconds, with visible progress.
 * National smoke check: two periods and recovery within 900 seconds.
 * Full 52-period qualification: preferably under four hours, including recovery.
 
+
+On 11 November 2026, the Director changed the ordinary warm limit from ten to
+thirty seconds. Measure Advance input through a useful dated report or
+legitimate pending brief, rendered evidence and usable next controls.
+Each of the first three samples at 1366×768 Standard must meet thirty seconds.
+Three samples do not prove p95. Measure startup and recovery separately.
+
+The earlier three-close run recorded 10.703, 12.345 and 10.594 seconds.
+Those measurements describe their recorded source and workload.
+The changed limit reports no speed improvement. Keep the historical
+ten-second failures unchanged. Every other benchmark, memory, storage and
+correctness limit stays the same. After final source meets the agreed limits,
+continue game play qualification and defer optional performance work.
 
 The four-hour preference cannot truncate required proof. One advance cannot
 prove p95.
@@ -491,11 +506,98 @@ Native aid replies encode money as canonical decimal strings and decode it as
 exact signed 128-bit integers. Numeric tokens and malformed or overflowing
 strings refuse. Canonical engine receipts keep their existing encoding.
 
-The optional national playable qualification uses the same session path for
-campaign admission, aid commitments, advances and recovery. It verifies actual
-committed receipt families through ``ObserverEconomyReader`` with a separate
-full-observer credential. The reader authenticates the foundation, complete
-history, current and previous envelopes, and committed identity before exposing
+Native national qualification requires two serial members of a named workload:
+``normal_play`` for ordinary timing and ``memory_capture`` for complete memory
+coverage (ADR294). ``smoke-01`` covers two committed periods and ``walk-01`` ten.
+Both members use the same session path, decisions, controls, Play/Pause,
+reports, Archive and reopens. Each walk repeats opening New, pending Open and
+completed Open in distinct cold processes. The longer walk has its own elapsed
+time and cannot claim the two-period smoke ceiling.
+
+Policy v6 keeps cold open/reopen below 180 seconds and advances at most
+120 seconds. Archive and production reads each take at most 180 seconds.
+Focused controls take at most 60 seconds and the two-period smoke at most
+900 seconds. Normal play constructs no sampler or capture lifecycle.
+
+Captured raw phase durations are diagnostic,
+with the existing finite 900-second operation watchdog and existing control and
+cleanup watchdogs. Capture retains full creation, period and recovery coverage,
+source and executable admission, exact process/backend identity, authority and
+restoration.
+RSS plus ``hugetlb`` must stay at most 10,000,000,000 bytes.
+The largest gap between samples must stay at most five seconds. No freeze
+subtraction or synthetic zero-memory record can pass either gate.
+
+Each member owns a new database and private XDG state under the single common
+lease. One fresh canonical UUID4 belongs only to its two empty databases.
+
+The final join compares source closure, actual role-to-binary digests, inputs,
+policy, horizon and foundations. Exact nonce-bearing command, commitment,
+receipt and marker joins remain inside each member. Cross-member comparison
+derives ordered actual decision semantics and exact selected allocations from
+those authenticated bytes. Legitimate nonce differences produce different
+raw command hashes.
+Restart and recovery preserve functional state locally.
+
+Each member independently restores and verifies its logical dump, retains its
+physical archives and proves clean stop and retirement. Final evaluation
+rereads both bundles. Neither member alone can qualify.
+
+For an audited positive live PlayerKnowledge close, manual Step and bounded Play
+install the ordinary restricted frame before private proof (ADR295). The driver keeps
+one accepted, strictly actionable organizer status, then requests
+``await_period_proof``. One existing observation task slot performs the private
+fold while the independent Archive worker can progress.
+
+The exact material and Aid candidate joins matching accepted Archive completion
+before material and its referencing Advance publish. Custody and the authenticated
+cursor install before the successful reply enters the local queue. This
+acknowledges local queue acceptance, not peer receipt. The next qualified source
+remains locked through pending or refused proof. Quit refuses publication and
+drains the task before qualified AppExit. Original clocks continue throughout.
+
+Qualified KnownPreview work leaves the cache-owned FullObserver admission owner
+and private cursor untouched on success, error or stale results. The private
+proof extends the contiguous authenticated prefix. P0 and every cold opening and
+reopen keep full authentication. Ordinary, unbounded and unaudited play keep their
+existing behavior. This schedule adds no mechanics, authority, visible debug
+control or telemetry backend.
+
+Both trace consumers check the causal sequence: close cause, unique accepted
+strictly actionable status, then matching successful fence. They count accepted
+statuses before validating identity and absence of proof. Campaign, epoch,
+foundation, policy, world, marker, envelope, original Advance and accepted-command
+custody remain exact. Enqueue-to-commit must fit the original close-to-ready
+interval. Enqueue-to-commit plus Archive must fit the later close-to-fence interval.
+The whole clock and independent Archive, storage, decision and restart joins
+remain mandatory.
+
+The fence uses the existing finite 900-second long operation watchdog. The
+focused UI deadline does not apply to this proof. Its overlap has no guaranteed
+speedup. The existing TIMINGS candidate event records whether the client accepted
+Archive completion before candidate collection. Both positive arrival orders
+need actual native acceptance.
+
+The current private startup, input, response and trace formats are v5.
+``NativeRunEvidence`` and its result are v6 with scope
+``native_material_timing_recovery_join_v6``. ``CompletedMember`` v1,
+``NativePairEvidence`` v1 and final report v8 remain unchanged. Material v5,
+Advance v1 and recovery v2 keep their meanings.
+
+The central ``RUN_PARENT`` resolver places the pair at
+``qualification-14/<workload>/<mode>/`` and the unpaired SQL fixture at
+``qualification-14/sql-01``. Earlier namespaces, source and binaries remain
+intact. Unsupported old native formats refuse before writes, without a
+compatibility path. Non-native material-only evaluation remains separate.
+
+The :doc:`operator guide </how-to/debug-simulation-outcomes>` describes the public
+paired producer and evaluator. Reports and Linear own actual acceptance.
+
+The playable consumer verifies campaign admission, aid commitments, advances
+and recovery. It authenticates committed receipt families through
+``ObserverEconomyReader`` with a separate full-observer credential. The reader
+authenticates the foundation, complete history, current and previous envelopes,
+and committed identity before exposing
 receipts and the closing period's household contribution debits. Preview readers
 have no authority to read them. Ordinary snapshots do not copy these vectors.
 
@@ -543,7 +645,7 @@ it. The shorter smoke records this witness without claiming sustained renewal.
 
 The national development storage benchmark has a Designed ceiling of
 40,000,000 bytes per committed tick, recorded in
-``contracts/national_storage_qualification_v5.json``. It reports the separate
+``contracts/national_storage_qualification_v6.json``. It reports the separate
 23,000,000-byte optimization target and the longer-term total-save result.
 Count all retained campaign relations and indexes, including receipts, graph
 history and checkpoint growth.
@@ -557,8 +659,9 @@ recovery intervals separately. Shrinking another relation cannot conceal a
 growing history or unlisted allocation. Parent totals already include their
 TOAST heap and indexes.
 
-Policy version five records this measurement contract and separate material
-register and production-evidence byte budgets.
+Policy version six keeps this measurement contract and separate material
+register and production-evidence byte budgets. It also sets the combined
+running-game memory ceiling and largest allowed sample gap.
 Retained earlier results keep their captured policy and evaluator.
 
 ADR273 preserves the earlier interim decision. ADR280 owns current development

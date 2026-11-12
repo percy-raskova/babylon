@@ -138,6 +138,7 @@ fn organizer(refuses_remote: bool) -> OrganizerConfig {
     controlled.commitments[0].hours = 2;
     cfg.contact_hours = 2;
     cfg.aid_bindings[0].coordination_hours = 2;
+    cfg.aid_bindings[0].maximum_food_quantity = 1;
     let mut participant = cfg
         .participants
         .iter()
@@ -179,4 +180,32 @@ pub(super) fn session(refuses_remote: bool) -> Session {
         organizer(refuses_remote),
     )
     .expect("the fixture opens a session")
+}
+
+/// Distinct partner authorities share one real recipient household and food need.
+pub(super) fn overlapping_session() -> Session {
+    let mut materials = opening();
+    materials.catalog.aid_mandates[1].recipient = organizer_aid_fixture::recipient();
+    let mut config = organizer(false);
+    config.partner_response_hours = 1;
+    for binding in &mut config.aid_bindings {
+        binding.coordination_hours = 1;
+    }
+    config.aid_bindings[1].recipient_principal_id = organizer_aid_fixture::recipient().as_bytes();
+    let OrganizerTimeBindingMode::Household { bindings } = &mut config.time_binding else {
+        unreachable!()
+    };
+    bindings
+        .iter_mut()
+        .find(|row| row.contributor_id == 205)
+        .expect("remote alias")
+        .principal_id = organizer_aid_fixture::recipient().as_bytes();
+    organizer_aid_fixture::try_session(
+        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("Michigan foundation"),
+        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
+        materials,
+        config,
+    )
+    .expect("supported shared-household capture")
 }

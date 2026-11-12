@@ -7,6 +7,7 @@
 //! Keyboard and pointer controls share admission and are checked again on apply.
 
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::OrganizerView;
 use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
 
 use bevy::ecs::system::SystemParam;
@@ -28,7 +29,7 @@ use crate::observer_layout::ObserverRegion;
 use crate::observer_ui::ObserverCommand;
 use crate::observer_ui::{ObserverFeedback, ObserverFontRole, ObserverFrame, ObserverUiState};
 use crate::organizer::ui::OrganizerAction;
-use crate::organizer::ui::OrganizerArchiveRequested;
+use crate::organizer::ui::{OrganizerArchiveRequested, OrganizerArchiveTarget};
 use crate::organizer::OrganizerClient;
 use crate::palette;
 use crate::ui::dossier_compose;
@@ -212,6 +213,19 @@ pub enum DossierFetchState {
 struct DossierPresentation {
     cursor: Option<ArchiveChangeCursor>,
     details_open: bool,
+    technical_open: bool,
+}
+
+impl DossierPresentation {
+    fn signal_detail(&self) -> SignalDetailLevel {
+        if self.details_open && self.technical_open {
+            SignalDetailLevel::Technical
+        } else if self.details_open {
+            SignalDetailLevel::Expanded
+        } else {
+            SignalDetailLevel::Collapsed
+        }
+    }
 }
 
 /// The decision that opened this reading remains reachable while navigating its pages.
@@ -483,6 +497,21 @@ struct DossierReadIdentity<'w> {
     frame: Option<Res<'w, ObserverFrame>>,
 }
 
+fn disclosed_organization(view: &OrganizerView, actor_id: u64) -> Option<&str> {
+    if actor_id == view.actor_id {
+        Some(&view.organization_label)
+    } else if actor_id == view.workplace_partner_id {
+        Some(&view.workplace_partner_label)
+    } else if actor_id == view.neighborhood_partner_id {
+        Some(&view.neighborhood_partner_label)
+    } else {
+        view.aid_partners
+            .iter()
+            .find(|p| p.actor_id == actor_id)
+            .map(|p| p.label.as_str())
+    }
+}
+
 impl DossierReadIdentity<'_> {
     fn organizer_subject(&self, page: &DossierPageView) -> bool {
         let DossierPageView::Subject(request) = page else {
@@ -502,7 +531,12 @@ impl DossierReadIdentity<'_> {
             && request.scope.campaign == session.campaign
             && match request.kind.as_str() {
                 "workplace" => request.id == view.workplace_id.to_string(),
-                "organization" => request.id == view.actor_id.to_string(),
+                "organization" => request
+                    .id
+                    .parse()
+                    .ok()
+                    .and_then(|id| disclosed_organization(view, id))
+                    .is_some(),
                 _ => false,
             }
     }
@@ -827,6 +861,7 @@ enum DossierControl {
     More(DossierRequestScope, ArchiveChangeCursor),
     First(DossierRequestScope),
     Details(DossierRequestScope),
+    Technical(DossierRequestScope),
     OpenDetails(DossierRequestScope, u64),
 }
 impl DossierControl {
@@ -836,6 +871,7 @@ impl DossierControl {
             Self::Back(scope)
             | Self::More(scope, _)
             | Self::First(scope)
+            | Self::Technical(scope)
             | Self::Details(scope)
             | Self::OpenDetails(scope, _) => scope,
         }
@@ -991,6 +1027,7 @@ fn admitted_control(
         }
         DossierControl::First(_)
         | DossierControl::Details(_)
+        | DossierControl::Technical(_)
         | DossierControl::OpenDetails(_, _) => page.is_some(),
     }
 }
@@ -1326,21 +1363,33 @@ fn open_organizer_archive(
         return;
     }
     origin.0 = Some(session.campaign);
-    let Some(mut scope) = identity.scope(&DossierPageView::Card) else {
-        return;
-    };
-    let (kind, id, label) = if request.organization {
-        (
+    let (kind, id, label) = match request.target {
+        OrganizerArchiveTarget::Browse => {
+            *outputs.view = DossierPageView::Card;
+            *outputs.presentation = DossierPresentation::default();
+            outputs.projection.0 = None;
+            *outputs.fetch = DossierFetchState::Idle;
+            return;
+        }
+        OrganizerArchiveTarget::Collective => (
             ArchiveSubjectKind::Organization,
             view.actor_id,
             view.organization_label.clone(),
-        )
-    } else {
-        (
+        ),
+        OrganizerArchiveTarget::Workplace => (
             ArchiveSubjectKind::Workplace,
             view.workplace_id,
             view.workplace_label.clone(),
-        )
+        ),
+        OrganizerArchiveTarget::PartnerOrganization(id) => {
+            let Some(label) = disclosed_organization(view, id) else {
+                return;
+            };
+            (ArchiveSubjectKind::Organization, id, label.into())
+        }
+    };
+    let Some(mut scope) = identity.scope(&DossierPageView::Card) else {
+        return;
     };
     let Ok(target) = ArchivePageRef::try_new(kind, id.to_string()) else {
         return;
@@ -1348,12 +1397,7 @@ fn open_organizer_archive(
     scope.subject = target;
     *outputs.view = DossierPageView::Subject(Box::new(SubjectPageRequest {
         scope,
-        kind: if request.organization {
-            "organization"
-        } else {
-            "workplace"
-        }
-        .into(),
+        kind: kind.as_str().into(),
         id: id.to_string(),
         label: Some(label),
     }));
@@ -1454,6 +1498,11 @@ fn apply_page_requests(
             DossierControl::First(_) => presentation.cursor = None,
             DossierControl::Details(_) => {
                 presentation.details_open = !presentation.details_open;
+                presentation.technical_open = false;
+                continue;
+            }
+            DossierControl::Technical(_) => {
+                presentation.technical_open = !presentation.technical_open;
                 continue;
             }
             DossierControl::OpenDetails(_, _) => unreachable!("private opens are handled above"),
@@ -1618,11 +1667,7 @@ fn paint_zones(
                         .map(|signal| {
                             dossier_compose::retained_signal_segments(
                                 signal,
-                                if presentation.details_open {
-                                    SignalDetailLevel::Expanded
-                                } else {
-                                    SignalDetailLevel::Collapsed
-                                },
+                                presentation.signal_detail(),
                             )
                         })
                         .collect()
@@ -1637,9 +1682,15 @@ fn paint_zones(
                 }
             }
             DossierZone::Chronicle => {
-                let rows = read
-                    .filter(|_| presentation.details_open)
-                    .map_or_else(Vec::new, evidence_rows);
+                let rows =
+                    read.filter(|_| presentation.details_open)
+                        .map_or_else(Vec::new, |read| {
+                            if presentation.technical_open {
+                                technical_evidence_rows(read)
+                            } else {
+                                evidence_rows(read)
+                            }
+                        });
                 set_segment_rows(commands, entity, &rows);
             }
             DossierZone::Actions => paint_actions(
@@ -1658,6 +1709,31 @@ fn paint_zones(
 }
 
 fn evidence_rows(read: &ArchiveDossierRead) -> Vec<Vec<DossierSegment>> {
+    let mut rows = vec![vec![chronicle_header(&read.state)]];
+    let Some(page) = dossier::retained_page(read) else {
+        return rows;
+    };
+    rows.push(vec![DossierSegment {
+        text: format!("Content observed at period {}; published at period {}. Source: retained Archive publication. Exact citations are available in Technical evidence.",
+            page.content_source.tick(), page.effective_tick), tone: DossierTone::Dim,
+    }]);
+    let mut periods: Vec<_> = page
+        .changes
+        .changes
+        .iter()
+        .map(|change| change.publication_tick)
+        .collect();
+    periods.dedup();
+    for period in periods {
+        rows.push(vec![DossierSegment {
+            text: format!("A retained publication changed at period {period}. Historical field labels are unavailable; inspect the exact changes in Technical evidence."),
+            tone: DossierTone::BoneDim,
+        }]);
+    }
+    rows
+}
+
+fn technical_evidence_rows(read: &ArchiveDossierRead) -> Vec<Vec<DossierSegment>> {
     let mut rows = vec![vec![chronicle_header(&read.state)]];
     let Some(page) = dossier::retained_page(read) else {
         return rows;
@@ -1775,6 +1851,17 @@ fn paint_actions(
                 DossierControl::Details(scope.clone()),
             );
             if presentation.details_open {
+                spawn_control(
+                    commands,
+                    entity,
+                    if presentation.technical_open {
+                        "Hide technical evidence"
+                    } else {
+                        "Technical evidence"
+                    }
+                    .into(),
+                    DossierControl::Technical(scope.clone()),
+                );
                 if let Some(cursor) = &page.changes.next_cursor {
                     spawn_control(
                         commands,
@@ -2212,6 +2299,47 @@ pub(crate) mod tests {
         assert_eq!(organizer_ui_tests::draft_debug(&app), draft);
 
         assert_stale_completion_refused(&mut app, &expected);
+        assert_partner_archive_navigation(&mut app);
+    }
+
+    fn assert_partner_archive_navigation(app: &mut App) {
+        use babylon_persistence::runtime_session::OrganizerSnapshot;
+        use bevy::ecs::system::RunSystemOnce;
+        let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
+        )))
+        .expect("actual pending national snapshot");
+        let actor_id = captured.view.aid_partners[1].actor_id;
+        app.world_mut().resource_mut::<OrganizerClient>().view = Some(captured.view);
+        app.world_mut().trigger(OrganizerArchiveRequested {
+            target: OrganizerArchiveTarget::PartnerOrganization(actor_id),
+        });
+        let admitted = app
+            .world_mut()
+            .run_system_once(
+                |identity: DossierReadIdentity, page: Res<DossierPageView>| {
+                    identity.organizer_subject(&page)
+                },
+            )
+            .expect("real reader identity");
+        assert!(
+            admitted,
+            "retain this disclosed partner across period refresh"
+        );
+        let DossierPageView::Subject(request) = app.world().resource::<DossierPageView>() else {
+            panic!("expected a disclosed organization page");
+        };
+        assert_eq!(request.kind, "organization");
+        assert_eq!(request.id, actor_id.to_string());
+        app.world_mut().trigger(OrganizerArchiveRequested {
+            target: OrganizerArchiveTarget::Browse,
+        });
+        assert_eq!(
+            *app.world().resource::<DossierPageView>(),
+            DossierPageView::Card
+        );
+        assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
     }
 
     #[test]
@@ -2460,6 +2588,22 @@ pub(crate) mod tests {
                 }
             );
         }
+        assert!(!app
+            .world_mut()
+            .query::<&TextSpan>()
+            .iter(app.world())
+            .any(|span| span.0.contains("Exact retained narrative")));
+        let scope = app
+            .world()
+            .resource::<ActiveCountyDossier>()
+            .0
+            .as_ref()
+            .expect("admitted page")
+            .scope
+            .clone();
+        app.world_mut()
+            .write_message(DossierControl::Technical(scope));
+        app.update();
         assert!(app
             .world_mut()
             .query::<&TextSpan>()
@@ -2965,7 +3109,7 @@ pub(crate) mod tests {
             page: Some(page),
             reason: ArchiveDossierPending::ReceiptProcessing,
         };
-        let rows = evidence_rows(&installed.read);
+        let rows = technical_evidence_rows(&installed.read);
         assert_eq!(rows[0][0].text, "Changes await Archive completion.");
         let text: String = rows
             .iter()
@@ -2977,6 +3121,84 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn archive_technical_toggle_keeps_admitted_page_and_exact_citations() {
+        let (mut app, _) = evidence_route_app();
+        app.world_mut().write_message(OpenArchiveEvidence(1));
+        app.update();
+        let installed = app
+            .world()
+            .resource::<ActiveCountyDossier>()
+            .0
+            .as_ref()
+            .expect("admitted page")
+            .clone();
+        assert!(!app.world().resource::<DossierPresentation>().technical_open);
+        app.world_mut()
+            .write_message(DossierControl::Technical(installed.scope.clone()));
+        app.update();
+        assert!(app.world().resource::<DossierPresentation>().technical_open);
+        let retained = app
+            .world()
+            .resource::<ActiveCountyDossier>()
+            .0
+            .as_ref()
+            .expect("toggle must not clear admitted page");
+        assert_eq!(retained.scope, installed.scope);
+        let technical: String = technical_evidence_rows(&retained.read)
+            .iter()
+            .flatten()
+            .map(|part| part.text.as_str())
+            .collect();
+        assert!(
+            technical.contains("Exact retained narrative") && technical.contains(&"02".repeat(32))
+        );
+        let citation: String =
+            dossier_compose::retained_signal_segments(&signal(), SignalDetailLevel::Technical)
+                .iter()
+                .map(|part| part.text.as_str())
+                .collect();
+        assert!(citation.contains("observed-source") && citation.contains("exact/locator"));
+        app.world_mut().resource_mut::<DossierRefresh>().0 += 1;
+        app.world_mut()
+            .write_message(DossierControl::Technical(installed.scope));
+        app.update();
+        assert!(
+            app.world().resource::<DossierPresentation>().technical_open,
+            "stale toggle rejected"
+        );
+    }
+
+    #[test]
+    fn ordinary_archive_evidence_keeps_readable_values_without_technical_publication() {
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::nil()));
+        session.ready(1, Some("a".repeat(64)));
+        let installed = installed(&session, &"a".repeat(64));
+        let text: String = evidence_rows(&installed.read)
+            .iter()
+            .flatten()
+            .map(|part| part.text.as_str())
+            .collect();
+        assert!(
+            text.contains("observed at period 1"),
+            "dated observation: {text}"
+        );
+        assert!(
+            !text.contains("Content SHA256") && !text.contains("Original publication"),
+            "{text}"
+        );
+        let text: String =
+            dossier_compose::retained_signal_segments(&signal(), SignalDetailLevel::Expanded)
+                .iter()
+                .map(|part| part.text.as_str())
+                .collect();
+        assert!(text.contains("Original jobs label: 1469 annual average jobs"));
+        assert!(
+            !text.contains("Field:") && !text.contains("Locator:"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn retained_signal_labels_and_citations_are_not_reconstructed_from_atom_keys() {
         let signal = signal();
         let collapsed =
@@ -2984,7 +3206,7 @@ pub(crate) mod tests {
         assert_eq!(collapsed[0].text, "Original jobs label: ");
         assert_eq!(collapsed[1].text, "1469 annual average jobs");
         let expanded =
-            dossier_compose::retained_signal_segments(&signal, SignalDetailLevel::Expanded);
+            dossier_compose::retained_signal_segments(&signal, SignalDetailLevel::Technical);
         assert!(expanded[2].text.contains("observed-source"));
         assert!(expanded[2].text.contains("exact/locator"));
     }
@@ -2993,7 +3215,7 @@ pub(crate) mod tests {
     fn rendered_signal_rows_stack_and_wrap_without_losing_citation_bytes() {
         let rows = vec![dossier_compose::retained_signal_segments(
             &signal(),
-            SignalDetailLevel::Expanded,
+            SignalDetailLevel::Technical,
         )];
         let expected: String = rows[0].iter().map(|part| part.text.as_str()).collect();
         let mut app = App::new();

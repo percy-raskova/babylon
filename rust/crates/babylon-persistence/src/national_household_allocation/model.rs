@@ -111,6 +111,21 @@ pub struct NationalHouseholdAllocation {
     pub(super) counties: Vec<CountyHouseholdAllocation>,
 }
 impl NationalHouseholdAllocation {
+    /// Controlled counterexample only; never exposed by admitted production sources.
+    #[cfg(test)]
+    pub(crate) fn add_fixture_children(&mut self, county: CountyGeoid, count: u64) {
+        let row = self
+            .counties
+            .iter_mut()
+            .find(|row| row.county == county)
+            .expect("fixture county");
+        let budget = row.budgets.first_mut().expect("fixture budget");
+        budget.persons = budget
+            .persons
+            .checked_add(count)
+            .expect("fixture child margin");
+    }
+
     #[must_use]
     pub fn counties(&self) -> &[CountyHouseholdAllocation] {
         &self.counties

@@ -1,6 +1,7 @@
 """Independent storage budget, acknowledgment and restart evidence controls."""
 
 import hashlib
+import json
 from copy import deepcopy
 from pathlib import Path
 
@@ -556,8 +557,8 @@ def test_collector_v3_refuses_old_wrapper_and_malformed_descriptor_claims(fault)
 @pytest.mark.parametrize(
     "field,maximum",
     [
-        ("canonical_receipt_bytes", 874_709_881),
-        ("receipt_storage_bytes", 874_712_176),
+        ("canonical_receipt_bytes", 925_434_745),
+        ("receipt_storage_bytes", 925_437_040),
     ],
 )
 def test_current_receipt_cap_boundary(field, maximum):
@@ -576,7 +577,7 @@ def test_current_receipt_cap_boundary(field, maximum):
 
 def test_collector_current_receipt_requires_complete_37_family_framing():
     state, receipt, lookup = current_headers()
-    # Current V19 has 37 mandatory 59-byte storage family frames, including empty rows.
+    # Current receipts have 37 mandatory 59-byte storage family frames, including empty rows.
     minimum = len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59
     claim = package_claim_from_headers(1, state, receipt, lookup, 200, minimum, len(lookup) + 7)
     assert claim.receipt_storage_bytes == minimum
@@ -1448,7 +1449,7 @@ def playable_evidence(count=2):
             "status": "passed",
             "completed_original_commands": commands,
             "terminal_original_commands": commands,
-            "basis": "actual_consumed_support_independent_partner_response_and_authenticated_finite_debits",
+            "basis": "actual_qualifying_support_independent_partner_response_and_authenticated_finite_debits",
         },
         "independent_account_posting_audit": {
             "cash_and_in_kind_postings": "passed",
@@ -1460,6 +1461,8 @@ def playable_evidence(count=2):
                     "period": n,
                     "tick_content_hash": h,
                     "canonical_receipt_sha256": h,
+                    "version": 3,
+                    "partner_reports": [],
                     "selected_aid": [
                         {
                             "original_commitment": commands[n - 1],
@@ -1472,7 +1475,29 @@ def playable_evidence(count=2):
                     "independent_practices": [
                         {
                             "original_commitment": commands[n - 1],
-                            "consumed_support": True,
+                            "material_commitment_id": commands[n - 1],
+                            "practice_receipt_id": commands[n - 1],
+                            "first_response_receipt_id": commands[n - 1],
+                            "first_response_receipt_sha256": [91] * 32,
+                            "absent_contribution_use_ids": [],
+                            "contribution_postings": [
+                                {
+                                    "use_id": commands[n - 1],
+                                    "actor_id": 10,
+                                    "contributor_id": 1,
+                                    "hours": 1,
+                                }
+                            ],
+                            "mandate": commands[n - 1],
+                            "dispatch_period": n,
+                            "qualifying_received_support": True,
+                            "food_consumed": True,
+                            "food_consumed_quantity": 1,
+                            "food_consumption_period": n,
+                            "cash_received_micros": "0",
+                            "cash_received_period": None,
+                            "first_response_period": n,
+                            "partner_actor": 10,
                             "recipient_debited_hours": 1,
                             "finite_practice_completed": True,
                             "period": n,
@@ -1601,13 +1626,13 @@ def test_actual_material_playable_admission_keeps_window_and_fun_unqualified():
     assert "fun remain unqualified" in result["scope"]
 
 
-def operational_aid_evidence():
+def operational_aid_evidence(count=2):
     """Designed protocol evidence for remote dispatch1, pause2, arrival2.
 
     These evaluator controls do not establish actual engine execution. The
     finite engine scheduler has its own material replay controls.
     """
-    report = playable_evidence()[0]
+    report = playable_evidence(count=count)[0]
     command = report["aid_periods"][0]["commitment"]["commitment_id"]
     report["aid_periods"] = report["aid_periods"][:1]
     report["local_consumed"] = False
@@ -1621,6 +1646,7 @@ def operational_aid_evidence():
         audit["periods"][1]["independent_practices"][0],
     ):
         row["original_commitment"] = command
+    audit["periods"][1]["independent_practices"][0].update(mandate=command, dispatch_period=1)
     report["independent_finite_aid_practice"].update(
         status="incomplete",
         completed_original_commands=[command],
@@ -1646,7 +1672,12 @@ def test_operational_smoke_still_requires_actual_independent_aid_proof(defect):
     if defect == "debit":
         audit["periods"][1]["independent_practices"][0]["recipient_debited_hours"] = 0
     elif defect == "consumption":
-        audit["periods"][1]["independent_practices"][0]["consumed_support"] = False
+        audit["periods"][1]["independent_practices"][0].update(
+            qualifying_received_support=False,
+            food_consumed=False,
+            food_consumed_quantity=0,
+            food_consumption_period=None,
+        )
     elif defect == "delivery":
         audit["periods"][1]["selected_aid"] = []
     elif defect == "audit":
@@ -1843,7 +1874,12 @@ def test_playable_refuses_malformed_stale_or_disconnected_evidence(mutation):
         lambda r: r["independent_account_posting_audit"]["periods"][0].update(selected_aid=[]),
         lambda r: r["independent_account_posting_audit"]["periods"][0]["independent_practices"][
             0
-        ].update(consumed_support=False),
+        ].update(
+            qualifying_received_support=False,
+            food_consumed=False,
+            food_consumed_quantity=0,
+            food_consumption_period=None,
+        ),
         lambda r: r["independent_account_posting_audit"]["periods"][0]["independent_practices"][
             0
         ].update(recipient_debited_hours=0),
@@ -2656,7 +2692,7 @@ def test_cli_full_playable_memory_missing_cannot_claim_full_admission(
     assert output["material_playable"]["status"] == "incomplete"
 
 
-def native_join_evidence(directory):
+def native_join_evidence(directory, *, named_smoke=False):
     """Designed evidence-join control, not an observed native campaign."""
     import json
     from uuid import UUID
@@ -2664,23 +2700,44 @@ def native_join_evidence(directory):
     from tools.devtools.national_storage_qualification import CombinedMemoryEvidence, NativeTimings
 
     report, _storage, native, _baseline, opening, ticks, _reopens = playable_evidence()
+    if named_smoke:
+        report = operational_aid_evidence()
     h = "ab" * 32
     campaign = report["campaign"]
     timing = native.model_dump(mode="json")
     for phase in ("advances", "cold_reopens", "archive_catchups", "production_reads"):
         for row in timing[phase]:
             row["elapsed_ns"] = 3 if phase == "cold_reopens" else 1
-    timing["run"]["elapsed_ns"] = 1000
+    timing["run"]["elapsed_ns"] = 2_010_000_000
     native = NativeTimings.model_validate(timing)
     records = {}
     actions = []
     generation = 1
     epoch = 7
+    choice = "remote_aid"
 
     def state(tick, **extra):
         return {
+            "advance_request_id": None,
+            "period_proof": None,
             "campaign_id": campaign,
             "scope_epoch": epoch,
+            "play_interlock": None,
+            "installed_organizer": {
+                "period": tick,
+                "actor_id": 1,
+                "authority_id": [1] * 16,
+                "content_digest": [1] * 32,
+                "resource_digest": [2] * 32,
+                "standing": {"authorized": True, "partner_actor_id": 10, "paused_reason": None},
+                "available_hours": 2,
+                "contact_hours": 0,
+                "hold_reviewable": True,
+                "pause_reviewable": True,
+                "resume_reviewable": False,
+                "pending_freight": [],
+                "aid_response_history": [],
+            },
             "durable_tick": tick,
             "viewed_tick": tick,
             "generation": generation,
@@ -2693,7 +2750,12 @@ def native_join_evidence(directory):
             "organizer_pending": False,
             "organizer_status_due": False,
             "organizer_period": tick,
-            "choice": "remote_aid",
+            "choice": choice,
+            "focused_amount": None,
+            "amount_text": None,
+            "allocation_error": None,
+            "collection_allocation": "none",
+            "aid_allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
             "reviewed_command": None,
             "preview": None,
             "commitment": None,
@@ -2702,7 +2764,29 @@ def native_join_evidence(directory):
             "menu_open": False,
             "opening_stage": "Game",
             "primary_view": "Organizer",
-            "inspector": "None",
+            "inspector": "Closed",
+            "playing": False,
+            "periods_per_second": 1.0,
+            "perspective": "PlayerKnowledge",
+            # P0 has no committed world. Later controls use the same material
+            # identity as their boundary and checkpoint, not a second hash stub.
+            "world_hash": (
+                records[f"material-{tick}.json"]["facts"]["nominal_world_hash"] if tick else None
+            ),
+            # This Designed aid-only trace has no selected subject, site,
+            # county or workplace report. No such IDs or dates are fabricated.
+            "selected_subject": None,
+            "menu_page": "InGame",
+            "selected_report_id": None,
+            "selected_report_observed_period": None,
+            "selected_report_acquired_period": None,
+            "larger_interface": False,
+            "road_layer": "EconomyNetwork",
+            "network_sector": "All",
+            "selected_county": None,
+            "selected_site": None,
+            "production_details_open": False,
+            "production_reading": "Flow",
             **extra,
         }
 
@@ -2743,7 +2827,7 @@ def native_join_evidence(directory):
             for key, value in report["independent_account_posting_audit"].items()
             if key != "periods"
         }
-        aid_summary["accepted_original_commands"] = tick
+        aid_summary["accepted_original_commands"] = min(tick, len(report["aid_periods"]))
         if not tick:
             for key in (
                 "cash_and_in_kind_postings",
@@ -2754,7 +2838,7 @@ def native_join_evidence(directory):
         trade_summary = deepcopy(report["independent_trade_accounting"])
         trade_summary["periods"] = tick
         return {
-            "version": 4,
+            "version": 5,
             "scope": "authenticated_native_material_and_aid_facts_only",
             "runtime_epoch": epoch,
             "observation_generation": generation,
@@ -2776,6 +2860,7 @@ def native_join_evidence(directory):
     records["material-0.json"] = material(
         0,
         opening={
+            "partner_reports": [],
             "campaign": campaign,
             "foundation_sha256": h,
             "graph_foundation_sha256": "cd" * 32,
@@ -2792,7 +2877,7 @@ def native_join_evidence(directory):
     aid_names = []
     recovery_names = []
     for n, boundary in enumerate(report["boundaries"], 1):
-        choice = "remote_aid" if n == 1 else "local_aid"
+        choice = "remote_aid" if n == 1 else ("pause_standing" if named_smoke else "local_aid")
         command = {
             "campaign_id": list(UUID(campaign).bytes),
             "actor_id": 1,
@@ -2802,10 +2887,14 @@ def native_join_evidence(directory):
             "resource_digest": [2] * 32,
             "nonce": [n] * 16,
             "choice": choice,
+            "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
         }
+        if choice == "pause_standing":
+            command["allocation"] = "none"
         commitment = {"command": command, "commitment_id": [n] * 32, "resolves_period": n}
         preview = {
             "choice": choice,
+            "allocation": command["allocation"],
             "current_period": n - 1,
             "resolves_period": n,
             "available_hours": 2,
@@ -2814,33 +2903,34 @@ def native_join_evidence(directory):
             "replaces_standing_work": True,
             "observations": [],
         }
-        report["aid_periods"][n - 1].update(commitment=commitment, preview=preview)
         action(
             "review",
             "preview_admitted",
             state(n - 1, choice=choice, reviewed_command=command, preview=preview),
         )
         action("confirm", "acceptance_admitted", state(n - 1, choice=choice, commitment=commitment))
-        name = "aid-" + bytes([n] * 32).hex() + ".json"
-        aid_names.append(name)
-        records[name] = {
-            "version": 1,
-            "scope": "actual_native_aid_acceptance_witness_only",
-            "foundation_sha256": h,
-            "policy_sha256": h,
-            "tick_content_hash": h if n > 1 else None,
-            "commitment": commitment,
-            "review": {
-                "scope": {"epoch": epoch, "campaign_id": campaign},
-                "observation_generation": generation,
-                "request_id": n,
-                "command": command,
-                "admission": preview,
-                "before": {"view": {"period": n - 1}},
-            },
-        }
+        if choice != "pause_standing":
+            report["aid_periods"][n - 1].update(commitment=commitment, preview=preview)
+            name = "aid-" + bytes([n] * 32).hex() + ".json"
+            aid_names.append(name)
+            records[name] = {
+                "version": 1,
+                "scope": "actual_native_aid_acceptance_witness_only",
+                "foundation_sha256": h,
+                "policy_sha256": h,
+                "tick_content_hash": h if n > 1 else None,
+                "commitment": commitment,
+                "review": {
+                    "scope": {"epoch": epoch, "campaign_id": campaign},
+                    "observation_generation": generation,
+                    "request_id": n,
+                    "command": command,
+                    "admission": preview,
+                    "before": {"view": {"period": n - 1}},
+                },
+            }
         generation += 1
-        aid = {"version": 1, **report["independent_account_posting_audit"]["periods"][n - 1]}
+        aid = report["independent_account_posting_audit"]["periods"][n - 1]
         facts = {
             "version": 1,
             "campaign": campaign,
@@ -2901,7 +2991,33 @@ def native_join_evidence(directory):
                 json.dumps(records[f"material-{n}.json"]).encode()
             ).hexdigest(),
         }
-        action("step", "committed_and_installed", state(n))
+        early = state(n, archive_verified_tick=n - 1, advance_request_id=n)
+        action("step", "committed_and_installed", early)
+        action("status", "observed", deepcopy(early))
+        action(
+            "await_period_proof",
+            "period_proof_published",
+            state(
+                n,
+                advance_request_id=n,
+                period_proof={
+                    "campaign_id": campaign,
+                    "scope_epoch": epoch,
+                    "foundation_sha256": h,
+                    "policy_sha256": h,
+                    "generation": generation,
+                    "tick": n,
+                    "tick_content_hash": h,
+                    "world_hash": h,
+                    "envelope_digest": h,
+                    "request_id": n,
+                    "archive_verified_tick": n,
+                    "material_record_sha256": records[f"advance-{n}.json"][
+                        "material_record_sha256"
+                    ],
+                },
+            ),
+        )
         old_epoch = epoch
         epoch += 1
         generation += 1
@@ -2939,7 +3055,7 @@ def native_join_evidence(directory):
         action("reopen", "reopened_and_installed", state(n))
     action("quit", "quit_requested", state(2, quit_requested=True))
     records["native-controls.json"] = {
-        "version": 2,
+        "version": 5,
         "status": "completed",
         "campaign": campaign,
         "initial_tick": 0,
@@ -2955,9 +3071,15 @@ def native_join_evidence(directory):
         path.chmod(0o600)
         return {"name": name, "sha256": hashlib.sha256(raw).hexdigest()}
 
+    (directory / "inputs.sha256").write_bytes(b"Designed input manifest")
+    (directory / "inputs.sha256").chmod(0o600)
     manifest = {
-        "version": 4,
-        "scope": "native_material_timing_recovery_join_v4",
+        "version": 6,
+        "scope": "native_material_timing_recovery_join_v6",
+        "measurement_mode": "memory_capture",
+        "started_monotonic_ns": 0,
+        "completed_monotonic_ns": native.run.elapsed_ns,
+        "inputs_sha256": hashlib.sha256(b"Designed input manifest").hexdigest(),
         "status": "completed",
         "policy_sha256": h,
         "campaign": campaign,
@@ -3007,6 +3129,295 @@ def native_join_result(directory, manifest, report, native, memory, opening, tic
     )
 
 
+def test_native_trace_requires_period_proof_before_reopen(tmp_path):
+    from tools.devtools.national_native_evidence import _trace
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    *_values, records = native_join_evidence(tmp_path)
+    controls = records["native-controls.json"]
+    controls["actions"] = [
+        row for row in controls["actions"] if row["action"] != "await_period_proof"
+    ]
+    with pytest.raises(ValueError, match="proof"):
+        _trace(ControlsEvidence.model_validate(controls))
+
+
+def rewrite_native_artifact(directory, manifest, name, record):
+    raw = json.dumps(record).encode()
+    (directory / name).write_bytes(raw)
+    for entry in [
+        manifest["controls"],
+        manifest["opening"],
+        *manifest["boundaries"],
+        *manifest["advances"],
+        *manifest["archives"],
+        *manifest["recoveries"],
+    ]:
+        if entry["name"] == name:
+            entry["sha256"] = hashlib.sha256(raw).hexdigest()
+            return
+    raise AssertionError("fixture artifact is not admitted")
+
+
+def test_retained_period_proof_world_must_join_authenticated_material(tmp_path):
+    manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
+    controls = records["native-controls.json"]
+    epoch = next(
+        row["state"]["scope_epoch"] for row in controls["actions"] if row["action"] == "step"
+    )
+    changed = 0
+    for row in controls["actions"]:
+        if row["action"] in ("step", "status", "await_period_proof") and (
+            row["state"]["durable_tick"],
+            row["state"]["scope_epoch"],
+        ) == (1, epoch):
+            changed += 1
+            row["state"]["world_hash"] = "fe" * 32
+            if row["state"]["period_proof"]:
+                row["state"]["period_proof"]["world_hash"] = "fe" * 32
+    assert changed == 3, "mutate the actual Step/ready/fence triple"
+    rewrite_native_artifact(tmp_path, manifest, "native-controls.json", controls)
+    with pytest.raises(ValueError, match="timing custody|world"):
+        native_join_result(tmp_path, manifest, report, native, memory, opening, ticks)
+
+
+@pytest.mark.parametrize(
+    ("consumer", "defect"),
+    [
+        ("smoke", "duplicate_ready"),
+        ("walk", "duplicate_ready"),
+        ("smoke", "after_fence_tie"),
+        ("walk", "after_fence_tie"),
+        ("smoke", "transient"),
+        ("walk", "transient"),
+        ("walk", "navigation"),
+    ],
+)
+def test_period_proof_has_one_ordered_ready_endpoint_and_protected_close(
+    tmp_path, consumer, defect
+):
+    from tools.devtools.national_native_evidence import _trace, _walk_trace
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    from tests.unit.tools.test_national_windowed_qualification import bounded_play_controls
+
+    if consumer == "smoke":
+        *_, records = native_join_evidence(tmp_path)
+        raw = records["native-controls.json"]
+        cause_index = next(i for i, a in enumerate(raw["actions"]) if a["action"] == "step")
+        ready_index = cause_index + 1
+        verify = _trace
+    else:
+        raw = bounded_play_controls().model_dump(mode="json")
+        ready_index = 4
+        verify = _walk_trace
+    actions = raw["actions"]
+    ready = deepcopy(actions[ready_index])
+    fence_index = ready_index + 1
+    if defect == "duplicate_ready":
+        duplicate = deepcopy(ready)
+        duplicate.update(
+            started_monotonic_ns=ready["completed_monotonic_ns"] + 1,
+            completed_monotonic_ns=ready["completed_monotonic_ns"] + 2,
+        )
+        actions.insert(fence_index, duplicate)
+    elif defect == "transient":
+        transient = deepcopy(ready)
+        transient["state"]["organizer_pending"] = True
+        transient.update(
+            started_monotonic_ns=ready["started_monotonic_ns"] - 2,
+            completed_monotonic_ns=ready["started_monotonic_ns"] - 1,
+        )
+        actions.insert(ready_index, transient)
+    elif defect == "after_fence_tie":
+        actions.pop(ready_index)
+        fence = actions[ready_index]
+        tie = fence["started_monotonic_ns"]
+        fence["completed_monotonic_ns"] = tie
+        ready.update(started_monotonic_ns=tie, completed_monotonic_ns=tie)
+        if consumer == "walk":
+            actions[3]["state"] = deepcopy(ready["state"])
+        actions.insert(ready_index + 1, ready)
+    else:
+        actions[3]["state"] = deepcopy(ready["state"])
+        previous = deepcopy(ready)
+        previous.update(
+            action="previous_period",
+            event="applied",
+            started_monotonic_ns=46,
+            completed_monotonic_ns=47,
+        )
+        previous["state"].update(viewed_tick=8, generation=3)
+        live = deepcopy(ready)
+        live.update(
+            action="return_live",
+            event="applied",
+            started_monotonic_ns=48,
+            completed_monotonic_ns=49,
+        )
+        live["state"]["generation"] = 4
+        for row in actions[ready_index:]:
+            row["state"]["generation"] = 4
+            if row["state"]["period_proof"]:
+                row["state"]["period_proof"]["generation"] = 4
+        actions[ready_index:ready_index] = [previous, live]
+    for sequence, row in enumerate(actions, 1):
+        row["sequence"] = sequence
+    controls = ControlsEvidence.model_validate(raw)
+    if defect == "transient":
+        closes, _ = verify(controls)
+        assert closes[0].actionable.sequence == ready_index + 2
+    else:
+        with pytest.raises(ValueError, match="proof|Play|ready"):
+            verify(controls)
+
+
+@pytest.mark.parametrize(
+    ("consumer", "defect"),
+    [("smoke", "published"), ("walk", "published"), ("smoke", "wrong_request")],
+)
+def test_first_strict_ready_cannot_be_filtered_before_endpoint_count(tmp_path, consumer, defect):
+    from tools.devtools.national_native_evidence import _trace, _walk_trace
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    from tests.unit.tools.test_national_windowed_qualification import bounded_play_controls
+
+    if consumer == "smoke":
+        *_, records = native_join_evidence(tmp_path)
+        raw = records["native-controls.json"]
+        verify = _trace
+        cause_action = "step"
+    else:
+        raw = bounded_play_controls().model_dump(mode="json")
+        verify = _walk_trace
+        cause_action = "pause"
+    actions = raw["actions"]
+    fence_index = next(i for i, row in enumerate(actions) if row["action"] == "await_period_proof")
+    ready_index = fence_index - 1
+    clean = actions[ready_index]
+    assert clean["action"] == "status" and clean["state"]["period_proof"] is None
+    fence = actions[fence_index]
+    assert fence["state"]["period_proof"] is not None
+    early = deepcopy(clean)
+    early.update(
+        started_monotonic_ns=clean["started_monotonic_ns"] - 2,
+        completed_monotonic_ns=clean["started_monotonic_ns"] - 1,
+    )
+    if defect == "published":
+        early["state"]["period_proof"] = deepcopy(fence["state"]["period_proof"])
+        early["state"]["archive_verified_tick"] = fence["state"]["archive_verified_tick"]
+        clean["state"]["archive_verified_tick"] = fence["state"]["archive_verified_tick"]
+    else:
+        early["state"]["advance_request_id"] += 100
+    actions.insert(ready_index, early)
+    for sequence, row in enumerate(actions, 1):
+        row["sequence"] = sequence
+    controls = ControlsEvidence.model_validate(raw)
+    cause = next(row for row in controls.actions if row.action == cause_action)
+    proof = next(row for row in controls.actions if row.action == "await_period_proof")
+    strict = [
+        row
+        for row in controls.actions
+        if cause.sequence < row.sequence < proof.sequence
+        and row.action == "status"
+        and row.event == "observed"
+        and row.reason is None
+        and row.state.period_actionable
+    ]
+    assert len(strict) == 2, "both actual accepted strict rows must enter endpoint selection"
+    assert strict[1].state.period_proof is None
+    if defect == "published":
+        assert strict[0].state.period_proof == proof.state.period_proof
+        assert strict[0].state.archive_verified_tick == proof.state.archive_verified_tick
+    else:
+        assert strict[0].state.advance_request_id != strict[1].state.advance_request_id
+    with pytest.raises(ValueError, match="proof|ready"):
+        verify(controls)
+
+
+def test_native_late_period_proof_extends_original_clock_without_extending_early_ready(tmp_path):
+    from tools.devtools.national_storage_qualification import NativeTimings
+
+    manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
+    record = records["advance-1.json"]
+    record["archive_elapsed_ns"] = 10
+    rewrite_native_artifact(tmp_path, manifest, "advance-1.json", record)
+    timing = native.model_dump(mode="json")
+    timing["archive_catchups"][0]["elapsed_ns"] = 10
+    actions = records["native-controls.json"]["actions"]
+    step = next(a for a in actions if a["action"] == "step")
+    fence = next(a for a in actions if a["action"] == "await_period_proof")
+    total = record["advance_elapsed_ns"] + record["archive_elapsed_ns"]
+    assert total > step["completed_monotonic_ns"] - step["started_monotonic_ns"]
+    assert total <= fence["completed_monotonic_ns"] - step["started_monotonic_ns"]
+    assert (
+        native_join_result(
+            tmp_path, manifest, report, NativeTimings.model_validate(timing), memory, opening, ticks
+        )["status"]
+        == "qualified"
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "reordered",
+        "duplicate",
+        "stale_generation",
+        "wrong_request",
+        "unaccepted_status",
+        "material_digest",
+        "archive_outside",
+        "memory_fence",
+    ],
+)
+def test_native_period_proof_join_refuses_broken_cause_ready_fence(tmp_path, fault):
+    from tools.devtools.national_storage_qualification import NativeTimings
+
+    manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
+    controls = records["native-controls.json"]
+    actions = controls["actions"]
+    fence = next(a for a in actions if a["action"] == "await_period_proof")
+    index = actions.index(fence)
+    if fault == "reordered":
+        actions[index - 1], actions[index] = actions[index], actions[index - 1]
+    elif fault == "duplicate":
+        actions.insert(index, deepcopy(fence))
+    elif fault == "stale_generation":
+        fence["state"]["generation"] += 1
+        fence["state"]["period_proof"]["generation"] += 1
+    elif fault == "wrong_request":
+        for row in actions[index - 2 : index + 1]:
+            row["state"]["advance_request_id"] += 100
+        fence["state"]["period_proof"]["request_id"] += 100
+    elif fault == "unaccepted_status":
+        actions[index - 1].update(event="refused", reason="control_stale_or_unavailable")
+    elif fault == "material_digest":
+        fence["state"]["period_proof"]["material_record_sha256"] = "fe" * 32
+    elif fault == "archive_outside":
+        records["advance-1.json"]["archive_elapsed_ns"] = 100_000
+        rewrite_native_artifact(tmp_path, manifest, "advance-1.json", records["advance-1.json"])
+        timing = native.model_dump(mode="json")
+        timing["archive_catchups"][0]["elapsed_ns"] = 100_000
+        native = NativeTimings.model_validate(timing)
+    elif fault == "memory_fence":
+        # Still within the original run wall, beyond the retained sampler.
+        shift = memory.interval_end_monotonic_ns - fence["started_monotonic_ns"] + 1
+        for row in actions[index:]:
+            row["started_monotonic_ns"] += shift
+            row["completed_monotonic_ns"] += shift
+    if fault in ("reordered", "duplicate"):
+        for sequence, row in enumerate(actions, 1):
+            row.update(
+                sequence=sequence,
+                started_monotonic_ns=sequence * 10,
+                completed_monotonic_ns=sequence * 10 + 5,
+            )
+    rewrite_native_artifact(tmp_path, manifest, "native-controls.json", controls)
+    with pytest.raises(ValueError):
+        native_join_result(tmp_path, manifest, report, native, memory, opening, ticks)
+
+
 def test_native_previous_evidence_format_cannot_be_relabelled(tmp_path):
     from tools.devtools.national_native_evidence import NativeRunEvidence
 
@@ -3038,15 +3449,18 @@ def test_native_runner_assembles_the_actual_consuming_report_without_state_recon
     manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
     run = object.__new__(runner.NativeRun)
     run.directory = tmp_path
+    run.mode = "memory_capture"
     run.policy_hash = manifest["policy_sha256"]
     run.campaign = manifest["campaign"]
     run._foundation = manifest["foundation_sha256"]
     run.periods = 2
-    run.started = time.monotonic_ns() - 10000
+    run.started = 0
+    monkeypatch.setattr(time, "monotonic_ns", lambda: native.run.elapsed_ns)
     run.opening = MaterialRecord.model_validate(records["material-0.json"])
     run.material = [MaterialRecord.model_validate(records[f"material-{i}.json"]) for i in (1, 2)]
     run.boundaries = [PlayableBoundary.model_validate(row) for row in report["boundaries"]]
     run.advances = [AdvanceRecord.model_validate(records[f"advance-{i}.json"]) for i in (1, 2)]
+    run.mixed_recovery = None
     run.recoveries = [
         (row["name"], RecoveryRecord.model_validate(records[row["name"]]))
         for row in manifest["recoveries"]
@@ -3060,6 +3474,11 @@ def test_native_runner_assembles_the_actual_consuming_report_without_state_recon
     ):
         (tmp_path / name).write_bytes(b"Designed custody control")
         raw_memory[key] = hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+
+    (tmp_path / "source-before.sha256").write_bytes(
+        (tmp_path / "combined-memory-source.sha256").read_bytes()
+    )
+    (tmp_path / "normal-binaries.json").write_bytes(b"Designed executable roster")
 
     def refuse_reconstruction(*_args, **_kwargs):
         raise AssertionError("report assembly must consume immutable native facts")
@@ -3265,7 +3684,7 @@ def test_native_cli_requires_real_material_and_memory_evidence(monkeypatch, caps
     with pytest.raises(SystemExit) as error:
         main()
     assert error.value.code == 2
-    assert "native qualification requires" in capsys.readouterr().err
+    assert "unrecognized arguments: --qualify-native" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -3393,136 +3812,545 @@ def test_native_opening_authenticates_its_exact_county_roster(tmp_path, fault):
         native_join_result(tmp_path, manifest, report, native, memory, opening, ticks)
 
 
-def test_native_evaluator_main_consumes_joined_components_and_enforces_refusal(
-    tmp_path, monkeypatch, capsys
-):
-    """Execute the real evaluator with Designed wires, never claim native play."""
+def test_cash_qualifies_practice_without_certifying_consumed_food():
+    report = operational_aid_evidence()
+    facts = report["independent_account_posting_audit"]["periods"]
+    response = facts[1]["independent_practices"].pop()
+    response.update(
+        dispatch_period=1,
+        period=1,
+        first_response_period=1,
+        food_consumed=False,
+        food_consumed_quantity=0,
+        food_consumption_period=None,
+        cash_received_micros="3",
+        cash_received_period=1,
+    )
+    facts[0]["independent_practices"] = [response]
+    facts[0]["selected_aid"][0].update(
+        outcome="CashGranted",
+        quantity=0,
+        cash_micros="3",
+        dispatch_period=1,
+        mandate=response["mandate"],
+    )
+    facts[1]["selected_aid"] = []
+    report["remote_consumed"] = False
+    result = playable_result(report)
+    assert result["operational_smoke_status"] == "qualified"
+    assert result["positive_aid_practice_status"] == "incomplete"
+    facts[0]["selected_aid"][0]["cash_micros"] = "4"
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+    facts[0]["selected_aid"] = []
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda row: row.pop("food_consumed"),
+        lambda row: row.update(consumed_support=True),
+        lambda row: row.update(food_consumption_period=1),
+        lambda row: row.update(food_consumed=False),
+        lambda row: row.update(cash_received_micros="3", cash_received_period=None),
+        lambda row: row.update(first_response_period=3),
+    ],
+    ids=[
+        "missing-food-fact",
+        "obsolete-alias",
+        "wrong-food-date",
+        "changed-food-flag",
+        "missing-cash-date",
+        "future-response",
+    ],
+)
+def test_support_audit_requires_strict_actual_food_and_cash_dates(mutation):
+    report = operational_aid_evidence()
+    mutation(report["independent_account_posting_audit"]["periods"][1]["independent_practices"][0])
+    with pytest.raises(ValueError):
+        playable_result(report)
+
+
+def test_current_aid_boundary_requires_v3_and_explicit_food_facts():
+    from tools.devtools.national_native_evidence import AidBoundary
+
+    period = playable_evidence()[0]["independent_account_posting_audit"]["periods"][0]
+    current = AidBoundary.model_validate(period)
+    assert current.independent_practices[0].food_consumed_quantity == 1
+    for version in (1, 2, True, "3"):
+        with pytest.raises(ValueError):
+            AidBoundary.model_validate({**period, "version": version})
+    for field in ("food_consumed", "cash_received_period", "first_response_period"):
+        missing = current.model_dump(mode="json")
+        missing["independent_practices"][0].pop(field)
+        with pytest.raises(ValueError):
+            AidBoundary.model_validate(missing)
+
+
+def retained_cash_evidence(consumed_quantity=1, count=2):
+    report = operational_aid_evidence(count=count)
+    facts = report["independent_account_posting_audit"]["periods"]
+    arrival = facts[1]["independent_practices"][0]
+    first = deepcopy(arrival)
+    first.update(
+        period=1,
+        first_response_period=1,
+        food_consumed=False,
+        food_consumed_quantity=0,
+        food_consumption_period=None,
+        cash_received_micros="3",
+        cash_received_period=1,
+    )
+    facts[0]["independent_practices"] = [first]
+    facts[0]["selected_aid"].append(
+        {
+            "original_commitment": first["original_commitment"],
+            "mandate": first["mandate"],
+            "dispatch_period": 1,
+            "outcome": "CashGranted",
+            "quantity": 0,
+            "cash_micros": "3",
+        }
+    )
+    arrival.update(
+        first_response_period=1,
+        qualifying_received_support=consumed_quantity > 0,
+        food_consumed=consumed_quantity > 0,
+        food_consumed_quantity=consumed_quantity,
+        food_consumption_period=2 if consumed_quantity else None,
+        finite_practice_completed=False,
+        outcome="aid_response_retained",
+        partner_actor=None,
+        partner_response="not_requested",
+        recipient_debited_hours=0,
+    )
+    report["remote_consumed"] = consumed_quantity > 0
+    if count > 2:
+        facts[-1]["independent_practices"] = facts[1]["independent_practices"]
+        facts[-1]["selected_aid"] = facts[1]["selected_aid"]
+        facts[1]["independent_practices"] = []
+        facts[1]["selected_aid"] = []
+        arrival.update(period=count, food_consumption_period=count if consumed_quantity else None)
+    return report
+
+
+@pytest.mark.parametrize("consumed_quantity", [0, 1])
+def test_retained_cash_response_uses_original_period_posting_not_arrival_period(consumed_quantity):
+    report = retained_cash_evidence(consumed_quantity)
+    facts = report["independent_account_posting_audit"]["periods"]
+    first = facts[0]["independent_practices"][0]
+    arrival = facts[1]["independent_practices"][0]
+    assert playable_result(report)["operational_smoke_status"] == "qualified"
+    assert first["food_consumed"] is False and first["food_consumption_period"] is None
+    assert arrival["cash_received_micros"] == "0" and arrival["cash_received_period"] is None
+    facts[0]["selected_aid"].pop()
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+def cash_only_producer_practice():
+    """Map the committed Rust close with the same fields as qualification_audit/aid/practice.rs."""
     import json
-    import sys
 
-    from tools.devtools.national_storage_qualification import main
-
-    manifest, report, native, memory, _opening, _ticks, records = native_join_evidence(tmp_path)
-    chosen = tmp_path / "policy.json"
-    chosen.write_text(json.dumps(policy().model_dump(mode="json")))
-    policy_hash = hashlib.sha256(chosen.read_bytes()).hexdigest()
-    manifest["policy_sha256"] = report["policy_sha256"] = policy_hash
-
-    def bind_policy(value):
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key == "policy_sha256":
-                    value[key] = policy_hash
-                else:
-                    bind_policy(child)
-        elif isinstance(value, list):
-            for child in value:
-                bind_policy(child)
-
-    for artifact in (
-        manifest["controls"],
-        manifest["opening"],
-        *manifest["boundaries"],
-        *manifest["advances"],
-        *manifest["archives"],
-        *manifest["recoveries"],
-        *manifest["aid_originals"],
-    ):
-        bind_policy(records[artifact["name"]])
-        if artifact["name"].startswith("advance-"):
-            period = records[artifact["name"]]["committed_tail"]["resolve_tick"]
-            records[artifact["name"]]["material_record_sha256"] = manifest["boundaries"][
-                period - 1
-            ]["sha256"]
-        raw = json.dumps(records[artifact["name"]]).encode()
-        (tmp_path / artifact["name"]).write_bytes(raw)
-        artifact["sha256"] = hashlib.sha256(raw).hexdigest()
-    memory_raw = memory.model_dump(mode="json")
-    memory_raw["policy_sha256"] = policy_hash
-    capture_files = {
-        "ownership": ("ownership_record_sha256", b"Designed ownership control\n"),
-        "combined-memory-source.sha256": ("source_manifest_sha256", b"Designed source control\n"),
-        "combined-memory-executables.json": (
-            "executable_manifest_sha256",
-            json.dumps(
-                {
-                    "version": 1,
-                    "roles": {
-                        role: ["ab" * 32]
-                        for role in ("native-client", "engine-runtime", "game-postgresql")
-                    },
-                }
-            ).encode(),
-        ),
-        "combined-memory-sampler-source.py": (
-            "capture_implementation_sha256",
-            b"# Designed sampler control\n",
-        ),
-        "combined-memory-tooling.json": (
-            "tooling_report_sha256",
-            json.dumps(
-                {
-                    "version": 1,
-                    "compilation_peak_rss_upper_bound_bytes": None,
-                    "external_test_tooling_peak_rss_upper_bound_bytes": None,
-                    "scope": "separate_tooling_not_running_game_compliance",
-                }
-            ).encode(),
-        ),
+    fixture = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"
+        ).read_bytes()
+    )
+    resolution = fixture["resolutions"][0]
+    support, practice = resolution["support"], resolution["practice"]
+    assert support["status"] == "not_requested"
+    assert support["cash_status"] == "granted"
+    assert practice["time_use"] == []
+    return fixture, {
+        "original_commitment": support["original_commitment_id"],
+        "material_commitment_id": support["material_commitment_id"],
+        "practice_receipt_id": practice["receipt_id"],
+        "first_response_receipt_id": practice["receipt_id"],
+        # Designed digest for this shape test. The live join hashes the SQL receipt bytes.
+        "first_response_receipt_sha256": [91] * 32,
+        "absent_contribution_use_ids": [],
+        "contribution_postings": [],
+        "mandate": support["mandate_id"],
+        "dispatch_period": support["dispatch_period"],
+        "period": practice["period"],
+        "qualifying_received_support": int(
+            support["material_postings"]["payer_cash_granted_micros"]
+        )
+        > 0,
+        "food_consumed": False,
+        "food_consumed_quantity": 0,
+        "food_consumption_period": None,
+        "cash_received_micros": support["material_postings"]["payer_cash_granted_micros"],
+        "cash_received_period": support["period"],
+        "first_response_period": resolution["pending"]["response"]["period"],
+        "partner_actor": practice["partner_actor_id"],
+        "partner_response": practice["partner_response"],
+        "outcome": practice["outcome"],
+        "recipient_debited_hours": 0,
+        "finite_practice_completed": practice["outcome"] == "aid_practice_completed",
     }
-    for name, (field, raw) in capture_files.items():
-        (tmp_path / name).write_bytes(raw)
-        memory_raw[field] = hashlib.sha256(raw).hexdigest()
-        if field in manifest:
-            manifest[field] = memory_raw[field]
-    _storage, _old_native, baseline, opening, ticks, reopens = smoke_evidence()
-    inputs = {
-        "native-report.json": manifest,
-        "playable.json": report,
-        "timings.json": native.model_dump(mode="json"),
-        "memory.json": memory_raw,
-        "baseline.json": baseline,
-        "opening.json": opening,
-        **{f"tick-{n}.json": row for n, row in enumerate(ticks, 1)},
-        **{f"reopen-{n}.json": row for n, row in enumerate(reopens, 1)},
-    }
-    for name, value in inputs.items():
-        (tmp_path / name).write_text(json.dumps(value))
-        (tmp_path / name).chmod(0o600)
-    arguments = [
-        "measure",
-        "--policy",
-        str(chosen),
-        "--baseline",
-        str(tmp_path / "baseline.json"),
-        "--opening",
-        str(tmp_path / "opening.json"),
-        "--ticks",
-        *(str(tmp_path / f"tick-{n}.json") for n in (1, 2)),
-        "--reopens",
-        *(str(tmp_path / f"reopen-{n}.json") for n in (1, 2)),
-        "--timings",
-        str(tmp_path / "timings.json"),
-        "--playable-report",
-        str(tmp_path / "playable.json"),
-        "--combined-memory-report",
-        str(tmp_path / "memory.json"),
-        "--native-report",
-        str(tmp_path / "native-report.json"),
-        "--qualify-native",
+
+
+def test_actual_cash_producer_inability_is_valid_incomplete_evidence():
+    from tools.devtools.national_native_evidence import AidBoundary
+
+    fixture, practice = cash_only_producer_practice()
+    report = operational_aid_evidence()
+    command = practice["original_commitment"]
+    report["aid_periods"][0]["commitment"] = fixture["accepted"]
+    audit = report["independent_account_posting_audit"]
+    first, later = audit["periods"]
+    first["independent_practices"] = [practice]
+    first["selected_aid"] = [
+        {
+            "original_commitment": command,
+            "mandate": practice["mandate"],
+            "dispatch_period": practice["dispatch_period"],
+            "outcome": "CashGranted",
+            "quantity": 0,
+            "cash_micros": practice["cash_received_micros"],
+        }
     ]
-    monkeypatch.setattr(sys, "argv", arguments)
-    assert main() == 0
-    result = json.loads(capsys.readouterr().out)
-    assert result["qualification_report_version"] == 7
-    assert result["native_window"]["status"] == "qualified"
-    assert result["native_window"]["enjoyment_status"] == "unqualified"
-    assert result["combined_running_game_memory"]["actual_52_period_status"] == "incomplete"
-    inputs["native-report.json"]["status"] = "incomplete"
-    records["native-controls.json"]["status"] = "incomplete"
-    raw = json.dumps(records["native-controls.json"]).encode()
-    (tmp_path / "native-controls.json").write_bytes(raw)
-    manifest["controls"]["sha256"] = hashlib.sha256(raw).hexdigest()
-    (tmp_path / "native-report.json").write_text(json.dumps(manifest))
-    assert main() == 1
-    assert json.loads(capsys.readouterr().out)["native_window"]["status"] == "incomplete"
+    later.update(selected_aid=[], independent_practices=[])
+    report["remote_consumed"] = False
+    report["independent_finite_aid_practice"].update(
+        completed_original_commands=[], terminal_original_commands=[command]
+    )
+    parsed = AidBoundary.model_validate(first).independent_practices[0]
+    assert parsed.partner_response == "unable_to_participate"
+    assert parsed.outcome == "insufficient_time"
+    assert parsed.qualifying_received_support and parsed.cash_received_micros == "3"
+    assert not parsed.food_consumed and parsed.food_consumption_period is None
+    assert not parsed.finite_practice_completed and parsed.recipient_debited_hours == 0
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+@pytest.mark.parametrize("changed_date,count", [(None, 2), (2, 2), (2, 4)])
+def test_retained_response_cannot_erase_or_retime_first_attempt(changed_date, count):
+    report = retained_cash_evidence(count=count)
+    horizon_policy = configured(routine_smoke_periods=count)
+    assert (
+        playable_result(report, count=count, selected_policy=horizon_policy)[
+            "operational_smoke_status"
+        ]
+        == "qualified"
+    )
+    arrival = report["independent_account_posting_audit"]["periods"][-1]["independent_practices"][0]
+    arrival["first_response_period"] = changed_date
+    with pytest.raises(ValueError):
+        playable_result(report, count=count, selected_policy=horizon_policy)
+
+
+def test_retained_response_requires_a_witnessed_first_attempt():
+    report = retained_cash_evidence()
+    # Keep the old positive summary and cash posting: neither replaces the missing response.
+    report["independent_account_posting_audit"]["periods"][0]["independent_practices"] = []
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "response,outcome",
+    [
+        ("participated", "aid_practice_completed"),
+        ("refused", "aid_practice_uncompleted"),
+        ("no_response", "aid_practice_uncompleted"),
+        ("unable_to_participate", "insufficient_time"),
+    ],
+)
+def test_first_response_outcomes_survive_retention_and_cannot_be_retried(response, outcome):
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    report = retained_cash_evidence()
+    facts = report["independent_account_posting_audit"]["periods"]
+    first, retained = facts[0]["independent_practices"][0], facts[1]["independent_practices"][0]
+    completed = outcome == "aid_practice_completed"
+    first.update(
+        partner_response=response,
+        outcome=outcome,
+        finite_practice_completed=completed,
+        recipient_debited_hours=int(completed),
+    )
+    report["independent_finite_aid_practice"]["completed_original_commands"] = (
+        [first["original_commitment"]] if completed else []
+    )
+    # Frozen current evidence survives JSON round-trip without changing the first date/outcome.
+    parsed = AidPracticeEvidence.model_validate(first)
+    assert AidPracticeEvidence.model_validate_json(parsed.model_dump_json()) == parsed
+    retained_parsed = AidPracticeEvidence.model_validate(retained)
+    assert (
+        AidPracticeEvidence.model_validate_json(retained_parsed.model_dump_json())
+        == retained_parsed
+    )
+    assert retained_parsed.partner_response == "not_requested"
+    assert retained_parsed.recipient_debited_hours == 0
+    assert not retained_parsed.finite_practice_completed
+    assert playable_result(report)["operational_smoke_status"] == (
+        "qualified" if completed else "incomplete"
+    )
+    assert retained["first_response_period"] == parsed.period == 1
+    retained.update(
+        first_response_period=2,
+        outcome="aid_practice_completed",
+        finite_practice_completed=True,
+        partner_actor=first["partner_actor"],
+        partner_response="participated",
+        recipient_debited_hours=1,
+    )
+    with pytest.raises(ValueError):
+        playable_result(report)
+
+
+@pytest.mark.parametrize("response", ["unknown", "", None, True])
+def test_partner_response_vocabulary_stays_closed(response):
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    _, row = cash_only_producer_practice()
+    row["partner_response"] = response
+    with pytest.raises(ValueError):
+        AidPracticeEvidence.model_validate(row)
+
+
+def test_pending_support_has_no_first_response_date():
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    _, row = cash_only_producer_practice()
+    row.update(
+        outcome="aid_awaiting_support",
+        partner_response="not_requested",
+        partner_actor=None,
+        first_response_period=None,
+        first_response_receipt_id=None,
+        first_response_receipt_sha256=None,
+        qualifying_received_support=False,
+        cash_received_micros="0",
+        cash_received_period=None,
+    )
+    assert AidPracticeEvidence.model_validate(row).first_response_period is None
+    row["first_response_period"] = 1
+    with pytest.raises(ValueError):
+        AidPracticeEvidence.model_validate(row)
+
+
+@pytest.mark.parametrize("date", [None, 1])
+def test_fresh_response_requires_its_actual_containing_period(date):
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    row = operational_aid_evidence()["independent_account_posting_audit"]["periods"][1][
+        "independent_practices"
+    ][0]
+    assert row["period"] == row["first_response_period"] == 2
+    row["first_response_period"] = date
+    with pytest.raises(ValueError):
+        AidPracticeEvidence.model_validate(row)
+
+
+@pytest.mark.parametrize(
+    "fault", ["posted_amount", "original_preview_bool", "posted_preview_bool", "matching"]
+)
+def test_original_reconciliation_matches_strictly_typed_each_copy(
+    tmp_path: Path, fault: str
+) -> None:
+    import json
+
+    from tools.devtools.national_native_evidence import NativeRunEvidence, _originals
+    from tools.devtools.national_storage_qualification import PlayableReport
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    manifest, report, *_unused, records = native_join_evidence(tmp_path)
+    controls = ControlsEvidence.model_validate(records["native-controls.json"])
+    entry = manifest["aid_originals"][0]
+    row = report["aid_periods"][0]
+    row["preview"] = deepcopy(row["preview"])
+    row["commitment"] = deepcopy(row["commitment"])
+    if fault == "posted_amount":
+        row["commitment"]["command"]["allocation"]["aid"]["food_quantity"] = 2
+    elif fault == "posted_preview_bool":
+        row["preview"]["allocation"]["aid"]["food_quantity"] = True
+    elif fault == "original_preview_bool":
+        original = json.loads((tmp_path / entry["name"]).read_bytes())
+        original["review"]["admission"]["allocation"]["aid"]["food_quantity"] = True
+        data = json.dumps(original).encode()
+        (tmp_path / entry["name"]).write_bytes(data)
+        entry["sha256"] = hashlib.sha256(data).hexdigest()
+    if fault == "matching":
+        assert (
+            _originals(
+                NativeRunEvidence.model_validate(manifest),
+                tmp_path,
+                controls,
+                PlayableReport.model_validate(report),
+            )
+            == 2
+        )
+    else:
+        with pytest.raises(ValueError):
+            _originals(
+                NativeRunEvidence.model_validate(manifest),
+                tmp_path,
+                controls,
+                PlayableReport.model_validate(report),
+            )
+
+
+@pytest.mark.parametrize(
+    ("dispositions", "installed", "valid"),
+    [
+        ([(4, "Granted", 2)], {3}, True),
+        ([(4, "Granted", 2)], {5}, False),
+        ([(4, "Granted", 2)], {3, 5}, False),
+        ([(4, "Granted", 1), (6, "Lost", 1)], {3, 4, 5}, True),
+        ([(4, "Granted", 1)], set(range(3, 11)), True),
+    ],
+)
+def test_mixed_freight_reopen_must_match_the_actual_outstanding_quantity(
+    dispositions, installed, valid
+):
+    from types import SimpleNamespace
+
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import PendingFreight
+
+    original, mandate, material, receipt = [(x,) * 32 for x in range(1, 5)]
+    freight = PendingFreight(
+        original_commitment_id=original,
+        material_commitment_id=material,
+        mandate_id=mandate,
+        dispatch_period=3,
+        first_response_receipt_id=receipt,
+    )
+    stages = {
+        p: SimpleNamespace(
+            state=SimpleNamespace(
+                installed_organizer=SimpleNamespace(
+                    pending_freight=[freight] if p in installed else []
+                )
+            )
+        )
+        for p in range(1, 11)
+    }
+    legs = [
+        {"period": p, "outcome": outcome, "quantity": q}
+        for p, outcome, q in [(3, "Dispatched", 2), (3, "CashGranted", 0), *dispositions]
+    ]
+    args = stages, legs, original, mandate, 3, material, {"receipt_id": receipt, "period": 3}
+    if valid:
+        assert e.verify_freight_reopens(*args, remote=True) == sorted(installed)
+    else:
+        with pytest.raises(ValueError, match="outstanding"):
+            e.verify_freight_reopens(*args, remote=True)
+
+
+@pytest.mark.parametrize("review_tick", [4, 5, 6])
+def test_walk_evaluator_rejects_cash_review_until_the_last_parcel_settles(review_tick):
+    from types import SimpleNamespace
+
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import AidAllocation, AidAmounts
+
+    original = (7,) * 32
+
+    def basket(food, cash):
+        return AidAllocation(aid=AidAmounts(food_quantity=food, cash_micros=str(cash)))
+
+    mixed = SimpleNamespace(
+        commitment_id=original,
+        resolves_period=3,
+        command=SimpleNamespace(allocation=basket(2, 280000000)),
+    )
+    stages = {
+        period: SimpleNamespace(
+            state=SimpleNamespace(
+                durable_tick=period,
+                installed_organizer=SimpleNamespace(
+                    period=period,
+                    pending_freight=(
+                        [SimpleNamespace(original_commitment_id=original)] if period < 6 else []
+                    ),
+                ),
+            )
+        )
+        for period in (4, 5, 6)
+    }
+    rows = [
+        SimpleNamespace(
+            period=p,
+            selected_aid=[
+                {
+                    "original_commitment": list(original),
+                    "outcome": outcome,
+                    "quantity": q,
+                }
+            ],
+        )
+        for p, outcome, q in [(3, "Dispatched", 2), (4, "Lost", 1), (6, "Granted", 1)]
+    ]
+    state = SimpleNamespace(
+        durable_tick=review_tick, choice="local_aid", aid_allocation=basket(0, 1000000000)
+    )
+    trace = SimpleNamespace(actions=[SimpleNamespace(action="review", state=state)])
+    if review_tick == 6:
+        e.verify_mixed_follow_up(trace, stages, rows, mixed)
+    else:
+        with pytest.raises(ValueError, match="follow-up preceded"):
+            e.verify_mixed_follow_up(trace, stages, rows, mixed)
+
+
+@pytest.mark.parametrize("fault", ["none", "slow", "slow_read", "epoch", "marker"])
+def test_extra_mixed_recovery_has_its_own_typed_marker_epoch_and_budget(tmp_path, fault):
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import ActionObservation, ControlState
+
+    _manifest, _report, _native, _memory, _opening, _ticks, records = native_join_evidence(tmp_path)
+    original = e.MaterialRecord.model_validate(records["material-2.json"])
+    ordinary = next(
+        a
+        for a in records["native-controls.json"]["actions"]
+        if a["action"] == "reopen" and a["state"]["durable_tick"] == 2
+    )
+    mixed = deepcopy(
+        next(
+            a["state"]["commitment"]
+            for a in records["native-controls.json"]["actions"]
+            if a["action"] == "confirm"
+            and a["state"]["commitment"]["command"]["choice"] == "remote_aid"
+        )
+    )
+    mixed["command"]["expected_period"] = 2
+    mixed["command"]["allocation"] = {"aid": {"food_quantity": 2, "cash_micros": "280000000"}}
+    mixed["resolves_period"] = 3
+    ordinary["state"]["commitment"] = mixed
+    prior = ControlState.model_validate(ordinary["state"])
+    new = deepcopy(ordinary)
+    new["state"]["scope_epoch"] += 1
+    new["state"]["generation"] += 1
+    new["completed_monotonic_ns"] += 190_000_000_000
+    action = ActionObservation.model_validate(new)
+    packet = deepcopy(records[f"recovery-2-{prior.scope_epoch}.json"])
+    packet["previous_scope"]["epoch"] = prior.scope_epoch
+    packet["restored_scope"]["epoch"] = action.state.scope_epoch
+    packet["authenticated_read"]["runtime_epoch"] = action.state.scope_epoch
+    packet["authenticated_read"]["observation_generation"] = action.state.generation
+    if fault == "slow":
+        packet["cold_reopen_elapsed_ns"] = 181_000_000_000
+    if fault == "slow_read":
+        packet["authenticated_read"]["production_read_elapsed_ns"] = 181_000_000_000
+        packet["cold_reopen_elapsed_ns"] = 182_000_000_000
+    if fault == "epoch":
+        packet["previous_scope"]["epoch"] -= 1
+    if fault == "marker":
+        packet["source"]["tick_content_hash"] = "ef" * 32
+    receipt = e.RecoveryRecord.model_validate(packet)
+    if fault == "none":
+        e.verify_mixed_recovery(prior, action, original, receipt, policy(), "ab" * 32)
+    else:
+        with pytest.raises(ValueError, match="mixed.*recovery"):
+            e.verify_mixed_recovery(prior, action, original, receipt, policy(), "ab" * 32)
+
+
+def test_normal_native_member_measures_ordinary_play_without_a_sampler(tmp_path):
+    manifest, report, timing, _memory, opening, ticks, _ = native_join_evidence(tmp_path)
+    manifest["measurement_mode"] = "normal_play"
+    result = native_join_result(tmp_path, manifest, report, timing, None, opening, ticks)
+    assert result["status"] == "qualified"
+    assert result["combined_memory_status"] == "not_measured"

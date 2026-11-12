@@ -13,6 +13,7 @@ use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
 use babylon_material_circuit::AidMandate;
+use babylon_material_circuit::AidReceiving;
 use babylon_material_circuit::AidTransport;
 use babylon_material_circuit::AttendancePlan;
 use babylon_material_circuit::CapacityReservations;
@@ -82,6 +83,7 @@ use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::UnitId;
 use babylon_practice_contract::OrganizerAidBinding;
 use babylon_practice_contract::OrganizerAidKind;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::OrganizerChoice;
 use babylon_practice_contract::OrganizerCommand;
 use babylon_practice_contract::OrganizerCommitment;
@@ -643,7 +645,11 @@ pub(crate) fn mandate(routed: bool) -> AidMandate {
         labor_unit_id: hours(),
         hours_per_unit: 2,
         maximum_quantity: 2,
-        cash_per_unit: money(3),
+        maximum_cash: money(1_450_000_000),
+        initial_quantity: 1,
+        initial_cash: money(0),
+        food_receiving: AidReceiving::Accept,
+        cash_receiving: AidReceiving::Accept,
         transport: if routed {
             AidTransport::Routed {
                 route_id: route(2),
@@ -710,6 +716,7 @@ pub(crate) fn config() -> OrganizerConfig {
             .collect(),
         },
         aid_bindings: vec![OrganizerAidBinding {
+            report_sharing: babylon_practice_contract::OrganizerReportSharing::withheld(),
             kind: OrganizerAidKind::Local,
             mandate_id: [91; 32],
             source_hash: [92; 32],
@@ -719,6 +726,11 @@ pub(crate) fn config() -> OrganizerConfig {
             recipient_principal_id: recipient().as_bytes(),
             social_class_target: [97; 32],
             receiving_consent: OrganizerGiftConsent::Accept,
+            cash_receiving_consent: OrganizerGiftConsent::Accept,
+            maximum_food_quantity: 2,
+            maximum_cash_micros: 1_450_000_000,
+            initial_food_quantity: 1,
+            initial_cash_micros: 0,
             partner: OrganizerPartner {
                 actor_id: 120,
                 authority_id: [20; 16],
@@ -739,30 +751,22 @@ pub(crate) fn config() -> OrganizerConfig {
     }
 }
 
-fn staffing() -> StaffingComposition {
+fn staffing(catalog: &MaterialCatalog) -> StaffingComposition {
     StaffingComposition::try_new(
         [
-            (
-                1,
-                "consumers",
-                1,
-                StaffingWorkSource::Production(process(1)),
-            ),
-            (
-                2,
-                "maintainers",
-                2,
-                StaffingWorkSource::Production(process(2)),
-            ),
-            (
-                3,
-                "merchants",
-                1,
-                StaffingWorkSource::MerchantHandling(site(3)),
-            ),
+            (1, "consumers", 1, Some(process(1))),
+            (2, "maintainers", 2, Some(process(2))),
+            (3, "merchants", 1, None),
         ]
         .into_iter()
-        .map(|(id, name, persons, source)| {
+        .map(|(id, name, persons, production)| {
+            let mut sources: Vec<_> = production
+                .into_iter()
+                .map(StaffingWorkSource::Production)
+                .collect();
+            if catalog.merchants.iter().any(|m| m.site_id == site(id)) {
+                sources.push(StaffingWorkSource::MerchantHandling(site(id)));
+            }
             StaffingNodeBinding::try_new(
                 StableElementKey::Node {
                     scenario: "organizer/replay".into(),
@@ -774,7 +778,7 @@ fn staffing() -> StaffingComposition {
                     hours(),
                     persons,
                     StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
-                    vec![source],
+                    sources,
                 )
                 .expect("the authored fixture satisfies the constructor invariants"),
                 vec![
@@ -842,13 +846,14 @@ pub(crate) fn try_session(
         .expect("the authored fixture satisfies the constructor invariants")
         .with_organizer(&catalog, config, state, OrganizerPeriodJournal::empty())
         .expect("the fixture builder accepts the authored options");
+    let staffing = staffing(&catalog);
     MaterialReplaySession::new(
         graph,
         material,
         catalog,
         content_digest::sha256_of(b"organizer-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
-        staffing(),
+        staffing,
     )
 }
 
@@ -865,6 +870,36 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
         config,
         state,
         &OrganizerCommand {
+            allocation: if choice == OrganizerChoice::Collect {
+                OrganizerAllocation::Collection {
+                    target_cash_micros: config
+                        .collection
+                        .as_ref()
+                        .expect("captured collection terms")
+                        .maximum_cash_micros,
+                }
+            } else if matches!(
+                choice,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            ) {
+                OrganizerAllocation::Aid {
+                    food_quantity: config
+                        .aid_bindings
+                        .iter()
+                        .find(|row| {
+                            matches!(
+                                (choice, row.kind),
+                                (OrganizerChoice::LocalAid, OrganizerAidKind::Local)
+                                    | (OrganizerChoice::RemoteAid, OrganizerAidKind::Remote)
+                            )
+                        })
+                        .expect("selected binding")
+                        .maximum_food_quantity,
+                    cash_micros: 6,
+                }
+            } else {
+                OrganizerAllocation::None
+            },
             campaign_id: config.campaign_id,
             actor_id: config.controlled_actor_id,
             authority_id: config.input_authority_id,
@@ -877,6 +912,27 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
         },
     )
     .expect("the fixture admits the organizer actor")
+}
+
+pub(crate) fn commitment_with_allocation(
+    session: &Session,
+    choice: OrganizerChoice,
+    allocation: OrganizerAllocation,
+) -> OrganizerCommitment {
+    let mut command = commitment(session, choice).command;
+    command.allocation = allocation;
+    babylon_practice_contract::admit_organizer(
+        session
+            .material()
+            .organizer_config()
+            .expect("captured config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("captured state"),
+        &command,
+    )
+    .expect("explicit selected allocation is admitted")
 }
 
 pub(crate) fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>) -> Candidate {

@@ -10,20 +10,53 @@ const SOURCE: &str = include_str!(concat!(
 ));
 
 #[test]
-fn captured_aid_requires_positive_cash_terms_before_opening_accounts() {
-    let policy = NationalGamePolicy::parse(SOURCE)
-        .expect("the authored literal parses as the declared type");
-    assert!(policy.aid.gift_cash_micros_per_unit > 0);
-    for amount in [0_i128, -1] {
+fn captured_collection_default_and_cap_are_explicit_positive_terms_without_extra_treasury() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("national policy");
+    assert_eq!(policy.organizer.collection_initial_cash_micros, 280_000_000);
+    assert_eq!(
+        policy.organizer.collection_maximum_cash_micros,
+        1_450_000_000
+    );
+    assert_eq!(policy.aid.organization_opening_cash_micros, 1_000_000);
+    for amount in [0_i128, -1, 1_450_000_001, i128::MAX] {
         let changed = SOURCE.replace(
-            "gift_cash_micros_per_unit = 100000",
-            &format!("gift_cash_micros_per_unit = {amount}"),
+            "collection_initial_cash_micros = 280000000",
+            &format!("collection_initial_cash_micros = {amount}"),
+        );
+        assert_ne!(changed, SOURCE);
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
+    let missing = SOURCE.replace("collection_initial_cash_micros = 280000000\n", "");
+    assert!(NationalGamePolicy::parse(&missing).is_err());
+}
+
+#[test]
+fn captured_aid_has_independent_bounded_defaults_without_extra_treasury() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("captured national terms");
+    assert_eq!(policy.aid.maximum_quantity, 4);
+    assert_eq!(policy.aid.maximum_cash_micros, 1_450_000_000);
+    assert_eq!(policy.aid.initial_food_quantity, 1);
+    assert_eq!(policy.aid.initial_cash_micros, 0);
+    assert_eq!(policy.aid.organization_opening_cash_micros, 1_000_000);
+    for amount in [-1_i128, 1_450_000_001] {
+        let changed = SOURCE.replace(
+            "initial_cash_micros = 0",
+            &format!("initial_cash_micros = {amount}"),
         );
         assert_ne!(changed, SOURCE);
         assert_eq!(
             NationalGamePolicy::parse(&changed),
             Err(NationalGamePolicyError::Shape)
         );
+    }
+    for term in [
+        "maximum_cash_micros = 1450000000\n",
+        "initial_cash_micros = 0\n",
+        "local_cash_receiving_consent = \"accept\"\n",
+    ] {
+        let changed = SOURCE.replace(term, "");
+        assert_ne!(changed, SOURCE);
+        assert!(NationalGamePolicy::parse(&changed).is_err());
     }
 }
 

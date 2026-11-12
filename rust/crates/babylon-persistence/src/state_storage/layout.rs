@@ -280,17 +280,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
             (242, Identity(K::Unit))
         ]
     ), // aid.freight
-    fixed!(
-        72,
-        169,
-        327_680,
-        [
-            (0, Identity(K::Order)),
-            (33, Account),
-            (65, Identity(K::FinalDemandPrincipal)),
-            (97, Identity(K::FinalDemandPrincipal))
-        ]
-    ), // aid.cash_reserves
 ];
 pub(super) fn layout(id: u16) -> Option<Layout> {
     LAYOUTS

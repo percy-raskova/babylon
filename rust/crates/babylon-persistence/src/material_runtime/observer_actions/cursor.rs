@@ -1,6 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::super::MaterialRuntimeError;
+use babylon_practice_contract::{
+    OrganizerAllocation, OrganizerPeriodJournalEntries, OrganizerReceipt,
+};
 
 use babylon_kernel::replay::ReplaySessionId;
 
@@ -46,12 +49,14 @@ pub(in crate::material_runtime) fn reconstruct(
     if receipt.commitment_id.is_none() && receipt.choice != OrganizerChoice::Hold {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
+    let allocation = retained_allocation(config, entries, receipt, tick)?;
     let mut accepted = None;
     for intent in parse(session, tick, bytes)? {
         if intent.actor_org_id.to_bytes() != config.controlled_actor_id.to_be_bytes() {
             continue;
         }
         let command = OrganizerCommand {
+            allocation,
             campaign_id: config.campaign_id,
             actor_id: config.controlled_actor_id,
             authority_id: intent.input_authority_id.as_bytes(),
@@ -61,7 +66,7 @@ pub(in crate::material_runtime) fn reconstruct(
             nonce: intent.proposal_nonce.as_bytes(),
             choice: receipt.choice,
         };
-        // Delayed aid has a retimed nonce: date equality alone is never a match.
+        // Only the original admitted command can reconstruct this consumed input.
         if let Ok(commitment) = babylon_practice_contract::admit_organizer(config, prior, &command)
         {
             if Some(commitment.commitment_id) == receipt.commitment_id
@@ -85,6 +90,54 @@ pub(in crate::material_runtime) fn reconstruct(
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
     Ok(expected)
+}
+
+fn retained_allocation(
+    config: &OrganizerConfig,
+    entries: &OrganizerPeriodJournalEntries,
+    receipt: &OrganizerReceipt,
+    tick: u64,
+) -> Result<OrganizerAllocation> {
+    Ok(if receipt.choice == OrganizerChoice::Collect {
+        let mut matches = entries
+            .collection_receipts
+            .iter()
+            .filter(|row| Some(row.commitment.commitment_id) == receipt.commitment_id);
+        let original = matches
+            .next()
+            .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+        if matches.next().is_some() || original.practice != *receipt {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        babylon_practice_contract::validate_organizer_collection_fact(
+            config,
+            &original.commitment,
+            &original.fact,
+        )
+        .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+        original.commitment.command.allocation
+    } else if matches!(
+        receipt.choice,
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+    ) {
+        let mut matches = entries.aid_receipts.iter().filter(|row| {
+            Some(row.authorization.gift.commitment.commitment_id) == receipt.commitment_id
+        });
+        let original = matches
+            .next()
+            .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+        if matches.next().is_some() || original.authorization.dispatch_period != tick {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        babylon_practice_contract::validate_organizer_aid_commitment(
+            config,
+            &original.authorization.gift,
+        )
+        .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+        original.authorization.gift.commitment.command.allocation
+    } else {
+        OrganizerAllocation::None
+    })
 }
 
 pub(in crate::material_runtime) fn parse(

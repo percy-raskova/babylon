@@ -10,6 +10,7 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::AgencyAttendanceOutcome;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{OrganizerChoice, OrganizerCommand};
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use postgres::{Client, NoTls};
@@ -103,6 +104,7 @@ fn paid_visit_marker_failure_and_ambiguous_retry_are_atomic() {
         DurableMaterialRuntime::create(&config, campaign, foundation).expect("opening");
     let snapshot = runtime.organizer_snapshot().expect("opening snapshot");
     let command = OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: *campaign.canonical_bytes(),
         actor_id: snapshot.view.actor_id,
         authority_id: snapshot.view.authority_id,

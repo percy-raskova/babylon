@@ -5,8 +5,9 @@ use crate::economic_catalog::{
     HouseholdTemplateId, MerchantSeed, OpeningCommodityStock, ProcessInstallation,
 };
 use crate::national_counties::NationalCountyReference;
+use crate::national_economy::grain::OpeningHouseholdAllocation;
 use crate::national_economy::ResidentWorkplaceSource;
-use crate::national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation};
+use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation};
 
 use babylon_graph::stable_element::StableElementKey;
@@ -32,22 +33,9 @@ pub(super) fn domestic(
     builder: &mut Builder<'_>,
     counties: &NationalCountyReference,
     allocation: &ResidentWorkplaceAllocation,
-    household_budgets: &NationalHouseholdAllocation,
+    household_budgets: &[OpeningHouseholdAllocation],
 ) -> Result<()> {
-    for county in household_budgets.counties() {
-        let location = EconomicLocation::domestic_county(county.county())
-            .map_err(|_| NationalOpeningError::SourceScope)?;
-        for budget in county.budgets() {
-            super::aid::households(
-                builder,
-                location,
-                budget.key,
-                budget.persons,
-                budget.households,
-                10_000,
-            )?;
-        }
-    }
+    domestic_households(builder, household_budgets)?;
     for row in &allocation.workplaces {
         let target = &row.target;
         let employed = row.members.iter().try_fold(0_u64, |n, member| {
@@ -68,10 +56,19 @@ pub(super) fn domestic(
             })?;
         let source = match &target.source {
             ResidentWorkplaceSource::Qcew(key) => EconomicSiteSource::Qcew(*key),
+            ResidentWorkplaceSource::Representative(_) => EconomicSiteSource::Designed {
+                source_ownership: Some(target.ownership),
+                key: format!(
+                    "representative-{}",
+                    national_economy::identity::base32(&target.site_id.as_bytes())
+                ),
+            },
             ResidentWorkplaceSource::HouseholdEnterprise => EconomicSiteSource::Designed {
+                source_ownership: None,
                 key: "household-enterprise".into(),
             },
             ResidentWorkplaceSource::ResidentEmployerFallback => EconomicSiteSource::Designed {
+                source_ownership: None,
                 key: format!("resident-employer-{}", target.ownership.source_code()),
             },
         };
@@ -82,16 +79,29 @@ pub(super) fn domestic(
             .county(county.geoid())
             .map_err(|_| NationalOpeningError::SourceScope)?
             .name();
-        let label = format!(
+        let mut label = format!(
             "{county_name}: {} ({})",
             target.function.source_key(),
             target.ownership.source_code()
         );
+        if let ResidentWorkplaceSource::Representative(key) = &target.source {
+            label = format!(
+                "representative {} — {county_name}/{:?}",
+                target.function.source_key(),
+                key.position
+            );
+        }
         let context = ActorContext {
             site_id: target.site_id,
             function: target.function,
-            source_ownership: matches!(source, EconomicSiteSource::Qcew(_))
-                .then_some(target.ownership),
+            source_ownership: if matches!(
+                target.source,
+                ResidentWorkplaceSource::Representative(_) | ResidentWorkplaceSource::Qcew(_)
+            ) {
+                Some(target.ownership)
+            } else {
+                None
+            },
             location: target.location,
             employed,
             employee_persons,
@@ -295,6 +305,12 @@ pub(super) fn site(
         builder.policy.working_capital_periods,
         super::sum_amount(wages, inputs_cost)?,
     )?;
+    let opening_cash = if let Some(endowment) = builder.endowments.get(&context.site_id) {
+        opening_stock.clone_from(&endowment.opening_stock);
+        Currency::from_micro_units(endowment.opening_cash_micros)
+    } else {
+        opening_cash
+    };
     builder.add_site(
         context.clone(),
         EconomicSiteSeed {
@@ -327,9 +343,12 @@ fn process(
     if recipe.labor_hours_per_batch == 0 {
         return Err(NationalOpeningError::Policy);
     }
-    context.planned_batches =
+    context.planned_batches = if let Some(endowment) = builder.endowments.get(&context.site_id) {
+        endowment.batches
+    } else {
         super::quantity(context.employed, builder.policy.work_hours_per_person)?
-            / recipe.labor_hours_per_batch;
+            / recipe.labor_hours_per_batch
+    };
     let mut identity = b"NationalProcessV1\0".to_vec();
     identity.extend_from_slice(&context.site_id.as_bytes());
     let process_id = ProcessId::from_bytes(content_digest::sha256_of(&identity));
@@ -474,6 +493,39 @@ pub(super) fn validate_people(opening: &EconomicOpening) -> Result<()> {
             return Err(NationalOpeningError::Workforce(
                 AllocationError::PopulationControl,
             ));
+        }
+    }
+    Ok(())
+}
+
+fn domestic_households(
+    builder: &mut Builder<'_>,
+    household_budgets: &[OpeningHouseholdAllocation],
+) -> Result<()> {
+    for household in household_budgets {
+        let budget = &household.margins;
+        if household.domain.representative.is_some() {
+            builder
+                .eligible_overrides
+                .insert(household.principal, household.time.eligible_16_plus);
+            household_identity(
+                builder,
+                household.domain.location,
+                budget.key,
+                budget.persons,
+                budget.households,
+                10_000,
+                (household.principal, household.subject.clone()),
+            )?;
+        } else {
+            super::aid::households(
+                builder,
+                household.domain.location,
+                budget.key,
+                budget.persons,
+                budget.households,
+                10_000,
+            )?;
         }
     }
     Ok(())

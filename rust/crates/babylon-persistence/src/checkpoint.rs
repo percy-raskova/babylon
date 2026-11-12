@@ -1,6 +1,9 @@
 //! Database-free durable tick, checkpoint, and Archive work identities.
 
 use std::collections::TryReserveError;
+use std::time::Instant;
+
+use crate::advance_timing::PreparationTiming;
 
 use babylon_kernel::tick_content_hash::TickContentHash;
 use babylon_tick::replay_session::IdentifiedTickReport;
@@ -295,9 +298,14 @@ impl ArchiveDirtyReceipt {
 pub(crate) fn compose_checkpoint_rows(
     report: &IdentifiedTickReport,
     resolve_tick: CommittedResolveTick,
+    timing: &mut PreparationTiming,
 ) -> Result<CheckpointRows, RustPersistenceRuntimeError> {
+    let started = Instant::now();
     let source_sections = checkpoint_source_sections(report)?;
+    timing.second_checkpoint_source = started.elapsed();
+    let started = Instant::now();
     let rows = encode_checkpoint_rows_from_sources(&source_sections)?;
+    timing.second_checkpoint_rows = started.elapsed();
     Ok(CheckpointRows {
         source_tick: resolve_tick,
         rows,

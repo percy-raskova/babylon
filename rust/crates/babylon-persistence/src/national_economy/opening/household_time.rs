@@ -3,6 +3,7 @@ use super::{Builder, NationalOpeningError, Result};
 use crate::economic_catalog::EconomicHouseholdSeed;
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
+use babylon_material_circuit::AccountId;
 
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
@@ -108,6 +109,16 @@ fn eligibility(
     let eligible = if let Some(eligible) = builder.eligible_overrides.get(&household.principal_id) {
         *eligible
     } else {
+        if builder
+            .domain(
+                AccountId::Household(household.principal_id),
+                household.location,
+            )?
+            .representative
+            .is_some()
+        {
+            return Err(NationalOpeningError::Identity);
+        }
         match household.location {
             EconomicLocation::County(county) => {
                 let rows = domestic

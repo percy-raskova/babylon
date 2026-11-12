@@ -5,6 +5,8 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::OrganizationAccountId;
 use babylon_material_circuit::PublicAccountId;
+use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::OrganizerState;
 
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, NationalOpponent, SourceArtifactKind as Kind,
@@ -32,7 +34,7 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
     let raw = CapturedEconomicCatalog::capture(national_capture::input(), None)
         .expect("the fixture captures the authored state");
-    assert_eq!(raw.compiler_version(), "national-world-v6");
+    assert_eq!(raw.compiler_version(), "national-world-v7");
     assert_eq!(
         &raw.canonical_bytes()[raw.canonical_bytes().len() - 5..],
         &[0; 5]
@@ -235,6 +237,10 @@ fn assert_no_opponent_route(playable: &CapturedEconomicCatalog, campaign: Campai
         .any(|row| row == b"city-pd-observe"));
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one captured national input control retains authority, allocation and action-identity assertions together"
+)]
 fn assert_admitted_inputs(
     initial: &MaterialWorldRegister,
     campaign: CampaignId,
@@ -253,12 +259,38 @@ fn assert_admitted_inputs(
         matches!(&config.time_binding, OrganizerTimeBindingMode::Household{bindings} if bindings.len()==3)
     );
     assert_eq!(config.aid_bindings.len(), 2);
+    let collection = config
+        .collection
+        .as_ref()
+        .expect("national contribution terms");
+    assert_eq!(collection.initial_cash_micros, 280_000_000);
+    assert_eq!(collection.maximum_cash_micros, 1_450_000_000);
+    assert_eq!(collection.collection_hours, 2);
     let journal = initial
         .organizer_journal()
         .expect("the fixture register carries organizer journal");
     assert!(journal.periods.is_empty() && state.pending_aid.is_empty());
-    assert!(state.contact_products.is_empty() && state.learned_authority_index.is_empty());
+    assert_opening_knowledge(config, state);
     let command = |choice, nonce| OrganizerCommand {
+        allocation: if choice == OrganizerChoice::Collect {
+            OrganizerAllocation::Collection {
+                target_cash_micros: config
+                    .collection
+                    .as_ref()
+                    .expect("captured collection")
+                    .initial_cash_micros,
+            }
+        } else if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            OrganizerAllocation::Aid {
+                food_quantity: 1,
+                cash_micros: 0,
+            }
+        } else {
+            OrganizerAllocation::None
+        },
         campaign_id: config.campaign_id,
         actor_id: config.controlled_actor_id,
         authority_id: config.input_authority_id,
@@ -319,6 +351,24 @@ fn assert_admitted_inputs(
         Err(OrganizerError::Refused(OrganizerRefusal::ContentChanged))
     );
     config.clone()
+}
+
+fn assert_opening_knowledge(config: &OrganizerConfig, state: &OrganizerState) {
+    assert_eq!(state.contact_products.len(), 0);
+    assert_eq!(state.learned_authority_index.len(), 2);
+    assert_eq!(config.initial_observations.len(), 2);
+    for row in &state.learned_authority_index {
+        let observed = row.observation(config.controlled_actor_id);
+        assert!(config.initial_observations.contains(&observed));
+        assert_eq!((row.observed_period, row.acquired_period), (0, 0));
+        assert!(matches!(
+            row.report,
+            babylon_practice_contract::OrganizerReport::Partner {
+                facts: babylon_practice_contract::OrganizerPartnerFacts::OpeningAssessment { .. },
+                ..
+            }
+        ));
+    }
 }
 
 fn assert_native_bindings(

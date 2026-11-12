@@ -7,6 +7,7 @@ use babylon_persistence::economic_catalog::EconomicHouseholdSeed;
 use babylon_persistence::economic_catalog::EconomicOpening;
 use babylon_persistence::national_counties;
 use babylon_persistence::national_economy;
+use babylon_persistence::national_economy::grain::NationalGenerationWitness;
 use babylon_persistence::national_economy::NationalAidCapture;
 use babylon_persistence::national_economy::NationalGamePolicy;
 use babylon_persistence::national_household_allocation;
@@ -22,6 +23,7 @@ pub(super) fn assert_people(
     opening: &EconomicOpening,
     policy: &NationalGamePolicy,
     aid: &NationalAidCapture,
+    representation: &NationalGenerationWitness,
 ) {
     let budgets = national_household_allocation::allocate_households(
         national_counties::national_county_reference().expect("the county reference fixture loads"),
@@ -54,7 +56,7 @@ pub(super) fn assert_people(
             total.1 += member.reserve;
         }
     }
-    let counted = assert_source_accounts(&budgets, &households, &assigned, aid);
+    let counted = assert_source_accounts(&budgets, &households, &assigned, aid, representation);
     let domestic: Vec<_> = households
         .values()
         .filter(|h| matches!(h.location, EconomicLocation::County(_)))
@@ -66,7 +68,8 @@ pub(super) fn assert_people(
             .map(|h| h.location)
             .collect::<BTreeSet<_>>()
             .len(),
-        3_144
+        representation.catchments.len(),
+        "live locations are hubs; source county membership remains complete"
     );
     assert_eq!(domestic.iter().map(|h| h.persons).sum::<u64>(), 334_922_499);
     assert_eq!(
@@ -82,7 +85,20 @@ pub(super) fn assert_people(
         8_200_068
     );
     assert_eq!(opening.households.len() - counted - aid.children.len(), 18);
-    assert_eq!(opening.sites.len(), 60_634);
+    let represented: BTreeSet<_> = representation
+        .source_incidence
+        .iter()
+        .map(|i| i.destination_site)
+        .collect();
+    assert_eq!(
+        opening.sites.len(),
+        represented.len() + 180,
+        "domestic representatives and unchanged external sites"
+    );
+    assert!(
+        opening.sites.len() < 60_634,
+        "pre-expansion fold reduces actual sites"
+    );
     assert!(opening.orders.goods.is_empty() && opening.orders.final_demand.is_empty());
     assert_eq!(opening.recipes.len(), 9);
     assert_eq!(opening.household_templates.len(), 2);
@@ -93,57 +109,54 @@ fn assert_source_accounts(
     households: &BTreeMap<FinalDemandPrincipalId, &EconomicHouseholdSeed>,
     assigned: &BTreeMap<FinalDemandPrincipalId, (u64, u64)>,
     aid: &NationalAidCapture,
+    representation: &NationalGenerationWitness,
 ) -> usize {
-    let mut counted = 0;
+    let source: BTreeMap<_, _> = representation
+        .household_incidence
+        .iter()
+        .map(|i| ((i.county, i.margins.key), i))
+        .collect();
+    let mut expected = BTreeMap::<_, (u64, u64, u64, u64)>::new();
     for county in budgets.counties() {
-        let location = EconomicLocation::domestic_county(county.county())
-            .expect("the fixture geoid names a domestic county");
         for budget in county.budgets() {
-            counted += 1;
-            let principal = national_economy::household_principal(location, budget.key);
-            let row = households[&principal];
-            let children: Vec<_> = aid
-                .children
-                .iter()
-                .filter(|child| child.parent == principal)
-                .collect();
-            let mut counted_people = (row.persons, row.households);
-            let mut counted_work = assigned.get(&principal).copied().unwrap_or_default();
-            for child in children {
-                let actual = households[&child.principal];
-                assert_eq!(
-                    (actual.persons, actual.households),
-                    (child.persons, child.households)
-                );
-                assert_eq!(actual.location, row.location);
-                assert_eq!(actual.kind, HouseholdKind::Ordinary);
-                counted_people.0 = counted_people
-                    .0
-                    .checked_add(actual.persons)
-                    .expect("the fixture arithmetic stays in range");
-                counted_people.1 = counted_people
-                    .1
-                    .checked_add(actual.households)
-                    .expect("the fixture arithmetic stays in range");
-                let work = assigned.get(&child.principal).copied().unwrap_or_default();
-                assert_eq!(work, (child.employed, child.reserve));
-                counted_work.0 = counted_work
-                    .0
-                    .checked_add(work.0)
-                    .expect("the fixture arithmetic stays in range");
-                counted_work.1 = counted_work
-                    .1
-                    .checked_add(work.1)
-                    .expect("the fixture arithmetic stays in range");
-            }
-            assert_eq!(counted_people, (budget.persons, budget.households));
-            assert_eq!(counted_work, (budget.employed, budget.reserve));
-            assert!(budget.employed + budget.reserve <= counted_people.0);
+            let incidence = source[&(county.county(), budget.key)];
             assert_eq!(
-                row.kind == HouseholdKind::CollectiveResidence,
-                budget.key == HouseholdBudgetKey::CollectiveResidence
+                &incidence.margins, budget,
+                "source margins remain independently verifiable"
             );
+            let total = expected.entry(incidence.destination).or_default();
+            total.0 += budget.persons;
+            total.1 += budget.households;
+            total.2 += budget.employed;
+            total.3 += budget.reserve;
         }
+    }
+    let counted = expected.len();
+    for (principal, (persons, count, employed, reserve)) in expected {
+        let row = households[&principal];
+        let mut work = assigned.get(&principal).copied().unwrap_or_default();
+        let mut people = (row.persons, row.households);
+        for child in aid.children.iter().filter(|c| c.parent == principal) {
+            let actual = households[&child.principal];
+            assert_eq!(
+                (actual.persons, actual.households),
+                (child.persons, child.households),
+                "protected child margins"
+            );
+            assert_eq!(actual.location, row.location, "protected child residence");
+            let child_work = assigned.get(&child.principal).copied().unwrap_or_default();
+            assert_eq!(
+                child_work,
+                (child.employed, child.reserve),
+                "protected child work"
+            );
+            work.0 += child_work.0;
+            work.1 += child_work.1;
+            people.0 += actual.persons;
+            people.1 += actual.households;
+        }
+        assert_eq!(people, (persons, count), "source household pushforward");
+        assert_eq!(work, (employed, reserve), "source work pushforward");
     }
     counted
 }
@@ -152,10 +165,16 @@ pub(super) fn assert_endowments_and_ownership(
     opening: &EconomicOpening,
     policy: &NationalGamePolicy,
     aid: &NationalAidCapture,
+    representation: &NationalGenerationWitness,
 ) {
     let mut totals = BTreeMap::<EconomicLocation, (u64, u64, i128)>::new();
     let mut stock = BTreeMap::<(EconomicLocation, _, _), (u64, i128)>::new();
-    let mut domestic_owners = BTreeSet::new();
+    let mut domestic_owners: BTreeSet<_> = representation
+        .household_incidence
+        .iter()
+        .filter(|i| i.margins.key.owner_exposure())
+        .map(|i| i.destination)
+        .collect();
     for household in &opening.households {
         if !matches!(household.location, EconomicLocation::County(_)) {
             continue;
@@ -354,32 +373,45 @@ pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture
         .recurring
         .as_ref()
         .expect("the fixture set the optional field before this read");
-    assert_eq!(compiled.catalog.aid_mandates, aid.mandates);
+    let mut expected_mandates = aid.mandates.clone();
+    expected_mandates.sort_by_key(|mandate| mandate.id);
+    assert_eq!(compiled.catalog.aid_mandates, expected_mandates);
     assert_eq!(e.aid.freight.len(), 0);
-    let added_needs = aid
-        .children
+    let templates: BTreeMap<_, _> = opening
+        .household_templates
         .iter()
-        .map(|child| {
-            let household = opening
-                .households
-                .iter()
-                .find(|h| h.principal_id == child.principal)
-                .expect("the fixture holds the searched element");
-            opening
-                .household_templates
-                .iter()
-                .find(|t| t.id == household.template)
-                .expect("the fixture holds the searched element")
-                .needs
-                .len()
-        })
+        .map(|template| (template.id, template.needs.len()))
+        .collect();
+    let expected_needs = opening
+        .households
+        .iter()
+        .map(|household| templates[&household.template])
         .sum::<usize>();
-    assert_eq!(compiled.catalog.household_needs.len(), 87_960 + added_needs);
-    assert_eq!(recurring.household_purchases.len(), 87_960 + added_needs);
-    assert_eq!(e.financial.ownership.len(), 90_794);
-    assert_eq!(e.costs.snapshot().equity.len(), 90_794);
-    assert_eq!(e.financial.taxes.len(), 76_327 + aid.children.len());
-    assert_eq!(e.employment.len(), 100_301 + 1);
+    assert_eq!(compiled.catalog.household_needs.len(), expected_needs);
+    assert_eq!(recurring.household_purchases.len(), expected_needs);
+    assert_eq!(
+        e.financial.ownership.len(),
+        opening.institutions.ownership.len()
+    );
+    assert_eq!(e.costs.snapshot().equity.len(), opening.equity.len());
+    assert_eq!(
+        e.financial.taxes.len(),
+        opening.sites.len() + opening.households.len()
+    );
+    let expected_members: BTreeSet<_> = opening
+        .staffing
+        .iter()
+        .flat_map(|pool| pool.members.iter().map(|member| member.member.member_id()))
+        .collect();
+    assert_eq!(e.employment.len(), expected_members.len());
+    assert_eq!(
+        e.employment
+            .iter()
+            .map(|term| term.member_id)
+            .collect::<BTreeSet<_>>(),
+        expected_members,
+        "each current member retains exactly one employment term"
+    );
     eprintln!("current canonical bytes: {}", state_bytes.len());
     eprintln!(
         "current SHA256: {:02x?}",

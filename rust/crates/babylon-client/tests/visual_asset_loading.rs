@@ -56,6 +56,15 @@ fn assert_loaded_asset_contract(app: &App) {
         ("banner-carceral", &assets.banner_carceral),
         ("banner-topology", &assets.banner_topology),
         ("banner-collapse", &assets.banner_collapse),
+        ("group-wayne-collective", &assets.group_wayne_collective),
+        (
+            "group-workplace-committee",
+            &assets.group_workplace_committee,
+        ),
+        (
+            "group-neighborhood-contact",
+            &assets.group_neighborhood_contact,
+        ),
     ];
     for (id, handle) in linear_images {
         let image = images

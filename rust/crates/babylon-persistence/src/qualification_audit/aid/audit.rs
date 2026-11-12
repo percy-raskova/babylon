@@ -1,6 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use crate::runtime_session::OrganizerAidFoodPreview;
 
-use super::{postings, practice, MaterialWorldRegister};
+use super::practice::History;
+use super::reports::RetailOpening;
+use super::{postings, practice, MaterialWorldRegister, PartnerReport};
 
 use crate::observer_reader::CommittedMaterialReceipts;
 use crate::runtime_session::{OrganizerMaterialAidPreview, OrganizerSnapshot};
@@ -28,6 +31,12 @@ use std::fmt::Formatter;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Admission,
+    ReportAuthority,
+    ReportOpening,
+    ReportGrant,
+    ReportRetail,
+    ReportService,
+    ReportSettlement,
     OriginalOffer,
     Duplicate,
     Period,
@@ -80,6 +89,7 @@ impl Accepted {
             || command.resource_digest != before.view.resource_digest
             || command.expected_period != before.view.period
             || admission.choice != command.choice
+            || admission.allocation != command.allocation
             || admission.current_period != command.expected_period
             || admission.resolves_period != commitment.resolves_period
             || admission.available_hours != before.view.available_hours
@@ -98,8 +108,19 @@ impl Accepted {
             before.view.aid_options.iter().filter(|r| r.kind == kind),
             Refusal::OriginalOffer,
         )?;
+        let babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity,
+            cash_micros,
+        } = command.allocation
+        else {
+            return Err(Refusal::Admission);
+        };
         if material.period != command.expected_period
-            || material.receiving_consent != OrganizerGiftConsent::Accept
+            || food_quantity > material.maximum_quantity
+            || cash_micros > material.maximum_cash_micros
+            || !((food_quantity > 0 && material.receiving_consent == OrganizerGiftConsent::Accept)
+                || (cash_micros > 0
+                    && material.cash_receiving_consent == OrganizerGiftConsent::Accept))
             || option.receiving_consent != material.receiving_consent
             || material.coordination_hours == 0
             || option.coordination_hours != material.coordination_hours
@@ -180,20 +201,48 @@ pub(in crate::qualification_audit) fn terms<'a>(
         || binding.recipient_principal_id != mandate.recipient.as_bytes()
         || mandate.donor_actor != command.actor_id
         || mandate.recipient_actor != binding.partner.actor_id
-        || binding.receiving_consent != OrganizerGiftConsent::Accept
+        || binding.receiving_consent != p.receiving_consent
+        || binding.cash_receiving_consent != p.cash_receiving_consent
+        || p.initial_food_quantity != mandate.initial_quantity
+        || p.initial_cash_micros != mandate.initial_cash.micro_units()
         || p.donor_id != mandate.donor.as_bytes()
-        || p.recipient_id != mandate.recipient.as_bytes()
+        || p.recipient_actor_id != mandate.recipient_actor
         || p.good_id != mandate.good_id.as_bytes()
         || p.unit_id != mandate.unit_id.as_bytes()
-        || p.labor_unit_id != mandate.labor_unit_id.as_bytes()
-        || p.gift_cash_per_unit != mandate.cash_per_unit.micro_units()
-        || p.fulfillment_hours_per_unit != mandate.hours_per_unit
+        || p.maximum_cash_micros != mandate.maximum_cash.micro_units()
         || p.maximum_quantity != mandate.maximum_quantity
         || p.coordination_hours != binding.coordination_hours
     {
         return Err(Refusal::Capture);
     }
-    let route_matches = match (&p.transport, mandate.transport) {
+    let babylon_practice_contract::OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = command.allocation
+    else {
+        return Err(Refusal::Capture);
+    };
+    if (food_quantity > 0 && p.food.is_none()) || (cash_micros > 0 && !p.funding.available()) {
+        return Err(Refusal::Capture);
+    }
+    if let Some(food) = &p.food {
+        validate_food_capture(food, mandate)?;
+    }
+    Ok(Terms {
+        accepted,
+        mandate,
+        binding,
+        config,
+    })
+}
+
+fn validate_food_capture(food: &OrganizerAidFoodPreview, mandate: &AidMandate) -> Result<()> {
+    if food.labor_unit_id != mandate.labor_unit_id.as_bytes()
+        || food.fulfillment_hours_per_unit != mandate.hours_per_unit
+    {
+        return Err(Refusal::Capture);
+    }
+    let route_matches = match (&food.transport, mandate.transport) {
         (OrganizerAidTransportPreview::Local, AidTransport::Local) => true,
         (
             OrganizerAidTransportPreview::Routed {
@@ -217,12 +266,7 @@ pub(in crate::qualification_audit) fn terms<'a>(
     if !route_matches {
         return Err(Refusal::Capture);
     }
-    Ok(Terms {
-        accepted,
-        mandate,
-        binding,
-        config,
-    })
+    Ok(())
 }
 
 pub(in crate::qualification_audit) type Totals = BTreeMap<[u8; 32], (u64, i128, i128)>;
@@ -230,12 +274,14 @@ pub(in crate::qualification_audit) type Totals = BTreeMap<[u8; 32], (u64, i128, 
 #[derive(Default, Clone)]
 pub struct Audit {
     period: u64,
+    retail_opening: RetailOpening,
     commands: BTreeMap<[u8; 32], Accepted>,
     dispatched: Totals,
     settled: Totals,
     facts: Vec<Value>,
     pub(super) completed_practices: BTreeSet<[u8; 32]>,
     terminal_practices: BTreeSet<[u8; 32]>,
+    practice_history: History,
     completed_kinds: BTreeSet<OrganizerAidKind>,
     pub(super) opening: Option<([u8; 16], OrganizerSnapshot)>,
     campaign: Option<[u8; 16]>,
@@ -249,6 +295,7 @@ pub struct Boundary {
     pub canonical_receipt_sha256: String,
     pub selected_aid: Vec<Value>,
     pub independent_practices: Vec<Value>,
+    pub partner_reports: Vec<PartnerReport>,
 }
 
 /// A compact comparison disclosure from a register already authenticated by the
@@ -279,6 +326,9 @@ impl Audit {
         register: &MaterialWorldRegister,
         snapshot: &OrganizerSnapshot,
     ) -> Result<()> {
+        if register.catalog_digest() != catalog.catalog_digest() {
+            return Err(Refusal::Identity);
+        }
         if register.completed_tick() != self.period {
             return Err(Refusal::Period);
         }
@@ -299,6 +349,8 @@ impl Audit {
         {
             return Err(Refusal::Identity);
         }
+        let retail_opening = RetailOpening::capture(register)?;
+        self.retail_opening = retail_opening;
         self.campaign = Some(campaign);
         self.opening = Some((campaign, snapshot.clone()));
         Ok(())
@@ -369,6 +421,7 @@ impl Audit {
             return Err(Refusal::Capture);
         };
         let mut candidate = self.clone();
+        candidate.practice_history.check_close(admitted)?;
         postings::check_period(&admitted.receipts)?;
         let mut selected_aid = Vec::new();
         for row in &admitted.receipts.aid {
@@ -387,16 +440,30 @@ impl Audit {
         }
         let mut independent_practices = Vec::new();
         let mut seen = BTreeSet::new();
-        for resolution in &after.aid_resolutions {
-            let original = resolution.pending.original_commitment_id;
+        let entries = register
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .ok_or(Refusal::Capture)?;
+        if entries.period != tick {
+            return Err(Refusal::Period);
+        }
+        for resolution in &entries.aid_receipts {
+            let original = resolution.authorization.gift.commitment.commitment_id;
             if !seen.insert(original) {
                 return Err(Refusal::Duplicate);
             }
             let accepted = self.commands.get(&original).ok_or(Refusal::OriginalOffer)?;
             let terms = terms(accepted, config, &catalog.aid_mandates)?;
-            let fact = practice::read(admitted, resolution, &terms)?;
-            if resolution.practice.outcome != OrganizerOutcome::AidAwaitingSupport
-                && !candidate.terminal_practices.insert(original)
+            let fact = practice::read(
+                admitted,
+                resolution,
+                &terms,
+                &mut candidate.practice_history,
+            )?;
+            if !matches!(
+                resolution.practice.outcome,
+                OrganizerOutcome::AidAwaitingSupport | OrganizerOutcome::AidResponseRetained
+            ) && !candidate.terminal_practices.insert(original)
             {
                 return Err(Refusal::Duplicate);
             }
@@ -406,8 +473,15 @@ impl Audit {
             }
             independent_practices.push(fact);
         }
+        candidate.practice_history.check_pending(register)?;
         let fact = Boundary {
-            version: 1,
+            version: 3,
+            partner_reports: super::reports::closed(
+                catalog,
+                register,
+                admitted,
+                &self.retail_opening,
+            )?,
             period: tick,
             tick_content_hash: super::super::hex(admitted.identity.tick_content_hash().as_bytes()),
             canonical_receipt_sha256: super::super::hex(&admitted.identity.receipt_digest()),
@@ -463,7 +537,7 @@ impl Audit {
     }
     #[must_use]
     pub fn practice_report(&self) -> Value {
-        json!({"status":if self.completed_kinds.contains(&OrganizerAidKind::Local)&&self.completed_kinds.contains(&OrganizerAidKind::Remote){"passed"}else{"incomplete"},"completed_original_commands":self.completed_practices,"terminal_original_commands":self.terminal_practices,"basis":"actual_consumed_support_independent_partner_response_and_authenticated_finite_debits"})
+        json!({"status":if self.completed_kinds.contains(&OrganizerAidKind::Local)&&self.completed_kinds.contains(&OrganizerAidKind::Remote){"passed"}else{"incomplete"},"completed_original_commands":self.completed_practices,"terminal_original_commands":self.terminal_practices,"basis":"actual_qualifying_support_independent_partner_response_and_authenticated_finite_debits"})
     }
 }
 
@@ -491,6 +565,21 @@ pub(in crate::qualification_audit) fn check_material(
     tick: u64,
 ) -> Result<bool> {
     let m = terms.mandate;
+    let babylon_practice_contract::OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = terms.accepted.commitment.command.allocation
+    else {
+        return Err(Refusal::Admission);
+    };
+    if row.quantity > food_quantity
+        || row.cash_amount.micro_units() > cash_micros
+        || (row.outcome == AidOutcome::Requested && row.quantity != food_quantity)
+        || (row.outcome == AidOutcome::CashRequested
+            && row.cash_amount.micro_units() != cash_micros)
+    {
+        return Err(Refusal::Quantity);
+    }
     if row.commitment_id
         != babylon_material_circuit::aid_commitment_id(
             m.id,
@@ -502,29 +591,17 @@ pub(in crate::qualification_audit) fn check_material(
         || row.unit_id != m.unit_id
         || row.payer != m.payer
         || row.period != tick
-        || row.quantity == 0
         || row.quantity > m.maximum_quantity
     {
         return Err(Refusal::Capture);
     }
     let uses_time = row.outcome == AidOutcome::Dispatched
         || (row.outcome == AidOutcome::Granted && row.dispatch_period == tick);
-    let expected_cash = i128::from(row.quantity)
-        .checked_mul(m.cash_per_unit.micro_units())
-        .ok_or(Refusal::Overflow)?;
+    row.validate_against(m).map_err(|_| Refusal::Capture)?;
     let expected_hours = row
         .quantity
         .checked_mul(m.hours_per_unit)
         .ok_or(Refusal::Overflow)?;
-    if row.cash_amount.micro_units()
-        != if row.outcome == AidOutcome::Requested {
-            0
-        } else {
-            expected_cash
-        }
-    {
-        return Err(Refusal::Cash);
-    }
     if row.contribution_hours != if uses_time { expected_hours } else { 0 } {
         return Err(Refusal::Time);
     }

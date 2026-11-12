@@ -1,5 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use babylon_practice_contract::ResolvedOrganizerPeriod;
@@ -96,6 +97,25 @@ pub(crate) fn command(
     choice: OrganizerChoice,
 ) -> OrganizerCommand {
     OrganizerCommand {
+        allocation: if choice == OrganizerChoice::Collect {
+            OrganizerAllocation::Collection {
+                target_cash_micros: config
+                    .collection
+                    .as_ref()
+                    .expect("captured collection terms")
+                    .maximum_cash_micros,
+            }
+        } else if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            OrganizerAllocation::Aid {
+                food_quantity: 4,
+                cash_micros: 0,
+            }
+        } else {
+            OrganizerAllocation::None
+        },
         campaign_id: config.campaign_id,
         actor_id: config.controlled_actor_id,
         authority_id: config.input_authority_id,
@@ -105,6 +125,51 @@ pub(crate) fn command(
             .expect("the organizer resource set has a digest"),
         nonce: [7; 16],
         choice,
+    }
+}
+
+#[test]
+fn organizer_command_requires_explicit_allocation_even_for_ordinary_practice() {
+    let config = config();
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the captured organizer opens");
+    let mut wire = serde_json::to_value(command(&config, &state, OrganizerChoice::Hold))
+        .expect("the command serializes");
+    wire.as_object_mut()
+        .expect("the command is an object")
+        .remove("allocation");
+    assert!(
+        serde_json::from_value::<OrganizerCommand>(wire).is_err(),
+        "omitting allocation must not infer an ordinary or material request"
+    );
+}
+
+#[test]
+fn ordinary_practice_refuses_material_allocation_without_changing_standing_work() {
+    let config = config();
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the captured organizer opens");
+    let opening = state.clone();
+    for choice in [
+        OrganizerChoice::Hold,
+        OrganizerChoice::Reinforce,
+        OrganizerChoice::PauseStanding,
+        OrganizerChoice::ResumeStanding,
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+        OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
+        OrganizerChoice::LocalAid,
+        OrganizerChoice::RemoteAid,
+    ] {
+        let mut wire =
+            serde_json::to_value(command(&config, &state, choice)).expect("the command serializes");
+        wire["allocation"] = serde_json::json!({"collection":{"target_cash_micros":"1"}});
+        let command: OrganizerCommand = serde_json::from_value(wire)
+            .expect("the current command decodes an explicit typed allocation");
+        assert_eq!(
+            babylon_practice_contract::admit_organizer(&config, &state, &command),
+            Err(OrganizerError::Refused(OrganizerRefusal::InvalidCommand))
+        );
+        assert_eq!(state, opening);
     }
 }
 
@@ -2151,17 +2216,17 @@ pub(crate) fn omitted_collection_terms_are_refused_not_inferred_from_aid() {
 }
 
 #[test]
-pub(crate) fn partial_collection_epoch_refuses_previous_captures_and_roundtrips_current() {
+pub(crate) fn partner_report_epoch_refuses_previous_captures_and_roundtrips_current() {
     let captured = config();
     let opening = babylon_practice_contract::initial_organizer_state(&captured)
         .expect("the authored config admits an opening organizer state");
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 8);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 12);
     let config_bytes = babylon_practice_contract::encode_organizer_config(&captured)
         .expect("the fixture value encodes to its canonical bytes");
     let state_bytes = babylon_practice_contract::encode_organizer_state(&opening)
         .expect("the fixture value encodes to its canonical bytes");
-    assert!(config_bytes.starts_with(b"babylon.organizer-config.v7\0"));
-    assert!(state_bytes.starts_with(b"babylon.organizer-state.v6\0"));
+    assert!(config_bytes.starts_with(b"babylon.organizer-config.v11\0"));
+    assert!(state_bytes.starts_with(b"babylon.organizer-state.v10\0"));
     assert_eq!(
         babylon_practice_contract::decode_organizer_config(&config_bytes)
             .expect("the canonical bytes decode into the declared type"),
@@ -2173,14 +2238,14 @@ pub(crate) fn partial_collection_epoch_refuses_previous_captures_and_roundtrips_
         opening
     );
     let mut previous_config = captured.clone();
-    previous_config.schema_version = 6;
+    previous_config.schema_version = 11;
     let mut previous_state = opening.clone();
-    previous_state.schema_version = 6;
-    let mut previous_config_bytes = b"babylon.organizer-config.v6\0".to_vec();
+    previous_state.schema_version = 11;
+    let mut previous_config_bytes = b"babylon.organizer-config.v10\0".to_vec();
     previous_config_bytes.extend(
         serde_json::to_vec(&previous_config).expect("the value serializes to canonical JSON bytes"),
     );
-    let mut previous_state_bytes = b"babylon.organizer-state.v4\0".to_vec();
+    let mut previous_state_bytes = b"babylon.organizer-state.v9\0".to_vec();
     previous_state_bytes.extend(
         serde_json::to_vec(&previous_state).expect("the value serializes to canonical JSON bytes"),
     );

@@ -3,6 +3,7 @@ use super::aid::OrganizerAidSupport;
 use super::aid::OrganizerAidSupportStatus;
 use super::aid::OrganizerPendingAidPractice;
 use super::time_resources::OrganizerPeriodTimeResources;
+use super::OrganizerAllocation;
 use super::OrganizerChoice;
 use super::OrganizerCommand;
 use super::OrganizerCommitment;
@@ -102,11 +103,21 @@ pub(super) fn intent_for_authorized_commitment(
                 .collection
                 .as_ref()
                 .ok_or(OrganizerError::InvalidCommitment)?;
+            let OrganizerAllocation::Collection { target_cash_micros } =
+                commitment.command.allocation
+            else {
+                return Err(OrganizerError::InvalidCommitment);
+            };
             (
                 PracticeId::MutualAid,
                 PracticeTargetTag::SocialClass,
                 row.social_class_target,
-                vec![],
+                vec![PracticeParameter {
+                    key_u8: 3,
+                    value_kind_u8: 2,
+                    value_length_u16: 16,
+                    value_bytes: target_cash_micros.to_be_bytes().to_vec(),
+                }],
             )
         }
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
@@ -116,7 +127,26 @@ pub(super) fn intent_for_authorized_commitment(
                 PracticeId::MutualAid,
                 PracticeTargetTag::SocialClass,
                 binding.social_class_target,
-                vec![],
+                match commitment.command.allocation {
+                    OrganizerAllocation::Aid {
+                        food_quantity,
+                        cash_micros,
+                    } => vec![
+                        PracticeParameter {
+                            key_u8: 4,
+                            value_kind_u8: 3,
+                            value_length_u16: 8,
+                            value_bytes: food_quantity.to_be_bytes().to_vec(),
+                        },
+                        PracticeParameter {
+                            key_u8: 5,
+                            value_kind_u8: 2,
+                            value_length_u16: 16,
+                            value_bytes: cash_micros.to_be_bytes().to_vec(),
+                        },
+                    ],
+                    _ => return Err(OrganizerError::InvalidCommitment),
+                },
             )
         }
         OrganizerChoice::Inquiry(question) => (
@@ -454,6 +484,7 @@ fn routine_commitment(
     let mut nonce = [0; 16];
     nonce.copy_from_slice(&digest[..16]);
     let command = OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: config.campaign_id,
         actor_id: config.controlled_actor_id,
         authority_id: config.input_authority_id,
@@ -464,7 +495,7 @@ fn routine_commitment(
         choice: OrganizerChoice::Hold,
     };
     Ok(OrganizerCommitment {
-        commitment_id: super::contract::identity(b"babylon.organizer-commitment.v1", &command)?,
+        commitment_id: super::contract::identity(b"babylon.organizer-commitment.v3", &command)?,
         command,
         resolves_period,
     })
@@ -627,19 +658,7 @@ pub fn organizer_resolved_action_batch(
         }
         intents.push(intent);
     }
-    for pending in &state.pending_aid {
-        let period = state
-            .period
-            .checked_add(1)
-            .ok_or(OrganizerError::Arithmetic)?;
-        let (intent, response) = super::aid::delayed_aid_intents(config, pending, period)?;
-        if let Some(partner) = partner_for_choice(config, pending.gift.commitment.command.choice) {
-            if partner_response(config, partner)? == OrganizerPartnerResponse::Participated {
-                intents.push(response);
-            }
-        }
-        intents.push(intent);
-    }
+
     intents.sort_by_key(crate::practice_proposal_key);
     let items = intents
         .into_iter()
@@ -1114,7 +1133,7 @@ fn resolve_pending_aid(
         .flat_map(|row| row.time_use.iter())
         .cloned()
         .collect::<Vec<_>>();
-    for authorization in pending {
+    for mut authorization in pending {
         let support = supports
             .iter()
             .find(|row| row.original_commitment_id == authorization.gift.commitment.commitment_id)
@@ -1122,56 +1141,58 @@ fn resolve_pending_aid(
         super::aid::validate_support(&authorization, support, next.period)?;
         let choice = authorization.gift.commitment.command.choice;
         let mut receipt = aid_attempt_receipt(&authorization, next.period)?;
-        match support.status {
-            OrganizerAidSupportStatus::AwaitingDelivery => {
-                receipt.outcome = OrganizerOutcome::AidAwaitingSupport;
-                next.pending_aid.push(authorization.clone());
-            }
-            OrganizerAidSupportStatus::TerminalFailure
-            | OrganizerAidSupportStatus::Granted {
-                consumed_quantity: 0,
-                ..
-            } => {}
-            OrganizerAidSupportStatus::Granted { .. } => {
-                let (intent, _) =
-                    super::aid::delayed_aid_intents(config, &authorization, next.period)?;
-                let partner =
-                    partner_for_choice(config, choice).ok_or(OrganizerError::InvalidCommitment)?;
-                receipt.partner_actor_id = Some(partner.actor_id);
-                receipt.partner_response = partner_response(config, partner)?;
-                let (remaining, supply) = super::time_resources::remaining_after_uses(
-                    &remaining_pledge,
-                    resources,
-                    &performed,
-                )?;
-                let binding = super::aid::aid_binding(config, choice)
-                    .ok_or(OrganizerError::AidSupportMismatch)?;
-                let time_use = super::time_resources::allocate_hours(
-                    &remaining,
-                    &intent,
-                    (receipt.partner_response == OrganizerPartnerResponse::Participated)
-                        .then_some(partner),
-                    binding.coordination_hours,
-                    &supply,
-                    Some(binding),
-                )?;
-                if let Some(uses) = time_use {
-                    receipt.outcome =
-                        if receipt.partner_response == OrganizerPartnerResponse::Participated {
-                            OrganizerOutcome::AidPracticeCompleted
-                        } else {
-                            OrganizerOutcome::AidPracticeUncompleted
-                        };
-                    receipt.hours_spent = binding.coordination_hours;
-                    performed.extend(uses.iter().cloned());
-                    receipt.time_use = uses;
-                } else {
-                    receipt.outcome = OrganizerOutcome::InsufficientTime;
+        let qualifies = support.material_postings.payer_cash_granted_micros > 0
+            || matches!(support.status, OrganizerAidSupportStatus::Granted { consumed_quantity, .. } if consumed_quantity > 0);
+        if authorization.response.is_some() {
+            receipt.outcome = OrganizerOutcome::AidResponseRetained;
+        } else if qualifies {
+            let (intent, _) = super::aid::delayed_aid_intents(config, &authorization, next.period)?;
+            let partner =
+                partner_for_choice(config, choice).ok_or(OrganizerError::InvalidCommitment)?;
+            receipt.partner_actor_id = Some(partner.actor_id);
+            receipt.partner_response = partner_response(config, partner)?;
+            let (remaining, supply) = super::time_resources::remaining_after_uses(
+                &remaining_pledge,
+                resources,
+                &performed,
+            )?;
+            let binding = super::aid::aid_binding(config, choice)
+                .ok_or(OrganizerError::AidSupportMismatch)?;
+            let time_use = super::time_resources::allocate_hours(
+                &remaining,
+                &intent,
+                (receipt.partner_response == OrganizerPartnerResponse::Participated)
+                    .then_some(partner),
+                binding.coordination_hours,
+                &supply,
+                Some(binding),
+            )?;
+            if let Some(uses) = time_use {
+                receipt.outcome =
                     if receipt.partner_response == OrganizerPartnerResponse::Participated {
-                        receipt.partner_response = OrganizerPartnerResponse::UnableToParticipate;
-                    }
+                        OrganizerOutcome::AidPracticeCompleted
+                    } else {
+                        OrganizerOutcome::AidPracticeUncompleted
+                    };
+                receipt.hours_spent = binding.coordination_hours;
+                performed.extend(uses.iter().cloned());
+                receipt.time_use = uses;
+            } else {
+                receipt.outcome = OrganizerOutcome::InsufficientTime;
+                if receipt.partner_response == OrganizerPartnerResponse::Participated {
+                    receipt.partner_response = OrganizerPartnerResponse::UnableToParticipate;
                 }
             }
+            authorization.response = Some(receipt.clone());
+        } else if support.status == OrganizerAidSupportStatus::AwaitingDelivery {
+            receipt.outcome = OrganizerOutcome::AidAwaitingSupport;
+        }
+        authorization.lost_quantity = authorization
+            .lost_quantity
+            .checked_add(support.material_postings.lost_quantity)
+            .ok_or(OrganizerError::Arithmetic)?;
+        if support.status == OrganizerAidSupportStatus::AwaitingDelivery {
+            next.pending_aid.push(authorization.clone());
         }
         let row = OrganizerAidResolutionReceipt {
             authorization,
@@ -1199,7 +1220,7 @@ fn aid_attempt_receipt(
         period,
         choice,
         standing_work: false,
-        outcome: OrganizerOutcome::AidNotProvisioned,
+        outcome: OrganizerOutcome::NoQualifyingSupport,
         hours_spent: 0,
         partner_actor_id: None,
         partner_response: OrganizerPartnerResponse::NotRequested,

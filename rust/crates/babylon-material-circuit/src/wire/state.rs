@@ -29,12 +29,12 @@ pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circui
 
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    69, 46, 32, 180, 200, 146, 10, 121, 77, 45, 41, 185, 171, 36, 114, 87, 4, 229, 126, 84, 148,
-    96, 130, 54, 178, 68, 1, 7, 164, 96, 29, 143,
+    13, 175, 158, 220, 33, 48, 108, 187, 64, 74, 80, 103, 31, 60, 161, 216, 82, 7, 239, 153, 240,
+    70, 49, 113, 129, 253, 247, 46, 7, 229, 238, 210,
 ];
 
 /// Published schema version of one canonical material-circuit state frame.
-pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 21;
+pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 22;
 
 pub(crate) const SCHEMA_VERSION: u16 = MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 
@@ -513,11 +513,18 @@ pub fn encode_material_circuit_state(
     state: &MaterialCircuitState,
 ) -> Result<Vec<u8>, MaterialCircuitError> {
     let canonical = transition::canonical_state(catalog, state)?;
+    encode_canonical_state(catalog.catalog_digest(), &canonical)
+}
+
+fn encode_canonical_state(
+    catalog_digest: [u8; 32],
+    canonical: &MaterialCircuitState,
+) -> Result<Vec<u8>, MaterialCircuitError> {
     let mut output = Vec::new();
     output.extend_from_slice(MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES);
     output.push(0);
     output.extend_from_slice(&SCHEMA_VERSION.to_be_bytes());
-    output.extend_from_slice(&catalog.catalog_digest());
+    output.extend_from_slice(&catalog_digest);
     output.extend_from_slice(&canonical.period.to_be_bytes());
     services::append_connections(&mut output, &canonical.service_connections)?;
     services::append_orders(&mut output, &canonical.service_orders)?;
@@ -546,6 +553,35 @@ fn append_maintenance_service(output: &mut Vec<u8>, service: Option<MaintenanceS
     }
 }
 
+/// A decoded canonical state sealed to the catalog that admitted its bytes.
+///
+/// Only full wire admission constructs this owner. Shared access preserves its
+/// admission until it is consumed to serialize the same state and catalog digest.
+#[derive(Debug)]
+pub struct DecodedMaterialCircuitState {
+    state: MaterialCircuitState,
+    catalog_digest: [u8; 32],
+}
+
+impl DecodedMaterialCircuitState {
+    /// Borrow the complete admitted state without allowing its mutation.
+    #[must_use]
+    pub fn state(&self) -> &MaterialCircuitState {
+        &self.state
+    }
+
+    /// Consume the admitted state together with its exact canonical encoding.
+    ///
+    /// # Errors
+    /// Returns the first row-bound or wire-bound serialization refusal.
+    pub fn into_state_and_canonical_bytes(
+        self,
+    ) -> Result<(MaterialCircuitState, Vec<u8>), MaterialCircuitError> {
+        let bytes = encode_canonical_state(self.catalog_digest, &self.state)?;
+        Ok((self.state, bytes))
+    }
+}
+
 /// Decode one compact canonical state against its catalog.
 ///
 /// # Errors
@@ -554,6 +590,22 @@ pub fn decode_material_circuit_state(
     catalog: &MaterialCatalog,
     payload: &[u8],
 ) -> Result<MaterialCircuitState, MaterialCircuitError> {
+    Ok(decode_material_circuit_state_for_encoding(catalog, payload)?.state)
+}
+
+/// Admit canonical bytes for later encoding without repeating state validation.
+///
+/// The returned owner captures the catalog digest and exposes no mutable state.
+/// Its consuming encoder retains the complete canonical byte comparison at the
+/// caller's original boundary without admitting or cloning the state again.
+///
+/// # Errors
+/// Returns the same domain, version, digest, enum, wire, order, or state refusal
+/// as the ordinary state decoder.
+pub fn decode_material_circuit_state_for_encoding(
+    catalog: &MaterialCatalog,
+    payload: &[u8],
+) -> Result<DecodedMaterialCircuitState, MaterialCircuitError> {
     let mut cursor = Cursor::new(payload);
     if cursor.take(MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len())?
         != MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES
@@ -590,7 +642,10 @@ pub fn decode_material_circuit_state(
     if canonical != state {
         return Err(MaterialCircuitError::WireNoncanonical);
     }
-    Ok(state)
+    Ok(DecodedMaterialCircuitState {
+        state,
+        catalog_digest: catalog.catalog_digest(),
+    })
 }
 
 /// Hash one compact validated canonical state.

@@ -1,15 +1,17 @@
 //! Original native witnesses, configured identities and refused evidence.
 use babylon_persistence::qualification_audit::aid::{Accepted, Audit, Refusal};
 use babylon_persistence::runtime_session::{
-    OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
+    OrganizerAidFunding, OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview,
+    OrganizerSnapshot,
 };
+use babylon_practice_contract::OrganizerAllocation;
 
 use babylon_practice_contract::OrganizerRefusal;
 use sha2::{Digest, Sha256};
 
 fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     let mut before: OrganizerSnapshot =
-        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v13.json"))
+        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v19.json"))
             .expect("the authored JSON matches the declared schema");
     before.view.actor_id = 42;
     before.view.authority_id = [17; 16];
@@ -30,6 +32,10 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
         .expect("the fixture holds the searched element")
         .coordination_hours = 5;
     let command = babylon_practice_contract::OrganizerCommand {
+        allocation: OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        },
         campaign_id: [9; 16],
         actor_id: 42,
         authority_id: [17; 16],
@@ -39,7 +45,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
         nonce: [21; 16],
         choice: OrganizerChoice::LocalAid,
     };
-    let mut bytes = b"babylon.organizer-commitment.v1\0".to_vec();
+    let mut bytes = b"babylon.organizer-commitment.v3\0".to_vec();
     bytes.extend_from_slice(
         &serde_json::to_vec(&command).expect("the value serializes to canonical JSON bytes"),
     );
@@ -51,6 +57,10 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     babylon_practice_contract::validate_organizer_commitment(&commitment)
         .expect("the authored fixture satisfies the rule");
     let preview = OrganizerPreview {
+        allocation: OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        },
         choice: OrganizerChoice::LocalAid,
         current_period: 0,
         resolves_period: 1,
@@ -116,7 +126,10 @@ fn aid_witness_refuses_crossed_authority_refusal_and_conflicting_retry() {
     let mut audit = Audit::default();
     assert_eq!(audit.accept(accepted), Err(Refusal::OriginalOffer));
     let mut changed = before;
-    changed.aid[0].payer_cash += 1;
+    let OrganizerAidFunding::Organization { cash_micros } = &mut changed.aid[0].funding else {
+        panic!("controlled treasury")
+    };
+    *cash_micros += 1;
     assert_eq!(
         audit.accept(
             Accepted::capture(&commitment, &preview, &changed)

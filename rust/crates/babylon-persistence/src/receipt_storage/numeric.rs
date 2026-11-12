@@ -35,7 +35,6 @@ fn reserve_tag(tag: u8) -> Result<u8> {
     match tag {
         1..=3 => Ok(2),
         4..=6 => Ok(3),
-        8..=10 => Ok(4),
         _ => Err(Error::Canonical),
     }
 }
@@ -58,10 +57,10 @@ fn keep(tag: u8, row: &[u8]) -> Result<Vec<u8>> {
             out.extend_from_slice(&row[6..12]);
             out.extend_from_slice(&row[28..34]);
             out.extend_from_slice(&row[34..50]);
-        } else if matches!(tag, 1..=6 | 8..=10) {
+        } else if matches!(tag, 1..=6) {
             out.extend_from_slice(&row[..6]);
             let reserve = reserve_tag(tag)?;
-            let (cash, reserved) = if matches!(tag, 1 | 4 | 8) {
+            let (cash, reserved) = if matches!(tag, 1 | 4) {
                 (&row[6..12], &row[28..34])
             } else {
                 (&row[28..34], &row[6..12])
@@ -164,7 +163,7 @@ fn unpack_cash(row: &[u8], out: &mut Vec<u8>) -> Result<()> {
             row[8..14].to_vec(),
             c(row, 14)?,
         )
-    } else if matches!(tag, 1..=6 | 8..=10) {
+    } else if matches!(tag, 1..=6) {
         if row[28..30] != [0; 2] {
             return Err(Error::Padding);
         }
@@ -178,7 +177,7 @@ fn unpack_cash(row: &[u8], out: &mut Vec<u8>) -> Result<()> {
         return Err(Error::Canonical);
     }
     let debit = credit.checked_neg().ok_or(Error::Arithmetic)?;
-    let (from, to) = if tag == 7 || matches!(tag, 1 | 4 | 8) {
+    let (from, to) = if tag == 7 || matches!(tag, 1 | 4) {
         (cash, reserve)
     } else {
         (reserve, cash)
@@ -419,33 +418,31 @@ mod tests {
     }
 
     #[test]
-    fn all_aid_cash_purposes_reconstruct_exact_reserve_direction() {
+    fn mutual_aid_cash_roundtrips_and_retired_reserve_purposes_refuse() {
+        let mut row = vec![0; 50];
+        row[..2].copy_from_slice(&[7, 7]);
+        row[6..12].copy_from_slice(&[1, 3, 0, 0, 0, 11]);
+        row[12..28].copy_from_slice(&(-31_i128).to_be_bytes());
+        row[28..34].copy_from_slice(&[1, 2, 0, 0, 0, 23]);
+        row[34..50].copy_from_slice(&31_i128.to_be_bytes());
+        let (mode, width, packed) = pack_family(11, &row, 1, 50, 1).expect("current gift packs");
+        assert_eq!((mode, width), (1, 30));
+        assert_eq!(
+            unpack_row(11, mode, &packed, 1, 50).expect("current gift inverse"),
+            row
+        );
         for purpose in [8, 9, 10] {
-            let mut row = vec![0; 50];
-            row[0] = purpose;
-            row[2..6].copy_from_slice(&11_u32.to_be_bytes());
-            let cash = [1, 2, 0, 0, 0, 23];
-            let reserve = [4, 0, 0, 0, 0, 11];
-            let (debit, credit) = if purpose == 8 {
-                (cash, reserve)
-            } else {
-                (reserve, cash)
-            };
-            row[6..12].copy_from_slice(&debit);
-            row[12..28].copy_from_slice(&(-31_i128).to_be_bytes());
-            row[28..34].copy_from_slice(&credit);
-            row[34..50].copy_from_slice(&31_i128.to_be_bytes());
-            let (mode, width, packed) = pack_family(11, &row, 1, 50, 1)
-                .expect("the fixture call `pack_family` succeeds for the authored inputs");
-            assert_eq!((mode, width), (1, 30));
-            assert_eq!(
-                unpack_row(11, mode, &packed, 1, 50)
-                    .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
-                row
-            );
-            let bad_reserve = if purpose == 8 { 28 } else { 6 };
-            row[bad_reserve] = 2;
-            assert_eq!(keep(11, &row), Err(Error::Canonical));
+            let mut old = row.clone();
+            old[0] = purpose;
+            assert_eq!(keep(11, &old), Err(Error::Canonical));
+            let mut old = packed.clone();
+            old[0] = purpose;
+            assert_eq!(unpack_row(11, mode, &old, 1, 50), Err(Error::Canonical));
+        }
+        for offset in [6, 28] {
+            let mut old = row.clone();
+            old[offset] = 4;
+            assert_eq!(keep(11, &old), Err(Error::Canonical));
         }
     }
 }

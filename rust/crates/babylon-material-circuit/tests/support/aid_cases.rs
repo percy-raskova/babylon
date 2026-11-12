@@ -2,7 +2,6 @@
 
 use crate::Currency;
 use babylon_material_circuit::AccountId;
-use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::AidOutcome;
 use babylon_material_circuit::AidResolveInput;
 use babylon_material_circuit::AidTransport;
@@ -34,6 +33,7 @@ use babylon_material_circuit::MoneyTransferPurpose;
 use babylon_material_circuit::OrderId;
 use babylon_material_circuit::OrganizationAccountId;
 use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::{AidMandate, AidReceiving};
 
 fn recipient() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
@@ -131,6 +131,7 @@ fn input(quantity: u64) -> AidResolveInput {
         donor_actor: 10,
         recipient_actor: 20,
         quantity,
+        cash: crate::money(6),
     }
 }
 fn close_aid(
@@ -178,7 +179,7 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
             grant.cash_amount,
             grant.contribution_hours
         ),
-        (2, crate::money(8), crate::money(6), 4)
+        (2, crate::money(8), crate::money(0), 4)
     );
     assert_eq!(
         crate::economy(&gifted.state)
@@ -211,7 +212,7 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
     assert_eq!(receiver.statement.gift_income, crate::money(14));
     assert_eq!(receiver.statement.sales, crate::money(0));
     assert_eq!(receiver.statement.public_transfer_income, crate::money(0));
-    assert_eq!(crate::economy(&gifted.state).book.snapshot().aid.len(), 0);
+    assert_eq!(crate::economy(&gifted.state).aid.freight.len(), 0);
     let HouseholdTimeAccounting::Modeled(time) = &crate::economy(&gifted.state).household_time
     else {
         panic!("modeled");
@@ -339,23 +340,34 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
         1
     );
     assert_eq!(dispatch.contribution_hours, 2);
-    let account = crate::economy(&first.state)
-        .book
-        .aid_reserve(dispatch.commitment_id)
-        .expect("the fixture reserve carries its authored balance");
+    let cash_grant = first
+        .aid
+        .iter()
+        .find(|row| row.outcome == AidOutcome::CashGranted)
+        .expect("original dispatch cash grant");
     assert_eq!(
-        account
-            .reserved_amount()
-            .expect("the fixture reservation exists"),
-        crate::money(3)
+        cash_grant.cash_amount,
+        crate::money(6),
+        "selected cash is independent of the one dispatched food unit"
     );
-    assert_eq!(account.refunded, 1);
+    assert_eq!(cash_grant.period, 1);
+    assert_eq!(cash_grant.dispatch_period, 1);
+    assert!(
+        first
+            .aid
+            .iter()
+            .any(|row| row.outcome == AidOutcome::Unshipped
+                && row.quantity == 1
+                && row.cash_amount == crate::money(0)),
+        "unshipped food ends without a cash refund"
+    );
+
     assert_eq!(
         crate::economy(&first.state)
             .book
             .cash(AccountId::Household(recipient()))
             .expect("the fixture book holds the payer account"),
-        crate::money(0)
+        crate::money(6)
     );
     let restored = babylon_material_circuit::decode_material_circuit_state(
         &catalog,
@@ -370,10 +382,10 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
             .book
             .cash(AccountId::Household(recipient()))
             .expect("the fixture book holds the payer account"),
-        crate::money(3)
+        crate::money(6)
     );
     assert_eq!(crate::economy(&second.state).aid.freight.len(), 0);
-    assert_eq!(crate::economy(&second.state).book.snapshot().aid.len(), 0);
+    assert_eq!(crate::economy(&second.state).aid.freight.len(), 0);
     assert!(second
         .aid
         .iter()
@@ -381,7 +393,7 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
 }
 
 #[test]
-fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
+fn physical_loss_preserves_settled_cash_and_never_grants_phantom_food() {
     let (catalog, state) = aid_opening(true);
     let mut catalog = catalog.into_definition();
     catalog
@@ -401,14 +413,17 @@ fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
             .book
             .cash(AccountId::Household(recipient()))
             .expect("the fixture book holds the payer account"),
-        crate::money(0)
+        crate::money(6)
     );
     assert!(second.aid.iter().any(|r| r.outcome == AidOutcome::Lost));
-    assert!(second
-        .money_transfers
-        .iter()
-        .any(|r| matches!(r.purpose, MoneyTransferPurpose::AidRefund(_))));
-    assert_eq!(crate::economy(&second.state).book.snapshot().aid.len(), 0);
+    assert!(
+        !second
+            .money_transfers
+            .iter()
+            .any(|r| r.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)),
+        "food loss must neither revoke settled cash nor make another transfer"
+    );
+    assert_eq!(crate::economy(&second.state).aid.freight.len(), 0);
 }
 
 #[test]
@@ -448,7 +463,7 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
             .book
             .cash(AccountId::Household(recipient()))
             .expect("the fixture book holds the payer account"),
-        crate::money(9)
+        crate::money(12) // Two independently selected cash gifts of six.
     );
 }
 
@@ -572,10 +587,41 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .cash(donor_account)
         .expect("the fixture book holds the payer account");
     assert_eq!(after_funding, crate::money(0));
-    // Four authorized units compete for supply; the original organization cash
-    // funds only two. Residual physical capacity cannot re-admit unfunded units.
-    let result =
-        close_aid(&catalog, &state, &[input(4)]).expect("the fixture closes the pending aid");
+    // Food is independent. The existing six cash units partially settle the
+    // selected eight; the remaining two end without reservation or retry.
+    let mut selected = input(4);
+    selected.cash = crate::money(8);
+    let result = close_aid(&catalog, &state, &[selected]).expect("independent partial settlement");
+    assert!(result
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::CashRequested && row.cash_amount == crate::money(8)));
+    assert!(result
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::CashGranted && row.cash_amount == crate::money(6)));
+    let continued = close_aid(&catalog, &result.state, &[]).expect("ordinary continuation");
+    assert!(
+        continued.aid.is_empty(),
+        "no automatic cash remainder retry"
+    );
+    assert!(continued
+        .money_transfers
+        .iter()
+        .all(|row| row.purpose != MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)));
+    let mut unfunded = input(0);
+    unfunded.admitted_period = 1;
+    unfunded.cash = crate::money(2);
+    let attempted = close_aid(&catalog, &result.state, &[unfunded])
+        .expect("new explicit unfunded cash attempt");
+    assert!(attempted
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::CashUnfunded && row.cash_amount == crate::money(0)));
+    assert!(attempted
+        .money_transfers
+        .iter()
+        .all(|row| row.purpose != MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)));
     let donor_postings = result
         .money_transfers
         .iter()
@@ -604,9 +650,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .iter()
         .filter(|row| matches!(
             row.purpose,
-            MoneyTransferPurpose::AidReservation(_)
-                | MoneyTransferPurpose::AidGrant(_)
-                | MoneyTransferPurpose::AidRefund(_)
+            MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
         ))
         .flat_map(|row| [&row.debit, &row.credit])
         .all(|posting| posting.location != MoneyLocation::Cash(donor_account)));
@@ -642,7 +686,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .find(|r| r.account == AccountId::Household(crate::household()))
         .expect("the fixture holds the searched element");
     assert_eq!(organization.statement.gift_expense, crate::money(6));
-    assert_eq!(donor.statement.gift_expense, crate::money(8));
+    assert_eq!(donor.statement.gift_expense, crate::money(16)); // Four requested units now dispatch independently of six cash.
     assert!(result.aid.iter().all(|r| r.payer == payer));
     assert_eq!(
         crate::economy(&result.state)
@@ -668,7 +712,11 @@ fn mandate(routed: bool) -> AidMandate {
         labor_unit_id: crate::hours(),
         hours_per_unit: 2,
         maximum_quantity: 4,
-        cash_per_unit: crate::money(3),
+        maximum_cash: crate::money(30),
+        initial_quantity: 1,
+        initial_cash: crate::money(0),
+        food_receiving: AidReceiving::Accept,
+        cash_receiving: AidReceiving::Accept,
         transport: if routed {
             AidTransport::Routed {
                 route_id: crate::route(2),
@@ -701,10 +749,7 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
     let CircuitAccounting::Monetary(accounts) = &mut wrong_owner.accounting else {
         panic!("monetary");
     };
-    let mut snapshot = accounts.book.snapshot();
-    snapshot.aid[0].payer = AccountId::Site(crate::site(1));
-    accounts.book =
-        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
+    accounts.aid.freight[0].donor = recipient();
     assert_eq!(
         babylon_material_circuit::encode_material_circuit_state(&catalog, &wrong_owner),
         Err(MaterialCircuitError::AidInvariant)
@@ -726,6 +771,29 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
     let mut trailing = before;
     trailing.push(0);
     assert!(babylon_material_circuit::decode_material_circuit_state(&catalog, &trailing).is_err());
+}
+
+#[test]
+fn pending_physical_gift_refuses_quantity_above_captured_cap() {
+    let (catalog, opening) = aid_opening(true);
+    let first = close_aid(&catalog, &opening, &[input(2)]).expect("pending gift closes");
+    let before = first.state.clone();
+    let mut invented = before.clone();
+    let CircuitAccounting::Monetary(economy) = &mut invented.accounting else {
+        panic!("monetary fixture");
+    };
+    let lot = &mut economy.aid.freight[0];
+    let mandate = catalog
+        .aid_mandates
+        .iter()
+        .find(|row| row.id == lot.mandate_id)
+        .expect("captured mandate");
+    lot.quantity = mandate.maximum_quantity + 1;
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &invented),
+        Err(MaterialCircuitError::AidInvariant)
+    );
+    assert_eq!(first.state, before);
 }
 
 #[test]
@@ -778,4 +846,87 @@ fn physical_control_refuses_authored_aid() {
         babylon_material_circuit::encode_material_circuit_state(&catalog, &state).err(),
         Some(MaterialCircuitError::AidInvariant)
     );
+}
+
+#[test]
+fn independent_cash_leg_needs_no_food_route_and_food_leg_needs_no_payer_account() {
+    let (catalog, opening) = aid_opening(true);
+    let mut definition = catalog.into_definition();
+    definition.aid_mandates[0].transport = AidTransport::Routed {
+        route_id: crate::route(99),
+        from_node_id: crate::node(98),
+        to_node_id: crate::node(99),
+    };
+    let cash_catalog =
+        MaterialCatalog::try_new(definition).expect("cash-only capture preserves identity");
+    let cash = close_aid(&cash_catalog, &opening, &[input(0)])
+        .expect("cash-only aid does not require food route wiring");
+    assert_eq!(consumed(&cash, recipient()).consumed_quantity, 0);
+    assert!(cash
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::CashGranted && row.cash_amount == crate::money(6)));
+    assert!(
+        cash.aid_contributions.is_empty(),
+        "cash transfer alone performs no food labor"
+    );
+    let (catalog, opening) = aid_opening(false);
+    let mut definition = catalog.into_definition();
+    definition.aid_mandates[0].payer =
+        AccountId::Organization(OrganizationAccountId::from_bytes([98; 32]));
+    let food_catalog =
+        MaterialCatalog::try_new(definition).expect("food authority remains captured");
+    let mut request = input(2);
+    request.cash = crate::money(0);
+    let food = close_aid(&food_catalog, &opening, &[request])
+        .expect("stock-only food requires no payer account");
+    assert_eq!(consumed(&food, recipient()).consumed_quantity, 1);
+    assert!(food
+        .money_transfers
+        .iter()
+        .all(|row| row.purpose != MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)));
+    assert_eq!(
+        food.aid_contributions
+            .iter()
+            .map(|row| row.hours)
+            .sum::<u64>(),
+        4
+    );
+}
+
+#[test]
+fn independent_receiving_refusal_preserves_the_other_selected_leg() {
+    for refuse_food in [true, false] {
+        let (catalog, opening) = aid_opening(false);
+        let mut definition = catalog.into_definition();
+        if refuse_food {
+            definition.aid_mandates[0].food_receiving = AidReceiving::Refuse;
+        } else {
+            definition.aid_mandates[0].cash_receiving = AidReceiving::Refuse;
+        }
+        let catalog = MaterialCatalog::try_new(definition).expect("separate receiving terms");
+        let result =
+            close_aid(&catalog, &opening, &[input(2)]).expect("receiving refusal is per leg");
+        assert_eq!(
+            consumed(&result, recipient()).consumed_quantity,
+            u64::from(!refuse_food)
+        );
+        assert_eq!(
+            crate::economy(&result.state)
+                .book
+                .cash(AccountId::Household(recipient()))
+                .expect("recipient cash"),
+            crate::money(if refuse_food { 6 } else { 0 })
+        );
+        assert_eq!(
+            crate::economy(&result.state)
+                .book
+                .total_cash_and_reserves()
+                .expect("closing cash"),
+            crate::economy(&opening)
+                .book
+                .total_cash_and_reserves()
+                .expect("opening cash")
+        );
+    }
 }

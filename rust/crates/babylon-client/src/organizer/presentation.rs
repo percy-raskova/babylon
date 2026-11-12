@@ -1,14 +1,17 @@
 //! Text projections over granted organizer records, never material ledger truth.
+use babylon_persistence::runtime_session::OrganizerAidFoodPreview;
 
+use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::runtime_session::{
-    OrganizerAidOption, OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
-    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerMaterialAidPreview,
-    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
-    OrganizerPreview, OrganizerRefusal, OrganizerReport, OrganizerView,
+    OrganizerAidFunding, OrganizerAidOption, OrganizerChoice, OrganizerCollectionOutcome,
+    OrganizerCollectionResolution, OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry,
+    OrganizerMaterialAidPreview, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
+    OrganizerPauseReason, OrganizerPreview, OrganizerRefusal, OrganizerReport, OrganizerView,
 };
 use std::fmt::Write as _;
 
 use super::evidence::EvidenceMode;
+use super::workspace::{DispatchPractice, PeriodDispatch};
 use super::{OrganizerClient, OrganizerInspector};
 
 const REINFORCE_PURPOSE: &str = "Purpose: Try to contact the workplace partner for future report sharing. This is not household aid.";
@@ -25,6 +28,30 @@ pub(super) fn choice(value: OrganizerChoice) -> &'static str {
         OrganizerChoice::Hold => "Keep current routine",
         OrganizerChoice::PauseStanding => "Pause neighborhood work",
         OrganizerChoice::ResumeStanding => "Resume neighborhood work",
+    }
+}
+
+/// Intended work only; actual receipts use factual choice and outcome paths.
+pub(super) fn flavor(view: &OrganizerView, choice: OrganizerChoice) -> &'static str {
+    match choice {
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => {
+            "Put the workplace's account of work and output on the table."
+        }
+        OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived) => {
+            "Ask what kept the work going, and what went unrepaired."
+        }
+        OrganizerChoice::Reinforce => "Keep a line open to the people at work.",
+        OrganizerChoice::Collect => "Pass the hat; household needs and consent come first.",
+        OrganizerChoice::LocalAid => "Put food toward a nearby household's needs.",
+        OrganizerChoice::RemoteAid => {
+            "Send support across the distance; the route still has to carry it."
+        }
+        OrganizerChoice::Hold if view.standing.authorized => {
+            "Keep showing up for the neighborhood contact work."
+        }
+        OrganizerChoice::Hold => "Leave the pause in place for another period.",
+        OrganizerChoice::PauseStanding => "Call a pause in the neighborhood contact work.",
+        OrganizerChoice::ResumeStanding => "Put the neighborhood contact work back on the agenda.",
     }
 }
 
@@ -55,7 +82,7 @@ pub(super) fn refusal(value: OrganizerRefusal) -> &'static str {
         OrganizerRefusal::AidReceivingRefused => {
             "The recipient has not consented to receive this gift."
         }
-        OrganizerRefusal::PendingAidConflict => "A different aid commitment is already pending.",
+        OrganizerRefusal::PendingAidConflict => "The earlier commitment to this partner is still open, including its freight. A new cash-only proposal also waits for closure.",
         OrganizerRefusal::HouseholdTimeAlreadySpent => {
             "Those household hours were already committed to a resolved period."
         }
@@ -75,31 +102,66 @@ pub(super) fn partner(view: &OrganizerView, actor: u64) -> &str {
     } else if actor == view.actor_id {
         &view.organization_label
     } else if let Some(option) = view
-        .aid_options
+        .aid_partners
         .iter()
-        .find(|option| option.partner_actor_id == actor)
+        .find(|option| option.actor_id == actor)
     {
-        &option.partner_label
+        &option.label
     } else {
         "An attributed participant"
     }
 }
 
-fn report(value: &OrganizerReport) -> String {
+pub(super) fn report(value: &OrganizerReport) -> String {
     match value {
+        OrganizerReport::Partner { facts, .. } => super::partner_copy::detail(facts),
         OrganizerReport::ReducedWork { previous_labor_hours, performed_labor_hours } => format!(
-            "Less work was performed: {performed_labor_hours} labor-hours, compared with {previous_labor_hours} in the previous period."
+            "Less work was performed: {} labor-hours, compared with {} in the previous period.", crate::observer_ui::grouped(*performed_labor_hours), crate::observer_ui::grouped(*previous_labor_hours)
         ),
         OrganizerReport::Work { performed_labor_hours, output_kg, previous_labor_hours, previous_output_kg } => {
-            let mut text = format!("Work performed: {performed_labor_hours} labor-hours. Output: {output_kg} kg.");
-            if let Some(hours) = previous_labor_hours { let _ = write!(text, " Previous work: {hours} labor-hours."); }
-            if let Some(output) = previous_output_kg { let _ = write!(text, " Previous output: {output} kg."); }
+            let mut text = format!("Work performed: {} labor-hours. Output: {} kg.", crate::observer_ui::grouped(*performed_labor_hours), crate::observer_ui::grouped(*output_kg));
+            if let Some(hours) = previous_labor_hours { let _ = write!(text, " Previous work: {} labor-hours.", crate::observer_ui::grouped(*hours)); }
+            if let Some(output) = previous_output_kg { let _ = write!(text, " Previous output: {} kg.", crate::observer_ui::grouped(*output)); } else { text.push_str(" Earlier output was not reported."); }
             text
         },
         OrganizerReport::Maintenance { enabled_batches, consumed_batches, expired_batches } => format!(
-            "Maintenance service received: {enabled_batches} enabled batches; {consumed_batches} used; {expired_batches} expired. These are consumer records, not the provider's private accounts."
+            "Maintenance service received: {} enabled batches; {} used; {} expired. These are consumer records, not the provider's private accounts.", crate::observer_ui::grouped(*enabled_batches), crate::observer_ui::grouped(*consumed_batches), crate::observer_ui::grouped(*expired_batches)
         ),
     }
+}
+
+pub(super) fn report_kind(value: &OrganizerReport) -> &'static str {
+    match value {
+        OrganizerReport::Partner { facts, .. } => facts.title(),
+        OrganizerReport::Work { .. } => "Work and output",
+        OrganizerReport::ReducedWork { .. } => "Reduced work",
+        OrganizerReport::Maintenance { .. } => "Maintenance received",
+    }
+}
+
+pub(super) fn report_origin(item: &OrganizerObservation) -> &'static str {
+    if matches!(item.report, OrganizerReport::Partner { .. }) {
+        "Shared partner report · derived from captured material evidence"
+    } else if item.receipt_id.is_some() {
+        "Requested inquiry"
+    } else if item.observed_period == 0 && item.acquired_period == 0 {
+        "Captured initial report · period 0"
+    } else {
+        "Automatic report"
+    }
+}
+
+pub(super) fn report_caption(item: &OrganizerObservation) -> String {
+    format!(
+        "{} · observed P{}, received P{} · {}",
+        match &item.report {
+            OrganizerReport::Partner { facts, .. } => super::partner_copy::headline(facts),
+            other => report_kind(other).to_owned(),
+        },
+        item.observed_period,
+        item.acquired_period,
+        report_origin(item)
+    )
 }
 
 pub(super) fn observation(
@@ -107,56 +169,59 @@ pub(super) fn observation(
     item: &OrganizerObservation,
     current_period: u64,
 ) -> String {
-    let age = if item.observed_period < current_period {
-        "HISTORICAL REPORT"
-    } else {
-        "REPORTED"
-    };
-    let source = item.receipt_id.map_or_else(
-        || {
-            if item.observed_period == 0 && item.acquired_period == 0 {
-                "Captured initial report · period 0".into()
-            } else {
-                format!(
-                    "Automatic report from {} · source actor {}",
-                    partner(view, item.source_actor_id),
-                    item.source_actor_id
-                )
-            }
-        },
-        |receipt| {
-            receipt
-                .iter()
-                .fold(String::from("Committed receipt "), |mut text, byte| {
-                    let _ = write!(text, "{byte:02x}");
-                    text
-                })
+    let mut text = format!(
+        "{}\n\nSource: {}\nObserved period {} · Received period {}\n{}\nSubject: {}",
+        report(&item.report),
+        partner(view, item.source_actor_id),
+        item.observed_period,
+        item.acquired_period,
+        report_origin(item),
+        if matches!(item.report, OrganizerReport::Partner { .. }) {
+            partner(view, item.subject_id)
+        } else {
+            &view.workplace_label
         },
     );
-    format!(
-        "{age} · period {} · {}\n{}\nAcquired period {}. {}",
-        item.observed_period,
-        partner(view, item.source_actor_id),
-        report(&item.report),
-        item.acquired_period,
-        source
-    )
+    if let OrganizerReport::Partner { facts, .. } = &item.report {
+        let prior = super::partner_copy::prior(view, item, current_period, facts);
+        if let Some((r, previous)) = prior {
+            let _ = write!(
+                text,
+                "\nEarlier shared report P{}. {}",
+                r.observed_period,
+                super::partner_copy::detail(previous)
+            );
+        } else {
+            text.push_str("\nEarlier comparable report unknown.");
+        }
+        text.push_str("\nShared topics cover the named requirements only. Other purchases and the uses of any particular gift remain unknown.");
+    }
+    if item.observed_period < current_period {
+        text.push_str("\nHISTORICAL REPORT · These facts describe the earlier observed period.");
+    }
+    if item.receipt_id.is_some() {
+        text.push_str("\nReceived through your inquiry. Acquiring this report did not cause its work or output.");
+    }
+    text
 }
 
-pub(super) fn situation(view: &OrganizerView, period: u64) -> String {
+pub(super) fn situation(view: &OrganizerView, subject_id: u64, period: u64) -> String {
     let latest = view
         .observations
         .iter()
         .filter(|item| {
             item.actor_id == view.actor_id
-                && item.subject_id == view.workplace_id
+                && item.subject_id == subject_id
+                && view.knows_report_subject(item)
                 && item.acquired_period <= period
                 && item.observed_period <= period
         })
         .max_by_key(|item| (item.observed_period, item.acquired_period));
     latest.map_or_else(
         || {
-            if period == 0 {
+            if subject_id != view.workplace_id {
+                format!("{} · No report from this partner is available at period {period}.",partner(view,subject_id))
+            } else if period == 0 {
                 "No completed-period report exists yet. An inquiry now still costs time; it cannot obtain that report.".into()
             } else if period != view.period {
                 "Open Cited workplace Archive to review earned reports at the inspected period.".into()
@@ -245,6 +310,18 @@ pub(super) fn client_approach(
     view: &OrganizerView,
     choice: OrganizerChoice,
 ) -> String {
+    format!(
+        "{}\n{}",
+        flavor(view, choice),
+        approach_terms(client, view, choice)
+    )
+}
+
+fn approach_terms(
+    client: &OrganizerClient,
+    view: &OrganizerView,
+    choice: OrganizerChoice,
+) -> String {
     if choice == OrganizerChoice::Collect {
         return collection_detail(client, view);
     }
@@ -285,7 +362,8 @@ pub(super) fn client_approach(
         } else {
             "Accepted support remains pending. Read its actual result in Practice history."
         };
-        return format!("PENDING SUPPORT · {kind}\nOriginal admission: period {}; dispatch: period {}.\n{progress}\nOpen Practice history to follow this commitment's dispatch, arrival or terminal failure.\nAnother {kind} ruling remains unavailable while this support is pending. Later coordination still needs independent authorization.", pending.admitted_period, pending.dispatch_period);
+        let response=pending.response.as_ref().map_or_else(||"Later coordination still needs independent authorization.".to_owned(),|r|format!("Partner response in P{}: {}. Later food will not consume more coordination hours.",r.period,response(r.partner_response)));
+        return format!("PENDING SUPPORT · {kind}\nOriginal admission: period {}; dispatch: period {}.\n{progress}\nOpen Practice history to follow this commitment's dispatch, arrival or terminal failure.\nAnother {kind} ruling remains unavailable while this support is pending. {response}", pending.admitted_period, pending.dispatch_period);
     }
     let recipient = aid_recipient(view, preview);
     let mut text = recipient.map_or_else(
@@ -298,14 +376,18 @@ pub(super) fn client_approach(
     } else {
         text.push_str("Scheduled material resolution unavailable. Refresh before choosing aid.\n");
     }
-    let consent = match preview.receiving_consent {
+    let food_consent = match preview.receiving_consent {
         OrganizerGiftConsent::Accept => "accepted",
-        OrganizerGiftConsent::Refuse => "refused; gift unavailable",
+        OrganizerGiftConsent::Refuse => "refused",
+    };
+    let cash_consent = match preview.cash_receiving_consent {
+        OrganizerGiftConsent::Accept => "accepted",
+        OrganizerGiftConsent::Refuse => "refused",
     };
     if recipient.is_some() {
-        let _ = writeln!(text, "Current recipient receiving consent: {consent}; later practice needs a separate agreement.");
+        let _ = writeln!(text, "Current recipient receiving consent: food {food_consent}; cash {cash_consent}; later practice needs a separate agreement.");
     } else {
-        let _ = writeln!(text, "Current receiving consent is unverified; preview recorded {consent}. Refresh before choosing aid.");
+        let _ = writeln!(text, "Current receiving consent is unverified; preview recorded food {food_consent}; cash {cash_consent}. Refresh before choosing aid.");
     }
     text.push_str(&aid_terms(preview));
     text.push_str(if view.standing.authorized {
@@ -327,6 +409,7 @@ fn aid_recipient<'a>(
     options.next().filter(|option| {
         options.next().is_none()
             && view.period == preview.period
+            && option.partner_actor_id == preview.recipient_actor_id
             && option.receiving_consent == preview.receiving_consent
             && !option.partner_label.trim().is_empty()
     })
@@ -353,10 +436,50 @@ fn aid_review_terms(client: &OrganizerClient, choice: OrganizerChoice) -> String
     };
     let consent = match terms.receiving_consent {
         OrganizerGiftConsent::Accept => "accepted",
-        OrganizerGiftConsent::Refuse => "refused; gift unavailable",
+        OrganizerGiftConsent::Refuse => "refused for food",
     };
-    let surplus = terms.donor_stock.saturating_sub(terms.own_need);
-    format!("Recipient: {}\nGift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nGift transfer: {} currency per unit (not a sale); organization cash: {} currency. Fulfillment: {} household hours per dispatched unit.\nReceiving consent: {consent}.", recipient.partner_label, terms.maximum_quantity, terms.grams_per_unit, surplus, currency(terms.gift_cash_per_unit), currency(terms.payer_cash), terms.fulfillment_hours_per_unit)
+    let food = terms.food.as_ref().map_or_else(
+        || "Food delivery is unavailable.".into(),
+        |food| format!("Food mandate ceiling: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit.", crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.donor_stock.saturating_sub(food.own_need)), crate::observer_ui::grouped(food.fulfillment_hours_per_unit)),
+    );
+    format!("Recipient: {}\n{food}\nIndependent cash cap: {} currency. {}.\nReceiving consent: {consent}.", recipient.partner_label, crate::human_numbers::currency(terms.maximum_cash_micros), aid_cash_text(terms.funding))
+}
+
+fn selected_aid(
+    client: &OrganizerClient,
+    allocation: OrganizerAllocation,
+    choice: OrganizerChoice,
+    resolves: u64,
+) -> String {
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = allocation
+    else {
+        return "Selected allocation unavailable.".into();
+    };
+    let terms = client.aid_preview(choice);
+    let hours = terms
+        .and_then(|t| t.food.as_ref())
+        .and_then(|food| food.fulfillment_hours_per_unit.checked_mul(food_quantity));
+    let next = resolves.checked_add(1).map_or_else(
+        || "outside the campaign clock".to_owned(),
+        |p| format!("P{p}"),
+    );
+    format!("Selected: {food_quantity} food parcels and {}. Up to {} donor household hours if all selected parcels dispatch. Cash receiving: {}. At P{resolves} cash can settle after ordinary orders. The next ordinary purchase opportunity is {next}; purchases and prices are uncertain. Food travels separately. First positive cash or actually consumed food permits one independent response.",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),terms.map_or("unknown",|t|match t.cash_receiving_consent{OrganizerGiftConsent::Accept=>"accepted",OrganizerGiftConsent::Refuse=>"refused"}))
+}
+
+fn aid_cash_text(funding: OrganizerAidFunding) -> String {
+    match funding {
+        OrganizerAidFunding::Unavailable => "Cash funding unavailable".into(),
+        OrganizerAidFunding::Mandated => {
+            "Cash gift authorized. The payer balance is private".into()
+        }
+        OrganizerAidFunding::Organization { cash_micros } => format!(
+            "Organization cash: {} currency",
+            crate::human_numbers::currency(cash_micros)
+        ),
+    }
 }
 
 fn collection_review_terms(client: &OrganizerClient) -> String {
@@ -367,32 +490,43 @@ fn collection_review_terms(client: &OrganizerClient) -> String {
         OrganizerGiftConsent::Accept => "accepted independently",
         OrganizerGiftConsent::Refuse => "refused independently",
     };
-    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, services, closing stock and due payments are checked at close. No cash or time is reserved. See the collection choice below for full terms.", terms.contributor_label, currency(terms.maximum_cash_micros), terms.collection_hours, currency(terms.protected_cash_floor_micros))
+    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, closing stocks and due payments come first. If a fully funded essential need remains unmet, the household keeps its refund. An unmet service without full funding blocks the gift. A partial gift still costs the fixed hours. Organization cash: {} currency. No cash or time is reserved.", terms.contributor_label, crate::human_numbers::currency(terms.maximum_cash_micros), crate::observer_ui::grouped(terms.collection_hours), crate::human_numbers::currency(terms.protected_cash_floor_micros), crate::human_numbers::currency(terms.organization_cash_micros))
 }
 
 fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
-    use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
-    let surplus = preview.donor_stock.saturating_sub(preview.own_need);
     let mut text = format!(
-        "Current pantry: {} units; own food need: {}; protected surplus: {surplus}.\nOrganization cash: {} micro-currency. Gift transfer: {} micro-currency per food unit, separate from any sale.\nCaptured maximum/request: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.\n",
-        preview.donor_stock, preview.own_need, preview.payer_cash, preview.gift_cash_per_unit,
-        preview.maximum_quantity, preview.grams_per_unit, preview.fulfillment_hours_per_unit, preview.coordination_hours
+        "{}. Independent cash cap: {} currency, separate from food.\n",
+        aid_cash_text(preview.funding),
+        crate::human_numbers::currency(preview.maximum_cash_micros)
     );
-    if let Some(offer) = &preview.ordinary_offer {
-        let _ = writeln!(text, "Ordinary quoted food price: {} micro-currency per unit; this gift is not a purchase at that price.", offer.unit_price);
+    if let Some(food) = &preview.food {
+        let surplus = food.donor_stock.saturating_sub(food.own_need);
+        let _ = writeln!(text, "Donor household pantry: {} units; own food need: {}; protected surplus: {}.\nCaptured food maximum: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.", crate::observer_ui::grouped(food.donor_stock), crate::observer_ui::grouped(food.own_need), crate::observer_ui::grouped(surplus), crate::observer_ui::grouped(preview.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.fulfillment_hours_per_unit), crate::observer_ui::grouped(preview.coordination_hours));
+        append_aid_constraints(&mut text, food);
+    } else {
+        text.push_str("Food delivery is unavailable.\n");
+    }
+    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Settled cash or bounded consumed-food credit may permit a separate independently authorized practice; no agreement is guaranteed.");
+    text
+}
+
+fn append_aid_constraints(text: &mut String, food: &OrganizerAidFoodPreview) {
+    use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
+    if let Some(offer) = &food.ordinary_offer {
+        let _ = writeln!(text, "Ordinary quoted food price: {} currency per unit; this gift is not a purchase at that price.", crate::human_numbers::currency(offer.unit_price));
     } else {
         text.push_str("No ordinary food quote is available for comparison.\n");
     }
-    match &preview.time {
+    match &food.time {
         Some(time) => {
-            let _ = writeln!(text, "Last closed period {}: {} household hours remain. This is observed past supply, not next-period reserved time.", time.period, time.remaining_hours);
+            let _ = writeln!(text, "Last closed period {}: {} household hours remain. This is observed past supply, not next-period reserved time.", time.period, crate::observer_ui::grouped(time.remaining_hours));
         }
         None => text.push_str(
             "No closed household time receipt yet; available future hours are unknown.\n",
         ),
     }
-    match &preview.transport {
-        OrganizerAidTransportPreview::Local => text.push_str("Local aid can reach the pantry in its dispatch period; own needs, cash and time still constrain fulfillment.\n"),
+    match &food.transport {
+        OrganizerAidTransportPreview::Local => text.push_str("Local food can reach the pantry in its dispatch period; the donor's own food needs and available household hours still constrain fulfillment.\n"),
         OrganizerAidTransportPreview::Routed { stages, .. } => {
             let earliest = stages.last().and_then(|stage| stage.departure_period.checked_add(u64::from(stage.travel_periods)));
             if let Some(period) = earliest { let _ = writeln!(text, "Earliest possible arrival: period {period}; not a delivery guarantee."); }
@@ -401,19 +535,17 @@ fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
                 let _ = writeln!(text, "Route stage {}: {} periods; loss {} per million; departure preview period {}.", stage.stage_index, stage.travel_periods, stage.loss_ppm, stage.departure_period);
                 for capacity in &stage.capacities {
                     match capacity.remaining_grams {
-                        Some(grams) => { let _ = writeln!(text, "Shared corridor remaining capacity: {grams} grams; commercial freight competes for it."); }
+                        Some(grams) => { let _ = writeln!(text, "Shared corridor remaining capacity: {} grams; commercial freight competes for it.", crate::observer_ui::grouped(grams)); }
                         None => text.push_str("Shared corridor capacity at future departure is unknown.\n"),
                     }
                 }
             }
         }
     }
-    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Delivery and same-period consumption may permit a separate independently authorized practice; no agreement is guaranteed.");
-    text
 }
 
 fn aid_history(client: &OrganizerClient, period: u64) -> String {
-    use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
+    use babylon_persistence::runtime_session::OrganizerFoodDelivery;
     let mut text = String::from("\nAID SUPPORT · separate from workplace observations\n");
     for pending in &client.pending_aid {
         if client
@@ -431,7 +563,17 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             if period < pending.dispatch_period {
                 let _ = writeln!(text, "Pending {label}: original admission {}. Scheduled dispatch: period {}; no delivery is credited.", pending.admitted_period, pending.dispatch_period);
             } else {
-                let _ = writeln!(text, "Pending {label}: original admission {}; dispatch {}. Surviving delivery awaits actual arrival; no later coordination is credited.", pending.admitted_period, pending.dispatch_period);
+                let coordination = pending.response.as_ref().map_or_else(
+                    || "Independent response awaits qualifying support.".to_owned(),
+                    |r| {
+                        format!(
+                            "Partner response in P{}: {}. No repeat on arrival.",
+                            r.period,
+                            response(r.partner_response)
+                        )
+                    },
+                );
+                let _=writeln!(text,"Pending {label}: original admission {}; dispatch {}. Surviving delivery awaits actual arrival. {coordination}",pending.admitted_period,pending.dispatch_period);
             }
         }
     }
@@ -449,39 +591,51 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             row.practice.period
         );
         match row.support.status {
-            OrganizerAidSupportStatus::AwaitingDelivery => {
+            OrganizerFoodDelivery::NotRequested => text.push_str("No food selected.\n"),
+            OrganizerFoodDelivery::AwaitingDelivery => {
                 text.push_str("Surviving freight remains pending.\n");
             }
-            OrganizerAidSupportStatus::TerminalFailure => {
-                text.push_str("Terminal support failure; no grant and no surviving delivery.\n");
+            OrganizerFoodDelivery::ReceivingRefused => {
+                text.push_str("Food receiving was refused; cash settles independently.\n");
             }
-            OrganizerAidSupportStatus::Granted {
-                granted_quantity,
-                consumed_quantity,
-            } => {
-                let _ = writeln!(text, "Granted {granted_quantity} units; total same-period recipient consumption of the same good/unit: {consumed_quantity}. Aggregate consumption is not attribution to donated units or proof of additional time.");
+            OrganizerFoodDelivery::TerminalFailure => {
+                text.push_str("Terminal food failure; no food grant and no surviving delivery.\n");
+            }
+            OrganizerFoodDelivery::Granted { granted_quantity } => {
+                let _ = writeln!(
+                    text,
+                    "Granted {} units.",
+                    crate::observer_ui::grouped(granted_quantity)
+                );
             }
         }
         let postings = &row.support.material_postings;
         let _ = writeln!(
             text,
             "Actual material postings in period {}: dispatched food {} units; donor household fulfillment {} hours.",
-            row.support.period, postings.dispatched_quantity, postings.fulfillment_hours
+            row.support.period, crate::observer_ui::grouped(postings.dispatched_quantity), crate::observer_ui::grouped(postings.fulfillment_hours)
         );
         let _ = writeln!(
             text,
-            "Aid payer cash: reserved {}; gift paid {}; refunded {} micro-units. These are distinct movements, not repeated expenses.",
-            postings.payer_cash_reserved_micros,
-            postings.payer_cash_granted_micros,
-            postings.payer_cash_refunded_micros
+            "Freight loss in P{}: {} units.",
+            row.support.period,
+            crate::observer_ui::grouped(postings.lost_quantity)
         );
-        let _ = writeln!(text, "Independent outcome: {}; partner {}; coordination {} hours. A declined practice never revokes a delivered gift.", outcome(row.practice.outcome), response(row.practice.partner_response), row.practice.hours_spent);
+        let _ = writeln!(text, "{}", super::developments::dispatch_line(row));
+        if let Some(first) = super::developments::response_line(row) {
+            let _ = writeln!(text, "{first}");
+        }
+        if row.practice.outcome == OrganizerOutcome::AidResponseRetained {
+            let _=writeln!(text,"P{} delivery update. The original response is final. Additional coordination: 0 hours.",row.support.period);
+            continue;
+        }
+        let _ = writeln!(text, "Independent outcome: {}; partner {}; coordination {} hours. A declined practice never revokes a delivered gift.", outcome(row.practice.outcome), response(row.practice.partner_response), crate::observer_ui::grouped(row.practice.hours_spent));
     }
     text
 }
 
 pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String {
-    let hours = practice_hours(view, choice);
+    let hours = crate::observer_ui::grouped(practice_hours(view, choice));
     let resolves = view
         .period
         .checked_add(1)
@@ -520,42 +674,166 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
     }
 }
 
-pub(super) fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
-    let Some(receipt) = view
-        .receipts
-        .iter()
-        .filter(|receipt| receipt.actor_id == view.actor_id && receipt.period <= period)
-        .max_by_key(|receipt| receipt.period)
-    else {
-        return if period != view.period && period > 0 {
-            format!("Open Our practice Archive to review period {period}.")
-        } else if view.total_receipt_count > 0 && period > 0 {
-            format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
+pub(super) fn dispatch_practices(dispatch: &PeriodDispatch) -> String {
+    if dispatch.current.practices.is_empty() {
+        let period = dispatch.period;
+        return if period == 0 {
+            "Opening period · No practice completed at period 0.".into()
         } else {
-            format!("No practice completed at period {period}.")
+            format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
         };
+    }
+    let mut rows: Vec<_> = dispatch.current.practices.iter().collect();
+    // Identity sorts commitments, while typed outcomes order their stages.
+    // Receipt IDs only break ties; they never select a supposedly latest result.
+    rows.sort_by_key(|row| {
+        let receipt = row.receipt;
+        (
+            receipt.actor_id,
+            receipt.period,
+            receipt.commitment_id.unwrap_or(receipt.receipt_id),
+            choice(receipt.choice),
+            aid_stage_order(receipt.outcome),
+            receipt.receipt_id,
+        )
+    });
+    let mut summaries = Vec::new();
+    let mut index = 0;
+    while let Some(first) = rows.get(index) {
+        let mut end = index + 1;
+        if first.receipt.commitment_id.is_some()
+            && matches!(
+                first.receipt.choice,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            )
+        {
+            while rows
+                .get(end)
+                .is_some_and(|next| same_aid_commitment(first, next))
+            {
+                end += 1;
+            }
+            summaries.push(aid_commitment_summary(&rows[index..end]));
+        } else {
+            summaries.push(practice_summary(first));
+        }
+        index = end;
+    }
+    summaries.join("\n\n")
+}
+
+fn same_aid_commitment(first: &DispatchPractice, next: &DispatchPractice) -> bool {
+    first.receipt.actor_id == next.receipt.actor_id
+        && first.receipt.period == next.receipt.period
+        && first.receipt.choice == next.receipt.choice
+        && first.receipt.commitment_id == next.receipt.commitment_id
+}
+
+fn aid_stage_order(outcome: OrganizerOutcome) -> u8 {
+    match outcome {
+        OrganizerOutcome::AidPracticeCompleted
+        | OrganizerOutcome::AidPracticeUncompleted
+        | OrganizerOutcome::InsufficientTime
+        | OrganizerOutcome::AidResponseRetained => 0,
+        OrganizerOutcome::NoQualifyingSupport => 1,
+        OrganizerOutcome::AidAwaitingSupport => 2,
+        OrganizerOutcome::AidScheduled => 3,
+        OrganizerOutcome::EvidenceObtained
+        | OrganizerOutcome::EvidenceWithheld
+        | OrganizerOutcome::ContactCompleted
+        | OrganizerOutcome::ContactUncompleted
+        | OrganizerOutcome::CollectionCompleted
+        | OrganizerOutcome::CollectionRefused
+        | OrganizerOutcome::StandingPaused
+        | OrganizerOutcome::StandingResumed
+        | OrganizerOutcome::NoAuthorizedPractice => 4,
+    }
+}
+
+fn aid_commitment_summary(rows: &[&DispatchPractice]) -> String {
+    let Some(first) = rows.first() else {
+        return String::new();
     };
+    let mut text = format!(
+        "Period {} · accepted ruling\n{}",
+        first.receipt.period,
+        choice(first.receipt.choice)
+    );
+    for row in rows {
+        let receipt = row.receipt;
+        let stage = match receipt.outcome {
+            OrganizerOutcome::AidScheduled => "Admission / scheduled support",
+            OrganizerOutcome::AidAwaitingSupport => "Material delivery pending",
+            OrganizerOutcome::AidResponseRetained => "Independent response retained",
+            OrganizerOutcome::AidPracticeCompleted
+            | OrganizerOutcome::AidPracticeUncompleted
+            | OrganizerOutcome::InsufficientTime => "Independent response",
+            OrganizerOutcome::NoQualifyingSupport => "Material resolution",
+            OrganizerOutcome::EvidenceObtained
+            | OrganizerOutcome::EvidenceWithheld
+            | OrganizerOutcome::ContactCompleted
+            | OrganizerOutcome::ContactUncompleted
+            | OrganizerOutcome::CollectionCompleted
+            | OrganizerOutcome::CollectionRefused
+            | OrganizerOutcome::StandingPaused
+            | OrganizerOutcome::StandingResumed
+            | OrganizerOutcome::NoAuthorizedPractice => "Resolution",
+        };
+        let _ = write!(text, "\n{stage} · {}", outcome(receipt.outcome));
+        if matches!(
+            receipt.outcome,
+            OrganizerOutcome::AidPracticeCompleted
+                | OrganizerOutcome::AidPracticeUncompleted
+                | OrganizerOutcome::InsufficientTime
+        ) {
+            let participant = row
+                .partner
+                .map_or("Partner participation", |partner| partner.label);
+            let _ = write!(
+                text,
+                "\n{} organizer-hours spent · {participant}: {}",
+                receipt.hours_spent,
+                response(receipt.partner_response)
+            );
+        }
+        if let Some(resolution) = row.aid {
+            if receipt.outcome == OrganizerOutcome::AidResponseRetained {
+                if let Some(prior) = &resolution.pending.response {
+                    let _ = write!(
+                        text,
+                        "\nRecorded P{}: {} · {} organizer-hours used then; no new coordination.",
+                        prior.period,
+                        response(prior.partner_response),
+                        prior.hours_spent
+                    );
+                }
+            }
+            let material = super::developments::material_support(resolution, receipt.period);
+            if !material.is_empty() {
+                let _ = write!(text, "\nMaterial dispatch / delivery\n{material}");
+            }
+        }
+    }
+    text
+}
+
+fn practice_summary(row: &DispatchPractice) -> String {
+    let receipt = row.receipt;
     let origin = if receipt.commitment_id.is_some() {
         "accepted ruling"
     } else {
         "saved routine"
     };
     if receipt.choice == OrganizerChoice::Collect {
-        let actual = client.collection_resolutions.iter().find(|row| {
-            row.practice == *receipt
-                && row.fact.actor_id == view.actor_id
-                && row.fact.period == receipt.period
-                && Some(row.fact.original_commitment_id) == receipt.commitment_id
-        });
+        let actual = row.collection;
         return actual.map_or_else(
             || format!("Period {} · {origin}\nCollection ruling resolved. Open Our practice Archive for the actual cash and shared-time result.", receipt.period),
             |row| format!("Period {} · {origin}\n{}\n{}", receipt.period, choice(receipt.choice), collection_result(row)),
         );
     }
-    let participant = receipt.partner_actor_id.map_or_else(
-        || "Partner participation".into(),
-        |actor| partner(view, actor).to_owned(),
-    );
+    let participant = row
+        .partner
+        .map_or("Partner participation", |partner| partner.label);
     let result = if receipt.contact_product_id.is_some() {
         "Contact recorded; agreement can renew next period".into()
     } else if receipt.observation_ids.is_empty() {
@@ -581,11 +859,16 @@ pub(super) fn encounter_history(
     period: u64,
 ) -> String {
     let mut text = String::new();
-    for row in client
-        .city_pd_encounters
+    let Some(dispatch) = super::workspace::dispatch_for_view(client, view, period) else {
+        return text;
+    };
+    for encounter in dispatch
+        .history
+        .encounters
         .iter()
-        .filter(|row| row.resolve_period <= period)
+        .chain(&dispatch.current.encounters)
     {
+        let row = encounter.encounter;
         let _ = write!(
             text,
             "\n\nCITY PD VISIT · PERIOD {}\nA public venue check-in records City PD visiting {}. It does not establish whether our organizers were present or what City PD learned. Other activity remains unknown.\nOpen Cited workplace Archive for the source.",
@@ -611,7 +894,7 @@ pub(super) fn means(view: &OrganizerView) -> String {
         }
     };
     format!("CURRENT ORGANIZATION · committed period {}\n{}\n{} organizer-hours committed for practice\n\nSTANDING WORK · {standing}\n{}\nOne scoped contact practice: {} hours. A special commitment replaces it for one period. Hold continues it; Pause is a separate ruling.\n\nPeople, organizational time, and contact terms are Designed scenario content. Organizer-hours are not industrial jobs or wages.",
-        view.period, view.organization_label, view.available_hours, partner(view, view.standing.partner_actor_id), view.contact_hours)
+        view.period, view.organization_label, crate::observer_ui::grouped(view.available_hours), partner(view, view.standing.partner_actor_id), crate::observer_ui::grouped(view.contact_hours))
 }
 
 fn resolving_review(client: &OrganizerClient) -> String {
@@ -654,14 +937,24 @@ fn accepted_aid_review(client: &OrganizerClient, commitment: &OrganizerCommitmen
         "\n{}",
         aid_review_terms(client, commitment.command.choice)
     );
+    let _ = write!(
+        text,
+        "\n{}",
+        selected_aid(
+            client,
+            commitment.command.allocation,
+            commitment.command.choice,
+            commitment.resolves_period
+        )
+    );
     if let Some(preview) = client.aid_preview(commitment.command.choice) {
         let _ = write!(
             text,
             "\nLater coordination: {} hours, if authorized.",
-            preview.coordination_hours
+            crate::observer_ui::grouped(preview.coordination_hours)
         );
     }
-    text.push_str("\nRuling fixed. Advance for material resolution. Later coordination depends on delivery, consumption, finite contributions and independent authorization; no coordination time is reserved.");
+    text.push_str("\nRuling fixed. Advance for material resolution. Coordination can follow positive cash or consumed food, subject to finite contributions and independent authorization; no coordination time is reserved.");
     text
 }
 
@@ -675,8 +968,8 @@ fn accepted_collection_review(
             format!(
                 "{} · up to {} currency · {} shared material hours",
                 m.contributor_label,
-                currency(m.maximum_cash_micros),
-                m.collection_hours
+                crate::human_numbers::currency(m.maximum_cash_micros),
+                crate::observer_ui::grouped(m.collection_hours)
             )
         },
     );
@@ -690,7 +983,13 @@ fn accepted_collection_review(
                 "The neighborhood routine remains paused; no standing fallback."
             }
         });
-    format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\n{routine} Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
+    let selected = match commitment.command.allocation {
+        OrganizerAllocation::Collection { target_cash_micros } => {
+            crate::human_numbers::currency(target_cash_micros)
+        }
+        _ => "unavailable".into(),
+    };
+    format!("ACCEPTED · collection resolution period {}\nSelected contribution target {selected}.\n{terms}. Protected needs and fixed shared time are checked at close.\n{routine} Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
 }
 
 pub(super) fn review(
@@ -730,6 +1029,16 @@ pub(super) fn review(
 
 fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> String {
     let mut text = format!("REVIEW · {}", choice(preview.choice));
+    if let OrganizerAllocation::Collection { target_cash_micros } = preview.allocation {
+        let _ = write!(
+            text,
+            "\nSelected contribution target: {} currency.",
+            crate::human_numbers::currency(target_cash_micros)
+        );
+    }
+    if let Some(view) = &client.view {
+        let _ = write!(text, "\n{}", flavor(view, preview.choice));
+    }
     if let (OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce, Some(view)) =
         (preview.choice, &client.view)
     {
@@ -744,61 +1053,43 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
     }
     match preview.choice {
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
-            let _ = write!(text, "\n{}", aid_review_terms(client, preview.choice));
+            let _ = write!(
+                text,
+                "\n{}\n{}",
+                selected_aid(
+                    client,
+                    preview.allocation,
+                    preview.choice,
+                    preview.resolves_period
+                ),
+                aid_review_terms(client, preview.choice)
+            );
         }
         OrganizerChoice::Collect => {
             let _ = write!(text, "\n{}", collection_review_terms(client));
-            let _ = write!(
-                text,
-                "\nCost: {} of {} organizer-hours",
-                preview.required_hours, preview.available_hours
-            );
         }
         _ => {
             let _ = write!(
                 text,
                 "\nCost: {} of {} organizer-hours",
-                preview.required_hours, preview.available_hours
+                crate::observer_ui::grouped(preview.required_hours),
+                crate::observer_ui::grouped(preview.available_hours)
             );
         }
     }
-    let _ = write!(
-        text,
-        "\n{}",
-        match preview.choice {
-            OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
-                if matches!(
-                    preview.refusal,
-                    Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
-                ) =>
-                "Routine effect is unavailable for this preview.",
-            OrganizerChoice::Collect
-            | OrganizerChoice::LocalAid
-            | OrganizerChoice::RemoteAid
-            | OrganizerChoice::Inquiry(_)
-            | OrganizerChoice::Reinforce
-                if preview.replaces_standing_work =>
-                "Replaces neighborhood work once; later work remains subject to eligibility.",
-            OrganizerChoice::Collect
-            | OrganizerChoice::LocalAid
-            | OrganizerChoice::RemoteAid
-            | OrganizerChoice::Inquiry(_)
-            | OrganizerChoice::Reinforce => "The neighborhood routine remains paused.",
-            OrganizerChoice::PauseStanding =>
-                "Pauses the saved routine until you explicitly resume it.",
-            OrganizerChoice::ResumeStanding =>
-                "Authorizes and performs the saved routine; continues afterward while eligible.",
-            OrganizerChoice::Hold => "Keeps the saved routine; does not resume a paused routine.",
-        }
-    );
+    let _ = write!(text, "\n{}", preview_routine(preview));
     if matches!(
         preview.choice,
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
     ) {
         if let Some(terms) = client.aid_preview(preview.choice) {
-            let _ = write!(text, "\nLater coordination: {} hours, conditional on delivery, consumption, finite contributions and separate independent authorization.", terms.coordination_hours);
+            let _ = write!(text, "\nLater coordination: {} hours, conditional on positive cash or consumed food, finite contributions and separate independent authorization.", crate::observer_ui::grouped(terms.coordination_hours));
+            text.push('\n');
+            if let Some(food) = &terms.food {
+                append_aid_constraints(&mut text, food);
+            }
         }
-        text.push_str("\nPreview only: no cash, food, freight or time is reserved. See the selected aid choice below for route and capacity details.");
+        text.push_str("\nPreview only: no cash, food, freight or time is reserved.");
     }
     if preview.choice == OrganizerChoice::Reinforce {
         let _ = write!(text, "\n{REINFORCE_CONSEQUENCE}");
@@ -814,13 +1105,47 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
     text
 }
 
+fn preview_routine(preview: &OrganizerPreview) -> &'static str {
+    match preview.choice {
+        OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            if matches!(
+                preview.refusal,
+                Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
+            ) =>
+        {
+            "Routine effect is unavailable for this preview."
+        }
+        OrganizerChoice::Collect
+        | OrganizerChoice::LocalAid
+        | OrganizerChoice::RemoteAid
+        | OrganizerChoice::Inquiry(_)
+        | OrganizerChoice::Reinforce
+            if preview.replaces_standing_work =>
+        {
+            "Replaces neighborhood work once; later work remains subject to eligibility."
+        }
+        OrganizerChoice::Collect
+        | OrganizerChoice::LocalAid
+        | OrganizerChoice::RemoteAid
+        | OrganizerChoice::Inquiry(_)
+        | OrganizerChoice::Reinforce => "The neighborhood routine remains paused.",
+        OrganizerChoice::PauseStanding => {
+            "Pauses the saved routine until you explicitly resume it."
+        }
+        OrganizerChoice::ResumeStanding => {
+            "Authorizes and performs the saved routine; continues afterward while eligible."
+        }
+        OrganizerChoice::Hold => "Keeps the saved routine; does not resume a paused routine.",
+    }
+}
+
 fn append_preview_result(text: &mut String, client: &OrganizerClient, preview: &OrganizerPreview) {
     if let Some(reason) = preview.refusal {
         let _ = write!(text, "\nUNAVAILABLE · {}", refusal(reason));
     } else {
         if matches!(preview.choice, OrganizerChoice::Inquiry(_)) {
             if preview.current_period == 0 {
-                let _ = write!(text, "\nNo completed-period report exists. An admitted inquiry still spends {} organizer-hours.", preview.required_hours);
+                let _ = write!(text, "\nNo completed-period report exists. An admitted inquiry still spends {} organizer-hours.", crate::observer_ui::grouped(preview.required_hours));
             } else {
                 let _ = write!(
                     text,
@@ -893,11 +1218,11 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
                 view.workplace_label, view.workplace_partner_label
             );
         }
-        let hours = practice_hours(view, commitment.command.choice);
+        let hours = crate::observer_ui::grouped(practice_hours(view, commitment.command.choice));
         let _ = write!(
             text,
             " · {hours} of {} organizer-hours committed",
-            view.available_hours
+            crate::observer_ui::grouped(view.available_hours)
         );
     }
     if commitment.command.choice == OrganizerChoice::Reinforce {
@@ -907,7 +1232,7 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
     text
 }
 
-fn outcome(value: OrganizerOutcome) -> &'static str {
+pub(super) fn outcome(value: OrganizerOutcome) -> &'static str {
     match value {
         OrganizerOutcome::CollectionCompleted => {
             "Voluntary contribution collected; funds available for later aid"
@@ -921,7 +1246,8 @@ fn outcome(value: OrganizerOutcome) -> &'static str {
         OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",
         OrganizerOutcome::AidScheduled => "Support committed; awaiting material resolution",
         OrganizerOutcome::AidAwaitingSupport => "Support remains in transit",
-        OrganizerOutcome::AidNotProvisioned => "Support did not provide current consumption",
+        OrganizerOutcome::NoQualifyingSupport => "Support did not qualify joint work",
+        OrganizerOutcome::AidResponseRetained => "Earlier coordination response retained",
         OrganizerOutcome::AidPracticeCompleted => {
             "Mutual-aid practice completed; delivery has separate evidence"
         }
@@ -935,7 +1261,7 @@ fn outcome(value: OrganizerOutcome) -> &'static str {
     }
 }
 
-fn response(value: OrganizerPartnerResponse) -> &'static str {
+pub(super) fn response(value: OrganizerPartnerResponse) -> &'static str {
     match value {
         OrganizerPartnerResponse::Participated => "participated",
         OrganizerPartnerResponse::Refused => "declined",
@@ -951,62 +1277,73 @@ fn evidence_inspector(
     period: u64,
 ) -> (String, String) {
     let saved = client.evidence.mode == EvidenceMode::Saved;
-    let title = format!(
-        "{} · {}",
-        if saved {
-            "Current personal draft references"
-        } else {
-            "Circuit evidence"
-        },
-        view.workplace_label
-    );
-    let mut text = String::from("WORKPLACE EVIDENCE\nThese reports describe one observed period. References are personal presentation, not new knowledge or executable instructions. Provider-private accounts remain undisclosed. Workplace reports do not establish aid delivery, household consumption or independent participation.\n\n");
-    if saved {
-        text.push_str("CURRENT PERSONAL DRAFT · saved references are present-day notebook context, not a historical reconstruction.\n\n");
-    }
-    if period == view.period {
-        let _ = writeln!(text, "{} recent and latest report(s) shown; {} acquired through committed period {}. Older reports remain in Cited workplace Archive.\n", view.observations.len(), view.total_observation_count, view.period);
-    } else {
-        text.push_str("The as-of total is unavailable. Open Cited workplace Archive for earned reports at the inspected period.\n\n");
-    }
-    let Some(id) = client.selected_evidence_id(period) else {
-        text.push_str(if saved {
-            "No saved references. Open Workplace evidence and keep a report in the draft."
-        } else if period != view.period {
-            "Open Cited workplace Archive to inspect earned reports at this period."
-        } else {
-            "No acquired workplace report is available at this period."
-        });
-        return (title, text);
-    };
-    let ids = client.evidence_ids(period);
-    if saved || period == view.period {
-        if let Some(index) = ids.iter().position(|item| *item == id) {
-            let label = if saved {
-                "CURRENT DRAFT REFERENCE"
-            } else {
-                "REPORT"
+    let id = client.selected_evidence_id(period);
+    let item = id.and_then(|id| client.lawful_evidence(id, period));
+    let title = item.map_or_else(
+        || "Acquired reports".into(),
+        |item| {
+            let ids = client.evidence_ids(period);
+            let index = ids
+                .iter()
+                .position(|id| *id == item.observation_id)
+                .map_or(1, |i| i + 1);
+            let title = match &item.report {
+                OrganizerReport::Partner { facts, .. } => super::partner_copy::headline(facts),
+                other => report_kind(other).to_owned(),
             };
-            let _ = writeln!(text, "{label} {} OF {}\n", index + 1, ids.len());
-        }
-    }
-    let Some(item) = client.lawful_evidence(id, period) else {
-        if saved {
-            text.push_str("This reference is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another reference. It remains in the current draft and grants no additional access.");
-        } else {
-            text.push_str("The selected report is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another report.");
-        }
-        return (title, text);
-    };
-    text.push_str(
-        match (client.evidence_is_saved(id), period == view.period) {
-            (true, true) => "IN PERSONAL DRAFT\n\n",
-            (false, true) => "NOT IN PERSONAL DRAFT\n\n",
-            (true, false) => "IN CURRENT PERSONAL DRAFT\n\n",
-            (false, false) => "NOT IN CURRENT PERSONAL DRAFT\n\n",
+            format!("{title} · {} of {}", index, ids.len())
         },
     );
-    text.push_str(&observation(view, item, period));
+    let mut text = item.map_or_else(|| {
+        if id.is_some() && saved {
+            "This reference is unavailable in this inspected view. Open Report Archive to browse at this period, or select another saved reference. The draft keeps the reference.".into()
+        } else if id.is_some() {
+            "The selected report is unavailable in this inspected view. Select another report or open Archive from a known subject.".into()
+        } else if saved {
+            "No saved references. Open Evidence and keep a report in the draft.".into()
+        } else if period != view.period {
+            "Select a known subject to browse its Archive at this period.".into()
+        } else {
+            "No acquired report is available at this period.".into()
+        }
+    }, |item| observation(view, item, period));
+    if item.is_some_and(|r| !matches!(r.report, OrganizerReport::Partner { .. }))
+        || client.evidence.mode == EvidenceMode::Subject(view.workplace_id)
+    {
+        text.push_str("\n\nREPORT SCOPE\nWorkplace reports do not establish aid delivery, household consumption or independent participation. Provider-private accounts remain undisclosed.");
+    }
+    if let EvidenceMode::Subject(id) = client.evidence.mode {
+        let subject = if id == view.workplace_id {
+            &view.workplace_label
+        } else {
+            partner(view, id)
+        };
+        let _ = write!(
+            text,
+            "\n{subject} · {} retained report(s) available at period {period}.",
+            client.evidence_ids(period).len()
+        );
+    } else if period == view.period {
+        let _ = write!(text, "\n{} recent and latest report(s) shown; {} acquired through committed period {}. Earlier reports remain in the Archive for their subject.", view.observations.len(), view.total_observation_count, view.period);
+    } else {
+        text.push_str("\nThe as-of total is unavailable. Each known subject has its own Archive at the inspected period.");
+    }
+    if saved {
+        text.push_str("\n\nCURRENT PERSONAL DRAFT · saved references are present-day notebook context, not a historical reconstruction.");
+    }
+    if let Some(id) = id {
+        text.push_str(
+            match (client.evidence_is_saved(id), period == view.period) {
+                (true, true) => "\n\nIN PERSONAL DRAFT",
+                (false, true) => "\n\nNOT IN PERSONAL DRAFT",
+                (true, false) => "\n\nIN CURRENT PERSONAL DRAFT",
+                (false, false) => "\n\nNOT IN CURRENT PERSONAL DRAFT",
+            },
+        );
+    }
+    text.push_str(
+        "\n\nReferences are personal presentation, not new knowledge or executable instructions.",
+    );
     (title, text)
 }
 
@@ -1018,6 +1355,8 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
         );
     };
     match client.inspector {
+        OrganizerInspector::Practices => ("All practices".into(), String::new()),
+        OrganizerInspector::Review => ("Review the ruling".into(), String::new()),
         OrganizerInspector::Closed => (String::new(), String::new()),
         OrganizerInspector::Notes => ("Personal notes".into(), String::new()),
         OrganizerInspector::Evidence => evidence_inspector(client, view, period),
@@ -1104,19 +1443,6 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
     }
 }
 
-fn currency(micros: i128) -> String {
-    let amount = micros.unsigned_abs();
-    let whole = amount / 1_000_000;
-    let fraction = amount % 1_000_000;
-    let sign = if micros < 0 { "-" } else { "" };
-    if fraction == 0 {
-        format!("{sign}{whole}")
-    } else {
-        let fraction = format!("{fraction:06}");
-        format!("{sign}{whole}.{}", fraction.trim_end_matches('0'))
-    }
-}
-
 fn collection_detail(client: &OrganizerClient, view: &OrganizerView) -> String {
     let Some(m) = client
         .collection_preview()
@@ -1144,7 +1470,7 @@ fn collection_detail(client: &OrganizerClient, view: &OrganizerView) -> String {
     for byte in m.source_hash {
         let _ = write!(source, "{byte:02x}");
     }
-    format!("Contributor: {} (participant {}). Designed terms verified at period {}; source {}.\nVoluntary household gift: up to {} currency; {} shared material hours. Independent cash consent: {}. Protected cash floor: {} currency; mandatory protected needs and due payments are checked at close. Protected consumption, essential services and closing stocks come first. A positive amount below the cap is a partial gift and still uses the fixed hours. Organization cash now: {} currency.\nResolves period {}. {} No cash or time is reserved. Later aid needs its own ruling; no immediate membership, agreement or time gain.", m.contributor_label, m.contributor_id, m.period, source, currency(m.maximum_cash_micros), m.collection_hours, consent, currency(m.protected_cash_floor_micros), currency(m.organization_cash_micros), resolves, displacement)
+    format!("Contributor: {} (participant {}). Designed terms verified at period {}; source {}.\nVoluntary household gift: up to {} currency; {} shared material hours. Independent cash consent: {}. Protected cash floor: {} currency; mandatory protected needs and due payments are checked at close. Protected consumption and closing stocks come first. If a fully funded essential need remains unmet, the household keeps its refund. An unmet service without full funding blocks the gift. A positive amount below the cap is a partial gift and still uses the fixed hours. Organization cash now: {} currency.\nResolves period {}. {} No cash or time is reserved. Later aid needs its own ruling; no immediate membership, agreement or time gain.", m.contributor_label, m.contributor_id, m.period, source, crate::human_numbers::currency(m.maximum_cash_micros), crate::observer_ui::grouped(m.collection_hours), consent, crate::human_numbers::currency(m.protected_cash_floor_micros), crate::human_numbers::currency(m.organization_cash_micros), resolves, displacement)
 }
 
 fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
@@ -1154,14 +1480,14 @@ fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
         OrganizerCollectionOutcome::CashConsentRefused => "Household cash consent was refused",
         OrganizerCollectionOutcome::ProtectedConsumptionUnmet => "Household consumption is unmet",
         OrganizerCollectionOutcome::ProtectedServiceUnmet => {
-            "Essential household services are unmet"
+            "An unmet essential service lacked full funding"
         }
         OrganizerCollectionOutcome::ProtectedClosingStockUnmet => {
             "Protected closing pantry or stocks are unmet"
         }
         OrganizerCollectionOutcome::DuePaymentUnmet => "Outstanding protected payments remain due",
         OrganizerCollectionOutcome::InsufficientCash => {
-            "No eligible cash remains above the protected floor"
+            "No eligible cash remains after the protected floor and service refunds"
         }
         OrganizerCollectionOutcome::InsufficientContributionTime => {
             "Insufficient actual authorized household time"
@@ -1169,8 +1495,8 @@ fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
     }
 }
 
-fn collection_result(row: &OrganizerCollectionResolution) -> String {
-    format!("Requested {} currency; collected {} currency; {} shared material hours. Result: {}. Original ruling resolved; no standing fallback. A collected gift can fund later aid; no membership, agreement or time gain is credited.", currency(row.fact.requested_cash_micros), currency(row.fact.collected_cash_micros), row.fact.performed_hours, collection_outcome(row.fact.outcome))
+pub(super) fn collection_result(row: &OrganizerCollectionResolution) -> String {
+    format!("Requested {} currency; collected {} currency; {} shared material hours. Result: {}. Original ruling resolved; no standing fallback. A collected gift can fund later aid; no membership, agreement or time gain is credited.", crate::human_numbers::currency(row.fact.requested_cash_micros), crate::human_numbers::currency(row.fact.collected_cash_micros), crate::observer_ui::grouped(row.fact.performed_hours), collection_outcome(row.fact.outcome))
 }
 
 fn collection_history(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
@@ -1195,9 +1521,17 @@ fn collection_history(client: &OrganizerClient, view: &OrganizerView, period: u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
+        dispatch_practices(
+            &super::super::workspace::dispatch_for_view(client, view, period)
+                .expect("retained period"),
+        )
+    }
+
     use babylon_persistence::runtime_session::{
-        OrganizerAgreement, OrganizerAidKind, OrganizerAidOption, OrganizerCommand,
-        OrganizerCommitment, OrganizerGiftConsent, OrganizerStandingWork,
+        OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidOption,
+        OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent, OrganizerStandingWork,
     };
 
     #[test]
@@ -1219,12 +1553,15 @@ mod tests {
         assert!(
             aftermath(&OrganizerClient::default(), &view, 1).contains("Open Our practice Archive")
         );
-        assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
+        assert!(situation(&view, view.workplace_id, 1).contains("Open Cited workplace Archive"));
 
         let mut no_current_totals = view.clone();
         no_current_totals.total_receipt_count = 0;
         no_current_totals.total_observation_count = 0;
-        assert_eq!(situation(&view, 1), situation(&no_current_totals, 1));
+        assert_eq!(
+            situation(&view, view.workplace_id, 1),
+            situation(&no_current_totals, no_current_totals.workplace_id, 1)
+        );
         assert_eq!(
             aftermath(&client, &view, 1),
             aftermath(&client, &no_current_totals, 1)
@@ -1244,6 +1581,14 @@ mod tests {
             view: Some(view()),
             inspector: OrganizerInspector::Receipts,
             pending_aid: vec![OrganizerAidPending {
+                allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 4,
+                    cash_micros: 18,
+                },
+                dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+                response: None,
+                lost_quantity: 0,
+
                 kind: OrganizerAidKind::Remote,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
@@ -1273,15 +1618,24 @@ mod tests {
     }
 
     fn aid_history_client() -> OrganizerClient {
+        use babylon_persistence::runtime_session::OrganizerAidTransfer;
         use babylon_persistence::runtime_session::{
             OrganizerAidMaterialPostings, OrganizerAidPending, OrganizerAidResolution,
-            OrganizerAidSupportStatus, OrganizerReceipt,
+            OrganizerFoodDelivery, OrganizerReceipt,
         };
-        use babylon_practice_contract::{OrganizerAidSupport, OrganizerTimeUse};
+        use babylon_practice_contract::OrganizerTimeUse;
         let mut view = view();
         view.period = 3;
         let row = OrganizerAidResolution {
             pending: OrganizerAidPending {
+                allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 4,
+                    cash_micros: 18,
+                },
+                dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+                response: None,
+                lost_quantity: 0,
+
                 kind: OrganizerAidKind::Local,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
@@ -1291,26 +1645,23 @@ mod tests {
                 good_id: [14; 32],
                 unit_id: [15; 32],
             },
-            support: OrganizerAidSupport {
+            support: OrganizerAidTransfer {
+                cash_status: OrganizerAidCashStatus::Granted,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
                 mandate_id: [13; 32],
-                source_hash: [16; 32],
                 dispatch_period: 3,
                 period: 3,
-                recipient_principal_id: [17; 32],
                 good_id: [14; 32],
                 unit_id: [15; 32],
-                status: OrganizerAidSupportStatus::Granted {
+                status: OrganizerFoodDelivery::Granted {
                     granted_quantity: 4,
-                    consumed_quantity: 5,
                 },
                 material_postings: OrganizerAidMaterialPostings {
                     dispatched_quantity: 4,
                     fulfillment_hours: 8,
-                    payer_cash_reserved_micros: 18,
                     payer_cash_granted_micros: 12,
-                    payer_cash_refunded_micros: 6,
+                    lost_quantity: 0,
                 },
             },
             practice: OrganizerReceipt {
@@ -1341,9 +1692,31 @@ mod tests {
         }
     }
 
+    #[test]
+    fn sender_history_keeps_cash_disposition_and_actual_freight_loss() {
+        let mut client = aid_history_client();
+        let row = &mut client.aid_resolutions[0];
+        row.support.cash_status =
+            babylon_persistence::runtime_session::OrganizerAidCashStatus::ReceivingRefused;
+        row.support.material_postings.payer_cash_granted_micros = 0;
+        row.support.material_postings.lost_quantity = 1;
+        row.pending.dispatch_support = row.support.clone();
+        let period = row.practice.period;
+        let text = aid_history(&client, period);
+        assert!(
+            text.contains("Cash at dispatch P3: $0.00 (receiving refused)")
+                && text.contains("Freight loss in P3: 1")
+        );
+        client.aid_resolutions[0].support.cash_status =
+            babylon_persistence::runtime_session::OrganizerAidCashStatus::Unfunded;
+        client.aid_resolutions[0].pending.dispatch_support =
+            client.aid_resolutions[0].support.clone();
+        assert!(aid_history(&client, period).contains("Cash at dispatch P3: $0.00 (unfunded)"));
+    }
+
     fn aid_arrival_client() -> OrganizerClient {
         use babylon_persistence::runtime_session::{
-            OrganizerAidMaterialPostings, OrganizerAidSupportStatus,
+            OrganizerAidMaterialPostings, OrganizerFoodDelivery,
         };
         use babylon_practice_contract::OrganizerTimeUse;
         let mut client = aid_history_client();
@@ -1354,6 +1727,16 @@ mod tests {
             .actor_id;
         let row = &mut client.aid_resolutions[0];
         row.pending.kind = OrganizerAidKind::Remote;
+        row.pending.allocation = babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+            food_quantity: 4,
+            cash_micros: 0,
+        };
+        row.support.cash_status = OrganizerAidCashStatus::NotRequested;
+        row.pending.dispatch_support.cash_status = OrganizerAidCashStatus::NotRequested;
+        row.pending
+            .dispatch_support
+            .material_postings
+            .payer_cash_granted_micros = 0;
         row.practice.choice = OrganizerChoice::RemoteAid;
         row.support.period = 5;
         row.practice.period = 5;
@@ -1366,16 +1749,14 @@ mod tests {
         }];
         row.practice.partner_actor_id = Some(95);
         row.practice.partner_response = OrganizerPartnerResponse::Refused;
-        row.support.status = OrganizerAidSupportStatus::Granted {
+        row.support.status = OrganizerFoodDelivery::Granted {
             granted_quantity: 3,
-            consumed_quantity: 6,
         };
         row.support.material_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
             fulfillment_hours: 0,
-            payer_cash_reserved_micros: 0,
-            payer_cash_granted_micros: 9,
-            payer_cash_refunded_micros: 3,
+            payer_cash_granted_micros: 0,
+            lost_quantity: 0,
         };
         client
             .view
@@ -1386,6 +1767,86 @@ mod tests {
     }
 
     #[test]
+    fn repaired_later_freight_keeps_original_cash_and_first_response_dates() {
+        let mut client = aid_arrival_client();
+        let row = &mut client.aid_resolutions[0];
+        row.pending.allocation = OrganizerAllocation::Aid {
+            food_quantity: 4,
+            cash_micros: 37_000_000,
+        };
+        row.pending.dispatch_support.cash_status = OrganizerAidCashStatus::Granted;
+        row.pending
+            .dispatch_support
+            .material_postings
+            .payer_cash_granted_micros = 37_000_000;
+        let mut first = row.practice.clone();
+        first.period = row.pending.dispatch_period;
+        first.receipt_id = babylon_practice_contract::organizer_receipt_id(
+            [34; 16],
+            first.actor_id,
+            first.period,
+            row.pending.original_commitment_id,
+        )
+        .expect("unique dispatch response");
+        row.pending.response = Some(first);
+        row.support.cash_status = OrganizerAidCashStatus::Granted;
+        row.support.material_postings.lost_quantity = 1;
+        row.pending.lost_quantity = 1;
+        row.practice.outcome = OrganizerOutcome::AidResponseRetained;
+        row.practice.receipt_id = babylon_practice_contract::organizer_receipt_id(
+            [34; 16],
+            row.practice.actor_id,
+            row.practice.period,
+            row.pending.original_commitment_id,
+        )
+        .expect("unique delivery receipt");
+        row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
+        row.practice.partner_actor_id = None;
+        row.practice.hours_spent = 0;
+        row.practice.time_use.clear();
+        let (_, text) = inspector(&client, 5);
+        assert!(text.contains("Cash at dispatch P3: $37.00"), "{text}");
+        assert!(
+            text.contains("Freight loss in P5: 1")
+                && text.contains("P3 partner response:")
+                && text.contains("Additional coordination: 0"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("37000000 cash micros") && !text.contains("gift paid $0.00"),
+            "{text}"
+        );
+        let now = super::super::developments::current_support(&client.aid_resolutions, 5);
+        assert!(
+            now.contains("lost in P5") && !now.contains("$37") && !now.contains("partner response"),
+            "{now}"
+        );
+        let current = client.aid_resolutions[0].practice.clone();
+        let earlier = client.aid_resolutions[0]
+            .pending
+            .response
+            .clone()
+            .expect("first response");
+        client.view.as_mut().expect("admitted P5").receipts = vec![earlier.clone(), current];
+        let dispatch = super::super::workspace::dispatch(&client, 5).expect("current dispatch");
+        let copy = dispatch_practices(&dispatch);
+        assert!(
+            copy.contains("Independent response retained")
+                && copy.contains("Recorded P3:")
+                && copy.contains("3 organizer-hours used then; no new coordination"),
+            "{copy}"
+        );
+        assert!(
+            !copy.contains("Independent response ·") && !copy.contains("3 organizer-hours spent"),
+            "later freight cannot report earlier response as new work: {copy}"
+        );
+        assert_eq!(
+            dispatch.history.practices[0].receipt, &earlier,
+            "exact prior receipt remains in dated history"
+        );
+    }
+
+    #[test]
     fn local_aid_history_separates_postings_from_coordination_and_preserves_gift_privacy() {
         let client = aid_history_client();
         let (_, local) = inspector(&client, 3);
@@ -1393,20 +1854,18 @@ mod tests {
             local.contains("Local: original admission 2; dispatch 3; actual resolution 3."),
             "{local}"
         );
+        assert!(local.contains("Granted 4 units."), "{local}");
         assert!(
-            local.contains(
-                "Granted 4 units; total same-period recipient consumption of the same good/unit: 5"
-            ),
+            !local.contains("recipient consumption") && !local.contains("consumption credit"),
             "{local}"
         );
-        assert!(local.contains("Aggregate consumption is not attribution to donated units or proof of additional time"), "{local}");
         assert!(local.contains("Actual material postings in period 3: dispatched food 4 units; donor household fulfillment 8 hours."), "{local}");
         assert!(
-            local.contains("Aid payer cash: reserved 18; gift paid 12; refunded 6 micro-units."),
+            local.contains("Cash at dispatch P3: $0.000012 (granted)"),
             "{local}"
         );
         assert!(
-            local.contains("These are distinct movements, not repeated expenses."),
+            !local.contains("reserved") && !local.contains("refunded"),
             "{local}"
         );
         assert!(
@@ -1424,7 +1883,7 @@ mod tests {
     #[test]
     fn routed_aid_dispatch_history_reports_actual_cost_without_crediting_delivery_or_coordination()
     {
-        use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
+        use babylon_persistence::runtime_session::OrganizerFoodDelivery;
         let mut client = aid_history_client();
         let row = &mut client.aid_resolutions[0];
         row.pending.kind = OrganizerAidKind::Remote;
@@ -1434,8 +1893,10 @@ mod tests {
         row.practice.time_use.clear();
         row.practice.partner_actor_id = None;
         row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
-        row.support.status = OrganizerAidSupportStatus::AwaitingDelivery;
+        row.support.status = OrganizerFoodDelivery::AwaitingDelivery;
         row.support.material_postings.payer_cash_granted_micros = 0;
+        row.support.cash_status = OrganizerAidCashStatus::Unfunded;
+        row.pending.dispatch_support = row.support.clone();
         let (_, dispatched) = inspector(&client, 3);
         assert!(
             dispatched.contains("Surviving freight remains pending"),
@@ -1446,8 +1907,7 @@ mod tests {
             "{dispatched}"
         );
         assert!(
-            dispatched
-                .contains("Aid payer cash: reserved 18; gift paid 0; refunded 6 micro-units."),
+            dispatched.contains("Cash at dispatch P3: $0.00 (unfunded)"),
             "{dispatched}"
         );
         assert!(dispatched.contains("coordination 0 hours"), "{dispatched}");
@@ -1455,7 +1915,7 @@ mod tests {
     }
 
     #[test]
-    fn routed_aid_arrival_history_settles_cash_without_new_dispatch_fulfillment_or_reservation() {
+    fn routed_food_only_arrival_history_has_no_cash_or_new_dispatch_fulfillment() {
         let client = aid_arrival_client();
         let (_, arrival) = inspector(&client, 5);
         assert!(
@@ -1464,15 +1924,10 @@ mod tests {
         );
         assert!(arrival.contains("Actual material postings in period 5: dispatched food 0 units; donor household fulfillment 0 hours."), "{arrival}");
         assert!(
-            arrival.contains("Aid payer cash: reserved 0; gift paid 9; refunded 3 micro-units."),
+            arrival.contains("Cash at dispatch P3: $0.00 (not requested)"),
             "{arrival}"
         );
-        assert!(
-            arrival.contains(
-                "Granted 3 units; total same-period recipient consumption of the same good/unit: 6"
-            ),
-            "{arrival}"
-        );
+        assert!(arrival.contains("Granted 3 units."), "{arrival}");
         assert!(
             arrival.contains("partner declined; coordination 3 hours"),
             "{arrival}"
@@ -1481,11 +1936,67 @@ mod tests {
             !arrival.contains("donor household fulfillment 8 hours"),
             "{arrival}"
         );
-        assert!(!arrival.contains("reserved 18"), "{arrival}");
+        assert!(!arrival.contains("reserved $0.000018"), "{arrival}");
         assert!(
             !arrival.contains("Actual material postings in period 3"),
             "{arrival}"
         );
+    }
+
+    #[test]
+    fn failed_food_keeps_independent_cash_grant_visible() {
+        let mut client = aid_history_client();
+        let row = client
+            .aid_resolutions
+            .first_mut()
+            .expect("cash-grant copy fixture");
+        row.support.status =
+            babylon_persistence::runtime_session::OrganizerFoodDelivery::TerminalFailure;
+        row.support.material_postings.dispatched_quantity = 0;
+        row.support.material_postings.fulfillment_hours = 0;
+        row.pending.dispatch_support = row.support.clone();
+        row.pending.response = Some(row.practice.clone());
+        let (_, text) = inspector(&client, 3);
+        assert!(
+            text.contains("Terminal food failure; no food grant"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Cash at dispatch P3: $0.000012 (granted)"),
+            "{text}"
+        );
+        assert!(!text.contains("no support was granted"));
+    }
+
+    #[test]
+    fn uncredited_food_stays_visible_without_qualifying_joint_work() {
+        let mut client = aid_history_client();
+        let row = client.aid_resolutions.first_mut().expect("copy fixture");
+        row.pending.allocation = babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        };
+        row.support.status = babylon_persistence::runtime_session::OrganizerFoodDelivery::Granted {
+            granted_quantity: 1,
+        };
+        row.support.cash_status = OrganizerAidCashStatus::NotRequested;
+        row.support.material_postings.dispatched_quantity = 1;
+        row.support.material_postings.fulfillment_hours = 2;
+        row.support.material_postings.payer_cash_granted_micros = 0;
+        row.pending.dispatch_support = row.support.clone();
+        row.practice.outcome = OrganizerOutcome::NoQualifyingSupport;
+        row.practice.hours_spent = 0;
+        row.practice.time_use.clear();
+        row.practice.partner_actor_id = None;
+        row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
+        let (_, text) = inspector(&client, 3);
+        assert!(text.contains("Granted 1 units"), "{text}");
+        assert!(!text.contains("consumption credit"), "{text}");
+        assert!(
+            text.contains("Support did not qualify joint work"),
+            "{text}"
+        );
+        assert!(!text.contains("no grant"));
     }
 
     #[test]
@@ -1504,7 +2015,7 @@ mod tests {
             !historical.contains("Actual material postings"),
             "{historical}"
         );
-        assert!(!historical.contains("gift paid 9"), "{historical}");
+        assert!(!historical.contains("Cash at dispatch P3:"), "{historical}");
         assert!(
             !historical.contains("Actual material postings in period 3"),
             "{historical}"
@@ -1517,45 +2028,51 @@ mod tests {
             OrganizerAidTransportPreview, OrganizerMaterialAidPreview,
         };
         OrganizerMaterialAidPreview {
+            initial_food_quantity: 1,
+            initial_cash_micros: 0,
+            cash_receiving_consent:
+                babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
             kind: babylon_persistence::runtime_session::OrganizerAidKind::Remote,
             mandate_id: [1; 32],
             period: 0,
             donor_id: [2; 32],
-            recipient_id: [3; 32],
+            recipient_actor_id: 95,
             good_id: [4; 32],
             unit_id: [5; 32],
-            donor_stock: 12,
-            own_need: 4,
-            grams_per_unit: 1000,
-            payer_cash: 120,
-            ordinary_offer: Some(OrganizerAidOrdinaryOffer {
-                seller_id: [6; 32],
-                unit_price: 25,
-            }),
-            maximum_quantity: 8,
-            gift_cash_per_unit: 10,
-            labor_unit_id: [7; 32],
-            fulfillment_hours_per_unit: 2,
-            coordination_hours: 3,
-            receiving_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
-            time: None,
-            transport: OrganizerAidTransportPreview::Routed {
-                route_id: [8; 32],
-                from_node_id: [9; 32],
-                to_node_id: [10; 32],
-                stages: vec![OrganizerAidRouteStage {
-                    stage_index: 0,
+            food: Some(OrganizerAidFoodPreview {
+                donor_stock: 12,
+                own_need: 4,
+                grams_per_unit: 1000,
+                ordinary_offer: Some(OrganizerAidOrdinaryOffer {
+                    seller_id: [6; 32],
+                    unit_price: 25,
+                }),
+                labor_unit_id: [7; 32],
+                fulfillment_hours_per_unit: 2,
+                time: None,
+                transport: OrganizerAidTransportPreview::Routed {
+                    route_id: [8; 32],
                     from_node_id: [9; 32],
                     to_node_id: [10; 32],
-                    travel_periods: 2,
-                    loss_ppm: 15000,
-                    departure_period: 1,
-                    capacities: vec![OrganizerAidCapacity {
-                        corridor_id: [11; 32],
-                        remaining_grams: Some(4000),
+                    stages: vec![OrganizerAidRouteStage {
+                        stage_index: 0,
+                        from_node_id: [9; 32],
+                        to_node_id: [10; 32],
+                        travel_periods: 2,
+                        loss_ppm: 15000,
+                        departure_period: 1,
+                        capacities: vec![OrganizerAidCapacity {
+                            corridor_id: [11; 32],
+                            remaining_grams: Some(4000),
+                        }],
                     }],
-                }],
-            },
+                },
+            }),
+            funding: OrganizerAidFunding::Organization { cash_micros: 120 },
+            maximum_quantity: 8,
+            maximum_cash_micros: 10,
+            coordination_hours: 3,
+            receiving_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
         }
     }
 
@@ -1582,13 +2099,106 @@ mod tests {
         let preview = aid_preview();
         let text = aid_terms(&preview);
         assert!(text.contains("protected surplus: 8"));
-        assert!(text.contains("Gift transfer: 10"));
-        assert!(text.contains("food price: 25"));
+        assert!(text.contains("Independent cash cap: $0.00001 currency, separate from food"));
+        assert!(text.contains("food price: $0.000025"));
         assert!(text.contains("No closed household time receipt"));
         assert!(text.contains("Earliest possible arrival: period 3; not a delivery guarantee"));
-        assert!(text.contains("4000 grams; commercial freight competes"));
+        assert!(text.contains("4,000 grams; commercial freight competes"));
         assert!(text.contains("no cash, food, freight or time is reserved"));
         assert!(text.contains("no agreement is guaranteed"));
+    }
+
+    #[test]
+    fn aid_card_keeps_food_refusal_separate_from_available_cash_receiving() {
+        let mut view = view();
+        view.period = 0;
+        view.aid_options = aid_options();
+        view.aid_options[1].receiving_consent = OrganizerGiftConsent::Refuse;
+        let mut terms = aid_preview();
+        terms.receiving_consent = OrganizerGiftConsent::Refuse;
+        let client = OrganizerClient {
+            view: Some(view.clone()),
+            aid: vec![terms],
+            ..OrganizerClient::default()
+        };
+
+        assert!(
+            client.choice_available(OrganizerChoice::RemoteAid),
+            "accepted cash receiving keeps the mixed-consent choice available"
+        );
+        let text = client_approach(&client, &view, OrganizerChoice::RemoteAid);
+        assert!(
+            text.contains("Current recipient receiving consent: food refused; cash accepted"),
+            "{text}"
+        );
+        assert!(!text.contains("gift unavailable"), "{text}");
+        assert!(
+            text.contains("later practice needs a separate agreement"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn local_food_only_review_keeps_pantry_and_hours_independent_of_cash_funding() {
+        let mut view = view();
+        view.period = 0;
+        view.aid_options = aid_options();
+        let mut terms = aid_preview();
+        terms.kind = OrganizerAidKind::Local;
+        terms.recipient_actor_id = 94;
+        terms.funding = OrganizerAidFunding::Unavailable;
+        terms
+            .food
+            .as_mut()
+            .expect("the fixture carries food terms")
+            .transport = babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
+        let client = OrganizerClient {
+            view: Some(view.clone()),
+            aid: vec![terms],
+            preview: Some(OrganizerPreview {
+                allocation: OrganizerAllocation::Aid {
+                    food_quantity: 1,
+                    cash_micros: 0,
+                },
+                choice: OrganizerChoice::LocalAid,
+                current_period: 0,
+                resolves_period: 1,
+                available_hours: 16,
+                required_hours: 0,
+                replaces_standing_work: false,
+                refusal: None,
+                observations: vec![],
+            }),
+            ..OrganizerClient::default()
+        };
+
+        assert!(
+            client.choice_available(OrganizerChoice::LocalAid),
+            "food receiving permits the food-only choice without cash funding"
+        );
+        let detail = client_approach(&client, &view, OrganizerChoice::LocalAid);
+        let review = review(&client, false, false, false);
+        assert!(
+            review.contains("Selected: 1 food parcels and $0"),
+            "{review}"
+        );
+        for text in [&detail, &review] {
+            assert!(text.contains("protected surplus: 8"), "{text}");
+            assert!(
+                text.contains("Fulfillment: 2 household hours per dispatched unit"),
+                "{text}"
+            );
+            assert!(text.contains("Cash funding unavailable"), "{text}");
+            assert!(
+                text.contains("Local food can reach the pantry in its dispatch period; the donor's own food needs and available household hours still constrain fulfillment"),
+                "{text}"
+            );
+            assert!(!text.contains("own needs, cash and time"), "{text}");
+        }
+        assert!(
+            review.contains("Partner participation is independent"),
+            "{review}"
+        );
     }
 
     #[test]
@@ -1612,8 +2222,13 @@ mod tests {
             view.aid_options = aid_options();
             let mut preview = aid_preview();
             preview.kind = kind;
+            preview.recipient_actor_id = if kind == OrganizerAidKind::Local {
+                94
+            } else {
+                95
+            };
             if kind == OrganizerAidKind::Local {
-                preview.transport =
+                preview.food.as_mut().expect("food offer").transport =
                     babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
             }
             let client = OrganizerClient {
@@ -1630,7 +2245,7 @@ mod tests {
                 "{text}"
             );
             assert!(
-                text.contains("Current recipient receiving consent: accepted"),
+                text.contains("Current recipient receiving consent: food accepted; cash accepted"),
                 "{text}"
             );
             assert!(
@@ -1660,6 +2275,10 @@ mod tests {
             vec![view.aid_options[0].clone()],
             vec![view.aid_options[1].clone(), view.aid_options[1].clone()],
             vec![OrganizerAidOption {
+                partner_actor_id: 1,
+                ..view.aid_options[1].clone()
+            }],
+            vec![OrganizerAidOption {
                 partner_label: " ".into(),
                 ..view.aid_options[1].clone()
             }],
@@ -1688,7 +2307,7 @@ mod tests {
         assert!(!stale.contains("protected surplus: 8"), "{stale}");
         assert!(!stale.contains(label), "{stale}");
         assert!(
-            !stale.contains("Current recipient receiving consent: accepted"),
+            !stale.contains("Current recipient receiving consent: food accepted; cash accepted"),
             "{stale}"
         );
 
@@ -1714,7 +2333,7 @@ mod tests {
         let refused = client_approach(&client, &view, OrganizerChoice::RemoteAid);
         assert!(refused.contains(label), "{refused}");
         assert!(
-            refused.contains("Current recipient receiving consent: refused; gift unavailable"),
+            refused.contains("Current recipient receiving consent: food refused; cash accepted"),
             "{refused}"
         );
         assert!(
@@ -1734,6 +2353,14 @@ mod tests {
         let mut remote = aid_preview();
         remote.period = period;
         let pending = OrganizerAidPending {
+            allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                food_quantity: 4,
+                cash_micros: 18,
+            },
+            dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+            response: None,
+            lost_quantity: 0,
+
             kind: remote.kind,
             original_commitment_id: [11; 32],
             material_commitment_id: [12; 32],
@@ -1745,7 +2372,9 @@ mod tests {
         };
         let mut local = remote.clone();
         local.kind = OrganizerAidKind::Local;
-        local.transport = babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
+        local.recipient_actor_id = 94;
+        local.food.as_mut().expect("food offer").transport =
+            babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
         OrganizerClient {
             view: Some(view),
             aid: vec![remote, local],
@@ -1843,7 +2472,7 @@ mod tests {
             OrganizerChoice::RemoteAid,
         );
         assert!(
-            text.contains("Current recipient receiving consent: refused; gift unavailable"),
+            text.contains("Current recipient receiving consent: food refused; cash accepted"),
             "{text}"
         );
         assert!(!text.contains("remains in transit"), "{text}");
@@ -1862,9 +2491,15 @@ mod tests {
             view.aid_options = aid_options();
             let mut preview = aid_preview();
             preview.kind = kind;
+            preview.recipient_actor_id = if kind == OrganizerAidKind::Local {
+                94
+            } else {
+                95
+            };
             preview.period = view.period;
             let commitment = OrganizerCommitment {
                 command: OrganizerCommand {
+                    allocation: OrganizerAllocation::None,
                     campaign_id: [3; 16],
                     actor_id: view.actor_id,
                     authority_id: view.authority_id,
@@ -1891,7 +2526,7 @@ mod tests {
             assert!(text.contains("Later coordination: 3 hours"), "{text}");
             assert!(
                 text.contains(
-                    "delivery, consumption, finite contributions and independent authorization"
+                    "positive cash or consumed food, subject to finite contributions and independent authorization"
                 ),
                 "{text}"
             );
@@ -1973,6 +2608,7 @@ mod tests {
             total_receipt_count: 0,
             receipts: vec![],
             positions: vec![],
+            aid_partners: vec![],
             aid_options: vec![],
         }
     }
@@ -1987,6 +2623,7 @@ mod tests {
         OrganizerClient {
             view: Some(view),
             preview: Some(OrganizerPreview {
+                allocation: OrganizerAllocation::None,
                 choice: OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
                 current_period: period,
                 resolves_period: period + 1,
@@ -2081,7 +2718,7 @@ mod tests {
             expired_batches: 777,
         };
         view.observations.push(report);
-        let text = situation(&view, 3);
+        let text = situation(&view, view.workplace_id, 3);
         assert!(
             text.contains("Observed period 2 · historical report"),
             "{text}"
@@ -2092,7 +2729,7 @@ mod tests {
         assert!(!text.contains("999"), "{text}");
         assert!(!text.contains("source actor"), "{text}");
         assert!(!text.contains(&"07".repeat(32)), "{text}");
-        assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
+        assert!(situation(&view, view.workplace_id, 1).contains("Open Cited workplace Archive"));
     }
 
     #[test]
@@ -2140,13 +2777,22 @@ mod tests {
         assert!(first.contains("No report obtained"), "{first}");
         assert!(!first.contains("withheld"), "{first}");
         assert!(!first.contains("Contact recorded"), "{first}");
-        let second = aftermath(&OrganizerClient::default(), &view, 5);
+        let second = aftermath(&OrganizerClient::default(), &view, 2);
         assert!(second.contains("Period 2 · saved routine"), "{second}");
         assert!(
             second.contains("Contact recorded; agreement can renew next period"),
             "{second}"
         );
         assert!(!second.contains("99 organizer-hours"), "{second}");
+        let missing_current = aftermath(&OrganizerClient::default(), &view, 5);
+        assert!(
+            missing_current.contains("Archive"),
+            "missing current receipts must route to Archive: {missing_current}"
+        );
+        assert!(
+            !missing_current.contains("Contact recorded"),
+            "a previous period's contact is not the current result: {missing_current}"
+        );
         assert!(aftermath(&OrganizerClient::default(), &view, 0).contains("No practice completed"));
 
         // An explicit Hold still performs standing work, but its origin is an accepted ruling.
@@ -2215,15 +2861,16 @@ mod tests {
             },
         };
         let automatic = observation(&view, &item, 5);
-        assert!(automatic.contains("Automatic report from Fixture workplace contacts"));
-        assert!(automatic.contains("source actor 92"));
+        assert!(automatic.contains("Automatic report"));
+        assert!(automatic.contains("Source: Fixture workplace contacts"));
+        assert!(!automatic.contains("source actor 92"));
         assert!(!automatic.contains("Captured initial report"));
         item.observed_period = 0;
         item.acquired_period = 0;
         assert!(observation(&view, &item, 5).contains("Captured initial report · period 0"));
         item.receipt_id = Some([7; 32]);
-        assert!(observation(&view, &item, 5)
-            .contains(&format!("Committed receipt {}", "07".repeat(32))));
+        assert!(observation(&view, &item, 5).contains("Received through your inquiry"));
+        assert!(!observation(&view, &item, 5).contains(&"07".repeat(32)));
     }
 
     #[test]
@@ -2246,6 +2893,7 @@ mod tests {
             let client = OrganizerClient {
                 view: Some(view()),
                 preview: Some(OrganizerPreview {
+                    allocation: OrganizerAllocation::None,
                     choice,
                     current_period: 5,
                     resolves_period: 6,
@@ -2281,6 +2929,9 @@ mod tests {
         practice.standing_work = false;
         practice.hours_spent = 0;
         let command = OrganizerCommand {
+            allocation: OrganizerAllocation::Collection {
+                target_cash_micros: 400_000,
+            },
             campaign_id: [3; 16],
             actor_id: view.actor_id,
             authority_id: view.authority_id,
@@ -2341,10 +2992,10 @@ mod tests {
                 .expect("the fixture set the optional field before this read"),
             2
         )
-        .contains("collected 0 currency"));
+        .contains("collected $0.00 currency"));
         let text = collection_history(&client, &view, 3);
         assert!(text.contains("original admission 2; actual resolution 3"));
-        assert!(text.contains("collected 0 currency; 0 shared material hours"));
+        assert!(text.contains("collected $0.00 currency; 0 shared material hours"));
         assert!(text.contains("Household consumption is unmet"));
         assert!(text.contains("no standing fallback"));
         assert_eq!(collection_history(&client, &view, 2).len(), 0);
@@ -2359,6 +3010,7 @@ mod tests {
                 contributor_label: "Fixture contributor".into(),
                 source_hash: [16; 32],
                 cash_consent: OrganizerGiftConsent::Accept,
+                initial_cash_micros: 400_000,
                 maximum_cash_micros: 400_000,
                 protected_cash_floor_micros: 0,
                 collection_hours: 2,
@@ -2366,7 +3018,7 @@ mod tests {
             },
         );
         let card = client_approach(&client, &view, OrganizerChoice::Collect);
-        assert!(card.contains("up to 0.4 currency; 2 shared material hours"));
+        assert!(card.contains("up to $0.40 currency; 2 shared material hours"));
         assert!(card.contains("terms verified at period 3"));
         assert!(card.contains("Designed"));
         assert!(card.contains("mandatory protected needs"));
@@ -2394,7 +3046,7 @@ mod tests {
             ..OrganizerClient::default()
         };
         let actual = aftermath(&partially_collected, &partial_view, resolved_period);
-        assert!(actual.contains("collected 0.000004 currency; 2 shared material hours"));
+        assert!(actual.contains("collected $0.000004 currency; 2 shared material hours"));
         assert!(actual.contains("Partially collected"));
         assert!(
             collection_history(&partially_collected, &partial_view, resolved_period)
@@ -2407,17 +3059,40 @@ mod tests {
     }
 
     #[test]
+    fn large_reports_preserve_grouped_labor_and_output_units() {
+        let text = report(&OrganizerReport::Work {
+            performed_labor_hours: 1_234_567,
+            output_kg: 9_876_543,
+            previous_labor_hours: Some(1_000_000),
+            previous_output_kg: Some(9_000_000),
+        });
+        for quantity in [
+            "1,234,567 labor-hours",
+            "9,876,543 kg",
+            "1,000,000 labor-hours",
+            "9,000,000 kg",
+        ] {
+            assert!(
+                text.contains(quantity),
+                "report retains exact grouped quantity {quantity}: {text}"
+            );
+        }
+    }
+
+    #[test]
     fn collection_currency_preserves_exact_micro_units_without_float_rounding() {
-        assert_eq!(currency(0), "0");
-        assert_eq!(currency(400_000), "0.4");
-        assert_eq!(currency(1), "0.000001");
+        assert_eq!(crate::human_numbers::currency(0), "$0.00");
+        assert_eq!(crate::human_numbers::currency(1_234_560_000), "$1,234.56");
+        assert_eq!(crate::human_numbers::currency(-1_200_000), "-$1.20");
+        assert_eq!(crate::human_numbers::currency(400_000), "$0.40");
+        assert_eq!(crate::human_numbers::currency(1), "$0.000001");
         assert_eq!(
-            currency(i128::MAX),
-            "170141183460469231731687303715884.105727"
+            crate::human_numbers::currency(i128::MAX),
+            "$170,141,183,460,469,231,731,687,303,715,884.105727"
         );
         assert_eq!(
-            currency(i128::MIN),
-            "-170141183460469231731687303715884.105728"
+            crate::human_numbers::currency(i128::MIN),
+            "-$170,141,183,460,469,231,731,687,303,715,884.105728"
         );
     }
 }

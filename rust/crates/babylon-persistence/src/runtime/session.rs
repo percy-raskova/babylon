@@ -1,7 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use crate::advance_timing::{PreparationTiming, PublicationTiming, SchemaTiming};
 use crate::michigan_dynamic_hex_foundation;
 use babylon_bsl::identity_codec::StableBslValue;
+use std::time::Instant;
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 
@@ -653,7 +655,14 @@ pub(crate) fn verify_runtime_schema(
 pub(crate) fn verify_runtime_schema_client(
     client: &mut impl GenericClient,
 ) -> Result<CurrentSchemaIdentity, RustPersistenceRuntimeError> {
-    crate::current_schema::require_current_schema(client)
+    verify_runtime_schema_client_timed(client, &mut SchemaTiming::default())
+}
+
+pub(crate) fn verify_runtime_schema_client_timed(
+    client: &mut impl GenericClient,
+    timing: &mut SchemaTiming,
+) -> Result<CurrentSchemaIdentity, RustPersistenceRuntimeError> {
+    crate::current_schema::require_current_schema_timed(client, timing)
         .map_err(RustPersistenceRuntimeError::CurrentSchema)
 }
 
@@ -751,6 +760,7 @@ pub(crate) fn insert_typed_tick_pre_marker_rows(
     report: &IdentifiedTickReport,
     checkpoint: &CommittedFullCheckpoint,
     tick_content_hash: TickContentHash,
+    timing: &mut PublicationTiming,
 ) -> Result<(), RustPersistenceRuntimeError> {
     let action_layout = i16::try_from(report.action_batch_layout_version())
         .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
@@ -773,7 +783,9 @@ pub(crate) fn insert_typed_tick_pre_marker_rows(
     insert_typed_material_rows(client, campaign_id, resolve_tick, report)?;
     insert_choice_receipt_rows(client, campaign_id, resolve_tick, report)?;
     insert_typed_event_rows(client, campaign_id, resolve_tick, report)?;
+    let checkpoint_started = Instant::now();
     insert_full_checkpoint(client, campaign_id, resolve_tick, checkpoint)?;
+    timing.full_checkpoint = checkpoint_started.elapsed();
     require_single_insert(
         client.execute(
             "INSERT INTO babylon_state.archive_dirty_receipt_v1 \
@@ -1608,6 +1620,13 @@ impl PreparedCommittedTick {
 pub fn prepare_committed_tick(
     report: &IdentifiedTickReport,
 ) -> Result<PreparedCommittedTick, RustPersistenceRuntimeError> {
+    prepare_committed_tick_timed(report, &mut PreparationTiming::default())
+}
+
+pub(crate) fn prepare_committed_tick_timed(
+    report: &IdentifiedTickReport,
+    timing: &mut PreparationTiming,
+) -> Result<PreparedCommittedTick, RustPersistenceRuntimeError> {
     let completed_tick = report.result_registers().completed_tick();
     let raw_resolve_tick = u64::try_from(completed_tick).map_err(|_| {
         RustPersistenceRuntimeError::ResolveTickOutOfRange {
@@ -1619,12 +1638,20 @@ pub fn prepare_committed_tick(
             actual: completed_tick,
         },
     )?;
+    let started = Instant::now();
     let graph_event_batches =
         semantic_batches::compose_graph_event_choice_semantic_batches(report)?;
+    timing.graph_event_choice = started.elapsed();
+    let started = Instant::now();
     let material_state_rows =
         semantic_batches::compose_material_state_rows(report.material_state_rows())?;
-    let checkpoint_rows = checkpoint::compose_checkpoint_rows(report, resolve_tick)?;
+    timing.material_state = started.elapsed();
+    let started = Instant::now();
+    let checkpoint_rows = checkpoint::compose_checkpoint_rows(report, resolve_tick, timing)?;
+    timing.second_checkpoint = started.elapsed();
+    let started = Instant::now();
     let archive_dirty_receipt = checkpoint::compose_archive_dirty_receipt(report)?;
+    timing.archive_receipt = started.elapsed();
     Ok(PreparedCommittedTick {
         resolve_tick,
         tick_content_hash: report.tick_content_hash(),

@@ -58,7 +58,7 @@ pub(crate) mod staffing;
 #[cfg(test)]
 mod tests;
 
-mod aid;
+pub(crate) mod aid;
 
 #[cfg(test)]
 #[path = "production_projection/aid_projection_tests.rs"]

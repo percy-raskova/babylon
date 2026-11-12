@@ -12,12 +12,90 @@ readonly CARGO_BUILD_JOBS
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES"
 readonly LIVE_FOCUS="${BABYLON_POSTGRES_LIVE_FOCUS-runtime_smoke}"
-if [ "${1:-}" = --national-native-open ] || [ "${1:-}" = --national-native-lock-held ]; then
+die() {
+  printf 'run_rust_postgres: %s\n' "$*" >&2
+  exit 2
+}
+
+if [ "${1:-}" = --wayne-ordinary-prefix ]; then
+  case "$#:${2:-}" in
+    1:) unset BABYLON_WAYNE_WINDOW_DIAGNOSTIC ;;
+    2:--window-diagnostic) export BABYLON_WAYNE_WINDOW_DIAGNOSTIC=1 ;;
+    *) die "usage: --wayne-ordinary-prefix [--window-diagnostic]" ;;
+  esac
+  export BABYLON_WAYNE_PROFILE=ordinary-01 BABYLON_POSTGRES_LIVE_FOCUS=national_storage
+  export BABYLON_NATIVE_MEASUREMENT_MODE=normal_play BABYLON_NATIONAL_STORAGE_PERIODS=10
+  export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only
+  export BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-ordinary BABYLON_NATIONAL_QUALIFY_TIMING=0
+  BABYLON_STORAGE_REPORT_DIRECTORY="$(dirname -- "$REPO_ROOT")/qualification-27/ordinary-01/normal_play/evidence"
+  export BABYLON_STORAGE_REPORT_DIRECTORY
+  exec bash "$REPO_ROOT/tools/run_rust_postgres.sh"
+fi
+[ "${1:-}" != --window-diagnostic ] || die "window diagnostic requires --wayne-ordinary-prefix"
+if [ "${BABYLON_WAYNE_WINDOW_DIAGNOSTIC+x}" = x ]; then
+  if [ "$BABYLON_WAYNE_WINDOW_DIAGNOSTIC" != 1 ] ||
+    [ "${BABYLON_WAYNE_PROFILE:-}" != ordinary-01 ] ||
+    [ "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" != normal_play ] ||
+    [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" != 10 ]; then
+    die "window diagnostic requires the ordinary normal ten-period entry"
+  fi
+  # The internal shape still requires national_lock_entry's real flock/inode proof.
+  if [ "$#" -ne 0 ] &&
+    { [ "$#" -ne 2 ] || [ "${1:-}" != --national-lock-held ] || [ "${2:-}" != "$PPID" ]; }; then
+    die "window diagnostic requires the ordinary normal ten-period entry"
+  fi
+fi
+if [ "${1:-}" = --wayne-pair-next-locked ]; then
+  [ "$#" = 2 ] || die "expected native workload"
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  national_existing_game_guard
+  cd "$REPO_ROOT"
+  exec mise exec -- uv run --frozen python -m tools.devtools.national_native_pair next "$2"
+fi
+if [ "${1:-}" = --help ]; then
+  printf '%s\n' 'Run an isolated PostgreSQL test with BABYLON_POSTGRES_LIVE_FOCUS.' \
+    'For paired native qualification use --wayne-native-pair {smoke-01|walk-01}.' \
+    'For a separately owned ordinary three-close prefix use --wayne-ordinary-prefix [--window-diagnostic].' \
+    'Supply the released PostgreSQL image, host context and native expectation references.' \
+    'The operator drives and restore-verifies both members in order.'
+  exit 0
+fi
+if [ "${1:-}" = --wayne-native-pair ]; then
+  [ "$#" = 2 ] || { echo "usage: --wayne-native-pair {smoke-01|walk-01}" >&2; exit 2; }
+  case "$2" in smoke-01) periods=2;; walk-01) periods=10;; *) echo "unsupported native workload" >&2; exit 2;; esac
+  [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-$periods}" = "$periods" ] || { echo "requested native horizon differs" >&2; exit 2; }
+  export BABYLON_WAYNE_PROFILE="$2" BABYLON_POSTGRES_LIVE_FOCUS=national_storage
+  export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_PERIODS="$periods"
+  export BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-for-native BABYLON_NATIONAL_QUALIFY_TIMING=0
+  cd "$REPO_ROOT"
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  control="$(national_control_directory)"
+  umask 077
+  mkdir -p -- "$control"
+  next_member() {
+    flock --nonblock --close --conflict-exit-code 75 "$control/runner.lock" bash "$REPO_ROOT/tools/run_rust_postgres.sh" --wayne-pair-next-locked "$1"
+  }
+  next="$(next_member "$2")"
+  case "$next" in normal_play|memory_capture) ;; complete) exit 0;; *) die "invalid pair disposition";; esac
+  for mode in normal_play memory_capture; do
+    if [ "$mode" = normal_play ] && [ "$next" = memory_capture ]; then continue; fi
+    export BABYLON_NATIVE_MEASUREMENT_MODE="$mode"
+    BABYLON_STORAGE_REPORT_DIRECTORY="$(mise exec -- uv run --frozen python -m tools.devtools.national_native_pair path "$2")"
+    export BABYLON_STORAGE_REPORT_DIRECTORY
+    bash "$REPO_ROOT/tools/run_rust_postgres.sh"
+    campaign="$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign")"
+    bash "$REPO_ROOT/tools/run_rust_postgres.sh" --wayne-backup-retire "$campaign"
+  done
+  final="$(next_member "$2")"
+  [ "$final" = complete ] || die "both retired native members required for final evaluation"
+  exit 0
+fi
+if [ "${1:-}" = --wayne-backup-retire ] || [ "${1:-}" = --national-native-open ] || [ "${1:-}" = --national-native-lock-held ]; then
   # The hook does not follow external sources; this helper calls die indirectly.
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
-  # shellcheck disable=SC2329
-  die() { printf 'run_rust_postgres: %s\n' "$*" >&2; exit 2; }
   national_native_open "$@"
   exit "$?"
 fi
@@ -34,11 +112,6 @@ VOLUME=""
 OWNED=0
 CONTAINER_ID=""
 RUNTIME_TEMPLATE_CREATED=0
-
-die() {
-  printf 'run_rust_postgres: %s\n' "$*" >&2
-  exit 2
-}
 
 emit_runtime_logs() {
   [ "$OWNED" -eq 1 ] || return 0
@@ -58,15 +131,46 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage | organizer_allocation_atomic) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
+
+# Only the three explicit allocation qualification profiles use a media bind.
+if [ -n "${BABYLON_WAYNE_PROFILE:-}" ] || [ "$LIVE_FOCUS" = organizer_allocation_atomic ]; then
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  case "$LIVE_FOCUS:${BABYLON_WAYNE_PROFILE:-}" in
+    organizer_allocation_atomic:sql-01) umask 077; wayne_media reserve ;;
+    national_storage:smoke-01 | national_storage:walk-01)
+      case "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" in normal_play|memory_capture) ;; *) die "explicit native measurement purpose required";; esac
+      [ "${BABYLON_NATIONAL_CAPTURE_MODE:-}" = playable-aid ] &&
+        [ "${BABYLON_NATIONAL_STORAGE_QUALIFICATION:-}" = report-only ] &&
+        [ "${BABYLON_NATIONAL_SUCCESS_DISPOSITION:-}" = retain-for-native ] &&
+        [ "${BABYLON_NATIONAL_QUALIFY_TIMING:-}" = 0 ] ||
+        die "Wayne native profile requires its explicit playable capture and retention"
+      ;;
+    national_storage:ordinary-01)
+      if [ "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" != normal_play ] ||
+        [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" != 10 ] ||
+        [ "${BABYLON_NATIONAL_CAPTURE_MODE:-}" != playable-aid ] ||
+        [ "${BABYLON_NATIONAL_STORAGE_QUALIFICATION:-}" != report-only ] ||
+        [ "${BABYLON_NATIONAL_SUCCESS_DISPOSITION:-}" != retain-ordinary ] ||
+        [ "${BABYLON_NATIONAL_QUALIFY_TIMING:-}" != 0 ]; then
+        die "ordinary prefix requires its independent normal-only capture and retention"
+      fi
+      ;;
+    *) die "Wayne qualification profile does not match the requested workload" ;;
+  esac
+fi
 
 if [ "$LIVE_FOCUS" = national_storage ]; then
   # The hook does not follow external sources.
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
   national_capture_selection
+  if [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ] && [ -z "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    die "native qualification requires --wayne-native-pair smoke-01 or walk-01"
+  fi
   national_lock_entry "$@"
   national_begin
 fi
@@ -120,6 +224,11 @@ claim_task_container() {
 
 # shellcheck disable=SC2329 # Invoked by the EXIT trap after ownership is proved.
 cleanup_best_effort() {
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    if [ "$LIVE_FOCUS" = national_storage ]; then national_failure_summary "${1:-1}" || true; fi
+    printf 'Wayne qualification retained profile=%s container=%s id=%s status=%s\n'       "$BABYLON_WAYNE_PROFILE" "$CONTAINER" "$CONTAINER_ID" "${1:-1}" >&2
+    return 0
+  fi
   if [ "$LIVE_FOCUS" = national_storage ] && [ -e "${NATIONAL_RECORD:-/nonexistent}" ]; then
     national_failure_summary "${1:-${status:-1}}" || true
     printf 'National lifecycle status=failure-retained record=%s attempted_container=%s id=%s\n' "$NATIONAL_RECORD" "$CONTAINER" "$CONTAINER_ID" >&2
@@ -133,8 +242,19 @@ cleanup_best_effort() {
 }
 
 cleanup_checked() {
+  if [ "$LIVE_FOCUS" = organizer_allocation_atomic ]; then
+    [ "$status" -eq 0 ] || die "SQL witness failed; retain exact container, primary and clone"
+    [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/retired-container.json" ] ||
+      die "SQL witness lacks exact successful retirement evidence"
+    return 0
+  fi
   [ "$OWNED" -eq 1 ] || return 0
   if [ "$LIVE_FOCUS" = national_storage ]; then
+    if [ "${BABYLON_WAYNE_PROFILE:-}" = ordinary-01 ]; then
+      wayne_media retain-ordinary --container "$CONTAINER_ID" --exit-status "$status" ||
+        die "ordinary preservation refused; inspect exact fixture, evidence and lease"
+      return 0
+    fi
     [ "$status" -eq 0 ] || die "national failure retains the exact game and lease for diagnosis"
     if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
       national_retain_success || die "national retention refused; exact target and lease preserved"
@@ -286,6 +406,7 @@ require_container_absent "startup"
 printf 'Rust runtime target: image=%s container=%s volume=anonymous port=dynamic-loopback\n' \
   "$IMAGE" "$CONTAINER"
 if [ -z "$PREBUILT_IMAGE_ID" ]; then
+  [ -z "${BABYLON_WAYNE_PROFILE:-}" ] || die "selected media run requires an inspected cached image"
   env DOCKER_BUILDKIT=1 \
     timeout --signal=TERM --kill-after=10s 180s \
     docker build --tag "$IMAGE" "$REPO_ROOT/docker/postgres"
@@ -302,6 +423,9 @@ fi
 
 if [ "$LIVE_FOCUS" = national_storage ]; then national_record; fi
 run_status=0
+if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+  created_container_id="$(wayne_media create)" || run_status="$?"
+else
 created_container_id="$(timeout --signal=TERM --kill-after=5s 30s docker run --detach \
   --log-driver local --log-opt max-size=10m --log-opt max-file=2 \
   --name "$CONTAINER" \
@@ -317,6 +441,7 @@ created_container_id="$(timeout --signal=TERM --kill-after=5s 30s docker run --d
   "$IMAGE_ID" postgres \
   -c config_file=/etc/postgresql/postgresql.conf \
   -c "babylon.disposable_runtime=$CANARY")" || run_status="$?"
+fi
 if [ "$run_status" -eq 0 ]; then
   claim_task_container "$created_container_id" ||
     die_with_runtime_logs "created container identity was not proved"
@@ -327,11 +452,15 @@ fi
 
 if [ "$LIVE_FOCUS" = national_storage ]; then national_record; fi
 inspect_status=0
+if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+  VOLUME="${BABYLON_STORAGE_REPORT_DIRECTORY%/evidence}/pgdata"
+else
 VOLUME="$(timeout --signal=TERM --kill-after=2s 10s \
   docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER")" ||
   inspect_status="$?"
 [ "$inspect_status" -eq 0 ] && [ -n "$VOLUME" ] ||
   die_with_runtime_logs "anonymous data volume identity was not resolved"
+fi
 if [ "$LIVE_FOCUS" = national_storage ]; then national_record; fi
 port_status=0
 published="$(timeout --signal=TERM --kill-after=2s 10s \
@@ -344,6 +473,10 @@ readonly PORT="${BASH_REMATCH[1]}"
   die_with_runtime_logs "dynamic loopback port was outside the valid range"
 
 wait_for_runtime || die_with_runtime_logs "pinned PostgreSQL runtime was not ready within 90 seconds"
+
+if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+  wayne_media physical --container "$CONTAINER_ID" || die "selected media cluster ownership refused"
+fi
 
 runtime_metadata="$(timeout --signal=TERM --kill-after=2s 10s \
   docker exec "$CONTAINER" psql -X -qAt -U test -d template1 -c \
@@ -409,11 +542,20 @@ fi
 if [ "$status" -eq 0 ]; then
   cd "$REPO_ROOT/rust"
   case "$LIVE_FOCUS" in
+    organizer_allocation_atomic)
+      cd "$REPO_ROOT"
+      wayne_media released-head >/dev/null || die "SQL release HEAD changed before input capture"
+      national_reproducibility || die "SQL fixture source and input capture failed"
+      wayne_media sql --container "$CONTAINER_ID" || status=$?
+      ;;
     national_storage)
       national_create_game
       if [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ]; then
         # Compile before the measured lifecycle. One admitted native pair owns
         # play and recovery; the existing evaluator still owns qualification.
+        if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+          wayne_media pin-binaries --container "$CONTAINER_ID" || die "prebuilt native source/executable admission refused"
+        fi
         BLAS=1 cargo build -p babylon-persistence -p babylon-client \
           --bin babylon-runtime --bin babylon-client --bin babylon-material-audit \
           --locked || status=$?
@@ -429,7 +571,7 @@ if [ "$status" -eq 0 ]; then
           actual_encoded_national_tick_measures_postgresql_growth_and_recovery \
           --locked -- --ignored --nocapture --test-threads=1 || status=$?
       fi
-      if [ "$status" -eq 0 ]; then
+      if [ "$status" -eq 0 ] && [ "${BABYLON_WAYNE_PROFILE:-}" != ordinary-01 ]; then
         cd "$REPO_ROOT"
         national_measure || status=$?
       fi
@@ -682,7 +824,7 @@ if [ "$status" -eq 0 ]; then
   esac
 fi
 
-if [ "$RUNTIME_TEMPLATE_CREATED" -eq 1 ]; then
+if [ "$RUNTIME_TEMPLATE_CREATED" -eq 1 ] && [ "$LIVE_FOCUS" != organizer_allocation_atomic ]; then
   template_status=0
   verify_runtime_template_and_clone_cleanup || template_status=$?
   drop_runtime_template || template_status=$?
@@ -692,8 +834,12 @@ fi
 cleanup_checked
 trap - EXIT INT TERM HUP
 if [ "$LIVE_FOCUS" = national_storage ]; then
+  if [ "${BABYLON_WAYNE_PROFILE:-}" = ordinary-01 ]; then
+    printf 'Ordinary prefix fixture stopped and preserved; measurement exit=%s; no qualification or backup claim\n' "$status"
+    exit "$status"
+  fi
   if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
-    printf 'National lifecycle status=success-retained-for-native; scope and acceptance remain in native-handoff.json and qualification.json\n'
+    printf 'National lifecycle status=retained member pending verified backup and pair evaluation\n'
     exit "$status"
   fi
   printf 'National lifecycle status=success-cleaned; storage acceptance is recorded separately in qualification.json\n'

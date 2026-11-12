@@ -24,8 +24,8 @@ use material_world::MaterialWorldRegister;
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
 fn local_handoff_receipts() -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v19\0".to_vec();
-    bytes.extend_from_slice(&19_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v20\0".to_vec();
+    bytes.extend_from_slice(&20_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
     for tag in 1..=37_u8 {
         bytes.push(tag);
@@ -167,7 +167,7 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
         })
         .into();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&19_u32.to_be_bytes());
+    bytes.extend_from_slice(&20_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=37 {
         bytes.push(tag);
@@ -270,7 +270,7 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
     monetary_receipt::validate_order(&wages, &labor)
         .expect("the authored fixture satisfies the rule");
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&19_u32.to_be_bytes());
+    bytes.extend_from_slice(&20_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=37 {
         bytes.push(tag);
@@ -324,7 +324,7 @@ fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
         material_world::bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),
         Err(MaterialWorldError::ByteLimit)
     );
-    assert_eq!(MAX_MATERIAL_TICK_RECEIPT_BYTES, 874_709_881);
+    assert_eq!(MAX_MATERIAL_TICK_RECEIPT_BYTES, 925_434_745);
     assert_eq!(
         material_world::bounded_bytes(
             MAX_MATERIAL_TICK_RECEIPT_BYTES + 1,
@@ -465,7 +465,7 @@ fn a_refused_successor_leaves_the_published_register_unchanged() {
     reason = "the shared paper-control fixture also supports other material tests"
 )]
 #[path = "../../../babylon-material-circuit/tests/support/organizer_funding_control.rs"]
-mod agency_control;
+pub(super) mod agency_control;
 
 #[test]
 fn actual_paid_agency_attendance_roundtrips_through_the_canonical_tick() {

@@ -88,7 +88,7 @@ impl SessionBackend for DurableBackend {
     }
 }
 
-fn advance_error(error: &MaterialRuntimeError) -> RuntimeSessionErrorCode {
+pub(crate) fn advance_error(error: &MaterialRuntimeError) -> RuntimeSessionErrorCode {
     // Operator diagnostics only: retain the safe database cause before the
     // protocol maps it to a deliberately bounded refusal code.
     if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {

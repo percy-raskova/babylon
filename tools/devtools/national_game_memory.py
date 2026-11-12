@@ -22,8 +22,9 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -917,17 +918,235 @@ def verify_process_credentials(pid: int, uid: int, gid: int) -> None:
         )
 
 
+# Project only reader identity and confinement. A full inspect includes Env.
+_READER_INSPECT = (
+    '{"id":{{json .Id}},"image":{{json .Image}},'
+    '"label":{{json (index .Config.Labels "babylon.memory-sampler")}},'
+    '"user":{{json .Config.User}},"path":{{json .Path}},"args":{{json .Args}},'
+    '"healthcheck":{{json .Config.Healthcheck.Test}},'
+    '"network":{{json .HostConfig.NetworkMode}},"userns":{{json .HostConfig.UsernsMode}},'
+    '"pid_mode":{{json .HostConfig.PidMode}},"readonly":{{json .HostConfig.ReadonlyRootfs}},'
+    '"privileged":{{json .HostConfig.Privileged}},"cap_add":{{json .HostConfig.CapAdd}},'
+    '"cap_drop":{{json .HostConfig.CapDrop}},"security":{{json .HostConfig.SecurityOpt}},'
+    '"devices":{{json .HostConfig.Devices}},"groups":{{json .HostConfig.GroupAdd}},'
+    '"mounts":{{json .Mounts}},'
+    '"size":{{range .HostConfig.Mounts}}{{if eq .Type "tmpfs"}}'
+    "{{json .TmpfsOptions.SizeBytes}}{{end}}{{end}},"
+    '"started":{{json .State.StartedAt}},"pid":{{json .State.Pid}},'
+    '"status":{{json .State.Status}},"restarts":{{json .RestartCount}}}'
+)
+_READER_SCRIPT = (
+    'set -eu; request="$1"; shift; printf "%s\\n" "$request"; '
+    'stat -Lc "%i" /proc/self/ns/user; '
+    'for pid do printf "%s\\n" "$pid"; '
+    'stat -Lc "%i" "/owned/$pid/ns/user"; '
+    'base64 -w0 "/owned/$pid/stat"; printf "\\n"; '
+    'sha256sum "/owned/$pid/exe"; '
+    'base64 -w0 "/owned/$pid/smaps_rollup"; printf "\\n"; '
+    'base64 -w0 "/owned/$pid/stat"; printf "\\n"; done; printf "%s\\n" "$request"'
+)
+
+
+@dataclass
+class _PostgresReader:
+    """Own one container and its exact, ordered epoch of frozen proc mounts."""
+
+    admission: PostgresAdmission
+    bindings: tuple[ProcessBinding, ...]
+    token: str
+    cid: str | None = None
+    incarnation: tuple[int, str] | None = None
+    removal_attempted: bool = False
+
+    def create(self, timeout: float) -> None:
+        # Create without starting a process. A canceled start cannot begin a
+        # counter read, and a canceled create still leaves its exact cidfile.
+        with tempfile.TemporaryDirectory(prefix="babylon-memory-") as name:
+            cidfile = Path(name) / "helper-id"
+            arguments = [
+                "create",
+                "--no-healthcheck",
+                "--pull",
+                "never",
+                "--name",
+                "babylon-memory-" + self.token,
+                "--label",
+                "babylon.memory-sampler=" + self.token,
+                "--cidfile",
+                str(cidfile),
+                "--network",
+                "none",
+                "--read-only",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--user",
+                f"{self.admission.uid}:{self.admission.gid}",
+                "--userns",
+                "host",
+                "--mount",
+                "type=tmpfs,destination=/var/lib/postgresql/data,tmpfs-size=1048576",
+            ]
+            for binding in self.bindings:
+                arguments.extend(
+                    [
+                        "--mount",
+                        f"type=bind,source=/proc/{binding.pid},destination=/owned/{binding.pid},readonly",
+                    ]
+                )
+            arguments.extend(["--entrypoint", "/bin/sleep", self.admission.image_id, "2147483647"])
+            try:
+                raw = docker_command(arguments, timeout=timeout)
+                self.cid = cidfile.read_text(encoding="ascii").strip()
+                if not self.cid or raw.strip() != self.cid.encode():
+                    raise CaptureRefusal("memory helper creation identity differs")
+            except BaseException as failure:
+                # The daemon may have committed before the CLI returned. A
+                # populated cidfile is the primary receipt after interruption.
+                try:
+                    if not self.cid and cidfile.is_file():
+                        self.cid = cidfile.read_text(encoding="ascii").strip() or None
+                except BaseException as receipt_error:
+                    raise BaseExceptionGroup(
+                        "memory helper creation and CID recovery failed", [failure, receipt_error]
+                    ) from None
+                raise
+        status, _, _ = self.inspect(timeout)
+        if status != "created":
+            raise CaptureRefusal("memory helper did not start in its created state")
+        docker_command(["start", self.cid], timeout=timeout)
+
+    def inspect(self, timeout: float) -> tuple[str, int, str]:
+        if self.cid is None or re.fullmatch(r"[0-9a-f]{64}", self.cid) is None:
+            raise CaptureRefusal("memory helper creation identity malformed")
+        raw = docker_command(
+            ["container", "inspect", "--format", _READER_INSPECT, self.cid], timeout=timeout
+        )
+        try:
+            observed = json.loads(raw)
+            if not isinstance(observed, dict):
+                raise ValueError
+            status, pid, started = (observed.pop(k) for k in ("status", "pid", "started"))
+            if type(pid) is not int or not isinstance(started, str) or not isinstance(status, str):
+                raise ValueError
+            mounts = sorted(
+                (m["Destination"], m["Type"], m["Source"], m["RW"], m["Propagation"])
+                for m in observed.pop("mounts")
+            )
+        except (KeyError, TypeError, ValueError):
+            raise CaptureRefusal("memory helper identity observation malformed") from None
+        expected_mounts = [("/var/lib/postgresql/data", "tmpfs", "", True, "")]
+        expected_mounts.extend(
+            (f"/owned/{b.pid}", "bind", f"/proc/{b.pid}", False, "rprivate") for b in self.bindings
+        )
+        if mounts != sorted(expected_mounts) or any(type(m[3]) is not bool for m in mounts):
+            raise CaptureRefusal("memory helper mount confinement differs")
+        # Daemons encode an empty option list as [] or null.
+        for key in ("cap_add", "devices", "groups"):
+            if observed.pop(key, False) not in (None, []):
+                raise CaptureRefusal("memory helper permissions differ")
+        expected = {
+            "id": self.cid,
+            "image": self.admission.image_id,
+            "label": self.token,
+            "user": f"{self.admission.uid}:{self.admission.gid}",
+            "path": "/bin/sleep",
+            "args": ["2147483647"],
+            "healthcheck": ["NONE"],
+            "network": "none",
+            "userns": "host",
+            "pid_mode": "",
+            "readonly": True,
+            "privileged": False,
+            "cap_drop": ["ALL"],
+            "security": ["no-new-privileges"],
+            "size": 1048576,
+        }
+        # RestartCount counts policy restarts; StartedAt also catches a manual restart.
+        restarts = observed.pop("restarts", None)
+        if (
+            observed != expected
+            or observed["readonly"] is not True
+            or observed["privileged"] is not False
+            or type(restarts) is not int
+        ):
+            raise CaptureRefusal("memory helper ownership or confinement differs")
+        if restarts:
+            status = "restarted"
+        return status, pid, started
+
+    def live_incarnation(self, timeout: float) -> tuple[int, str]:
+        status, pid, started = self.inspect(timeout)
+        if status != "running" or pid <= 0 or not started or started.startswith("0001-"):
+            raise CaptureRefusal("memory helper is no longer the running incarnation")
+        if self.incarnation is not None and (pid, started) != self.incarnation:
+            raise CaptureRefusal("memory helper process incarnation changed")
+        return pid, started
+
+    def read(self, timeout: float) -> tuple[MemoryProcess, ...]:
+        if self.cid is None:
+            raise CaptureRefusal("memory helper has no creation identity")
+        self.incarnation = self.live_incarnation(timeout)
+        nonce = uuid4().hex
+        raw = docker_command(
+            [
+                "exec",
+                self.cid,
+                "/bin/sh",
+                "-c",
+                _READER_SCRIPT,
+                "babylon-memory-reader",
+                nonce,
+                *(str(binding.pid) for binding in self.bindings),
+            ],
+            timeout=timeout,
+        )
+        frame = nonce.encode() + b"\n"
+        if not raw.startswith(frame) or not raw.endswith(frame):
+            raise CaptureRefusal("memory helper response is incomplete or belongs to another read")
+        processes = decode_postgres_observations(raw[len(frame) : -len(frame)], self.bindings)
+        self.live_incarnation(timeout)
+        return processes
+
+
 class OwnedPostgresScope:
-    """Freeze only an already admitted container; restore partial Docker pauses.
+    """Authenticate the physical owner around the native stop and the live authority around PG."""
 
-    This is not another lease authority. The required supervisor callback checks
-    its exact active record, volume, database and credentials outside the pause.
-    During suspension we recheck exact container, cgroup inode and membership.
-    """
-
-    def __init__(self, admission: PostgresAdmission, verify_ownership: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        admission: PostgresAdmission,
+        verify_physical_owner: Callable[[], None],
+        verify_live_authority: Callable[[], None],
+    ) -> None:
+        self._reader: _PostgresReader | None = None
         self.admission = admission
-        self._verify_ownership = verify_ownership
+        self._verify_physical_owner = verify_physical_owner
+        self._verify_live_authority = verify_live_authority
+
+    @contextmanager
+    def _capture(
+        self, *, sequence: int, timeout: float
+    ) -> Iterator[Callable[[], AbstractContextManager[tuple[ProcessBinding, ...]]]]:
+        """Run the postcheck after native restoration, only for a proven PG thaw."""
+        with _timed_sampler_stage("PhysicalOwnerBeforeNativeStop", sequence):
+            self._verify_physical_owner()
+        restored = ExitStack()
+        failure: BaseException | None = None
+        try:
+            yield partial(self._quiescent, timeout=timeout, sequence=sequence, restored=restored)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            try:
+                restored.close()
+            except BaseException as postcheck:
+                if failure is not None:
+                    raise BaseExceptionGroup(
+                        "capture and physical postcheck failed", [failure, postcheck]
+                    ) from None
+                raise
 
     def verify(self, *, timeout: float, paused: bool) -> tuple[int, ...]:
         expected = self.admission
@@ -971,8 +1190,15 @@ class OwnedPostgresScope:
         return members
 
     @contextmanager
-    def quiescent(self, *, timeout: float) -> Iterator[tuple[ProcessBinding, ...]]:
-        self._verify_ownership()
+    def _quiescent(
+        self, *, timeout: float, sequence: int, restored: ExitStack
+    ) -> Iterator[tuple[ProcessBinding, ...]]:
+        def physical_after_restore() -> None:
+            with _timed_sampler_stage("PhysicalOwnerAfterNativeRestore", sequence):
+                self._verify_physical_owner()
+
+        with _timed_sampler_stage("LiveAuthorityBeforePause", sequence):
+            self._verify_live_authority()
         self.verify(timeout=timeout, paused=False)
         attempted = False
         failure: BaseException | None = None
@@ -1022,7 +1248,9 @@ class OwnedPostgresScope:
                     if state.paused:
                         docker_command(["unpause", self.admission.container_id], timeout=timeout)
                     self.verify(timeout=timeout, paused=False)
-                    self._verify_ownership()
+                    restored.callback(physical_after_restore)
+                    with _timed_sampler_stage("LiveAuthorityAfterUnpause", sequence):
+                        self._verify_live_authority()
                 except BaseException as error:
                     restoration.append(error)
             if restoration:
@@ -1031,126 +1259,86 @@ class OwnedPostgresScope:
                     [*([failure] if failure is not None else []), *restoration],
                 ) from None
 
+    def _close_reader(self, *, timeout: float) -> None:
+        reader = self._reader
+        if reader is None:
+            return
+        if not reader.cid:
+            # A CLI can be canceled before it writes the cidfile. Discover
+            # only this exact generated name and label; removal still needs
+            # a full CID and independent image/confinement authentication.
+            ids = docker_command(
+                [
+                    "ps",
+                    "-aq",
+                    "--no-trunc",
+                    "--filter",
+                    f"name=^/babylon-memory-{reader.token}$",
+                    "--filter",
+                    f"label=babylon.memory-sampler={reader.token}",
+                ],
+                timeout=timeout,
+            ).splitlines()
+            if len(ids) != 1 or not re.fullmatch(rb"[0-9a-f]{64}", ids[0]):
+                raise CaptureRefusal("memory helper creation has no verifiable exact CID")
+            reader.cid = ids[0].decode("ascii")
+        if reader.removal_attempted:
+            # A canceled CLI may already have removed the authenticated CID.
+            # Only a previous removal attempt permits accepting its absence.
+            ids = docker_command(
+                ["ps", "-aq", "--no-trunc", "--filter", "id=" + reader.cid], timeout=timeout
+            ).splitlines()
+            if not ids:
+                self._reader = None
+                return
+            if ids != [reader.cid.encode()]:
+                raise CaptureRefusal("memory helper retirement identity differs")
+        status, pid, started = reader.inspect(timeout)
+        # Exact CID, label, image and mount confinement still authenticate
+        # the container for removal even if its idle process has exited.
+        reader.removal_attempted = True
+        docker_command(["container", "rm", "--force", reader.cid], timeout=timeout)
+        self._reader = None
+        if reader.incarnation is not None and (
+            status != "running" or (pid, started) != reader.incarnation
+        ):
+            raise CaptureRefusal("memory helper incarnation differed at close")
+
+    @contextmanager
+    def _close_failed_read(self, timeout: float) -> Iterator[None]:
+        try:
+            yield
+        except BaseException as failure:
+            try:
+                self._close_reader(timeout=timeout)
+            except BaseException as cleanup:
+                raise BaseExceptionGroup(
+                    "memory helper operation and cleanup failed", [failure, cleanup]
+                ) from None
+            raise
+
     def observe(
         self, bindings: tuple[ProcessBinding, ...], *, timeout: float
     ) -> tuple[MemoryProcess, ...]:
-        """A separate capability-free helper reads allowlisted frozen proc records.
-
-        It runs outside the paused game cgroup, never invokes postgres, and
-        mounts no data volume or Docker socket. This host's runc refused the
-        direct exe magic-link mount; each exact admitted proc directory is mounted
-        read-only instead. Other entries are exposed but never read. The fixed
-        script reads only stat, user namespace, exe and smaps_rollup records.
-        """
-        if not bindings or any(binding.role != "game-postgresql" for binding in bindings):
-            raise CaptureRefusal("PostgreSQL helper requires its exact nonempty frozen roster")
-        if len({binding.pid for binding in bindings}) != len(bindings):
-            raise CaptureRefusal("PostgreSQL helper roster duplicated")
-        token = uuid4().hex
-        with tempfile.TemporaryDirectory(prefix="babylon-memory-") as name:
-            cidfile = Path(name) / "helper-id"
-            arguments = [
-                "run",
-                "--rm",
-                "--pull",
-                "never",
-                "--name",
-                "babylon-memory-" + token,
-                "--label",
-                "babylon.memory-sampler=" + token,
-                "--cidfile",
-                str(cidfile),
-                "--network",
-                "none",
-                "--read-only",
-                "--cap-drop",
-                "ALL",
-                "--security-opt",
-                "no-new-privileges",
-                "--user",
-                f"{self.admission.uid}:{self.admission.gid}",
-                "--userns",
-                "host",
-                "--mount",
-                "type=tmpfs,destination=/var/lib/postgresql/data,tmpfs-size=1048576",
-            ]
-            for binding in bindings:
-                arguments.extend(
-                    [
-                        "--mount",
-                        f"type=bind,source=/proc/{binding.pid},"
-                        f"destination=/owned/{binding.pid},readonly",
-                    ]
-                )
-            script = (
-                'set -eu; stat -Lc "%i" /proc/self/ns/user; '
-                'for pid do printf "%s\\n" "$pid"; '
-                'stat -Lc "%i" "/owned/$pid/ns/user"; '
-                'base64 -w0 "/owned/$pid/stat"; printf "\\n"; '
-                'sha256sum "/owned/$pid/exe"; '
-                'base64 -w0 "/owned/$pid/smaps_rollup"; printf "\\n"; '
-                'base64 -w0 "/owned/$pid/stat"; printf "\\n"; done'
-            )
-            arguments.extend(
-                [
-                    "--entrypoint",
-                    "/bin/sh",
-                    self.admission.image_id,
-                    "-c",
-                    script,
-                    "babylon-memory-reader",
-                    *(str(binding.pid) for binding in bindings),
-                ]
-            )
-            failure: BaseException | None = None
-            try:
-                raw = docker_command(arguments, timeout=timeout)
-                return decode_postgres_observations(raw, bindings)
-            except BaseException as error:
-                failure = error
-                raise
-            finally:
-                # Cancellation may kill only the Docker CLI. Remove only the
-                # exact CID created by this call, authenticated by its label.
-                if cidfile.exists():
-                    try:
-                        cid = cidfile.read_text().strip()
-                        if re.fullmatch(r"[0-9a-f]{64}", cid) is None:
-                            raise CaptureRefusal("memory helper creation identity malformed")
-                        ids = docker_command(
-                            [
-                                "ps",
-                                "-aq",
-                                "--no-trunc",
-                                "--filter",
-                                "id=" + cid,
-                            ],
-                            timeout=timeout,
-                        ).splitlines()
-                        if ids:
-                            if ids != [cid.encode()]:
-                                raise CaptureRefusal("memory helper cleanup scope differs")
-                            template = (
-                                '{{index .Config.Labels "babylon.memory-sampler"}}|{{.Image}}'
-                            )
-                            helper_identity = docker_command(
-                                [
-                                    "container",
-                                    "inspect",
-                                    "--format",
-                                    template,
-                                    cid,
-                                ],
-                                timeout=timeout,
-                            ).strip()
-                            if helper_identity != f"{token}|{self.admission.image_id}".encode():
-                                raise CaptureRefusal("memory helper cleanup ownership differs")
-                            docker_command(["container", "rm", "--force", cid], timeout=timeout)
-                    except BaseException as cleanup:
-                        raise BaseExceptionGroup(
-                            "memory helper/read cleanup failed",
-                            [*([failure] if failure is not None else []), cleanup],
-                        ) from None
+        """Read fresh counters through the exact frozen roster's confined helper."""
+        with self._close_failed_read(timeout):
+            if not bindings or any(
+                b.role != "game-postgresql"
+                or b.executable_sha256 != self.admission.executable_sha256
+                for b in bindings
+            ):
+                raise CaptureRefusal("PostgreSQL helper requires its exact nonempty frozen roster")
+            if len({binding.pid for binding in bindings}) != len(bindings):
+                raise CaptureRefusal("PostgreSQL helper roster duplicated")
+            if self._reader is not None:
+                if self._reader.admission != self.admission:
+                    raise CaptureRefusal("PostgreSQL helper target admission changed")
+                if self._reader.bindings != bindings:
+                    self._close_reader(timeout=timeout)
+            if self._reader is None:
+                self._reader = _PostgresReader(self.admission, bindings, uuid4().hex)
+                self._reader.create(timeout)
+            return self._reader.read(timeout)
 
 
 def decode_postgres_observations(
@@ -1200,15 +1388,19 @@ def collect_running_game(
     atomic global snapshot or proof of a continuous resident-memory peak.
     """
     boot = boot_identity()
-    with native.quiescent(timeout=timeout) as native_capture:
+    with (
+        postgres._capture(sequence=sequence, timeout=timeout) as freeze,
+        native.quiescent(timeout=timeout) as native_capture,
+    ):
         with _timed_sampler_stage("OpeningMarker", sequence):
             before = read_marker()
         if before.campaign != campaign or (
             foundation_sha256 is not None and before.foundation_sha256 != foundation_sha256
         ):
             raise CaptureRefusal("memory committed campaign/foundation differs")
-        with _timed_sampler_stage("PostgresQuiescentScope", sequence):
-            with postgres.quiescent(timeout=timeout) as pg_bindings:
+        # This stopped-side scope now excludes both physical owner reconstructions.
+        with _timed_sampler_stage("PostgresBarrierAndLiveAuthority", sequence):
+            with freeze() as pg_bindings:
                 started = time.monotonic_ns()  # Both barriers now hold.
                 with _timed_sampler_stage("NativeCounterRead", sequence):
                     processes = native_capture.observe()
@@ -1290,11 +1482,22 @@ class RunningMemoryCapture:
         sample_gap_seconds: int,
         operation_timeout: float,
         operation_lock: AbstractContextManager[object] | None = None,
+        cold_segment_period: int | None = None,
+        stop_on_budget: bool = False,
     ) -> None:
+        if cold_segment_period is not None and (
+            type(cold_segment_period) is not int or cold_segment_period not in (0, 10)
+        ):
+            raise CaptureRefusal("unknown fixed cold native segment")
+        self._cold_segment_period = cold_segment_period
         self.directory = directory
         self._expected = dict(expected_hashes)
         verify_frozen_files(directory, self._expected)
-        for name in ("combined-memory.json", "combined-memory-progress.json"):
+        for name in (
+            "combined-memory.json",
+            "combined-memory-progress.json",
+            "segment-memory.json",
+        ):
             if (directory / name).exists() or (directory / name).is_symlink():
                 raise CaptureRefusal("memory capture refuses an existing result or progress record")
         policy = Policy.model_validate_json((directory / "policy.json").read_bytes())
@@ -1316,6 +1519,9 @@ class RunningMemoryCapture:
         self._client_sha = client_sha256
         self._postgres = postgres
         self._read_marker = read_marker
+        self._stop_on_budget = stop_on_budget
+        self._gap_ns = sample_gap_seconds * 1_000_000_000
+        self._maximum_bytes = policy.maximum_combined_running_game_memory_bytes
         self._gap = sample_gap_seconds / 2
         self._timeout = operation_timeout
         self._operation_lock = operation_lock if operation_lock is not None else nullcontext()
@@ -1328,7 +1534,7 @@ class RunningMemoryCapture:
         self._unassigned_count = 0
         self._boot: str | None = None
         self._started_ns = 0
-        self._finished = False
+        self._final_sample_attempted = False
         self._records = directory / "memory-samples"
         self._records.mkdir(mode=0o700)  # Exclusive new run, never overwrite another prefix.
         self._unassigned_records = directory / "memory-unassigned"
@@ -1344,7 +1550,7 @@ class RunningMemoryCapture:
         )
         with self._operation_lock:
             self.check()
-            if self._native is None or not self._samples or self._finished:
+            if self._native is None or not self._samples or self._final_sample_attempted:
                 raise CaptureRefusal("foundation acknowledgment requires a running memory capture")
             if self._foundation is not None and self._foundation != marker.foundation_sha256:
                 raise CaptureRefusal("acknowledged memory foundation changed")
@@ -1404,8 +1610,28 @@ class RunningMemoryCapture:
             self._records / f"{batch.sample.sequence:08d}.json",
             batch.sample.model_dump(mode="json"),
         )
+        previous = self._samples[-1] if self._samples else None
+        previous_end = (
+            previous.monotonic_ns + previous.capture_duration_ns if previous else self._started_ns
+        )
         self._samples.append(batch.sample)
         self._progress()
+        self._check_measured_budget(
+            batch.sample.processes, batch.sample.monotonic_ns - previous_end
+        )
+
+    def _check_measured_budget(self, processes: tuple[MemoryProcess, ...], gap: int) -> None:
+        if self._stop_on_budget and (
+            gap > self._gap_ns
+            or sum(
+                process.rss_bytes + process.private_hugetlb_bytes + process.shared_hugetlb_bytes
+                for process in processes
+            )
+            > self._maximum_bytes
+        ):
+            raise CaptureRefusal(
+                "measured native memory or sampling gap exceeded the released budget"
+            )
 
     def _capture_periodic(self, native: OwnedNativePair) -> None:
         with self._operation_lock:
@@ -1430,12 +1656,27 @@ class RunningMemoryCapture:
                 self._boot = record.boot_id
                 self._unassigned_count += 1
                 self._progress()
+                previous = self._samples[-1] if self._samples else None
+                previous_end = (
+                    previous.monotonic_ns + previous.capture_duration_ns
+                    if previous
+                    else self._started_ns
+                )
+                self._check_measured_budget(
+                    record.processes,
+                    record.monotonic_ns + record.capture_duration_ns - previous_end,
+                )
 
     def _run(self, native: OwnedNativePair, signal_mask: set[signal.Signals]) -> None:
         try:
             signal.pthread_sigmask(signal.SIG_SETMASK, signal_mask)
             if self._samples:
-                self._stop.wait(self._gap)
+                # Startup restoration, publication and worker admission already
+                # consume the unsampled interval; do not restart its wait here.
+                previous = self._samples[-1]
+                previous_end = previous.monotonic_ns + previous.capture_duration_ns
+                elapsed = (time.monotonic_ns() - previous_end) / 1_000_000_000
+                self._stop.wait(max(0, self._gap - elapsed))
             while not self._stop.is_set():
                 started = time.monotonic()
                 self._capture_periodic(native)
@@ -1478,11 +1719,34 @@ class RunningMemoryCapture:
         try:
             self._finish()
         except BaseException as error:
-            prior = self._failure
+            failures: list[BaseException] = [error]
+            # The failing call can itself be entry to _drain, final sampling,
+            # or the exact close. Finish owns the handoff on this path too.
+            while True:
+                try:
+                    if self._thread is None or self._worker_finished.is_set():
+                        break
+                    self._drain()
+                except BaseException as handoff:
+                    failures.append(handoff)
+            # The worker can report a restoration failure during this handoff.
+            worker_failure = self._failure
+            if worker_failure is not None and all(worker_failure is not item for item in failures):
+                failures.insert(0, worker_failure)
+            try:
+                self._postgres._close_reader(timeout=self._timeout)
+            except KeyboardInterrupt as interrupted:
+                failures.append(interrupted)
+                try:
+                    self._postgres._close_reader(timeout=self._timeout)
+                except BaseException as cleanup:
+                    failures.append(cleanup)
+            except BaseException as cleanup:
+                failures.append(cleanup)
             self._failure = (
-                BaseExceptionGroup("capture and completion failed", [prior, error])
-                if prior is not None and prior is not error
-                else error
+                failures[0]
+                if len(failures) == 1
+                else BaseExceptionGroup("capture and completion failed", failures)
             )
             try:
                 self._progress()
@@ -1494,16 +1758,19 @@ class RunningMemoryCapture:
             raise self._failure from None
 
     def _drain(self) -> None:
-        self._stop.set()
         interruptions: list[BaseException] = []
+        # Cancellation can arrive before the stop request reaches the worker.
+        # Retain it, then complete the handoff before releasing the reader.
+        while True:
+            try:
+                self._stop.set()
+                if self._thread is not None:
+                    while not self._worker_finished.is_set():
+                        self._worker_finished.wait(0.05)
+                break
+            except BaseException as error:
+                interruptions.append(error)
         if self._thread is not None:
-            # Preserve cancellation, but do not release the native scope or
-            # let the launcher reap its children before actual worker unwind.
-            while not self._worker_finished.is_set():
-                try:
-                    self._worker_finished.wait(0.05)
-                except BaseException as error:
-                    interruptions.append(error)
             try:
                 self._thread.join(0)
             except BaseException as error:
@@ -1512,25 +1779,52 @@ class RunningMemoryCapture:
             raise BaseExceptionGroup("memory capture drain interrupted", interruptions)
 
     def _finish(self) -> None:
-        if self._finished:
+        if self._final_sample_attempted:
             if self._failure is not None:
                 raise self._failure
             return
         self._drain()
-        self._finished = True
-        if self._failure is not None:
-            raise self._failure
+        if self._thread is not None and not self._worker_finished.is_set():
+            raise CaptureRefusal("memory worker has not released the counter reader")
+        self.check()
         if self._native is None:
             raise CaptureRefusal("memory capture lifecycle was not started")
-        # The final committed boundary may arrive between periodic captures.
-        # Bind it while both actual children still exist, before ordinary Quit.
+        # A failed final read or close can re-enter finish through lifecycle
+        # unwind. Only retirement is recoverable; never repeat the final read.
+        self._final_sample_attempted = True
         self._capture_one(self._native)
+        self._postgres._close_reader(timeout=self._timeout)
         verify_frozen_files(self.directory, self._expected)
-        if not self._samples or self._boot is None or self._samples[-1].campaign_age_ticks == 0:
-            raise CaptureRefusal("memory capture has no actual positive committed horizon")
+        if not self._samples or self._boot is None:
+            raise CaptureRefusal("memory capture has no actual samples")
         if self._foundation is None:
             raise CaptureRefusal("memory capture has no acknowledged campaign foundation")
         ended = time.monotonic_ns()
+        last = self._samples[-1]
+        self._check_measured_budget(
+            last.processes, ended - last.monotonic_ns - last.capture_duration_ns
+        )
+        if self._cold_segment_period is not None:
+            if any(row.campaign_age_ticks != self._cold_segment_period for row in self._samples):
+                raise CaptureRefusal("fixed cold segment included a different committed period")
+            write_capture_record(
+                self.directory / "segment-memory.json",
+                {
+                    "version": 1,
+                    "scope": "fixed_period_cold_native_pair",
+                    "campaign": self._campaign,
+                    "foundation_sha256": self._foundation,
+                    "period": self._cold_segment_period,
+                    "boot_id": self._boot,
+                    "interval_start_monotonic_ns": self._started_ns,
+                    "interval_end_monotonic_ns": ended,
+                    "samples": [sample.model_dump(mode="json") for sample in self._samples],
+                    **self._expected,
+                },
+            )
+            return
+        if self._samples[-1].campaign_age_ticks == 0:
+            raise CaptureRefusal("memory capture has no actual positive committed horizon")
         evidence = CombinedMemoryEvidence(
             version=2,
             source="linux_proc_smaps_rollup_v1",
@@ -1552,7 +1846,7 @@ class RunningMemoryCapture:
     def lifecycle(
         self, runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]
     ) -> Iterator[RunningMemoryCapture]:
-        if self._thread is not None:
+        if self._native is not None:
             raise CaptureRefusal("memory capture lifecycle cannot be reused")
         with OwnedNativePair(
             runtime,
@@ -1568,13 +1862,21 @@ class RunningMemoryCapture:
                 if self._foundation is None:
                     # The native client waits on its private startup admission.
                     # Capture real absence before permitting any New operation.
-                    self._capture_one(native)
-                    if self._samples[0].foundation_sha256 is not None:
-                        raise CaptureRefusal("startup memory capture requires an absent campaign")
+                    try:
+                        self._capture_one(native)
+                        if self._samples[0].foundation_sha256 is not None:
+                            raise CaptureRefusal(
+                                "startup memory capture requires an absent campaign"
+                            )
+                    except BaseException as error:
+                        # finish() must drain and report this refusal without reentering PG.
+                        self._failure = error
+                        raise
                 self._start_worker(native)
                 yield self  # The driver checks failures and finishes before ordinary Quit.
             except BaseException as error:
-                failure = error
+                if error is not self._failure:
+                    failure = error
                 raise
             finally:
                 try:

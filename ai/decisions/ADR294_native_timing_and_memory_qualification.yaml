@@ -1,0 +1,103 @@
+ADR294_native_timing_and_memory_qualification:
+  status: accepted
+  date: '2026-11-09'
+  title: Native qualification requires ordinary timing and independently captured memory
+  issue: PER-364
+  authority: Director approval on 2026-11-09 to separate timing and memory and require both
+  evidence_class: Designed
+  context: |
+    Capture can perturb the execution it measures. One serial same-build
+    diagnostic opened in 130.587161622 seconds without capture. Its captured
+    counterpart reached the 180-second limit with at least 41.718759413 seconds
+    of imposed freezes. These Observed values do not establish historical sole
+    cause, a timing distribution or native qualification. Never subtract freezes
+    to manufacture passing ordinary-play time.
+  decision: |
+    Require two serial members of each named national workload: normal_play
+    followed by memory_capture. Workload and measurement purpose are independent.
+    smoke-01 covers two committed periods. walk-01 covers ten and separately
+    times its longer walkthrough. Both use the same controls, actual decisions,
+    Play/Pause, reports, Archive reads and ordinary reopens. Each walk repeats
+    all three process-cold segments: opening New, pending Open and completed Open.
+
+    Keep contracts/national_storage_qualification_v6.json unchanged. Normal play
+    requires cold open/reopen below 180 seconds, each advance at most 120 seconds,
+    Archive and production reads each at most 180 seconds, focused controls at
+    most 60 seconds and the two-period smoke at most 900 seconds. It constructs
+    no sampler and passes no capture lifecycle to the native driver.
+    Captured phase durations remain raw diagnostics. The memory member retains
+    full creation and period coverage, immutable source and executable admission,
+    exact process/backend identities, authority and ownership checks, restoration,
+    RSS plus hugetlb at most 10,000,000,000 bytes and maximum unsampled gap at most
+    five seconds. Use the existing finite 900-second operation watchdog where
+    ordinary performance deadlines do not apply. Keep control/cleanup watchdogs.
+
+    Run each member in its own newly owned database and private XDG directory
+    under the existing single common lease. Admit one fresh canonical campaign
+    UUID4 only to the pair's two empty databases. Authenticate each installed P0
+    against its campaign, policy and committed marker. Do not seed historical
+    campaign hashes. Preserve original campaigns, artifacts, source and binaries.
+
+    Require equal source closure, actual role-to-binary digests, captured inputs,
+    policy, workload, requested horizon and foundations. Inside each member,
+    validate exact nonce-bearing command, commitment, receipt and tick-marker
+    joins and functional-state equality across restart and recovery. Across
+    members compare authenticated ordered period, actor, authority, target,
+    partner, practice and exact selected allocations against the named schedule.
+    Distinct legitimate nonces and resulting raw IDs need not match. A supplied
+    decision digest cannot replace deriving these semantics from original bytes.
+
+    Each completed member independently preserves source/input capsules, logical
+    restore verification, physical archives, restricted-reader evidence, clean
+    stop and retirement custody. Final evaluation rereads both retained bundles.
+    A missing, failed, stale or reused memory member cannot borrow timing success.
+    Only the both-required final join publishes native qualification. Unsupported
+    old formats refuse before writes. No anonymous single-run native certificate
+    or compatibility path remains. Non-native material-only evaluation remains.
+  interfaces: |
+    Public producer: bash tools/run_rust_postgres.sh --wayne-native-pair smoke-01
+    or the same command with walk-01. It selects BABYLON_WAYNE_PROFILE and
+    BABYLON_NATIVE_MEASUREMENT_MODE, completes and independently restore-verifies
+    and retires each member, then publishes the pair. Exactly three external
+    release inputs are BABYLON_POSTGRES_IMAGE_ID (cached full image ID),
+    BABYLON_WAYNE_HOST_CONTEXT_SHA256 (actual host-context digest), and
+    BABYLON_WAYNE_NATIVE_EXPECTATION_REF (serialized per-workload Reference JSON,
+    not a filename). The expectation pins source_sha256 and inputs_sha256 from
+    the clean release inventory plus image_id and host_context_sha256.
+    Reference has path, bytes and sha256. Source creates the
+    fresh shared UUID and P0 evidence. PostgreSQL 17+ pg_restore on PATH is an
+    executable prerequisite for offline custom-dump listing and complete reading,
+    not a fourth release record. These offline checks never connect to a database.
+
+    tools.devtools.national_native_pair exposes path, admit, member, verify-member
+    plus next and qualify for smoke-01 or walk-01. The canonical resolver member_run(profile,
+    mode), with native_path(evidence), places each member at qualification-10/
+    <workload>/<mode>/ and evidence below evidence/. The unpaired sql-01 remains
+    qualification-10/sql-01. Earlier namespaces remain unchanged.
+    tools.devtools.national_storage_qualification --qualify-native-pair <workload>
+    rereads the canonical pair. qualify_pair(profile) returns the packet. The
+    pair operator resumes at a verified retirement under the common lease. Its
+    final join publishes qualification.json with create-only
+    publication and equality checking on replay.
+  current_contract: |
+    NativeRunEvidence v5 uses native_material_timing_recovery_join_v5 and explicit
+    measurement_mode. CompletedMember v1 uses
+    completed_native_member_for_restore_and_retirement. NativePairEvidence v1
+    uses native_timing_and_memory_pair_v1. The final report is version 8 and
+    carries native_pair with separate completion, recovery and retirement
+    references for normal_play and memory_capture plus their shared declaration.
+    Policy v6, Rust leaf receipts and executable build profiles stay unchanged.
+  consequences: |
+    Qualification costs two complete serial runs and independent retained backup
+    custody. Timing excludes the capture lifecycle, while the required captured
+    member preserves the memory obligation. Neither synthetic unit evidence nor
+    a short pair proves actual 52/325-period, p95, native interaction or enjoyment
+    acceptance. Reports and Linear retain actual acceptance status.
+    The split adds no game mechanic, telemetry backend, dependency, profiler
+    installation or build-profile change. Pre-release Linux controls remain
+    Linux-specific; this decision adds no Windows implementation requirement.
+  research: docs/gameplay/research/39-native-measurement-method-2026-11-09.md
+  related:
+    - ADR273_interim_save_budget_and_rotating_qualification
+    - ADR280_development_budgets_prioritize_play
+    - ADR293_wayne_resource_allocations

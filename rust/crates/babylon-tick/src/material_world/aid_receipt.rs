@@ -33,7 +33,6 @@ fn validate_row(row: &AidReceipt, tick: u64) -> Result<(), MaterialWorldError> {
         && row.commitment_id
             == babylon_material_circuit::aid_commitment_id(row.mandate_id, row.dispatch_period)
         && row.donor != row.recipient
-        && row.quantity > 0
         && row.carrying_amount.micro_units() >= 0
         && row.cash_amount.micro_units() >= 0;
     if !valid {
@@ -42,19 +41,34 @@ fn validate_row(row: &AidReceipt, tick: u64) -> Result<(), MaterialWorldError> {
     let zero_basis = row.carrying_amount.micro_units() == 0;
     let zero_cash = row.cash_amount.micro_units() == 0;
     let current = row.dispatch_period == tick;
+    let cash_leg = matches!(
+        row.outcome,
+        AidOutcome::CashRequested
+            | AidOutcome::CashGranted
+            | AidOutcome::CashUnfunded
+            | AidOutcome::CashReceivingRefused
+    );
+    if (row.quantity == 0) != cash_leg {
+        return Err(MaterialWorldError::Wire);
+    }
     let outcome_valid = match (row.outcome, row.transport) {
-        (AidOutcome::Requested, _) => {
-            current && zero_basis && zero_cash && row.contribution_hours == 0
-        }
-        (AidOutcome::Unshipped, _) => {
-            current && zero_basis && !zero_cash && row.contribution_hours == 0
-        }
+        (
+            AidOutcome::Requested
+            | AidOutcome::Unshipped
+            | AidOutcome::FoodReceivingRefused
+            | AidOutcome::CashUnfunded
+            | AidOutcome::CashReceivingRefused,
+            _,
+        ) => current && zero_basis && zero_cash && row.contribution_hours == 0,
         (AidOutcome::Granted, AidTransport::Local)
         | (AidOutcome::Dispatched, AidTransport::Routed { .. }) => {
-            current && !zero_cash && row.contribution_hours > 0
+            current && zero_cash && row.contribution_hours > 0
         }
         (AidOutcome::Granted | AidOutcome::Lost, AidTransport::Routed { .. }) => {
-            !current && !zero_cash && row.contribution_hours == 0
+            !current && zero_cash && row.contribution_hours == 0
+        }
+        (AidOutcome::CashRequested | AidOutcome::CashGranted, _) => {
+            current && zero_basis && !zero_cash && row.contribution_hours == 0
         }
         _ => false,
     };
@@ -169,6 +183,11 @@ pub(super) fn decode(
         3 => AidOutcome::Granted,
         4 => AidOutcome::Lost,
         5 => AidOutcome::Unshipped,
+        6 => AidOutcome::CashRequested,
+        7 => AidOutcome::CashGranted,
+        8 => AidOutcome::CashUnfunded,
+        9 => AidOutcome::CashReceivingRefused,
+        10 => AidOutcome::FoodReceivingRefused,
         _ => return Err(MaterialWorldError::Wire),
     };
     let row = AidReceipt {

@@ -3,13 +3,15 @@ use super::{NativeRunTiming, NativeTimingEvidence, NativeTimingSample};
 use crate::elapsed_ns;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::{
-    OrganizerAidKind, OrganizerAidSupportStatus, OrganizerAidTransportPreview, OrganizerChoice,
-    OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry,
+    OrganizerAidKind, OrganizerAidTransportPreview, OrganizerChoice, OrganizerCommand,
+    OrganizerCommitment, OrganizerFoodDelivery, OrganizerGiftConsent, OrganizerInquiry,
     OrganizerPreview, OrganizerSnapshot, RuntimeAdvanceStage, RuntimeSessionErrorCode,
     RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
     RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_MAX_LINE_BYTES,
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
+use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 
 use postgres::{Config, NoTls};
 use std::fs::OpenOptions;
@@ -297,6 +299,35 @@ impl Session {
         nonce: [u8; 16],
     ) -> (Option<OrganizerCommitment>, OrganizerPreview) {
         let command = OrganizerCommand {
+            allocation: if choice == OrganizerChoice::Collect {
+                OrganizerAllocation::Collection {
+                    target_cash_micros: snapshot
+                        .collection
+                        .as_ref()
+                        .expect("captured collection")
+                        .initial_cash_micros,
+                }
+            } else if matches!(
+                choice,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            ) {
+                let kind = if choice == OrganizerChoice::LocalAid {
+                    OrganizerAidKind::Local
+                } else {
+                    OrganizerAidKind::Remote
+                };
+                let terms = snapshot
+                    .aid
+                    .iter()
+                    .find(|row| row.kind == kind)
+                    .expect("captured selected Aid terms");
+                OrganizerAllocation::Aid {
+                    food_quantity: terms.initial_food_quantity,
+                    cash_micros: terms.initial_cash_micros,
+                }
+            } else {
+                OrganizerAllocation::None
+            },
             campaign_id: *campaign.canonical_bytes(),
             actor_id: snapshot.view.actor_id,
             authority_id: snapshot.view.authority_id,
@@ -628,6 +659,7 @@ fn standing_pause_nonce_probe_is_a_distinct_valid_control() {
 #[test]
 fn standing_control_submission_retains_exact_command_envelope() {
     let command = OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: [1; 16],
         actor_id: 101,
         authority_id: [2; 16],
@@ -743,25 +775,36 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
             .as_bytes()
         );
     }
+    let expected_actor = match kind {
+        OrganizerAidKind::Local => 2_616_302,
+        OrganizerAidKind::Remote => 1_703_101,
+    };
+    assert_eq!(preview.recipient_actor_id, expected_actor);
     let option = snapshot.view.aid_options.iter().find(|p| p.kind == kind);
     assert_ne!(preview.mandate_id, [0; 32]);
     if let Some(option) = option {
-        assert_eq!(
-            option.partner_actor_id,
-            if kind == OrganizerAidKind::Local {
-                2_616_302
-            } else {
-                1_703_101
-            }
-        );
+        assert_eq!(option.partner_actor_id, preview.recipient_actor_id);
         assert_eq!(option.receiving_consent, OrganizerGiftConsent::Accept);
         assert_eq!(option.coordination_hours, preview.coordination_hours);
     }
     assert_eq!(preview.receiving_consent, OrganizerGiftConsent::Accept);
-    assert_ne!(preview.donor_id, preview.recipient_id);
+    assert_ne!(snapshot.view.actor_id, preview.recipient_actor_id);
     assert_eq!(preview.maximum_quantity, 4);
-    assert_eq!(preview.gift_cash_per_unit, 100_000);
-    match (&preview.transport, kind) {
+    assert_eq!(preview.maximum_cash_micros, 1_450_000_000);
+    assert_eq!(preview.initial_food_quantity, 1);
+    assert_eq!(preview.initial_cash_micros, 0);
+    assert_eq!(preview.cash_receiving_consent, OrganizerGiftConsent::Accept);
+    verify_offer_transport(
+        &preview
+            .food
+            .as_ref()
+            .expect("national food offer")
+            .transport,
+        kind,
+    );
+}
+fn verify_offer_transport(transport: &OrganizerAidTransportPreview, kind: OrganizerAidKind) {
+    match (transport, kind) {
         (OrganizerAidTransportPreview::Local, OrganizerAidKind::Local) => {}
         (OrganizerAidTransportPreview::Routed { stages, .. }, OrganizerAidKind::Remote) => {
             assert_eq!(stages.len(), 1);
@@ -772,16 +815,21 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
         _ => panic!("exact local/remote actual transport required"),
     }
 }
-fn positive(snapshot: &OrganizerSnapshot, commitment: Option<&OrganizerCommitment>) -> bool {
+
+fn positive(
+    entries: &OrganizerPeriodJournalEntries,
+    commitment: Option<&OrganizerCommitment>,
+) -> bool {
     let Some(commitment) = commitment else {
         return false;
     };
-    snapshot.aid_resolutions.iter().any(|r| {
-        if r.pending.original_commitment_id!=commitment.commitment_id {return false;}
-        assert_eq!(r.pending.admitted_period,commitment.command.expected_period);
-        assert_eq!(r.support.original_commitment_id,commitment.commitment_id);
-        matches!(r.support.status,OrganizerAidSupportStatus::Granted {granted_quantity,consumed_quantity}
-            if granted_quantity>0 && consumed_quantity>0)
+    entries.aid_receipts.iter().any(|row| {
+        row.authorization.gift.commitment == *commitment
+            && row.support.original_commitment_id == commitment.commitment_id
+            && matches!(row.support.status,
+                babylon_practice_contract::OrganizerAidSupportStatus::Granted {
+                    granted_quantity, consumed_quantity, ..
+                } if granted_quantity > 0 && consumed_quantity > 0)
     })
 }
 
@@ -795,7 +843,7 @@ fn verify_dispatch(after: &OrganizerSnapshot, commitment: Option<&OrganizerCommi
             .iter()
             .all(
                 |r| r.pending.original_commitment_id != commitment.commitment_id
-                    || !matches!(r.support.status, OrganizerAidSupportStatus::Granted { .. })
+                    || !matches!(r.support.status, OrganizerFoodDelivery::Granted { .. })
             ),
         "routed gift cannot be granted at dispatch"
     );
@@ -1330,19 +1378,16 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         );
         continuations.push(serde_json::json!({"period":tick,"tail":session.tail,
             "organizer_snapshot_sha256":snapshot_digest(&after),"latest_marker":hashes.last(),"nominal_world_hash":world}));
-        if let Some((commitment, preview)) = admission.filter(|_| aid_admission) {
-            evidence.push(PeriodEvidence {
-                period: tick,
-                positive_consequence: positive(&after, commitment.as_ref()),
-                commitment,
-                preview,
-                offered_material: before.aid,
-                pending_aid: after.pending_aid.clone(),
-                resolutions: after.aid_resolutions.clone(),
-            });
-        }
-        remote |= positive(&after, evidence.first().and_then(|e| e.commitment.as_ref()));
-        local |= positive(&after, evidence.get(1).and_then(|e| e.commitment.as_ref()));
+        let (remote_now, local_now) = record_aid_evidence(
+            &accounting,
+            tick,
+            admission.filter(|_| aid_admission),
+            before,
+            &after,
+            &mut evidence,
+        );
+        remote |= remote_now;
+        local |= local_now;
     }
     session.stop();
     write_report(
@@ -1360,6 +1405,49 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         archive_catchups,
         production_reads,
     );
+}
+
+fn record_aid_evidence(
+    accounting: &QualificationAccounting,
+    tick: u64,
+    admission: Option<(Option<OrganizerCommitment>, OrganizerPreview)>,
+    before: OrganizerSnapshot,
+    after: &OrganizerSnapshot,
+    evidence: &mut Vec<PeriodEvidence>,
+) -> (bool, bool) {
+    let current_entries = accounting
+        .production_cursor
+        .as_ref()
+        .and_then(ObserverMaterialCursor::current_register)
+        .and_then(|register| register.organizer_journal())
+        .and_then(|journal| journal.latest())
+        .expect("authenticated current organizer receipt journal");
+    assert_eq!(current_entries.period, tick);
+    if let Some((commitment, preview)) = admission {
+        evidence.push(PeriodEvidence {
+            period: tick,
+            positive_consequence: positive(current_entries, commitment.as_ref()),
+            commitment,
+            preview,
+            offered_material: before.aid,
+            pending_aid: after.pending_aid.clone(),
+            resolutions: after
+                .aid_resolutions
+                .iter()
+                .filter(|r| r.practice.period == tick)
+                .cloned()
+                .collect(),
+        });
+    }
+    let remote = positive(
+        current_entries,
+        evidence.first().and_then(|e| e.commitment.as_ref()),
+    );
+    let local = positive(
+        current_entries,
+        evidence.get(1).and_then(|e| e.commitment.as_ref()),
+    );
+    (remote, local)
 }
 
 fn write_progress(

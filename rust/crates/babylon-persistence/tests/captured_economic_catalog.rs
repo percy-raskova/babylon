@@ -35,9 +35,9 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         catalog.digest(),
         content_digest::sha256_of(catalog.canonical_bytes())
     );
-    assert_eq!(catalog.compiler_version(), "national-world-v6");
+    assert_eq!(catalog.compiler_version(), "national-world-v7");
     let mut obsolete = catalog.canonical_bytes().to_vec();
-    let compiler = b"national-world-v6";
+    let compiler = b"national-world-v7";
     let offset = obsolete
         .windows(compiler.len())
         .position(|s| s == compiler)
@@ -47,7 +47,39 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         CapturedEconomicCatalog::decode(&obsolete, content_digest::sha256_of(&obsolete)),
         Err(babylon_persistence::economic_catalog::EconomicCatalogError::CompilerVersion)
     );
-    assert_eq!(catalog.opening().sites.len(), 60_634);
+    let witness = catalog
+        .national_generation()
+        .expect("captured current grain witness");
+    assert_eq!(
+        witness.counties.len(),
+        3_144,
+        "complete source county coverage"
+    );
+    let represented: std::collections::BTreeSet<_> = witness
+        .source_incidence
+        .iter()
+        .map(|i| i.destination_site)
+        .collect();
+    let domestic = catalog
+        .opening()
+        .sites
+        .iter()
+        .filter(|s| {
+            matches!(
+                s.location,
+                babylon_kernel::economic_location::EconomicLocation::County(_)
+            )
+        })
+        .count();
+    assert_eq!(
+        domestic,
+        represented.len(),
+        "each generated domestic site has source incidence"
+    );
+    assert!(
+        catalog.opening().sites.len() < 60_634,
+        "actual principal reduction before relation expansion"
+    );
     assert_eq!(
         catalog
             .opening()

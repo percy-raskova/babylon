@@ -4,6 +4,8 @@ use crate::organizer_aid_fixture as fixture;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::content_digest;
 use babylon_kernel::replay::ReplaySessionId;
+use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::PracticeId;
 use babylon_practice_contract::{
     InputAuthorityId, OrganizerAidKind, OrganizerChoice, OrganizerInquiry, ProposalNonce,
 };
@@ -25,6 +27,123 @@ fn authored(routed: bool) -> Session {
         false,
         routed,
     )
+}
+
+fn collection_session() -> Session {
+    use babylon_material_circuit::AccountId;
+    use babylon_practice_contract::{OrganizerCollectionMandate, OrganizerGiftConsent};
+    let base = authored(false);
+    let mut config = fixture::config();
+    let mandate = &base.catalog().aid_mandates[0];
+    let AccountId::Organization(account) = mandate.payer else {
+        panic!("organization payer")
+    };
+    config.collection = Some(OrganizerCollectionMandate {
+        mandate_id: [93; 32],
+        source_hash: [94; 32],
+        actor_id: config.controlled_actor_id,
+        contributor_id: mandate.donor_contributor_id,
+        household_principal_id: mandate.donor.as_bytes(),
+        organization_account_id: account.as_bytes(),
+        social_class_target: config.aid_bindings[0].social_class_target,
+        labor_unit_id: mandate.labor_unit_id.as_bytes(),
+        cash_consent: OrganizerGiftConsent::Accept,
+        initial_cash_micros: 2,
+        maximum_cash_micros: 8,
+        protected_cash_floor_micros: 0,
+        collection_hours: 2,
+    });
+    fixture::try_session(
+        crate::michigan_dynamic_hex_foundation().expect("foundation"),
+        &format!(
+            "{}\n{}\n{}",
+            fixture::MATERIAL,
+            fixture::PRODUCTS,
+            fixture::PRACTICE
+        ),
+        fixture::Materials {
+            catalog: base.catalog().clone().into_definition(),
+            state: base.material().state().clone(),
+        },
+        config,
+    )
+    .expect("collection session")
+}
+
+#[test]
+fn collection_restart_reconstructs_selected_target_only_from_the_original_resolution() {
+    use babylon_practice_contract::OrganizerAllocation;
+    let mut session = collection_session();
+    let config = session
+        .material()
+        .organizer_config()
+        .expect("config")
+        .clone();
+    let prior = session
+        .material()
+        .organizer_state()
+        .expect("organizer")
+        .clone();
+    let mut command = fixture::commitment(&session, OrganizerChoice::Collect).command;
+    command.allocation = OrganizerAllocation::Collection {
+        target_cash_micros: 2,
+    };
+    let accepted = babylon_practice_contract::admit_organizer(&config, &prior, &command)
+        .expect("selected target");
+    let identity = session.graph_session().session_identity().clone();
+    let batch = babylon_practice_contract::organizer_action_batch(
+        &config,
+        &prior,
+        Some(&accepted),
+        identity.clone(),
+    )
+    .expect("selected action");
+    let candidate = fixture::prepare(&session, Some(&accepted));
+    fixture::commit(&mut session, &mut CollectingSink::default(), candidate);
+    let current = session.material().organizer_state().expect("organizer");
+    let journal = session.material().organizer_journal().expect("journal");
+    assert_eq!(
+        reconstruct(
+            &config,
+            &prior,
+            current,
+            journal,
+            &identity,
+            1,
+            batch.canonical_bytes()
+        )
+        .expect("exact reconstruction"),
+        batch
+    );
+    let mut missing = journal.clone();
+    missing.periods[0].collection_receipts.clear();
+    assert!(reconstruct(
+        &config,
+        &prior,
+        current,
+        &missing,
+        &identity,
+        1,
+        batch.canonical_bytes()
+    )
+    .is_err());
+    let mut changed = journal.clone();
+    changed.periods[0].collection_receipts[0]
+        .commitment
+        .command
+        .allocation = OrganizerAllocation::Collection {
+        target_cash_micros: 8,
+    };
+    assert!(reconstruct(
+        &config,
+        &prior,
+        current,
+        &changed,
+        &identity,
+        1,
+        batch.canonical_bytes()
+    )
+    .is_err());
 }
 
 fn verify_advance(session: &mut Session, choice: Option<OrganizerChoice>) {
@@ -145,7 +264,14 @@ fn observer_checked_action_identity_nonce_and_authority_refuse() {
         .organizer_state()
         .expect("the fixture register carries organizer state");
     let identity = session.graph_session().session_identity();
-    let commitment = fixture::commitment(&session, OrganizerChoice::LocalAid);
+    let commitment = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::LocalAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 0,
+            cash_micros: 5,
+        },
+    );
     let batch = babylon_practice_contract::organizer_action_batch(
         config,
         prior,
@@ -282,41 +408,63 @@ fn assert_mixed_batch(
 ) {
     let intents = cursor::parse(identity, tick, bytes)
         .expect("the authored literal parses as the declared type");
-    let controlled = |intent: &PracticeIntent| {
-        intent.actor_org_id.to_bytes() == config.controlled_actor_id.to_be_bytes()
-    };
-    assert!(intents.iter().filter(|row| controlled(row)).count() >= 2);
-    assert!(intents.iter().any(|row| !controlled(row)));
-    let without_partner: Vec<_> = intents
+    assert_eq!(
+        intents.len(),
+        2,
+        "only the fresh inquiry and its independent partner response are consumed"
+    );
+    let controlled = intents
         .iter()
-        .filter(|row| controlled(row))
-        .cloned()
-        .collect();
-    assert!(reconstruct(
-        config,
-        prior,
-        current,
-        journal,
-        identity,
-        tick,
-        &encoded(identity, tick, &without_partner)
-    )
-    .is_err());
-    // Keep fresh intent but omit the controlled delayed intent. No date-only match.
-    let mut without_delayed = intents;
-    let delayed = without_delayed
+        .find(|row| row.actor_org_id.to_bytes() == config.controlled_actor_id.to_be_bytes())
+        .expect("fresh controlled inquiry");
+    assert_eq!(controlled.proposal_nonce.as_bytes(), [8; 16]);
+    assert!(
+        intents
+            .iter()
+            .all(|row| row.practice_id != PracticeId::MutualAid),
+        "later food creates no retimed Aid input"
+    );
+    let partner = intents
         .iter()
-        .position(|row| controlled(row) && row.proposal_nonce.as_bytes() != [8; 16])
-        .expect("the fixture sequence holds the addressed position");
-    without_delayed.remove(delayed);
-    assert!(reconstruct(
-        config,
-        prior,
-        current,
-        journal,
-        identity,
-        tick,
-        &encoded(identity, tick, &without_delayed)
-    )
-    .is_err());
+        .find(|row| row.actor_org_id != controlled.actor_org_id)
+        .expect("fresh inquiry response");
+    assert_eq!(
+        partner.actor_org_id.to_bytes(),
+        config.workplace_partner.actor_id.to_be_bytes()
+    );
+    assert_eq!(
+        partner.input_authority_id.as_bytes(),
+        config.workplace_partner.authority_id
+    );
+    assert_ne!(partner.proposal_nonce, controlled.proposal_nonce);
+    let mut injected = intents.clone();
+    let mut replayed = controlled.clone();
+    replayed.proposal_nonce = ProposalNonce::from_bytes([7; 16]);
+    injected.push(replayed);
+    assert!(
+        reconstruct(
+            config,
+            prior,
+            current,
+            journal,
+            identity,
+            tick,
+            &encoded(identity, tick, &injected)
+        )
+        .is_err(),
+        "an extra retimed input is refused"
+    );
+    assert!(
+        reconstruct(
+            config,
+            prior,
+            current,
+            journal,
+            identity,
+            tick,
+            &encoded(identity, tick, &[])
+        )
+        .is_err(),
+        "the fresh inquiry remains required"
+    );
 }

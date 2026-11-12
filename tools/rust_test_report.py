@@ -39,6 +39,8 @@ DEV_INTEGRATION_TARGETS: Final = {
         "replay_session",
         "staffed_material_replay",
         "organizer_replay",
+        "organizer_aid_replay",
+        "organizer_aid_renewal",
         "probability_projection_contract",
     ),
     "babylon-persistence": (
@@ -53,6 +55,7 @@ DEV_INTEGRATION_TARGETS: Final = {
         "archive_page_vectors",
         "michigan_material",
         "national_trade_accounting",
+        "national_aid_accounting",
         "statewide_material",
         "spatial_reference_installer_contract",
     ),

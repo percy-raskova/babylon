@@ -44,7 +44,7 @@ pub(super) fn decoded_length(count: usize, unique: u32) -> Result<usize> {
 }
 
 fn context_amount(row: &[u8]) -> Result<([u8; CONTEXT_WIDTH], PositiveAmount)> {
-    if row.len() != NORMALIZED_WIDTH || !matches!(row[0], 1..=10) {
+    if row.len() != NORMALIZED_WIDTH || !matches!(row[0], 1..=7) {
         return Err(Error::Canonical);
     }
     let mut context = [0; CONTEXT_WIDTH];
@@ -171,7 +171,7 @@ pub(super) fn unpack(columns: &[u8], count: usize, unique: u32) -> Result<Vec<u8
         if context[0] == 7 {
             row[..CONTEXT_WIDTH].copy_from_slice(&context);
             row[14..].copy_from_slice(&amount);
-        } else if matches!(context[0], 1..=6 | 8..=10) {
+        } else if matches!(context[0], 1..=6) {
             if context[12..] != [0; 2] {
                 return Err(Error::Padding);
             }

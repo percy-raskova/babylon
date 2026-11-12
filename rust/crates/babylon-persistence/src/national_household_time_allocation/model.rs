@@ -38,6 +38,21 @@ pub struct NationalHouseholdTimeAllocation {
     pub(super) counties: Vec<CountyHouseholdTimeAllocation>,
 }
 impl NationalHouseholdTimeAllocation {
+    /// Controlled counterexample only; never exposed by admitted production sources.
+    #[cfg(test)]
+    pub(crate) fn add_fixture_children(&mut self, county: CountyGeoid, count: u64) {
+        let row = self
+            .counties
+            .iter_mut()
+            .find(|row| row.county == county)
+            .expect("fixture county");
+        let budget = row.budgets.first_mut().expect("fixture budget");
+        budget.under_16 = budget
+            .under_16
+            .checked_add(count)
+            .expect("fixture child margin");
+    }
+
     #[must_use]
     pub fn counties(&self) -> &[CountyHouseholdTimeAllocation] {
         &self.counties

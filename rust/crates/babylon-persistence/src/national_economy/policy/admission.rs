@@ -4,6 +4,9 @@ use super::{
     GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
     NationalGamePolicyError,
 };
+use crate::national_economy::grain::NationalGrainError;
+use crate::national_economy::grain::NationalGrainGeneration;
+use crate::national_economy::grain::NationalGrainPolicy;
 use crate::national_transport::CargoClass;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
@@ -21,6 +24,7 @@ type Error = NationalGamePolicyError;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPolicy {
+    grain: RawGrain,
     schema_version: u16,
     evidence_class: String,
     period_days: u64,
@@ -151,6 +155,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     }
     let raw: RawPolicy = toml::from_str(source).map_err(|_| Error::Syntax)?;
     validate_globals(&raw)?;
+    let grain = grain(&raw.grain)?;
     validate_organizer(&raw.organizer)?;
     validate_aid(&raw.aid)?;
     if !(1..=10_000).contains(&raw.households.private_owner_households_bps) {
@@ -174,6 +179,8 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     let markets = markets(&raw.markets)?;
     let equipment = equipment(raw.equipment, &commodities)?;
     Ok(NationalGamePolicy {
+        grain,
+        source_digest: content_digest::sha256_of(source.as_bytes()),
         period_days: raw.period_days,
         work_hours_per_person: raw.work_hours_per_person,
         default_wage: Currency::from_micro_units(raw.default_wage_micros_per_hour),
@@ -202,6 +209,8 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
 
 fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {
     if organizer.collection_maximum_cash_micros <= 0
+        || organizer.collection_initial_cash_micros <= 0
+        || organizer.collection_initial_cash_micros > organizer.collection_maximum_cash_micros
         || organizer.collection_protected_cash_floor_micros < 0
         || organizer
             .collection_maximum_cash_micros
@@ -258,13 +267,14 @@ fn validate_aid(aid: &GameAidPolicy) -> Result<(), Error> {
         || actors.into_iter().collect::<BTreeSet<_>>().len() != 3
         || contributors.into_iter().collect::<BTreeSet<_>>().len() != 3
         || aid.organization_opening_cash_micros <= 0
-        || aid.gift_cash_micros_per_unit <= 0
+        || aid.maximum_cash_micros <= 0
+        || aid.maximum_cash_micros > 1_450_000_000
+        || aid.initial_cash_micros < 0
+        || aid.initial_cash_micros > aid.maximum_cash_micros
+        || aid.initial_food_quantity > aid.maximum_quantity
+        || (aid.initial_food_quantity == 0 && aid.initial_cash_micros == 0)
         || aid.fulfillment_hours_per_unit == 0
         || !(1..=4).contains(&aid.maximum_quantity)
-        || aid
-            .gift_cash_micros_per_unit
-            .checked_mul(i128::from(aid.maximum_quantity))
-            .is_none()
     {
         return Err(Error::Shape);
     }
@@ -668,5 +678,47 @@ fn markets(raw: &RawMarkets) -> Result<GameMarketPolicy, Error> {
         foreign_procurement_bps: raw.foreign_procurement_bps,
         journey_timing: GameJourneyTiming::SlowestProfile,
         service_reach: GameServiceReach::SameStateOrOwnCounterpart,
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawGrain {
+    evidence_class: String,
+    generation: String,
+    protected_counties: Vec<String>,
+    hub_selection: String,
+    access_capacity: String,
+    capacity_refinement: String,
+}
+fn grain(raw: &RawGrain) -> Result<NationalGrainPolicy, Error> {
+    use babylon_kernel::geography::CountyGeoid;
+    if raw.generation != "state_faf_reserve_positions" {
+        return Err(Error::Grain(NationalGrainError::UnsupportedGeneration));
+    }
+    if raw.evidence_class != "Designed"
+        || raw.hub_selection != "largest_observed_population_then_geoid"
+        || raw.access_capacity != "captured_hub_lane"
+        || raw.capacity_refinement != "essential_food_lower_bound_first_fit"
+    {
+        return Err(Error::Profile("national grain".into()));
+    }
+    let protected_counties: BTreeSet<_> = raw
+        .protected_counties
+        .iter()
+        .map(|c| CountyGeoid::try_from(c.as_str()).map_err(|_| Error::Location))
+        .collect::<Result<_, _>>()?;
+    if protected_counties.len() != raw.protected_counties.len()
+        || !["17031", "26163"].into_iter().all(|c| {
+            protected_counties
+                .iter()
+                .any(|p| p.as_bytes() == *c.as_bytes())
+        })
+    {
+        return Err(Error::Profile("protected national counties".into()));
+    }
+    Ok(NationalGrainPolicy {
+        generation: NationalGrainGeneration::StateFafReservePositions,
+        protected_counties,
     })
 }

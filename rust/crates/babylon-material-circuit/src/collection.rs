@@ -1,6 +1,6 @@
 //! Bounded voluntary household cash after reproduction/taxes, before distributions.
+use crate::collection_funding::{HouseholdServiceFunding, ServiceAdmissions};
 use crate::valuation::CostClose;
-use crate::MaterialCatalog;
 use crate::{
     AccountId, AidReceipt, CapitalContributionReceipt, CashTransferPurpose, CircuitAccounting,
     CommodityKind, FinalDemandPrincipalId, FinancialInstitutions, HouseholdConsumptionReceipt,
@@ -8,8 +8,10 @@ use crate::{
     MaterialCircuitState, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
     OrganizationAccountId, TaxReceipt, UnitId,
 };
+use crate::{GoodId, HouseholdNeed, MaterialCatalog, RecurringEconomy, ServicePerformanceReceipt};
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
+use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
@@ -173,6 +175,8 @@ impl CollectionReceipt {
 pub(crate) struct CollectionEvidence<'a> {
     pub consumption: &'a [HouseholdConsumptionReceipt],
     pub services: &'a [HouseholdServiceReceipt],
+    pub admissions: &'a ServiceAdmissions,
+    pub performance: &'a [ServicePerformanceReceipt],
     pub time: &'a [HouseholdTimeReceipt],
     pub taxes: &'a [TaxReceipt],
     pub contributions: &'a [CapitalContributionReceipt],
@@ -192,7 +196,8 @@ fn protected(
     state: &MaterialCircuitState,
     input: &CollectionResolveInput,
     facts: &CollectionEvidence<'_>,
-) -> Result<Option<CollectionOutcome>> {
+    money: &[MoneyTransferReceipt],
+) -> Result<(Option<CollectionOutcome>, i128)> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Err(MaterialCircuitError::CollectionInvariant);
     };
@@ -205,6 +210,10 @@ fn protected(
         .iter()
         .filter(|row| row.principal_id == input.donor))?;
     let mut outcome = None;
+    let funded = facts
+        .admissions
+        .reconcile(input.donor, state.period, facts.performance, money)?;
+    let mut protected_refunds = 0_i128;
     let mut has_needs = false;
     for need in catalog
         .household_needs
@@ -251,19 +260,22 @@ fn protected(
                 }
             }
             CommodityKind::PeriodService { .. } => {
-                let row = one(facts.services.iter().filter(|row| {
-                    row.principal_id == input.donor
-                        && row.good_id == need.good_id
-                        && row.unit_id == need.unit_id
-                }))?;
-                if row.period != state.period
-                    || row.required_quantity != required
-                    || row.satisfied_quantity.checked_add(row.unmet_quantity) != Some(required)
-                {
-                    return Err(MaterialCircuitError::CollectionInvariant);
-                }
-                if row.unmet_quantity > 0 {
-                    outcome.get_or_insert(CollectionOutcome::ProtectedServiceUnmet);
+                match protected_service(
+                    state.period,
+                    need,
+                    required,
+                    facts.services,
+                    &funded,
+                    recurring,
+                )? {
+                    Some(refund) => {
+                        protected_refunds = protected_refunds
+                            .checked_add(refund)
+                            .ok_or(MaterialCircuitError::Arithmetic)?;
+                    }
+                    None => {
+                        outcome.get_or_insert(CollectionOutcome::ProtectedServiceUnmet);
+                    }
                 }
             }
         }
@@ -278,7 +290,36 @@ fn protected(
         facts,
         &mut outcome,
     )?;
-    Ok(outcome)
+    Ok((outcome, protected_refunds))
+}
+
+fn protected_service(
+    period: u64,
+    need: &HouseholdNeed,
+    required: u64,
+    services: &[HouseholdServiceReceipt],
+    funded: &BTreeMap<(GoodId, UnitId), HouseholdServiceFunding>,
+    recurring: &RecurringEconomy,
+) -> Result<Option<i128>> {
+    let donor = need.principal_id;
+    let row = one(services.iter().filter(|row| {
+        row.principal_id == donor && row.good_id == need.good_id && row.unit_id == need.unit_id
+    }))
+    .map_err(|_| MaterialCircuitError::ServiceInvariant)?;
+    if row.period != period || row.required_quantity != required {
+        return Err(MaterialCircuitError::ServiceInvariant);
+    }
+    let funding = funded.get(&(need.good_id, need.unit_id));
+    if funding.is_none()
+        && recurring.household_purchases.iter().any(|p| {
+            p.principal_id == donor && p.good_id == need.good_id && p.unit_id == need.unit_id
+        })
+    {
+        return Err(MaterialCircuitError::ServiceInvariant);
+    }
+    funding
+        .unwrap_or(&HouseholdServiceFunding::default())
+        .protected_refund(row)
 }
 
 fn protected_payments(
@@ -369,7 +410,6 @@ fn incoming_gifts(money: &[MoneyTransferReceipt], donor: FinalDemandPrincipalId)
             matches!(
                 row.purpose,
                 MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
-                    | MoneyTransferPurpose::AidGrant(_)
             ) && row.credit.location == MoneyLocation::Cash(AccountId::Household(donor))
         })
         .try_fold(0_i128, |sum, row| {
@@ -377,17 +417,19 @@ fn incoming_gifts(money: &[MoneyTransferReceipt], donor: FinalDemandPrincipalId)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })
 }
-// This boundary subtracts the exact protected floor and real incoming gift
-// postings before clamping. Its returned amount is frozen before distribution.
+// Preserve the floor, refunded service money and incoming gifts at the same
+// pre-distribution balance. Only the remaining cash can fund this attempt.
 fn eligible_cash(
     input: &CollectionResolveInput,
     actual: Currency,
+    protected_refunds: i128,
     money: &[MoneyTransferReceipt],
 ) -> Result<Currency> {
     let cash = actual
         .micro_units()
         .checked_sub(incoming_gifts(money, input.donor)?)
         .and_then(|value| value.checked_sub(input.protected_cash_floor.micro_units()))
+        .and_then(|value| value.checked_sub(protected_refunds))
         .ok_or(MaterialCircuitError::Arithmetic)?;
     Ok(Currency::from_micro_units(
         cash.max(0).min(input.requested.micro_units()),
@@ -416,9 +458,11 @@ fn frozen_outcomes(
         let CircuitAccounting::Monetary(e) = &state.accounting else {
             return Err(MaterialCircuitError::CollectionInvariant);
         };
+        let (protection, protected_refunds) = protected(catalog, state, input, facts, money)?;
         let cash = eligible_cash(
             input,
             e.book.cash(AccountId::Household(input.donor))?,
+            protected_refunds,
             money,
         )?;
         let time = one(facts
@@ -442,7 +486,7 @@ fn frozen_outcomes(
             .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;
         let outcome = if !input.cash_consent {
             Some(CollectionOutcome::CashConsentRefused)
-        } else if let Some(reason) = protected(catalog, state, input, facts)? {
+        } else if let Some(reason) = protection {
             Some(reason)
         } else if cash.micro_units() == 0 {
             Some(CollectionOutcome::InsufficientCash)
@@ -607,6 +651,7 @@ mod tests {
             &input,
             book.cash(donor)
                 .expect("the fixture book holds the payer account"),
+            0,
             &money,
         )
         .expect("the fixture book holds the eligible cash account");
@@ -630,7 +675,7 @@ mod tests {
         let mut floor = input;
         floor.protected_cash_floor = Currency::from_micro_units(8);
         assert_eq!(
-            eligible_cash(&floor, Currency::from_micro_units(6), &money)
+            eligible_cash(&floor, Currency::from_micro_units(6), 0, &money)
                 .expect("the fixture book holds the eligible cash account")
                 .micro_units(),
             0

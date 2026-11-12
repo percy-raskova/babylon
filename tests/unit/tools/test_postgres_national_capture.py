@@ -131,6 +131,82 @@ def test_live_supervisor_refuses_incomplete_or_changed_sql_observation(tmp_path,
     assert (tmp_path / "calls").read_text().splitlines() == ["call"]
 
 
+@pytest.mark.parametrize("route", ["national_verify_live", "national_verify_live_authority"])
+@pytest.mark.parametrize("fault", [None, "physical", "oid", "lease", "mode", "roles", "client"])
+def test_media_live_authority_and_physical_components(tmp_path, route, fault):
+    canary = "12" * 16
+    suffix = canary[:12]
+    names = {
+        f"national_{role}_{suffix}": oid
+        for role, oid in (("observer", 51), ("reader", 52), ("writer", 53))
+    }
+    frozen = json.dumps(names, sort_keys=True)
+    (tmp_path / "native-role-oids.json").write_text(frozen + "\n")
+    (tmp_path / "native-role-oids.json").chmod(0o600)
+    if fault == "oid":
+        names[f"national_reader_{suffix}"] += 1
+    observed = json.dumps(names, sort_keys=True)
+    database = f"national_{suffix}"
+    packet = f"{canary}|babylon_test,{database},postgres,template0,template1|42|"
+    packet += ("1" if fault in {"roles", "client"} else "0") + "|" + observed
+    script = r"""
+source "$1"
+umask 077
+printf '%s\n' original > "$NATIONAL_RECORD"
+cp "$NATIONAL_RECORD" "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership"
+case "$FAULT" in
+  lease) printf '%s\n' changed > "$NATIONAL_RECORD" ;;
+  mode) chmod 0644 "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership" ;;
+esac
+wayne_media() {
+  printf 'physical\n' >> "$BABYLON_STORAGE_REPORT_DIRECTORY/events"
+  [ "$FAULT" != physical ] || return 1
+  printf '%s\n' original
+}
+national_sql() {
+  printf 'authority\n' >> "$BABYLON_STORAGE_REPORT_DIRECTORY/events"
+  [[ "$1" = *pg_auth_members* && "$1" = *bad_clients* && "$1" = *rolbypassrls* &&
+     "$1" = *"r.oid"* ]] || return 1
+  printf '%s\n' "$PACKET"
+}
+"$2"
+"""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "media-probe",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+            route,
+        ],
+        env={
+            "PATH": os.defpath,
+            "BABYLON_WAYNE_PROFILE": "smoke-01",
+            "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path),
+            "NATIONAL_RECORD": str(tmp_path / "active"),
+            "CANARY": canary,
+            "NATIONAL_DATABASE": database,
+            "NATIONAL_WRITER": f"national_writer_{suffix}",
+            "NATIONAL_DATABASE_OID": "42",
+            "PACKET": packet,
+            "FAULT": fault or "",
+            "CONTAINER_ID": "a" * 64,
+            "IMAGE_ID": "b" * 64,
+            "VOLUME": "fixture",
+        },
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    complete = route == "national_verify_live"
+    assert (result.returncode == 0) == (fault is None or fault == "physical" and not complete)
+    assert not result.stdout
+    if result.returncode == 0:
+        events = (tmp_path / "events").read_text().splitlines()
+        assert events == (["physical", "authority"] if complete else ["authority"])
+
+
 @pytest.mark.parametrize("oid", ["", "42"])
 def test_terminal_supervisor_preserves_private_identity_without_live_role_checks(tmp_path, oid):
     result = _supervisor_probe(tmp_path, oid=oid, live=False)
@@ -874,3 +950,410 @@ def test_native_handoff_binary_admission_refuses_before_process_pair(tmp_path, f
     assert (tmp_path / "pair-called").exists() is (fault is None)
     assert "private-observer" not in result.stdout + result.stderr
     assert "private-reader" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "initial,fail_retirement",
+    [("normal_play", True), ("normal_play", False), ("memory_capture", False), ("complete", False)],
+)
+def test_pair_operator_completes_each_retirement_before_next_run_and_final_evaluation(
+    tmp_path, initial, fail_retirement
+):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[3] / "tools/run_rust_postgres.sh"
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    # Subprocess boundaries replace real fixture operations in this ordering test.
+    for name, body in {
+        "git": 'printf "%s\\n" "$PAIR_FIXTURE/common"',
+        "flock": """shift 4
+            [ "$1" = "$PAIR_FIXTURE/common/babylon-national-storage/runner.lock" ]
+            if [ -f "$PAIR_FIXTURE/memory_capture/retired" ]; then
+                echo final >> "$PAIR_FIXTURE/calls"
+                echo complete
+            else echo "$INITIAL_MEMBER"; fi""",
+        "mise": """case "$9" in
+        path) printf '%s/%s\\n' "$PAIR_FIXTURE" "$BABYLON_NATIVE_MEASUREMENT_MODE";;
+        qualify) echo final >> "$PAIR_FIXTURE/calls";; *) exit 93;; esac""",
+        "bash": """if [ "$#" = 1 ]; then
+            echo "create $BABYLON_NATIVE_MEASUREMENT_MODE" >> "$PAIR_FIXTURE/calls"
+            mkdir "$BABYLON_STORAGE_REPORT_DIRECTORY"
+            echo same-campaign > "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign"
+        elif [ "$2" = --wayne-backup-retire ] && [ "$3" = same-campaign ]; then
+            echo "retire $BABYLON_NATIVE_MEASUREMENT_MODE" >> "$PAIR_FIXTURE/calls"
+            [ "$FAIL_RETIRE" = no ] || exit 64
+            touch "$BABYLON_STORAGE_REPORT_DIRECTORY/retired"
+        else exit 92; fi""",
+    }.items():
+        exe = folder / name
+        exe.write_text("#!/bin/sh\nset -eu\n" + body + "\n")
+        exe.chmod(0o700)
+    if initial in ("complete", "memory_capture"):
+        (tmp_path / "normal_play").mkdir()
+        (tmp_path / "normal_play/retired").write_bytes(b"preserve first member")
+    if initial == "complete":
+        (tmp_path / "memory_capture").mkdir()
+        (tmp_path / "memory_capture/retired").touch()
+    result = subprocess.run(
+        ["/bin/bash", str(script), "--wayne-native-pair", "smoke-01"],
+        env={
+            "PATH": str(folder) + ":" + os.defpath,
+            "PAIR_FIXTURE": str(tmp_path),
+            "FAIL_RETIRE": "yes" if fail_retirement else "no",
+            "INITIAL_MEMBER": initial,
+        },
+        capture_output=True,
+    )
+    expected = ["create normal_play", "retire normal_play"] if initial == "normal_play" else []
+    if initial != "complete" and not fail_retirement:
+        expected += ["create memory_capture", "retire memory_capture"]
+    if not fail_retirement:
+        expected += ["final"]
+    if initial != "normal_play":
+        assert (tmp_path / "normal_play/retired").read_bytes() == b"preserve first member"
+    assert (tmp_path / "calls").read_text().splitlines() == expected
+    assert result.returncode == (64 if fail_retirement else 0)
+
+
+def test_named_native_shell_retains_replayable_capsules_inside_each_member(tmp_path):
+    import hashlib
+    from types import SimpleNamespace
+
+    from tools.devtools.national_native_pair import _verify_capsules
+    from tools.devtools.wayne_qualification_storage import PrivateEvidence
+
+    repo = Path(__file__).resolve().parents[3]
+    fixture = tmp_path / "captured-source"
+    sampler = fixture / "tools/devtools/national_game_memory.py"
+    sampler.parent.mkdir(parents=True)
+    sampler.write_bytes(b"designed capture source")
+    (fixture / "input").write_bytes(b"designed input")
+    for mode in ("normal_play", "memory_capture"):
+        evidence = tmp_path / "smoke-01" / mode / "evidence"
+        evidence.mkdir(parents=True, mode=0o700)
+        result = subprocess.run(
+            [
+                "bash",
+                "-euc",
+                r"""
+umask 077
+source "$1"
+REPO_ROOT="$2"
+CANARY=fixture
+national_source_paths(){ printf '%s\0' tools/devtools/national_game_memory.py input; }
+national_input_paths(){ printf '%s\0' input; }
+national_reproducibility
+""",
+                "capture",
+                str(repo / "tools/postgres_national_lifecycle.sh"),
+                str(fixture),
+            ],
+            env={
+                **os.environ,
+                "BABYLON_WAYNE_PROFILE": "smoke-01",
+                "BABYLON_STORAGE_REPORT_DIRECTORY": str(evidence),
+            },
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        store = PrivateEvidence(evidence)
+        sources = store.reference("source-before.sha256")
+        inputs = store.reference("inputs.sha256")
+        names = set()
+        assert (
+            _verify_capsules(
+                store,
+                SimpleNamespace(source_sha256=sources.sha256, inputs_sha256=inputs.sha256),
+                names,
+            )
+            == hashlib.sha256(sampler.read_bytes()).hexdigest()
+        )
+        assert {n for n in names if n.endswith(".tar.gz")} == {
+            f"inputs-{inputs.sha256}.tar.gz",
+            f"source-{sources.sha256}.tar.gz",
+        }
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_work(
+    tmp_path, diagnostic
+):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    script = tools / "run_rust_postgres.sh"
+    script.write_bytes((REPOSITORY / "tools/run_rust_postgres.sh").read_bytes())
+    (tools / "postgres_national_lifecycle.sh").write_text(
+        'national_capture_selection() { printf "%s\\n" "$BABYLON_WAYNE_PROFILE" '
+        '"$BABYLON_NATIVE_MEASUREMENT_MODE" "$BABYLON_NATIONAL_STORAGE_PERIODS" '
+        '"$BABYLON_NATIONAL_SUCCESS_DISPOSITION" "$BABYLON_STORAGE_REPORT_DIRECTORY" "${BABYLON_WAYNE_WINDOW_DIAGNOSTIC-unset}"; exit 42; }\n'
+    )
+    denied = tmp_path / "denied"
+    denied.mkdir()
+    for name in ("docker", "psql", "cargo", "mise"):
+        command = denied / name
+        command.write_text(
+            '#!/bin/sh\nprintf "unexpected external call" > "'
+            + str(tmp_path / "external-called")
+            + '"\nexit 97\n'
+        )
+        command.chmod(0o700)
+    from shutil import which
+
+    isolated_path = f"{denied}:{os.defpath}"
+    for name in ("docker", "psql", "cargo", "mise"):
+        assert which(name, path=isolated_path) == str(denied / name)
+    result = subprocess.run(
+        [
+            "bash",
+            str(script),
+            "--wayne-ordinary-prefix",
+            *(["--window-diagnostic"] if diagnostic else []),
+        ],
+        env={"PATH": isolated_path, "BABYLON_WAYNE_WINDOW_DIAGNOSTIC": "stale"},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert not (tmp_path / "external-called").exists()
+    assert result.returncode == 42, result.stderr
+    assert result.stdout.splitlines() == [
+        "ordinary-01",
+        "normal_play",
+        "10",
+        "retain-ordinary",
+        str(tmp_path.parent / "qualification-27/ordinary-01/normal_play/evidence"),
+        "1" if diagnostic else "unset",
+    ]
+
+
+@pytest.mark.parametrize("status", [0, 1])
+def test_ordinary_cleanup_preserves_measurement_status_and_avoids_qualified_retirement(
+    tmp_path, status
+):
+    source = (REPOSITORY / "tools/run_rust_postgres.sh").read_text()
+    body = source[source.index("cleanup_checked() {") : source.index("wait_for_runtime() {")]
+    script = (
+        r"""
+set -euo pipefail
+die() { printf 'refused: %s\n' "$*" >&2; exit 98; }
+wayne_media() { printf '%s\n' "$*"; }
+national_retain_success() { echo 'unexpected qualification' >&2; exit 97; }
+national_verify_disposable() { echo 'unexpected removal' >&2; exit 97; }
+timeout() { echo 'unexpected external' >&2; exit 97; }
+"""
+        + body
+        + '\ncleanup_checked\nprintf "status=%s\\n" "$status"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env={
+            "PATH": os.defpath,
+            "OWNED": "1",
+            "LIVE_FOCUS": "national_storage",
+            "status": str(status),
+            "BABYLON_WAYNE_PROFILE": "ordinary-01",
+            "CONTAINER_ID": "ab" * 32,
+        },
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        f"retain-ordinary --container {'ab' * 32} --exit-status {status}",
+        f"status={status}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "arguments,selector,profile,mode,horizon",
+    [
+        (["--window-diagnostic"], None, None, None, None),
+        (["--wayne-ordinary-prefix", "--window-diagnostic", "extra"], None, None, None, None),
+        (["--wayne-ordinary-prefix", "--other"], None, None, None, None),
+        (["--wayne-native-pair", "walk-01"], "1", "walk-01", "normal_play", "10"),
+        ([], "0", "ordinary-01", "normal_play", "10"),
+        ([], "1", "ordinary-01", "memory_capture", "10"),
+        ([], "1", "ordinary-01", "normal_play", "2"),
+    ],
+)
+def test_window_diagnostic_public_refusal_precedes_fixture_work(
+    tmp_path, arguments, selector, profile, mode, horizon
+):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    script = tools / "run_rust_postgres.sh"
+    script.write_bytes((REPOSITORY / "tools/run_rust_postgres.sh").read_bytes())
+    environment = {"PATH": os.defpath}
+    for name, value in (
+        ("BABYLON_WAYNE_WINDOW_DIAGNOSTIC", selector),
+        ("BABYLON_WAYNE_PROFILE", profile),
+        ("BABYLON_NATIVE_MEASUREMENT_MODE", mode),
+        ("BABYLON_NATIONAL_STORAGE_PERIODS", horizon),
+    ):
+        if value is not None:
+            environment[name] = value
+    result = subprocess.run(
+        ["bash", str(script), *arguments],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2 and "diagnostic" in result.stderr
+    assert not result.stdout
+    assert list(tools.iterdir()) == [script]
+
+
+def diagnostic_lock_fixture(tmp_path):
+    """Keep the real public entry and lock authentication; stop only at national_begin."""
+    repository = tmp_path / "repository"
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    tools = repository / "tools"
+    tools.mkdir()
+    runner = tools / "run_rust_postgres.sh"
+    runner.write_bytes((REPOSITORY / "tools/run_rust_postgres.sh").read_bytes())
+    lifecycle = (REPOSITORY / "tools/postgres_national_lifecycle.sh").read_text()
+    lifecycle += r"""
+# Test boundary: the real national_lock_entry must already have returned.
+national_begin() {
+  local directory identity descriptor
+  directory="$(national_control_directory)"
+  [ "$(cat "/proc/$PPID/comm")" = flock ] || die "missing real flock supervisor"
+  if flock --nonblock "$directory/runner.lock" true; then
+    die "authenticated lock is not actually held"
+  fi
+  identity="$(stat -Lc '%d:%i' "$directory/runner.lock")"
+  for descriptor in /proc/$$/fd/*; do
+    [ "$(stat -Lc '%d:%i' "$descriptor" 2>/dev/null || true)" != "$identity" ] ||
+      die "child inherited the supervisor lock descriptor"
+  done
+  printf '%s\n' authenticated "${BABYLON_WAYNE_WINDOW_DIAGNOSTIC-unset}" \
+    "$BABYLON_WAYNE_PROFILE" "$BABYLON_NATIVE_MEASUREMENT_MODE" \
+    "$BABYLON_NATIONAL_STORAGE_PERIODS" "$BABYLON_STORAGE_REPORT_DIRECTORY"
+  exit 42
+}
+"""
+    (tools / "postgres_national_lifecycle.sh").write_text(lifecycle)
+    denied = tmp_path / "denied"
+    denied.mkdir()
+    for name in ("docker", "psql", "cargo", "mise"):
+        command = denied / name
+        command.write_text(
+            '#!/bin/sh\nprintf "unexpected external call" > '
+            + shlex.quote(str(tmp_path / "external-called"))
+            + "\nexit 97\n"
+        )
+        command.chmod(0o700)
+    control = repository / ".git/babylon-national-storage"
+    return runner, control, {"PATH": f"{denied}:{os.defpath}"}
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_public_window_diagnostic_crosses_real_flock_and_authenticates_before_fixture(
+    tmp_path, diagnostic
+):
+    runner, control, environment = diagnostic_lock_fixture(tmp_path)
+    result = subprocess.run(
+        [
+            "bash",
+            str(runner),
+            "--wayne-ordinary-prefix",
+            *(["--window-diagnostic"] if diagnostic else []),
+        ],
+        env={**environment, "BABYLON_WAYNE_WINDOW_DIAGNOSTIC": "stale"},
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 42, result.stderr + result.stdout
+    lines = result.stdout.splitlines()
+    assert lines[:6] == [
+        "authenticated",
+        "1" if diagnostic else "unset",
+        "ordinary-01",
+        "normal_play",
+        "10",
+        str(runner.parents[2] / "qualification-27/ordinary-01/normal_play/evidence"),
+    ]
+    assert "flock: executing bash" in result.stdout
+    assert (control / "runner.lock").exists()
+    assert not (control / "active").exists()
+    assert not (runner.parents[2] / "qualification-27").exists()
+    assert not (tmp_path / "external-called").exists()
+    released = subprocess.run(
+        ["flock", "--nonblock", str(control / "runner.lock"), "true"], check=False
+    )
+    assert released.returncode == 0, "actual supervisor exited and released its lock"
+
+
+@pytest.mark.parametrize(
+    "fault", ["parent", "supervisor", "inode", "missing_argument", "extra_argument", "flag"]
+)
+def test_window_diagnostic_rejects_forged_internal_lock_handoff(tmp_path, fault):
+    runner, control, environment = diagnostic_lock_fixture(tmp_path)
+    environment.update(
+        {
+            "BABYLON_WAYNE_WINDOW_DIAGNOSTIC": "1",
+            "BABYLON_WAYNE_PROFILE": "ordinary-01",
+            "BABYLON_POSTGRES_LIVE_FOCUS": "national_storage",
+            "BABYLON_NATIVE_MEASUREMENT_MODE": "normal_play",
+            "BABYLON_NATIONAL_STORAGE_PERIODS": "10",
+            "BABYLON_NATIONAL_CAPTURE_MODE": "playable-aid",
+            "BABYLON_NATIONAL_STORAGE_QUALIFICATION": "report-only",
+            "BABYLON_NATIONAL_SUCCESS_DISPOSITION": "retain-ordinary",
+            "BABYLON_NATIONAL_QUALIFY_TIMING": "0",
+        }
+    )
+    command = ["bash", str(runner), "--national-lock-held", "0"]
+    expected = "window diagnostic requires"
+    if fault == "missing_argument":
+        command.pop()
+    elif fault == "extra_argument":
+        command.append("extra")
+    elif fault == "flag":
+        command = [
+            "bash",
+            "-c",
+            'bash "$1" --national-native-lock-held "$$"; status=$?; exit "$status"',
+            "probe",
+            str(runner),
+        ]
+    elif fault == "supervisor":
+        command = [
+            "bash",
+            "-c",
+            'bash "$1" --national-lock-held "$$"; status=$?; exit "$status"',
+            "probe",
+            str(runner),
+        ]
+        expected = "national lock supervisor is not flock"
+    elif fault == "inode":
+        control.mkdir()
+        (control / "runner.lock").touch()
+        command = [
+            "bash",
+            "-c",
+            'exec flock --close "$1" bash "$2" --national-lock-held "$$"',
+            "probe",
+            str(control / "other.lock"),
+            str(runner),
+        ]
+        expected = "national lock supervisor does not own the exact lock inode"
+    result = subprocess.run(
+        command, env=environment, capture_output=True, text=True, timeout=10, check=False
+    )
+    assert result.returncode == 2 and expected in result.stderr, result.stderr + result.stdout
+    assert "authenticated" not in result.stdout
+    assert not (control / "active").exists()
+    assert not (tmp_path / "external-called").exists()
+    if fault in ("parent", "missing_argument", "extra_argument", "flag"):
+        assert not control.exists(), "malformed invocation refuses before lock-directory writes"

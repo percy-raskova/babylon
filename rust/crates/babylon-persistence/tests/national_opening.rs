@@ -57,12 +57,13 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
         },
     )
     .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
+    let representation = opening.representation;
     let aid = opening.aid;
     let opening = opening.opening;
     assert_eq!(opening.policies.aid_mandates, aid.mandates);
     eprintln!("native opening generation: {:?}", start.elapsed());
-    household_controls::assert_people(&opening, &policy, &aid);
-    household_controls::assert_endowments_and_ownership(&opening, &policy, &aid);
+    household_controls::assert_people(&opening, &policy, &aid, &representation);
+    household_controls::assert_endowments_and_ownership(&opening, &policy, &aid, &representation);
     assert_markets(&opening, &policy);
     assert_routes(&opening);
     assert_unique_principals(&opening, &policy);
@@ -70,7 +71,7 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     census(&opening);
     assert_managed_equipment(&opening);
     household_controls::assert_admitted_state(&opening, &aid);
-    household_time_controls::assert_time(&opening, &policy);
+    household_time_controls::assert_time(&opening, &policy, representation.catchments.len());
 }
 
 fn assert_managed_equipment(opening: &EconomicOpening) {

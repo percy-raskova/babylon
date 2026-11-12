@@ -394,7 +394,7 @@ pub fn project_map_lens(
         label: lens.label_for_log(snapshot),
         good_label: None,
         unit: String::new(),
-        evidence: "DESIGNED | modeled economic locations and material accounts",
+        evidence: "DESIGNED | modeled economic locations and material accounts\nRegional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.",
         counties: BTreeMap::new(),
         unavailable: LensUnavailable::Loading,
     };
@@ -479,9 +479,9 @@ fn project_workforce(
     result.label = metric.label().into();
     result.unit = "people".into();
     result.evidence = if snapshot.resolve_tick == 0 {
-        "DESIGNED | modeled workforce at foundation"
+        "DESIGNED | modeled workforce at foundation\nRegional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data."
     } else {
-        "DERIVED | committed modeled workforce"
+        "DERIVED | committed modeled workforce\nRegional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data."
     };
     let Some(production) = snapshot.production.as_ref().filter(|_| {
         snapshot.visibility
@@ -839,6 +839,36 @@ freight_order_definitions: Vec::new(),
             kind,
             good: Some(key('a')),
         }
+    }
+
+    #[test]
+    fn modeled_map_readings_explain_hub_scope_without_relabeling_county_observations() {
+        let mut observation = snapshot();
+        for period in [0, 1] {
+            observation.resolve_tick = period;
+            for lens in [
+                lens(MaterialLensKind::OnHand),
+                MapLens::Workforce(WorkforceMetric::Employed),
+            ] {
+                let reading = project_map_lens(Some(&observation), &lens);
+                assert!(
+                    reading.evidence.contains("regional catchment"),
+                    "{}",
+                    reading.evidence
+                );
+                assert!(reading.evidence.contains("hub county"));
+                assert!(reading.evidence.contains("observed county data"));
+            }
+        }
+        let observed = project_map_lens(
+            Some(&observation),
+            &MapLens::Qcew(EconomyMetric::Employment),
+        );
+        assert_eq!(
+            observed.evidence,
+            "OBSERVED | BLS QCEW | 2024 annual baseline"
+        );
+        assert!(!observed.evidence.contains("regional catchment"));
     }
 
     #[test]

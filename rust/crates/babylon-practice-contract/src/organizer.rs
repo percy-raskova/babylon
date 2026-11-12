@@ -6,6 +6,8 @@
 mod aid;
 
 mod collection;
+mod partner_reports;
+pub use partner_reports::*;
 
 mod contract;
 
@@ -29,14 +31,14 @@ pub use transition::*;
 mod types;
 
 pub use types::{
-    OrganizerAgreement, OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerConfig,
-    OrganizerContactProduct, OrganizerContribution, OrganizerError, OrganizerHouseholdBinding,
-    OrganizerInquiry, OrganizerLearnedAuthority, OrganizerMaterialSupport, OrganizerObservation,
-    OrganizerOutcome, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
-    OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPeriodJournal,
-    OrganizerPeriodJournalEntries, OrganizerPeriodTimeWitness, OrganizerPosition, OrganizerPreview,
-    OrganizerReceipt, OrganizerRefusal, OrganizerReport, OrganizerStandingWork, OrganizerState,
-    OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerView, OrganizerWorkplaceFacts,
-    ResolvedOrganizerPeriod, ORGANIZER_RECENT_OBSERVATIONS, ORGANIZER_RECENT_RECEIPTS,
-    ORGANIZER_SCHEMA_VERSION,
+    OrganizerAgreement, OrganizerAllocation, OrganizerChoice, OrganizerCommand,
+    OrganizerCommitment, OrganizerConfig, OrganizerContactProduct, OrganizerContribution,
+    OrganizerError, OrganizerHouseholdBinding, OrganizerInquiry, OrganizerLearnedAuthority,
+    OrganizerMaterialSupport, OrganizerObservation, OrganizerOutcome, OrganizerParticipant,
+    OrganizerPartner, OrganizerPartnerPolicy, OrganizerPartnerResponse, OrganizerPauseReason,
+    OrganizerPeriodJournal, OrganizerPeriodJournalEntries, OrganizerPeriodTimeWitness,
+    OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport,
+    OrganizerStandingWork, OrganizerState, OrganizerTimeBindingMode, OrganizerTimeUse,
+    OrganizerView, OrganizerWorkplaceFacts, ResolvedOrganizerPeriod, ORGANIZER_RECENT_OBSERVATIONS,
+    ORGANIZER_RECENT_RECEIPTS, ORGANIZER_SCHEMA_VERSION,
 };

@@ -143,7 +143,12 @@ fn opening_asset(
         site_id: actor.site_id,
         definition_id: definition.id,
     });
-    let units = machine_units(builder, actor, actor.employed, definition)?;
+    let endowment = builder.endowments.get(&actor.site_id);
+    let units = if let Some(endowment) = endowment {
+        endowment.equipment_units
+    } else {
+        machine_units(builder, actor, actor.employed, definition)?
+    };
     if units == 0 {
         return Ok(());
     }
@@ -153,8 +158,12 @@ fn opening_asset(
         return Err(NationalOpeningError::Policy);
     }
     let life = super::quantity(units, definition.service_batches_per_unit)?;
-    let remaining = u64::try_from(u128::from(life) * u128::from(fraction) / 10_000)
-        .map_err(|_| NationalOpeningError::Arithmetic)?;
+    let remaining = if let Some(endowment) = endowment {
+        endowment.equipment_service_batches
+    } else {
+        u64::try_from(u128::from(life) * u128::from(fraction) / 10_000)
+            .map_err(|_| NationalOpeningError::Arithmetic)?
+    };
     if remaining == 0 {
         return Err(NationalOpeningError::Policy);
     }
@@ -184,7 +193,9 @@ fn opening_asset(
     builder.opening.equipment.push(EquipmentCarryingValue {
         asset: EquipmentAssetId::Installed(id),
         owner: actor.site_id,
-        amount: Currency::from_micro_units(carrying),
+        amount: Currency::from_micro_units(
+            endowment.map_or(carrying, |e| e.equipment_carrying_micros),
+        ),
     });
     Ok(())
 }
@@ -195,6 +206,15 @@ fn machine_units(
     persons: u64,
     definition: &EquipmentDefinition,
 ) -> Result<u64> {
+    if let Some(endowment) = builder.endowments.get(&actor.site_id) {
+        if persons == actor.employed {
+            return Ok(endowment.equipment_units);
+        }
+        if persons == actor.force {
+            return Ok(endowment.workforce_equipment_units);
+        }
+        return Err(NationalOpeningError::Identity);
+    }
     let recipe = builder
         .policy
         .recipes

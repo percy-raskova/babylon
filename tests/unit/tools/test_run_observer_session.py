@@ -867,7 +867,7 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
-    protocol_version: int | float = 13,
+    protocol_version: int | float = 19,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
     ready_changes: dict[str, object] | None = None,
@@ -1200,7 +1200,7 @@ def test_national_smoke_refuses_numeric_hash_evidence(
 def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
-    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=13)
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=19)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
     for index in (1, 2):
         requests = [
@@ -1208,7 +1208,7 @@ def test_installation_check_admits_current_protocol_and_exact_progress_stream(
             for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
         ]
         assert all(
-            type(row["protocol_version"]) is int and row["protocol_version"] == 13
+            type(row["protocol_version"]) is int and row["protocol_version"] == 19
             for row in requests
         )
         assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
@@ -1315,13 +1315,39 @@ def test_lifecycle_requires_committed_world_hash(monkeypatch, tmp_path, world_ha
         )
 
 
-@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 11, 12, 12.0, 13.0, 14])
+@pytest.mark.parametrize(
+    "version",
+    [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        12.0,
+        13,
+        13.0,
+        14,
+        15,
+        15.0,
+        16,
+        16.0,
+        17,
+        17.0,
+        18,
+        18.0,
+        19.0,
+        20,
+    ],
+)
 def test_installation_check_refuses_unsupported_or_untyped_version(
     monkeypatch, tmp_path, capsys, version
 ):
     _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
-    assert "requires runtime session protocol 13" in capsys.readouterr().err
+    assert "requires runtime session protocol 19" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -1469,3 +1495,39 @@ def test_native_children_do_not_inherit_supervisor_credentials():
     assert client["BABYLON_QUALIFICATION_POLICY"] == "/qualified/policy.json"
     assert client["DISPLAY"] == ":0"
     assert environment["BABYLON_STORAGE_CANARY"] == "supervisor-secret"
+
+
+def test_partial_spawn_is_observed_before_second_spawn_failure_and_reaped(monkeypatch, tmp_path):
+    events = []
+
+    class Runtime:
+        pid = 313
+
+        def wait(self, timeout=None):
+            events.append("reaped")
+            return 0
+
+        def poll(self):
+            return 0
+
+    def spawn(args, **kwargs):
+        if args[0].endswith("runtime"):
+            return Runtime()
+        raise OSError("second child refused")
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", spawn)
+    with pytest.raises(launcher.ObserverLaunchError, match="start"):
+        launcher.run_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "d",
+            initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+            on_started=lambda *_: pytest.fail("partial pair admitted"),
+            qualification_control=tmp_path / "control.sock",
+            on_spawned=lambda role, child: events.append((role, child.pid)),
+            on_stopped=lambda: events.append("stopped"),
+        )
+    assert events == [("runtime", 313), "reaped", "stopped"]

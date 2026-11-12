@@ -23,6 +23,7 @@ use crate::public_venue::AdmittedPublicVenueSource;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_material_circuit::AgencyObservationFundingReceipt;
 use babylon_practice_contract::CityPdCaseSource;
+use babylon_practice_contract::OrganizerPartnerFacts;
 use babylon_practice_contract::PublicVenueHistory;
 use babylon_practice_contract::PublicVenueRecordKind;
 use std::collections::BTreeSet;
@@ -111,11 +112,11 @@ use std::fmt::Result as FmtResult;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v6\0";
+pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v7\0";
 
 pub(crate) const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 
-pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v19\0";
+pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v20\0";
 
 /// Designed 1 GB operational headroom explicitly authorized by the Director.
 /// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
@@ -246,6 +247,11 @@ pub enum MaterialWorldError {
     ByteLimit,
     Allocation,
     Wire,
+    ReportSettlement,
+    ReportRetailHandoff,
+    ReportServicePerformance,
+    ReportHouseholdTime,
+    ReportSharingScope,
     Organizer(OrganizerError),
     CityPd(CityPdRegisterError),
 }
@@ -395,7 +401,7 @@ impl MaterialWorldRegister {
             .ok_or(MaterialWorldError::Arithmetic)?;
         let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
         bytes.extend_from_slice(REGISTER_DOMAIN);
-        bytes.extend_from_slice(&6_u32.to_be_bytes());
+        bytes.extend_from_slice(&7_u32.to_be_bytes());
         bytes.extend_from_slice(&completed_tick.to_be_bytes());
         bytes.extend_from_slice(
             &u64::try_from(state_bytes.len())
@@ -428,25 +434,64 @@ impl MaterialWorldRegister {
         })
     }
 
+    fn rebuild_binding(
+        self,
+        catalog: &MaterialCatalog,
+        resolver: Option<&StableElementResolver>,
+    ) -> Result<Self, MaterialWorldError> {
+        if self.catalog_digest != catalog.catalog_digest() {
+            return Self::build(
+                catalog,
+                self.completed_tick,
+                self.state,
+                self.organizer,
+                self.public_venue,
+                self.city_pd,
+                resolver,
+            );
+        }
+        if self
+            .completed_tick
+            .checked_add(1)
+            .ok_or(MaterialWorldError::Arithmetic)?
+            != self.state.period
+        {
+            return Err(MaterialWorldError::PeriodMismatch);
+        }
+        // The private material state and frame were admitted under this exact
+        // immutable catalog. Rebind components without admitting the core again.
+        let canonical_bytes = self.canonical_bytes;
+        let mut sections = canonical_bytes
+            .as_slice()
+            .get(REGISTER_DOMAIN.len() + 12..)
+            .ok_or(MaterialWorldError::Wire)?;
+        let state_bytes = take_organizer_section(&mut sections)?;
+        Self::assemble(
+            catalog,
+            self.completed_tick,
+            self.state,
+            self.organizer,
+            self.public_venue,
+            self.city_pd,
+            AssemblyEvidence {
+                resolver,
+                state_bytes,
+            },
+        )
+    }
+
     /// Bind captured organizer content and complete state into this world identity.
     /// # Errors
     /// Refuses invalid content/state, mismatched periods, or aggregate byte limits.
     pub fn with_organizer(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
         state: OrganizerState,
         journal: OrganizerPeriodJournal,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(
-            catalog,
-            self.completed_tick,
-            self.state,
-            Some((config, state, journal)),
-            self.public_venue,
-            self.city_pd,
-            None,
-        )
+        self.organizer = Some((config, state, journal));
+        self.rebuild_binding(catalog, None)
     }
 
     /// Bind the private opponent using the resolver of the same graph session.
@@ -454,20 +499,13 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses invalid opponent, material, venue, or resolver bindings.
     pub fn with_city_pd(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         city_pd: CityPdRegister,
         resolver: &StableElementResolver,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(
-            catalog,
-            self.completed_tick,
-            self.state,
-            self.organizer,
-            self.public_venue,
-            Some(city_pd),
-            Some(resolver),
-        )
+        self.city_pd = Some(city_pd);
+        self.rebuild_binding(catalog, Some(resolver))
     }
 
     #[must_use]
@@ -480,20 +518,13 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses invalid venue, organizer, material, or opponent bindings.
     pub fn with_public_venue(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         venue: PublicVenueHistory,
         resolver: Option<&StableElementResolver>,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(
-            catalog,
-            self.completed_tick,
-            self.state,
-            self.organizer,
-            Some(venue),
-            self.city_pd,
-            resolver,
-        )
+        self.public_venue = Some(venue);
+        self.rebuild_binding(catalog, resolver)
     }
 
     #[must_use]
@@ -612,7 +643,7 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::Wire);
         }
         let start = REGISTER_DOMAIN.len();
-        if bytes[start..start + 4] != 6_u32.to_be_bytes() {
+        if bytes[start..start + 4] != 7_u32.to_be_bytes() {
             return Err(MaterialWorldError::Wire);
         }
         let tick = u64::from_be_bytes(
@@ -628,14 +659,16 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::Wire);
         }
         let (organizer, public_venue) = decode_organizer_frame(organizer_wire)?;
-        let state = babylon_material_circuit::decode_material_circuit_state(catalog, state_bytes)?;
-        if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != state.period {
+        let decoded = babylon_material_circuit::decode_material_circuit_state_for_encoding(
+            catalog,
+            state_bytes,
+        )?;
+        if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != decoded.state().period {
             return Err(MaterialWorldError::PeriodMismatch);
         }
-        // Validate the same canonical circuit and bound organizer as construction,
-        // without assembling a second full outer register during admission.
-        let canonical_state =
-            babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
+        // Serialize the same admitted circuit before validating its bound organizer,
+        // without repeating circuit admission or assembling a second outer register.
+        let (state, canonical_state) = decoded.into_state_and_canonical_bytes()?;
         let canonical_organizer = encode_bound_organizer(
             catalog,
             tick,
@@ -732,6 +765,21 @@ impl MaterialWorldRegister {
             None if transition.collections.is_empty() => None,
             None => return Err(MaterialWorldError::Wire),
         };
+        let partner_reports = match self.organizer_config() {
+            Some(config) => super::organizer_reports::closed(
+                config.aid_bindings.iter().map(|binding| {
+                    (
+                        binding.partner.actor_id,
+                        FinalDemandPrincipalId::from_bytes(binding.recipient_principal_id),
+                        &binding.report_sharing,
+                    )
+                }),
+                &self.state,
+                self.state.period,
+                &transition,
+            )?,
+            None => Vec::new(),
+        };
         let register = Self::from_validated_candidate(catalog, transition.state)?;
         Ok(PreparedMaterialWorld {
             prior_digest: self.digest,
@@ -740,6 +788,7 @@ impl MaterialWorldRegister {
             organizer_facts,
             organizer_aid_support,
             organizer_collection_fact,
+            partner_reports,
             city_pd_opening: self.city_pd.clone(),
             public_venue_opening: self.public_venue.clone(),
             agency_attendance,
@@ -814,6 +863,7 @@ pub struct PreparedMaterialWorld {
     organizer_facts: Option<OrganizerWorkplaceFacts>,
     organizer_aid_support: Vec<OrganizerAidSupport>,
     organizer_collection_fact: Option<OrganizerCollectionFact>,
+    partner_reports: Vec<(u64, OrganizerPartnerFacts)>,
     city_pd_opening: Option<CityPdRegister>,
     public_venue_opening: Option<PublicVenueHistory>,
     agency_attendance: Vec<AgencyObservationFundingReceipt>,
@@ -838,8 +888,8 @@ impl PreparedMaterialWorld {
         &mut self,
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
-        organizer: OrganizerState,
-        journal: OrganizerPeriodJournal,
+        mut organizer: OrganizerState,
+        mut journal: OrganizerPeriodJournal,
         resolver: &StableElementResolver,
     ) -> Result<(), MaterialWorldError> {
         let entries = journal.latest().ok_or(MaterialWorldError::Wire)?;
@@ -859,6 +909,25 @@ impl PreparedMaterialWorld {
         )?;
         // Contributions debit a separate ledger; the material time partition is
         // still the gross supply actually closed before later political work.
+        let entries = journal.periods.last_mut().ok_or(MaterialWorldError::Wire)?;
+        for (actor, facts) in
+            self.partner_reports
+                .drain(..)
+                .chain(super::organizer_reports::completed_time(
+                    &config,
+                    self.register.completed_tick,
+                    &state,
+                )?)
+        {
+            babylon_practice_contract::record_partner_report(
+                &config,
+                &mut organizer,
+                entries,
+                actor,
+                facts,
+            )
+            .map_err(MaterialWorldError::Organizer)?;
+        }
         self.register = MaterialWorldRegister::build(
             catalog,
             self.register.completed_tick,
@@ -977,8 +1046,10 @@ pub(crate) fn encode_bound_organizer(
         }
         return Ok(vec![0]);
     };
+    super::organizer_reports::validate_scopes(catalog, config)?;
     organizer_collection::validate_binding(catalog, config, circuit)?;
     organizer_collection::current(config, state, journal, circuit, completed_tick)?;
+    organizer_support::validate_pending_freight(circuit, state)?;
     babylon_practice_contract::validate_organizer_journal(config, state, journal)?;
     if state.period != completed_tick {
         return Err(MaterialWorldError::PeriodMismatch);
@@ -1092,7 +1163,7 @@ pub fn decode_material_organizer_evidence(
         return Err(MaterialWorldError::Wire);
     }
     let start = REGISTER_DOMAIN.len();
-    if bytes[start..start + 4] != 6_u32.to_be_bytes() {
+    if bytes[start..start + 4] != 7_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let tick = u64::from_be_bytes(
@@ -1110,19 +1181,27 @@ pub fn decode_material_organizer_evidence(
     {
         return Err(MaterialWorldError::Wire);
     }
-    let material = babylon_material_circuit::decode_material_circuit_state(catalog, state_wire)?;
-    if tick.checked_add(1) != Some(material.period) {
+    let decoded =
+        babylon_material_circuit::decode_material_circuit_state_for_encoding(catalog, state_wire)?;
+    if tick.checked_add(1) != Some(decoded.state().period) {
         return Err(MaterialWorldError::PeriodMismatch);
     }
     let (organizer, public_venue) = decode_organizer_frame(organizer_wire)?;
-    if babylon_material_circuit::encode_material_circuit_state(catalog, &material)? != state_wire
-        || encode_bound_organizer(
-            catalog,
-            tick,
-            &material,
-            organizer.as_ref(),
-            public_venue.as_ref(),
-        )? != organizer_wire
+    let material = {
+        // Serialize the same admitted state and release its bytes before organizer binding.
+        let (material, canonical_state) = decoded.into_state_and_canonical_bytes()?;
+        if canonical_state != state_wire {
+            return Err(MaterialWorldError::Wire);
+        }
+        material
+    };
+    if encode_bound_organizer(
+        catalog,
+        tick,
+        &material,
+        organizer.as_ref(),
+        public_venue.as_ref(),
+    )? != organizer_wire
     {
         return Err(MaterialWorldError::Wire);
     }
@@ -1147,7 +1226,7 @@ pub fn decode_city_pd_attempt_evidence(
     if bytes.len() < header
         || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
         || !bytes.starts_with(REGISTER_DOMAIN)
-        || bytes[REGISTER_DOMAIN.len()..REGISTER_DOMAIN.len() + 4] != 6_u32.to_be_bytes()
+        || bytes[REGISTER_DOMAIN.len()..REGISTER_DOMAIN.len() + 4] != 7_u32.to_be_bytes()
     {
         return Err(MaterialWorldError::Wire);
     }
@@ -1659,7 +1738,7 @@ pub fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&19_u32.to_be_bytes());
+    bytes.extend_from_slice(&20_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -1678,7 +1757,7 @@ pub fn encode_material_receipts(
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V19 receipt family.
+/// Typed material evidence decoded only from an exact committed V20 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
     pub agency_paid: Vec<AgencyPaidReceipt>,
@@ -1777,7 +1856,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 19_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 20_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;

@@ -2,9 +2,9 @@
 use super::ProductionProjectionError;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
-    AccountId, AidCashReserve, AidMandate, AidOutcome, AidReceipt, AidTransport, CircuitAccounting,
-    FinalDemandPrincipalId, GoodId, MaterialCircuitState, MonetaryCircuit, MoneyLocation,
-    MoneyTransferPurpose, MoneyTransferReceipt, OrderId, UnitId,
+    AccountId, AidMandate, AidOutcome, AidReceipt, AidTransport, CashTransferPurpose,
+    CircuitAccounting, FinalDemandPrincipalId, GoodId, MaterialCircuitState, MoneyLocation,
+    MoneyTransferPurpose, OrderId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,17 +36,13 @@ fn sum(rows: &mut BTreeMap<Key, u64>, key: Key, quantity: u64) -> Result<()> {
 }
 type Mandates<'a> = BTreeMap<[u8; 32], &'a AidMandate>;
 type Flows = BTreeMap<OrderId, Flow>;
-type Posting = (MoneyLocation, MoneyLocation, i128);
-type Cash = BTreeMap<(OrderId, u8), Posting>;
-type Reserves = BTreeMap<OrderId, AidCashReserve>;
-type Reservations = BTreeMap<OrderId, u64>;
 pub(super) fn join(
     catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<Gifts> {
-    let (CircuitAccounting::Monetary(before), CircuitAccounting::Monetary(after)) =
+    let (CircuitAccounting::Monetary(_), CircuitAccounting::Monetary(_)) =
         (&prior.accounting, &current.accounting)
     else {
         return if receipt.aid.is_empty() {
@@ -62,20 +58,16 @@ pub(super) fn join(
     if mandates.len() != catalog.aid_mandates.len() {
         return Err(ProductionProjectionError::State);
     }
-    let (gifts, mut flows, cash) = collect(receipt, &mandates)?;
+    let (gifts, mut flows) = collect(receipt, &mandates)?;
     reconcile_freight(prior, current, &mut flows)?;
-    let reservations = check_cash(before, after, receipt, &mandates, cash)?;
-    check_fresh(flows, reservations)?;
+    validate_cash_custody(receipt)?;
+    check_fresh(&flows)?;
     Ok(gifts)
 }
-fn collect(
-    receipt: &MaterialTickReceipts,
-    mandates: &Mandates<'_>,
-) -> Result<(Gifts, Flows, Cash)> {
+fn collect(receipt: &MaterialTickReceipts, mandates: &Mandates<'_>) -> Result<(Gifts, Flows)> {
     let mut gifts = Gifts::default();
     let mut seen = BTreeSet::new();
     let mut flows = BTreeMap::<OrderId, Flow>::new();
-    let mut cash = BTreeMap::<(OrderId, u8), (MoneyLocation, MoneyLocation, i128)>::new();
     for row in &receipt.aid {
         let mandate = mandates
             .get(&row.mandate_id)
@@ -88,9 +80,8 @@ fn collect(
             return Err(ProductionProjectionError::State);
         }
         record_movement(row, &mut gifts, &mut flows)?;
-        record_payment(row, &mut cash)?;
     }
-    Ok((gifts, flows, cash))
+    Ok((gifts, flows))
 }
 fn record_movement(row: &AidReceipt, gifts: &mut Gifts, flows: &mut Flows) -> Result<()> {
     let flow = flows.entry(row.commitment_id).or_default();
@@ -112,188 +103,146 @@ fn record_movement(row: &AidReceipt, gifts: &mut Gifts, flows: &mut Flows) -> Re
             }
         }
         AidOutcome::Lost => add(&mut flow.lost, row.quantity)?,
-        AidOutcome::Unshipped => add(&mut flow.unshipped, row.quantity)?,
+        AidOutcome::Unshipped | AidOutcome::FoodReceivingRefused => {
+            add(&mut flow.unshipped, row.quantity)?;
+        }
+        AidOutcome::CashRequested
+        | AidOutcome::CashGranted
+        | AidOutcome::CashUnfunded
+        | AidOutcome::CashReceivingRefused => {}
     }
     Ok(())
 }
-fn record_payment(row: &AidReceipt, cash: &mut Cash) -> Result<()> {
-    let payment = match row.outcome {
-        AidOutcome::Granted => Some((1, MoneyLocation::Cash(AccountId::Household(row.recipient)))),
-        AidOutcome::Lost | AidOutcome::Unshipped => Some((2, MoneyLocation::Cash(row.payer))),
-        _ => None,
-    };
-    if let Some((tag, target)) = payment {
-        let entry = cash.entry((row.commitment_id, tag)).or_insert((
-            MoneyLocation::AidReserve(row.commitment_id),
-            target,
-            0,
-        ));
-        if entry.1 != target {
-            return Err(ProductionProjectionError::State);
-        }
-        entry.2 = entry
-            .2
-            .checked_add(row.cash_amount.micro_units())
-            .ok_or(ProductionProjectionError::Arithmetic)?;
-    }
-    Ok(())
-}
-fn check_cash(
-    before: &MonetaryCircuit,
-    after: &MonetaryCircuit,
-    receipt: &MaterialTickReceipts,
-    mandates: &Mandates<'_>,
-    mut cash: Cash,
-) -> Result<Reservations> {
-    let mut reservations = BTreeMap::<OrderId, u64>::new();
-    let mut reserves: BTreeMap<_, _> = before
-        .book
-        .snapshot()
-        .aid
-        .into_iter()
-        .map(|r| (r.id, r))
-        .collect();
-    for transfer in &receipt.money_transfers {
-        let (id, tag) = match transfer.purpose {
-            MoneyTransferPurpose::AidReservation(id) => (id, 0),
-            MoneyTransferPurpose::AidGrant(id) => (id, 1),
-            MoneyTransferPurpose::AidRefund(id) => (id, 2),
-            _ => continue,
-        };
-        let expected = if tag == 0 {
-            reserve_transfer(
-                id,
-                transfer,
-                receipt,
-                mandates,
-                &mut reservations,
-                &mut reserves,
-            )?
-        } else {
-            settle_transfer(id, tag, &mut cash, &mut reserves)?
-        };
-        if (
-            transfer.debit.location,
-            transfer.credit.location,
-            transfer.credit.delta.micro_units(),
-        ) != expected
-            || transfer.debit.delta.micro_units().checked_neg() != Some(expected.2)
-        {
-            return Err(ProductionProjectionError::State);
-        }
-    }
-    if !cash.is_empty() {
-        return Err(ProductionProjectionError::State);
-    }
-    reserves.retain(|_, r| r.granted.checked_add(r.refunded) != Some(r.quantity));
-    let actual: BTreeMap<_, _> = after
-        .book
-        .snapshot()
-        .aid
-        .into_iter()
-        .map(|r| (r.id, r))
-        .collect();
-    if reserves != actual {
-        return Err(ProductionProjectionError::State);
-    }
-    Ok(reservations)
-}
-fn reserve_transfer(
-    id: OrderId,
-    transfer: &MoneyTransferReceipt,
-    receipt: &MaterialTickReceipts,
-    mandates: &Mandates<'_>,
-    reservations: &mut Reservations,
-    reserves: &mut Reserves,
-) -> Result<Posting> {
-    let row = receipt
-        .aid
+/// Reconcile each current-close mutual-aid transfer to exactly one typed cash leg.
+pub(crate) fn validate_cash_custody(receipt: &MaterialTickReceipts) -> Result<()> {
+    check_cash_requests(receipt)?;
+    let mut joined = BTreeSet::new();
+    join_cash_grants(receipt, &mut joined)?;
+    join_collections(receipt, &mut joined)?;
+    if receipt
+        .money_transfers
         .iter()
-        .find(|r| r.commitment_id == id && r.outcome == AidOutcome::Requested)
-        .ok_or(ProductionProjectionError::State)?;
-    let mandate = mandates
-        .get(&row.mandate_id)
-        .ok_or(ProductionProjectionError::State)?;
-    let amount = transfer.credit.delta.micro_units();
-    let price = mandate.cash_per_unit.micro_units();
-    if amount <= 0 || price <= 0 || amount % price != 0 {
-        return Err(ProductionProjectionError::State);
-    }
-    let quantity =
-        u64::try_from(amount / price).map_err(|_| ProductionProjectionError::Arithmetic)?;
-    if quantity > row.quantity || reservations.insert(id, quantity).is_some() {
-        return Err(ProductionProjectionError::State);
-    }
-    if reserves
-        .insert(
-            id,
-            AidCashReserve {
-                id,
-                payer: row.payer,
-                donor: row.donor,
-                recipient: row.recipient,
-                quantity,
-                cash_per_unit: mandate.cash_per_unit,
-                granted: 0,
-                refunded: 0,
-            },
-        )
-        .is_some()
+        .enumerate()
+        .any(|(index, row)| {
+            row.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
+                && !joined.contains(&index)
+        })
     {
         return Err(ProductionProjectionError::State);
     }
-    Ok((
-        MoneyLocation::Cash(row.payer),
-        MoneyLocation::AidReserve(id),
-        amount,
-    ))
+    Ok(())
 }
-fn settle_transfer(
-    id: OrderId,
-    tag: u8,
-    cash: &mut Cash,
-    reserves: &mut Reserves,
-) -> Result<Posting> {
-    let expected = cash
-        .remove(&(id, tag))
-        .ok_or(ProductionProjectionError::State)?;
-    let reserve = reserves
-        .get_mut(&id)
-        .ok_or(ProductionProjectionError::State)?;
-    let price = reserve.cash_per_unit.micro_units();
-    if price <= 0 || expected.2 <= 0 || expected.2 % price != 0 {
-        return Err(ProductionProjectionError::State);
-    }
-    let quantity =
-        u64::try_from(expected.2 / price).map_err(|_| ProductionProjectionError::Arithmetic)?;
-    if tag == 1 {
-        add(&mut reserve.granted, quantity)?;
-    } else {
-        add(&mut reserve.refunded, quantity)?;
-    }
-    reserve
-        .reserved_amount()
-        .map_err(|_| ProductionProjectionError::State)?;
-    Ok(expected)
-}
-fn check_fresh(flows: Flows, mut reservations: Reservations) -> Result<()> {
-    for (id, flow) in flows {
-        let fresh = reservations.remove(&id).unwrap_or(0);
-        if flow.requested > 0 {
-            let dispatched = flow
-                .dispatched
-                .checked_add(flow.granted)
-                .and_then(|q| q.checked_add(flow.unshipped))
-                .ok_or(ProductionProjectionError::Arithmetic)?;
-            if dispatched != fresh || fresh > flow.requested || flow.lost > 0 {
-                return Err(ProductionProjectionError::State);
-            }
-        } else if fresh > 0 {
+fn check_cash_requests(receipt: &MaterialTickReceipts) -> Result<()> {
+    let terminal = |row: &&AidReceipt| {
+        matches!(
+            row.outcome,
+            AidOutcome::CashGranted | AidOutcome::CashUnfunded | AidOutcome::CashReceivingRefused
+        )
+    };
+    for request in receipt
+        .aid
+        .iter()
+        .filter(|row| row.outcome == AidOutcome::CashRequested)
+    {
+        let results: Vec<_> = receipt
+            .aid
+            .iter()
+            .filter(terminal)
+            .filter(|row| row.commitment_id == request.commitment_id)
+            .collect();
+        if results.len() != 1 || results[0].cash_amount > request.cash_amount {
             return Err(ProductionProjectionError::State);
         }
     }
-    if !reservations.is_empty() {
-        return Err(ProductionProjectionError::State);
+    for result in receipt.aid.iter().filter(terminal) {
+        if !receipt.aid.iter().any(|row| {
+            row.outcome == AidOutcome::CashRequested && row.commitment_id == result.commitment_id
+        }) {
+            return Err(ProductionProjectionError::State);
+        }
+    }
+    Ok(())
+}
+fn join_cash_grants(receipt: &MaterialTickReceipts, joined: &mut BTreeSet<usize>) -> Result<()> {
+    for row in receipt
+        .aid
+        .iter()
+        .filter(|row| row.outcome == AidOutcome::CashGranted)
+    {
+        let matches: Vec<_> = receipt
+            .money_transfers
+            .iter()
+            .enumerate()
+            .filter(|(_, transfer)| {
+                transfer.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
+                    && transfer.debit.location == MoneyLocation::Cash(row.payer)
+                    && transfer.credit.location
+                        == MoneyLocation::Cash(AccountId::Household(row.recipient))
+            })
+            .collect();
+        if matches.len() != 1
+            || row.period != receipt.resolve_tick
+            || row.dispatch_period != receipt.resolve_tick
+            || !joined.insert(matches[0].0)
+            || matches[0].1.credit.delta != row.cash_amount
+            || matches[0].1.debit.delta.micro_units().checked_neg()
+                != Some(row.cash_amount.micro_units())
+        {
+            return Err(ProductionProjectionError::State);
+        }
+        let request = receipt
+            .aid
+            .iter()
+            .find(|request| {
+                request.commitment_id == row.commitment_id
+                    && request.outcome == AidOutcome::CashRequested
+            })
+            .ok_or(ProductionProjectionError::State)?;
+        if row.cash_amount > request.cash_amount {
+            return Err(ProductionProjectionError::State);
+        }
+    }
+    Ok(())
+}
+fn join_collections(receipt: &MaterialTickReceipts, joined: &mut BTreeSet<usize>) -> Result<()> {
+    for row in &receipt.collections {
+        row.validate()
+            .map_err(|_| ProductionProjectionError::State)?;
+        if row.period != receipt.resolve_tick {
+            return Err(ProductionProjectionError::State);
+        }
+        if let Some(ordinal) = row.transfer_ordinal {
+            let index = usize::try_from(ordinal).map_err(|_| ProductionProjectionError::State)?;
+            let transfer = receipt
+                .money_transfers
+                .get(index)
+                .ok_or(ProductionProjectionError::State)?;
+            if !joined.insert(index)
+                || transfer.purpose != MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
+                || transfer.debit.location != MoneyLocation::Cash(AccountId::Household(row.donor))
+                || transfer.credit.location
+                    != MoneyLocation::Cash(AccountId::Organization(row.recipient))
+                || transfer.debit.delta.micro_units().checked_neg()
+                    != Some(row.collected.micro_units())
+                || transfer.credit.delta != row.collected
+            {
+                return Err(ProductionProjectionError::State);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_fresh(flows: &Flows) -> Result<()> {
+    for flow in flows.values().filter(|flow| flow.requested > 0) {
+        let ended = flow
+            .dispatched
+            .checked_add(flow.granted)
+            .and_then(|q| q.checked_add(flow.unshipped))
+            .ok_or(ProductionProjectionError::Arithmetic)?;
+        if ended != flow.requested || flow.lost > 0 {
+            return Err(ProductionProjectionError::State);
+        }
     }
     Ok(())
 }

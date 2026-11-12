@@ -13,6 +13,7 @@ pub use agency_attendance::{
 mod aid;
 pub use aid::*;
 mod collection;
+mod collection_funding;
 pub use collection::{
     collection_contribution_id, CollectionOutcome, CollectionReceipt, CollectionResolveInput,
 };
@@ -34,10 +35,10 @@ mod valuation;
 mod wire;
 
 pub use accounts::{
-    AccountId, AidCashReserve, CashAccount, CashTransferPurpose, FundedShift, MonetaryBook,
-    MonetaryBookSnapshot, MonetaryError, MoneyLocation, MoneyPosting, MoneyTransferPurpose,
-    MoneyTransferReceipt, OrganizationAccountId, PublicAccountId, PurchaseEscrow,
-    PurchaseMovementReceipt, ShiftId, ShiftState, WageAccrualReceipt,
+    AccountId, CashAccount, CashTransferPurpose, FundedShift, MonetaryBook, MonetaryBookSnapshot,
+    MonetaryError, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
+    OrganizationAccountId, PublicAccountId, PurchaseEscrow, PurchaseMovementReceipt, ShiftId,
+    ShiftState, WageAccrualReceipt,
 };
 pub use catalog::{MaterialCatalog, MaterialCatalogDefinition};
 pub use equipment::{
@@ -90,7 +91,8 @@ pub use transition::{
     close_material_period_with_aid, close_material_period_with_support, ClosedMaterialPeriod,
 };
 pub use wire::{
-    decode_material_circuit_state, encode_material_circuit_state, material_circuit_state_digest,
+    decode_material_circuit_state, decode_material_circuit_state_for_encoding,
+    encode_material_circuit_state, material_circuit_state_digest, DecodedMaterialCircuitState,
     MATERIAL_CIRCUIT_SOURCE_SHA256, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
     MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
 };

@@ -5,6 +5,7 @@ use super::{
 };
 use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
+use crate::national_economy::grain::NationalGenerationWitness;
 use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
 use crate::national_household_refinement::NationalDetailPartition;
@@ -21,6 +22,7 @@ type Result<T> = StdResult<T, EconomicCatalogError>;
 pub(super) struct NationalSources {
     pub(super) counties: NationalCountyReference,
     pub(super) aid: NationalAidCapture,
+    pub(super) representation: NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
     pub(super) detail: NationalDetailPartition,
     cohorts: NationalCohortReference,
@@ -119,6 +121,7 @@ impl NationalSources {
         Ok((
             Self {
                 aid: opening.aid,
+                representation: opening.representation,
                 detail: opening.detail,
                 counties,
                 cohorts,

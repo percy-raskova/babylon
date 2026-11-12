@@ -80,7 +80,8 @@ The one-way cutover is complete. Rust owns authoritative game-managed Postgres. 
 
 ## Source rules
 
-Rust/BSL owns material effects. Author numeric circuit values in `content/scenarios/michigan/defines.toml`. The runtime captures typed parameters in each new campaign. Keep evidence classes explicit (ADR258).
+Rust/BSL owns material effects. Author numeric circuit values in the selected scenario's existing `defines.toml`. National terms belong in `content/scenarios/national/defines.toml`. The runtime captures typed parameters in each new campaign. Keep evidence classes explicit (ADR258).
+
 Use native public hyperedges, strict types, explicit errors, specific type-ignore codes, and production vocabulary. Do not use a `test_` prefix in production source.
 
 Use TDD: show RED, make it pass, then refactor. Keep game data typed and immutable. Python models use frozen Pydantic types. `model_copy(update=...)` skips validation. Pass dependencies explicitly.

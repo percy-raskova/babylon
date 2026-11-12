@@ -2,7 +2,7 @@
 
 # Bevy visual assets
 
-This directory is the review index for Babylon's sixteen embedded Bevy images. `manifest.toml` is
+This directory is the review index for Babylon's twenty embedded Bevy images. `manifest.toml` is
 the byte-level catalog, and `PROVENANCE.md` is the authoritative origin and license record.
 
 ## Asset families
@@ -25,7 +25,7 @@ and the topology banner.
 
 This family supplies the intelligence-room plate and the shared material atmosphere.
 
-The ten generated illustrations use exact final prompts from `prompts/`. Their selected WebP files
+The fourteen generated illustrations use exact final prompts from `prompts/`. Their selected WebP files
 are opaque, use linear sampling, and remain below the repository's 1 MiB file limit.
 
 ## Interface exports
@@ -85,6 +85,19 @@ Run the standalone review gallery from `rust/`:
 cargo run -p babylon-client --example visual_assets --locked
 ```
 
-The gallery shows all sixteen assets with readable labels. Review crop quality, legibility,
+The gallery shows all twenty assets with readable labels. Review crop quality, legibility,
 unintended text, repeated anatomy, and visual-family coherence. Hardware-rendered screenshots
 remain review evidence and are not CI goldens.
+
+## Wayne group portraits
+
+The organizing collective, workplace committee and neighborhood contact group use distinct
+map-table, factory-gate and window-circle scenes. Their exact prompts and source hashes live
+in `prompts/group-*.md`. Encode the selected square original without cropping:
+
+```bash
+cwebp -quiet -resize 512 512 -q 82 -m 6 selected-source.png -o assets/visual/group-wayne-collective.webp
+```
+
+Use `group-workplace-committee.webp` or `group-neighborhood-contact.webp` for the other scenes.
+These illustrations personify groups. Figures convey no member count.

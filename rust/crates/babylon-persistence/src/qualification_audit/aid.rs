@@ -6,6 +6,8 @@ mod controls;
 mod postings;
 
 mod practice;
+mod reports;
+pub use reports::{opening_reports, PartnerReport};
 
 pub use babylon_tick::material_world::MaterialWorldRegister;
 

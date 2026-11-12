@@ -586,7 +586,7 @@ mod typed_decode_controls {
             "actor_id":aid.donor_actor,"contributor_id":aid.donor_contributor_id,
             "household_principal_id":aid.donor.as_bytes().to_vec(),"organization_account_id":payer.as_bytes().to_vec(),
             "social_class_target":([98_u8;32].to_vec()),"labor_unit_id":aid.labor_unit_id.as_bytes().to_vec(),
-            "cash_consent":"accept","maximum_cash_micros":"2","protected_cash_floor_micros":"0","collection_hours":2
+            "cash_consent":"accept","initial_cash_micros":"2","maximum_cash_micros":"2","protected_cash_floor_micros":"0","collection_hours":2
         });
         let session = fixture::try_session(
             foundation,

@@ -1,16 +1,32 @@
 //! Presentation derived solely from the admitted organizer projection.
 
-use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerView};
+use babylon_persistence::runtime_session::{
+    OrganizerBodyDisclosure, OrganizerPosition, OrganizerView,
+};
 #[cfg(test)]
 use babylon_persistence::ArchiveEvidenceClass;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum OrganizerSubject {
     Collective(u64),
+    AidPartner(u64),
     Contributor(u64),
     WorkplaceCommittee(u64),
     NeighborhoodGroup(u64),
     Workplace(u64),
+}
+
+impl OrganizerSubject {
+    pub(super) fn report_subject(self, view: &OrganizerView) -> Option<u64> {
+        match self {
+            Self::Workplace(id) if id == view.workplace_id => Some(id),
+            Self::WorkplaceCommittee(id) if id == view.workplace_partner_id => {
+                Some(view.workplace_id)
+            }
+            Self::AidPartner(id) if view.aid_partners.iter().any(|p| p.actor_id == id) => Some(id),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -30,6 +46,7 @@ impl SceneNode {
     pub fn caption(&self) -> String {
         let kind = match self.subject {
             OrganizerSubject::Collective(_) => "Collective",
+            OrganizerSubject::AidPartner(_) => "Aid partner",
             OrganizerSubject::Contributor(_) => "Contributor",
             OrganizerSubject::WorkplaceCommittee(_) => "Workplace committee",
             OrganizerSubject::NeighborhoodGroup(_) => "Neighborhood group",
@@ -82,6 +99,13 @@ pub(crate) struct OrganizerScene {
     pub body_status: String,
 }
 
+fn ordered_positions(view: &OrganizerView) -> Vec<&OrganizerPosition> {
+    let mut positions = view.positions.iter().collect::<Vec<_>>();
+    positions.sort_by_key(|position| position.contributor_id);
+    positions.dedup_by_key(|position| position.contributor_id);
+    positions
+}
+
 fn subjects(view: &OrganizerView) -> Vec<SceneNode> {
     let collective = OrganizerSubject::Collective(view.actor_id);
     let committee = OrganizerSubject::WorkplaceCommittee(view.workplace_partner_id);
@@ -105,9 +129,11 @@ fn subjects(view: &OrganizerView) -> Vec<SceneNode> {
             label: view.workplace_label.clone(),
         },
     ];
-    let mut positions = view.positions.iter().collect::<Vec<_>>();
-    positions.sort_by_key(|position| position.contributor_id);
-    positions.dedup_by_key(|position| position.contributor_id);
+    nodes.extend(view.aid_partners.iter().map(|p| SceneNode {
+        subject: OrganizerSubject::AidPartner(p.actor_id),
+        label: p.label.clone(),
+    }));
+    let positions = ordered_positions(view);
     nodes.extend(positions.iter().map(|position| SceneNode {
         subject: OrganizerSubject::Contributor(position.contributor_id),
         label: position.label.clone(),
@@ -121,9 +147,7 @@ impl OrganizerScene {
         let committee = OrganizerSubject::WorkplaceCommittee(view.workplace_partner_id);
         let neighborhood = OrganizerSubject::NeighborhoodGroup(view.neighborhood_partner_id);
         let nodes = subjects(view);
-        let mut positions = view.positions.iter().collect::<Vec<_>>();
-        positions.sort_by_key(|position| position.contributor_id);
-        positions.dedup_by_key(|position| position.contributor_id);
+        let positions = ordered_positions(view);
         let partner = |id| {
             if id == view.workplace_partner_id {
                 Some(committee)
@@ -177,11 +201,13 @@ impl OrganizerScene {
         }
         let (body_shape, body_members, body_status) = match body {
             OrganizerBodyDisclosure::Unavailable => {
-                (None, vec![], "Body incidence unavailable".into())
+                (None, vec![], "Collective structure unknown".into())
             }
-            OrganizerBodyDisclosure::KnownAbsent => {
-                (None, vec![], "No controlled body recorded".into())
-            }
+            OrganizerBodyDisclosure::KnownAbsent => (
+                None,
+                vec![],
+                "No shared collective structure recorded".into(),
+            ),
             OrganizerBodyDisclosure::Partial(part) => {
                 let mut members = vec![collective];
                 for position in positions {
@@ -192,7 +218,7 @@ impl OrganizerScene {
                             from: collective,
                             to: contributor,
                             kind: RelationKind::BodyIncidence,
-                            label: "Disclosed body incidence".into(),
+                            label: "Contributor link".into(),
                         });
                     }
                 }
@@ -204,7 +230,7 @@ impl OrganizerScene {
                 (
                     Some(shape),
                     members,
-                    "Partial controlled body · other incidence unknown".into(),
+                    "Partial view of our collective · further links unknown".into(),
                 )
             }
         };
@@ -255,6 +281,7 @@ mod tests {
             total_receipt_count: 0,
             receipts: vec![],
             positions: vec![],
+            aid_partners: vec![],
             aid_options: vec![],
         }
     }
@@ -268,7 +295,7 @@ mod tests {
             OrganizerScene::from_disclosure(&view, &OrganizerBodyDisclosure::Unavailable)
         );
         assert!(scene.body_shape.is_none());
-        assert!(scene.body_status.contains("unavailable"));
+        assert_eq!(scene.body_status, "Collective structure unknown");
         assert!(!scene
             .relations
             .iter()
@@ -315,7 +342,7 @@ mod tests {
             assert!(actual
                 .relations
                 .iter()
-                .any(|relation| relation.label == "Disclosed body incidence"));
+                .any(|relation| relation.label == "Contributor link"));
             assert_ne!(
                 OrganizerSubject::Collective(1),
                 OrganizerSubject::Contributor(1)

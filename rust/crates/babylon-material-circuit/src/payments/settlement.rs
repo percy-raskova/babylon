@@ -63,9 +63,6 @@ impl From<MonetaryError> for MaterialCircuitError {
         match value {
             MonetaryError::Arithmetic => Self::Arithmetic,
             MonetaryError::RowLimit => Self::RowLimit,
-            MonetaryError::InvalidAid | MonetaryError::DuplicateAid | MonetaryError::UnknownAid => {
-                Self::AidInvariant
-            }
             _ => Self::MonetaryInvariant,
         }
     }

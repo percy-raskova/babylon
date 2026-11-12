@@ -12,14 +12,15 @@ pub struct CohortKey {
     /// Source ownership axis, independent of technical function.
     pub ownership: QcewOwnership,
 }
-/// One counted background workplace identity; source axes never blend.
+/// Workplace source context; the current live `SiteId` remains its separate identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WorkplaceCohortKey {
     /// Fixed county or bounded external location.
     pub location: EconomicLocation,
     /// Technical function, independent of ownership.
     pub function: EconomicFunction,
-    /// Source ownership axis; `None` is an explicitly Designed workplace.
+    /// Retained source ownership axis; `None` means unspecified ownership.
+    /// An ownership label does not make a Designed live representative Observed.
     pub ownership: Option<QcewOwnership>,
 }
 impl WorkplaceCohortKey {
@@ -43,15 +44,6 @@ impl WorkplaceCohortKey {
             function,
             ownership: None,
         }
-    }
-    /// Whether two admitted sites share one counted background workplace row.
-    /// Every causal axis (location, function, source ownership) must agree; the
-    /// individual site identity stays foreground-only.
-    #[must_use]
-    pub fn equivalent_for_consolidation(&self, other: &Self) -> bool {
-        self.location == other.location
-            && self.function == other.function
-            && self.ownership == other.ownership
     }
 }
 

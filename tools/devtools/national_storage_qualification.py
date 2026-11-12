@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
@@ -15,7 +16,27 @@ from uuid import UUID
 
 from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 from defusedxml.common import DefusedXmlException  # type: ignore[import-untyped]
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
+
+MeasurementMode = Literal["normal_play", "memory_capture"]
+
+
+def measurement_mode(value: str | None) -> MeasurementMode:
+    if value == "normal_play":
+        return "normal_play"
+    if value == "memory_capture":
+        return "memory_capture"
+    raise ValueError("native measurement purpose must be normal_play or memory_capture")
+
 
 Nonnegative = Annotated[StrictInt, Field(ge=0, le=2**63 - 1)]
 RELATION_COLUMNS = (
@@ -32,11 +53,114 @@ HashRow = tuple[Nonnegative, str, str, str, str]
 ByteColumn = tuple[Nonnegative, Nonnegative, Nonnegative, tuple[str | None, ...]]
 
 
+RELEASED_WAYNE_POLICY_SHA256 = "2f7a92f6e464e38c22f884300381da8386087d8cc3c3b771c604061504c1574b"
+
+
+def selected_policy(path: Path) -> None:
+    if hashlib.sha256(path.read_bytes()).hexdigest() != RELEASED_WAYNE_POLICY_SHA256:
+        raise ValueError("selected Wayne native profile requires the released v6 policy bytes")
+
+
 class FrozenRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 Positive = Annotated[StrictInt, Field(gt=0, le=2**63 - 1)]
+Quantity = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
+
+
+DigestBytes = Annotated[
+    tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
+]
+
+
+class TimePosting(FrozenRecord):
+    use_id: DigestBytes
+    actor_id: Quantity
+    contributor_id: Quantity
+    hours: Annotated[StrictInt, Field(gt=0, le=2**64 - 1)]
+
+
+class AidPracticeEvidence(FrozenRecord):
+    """Current close facts; food credit never attributes a later cash-funded purchase."""
+
+    original_commitment: Annotated[
+        tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
+    ]
+    mandate: Annotated[
+        tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
+    ]
+    material_commitment_id: DigestBytes
+    practice_receipt_id: DigestBytes
+    first_response_receipt_id: DigestBytes | None
+    first_response_receipt_sha256: DigestBytes | None
+    absent_contribution_use_ids: tuple[DigestBytes, ...]
+    contribution_postings: tuple[TimePosting, ...]
+    dispatch_period: Positive
+    period: Positive
+    qualifying_received_support: StrictBool
+    food_consumed: StrictBool
+    food_consumed_quantity: Quantity
+    food_consumption_period: Positive | None
+    cash_received_micros: Annotated[StrictStr, Field(pattern=r"^(0|[1-9][0-9]*)$")]
+    cash_received_period: Positive | None
+    first_response_period: Positive | None
+    partner_actor: Quantity | None
+    partner_response: Literal[
+        "not_requested", "no_response", "refused", "participated", "unable_to_participate"
+    ]
+    outcome: Literal[
+        "aid_awaiting_support",
+        "no_qualifying_support",
+        "aid_response_retained",
+        "aid_practice_completed",
+        "aid_practice_uncompleted",
+        "insufficient_time",
+    ]
+    recipient_debited_hours: Quantity
+    finite_practice_completed: StrictBool
+
+    @model_validator(mode="after")
+    def actual_close_facts(self) -> AidPracticeEvidence:
+        posted = tuple(row.use_id for row in self.contribution_postings)
+        absent = self.absent_contribution_use_ids
+        if (
+            (self.first_response_receipt_id is None) != (self.first_response_receipt_sha256 is None)
+            or (self.first_response_receipt_id is None) != (self.first_response_period is None)
+            or posted != tuple(sorted(set(posted)))
+            or absent != tuple(sorted(set(absent)))
+            or set(posted).intersection(absent)
+        ):
+            raise ValueError(
+                "response identity or positive/absent time postings differ from their exact roster"
+            )
+        cash = int(self.cash_received_micros)
+        food = self.food_consumed_quantity > 0
+        if (
+            not any(self.original_commitment)
+            or not any(self.mandate)
+            or self.dispatch_period > self.period
+            or cash > 2**127 - 1
+            or (cash > 0 and self.dispatch_period != self.period)
+            or self.food_consumed != food
+            or self.food_consumption_period != (self.period if food else None)
+            or self.cash_received_period != (self.period if cash > 0 else None)
+            or self.qualifying_received_support != (food or cash > 0)
+            or (
+                self.first_response_period is not None
+                and not self.dispatch_period <= self.first_response_period <= self.period
+            )
+        ):
+            raise ValueError("aid support facts must retain actual receipt amounts and dates")
+        if self.outcome == "aid_response_retained":
+            if self.first_response_period is None or self.first_response_period >= self.period:
+                raise ValueError("retained aid response requires its strictly earlier first date")
+        elif self.outcome in ("aid_awaiting_support", "no_qualifying_support"):
+            if self.first_response_period is not None:
+                raise ValueError("aid without a response cannot claim a first response date")
+        elif self.first_response_period != self.period:
+            raise ValueError("first aid response must retain its actual containing period")
+        return self
 
 
 class Policy(FrozenRecord):
@@ -199,11 +323,11 @@ class PackageClaim(FrozenRecord):
             raise ValueError("lookup packed bytes exceed current Rust bound")
         limits = (
             (self.canonical_register_bytes, 1_000_000_000),
-            (self.canonical_receipt_bytes, 874_709_881),
+            (self.canonical_receipt_bytes, 925_434_745),
             (self.register_storage_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 16_384),
             (
                 self.receipt_storage_bytes,
-                874_709_881 + len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59,
+                925_434_745 + len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59,
             ),
             (self.lookup_delta_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 1024),
         )
@@ -1028,7 +1152,6 @@ class TradeSummary(FrozenRecord):
         return self
 
 
-Quantity = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
 MoneyText = Annotated[str, Field(strict=True, pattern=r"^(0|[1-9][0-9]{0,38})$")]
 PriceReason = Literal["fixed", "hold", "unserved_demand", "excess_stock", "cost_pressure"]
 
@@ -1479,6 +1602,8 @@ def evaluate_playable(
     storage: dict[str, object],
     timing_report: dict[str, object],
     smoke: dict[str, object],
+    *,
+    captured: bool = False,
 ) -> dict[str, object]:
     """Admit actual material aid evidence; native interaction remains unqualified."""
     if playable.policy_sha256 != policy_sha256:
@@ -1631,7 +1756,8 @@ def evaluate_playable(
         or not 1 <= len(accepted_commands) <= 2
     )
     positive_commands: set[tuple[int, ...]] = set()
-    delivered_commands: set[tuple[int, ...]] = set()
+    consumed_commands: set[tuple[int, ...]] = set()
+    first_responses: dict[tuple[int, ...], AidPracticeEvidence] = {}
     for boundary, fact in zip(playable.boundaries, facts, strict=True):
         if (
             not isinstance(fact, dict)
@@ -1648,28 +1774,84 @@ def evaluate_playable(
         practices = fact.get("independent_practices")
         if not isinstance(selected, (list, tuple)) or not isinstance(practices, (list, tuple)):
             raise ValueError("independent aid and practice evidence must be arrays")
+        delivered_this_period: dict[tuple[int, ...], int] = {}
+        cash_this_period: dict[tuple[int, ...], tuple[tuple[int, ...], int, str]] = {}
+        used_cash: set[tuple[int, ...]] = set()
         for row in selected:
             if not isinstance(row, dict):
                 raise ValueError("independent selected aid must be records")
             quantity = row.get("quantity")
             if row.get("outcome") == "Granted" and type(quantity) is int and quantity > 0:
-                delivered_commands.add(command_identity(row.get("original_commitment")))
+                command = command_identity(row.get("original_commitment"))
+                delivered_this_period[command] = delivered_this_period.get(command, 0) + quantity
+            if row.get("outcome") == "CashGranted":
+                command = command_identity(row.get("original_commitment"))
+                mandate = command_identity(row.get("mandate"))
+                dispatch = row.get("dispatch_period")
+                cash = row.get("cash_micros")
+                if (
+                    type(quantity) is not int
+                    or quantity != 0
+                    or type(dispatch) is not int
+                    or dispatch != boundary.tick
+                    or not isinstance(cash, str)
+                    or re.fullmatch(r"[1-9][0-9]*", cash) is None
+                    or int(cash) > 2**127 - 1
+                    or command in cash_this_period
+                ):
+                    raise ValueError(
+                        "cash posting must be unique, positive and in its dispatch close"
+                    )
+                cash_this_period[command] = (mandate, dispatch, cash)
         for row in practices:
-            if not isinstance(row, dict):
-                raise ValueError("independent practice must be records")
-            hours = row.get("recipient_debited_hours")
-            consumed = row.get("consumed_support")
+            evidence = AidPracticeEvidence.model_validate(row)
+            if evidence.period != boundary.tick:
+                raise ValueError("independent practice period differs from receipt")
+            command = evidence.original_commitment
+            first_response = first_responses.get(command)
+            if evidence.outcome == "aid_response_retained":
+                if first_response is None:
+                    incomplete = True
+                elif (
+                    evidence.mandate,
+                    evidence.dispatch_period,
+                    evidence.first_response_period,
+                ) != (
+                    first_response.mandate,
+                    first_response.dispatch_period,
+                    first_response.period,
+                ):
+                    raise ValueError(
+                        "retained aid response differs from its witnessed first response"
+                    )
+            elif first_response is not None:
+                raise ValueError("an original aid response cannot be replaced or erased")
+            elif evidence.first_response_period is not None:
+                first_responses[command] = evidence
+            food_matches = evidence.food_consumed and (
+                evidence.food_consumed_quantity <= delivered_this_period.get(command, 0)
+            )
+            cash_matches = int(evidence.cash_received_micros) > 0 and cash_this_period.get(
+                command
+            ) == (evidence.mandate, evidence.period, evidence.cash_received_micros)
+            if cash_matches:
+                used_cash.add(command)
+            incomplete |= (int(evidence.cash_received_micros) > 0 and not cash_matches) or (
+                evidence.food_consumed and not food_matches
+            )
+            if food_matches:
+                consumed_commands.add(command)
+            qualifying = evidence.qualifying_received_support and (cash_matches or food_matches)
             if (
-                row.get("finite_practice_completed") is True
-                and type(hours) is int
-                and hours > 0
-                and consumed is True
-                and row.get("partner_response") == "participated"
-                and row.get("outcome") == "aid_practice_completed"
+                evidence.finite_practice_completed
+                and evidence.recipient_debited_hours > 0
+                and qualifying
+                and evidence.first_response_period == evidence.period
+                and evidence.partner_response == "participated"
+                and evidence.outcome == "aid_practice_completed"
             ):
-                if type(row.get("period")) is not int or row.get("period") != boundary.tick:
-                    raise ValueError("independent practice period differs from receipt")
-                positive_commands.add(command_identity(row.get("original_commitment")))
+                positive_commands.add(command)
+        incomplete |= used_cash != set(cash_this_period)
     practice = playable.independent_finite_aid_practice
     completed = practice.get("completed_original_commands")
     completed_commands = (
@@ -1689,11 +1871,10 @@ def evaluate_playable(
         and terminal_commands == completed_commands
         and practice.get("status") == ("passed" if len(accepted_commands) == 2 else "incomplete")
         and practice.get("basis")
-        == "actual_consumed_support_independent_partner_response_and_authenticated_finite_debits"
+        == "actual_qualifying_support_independent_partner_response_and_authenticated_finite_debits"
         and isinstance(completed, (list, tuple))
         and len(completed) == len(completed_commands) == len(accepted_commands)
         and completed_commands == positive_commands
-        and positive_commands <= delivered_commands
         and positive_commands == accepted_commands
     )
     incomplete |= not positive_practice_verified
@@ -1701,6 +1882,7 @@ def evaluate_playable(
     full_positive_aid = (
         len(accepted_commands) == 2
         and positive_practice_verified
+        and accepted_commands <= consumed_commands
         and playable.remote_consumed
         and playable.local_consumed
         and playable.positive_aid_consequences == "passed"
@@ -1726,6 +1908,15 @@ def evaluate_playable(
             )
         }
     )
+    if captured:
+        admission = {
+            "status": "qualified"
+            if storage["budget_passed"] is True
+            and storage["lookup_delta_hashes_verified"] is True
+            and storage["restart_verified_ticks"] == playable.requested_periods
+            and storage["committed_ticks"] == playable.requested_periods
+            else "incomplete"
+        }
     byte_budgets_pass = all(
         b.production.material_register_bytes <= policy.maximum_material_register_bytes
         and b.production.production_evidence_body_bytes
@@ -1733,8 +1924,7 @@ def evaluate_playable(
         for b in playable.boundaries
     )
     failed = (
-        not archive_pass
-        or not production_pass
+        (not captured and (not archive_pass or not production_pass))
         or not byte_budgets_pass
         or admission["status"] == "failed"
     )
@@ -1749,8 +1939,12 @@ def evaluate_playable(
             else ("failed" if failed else ("incomplete" if incomplete else "qualified"))
         ),
         "positive_aid_practice_status": "qualified" if full_positive_aid else "incomplete",
-        "archive_catchup_status": "qualified" if archive_pass else "failed",
-        "production_read_status": "qualified" if production_pass else "failed",
+        "archive_catchup_status": "diagnostic"
+        if captured
+        else ("qualified" if archive_pass else "failed"),
+        "production_read_status": "diagnostic"
+        if captured
+        else ("qualified" if production_pass else "failed"),
         "trade_accounting_status": "qualified" if trade_status == "passed" else "incomplete",
         "trade_required_for_run": trade_required,
         "economic_accounting_status": economic["status"],
@@ -1892,8 +2086,35 @@ class CombinedMemoryEvidence(FrozenRecord):
         return self
 
 
+class FixedPeriodMemory(FrozenRecord):
+    """Ordinary cold process intervals at P0 and P10, authenticated independently."""
+
+    version: Literal[1]
+    scope: Literal["fixed_period_cold_native_pair"]
+    campaign: StrictStr
+    foundation_sha256: Sha256
+    period: Literal[0, 10]
+    boot_id: StrictStr
+    interval_start_monotonic_ns: Nonnegative
+    interval_end_monotonic_ns: Positive
+    samples: Annotated[tuple[MemorySample, ...], Field(min_length=1)]
+    policy_sha256: Sha256
+    ownership_record_sha256: Sha256
+    source_manifest_sha256: Sha256
+    executable_manifest_sha256: Sha256
+    capture_implementation_sha256: Sha256
+    tooling_report_sha256: Sha256
+
+    @field_validator("version", "period", mode="before")
+    @classmethod
+    def exact_integer(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("cold memory scope needs exact integer version and period")
+        return value
+
+
 def authenticate_combined_memory_capture(
-    evidence: CombinedMemoryEvidence, directory: Path
+    evidence: CombinedMemoryEvidence | FixedPeriodMemory, directory: Path
 ) -> CombinedMemoryToolingReport:
     """Authenticate frozen runner artifacts, without provisioning or OS admission.
 
@@ -2070,7 +2291,7 @@ def evaluate_combined_memory(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     p.add_argument(
         "--policy",
         type=Path,
@@ -2089,8 +2310,7 @@ def main() -> int:
     p.add_argument("--qualify-smoke", action="store_true")
     p.add_argument("--playable-report", type=Path)
     p.add_argument("--qualify-playable", action="store_true")
-    p.add_argument("--native-report", type=Path)
-    p.add_argument("--qualify-native", action="store_true")
+    p.add_argument("--qualify-native-pair", choices=("smoke-01", "walk-01"))
     p.add_argument("--combined-memory-report", type=Path)
     p.add_argument("--qualify-memory", action="store_true")
     p.add_argument("--qualify-memory-save", action="store_true")
@@ -2098,6 +2318,19 @@ def main() -> int:
     p.add_argument("--qualify-focused", action="store_true")
     a = p.parse_args()
     try:
+        if a.qualify_native_pair:
+            from tools.devtools.national_native_pair import qualify_pair
+
+            if any(v for k, v in vars(a).items() if k not in ("policy", "qualify_native_pair")):
+                raise ValueError("native pair qualification only accepts its canonical workload")
+            selected_policy(a.policy)
+            print(json.dumps(qualify_pair(a.qualify_native_pair), indent=2))
+            return 0
+        if os.environ.get("BABYLON_WAYNE_PROFILE") in (
+            "smoke-01",
+            "walk-01",
+        ):
+            selected_policy(a.policy)
         policy_bytes = a.policy.read_bytes()
         policy_sha256 = hashlib.sha256(policy_bytes).hexdigest()
         policy = Policy.model_validate(strict_json_bytes(policy_bytes))
@@ -2109,7 +2342,6 @@ def main() -> int:
                 or a.qualify_timing
                 or a.qualify_focused
                 or a.qualify_playable
-                or a.qualify_native
                 or a.qualify_memory
                 or a.qualify_memory_save
                 or any(
@@ -2122,7 +2354,6 @@ def main() -> int:
                         a.timings,
                         a.focused_junit,
                         a.playable_report,
-                        a.native_report,
                         a.combined_memory_report,
                     )
                 )
@@ -2142,15 +2373,6 @@ def main() -> int:
             return 0
         if (a.qualify_memory or a.qualify_memory_save) and a.combined_memory_report is None:
             raise ValueError("combined memory qualification requires authenticated current capture")
-        if a.qualify_native and any(
-            value is None
-            for value in (a.native_report, a.playable_report, a.timings, a.combined_memory_report)
-        ):
-            raise ValueError(
-                "native qualification requires material, timing and combined-memory evidence"
-            )
-        if a.native_report is not None and (a.playable_report is None or a.timings is None):
-            raise ValueError("native evidence requires the actual material and timing report")
         a.reopens = a.reopens or []
         if a.focused_junit is not None:
             if (
@@ -2160,8 +2382,6 @@ def main() -> int:
                 or a.qualify_smoke
                 or a.timings is not None
                 or a.qualify_playable
-                or a.qualify_native
-                or a.native_report is not None
                 or a.playable_report is not None
                 or a.combined_memory_report is not None
                 or a.qualify_memory
@@ -2258,33 +2478,8 @@ def main() -> int:
             "status": "incomplete",
             "enjoyment_status": "unqualified",
         }
-        if a.native_report is not None:
-            from tools.devtools.national_native_evidence import (
-                MANIFEST_BYTES,
-                NativeRunEvidence,
-                evaluate_native,
-                private_bytes,
-            )
-
-            native_bytes = private_bytes(a.native_report, MANIFEST_BYTES)
-            native_report = evaluate_native(
-                policy,
-                policy_sha256,
-                NativeRunEvidence.model_validate(strict_json_bytes(native_bytes)),
-                a.native_report.parent,
-                PlayableReport.model_validate(strict_json(a.playable_report)),
-                timing,
-                load(a.opening),
-                tuple(load(path) for path in a.ticks),
-                playable_report,
-                memory,
-            )
-            playable_report["native_window_status"] = native_report["status"]
-            playable_report["native_window_evidence"] = "native_material_timing_recovery_join_v4"
-            playable_report["scope"] = native_report["scope"]
-            result["native_report_sha256"] = hashlib.sha256(native_bytes).hexdigest()
         result["native_window"] = native_report
-        result["qualification_report_version"] = 7
+        result["qualification_report_version"] = 8
         if len(a.ticks) >= policy.qualification_ticks and a.playable_report is not None:
             memory_horizon = (
                 "actual_325_period_status"
@@ -2321,8 +2516,6 @@ def main() -> int:
         and memory_report["actual_52_period_status"] != "qualified"
         or a.qualify_memory_save
         and memory_report["actual_325_period_status"] != "qualified"
-        or a.qualify_native
-        and native_report["status"] != "qualified"
     )
 
 

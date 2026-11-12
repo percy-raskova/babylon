@@ -8,8 +8,9 @@ use babylon_material_circuit::{
     FinalDemandPrincipalId, MaterialCircuitState, OrganizationAccountId, UnitId,
 };
 use babylon_practice_contract::{
-    OrganizerChoice, OrganizerCollectionFact, OrganizerCollectionOutcome, OrganizerCommitment,
-    OrganizerConfig, OrganizerGiftConsent, OrganizerPeriodJournal, OrganizerState,
+    OrganizerAllocation, OrganizerChoice, OrganizerCollectionFact, OrganizerCollectionOutcome,
+    OrganizerCommitment, OrganizerConfig, OrganizerGiftConsent, OrganizerPeriodJournal,
+    OrganizerState,
 };
 use std::result::Result as StdResult;
 
@@ -32,6 +33,9 @@ pub(crate) fn input(
         return Err(MaterialWorldError::Wire);
     }
     let terms = config.collection.as_ref().ok_or(MaterialWorldError::Wire)?;
+    let OrganizerAllocation::Collection { target_cash_micros } = accepted.command.allocation else {
+        return Err(MaterialWorldError::Wire);
+    };
     validate_binding(catalog, config, state)?;
     let participant = config
         .participants
@@ -59,7 +63,7 @@ pub(crate) fn input(
         recipient: OrganizationAccountId::from_bytes(terms.organization_account_id),
         labor_unit_id: UnitId::from_bytes(terms.labor_unit_id),
         cash_consent: terms.cash_consent == OrganizerGiftConsent::Accept,
-        requested: Currency::from_micro_units(terms.maximum_cash_micros),
+        requested: Currency::from_micro_units(target_cash_micros),
         protected_cash_floor: Currency::from_micro_units(terms.protected_cash_floor_micros),
         collection_hours: terms.collection_hours,
         pledged_hours,

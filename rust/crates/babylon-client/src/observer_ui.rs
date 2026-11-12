@@ -38,6 +38,7 @@ use crate::organizer::ui::OrganizerAction;
 use crate::organizer::ui::OrganizerInspectorRoot;
 use crate::organizer::OrganizerClient;
 use crate::organizer::OrganizerInspector;
+use crate::organizer::OrganizerSceneRegion;
 use crate::production::PrimaryView;
 use crate::production::ProductionCommand;
 use crate::ui;
@@ -223,6 +224,7 @@ pub enum ObserverCommand {
     CycleGood(bool),
     Archive,
     Menu,
+    ObserverCampaigns,
     NewCampaign,
     NewOrganizerCampaign,
     NewNationalCampaign,
@@ -278,6 +280,7 @@ struct CircuitNavigation;
 #[derive(Component, Clone, Copy)]
 enum ObserverText {
     Clock,
+    CampaignMeans,
     Identity,
     Status,
     Legend,
@@ -388,7 +391,7 @@ fn wrapped_identity(value: &str) -> String {
     wrapped
 }
 
-fn button(parent: &mut ChildSpawnerCommands, text: &str, command: ObserverCommand) {
+pub(crate) fn button(parent: &mut ChildSpawnerCommands, text: &str, command: ObserverCommand) {
     scoped_button(parent, text, command, false);
 }
 
@@ -444,6 +447,11 @@ fn row() -> Node {
     }
 }
 
+#[derive(Component)]
+struct ObserverChrome {
+    organizer: bool,
+}
+
 fn spawn_hud(commands: &mut Commands) {
     commands
         .spawn((
@@ -452,19 +460,26 @@ fn spawn_hud(commands: &mut Commands) {
                 left: px(16),
                 right: px(16),
                 top: px(8),
-                height: px(68),
-                padding: UiRect::axes(px(8), px(4)),
+                height: px(88),
+                padding: UiRect::axes(px(8), px(2)),
                 flex_direction: FlexDirection::Column,
-                row_gap: px(4),
+                row_gap: px(0),
                 ..default()
             },
             BackgroundColor(theme::INK),
             ZIndex(8),
+            ObserverChrome { organizer: false },
             TabGroup::new(0),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|hud| {
-            hud.spawn(row()).with_children(|bar| {
+            hud.spawn(Node {
+                width: percent(100),
+                height: px(48),
+                flex_shrink: 0.0,
+                ..row()
+            })
+            .with_children(|bar| {
                 bar.spawn(role_label(
                     "BABYLON",
                     26.0,
@@ -502,12 +517,24 @@ fn spawn_hud(commands: &mut Commands) {
                 crate::organizer::ui::button(bar, "Organize", OrganizerAction::Open);
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
             });
-            hud.spawn(row()).with_children(|bar| {
+            hud.spawn(Node {
+                width: percent(100),
+                height: px(32),
+                flex_shrink: 0.0,
+                ..row()
+            })
+            .with_children(|bar| {
+                bar.spawn((
+                    label("", 13.0, theme::PAPER),
+                    ObserverText::CampaignMeans,
+                    Node {
+                        flex_grow: 1.0,
+                        flex_basis: px(0),
+                        min_width: px(0),
+                        ..default()
+                    },
+                ));
                 bar.spawn((label("", 14.0, theme::YELLOW), ObserverText::Status));
-                bar.spawn(Node {
-                    flex_grow: 1.0,
-                    ..default()
-                });
                 bar.spawn((label("", 13.0, theme::GRAY), ObserverText::Identity));
             });
         });
@@ -625,6 +652,7 @@ fn spawn_footer(commands: &mut Commands) {
                 ..default()
             },
             BackgroundColor(theme::INK),
+            ObserverChrome { organizer: false },
             ObserverRegion::Footer,
             TabGroup::new(40),
             ZIndex(8),
@@ -721,6 +749,13 @@ fn spawn_drawers(commands: &mut Commands) {
                         button(bar, "Speed", ObserverCommand::Speed);
                         button(bar, "Stop on delivery", ObserverCommand::StopOnDelivery);
                     });
+                    panel
+                        .spawn((row(), ObserverChrome { organizer: true }))
+                        .with_children(|bar| {
+                            button(bar, "Previous period", ObserverCommand::PreviousPeriod);
+                            button(bar, "Next period", ObserverCommand::NextPeriod);
+                            button(bar, "Return Live", ObserverCommand::Live);
+                        });
                     panel.spawn(block_label(
                         "Space: play / pause     Enter: advance four weeks     H: inspect trends",
                         12.0,
@@ -731,6 +766,21 @@ fn spawn_drawers(commands: &mut Commands) {
                 }
             });
     }
+}
+
+fn spawn_observer_campaign_route(panel: &mut ChildSpawnerCommands) {
+    panel.spawn(block_label(
+        "The full economy network requires an Observer campaign. Observer Campaigns opens a separate saved world. Your organizer world is preserved; return through Load Game.",
+        12.0,
+        theme::GRAY,
+    ));
+    panel.spawn(row()).with_children(|bar| {
+        button(
+            bar,
+            "Observer Campaigns",
+            ObserverCommand::ObserverCampaigns,
+        );
+    });
 }
 
 fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
@@ -754,6 +804,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
         );
         button(bar, "Level geography", ObserverCommand::Relationships);
     });
+    spawn_observer_campaign_route(panel);
     panel.spawn(block_label(
         "Network / industry and its trading neighbors",
         12.0,
@@ -1176,7 +1227,8 @@ fn button_visible(
         | ObserverCommand::NetworkSector(_)
         | ObserverCommand::Workforce(_)
         | ObserverCommand::Lens(_)
-        | ObserverCommand::MaterialLens(_) => {
+        | ObserverCommand::MaterialLens(_)
+        | ObserverCommand::ObserverCampaigns => {
             map && ui.disclosure == Some(ObserverDisclosure::Lens)
         }
         ObserverCommand::CycleGood(_) => {
@@ -1185,7 +1237,10 @@ fn button_visible(
                 && matches!(ui.lens, MapLens::Material { .. })
         }
         ObserverCommand::PreviousPeriod | ObserverCommand::NextPeriod | ObserverCommand::Live => {
-            ui.history_open || session.viewed_tick < session.durable_tick
+            ui.history_open
+                || session.viewed_tick < session.durable_tick
+                || (view == PrimaryView::Organizer
+                    && ui.disclosure == Some(ObserverDisclosure::Time))
         }
         ObserverCommand::EconomicDetails | ObserverCommand::Archive => {
             map && !ui.archive_open && !ui.history_open
@@ -1416,7 +1471,7 @@ fn caption(
             "Quit game [Q]"
         }
         .to_owned(),
-        ObserverCommand::Speed => format!("Speed: {} period(s) / sec", state.periods_per_second),
+        ObserverCommand::Speed => format!("Speed: {}s delay", state.periods_per_second.recip()),
         ObserverCommand::UiScale => format!(
             "Interface size: {} [U]",
             if ui.larger_interface {
@@ -1760,15 +1815,7 @@ pub(crate) fn keyboard(
 
 #[must_use]
 pub fn grouped(value: u64) -> String {
-    let raw = value.to_string();
-    let mut text = String::with_capacity(raw.len() + raw.len() / 3);
-    for (index, byte) in raw.bytes().enumerate() {
-        if index > 0 && (raw.len() - index).is_multiple_of(3) {
-            text.push(',');
-        }
-        text.push(char::from(byte));
-    }
-    text
+    crate::human_numbers::grouped(u128::from(value))
 }
 
 #[must_use]
@@ -1800,7 +1847,7 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
     if snapshot.resolve_tick == 0 {
         return "Opening period. No completed production period yet.".into();
     }
-    let records = production
+    let developments: Vec<_> = production
         .events
         .iter()
         .filter(|event| {
@@ -1812,17 +1859,47 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
                         .any(|site| site.id == *id && site.is_in_county(county))
                 })
         })
-        .count();
-    format!(
-        "Period {}: {records} committed records for this county. Open History to inspect the evidence.",
-        snapshot.resolve_tick
-    )
+        .map(|event| event.description.as_str())
+        .collect();
+    if developments.is_empty() {
+        return format!("Period {}: no production developments are disclosed for this county in this observation. This does not establish that nothing changed. Open History or the cited Archive.", snapshot.resolve_tick);
+    }
+    let mut text = format!("Period {} · reported developments", snapshot.resolve_tick);
+    for description in developments.iter().take(4) {
+        text.push_str("\n• ");
+        text.push_str(description);
+    }
+    if developments.len() > 4 {
+        text.push_str("\nMore reported developments are available in History.");
+    }
+    text
+}
+
+fn world_developments(
+    snapshot: Option<&ObserverEconomySnapshot>,
+    county: Option<&str>,
+    organizer: Option<&OrganizerClient>,
+    session: &ObserverSession,
+) -> String {
+    let Some(county) = county else {
+        return String::new();
+    };
+    let earned = (session.organizer_enabled
+        && county == "26163"
+        && snapshot.is_none_or(|snapshot| snapshot.production.is_none()))
+    .then(|| {
+        organizer
+            .and_then(|client| crate::organizer::workspace_copy::world_reports(client, session))
+    })
+    .flatten();
+    earned.unwrap_or_else(|| county_developments(snapshot, county))
 }
 
 #[derive(SystemParam)]
 struct ShellState<'w> {
     state: Res<'w, ObserverSession>,
     frame: Res<'w, ObserverFrame>,
+    organizer: Option<Res<'w, OrganizerClient>>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
     audio: Res<'w, ObserverAudioSettings>,
@@ -1838,6 +1915,10 @@ impl ShellState<'_> {
     fn needs_repaint(&self) -> bool {
         self.state.is_changed()
             || self.frame.is_changed()
+            || self
+                .organizer
+                .as_ref()
+                .is_some_and(DetectChanges::is_changed)
             || self.ui.is_changed()
             || self.selected.is_changed()
             || self.hovered.is_changed()
@@ -1888,6 +1969,19 @@ fn paint_pending_status(
     }
 }
 
+fn status_with_organizer_message(
+    status: &str,
+    organizer: Option<&OrganizerClient>,
+    state: &ObserverSession,
+) -> String {
+    organizer
+        .and_then(|client| client.paused_message_for(state))
+        .map_or_else(
+            || status.to_owned(),
+            |message| format!("{status} {message}"),
+        )
+}
+
 fn repaint(
     shell: ShellState,
     mut texts: Query<(&ObserverText, &mut Text)>,
@@ -1899,6 +1993,7 @@ fn repaint(
     let ShellState {
         state,
         frame,
+        organizer,
         ui,
         view,
         audio,
@@ -1944,8 +2039,15 @@ fn repaint(
         }
         let value = match kind {
             ObserverText::Clock => turn.period.clone(),
+            ObserverText::CampaignMeans => if state.organizer_enabled {
+                organizer.as_deref().map_or_else(
+                    || "Collective cash unavailable · Organizer-hours unavailable · Shared household time unavailable".into(),
+                    |client| crate::organizer::workspace_copy::resource_masthead(client, &state),
+                )
+            } else { String::new() },
+            ObserverText::Identity if state.organizer_enabled => String::new(),
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
-            ObserverText::Status => turn.status.clone(),
+            ObserverText::Status => status_with_organizer_message(&turn.status, organizer.as_deref(), &state),
             ObserverText::Legend => match &ui.lens {
                 MapLens::Relationships => String::new(),
                 MapLens::Workforce(_) | MapLens::Qcew(_) => format!("0..{} {}", lens.maximum().map_or_else(|| "-".into(), grouped), lens.unit),
@@ -1973,9 +2075,9 @@ fn repaint(
                 MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
                 MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
                 MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
-                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for this county, counted once. This is not traffic passing through the county."}),
+                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
             },
-            ObserverText::Developments => county.as_ref().map_or_else(String::new, |county| county_developments(installed, county.fips)),
+            ObserverText::Developments => world_developments(installed, county.as_ref().map(|county| county.fips), organizer.as_deref(), &state),
             ObserverText::Production => installed.and_then(|snapshot| snapshot.production.as_ref())
                 .map_or_else(|| "Production relationships are unavailable in this observation.".into(), |production|
                     county_circuit_intro(production, county.as_ref().map(|county| county.fips))),
@@ -2078,12 +2180,30 @@ fn inspector_visibility(ui: &ObserverUiState, view: PrimaryView) -> Visibility {
     }
 }
 
+fn show_observer_chrome(view: Res<PrimaryView>, mut chrome: Query<(&ObserverChrome, &mut Node)>) {
+    if !view.is_changed() {
+        return;
+    }
+    for (region, mut node) in &mut chrome {
+        let display = if region.organizer == (*view == PrimaryView::Organizer) {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
 fn fit_viewport(
+    view: Res<PrimaryView>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut scale: ResMut<UiScale>,
     ui: Res<ObserverUiState>,
     mut viewport: ResMut<ObserverViewport>,
     mut regions: Query<(&ObserverRegion, &mut Node)>,
+    organizer_scene: Query<(&ComputedNode, &UiGlobalTransform), With<OrganizerSceneRegion>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
@@ -2106,8 +2226,25 @@ fn fit_viewport(
             HistoryDrawerState::Closed
         },
     );
+    // Camera fitting and navigation use the same measured region left by the
+    // organizer papers, including comparisons that grow with Larger text.
+    let scene_rect = organizer_scene.single().ok().and_then(|(node, transform)| {
+        (node.size().min_element() > 0.0).then(|| {
+            let center = transform.affine().translation;
+            Rect::from_center_size(
+                center / window.scale_factor(),
+                node.size() / window.scale_factor(),
+            )
+        })
+    });
     for (region, mut node) in &mut regions {
-        let rect = layout.region(*region);
+        let rect = if *view == PrimaryView::Organizer && matches!(region, ObserverRegion::History) {
+            scene_rect.map_or(layout.world, |rect| {
+                Rect::from_corners(rect.min / scale.0, rect.max / scale.0)
+            })
+        } else {
+            layout.region(*region)
+        };
         let (left, top, width, height) = (
             px(rect.min.x),
             px(rect.min.y),
@@ -2121,7 +2258,13 @@ fn fit_viewport(
             node.height = height;
         }
     }
-    let rect = Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0);
+    let rect = if *view == PrimaryView::Organizer {
+        scene_rect.unwrap_or_else(|| {
+            Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0)
+        })
+    } else {
+        Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0)
+    };
     if viewport.0 != Some(rect) {
         viewport.0 = Some(rect);
     }
@@ -2200,6 +2343,7 @@ impl Plugin for ObserverShellPlugin {
                     paint_menu_pages,
                     paint_buttons,
                     paint_view_controls,
+                    show_observer_chrome,
                     paint_circuit_navigation,
                 )
                     .in_set(crate::observer_io::ObserverSet::Paint),
@@ -2209,6 +2353,243 @@ impl Plugin for ObserverShellPlugin {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn focus_clock(app: &mut App) -> Entity {
+        let world = app.world_mut();
+        let entity = world
+            .query::<(Entity, &ObserverText)>()
+            .iter(world)
+            .find_map(|(entity, text)| matches!(text, ObserverText::Clock).then_some(entity))
+            .expect("actual period reading");
+        crate::observer_focus::install_outline_fixture(app, entity);
+        entity
+    }
+
+    pub(crate) fn install_resource_header_fixture(app: &mut App, viewport: UVec2) -> Entity {
+        use bevy::ecs::system::RunSystemOnce as _;
+        app.insert_resource(
+            CountyAtlas::parse(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/map/county_atlas.bin"
+            )))
+            .expect("captured county atlas"),
+        )
+        .init_resource::<ObserverFrame>()
+        .init_resource::<ObserverAudioSettings>()
+        .init_resource::<SelectedCounty>()
+        .init_resource::<HoveredCounty>()
+        .init_resource::<ObserverViewport>()
+        .add_systems(
+            Update,
+            (fit_viewport, repaint, show_observer_chrome).chain(),
+        );
+        app.world_mut().spawn((
+            Window {
+                resolution: (viewport.x, viewport.y).into(),
+                ..default()
+            },
+            PrimaryWindow,
+        ));
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| spawn_hud(&mut commands))
+            .expect("actual shared header");
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &ObserverText)>()
+            .iter(world)
+            .find_map(|(entity, kind)| {
+                matches!(kind, ObserverText::CampaignMeans).then_some(entity)
+            })
+            .expect("shared resource reading exists in World and Evidence chrome")
+    }
+
+    pub(crate) fn install_world_report_fixture(app: &mut App, viewport: UVec2) {
+        use bevy::ecs::system::RunSystemOnce as _;
+        install_resource_header_fixture(app, viewport);
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| spawn_inspector(&mut commands))
+            .expect("actual World county inspector");
+    }
+
+    fn world_notice_fixture() -> (App, Entity) {
+        use babylon_persistence::runtime_session::RuntimeSessionRequest;
+        let (mut client, mut session, request, mut snapshot) =
+            crate::organizer::tests::status_fixture();
+        snapshot.city_pd_encounters[0].resolve_period = 3;
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("status fixture");
+        };
+        session.playing = true;
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("current admitted notice");
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(client)
+            .insert_resource(session)
+            .insert_resource(PrimaryView::Map)
+            .insert_resource(ObserverUiState {
+                splash_visible: false,
+                menu_open: false,
+                ..default()
+            })
+            .init_resource::<UiScale>();
+        install_resource_header_fixture(&mut app, UVec2::new(1920, 1080));
+        app.update();
+        let status = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &ObserverText)>()
+                .iter(world)
+                .find_map(|(entity, kind)| matches!(kind, ObserverText::Status).then_some(entity))
+                .expect("actual shared World status")
+        };
+        (app, status)
+    }
+
+    #[test]
+    fn county_developments_use_only_current_disclosed_descriptions() {
+        use babylon_persistence::production_observation::ProductionEvent;
+        let mut production = crate::production::tests::snapshot();
+        production.events = [
+            (
+                4,
+                "a",
+                "Cohort a: 7 of 8 planned batches; 70 kg steel produced.",
+            ),
+            (3, "a", "older material event"),
+            (4, "hidden", "undisclosed workplace"),
+            (5, "a", "future material event"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (period, site, description))| ProductionEvent {
+            id: index.to_string(),
+            period,
+            subject_site_ids: vec![site.into()],
+            kind: "production".into(),
+            description: description.into(),
+            receipt_digest: "exact-digest".into(),
+            delivery_evidence: None,
+        })
+        .collect();
+        let mut snapshot = ObserverEconomySnapshot {
+            campaign_id: Uuid::nil().to_string(),
+            resolve_tick: 4,
+            foundation_digest: "fixture".into(),
+            tick_content_hash: None,
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            production: Some(production),
+            counties: Vec::new(),
+        };
+        let text = county_developments(Some(&snapshot), "26163");
+        assert!(
+            text.contains("Cohort a: 7 of 8 planned batches; 70 kg steel produced."),
+            "{text}"
+        );
+        for absent in [
+            "older material",
+            "undisclosed workplace",
+            "future material",
+            "exact-digest",
+            "committed records",
+        ] {
+            assert!(!text.contains(absent), "{text}");
+        }
+        snapshot
+            .production
+            .as_mut()
+            .expect("production")
+            .events
+            .clear();
+        assert!(county_developments(Some(&snapshot), "26163")
+            .contains("does not establish that nothing changed"));
+        snapshot.production = None;
+        assert!(county_developments(Some(&snapshot), "26163").contains("not disclosed"));
+    }
+
+    #[test]
+    fn shared_world_status_shows_only_the_current_paused_organizer_notice() {
+        let (mut app, status) = world_notice_fixture();
+        assert!(
+            app.world()
+                .get::<Text>(status)
+                .expect("status text")
+                .0
+                .contains("City PD"),
+            "World must explain the development pause"
+        );
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
+        app.update();
+        assert!(
+            !app.world()
+                .get::<Text>(status)
+                .expect("status text")
+                .0
+                .contains("City PD"),
+            "resumed Play cannot retain a paused status"
+        );
+    }
+
+    #[test]
+    fn shared_world_status_keeps_ordinary_pause_without_foreign_or_stale_messages() {
+        for case in [
+            "history",
+            "generation",
+            "world_hash",
+            "content_hash",
+            "campaign",
+            "perspective",
+            "actor",
+            "view_period",
+        ] {
+            let (mut app, status) = world_notice_fixture();
+            match case {
+                "actor" => {
+                    app.world_mut()
+                        .resource_mut::<OrganizerClient>()
+                        .view
+                        .as_mut()
+                        .expect("current view")
+                        .actor_id += 1;
+                }
+                "view_period" => {
+                    app.world_mut()
+                        .resource_mut::<OrganizerClient>()
+                        .view
+                        .as_mut()
+                        .expect("current view")
+                        .period = 2;
+                }
+                _ => {
+                    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                    match case {
+                        "history" => session.inspect_tick(2),
+                        "generation" => session.generation += 1,
+                        "world_hash" => session.world_hash = Some("different world".into()),
+                        "content_hash" => session.content_hash = Some("different content".into()),
+                        "campaign" => {
+                            session.campaign = babylon_persistence::identity::CampaignId::from_uuid(
+                                Uuid::from_u128(999),
+                            );
+                        }
+                        "perspective" => session.set_perspective(Perspective::PlayerKnowledge),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            app.update();
+            let text = &app.world().get::<Text>(status).expect("status text").0;
+            assert!(!text.contains("City PD"), "{case}: {text}");
+            assert!(
+                !text.is_empty(),
+                "ordinary paused/loading status survives {case}"
+            );
+            assert!(!app.world().resource::<ObserverSession>().playing);
+        }
+    }
+
     pub(crate) fn install_pending_paint_fixture(app: &mut App) -> (Entity, Entity, Entity) {
         let status = app
             .world_mut()
@@ -2287,7 +2668,8 @@ pub(crate) mod tests {
     #[test]
     fn interface_scale_follows_window_resize_for_readable_full_hd() {
         let mut app = App::new();
-        app.init_resource::<ObserverUiState>()
+        app.insert_resource(PrimaryView::Map)
+            .init_resource::<ObserverUiState>()
             .init_resource::<ObserverViewport>()
             .init_resource::<UiScale>()
             .add_systems(Update, fit_viewport);
@@ -3141,18 +3523,23 @@ pub(crate) mod tests {
         )))
         .expect("atlas");
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin, CampaignBrowserPlugin, crate::test_support::HeadlessVisibilityPlugin,))
-            .insert_resource(atlas)
-            .init_resource::<SelectedCounty>()
-            .init_resource::<PrimaryView>()
-            .init_resource::<ObserverUiState>()
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            // Exercise the actual input systems without launching catalog reads or applying
-            // either request. In particular, a second consumer must not hide a collision.
-            .configure_sets(Update, ObserverSet::Install.run_if(|| false))
-            .configure_sets(Update, ObserverSet::Paint.run_if(|| false))
-            .add_systems(Update, keyboard.in_set(ObserverSet::Input));
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            CampaignBrowserPlugin,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(atlas)
+        .init_resource::<SelectedCounty>()
+        .init_resource::<PrimaryView>()
+        .init_resource::<ObserverUiState>()
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        // Exercise the actual input systems without launching catalog reads or applying
+        // either request. In particular, a second consumer must not hide a collision.
+        .configure_sets(Update, ObserverSet::Install.run_if(|| false))
+        .configure_sets(Update, ObserverSet::Paint.run_if(|| false))
+        .add_systems(Update, keyboard.in_set(ObserverSet::Input));
         app.world_mut().spawn(ObserverCampaignCatalog);
 
         for (menu_open, splash_visible, comparison_open) in [

@@ -1,6 +1,6 @@
 use super::aid::OrganizerAidOption;
-use super::aid::OrganizerGiftConsent;
 use super::OrganizerAgreement;
+use super::OrganizerAllocation;
 use super::OrganizerChoice;
 use super::OrganizerCommand;
 use super::OrganizerCommitment;
@@ -35,7 +35,7 @@ use serde::de::DeserializeOwned;
 use std::collections::BTreeMap;
 
 const MAX_ORGANIZER_BYTES: usize = 32 * 1024 * 1024;
-const MAX_ORGANIZER_ROWS: usize = 65_536;
+pub(super) const MAX_ORGANIZER_ROWS: usize = 65_536;
 
 pub(super) fn canonical<T: Serialize>(domain: &[u8], value: &T) -> Result<Vec<u8>, OrganizerError> {
     let mut output = Vec::from(domain);
@@ -101,8 +101,27 @@ pub fn organizer_contact_product_id(
     )
 }
 
-fn label_valid(value: &str) -> bool {
+pub(super) fn label_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
+}
+
+// A later acquisition may add a dated grant, but cannot change that period's facts.
+fn consistent_partner_reports<'a>(rows: impl Iterator<Item = &'a OrganizerObservation>) -> bool {
+    let mut dated = BTreeMap::new();
+    for row in rows {
+        if let OrganizerReport::Partner { facts, .. } = &row.report {
+            let key = (
+                row.actor_id,
+                row.subject_id,
+                row.report.kind_index(),
+                row.observed_period,
+            );
+            if dated.insert(key, facts).is_some_and(|old| old != facts) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Validate the schema version and bounded contents of a captured config.
@@ -197,14 +216,20 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
     {
         return Err(OrganizerError::InvalidConfig);
     }
+    validate_opening_observations(config)
+}
+
+fn validate_opening_observations(config: &OrganizerConfig) -> Result<(), OrganizerError> {
     if config.initial_observations.len() > MAX_ORGANIZER_ROWS {
         return Err(OrganizerError::SizeLimit);
+    }
+    if !consistent_partner_reports(config.initial_observations.iter()) {
+        return Err(OrganizerError::InvalidConfig);
     }
     let mut observations = BTreeSet::new();
     for observation in &config.initial_observations {
         if observation.actor_id != config.controlled_actor_id
-            || observation.subject_id != config.workplace_id
-            || observation.source_actor_id != config.workplace_partner.actor_id
+            || !super::partner_reports::allowed(config, observation)
             || observation.observed_period != 0
             || observation.acquired_period != 0
             || observation.receipt_id.is_some()
@@ -333,7 +358,7 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
     Ok(())
 }
 
-/// Validate one period's exact evidence against the captured contracts.
+/// Validate one period's exact evidence, including agreement with captured opening reports.
 ///
 /// # Errors
 ///
@@ -343,7 +368,37 @@ pub fn validate_organizer_period_entries(
     config: &OrganizerConfig,
     entries: &OrganizerPeriodJournalEntries,
 ) -> Result<(), OrganizerError> {
+    validate_journal_contents(config, std::slice::from_ref(entries))
+}
+
+fn validate_journal_contents(
+    config: &OrganizerConfig,
+    periods: &[OrganizerPeriodJournalEntries],
+) -> Result<(), OrganizerError> {
     validate_organizer_config(config)?;
+    let mut prior = None;
+    for entries in periods {
+        if prior.is_some_and(|period| period >= entries.period) {
+            return Err(OrganizerError::InvalidState);
+        }
+        prior = Some(entries.period);
+        validate_period_rows(config, entries)?;
+    }
+    if !consistent_partner_reports(
+        config
+            .initial_observations
+            .iter()
+            .chain(periods.iter().flat_map(|entries| &entries.observations)),
+    ) {
+        return Err(OrganizerError::InvalidState);
+    }
+    Ok(())
+}
+
+fn validate_period_rows(
+    config: &OrganizerConfig,
+    entries: &OrganizerPeriodJournalEntries,
+) -> Result<(), OrganizerError> {
     if entries.period == 0
         || entries.observations.len() > MAX_ORGANIZER_ROWS
         || entries.receipts.len() > MAX_ORGANIZER_ROWS
@@ -368,8 +423,7 @@ pub fn validate_organizer_period_entries(
     let mut observation_ids = BTreeSet::new();
     for observation in &entries.observations {
         if observation.actor_id != config.controlled_actor_id
-            || observation.subject_id != config.workplace_id
-            || observation.source_actor_id != config.workplace_partner.actor_id
+            || !super::partner_reports::allowed(config, observation)
             || observation.observed_period > observation.acquired_period
             || observation.acquired_period != entries.period
             || !observation_ids.insert(observation.observation_id)
@@ -382,6 +436,7 @@ pub fn validate_organizer_period_entries(
     }
     super::collection::validate_collection_history(config, entries)?;
     super::aid::validate_aid_history(config, entries)?;
+    super::aid::validate_consumption_credits(entries)?;
     super::aid::validate_period_allocations(config, entries)?;
     Ok(())
 }
@@ -399,14 +454,7 @@ pub fn validate_organizer_journal(
     journal: &OrganizerPeriodJournal,
 ) -> Result<(), OrganizerError> {
     validate_organizer_pair(config, state)?;
-    let mut prior = None;
-    for entries in &journal.periods {
-        if prior.is_some_and(|period| period >= entries.period) {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior = Some(entries.period);
-        validate_organizer_period_entries(config, entries)?;
-    }
+    validate_journal_contents(config, &journal.periods)?;
     let latest = journal.latest();
     if state.period == 0 {
         if latest.is_some() {
@@ -499,6 +547,11 @@ pub fn validate_organizer_pair(
 ) -> Result<(), OrganizerError> {
     validate_organizer_config(config)?;
     validate_organizer_state(state)?;
+    if state.period == 0
+        && state.learned_authority_index != learned_authority_index(&config.initial_observations)
+    {
+        return Err(OrganizerError::InvalidState);
+    }
     let partner_ids = [
         config.workplace_partner.actor_id,
         config.neighborhood_partner.actor_id,
@@ -513,8 +566,7 @@ pub fn validate_organizer_pair(
                 || !partner_ids.contains(&row.partner_actor_id)
         })
         || state.learned_authority_index.iter().any(|row| {
-            row.subject_id != config.workplace_id
-                || row.source_actor_id != config.workplace_partner.actor_id
+            !super::partner_reports::allowed(config, &row.observation(config.controlled_actor_id))
         })
         || state
             .last_workplace_facts
@@ -539,7 +591,7 @@ pub fn validate_organizer_pair(
 /// serialization fails or exceeds the encoded ceiling.
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v7", config)
+    canonical(b"babylon.organizer-config.v11", config)
 }
 
 /// Decode a canonical config and refuse anything that would not re-encode.
@@ -550,7 +602,7 @@ pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, Orga
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_config`] reports.
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v7", bytes)?;
+    let value = decode(b"babylon.organizer-config.v11", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
@@ -566,7 +618,7 @@ pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, Organize
 /// exceeds the encoded ceiling.
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
-    canonical(b"babylon.organizer-state.v6", state)
+    canonical(b"babylon.organizer-state.v10", state)
 }
 
 /// Decode a canonical state and refuse anything that would not re-encode.
@@ -577,7 +629,7 @@ pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, Organiz
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_state`] reports.
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v6", bytes)?;
+    let value = decode(b"babylon.organizer-state.v10", bytes)?;
     validate_organizer_state(&value)?;
     Ok(value)
 }
@@ -594,7 +646,7 @@ pub fn encode_organizer_period_entries(
     entries: &OrganizerPeriodJournalEntries,
 ) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_period_entries(config, entries)?;
-    canonical(b"babylon.organizer-period-entries.v1", entries)
+    canonical(b"babylon.organizer-period-entries.v5", entries)
 }
 
 /// Decode one canonical period of evidence.
@@ -607,12 +659,12 @@ pub fn decode_organizer_period_entries(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournalEntries, OrganizerError> {
-    let value = decode(b"babylon.organizer-period-entries.v1", bytes)?;
+    let value = decode(b"babylon.organizer-period-entries.v5", bytes)?;
     validate_organizer_period_entries(config, &value)?;
     Ok(value)
 }
 
-/// Encode the retained evidence window in its canonical framed form.
+/// Encode the retained evidence window after checking dated facts across its acquisitions.
 ///
 /// # Errors
 ///
@@ -622,15 +674,8 @@ pub fn encode_organizer_journal(
     config: &OrganizerConfig,
     journal: &OrganizerPeriodJournal,
 ) -> Result<Vec<u8>, OrganizerError> {
-    let mut prior = None;
-    for entries in &journal.periods {
-        if prior.is_some_and(|period| period >= entries.period) {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior = Some(entries.period);
-        validate_organizer_period_entries(config, entries)?;
-    }
-    canonical(b"babylon.organizer-journal.v1", journal)
+    validate_journal_contents(config, &journal.periods)?;
+    canonical(b"babylon.organizer-journal.v5", journal)
 }
 
 /// Decode a canonical retained evidence window.
@@ -643,15 +688,8 @@ pub fn decode_organizer_journal(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournal, OrganizerError> {
-    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v1", bytes)?;
-    let mut prior = None;
-    for entries in &value.periods {
-        if prior.is_some_and(|period| period >= entries.period) {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior = Some(entries.period);
-        validate_organizer_period_entries(config, entries)?;
-    }
+    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v5", bytes)?;
+    validate_journal_contents(config, &value.periods)?;
     Ok(value)
 }
 
@@ -684,7 +722,8 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
         receipt.outcome,
         OrganizerOutcome::AidScheduled
             | OrganizerOutcome::AidAwaitingSupport
-            | OrganizerOutcome::AidNotProvisioned
+            | OrganizerOutcome::NoQualifyingSupport
+            | OrganizerOutcome::AidResponseRetained
     ) && (!receipt.time_use.is_empty()
         || receipt.partner_actor_id.is_some()
         || receipt.partner_response != OrganizerPartnerResponse::NotRequested))
@@ -727,7 +766,8 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
             OrganizerOutcome::StandingPaused
                 | OrganizerOutcome::AidScheduled
                 | OrganizerOutcome::AidAwaitingSupport
-                | OrganizerOutcome::AidNotProvisioned
+                | OrganizerOutcome::NoQualifyingSupport
+                | OrganizerOutcome::AidResponseRetained
                 | OrganizerOutcome::InsufficientTime
                 | OrganizerOutcome::CollectionRefused
                 | OrganizerOutcome::NoAuthorizedPractice
@@ -740,7 +780,8 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
                     receipt.outcome,
                     OrganizerOutcome::AidScheduled
                         | OrganizerOutcome::AidAwaitingSupport
-                        | OrganizerOutcome::AidNotProvisioned
+                        | OrganizerOutcome::NoQualifyingSupport
+                        | OrganizerOutcome::AidResponseRetained
                         | OrganizerOutcome::AidPracticeCompleted
                         | OrganizerOutcome::AidPracticeUncompleted
                         | OrganizerOutcome::InsufficientTime
@@ -1004,28 +1045,27 @@ pub fn organizer_view(
         u32::try_from(observations.len()).map_err(|_| OrganizerError::Arithmetic)?;
     observations.sort_by_key(|row| (row.acquired_period, row.observed_period, row.observation_id));
     // Preserve the latest materially distinct report even when it predates the recent window.
-    let mut latest = BTreeMap::new();
-    for row in &observations {
-        let kind = match row.report {
-            OrganizerReport::Work { .. } => 0_u8,
-            OrganizerReport::ReducedWork { .. } => 1,
-            OrganizerReport::Maintenance { .. } => 2,
-        };
-        let key = (row.subject_id, row.source_actor_id, kind);
-        let candidate = (row.observed_period, row.acquired_period, row.observation_id);
-        if latest.get(&key).is_none_or(|old: &&OrganizerObservation| {
-            candidate > (old.observed_period, old.acquired_period, old.observation_id)
-        }) {
-            latest.insert(key, *row);
-        }
-    }
     let mut selected: BTreeSet<_> = observations
         .iter()
         .rev()
         .take(ORGANIZER_RECENT_OBSERVATIONS)
-        .map(|row| row.observation_id)
+        .map(|r| r.observation_id)
         .collect();
-    selected.extend(latest.values().map(|row| row.observation_id));
+    let mut by_observation = observations.clone();
+    by_observation.sort_by_key(|r| (r.observed_period, r.acquired_period, r.observation_id));
+    let mut topics = BTreeMap::new();
+    for row in by_observation.into_iter().rev() {
+        let key = (row.subject_id, row.source_actor_id, row.report.kind_index());
+        let periods = topics.entry(key).or_insert_with(BTreeSet::new);
+        let limit = if matches!(row.report, OrganizerReport::Partner { .. }) {
+            2
+        } else {
+            1
+        };
+        if periods.len() < limit && periods.insert(row.observed_period) {
+            selected.insert(row.observation_id);
+        }
+    }
     for row in &state.learned_authority_index {
         selected.insert(row.observation_id);
     }
@@ -1081,6 +1121,15 @@ pub fn organizer_view(
         total_receipt_count,
         receipts,
         positions,
+        aid_partners: config
+            .aid_bindings
+            .iter()
+            .map(|b| super::OrganizerKnownAidPartner {
+                kind: b.kind,
+                actor_id: b.partner.actor_id,
+                label: b.partner.label.clone(),
+            })
+            .collect(),
         aid_options: config
             .aid_bindings
             .iter()
@@ -1155,6 +1204,8 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::ContentChanged)
     } else if command.resource_digest != organizer_resource_digest()? {
         Some(OrganizerRefusal::ResourceContractChanged)
+    } else if !command.allocation.matches_choice(command.choice) {
+        Some(OrganizerRefusal::InvalidCommand)
     } else if state
         .pending_aid
         .iter()
@@ -1165,12 +1216,29 @@ pub fn preview_organizer(
         && super::aid::aid_binding(config, command.choice).is_none()
     {
         Some(OrganizerRefusal::AidUnavailable)
-    } else if super::aid::aid_binding(config, command.choice)
-        .is_some_and(|row| row.receiving_consent == OrganizerGiftConsent::Refuse)
+    } else if let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = command.allocation
     {
-        Some(OrganizerRefusal::AidReceivingRefused)
+        let terms = super::aid::aid_binding(config, command.choice)
+            .ok_or(OrganizerError::InvalidCommitment)?;
+        (food_quantity > terms.maximum_food_quantity || cash_micros > terms.maximum_cash_micros)
+            .then_some(OrganizerRefusal::InvalidCommand)
     } else if command.choice == OrganizerChoice::Collect {
-        super::collection::collection_refusal(config)?
+        if let Some(refusal) = super::collection::collection_refusal(config)? {
+            Some(refusal)
+        } else if let (Some(terms), OrganizerAllocation::Collection { target_cash_micros }) =
+            (&config.collection, command.allocation)
+        {
+            (target_cash_micros > terms.maximum_cash_micros
+                || target_cash_micros
+                    .checked_add(terms.protected_cash_floor_micros)
+                    .is_none())
+            .then_some(OrganizerRefusal::InvalidCommand)
+        } else {
+            Some(OrganizerRefusal::InvalidCommand)
+        }
     } else if command.choice == OrganizerChoice::ResumeStanding && state.standing.authorized {
         Some(OrganizerRefusal::StandingWorkAlreadyActive)
     } else if super::aid::aid_kind(command.choice).is_none() && cost > available_hours {
@@ -1185,6 +1253,7 @@ pub fn preview_organizer(
     );
     Ok(OrganizerPreview {
         choice: command.choice,
+        allocation: command.allocation,
         current_period: state.period,
         resolves_period,
         available_hours: if authorized { available_hours } else { 0 },
@@ -1232,7 +1301,7 @@ pub fn admit_organizer(
     let commitment = OrganizerCommitment {
         command: command.clone(),
         resolves_period: preview.resolves_period,
-        commitment_id: identity(b"babylon.organizer-commitment.v1", command)?,
+        commitment_id: identity(b"babylon.organizer-commitment.v3", command)?,
     };
     validate_organizer_commitment(&commitment)?;
     Ok(commitment)
@@ -1250,9 +1319,10 @@ pub fn validate_organizer_commitment(
 ) -> Result<(), OrganizerError> {
     let command = &commitment.command;
     if command.actor_id == 0
+        || !command.allocation.matches_choice(command.choice)
         || command.authority_id == [0; 16]
         || command.expected_period.checked_add(1) != Some(commitment.resolves_period)
-        || identity(b"babylon.organizer-commitment.v1", command)? != commitment.commitment_id
+        || identity(b"babylon.organizer-commitment.v3", command)? != commitment.commitment_id
     {
         return Err(OrganizerError::InvalidCommitment);
     }

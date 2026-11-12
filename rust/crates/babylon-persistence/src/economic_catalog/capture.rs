@@ -1,4 +1,5 @@
 //! Source-only durable capture and deterministic importer selection.
+use crate::national_economy::grain::NationalGenerationWitness;
 
 use super::national::NationalSources;
 use super::{
@@ -246,6 +247,14 @@ impl CapturedEconomicCatalog {
             CapturedSources::Michigan(_) => None,
         }
     }
+    /// The source-authenticated generation witness is regenerated once on admission.
+    #[must_use]
+    pub fn national_generation(&self) -> Option<&NationalGenerationWitness> {
+        match &self.sources {
+            CapturedSources::National(sources) => Some(&sources.representation),
+            CapturedSources::Michigan(_) => None,
+        }
+    }
     /// Reopening uses only these captured bytes and the supported compiler version.
     /// # Errors
     /// Refuses changed digest, unsupported versions or noncanonical source framing.
@@ -278,7 +287,7 @@ impl CapturedEconomicCatalog {
     pub fn compiler_version(&self) -> &'static str {
         match self.input.geography {
             CatalogGeography::MichiganControl => "michigan-control-v2",
-            _ => "national-world-v6",
+            _ => "national-world-v7",
         }
     }
     #[must_use]
@@ -326,7 +335,7 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 && input.preset_id == "national-world"
                 && input.duration == CampaignDuration::Continuous =>
         {
-            Ok("national-world-v6")
+            Ok("national-world-v7")
         }
         CatalogGeography::MichiganControl
             if input.scenario_id == crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO =>
@@ -512,11 +521,11 @@ mod tests {
         );
     }
     #[test]
-    fn previous_national_world_v4_compiler_is_refused() {
+    fn previous_national_world_compiler_is_refused() {
         let catalog =
             CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
                 .expect("the fixture captures the authored state");
-        previous_compiler_refuses(&catalog, "national-world-v5");
+        previous_compiler_refuses(&catalog, "national-world-v6");
     }
     #[test]
     fn national_catalog_retains_the_authored_detail_partition() {

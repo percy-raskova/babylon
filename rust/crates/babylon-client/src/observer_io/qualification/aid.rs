@@ -368,7 +368,9 @@ fn matches_source(source: &OrganizerSnapshot, snapshot: &OrganizerSnapshot) -> R
 mod tests {
     use super::*;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerAidFunding;
     use babylon_persistence::runtime_session::OrganizerAidKind;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
     use uuid::Uuid;
 
     fn fixture() -> (
@@ -379,7 +381,7 @@ mod tests {
         OrganizerPreview,
     ) {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
         ))
         .expect("the authored JSON matches the declared schema");
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
@@ -387,6 +389,10 @@ mod tests {
         session.ready(0, None);
         session.duration = Some(snapshot.duration);
         let command = OrganizerCommand {
+            allocation: OrganizerAllocation::Aid {
+                food_quantity: 1,
+                cash_micros: 0,
+            },
             campaign_id: *session.campaign.canonical_bytes(),
             actor_id: snapshot.view.actor_id,
             authority_id: snapshot.view.authority_id,
@@ -397,6 +403,10 @@ mod tests {
             choice: OrganizerChoice::LocalAid,
         };
         let preview = OrganizerPreview {
+            allocation: OrganizerAllocation::Aid {
+                food_quantity: 1,
+                cash_micros: 0,
+            },
             choice: OrganizerChoice::LocalAid,
             current_period: 0,
             resolves_period: 1,
@@ -451,7 +461,10 @@ mod tests {
             matches_source(&source, &foreign).is_err(),
             "material scope remains checked"
         );
-        status.aid[0].payer_cash += 1;
+        let OrganizerAidFunding::Organization { cash_micros } = &mut status.aid[0].funding else {
+            panic!("controlled treasury")
+        };
+        *cash_micros += 1;
         assert!(
             matches_source(&source, &status).is_err(),
             "changed material remains refused"
@@ -521,7 +534,10 @@ mod tests {
             .status(&session, snapshot.clone())
             .expect("the fixture command reports its status");
         let mut changed = snapshot;
-        changed.aid[0].payer_cash += 1;
+        let OrganizerAidFunding::Organization { cash_micros } = &mut changed.aid[0].funding else {
+            panic!("controlled treasury")
+        };
+        *cash_micros += 1;
         assert!(custody.status(&session, changed).is_err());
         session.generation += 1;
         assert!(custody.stage(&session, &request, Some(&preview)).is_err());

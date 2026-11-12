@@ -372,7 +372,7 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
 }
 #[test]
 fn compiled_layouts_include_all_empty_family_identity_fields() {
-    for (id, width) in [(41, 81), (71, 282), (72, 169)] {
+    for (id, width) in [(41, 81), (71, 282)] {
         assert_eq!(
             super::layout(id).expect("the fixture layout builds").width,
             width
@@ -408,7 +408,11 @@ fn compiled_layouts_include_all_empty_family_identity_fields() {
     assert_eq!(&encoded[5..37], [17; 32]);
     assert_eq!(encoded[37], IdentityKind::Order as u8);
     assert_eq!(&encoded[38..70], [17; 32]);
-    for id in [21, 26, 41, 50, 54, 61, 65, 67, 71, 72] {
+    assert!(
+        super::layout(72).is_none(),
+        "retired Aid reserve has no current layout"
+    );
+    for id in [21, 26, 41, 50, 54, 61, 65, 67, 71] {
         let shape = super::layout(id).expect("the fixture layout builds");
         assert!(!shape.fields.is_empty());
         assert!(shape
@@ -612,7 +616,6 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
         2,
         4,
         6,
-        6,
         0,
     );
     let receipts = babylon_tick::material_world::decode_material_receipts(
@@ -655,7 +658,8 @@ fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) ->
     let first_state = candidate.material().register();
     let first_sections = schema::sections(first_state.canonical_bytes())
         .expect("the fixture call `sections` succeeds for the authored inputs");
-    for id in [71, 72] {
+    {
+        let id = 71;
         assert_eq!(
             first_sections
                 .iter()
@@ -677,7 +681,6 @@ fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) ->
         2,
         4,
         6,
-        0,
         0,
     );
     let pending = &first_state
@@ -711,11 +714,9 @@ fn assert_aid_arrival(
     accepted: &OrganizerCommitment,
     commitment_id: OrderId,
     arrived: u64,
-    refunded: i128,
 ) -> usize {
     use babylon_material_circuit::{
-        AccountId, AidOutcome, CircuitAccounting, MoneyLocation, MoneyTransferPurpose,
-        OrganizationAccountId,
+        AccountId, AidOutcome, CircuitAccounting, MoneyTransferPurpose, OrganizationAccountId,
     };
     let receipts = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
@@ -740,16 +741,8 @@ fn assert_aid_arrival(
         .iter()
         .all(|r| r.commitment_id == commitment_id && r.dispatch_period == 1));
     let payer = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
-    let refund = receipts
-        .money_transfers
-        .iter()
-        .filter(|r| {
-            matches!(r.purpose, MoneyTransferPurpose::AidRefund(_))
-                && r.credit.location == MoneyLocation::Cash(payer)
-        })
-        .map(|r| r.credit.delta.micro_units())
-        .sum::<i128>();
-    assert_eq!(refund, refunded);
+    assert!(receipts.money_transfers.iter().all(|r| r.purpose
+        != MoneyTransferPurpose::Cash(babylon_material_circuit::CashTransferPurpose::MutualAid)));
     let CircuitAccounting::Monetary(economy) = &candidate.material().register().state().accounting
     else {
         panic!("actual monetary gift")
@@ -760,13 +753,21 @@ fn assert_aid_arrival(
             .cash(payer)
             .expect("the fixture book holds the payer account")
             .micro_units(),
-        refunded
+        0
     );
     assert_eq!(economy.aid.freight.len(), 0);
-    assert_eq!(economy.book.snapshot().aid.len(), 0);
+    assert_eq!(
+        economy
+            .book
+            .cash(AccountId::Household(organizer_aid_fixture::recipient()))
+            .expect("recipient account")
+            .micro_units(),
+        6
+    );
     let closed_sections = schema::sections(candidate.material().register().canonical_bytes())
         .expect("the fixture call `sections` succeeds for the authored inputs");
-    for id in [71, 72] {
+    {
+        let id = 71;
         assert_eq!(
             closed_sections
                 .iter()
@@ -825,8 +826,7 @@ fn assert_aid_arrival(
         0,
         0,
         0,
-        i128::from(arrived) * 3,
-        refunded,
+        2 - arrived,
     );
     candidate
         .material()
@@ -839,7 +839,7 @@ fn assert_aid_arrival(
         .sum::<usize>()
 }
 
-fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
+fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64) {
     use babylon_practice_contract::{OrganizerAidKind, OrganizerChoice};
     use organizer_aid_fixture as f;
     let mut cfg = f::config();
@@ -870,7 +870,7 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     f::commit(&mut session, &mut sink, first);
     let second = f::prepare(&session, None);
     let chain = assert_aid_period_package(session.catalog(), &opening, &second, chain);
-    let terminal_count = assert_aid_arrival(&second, &accepted, commitment_id, arrived, refunded);
+    let terminal_count = assert_aid_arrival(&second, &accepted, commitment_id, arrived);
     f::commit(&mut session, &mut sink, second);
     let third = f::prepare(&session, None);
     assert_aid_period_package(session.catalog(), &opening, &third, chain);
@@ -904,32 +904,30 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
 }
 #[test]
 fn routed_dispatch_and_arrival_package_preserve_original_authorization_once() {
-    routed_aid_package_sequence(0, 2, 0);
+    routed_aid_package_sequence(0, 2);
 }
 #[test]
-fn partial_freight_loss_package_preserves_exact_gift_and_cash_refund() {
-    routed_aid_package_sequence(500_000, 1, 3);
+fn partial_freight_loss_package_preserves_exact_food_loss_and_settled_cash() {
+    routed_aid_package_sequence(500_000, 1);
 }
 #[test]
-fn total_freight_loss_package_refunds_payer_without_repeating_authorization() {
-    routed_aid_package_sequence(1_000_000, 0, 6);
+fn total_freight_loss_package_keeps_cash_without_repeating_authorization() {
+    routed_aid_package_sequence(1_000_000, 0);
 }
 
 fn assert_retained_aid_postings(
     support: &OrganizerAidSupport,
     dispatched: u64,
     hours: u64,
-    reserved: i128,
     granted: i128,
-    refunded: i128,
+    lost: u64,
 ) {
     assert_eq!(
         serde_json::to_value(support).expect("the value serializes to JSON")["material_postings"],
         serde_json::json!({
             "dispatched_quantity": dispatched, "fulfillment_hours": hours,
-            "payer_cash_reserved_micros": reserved.to_string(),
             "payer_cash_granted_micros": granted.to_string(),
-            "payer_cash_refunded_micros": refunded.to_string()
+            "lost_quantity": lost
         })
     );
 }

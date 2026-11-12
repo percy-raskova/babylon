@@ -35,7 +35,8 @@ use state::{
     decode_supplier_routes,
 };
 pub use state::{
-    decode_material_circuit_state, encode_material_circuit_state, material_circuit_state_digest,
+    decode_material_circuit_state, decode_material_circuit_state_for_encoding,
+    encode_material_circuit_state, material_circuit_state_digest, DecodedMaterialCircuitState,
     MATERIAL_CIRCUIT_SOURCE_SHA256, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
     MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
 };

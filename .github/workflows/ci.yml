@@ -338,7 +338,7 @@ jobs:
     name: Python Tooling Tests
     needs: scope
     if: needs.scope.outputs.python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -360,6 +360,14 @@ jobs:
             "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 
       - uses: ./.github/actions/bootstrap-python
+
+      - name: Check offline PostgreSQL archive reader
+        shell: bash
+        run: |
+          version="$(pg_restore --version)"
+          echo "$version"
+          [[ $version =~ ^"pg_restore (PostgreSQL) "([0-9]+)\. ]]
+          (( BASH_REMATCH[1] >= 17 ))
 
       - name: Retained Python unit contracts
         run: mise run test:unit-ci

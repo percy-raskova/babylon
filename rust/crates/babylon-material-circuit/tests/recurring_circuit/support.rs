@@ -556,18 +556,19 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
         ]
     );
     assert_eq!((consumption, used, idle, unplanned), (28, 80, 4, 44));
-    // One canonical digest per pre-close opening. The compact v4 frame seals the
-    // catalog digest, so these values intentionally differ from the pre-split
-    // frame; they pin the post-split encoding as well as the quantity trajectory.
+    // One canonical digest per pre-close opening. Schema 22 seals catalog v2 and
+    // omits the retired empty Aid cash-reserve count. Exact prior hashes were
+    // recovered by reversing only those framing changes; numeric controls above
+    // retain the independently specified economic trajectory.
     let expected_digests = [
-        "f0566333b93b2857bbef3cb4ed23e2bcfc378d2019b706bdc88f4a92f80e09a8",
-        "c1a602a2f89eeda9cccd8993d3dce85b1b0db376bdfdf57308677f805893fde6",
-        "367adea88fe4aa925f9d6c936e6aed7344f9f9bd7334eb40550afdb4eb9b208b",
-        "cdb6057ffea9a2e9f1402184a95d1a7e96b1030f1de2e52163b4332e99ccdbce",
-        "9b376b0f74d3b764278954fe5f5e0d5cdf5ac0efef157c38ff2ef48cba3e89c7",
-        "b29f20e312c99b84ecdd66fcdfd35bed12a4f6df038eeccc7dfb39ed22e2f37b",
-        "114b5aad8e490c7c3ad550635353a541f2e52baf5276567a5ab4656f5724cd05",
-        "0a489dedd2a35a7bf2b95c5aa3755ade9b0c3479806d7bfd2bc875c1dddcdf50",
+        "7a03a272e4ffd1e859a708deec76c1c831b2b1a328b1b17e7f29bfa391bbeba4",
+        "e63f14ab066f41021a26e4822e99f4fe646b542f4ec150c6a7bef660f1c09954",
+        "b3a9d3e774c40b43103251668ce38976626d71ff09ceab37f4137ab4fbe77b29",
+        "60ff4966a37790991be2a6b9f5b9c869801d138c314ada8d308737b803a3ae6c",
+        "f8c79cdd195ccc915ad6733a50734cd7bca4f77458a475073a0dcf0211581911",
+        "6f7888793ba795543f41cc765bb5f44c0501abd0b351a590067d58f03a352578",
+        "e99810f3556dfb19e02c31c6af8b63b52f14dfe8d2f2c9006792e06f90321d03",
+        "cbddbb97bf5288b1e4bd6bd8b1e3bfffd01cf572a193909ba0e0d28496c5ea61",
     ];
     assert_eq!(
         digests

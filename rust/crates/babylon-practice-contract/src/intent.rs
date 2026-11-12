@@ -14,8 +14,8 @@ const SCHEMA_VERSION: u16 = 2;
 pub const PRACTICE_INTENT_DOMAIN_BYTES: &[u8] = b"babylon.practice-intent.v2";
 /// SHA-256 of the exact language-neutral current intent schema bytes.
 pub const PRACTICE_INTENT_SOURCE_SHA256: [u8; 32] = [
-    0x81, 0x9e, 0xef, 0x26, 0x71, 0x13, 0x9f, 0x5f, 0x21, 0x16, 0x28, 0x51, 0x91, 0x7b, 0x60, 0x97,
-    0xfd, 0x85, 0x06, 0x01, 0xa0, 0x28, 0xc9, 0x67, 0x16, 0xd7, 0xae, 0xe6, 0x82, 0xda, 0xab, 0xcd,
+    0x69, 0x20, 0x4b, 0x3e, 0xc8, 0x06, 0x2f, 0x6e, 0x57, 0x6d, 0x73, 0x65, 0x28, 0x61, 0xd9, 0x25,
+    0xc8, 0xaf, 0xec, 0xff, 0x8d, 0xcc, 0x61, 0x6c, 0xd5, 0xef, 0x2a, 0x8a, 0xe3, 0x35, 0x3d, 0xa1,
 ];
 /// Designed bound on parameters in one intent; executable keys are exact-allowlist.
 pub const MAX_PRACTICE_PARAMETERS: usize = 16;
@@ -345,6 +345,50 @@ fn validate_parameters(value: &PracticeIntent) -> Result<(), PracticeIntentError
             && parameter.value_kind_u8 == 1
             && parameter.value_length_u16 == 1
             && matches!(parameter.value_bytes.as_slice(), [1..=5])
+        {
+            Ok(())
+        } else {
+            Err(PracticeIntentError::IntentParameterUnsupported)
+        }
+    } else if value.practice_id == PracticeId::MutualAid && value.parameters.len() == 2 {
+        let food = &value.parameters[0];
+        let cash = &value.parameters[1];
+        let quantity = food
+            .value_bytes
+            .as_slice()
+            .try_into()
+            .ok()
+            .map(u64::from_be_bytes);
+        let amount = cash
+            .value_bytes
+            .as_slice()
+            .try_into()
+            .ok()
+            .map(i128::from_be_bytes);
+        if food.key_u8 == 4
+            && food.value_kind_u8 == 3
+            && food.value_length_u16 == 8
+            && cash.key_u8 == 5
+            && cash.value_kind_u8 == 2
+            && cash.value_length_u16 == 16
+            && matches!((quantity, amount), (Some(q), Some(a)) if a >= 0 && (q > 0 || a > 0))
+        {
+            Ok(())
+        } else {
+            Err(PracticeIntentError::IntentParameterUnsupported)
+        }
+    } else if value.practice_id == PracticeId::MutualAid && value.parameters.len() == 1 {
+        // The one-parameter MutualAid branch is the selected Collection amount.
+        // Food and cash Aid use the two-parameter branch above.
+        let parameter = &value.parameters[0];
+        if parameter.key_u8 == 3
+            && parameter.value_kind_u8 == 2
+            && parameter.value_length_u16 == 16
+            && parameter
+                .value_bytes
+                .as_slice()
+                .try_into()
+                .is_ok_and(|bytes: [u8; 16]| i128::from_be_bytes(bytes) > 0)
         {
             Ok(())
         } else {

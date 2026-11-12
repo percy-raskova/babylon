@@ -11,7 +11,7 @@ use babylon_practice_contract::CityPdConfig;
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 
@@ -105,6 +105,8 @@ pub enum EconomicSiteSource {
     },
     Designed {
         key: String,
+        /// Retained source ownership axis, without claiming an observed live firm.
+        source_ownership: Option<QcewOwnership>,
     },
 }
 

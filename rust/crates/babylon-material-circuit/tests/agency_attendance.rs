@@ -361,7 +361,16 @@ fn agency_wage_and_voluntary_aid_share_one_time_and_cash_book() {
         .filter(|r| r.donor == control::donor())
         .map(|r| r.contribution_hours)
         .sum();
-    assert_eq!(aid_hours, 6);
+    // Four selected food units each need two hours; the agency's cash payment
+    // reduces only the independent cash leg from400000 to300000 micros.
+    assert_eq!(aid_hours, 8);
+    assert!(completed.aid.iter().any(|row| row.outcome
+        == babylon_material_circuit::AidOutcome::CashGranted
+        && row.cash_amount == control::money(300_000)));
+    assert!(completed.aid.iter().any(|row| row.outcome
+        == babylon_material_circuit::AidOutcome::Granted
+        && row.quantity == 4
+        && row.cash_amount == control::money(0)));
     assert_eq!(
         control::remaining(&completed.state, control::donor()),
         time.contribution_available_hours - aid_hours

@@ -40,6 +40,17 @@ opt-level = 1
 debug-assertions = true
 overflow-checks = true
 
+# Optimize production simulation and persistence loops in development builds.
+# Package overrides retain dev assertions, overflow checks, and debug symbols.
+[profile.dev.package."babylon-persistence"]
+opt-level = 3
+
+[profile.dev.package."babylon-material-circuit"]
+opt-level = 3
+
+[profile.dev.package."babylon-tick"]
+opt-level = 3
+
 # R1.2 (BSL refactor program, Director-approved 2026-08-18): strip debug
 # symbols from every DEPENDENCY (not this workspace's own crates — cargo's
 # package-name matching for `dev.package."*"` covers only external deps;

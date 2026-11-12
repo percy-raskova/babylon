@@ -1,6 +1,6 @@
 meta:
-  version: 1.89.0
-  updated: '2026-10-29'
+  version: 1.93.0
+  updated: '2026-11-10'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,26 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR296_national_game_grain:
+    title: Generate a Designed national economy before live economic expansion
+    status: accepted
+    date: '2026-11-10'
+    file: ADR296_national_game_grain.yaml
+  ADR295_native_readiness_proof_fence:
+    title: Native readiness precedes a private authenticated period proof fence
+    status: accepted
+    date: '2026-11-10'
+    file: ADR295_native_readiness_proof_fence.yaml
+  ADR294_native_timing_and_memory_qualification:
+    title: Native qualification requires ordinary timing and independently captured memory
+    status: accepted
+    date: '2026-11-09'
+    file: ADR294_native_timing_and_memory_qualification.yaml
+  ADR293_wayne_resource_allocations:
+    title: Authenticated Wayne allocations preserve requests, material legs and one response
+    status: accepted
+    date: '2026-11-06'
+    file: ADR293_wayne_resource_allocations.yaml
   ADR291_first_state_opponent_observation:
     title: A City PD unit observes known public organizing through finite, receipted means
     status: accepted

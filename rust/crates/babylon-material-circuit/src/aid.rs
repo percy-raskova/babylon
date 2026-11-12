@@ -5,10 +5,12 @@
 
 use crate::valuation::CostClose;
 use crate::AccountId;
+use crate::CashTransferPurpose;
 use crate::HouseholdContributionUse;
 use crate::HouseholdServiceReceipt;
 use crate::MaterialCatalog;
 use crate::MaterialCircuitState;
+use crate::MonetaryBook;
 use crate::MoneyTransferReceipt;
 use crate::{
     FinalDemandPrincipalId, FreightLotId, GoodId, LogisticsNodeId, MaterialCircuitError, OrderId,
@@ -20,9 +22,9 @@ use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
 
-/// At most three request/dispatch/refund rows per mandate and two due-lot
+/// At most five independent food/cash rows per mandate and two due-lot
 /// arrival/loss rows per pending lot, under their existing collection ceilings.
-pub const MAX_AID_RECEIPTS_PER_PERIOD: usize = 5 * crate::MAX_MATERIAL_CIRCUIT_ROWS;
+pub const MAX_AID_RECEIPTS_PER_PERIOD: usize = 7 * crate::MAX_MATERIAL_CIRCUIT_ROWS;
 
 /// Designed authority captured with the campaign, never supplied by an action.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,8 +42,20 @@ pub struct AidMandate {
     pub labor_unit_id: UnitId,
     pub hours_per_unit: u64,
     pub maximum_quantity: u64,
-    pub cash_per_unit: Currency,
+    pub maximum_cash: Currency,
+    pub initial_quantity: u64,
+    pub initial_cash: Currency,
+    pub food_receiving: AidReceiving,
+    pub cash_receiving: AidReceiving,
     pub transport: AidTransport,
+}
+
+/// Captured permission for one material leg; it conveys no political authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AidReceiving {
+    Accept = 1,
+    Refuse = 2,
 }
 
 /// A household-to-household gift keeps principal ownership separate from sites.
@@ -55,8 +69,8 @@ pub enum AidTransport {
     },
 }
 
-/// Both practices were accepted independently during the preceding period.
-/// This is a host boundary: engine admission must authenticate both actors.
+/// Original selected material legs, authenticated by the organizer host.
+/// Receiving terms do not authorize a later political response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AidResolveInput {
     pub mandate_id: [u8; 32],
@@ -65,9 +79,10 @@ pub struct AidResolveInput {
     pub donor_actor: u64,
     pub recipient_actor: u64,
     pub quantity: u64,
+    pub cash: Currency,
 }
 
-/// Current in-transit gift and exact outstanding cash principal.
+/// Current in-transit food ownership; cash has already reached a terminal result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AidFreightLot {
     pub lot_id: FreightLotId,
@@ -119,6 +134,11 @@ pub enum AidOutcome {
     Granted = 3,
     Lost = 4,
     Unshipped = 5,
+    CashRequested = 6,
+    CashGranted = 7,
+    CashUnfunded = 8,
+    CashReceivingRefused = 9,
+    FoodReceivingRefused = 10,
 }
 
 /// Stable one-period principal; actor aliases cannot generate extra mandates.
@@ -139,16 +159,17 @@ impl AidMandate {
             || self.recipient_actor == 0
             || self.donor_actor == self.recipient_actor
             || self.donor == self.recipient
+            || self.payer == AccountId::Household(self.recipient)
             || self.hours_per_unit == 0
             || self.maximum_quantity == 0
-            || self.cash_per_unit.micro_units() <= 0
+            || self.maximum_cash.micro_units() <= 0
+            || self.initial_cash.micro_units() < 0
+            || self.initial_cash > self.maximum_cash
+            || self.initial_quantity > self.maximum_quantity
+            || (self.initial_quantity == 0 && self.initial_cash.micro_units() == 0)
         {
             return Err(MaterialCircuitError::AidInvariant);
         }
-        self.cash_per_unit
-            .micro_units()
-            .checked_mul(i128::from(self.maximum_quantity))
-            .ok_or(MaterialCircuitError::Arithmetic)?;
         self.hours_per_unit
             .checked_mul(self.maximum_quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
@@ -161,7 +182,9 @@ impl AidMandate {
             || input.source_hash != self.source_hash
             || input.donor_actor != self.donor_actor
             || input.recipient_actor != self.recipient_actor
-            || input.quantity == 0
+            || input.cash.micro_units() < 0
+            || input.cash > self.maximum_cash
+            || (input.quantity == 0 && input.cash.micro_units() == 0)
             || input.quantity > self.maximum_quantity
         {
             return Err(MaterialCircuitError::AidAuthority);
@@ -212,9 +235,18 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
         return Err(MaterialCircuitError::AidInvariant);
     }
     for mandate in &catalog.aid_mandates {
-        validate_mandate(catalog, state, mandate)?;
+        mandate.validate()?;
+        for principal in [mandate.donor, mandate.recipient] {
+            if !state
+                .final_demand_principals
+                .iter()
+                .any(|row| row.id == principal)
+            {
+                return Err(MaterialCircuitError::AidAuthority);
+            }
+        }
     }
-    let mut reserves = BTreeSet::new();
+    let mut commitments = BTreeSet::new();
     let sale_lots: BTreeSet<_> = state.freight.iter().map(|l| l.lot_id).collect();
     for lot in &book.freight {
         let mandate = catalog
@@ -223,6 +255,7 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
             .ok()
             .map(|i| &catalog.aid_mandates[i])
             .ok_or(MaterialCircuitError::AidAuthority)?;
+        validate_aid_food_wiring(catalog, state, mandate)?;
         let AidTransport::Routed { route_id, .. } = mandate.transport else {
             return Err(MaterialCircuitError::AidInvariant);
         };
@@ -232,12 +265,13 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
             || lot.good_id != mandate.good_id
             || lot.unit_id != mandate.unit_id
             || lot.quantity == 0
+            || lot.quantity > mandate.maximum_quantity
             || lot.dispatch_period >= state.period
             || lot.stage_arrival_period < state.period
             || lot.commitment_id != aid_commitment_id(mandate.id, lot.dispatch_period)
             || lot.lot_id != aid_lot_id(lot.commitment_id)
             || sale_lots.contains(&lot.lot_id)
-            || !reserves.insert(lot.commitment_id)
+            || !commitments.insert(lot.commitment_id)
         {
             return Err(MaterialCircuitError::AidInvariant);
         }
@@ -260,33 +294,15 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
         if lot.stage_arrival_period != expected_arrival {
             return Err(MaterialCircuitError::AidInvariant);
         }
-        let reserve = economy.book.aid_reserve(lot.commitment_id)?;
-        let remaining = reserve
-            .quantity
-            .checked_sub(reserve.granted)
-            .and_then(|q| q.checked_sub(reserve.refunded))
-            .ok_or(MaterialCircuitError::Arithmetic)?;
-        if reserve.quantity > mandate.maximum_quantity
-            || reserve.granted != 0
-            || reserve.payer != mandate.payer
-            || reserve.donor != lot.donor
-            || reserve.recipient != lot.recipient
-            || remaining != lot.quantity
-            || reserve.cash_per_unit != mandate.cash_per_unit
-        {
-            return Err(MaterialCircuitError::AidInvariant);
-        }
-    }
-    if !reserves
-        .into_iter()
-        .eq(economy.book.snapshot().aid.into_iter().map(|r| r.id))
-    {
-        return Err(MaterialCircuitError::AidInvariant);
     }
     Ok(())
 }
 
-fn validate_mandate(
+/// Check the captured food leg before accepting or executing a positive selection.
+///
+/// # Errors
+/// Returns an authority error for unwired food and an invariant or arithmetic error for invalid terms.
+pub fn validate_aid_food_wiring(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     mandate: &AidMandate,
@@ -302,7 +318,6 @@ fn validate_mandate(
     let crate::HouseholdTimeAccounting::Modeled(_) = &economy.household_time else {
         return Err(MaterialCircuitError::AidInvariant);
     };
-    economy.book.cash(mandate.payer)?;
     if mandate.payer == AccountId::Household(mandate.recipient) {
         return Err(MaterialCircuitError::AidAuthority);
     }
@@ -318,7 +333,6 @@ fn validate_mandate(
         {
             return Err(MaterialCircuitError::AidAuthority);
         }
-        economy.book.cash(AccountId::Household(principal))?;
     }
     let donor = state
         .final_demand_principals
@@ -360,7 +374,7 @@ pub(crate) fn prepare(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     inputs: &[AidResolveInput],
-    costs: &CostClose,
+    costs: &mut CostClose,
     services: &[HouseholdServiceReceipt],
     transfers: &mut Vec<MoneyTransferReceipt>,
     receipts: &mut Vec<AidReceipt>,
@@ -421,42 +435,121 @@ pub(crate) fn prepare(
             .get(&input.mandate_id)
             .ok_or(MaterialCircuitError::AidAuthority)?;
         let id = mandate.authenticate(input, state.period)?;
-        receipts.push(receipt(
-            mandate,
-            id,
-            state.period,
-            AidOutcome::Requested,
-            crate::aid::AidFlow {
-                quantity: input.quantity,
-                carrying: zero(),
-                cash: zero(),
-                hours: 0,
-            },
-        ));
-        let affordable =
-            staged.cash(mandate.payer)?.micro_units() / mandate.cash_per_unit.micro_units();
-        let quantity = u64::try_from(affordable.min(i128::from(input.quantity)))
-            .map_err(|_| MaterialCircuitError::Arithmetic)?;
-        if quantity == 0 {
-            continue;
+        if input.quantity > 0 {
+            validate_aid_food_wiring(catalog, state, mandate)?;
         }
-        transfers.push(staged.reserve_aid(crate::AidCashReserve {
-            id,
-            payer: mandate.payer,
-            donor: mandate.donor,
-            recipient: mandate.recipient,
-            quantity,
-            cash_per_unit: mandate.cash_per_unit,
-            granted: 0,
-            refunded: 0,
-        })?);
-        prepared.orders.push((mandate.clone(), id, quantity));
+        if input.cash.micro_units() > 0 {
+            settle_cash(
+                mandate,
+                input.cash,
+                state.period,
+                &mut staged,
+                costs,
+                transfers,
+                receipts,
+            )?;
+        }
+        if input.quantity > 0 {
+            if let Some(order) = food_order(mandate, id, state.period, input.quantity, receipts) {
+                prepared.orders.push(order);
+            }
+        }
     }
     let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         return Err(MaterialCircuitError::AidInvariant);
     };
     economy.book = staged;
     Ok(prepared)
+}
+
+fn food_order(
+    mandate: &AidMandate,
+    id: OrderId,
+    period: u64,
+    quantity: u64,
+    receipts: &mut Vec<AidReceipt>,
+) -> Option<(AidMandate, OrderId, u64)> {
+    let flow = AidFlow {
+        quantity,
+        carrying: zero(),
+        cash: zero(),
+        hours: 0,
+    };
+    receipts.push(receipt(mandate, id, period, AidOutcome::Requested, flow));
+    if mandate.food_receiving == AidReceiving::Refuse {
+        receipts.push(receipt(
+            mandate,
+            id,
+            period,
+            AidOutcome::FoodReceivingRefused,
+            flow,
+        ));
+        None
+    } else {
+        Some((mandate.clone(), id, quantity))
+    }
+}
+
+fn settle_cash(
+    mandate: &AidMandate,
+    requested: Currency,
+    period: u64,
+    staged: &mut MonetaryBook,
+    costs: &mut CostClose,
+    transfers: &mut Vec<MoneyTransferReceipt>,
+    receipts: &mut Vec<AidReceipt>,
+) -> Result<()> {
+    let id = aid_commitment_id(mandate.id, period);
+    receipts.push(receipt(
+        mandate,
+        id,
+        period,
+        AidOutcome::CashRequested,
+        AidFlow {
+            quantity: 0,
+            carrying: zero(),
+            cash: requested,
+            hours: 0,
+        },
+    ));
+    let available = staged.cash(mandate.payer)?;
+    staged.cash(AccountId::Household(mandate.recipient))?;
+    let actual = Currency::from_micro_units(requested.micro_units().min(available.micro_units()));
+    let outcome = if mandate.cash_receiving == AidReceiving::Refuse {
+        AidOutcome::CashReceivingRefused
+    } else if actual.micro_units() == 0 {
+        AidOutcome::CashUnfunded
+    } else {
+        transfers.push(staged.transfer_cash(
+            mandate.payer,
+            AccountId::Household(mandate.recipient),
+            actual,
+            CashTransferPurpose::MutualAid,
+        )?);
+        costs.cash_gift(
+            mandate.payer,
+            AccountId::Household(mandate.recipient),
+            actual,
+        )?;
+        AidOutcome::CashGranted
+    };
+    receipts.push(receipt(
+        mandate,
+        id,
+        period,
+        outcome,
+        AidFlow {
+            quantity: 0,
+            carrying: zero(),
+            cash: if outcome == AidOutcome::CashGranted {
+                actual
+            } else {
+                zero()
+            },
+            hours: 0,
+        },
+    ));
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -496,15 +589,6 @@ pub(crate) fn receipt(
 fn zero() -> Currency {
     Currency::from_micro_units(0)
 }
-pub(crate) fn cash_amount(quantity: u64, mandate: &AidMandate) -> Result<Currency> {
-    mandate
-        .cash_per_unit
-        .micro_units()
-        .checked_mul(i128::from(quantity))
-        .map(Currency::from_micro_units)
-        .ok_or(MaterialCircuitError::Arithmetic)
-}
-
 pub(crate) fn take_household_stock(
     state: &mut MaterialCircuitState,
     mandate: &AidMandate,
@@ -603,7 +687,6 @@ impl AidReceipt {
         if self.period == 0
             || self.dispatch_period == 0
             || self.dispatch_period > self.period
-            || self.quantity == 0
             || self.quantity > mandate.maximum_quantity
             || self.mandate_id != mandate.id
             || self.commitment_id != aid_commitment_id(mandate.id, self.dispatch_period)
@@ -614,10 +697,51 @@ impl AidReceipt {
             || self.good_id != mandate.good_id
             || self.unit_id != mandate.unit_id
             || self.carrying_amount.micro_units() < 0
+            || (matches!(
+                self.outcome,
+                AidOutcome::CashGranted | AidOutcome::CashUnfunded
+            ) && mandate.cash_receiving != AidReceiving::Accept)
+            || (self.outcome == AidOutcome::CashReceivingRefused
+                && mandate.cash_receiving != AidReceiving::Refuse)
+            || (matches!(
+                self.outcome,
+                AidOutcome::Dispatched | AidOutcome::Granted | AidOutcome::Lost
+            ) && mandate.food_receiving != AidReceiving::Accept)
+            || (self.outcome == AidOutcome::FoodReceivingRefused
+                && mandate.food_receiving != AidReceiving::Refuse)
         {
             return Err(MaterialCircuitError::AidInvariant);
         }
-        let cash = cash_amount(self.quantity, mandate)?;
+        if matches!(
+            self.outcome,
+            AidOutcome::CashRequested
+                | AidOutcome::CashGranted
+                | AidOutcome::CashUnfunded
+                | AidOutcome::CashReceivingRefused
+        ) {
+            if self.quantity != 0
+                || self.period != self.dispatch_period
+                || self.contribution_hours != 0
+                || self.carrying_amount != zero()
+                || self.cash_amount.micro_units() < 0
+                || self.cash_amount > mandate.maximum_cash
+                || (matches!(
+                    self.outcome,
+                    AidOutcome::CashRequested | AidOutcome::CashGranted
+                ) && self.cash_amount == zero())
+                || (matches!(
+                    self.outcome,
+                    AidOutcome::CashUnfunded | AidOutcome::CashReceivingRefused
+                ) && self.cash_amount != zero())
+            {
+                return Err(MaterialCircuitError::AidInvariant);
+            }
+            return Ok(());
+        }
+        if self.quantity == 0 {
+            return Err(MaterialCircuitError::AidInvariant);
+        }
+        let cash = zero();
         let hours = self
             .quantity
             .checked_mul(mandate.hours_per_unit)
@@ -629,7 +753,7 @@ impl AidReceipt {
                 }
                 (zero(), 0)
             }
-            (AidOutcome::Unshipped, _) => {
+            (AidOutcome::Unshipped | AidOutcome::FoodReceivingRefused, _) => {
                 if self.dispatch_period != self.period || self.carrying_amount != zero() {
                     return Err(MaterialCircuitError::AidInvariant);
                 }

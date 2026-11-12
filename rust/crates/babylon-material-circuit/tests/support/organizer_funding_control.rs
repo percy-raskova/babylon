@@ -567,7 +567,11 @@ pub fn opening_with_cash(
         labor_unit_id: hours(),
         hours_per_unit: 2,
         maximum_quantity: 4,
-        cash_per_unit: money(100_000),
+        maximum_cash: money(1_450_000_000),
+        initial_quantity: 1,
+        initial_cash: money(0),
+        food_receiving: babylon_material_circuit::AidReceiving::Accept,
+        cash_receiving: babylon_material_circuit::AidReceiving::Accept,
         transport: AidTransport::Local,
     }];
     if economy.recurring.is_some() {
@@ -644,6 +648,7 @@ pub fn aid(period: u64) -> AidResolveInput {
         donor_actor: 101,
         recipient_actor: 120,
         quantity: 4,
+        cash: money(400_000),
     }
 }
 pub fn close(

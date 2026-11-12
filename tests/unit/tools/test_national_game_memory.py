@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import BinaryIO
 
 import pytest
@@ -775,7 +776,7 @@ def test_failed_pause_after_actual_freeze_is_reconciled_and_unpaused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A modeled Docker timeout after pause; no real Docker/PG is touched."""
-    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     paused = False
     commands = []
 
@@ -801,7 +802,11 @@ def test_failed_pause_after_actual_freeze_is_reconciled_and_unpaused(
     monkeypatch.setattr(memory, "docker_command", command)
     monkeypatch.setattr(memory, "docker_state", state)
     monkeypatch.setattr(scope, "verify", lambda **_kwargs: (17,))
-    with pytest.raises(memory.CaptureRefusal, match="pause timed out"), scope.quiescent(timeout=2):
+    with (
+        pytest.raises(memory.CaptureRefusal, match="pause timed out"),
+        scope._capture(sequence=1, timeout=2) as freeze,
+        freeze(),
+    ):
         pytest.fail("a failed pause must not publish a sample")
     assert commands == ["pause", "unpause"] and not paused
 
@@ -809,7 +814,7 @@ def test_failed_pause_after_actual_freeze_is_reconciled_and_unpaused(
 def test_postgres_helper_failure_unpauses_and_preserves_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     paused = False
 
     def command(arguments: list[str], *, timeout: float) -> bytes:
@@ -831,7 +836,11 @@ def test_postgres_helper_failure_unpauses_and_preserves_failure(
     monkeypatch.setattr(scope, "verify", lambda **_kwargs: (17,))
     monkeypatch.setattr(memory, "read_kernel_record", lambda _path: stat())
     monkeypatch.setattr(memory, "verify_process_credentials", lambda *_args: None)
-    with pytest.raises(RuntimeError, match="helper failed"), scope.quiescent(timeout=2):
+    with (
+        pytest.raises(RuntimeError, match="helper failed"),
+        scope._capture(sequence=1, timeout=2) as freeze,
+        freeze(),
+    ):
         assert paused
         raise RuntimeError("helper failed")
     assert not paused
@@ -846,16 +855,16 @@ def test_crossing_capture_is_unassigned_only_after_normal_publication_and_restor
     transition: str,
 ) -> None:
     """Actual native children, modeled PostgreSQL barrier and committed markers."""
-    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )
 
     @contextmanager
-    def pg_barrier(*, timeout: float) -> Iterator[tuple[memory.ProcessBinding, ...]]:
+    def pg_barrier(**_kwargs) -> Iterator[tuple[memory.ProcessBinding, ...]]:
         yield (binding,)
 
-    monkeypatch.setattr(pg, "quiescent", pg_barrier)
+    monkeypatch.setattr(pg, "_quiescent", pg_barrier)
     monkeypatch.setattr(
         pg,
         "observe",
@@ -1034,16 +1043,16 @@ def test_running_capture_authenticates_each_exact_child_executable_once_per_life
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Real native barriers revalidate the authenticated, immutable running inode."""
-    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )
 
     @contextmanager
-    def pg_barrier(*, timeout: float) -> Iterator[tuple[memory.ProcessBinding, ...]]:
+    def pg_barrier(**_kwargs) -> Iterator[tuple[memory.ProcessBinding, ...]]:
         yield (binding,)
 
-    monkeypatch.setattr(pg, "quiescent", pg_barrier)
+    monkeypatch.setattr(pg, "_quiescent", pg_barrier)
     monkeypatch.setattr(
         pg,
         "observe",
@@ -1228,7 +1237,9 @@ def frozen_capture_files(directory: Path) -> dict[str, str]:
     return result
 
 
-def synthetic_batch(sequence: int, age: int) -> memory.QuiescentBatch:
+def synthetic_batch(
+    sequence: int, age: int, *, foundation: str | None = "a" * 64
+) -> memory.QuiescentBatch:
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )
@@ -1236,7 +1247,7 @@ def synthetic_batch(sequence: int, age: int) -> memory.QuiescentBatch:
         boot_id="00000000-0000-0000-0000-000000000001",
         sample=memory.MemorySample(
             sequence=sequence,
-            foundation_sha256="a" * 64,
+            foundation_sha256=foundation,
             campaign_age_ticks=age,
             tick_content_hash="b" * 64 if age else None,
             monotonic_ns=time.monotonic_ns(),
@@ -1262,6 +1273,7 @@ def capture_runner(
     children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
     operation_lock: AbstractContextManager[object] | None = None,
     foundation: str | None = "a" * 64,
+    cold_segment_period: int | None = None,
 ) -> memory.RunningMemoryCapture:
     return memory.RunningMemoryCapture(
         directory=directory,
@@ -1270,7 +1282,7 @@ def capture_runner(
         foundation_sha256=foundation,
         runtime_sha256=executable_sha(children[0]),
         client_sha256=executable_sha(children[1]),
-        postgres=memory.OwnedPostgresScope(postgres_admission(), lambda: None),
+        postgres=memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None),
         read_marker=lambda: memory.CampaignMemoryMarker(
             campaign="81b979ee-a9c1-48fd-8835-06cbfe594675",
             foundation_sha256="a" * 64,
@@ -1280,7 +1292,201 @@ def capture_runner(
         sample_gap_seconds=5,
         operation_timeout=2,
         operation_lock=operation_lock,
+        cold_segment_period=cold_segment_period,
     )
+
+
+class ModeledFreezer:
+    def __init__(
+        self,
+        pg: memory.OwnedPostgresScope,
+        native_state: Callable[[bool], None],
+        events: list[str],
+        fault: str | None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self.paused = False
+        self.admission = pg.admission
+        self.native_state = native_state
+        self.events = events
+        self.fault = fault
+        original_read = memory.read_kernel_record
+
+        def read_kernel(path: Path, *, allow_empty: bool = False) -> bytes:
+            if path == Path("/proc/17/stat"):
+                return stat()
+            return original_read(path, allow_empty=allow_empty)
+
+        monkeypatch.setattr(memory, "read_kernel_record", read_kernel)
+        monkeypatch.setattr(memory, "verify_process_credentials", lambda *_args: None)
+        monkeypatch.setattr(memory, "docker_command", self.command)
+        monkeypatch.setattr(memory, "docker_state", self.state)
+        monkeypatch.setattr(pg, "verify", self.verify)
+
+    def command(self, arguments: list[str], *, timeout: float) -> bytes:
+        self.events.append(arguments[0])
+        self.native_state(True)
+        self.paused = arguments[0] == "pause"
+        if self.paused and self.fault == "pause":
+            raise memory.CaptureRefusal("partial pause")
+        return b""
+
+    def verify(self, *, timeout: float, paused: bool) -> tuple[int, ...]:
+        if not paused and "unpause" in self.events and self.fault == "restore":
+            raise memory.CaptureRefusal("unproven restoration")
+        assert paused == self.paused
+        return (17,)
+
+    def state(self, _cid: str, *, timeout: float) -> memory.DockerState:
+        return memory.DockerState(
+            container_id=self.admission.container_id,
+            image_id=self.admission.image_id,
+            host_pid=17,
+            running=True,
+            paused=self.paused,
+        )
+
+
+def assert_failed_capture(
+    collector: memory.RunningMemoryCapture,
+    events: list[str],
+    fault: str,
+    error: BaseException,
+) -> None:
+    reasons = [str(leaf) for leaf in leaf_errors(error)]
+    expected = {
+        "counter-and-post": ["counter", "physical-post"],
+        "crossing-post": ["physical-post"],
+        "restore": ["unproven restoration"],
+        "pause": ["partial pause"],
+    }
+    assert reasons == expected.get(fault, [fault])
+    assert not collector._samples and collector._unassigned_count == 0
+    assert not list(collector._records.glob("*.json"))
+    assert not list(collector._unassigned_records.glob("*.json"))
+    if fault in {"physical-pre", "authority-pre", "restore"}:
+        assert "physical-post" not in events
+    else:
+        assert events[-1] == "physical-post"
+    if fault == "physical-pre":
+        assert events == ["physical-pre"]
+    if fault == "restore":
+        assert "authority-post" not in events
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "physical-pre",
+        "physical-post",
+        "counter-and-post",
+        "pause",
+        "restore",
+        "authority-pre",
+        "authority-post",
+        "crossing",
+        "crossing-post",
+        "cancelled",
+    ],
+)
+def test_capture_brackets_physical_owner_while_children_run(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str | None,
+) -> None:
+    collector = capture_runner(tmp_path, owned_children)
+    events: list[str] = []
+    pg = collector._postgres
+
+    def native_state(stopped: bool) -> None:
+        for binding in native.bindings:
+            assert all((row.state == "T") == stopped for row in memory.thread_census(binding))
+
+    freezer = ModeledFreezer(pg, native_state, events, fault, monkeypatch)
+
+    def physical() -> None:
+        stage = "physical-post" if events else "physical-pre"
+        events.append(stage)
+        native_state(False)
+        assert not freezer.paused
+        assert not list(collector._records.glob("*.json"))
+        assert not list(collector._unassigned_records.glob("*.json"))
+        if fault == stage or (
+            stage == "physical-post" and fault in {"counter-and-post", "crossing-post"}
+        ):
+            raise memory.CaptureRefusal(stage)
+
+    def authority() -> None:
+        stage = "authority-post" if "pause" in events else "authority-pre"
+        events.append(stage)
+        native_state(True)
+        assert not freezer.paused
+        if fault == stage:
+            raise memory.CaptureRefusal(stage)
+
+    def marker():
+        native_state(True)
+        assert not freezer.paused
+        events.append("marker")
+        mark = original_marker()
+        if fault in {"crossing", "crossing-post"} and events.count("marker") == 2:
+            return memory.CampaignMemoryMarker(
+                campaign=mark.campaign,
+                foundation_sha256=mark.foundation_sha256,
+                campaign_age_ticks=1,
+                tick_content_hash="b" * 64,
+            )
+        return mark
+
+    def observe(bindings, *, timeout):
+        native_state(True)
+        assert freezer.paused
+        events.append("pg-count")
+        if fault == "counter-and-post":
+            raise memory.CaptureRefusal("counter")
+        if fault == "cancelled":
+            raise KeyboardInterrupt("cancelled")
+        return memory.decode_postgres_observations(helper_frame(bindings[0]), bindings)
+
+    native_observe = memory._NativeCapture.observe
+
+    def observe_native(capture):
+        native_state(True)
+        assert freezer.paused
+        events.append("native-count")
+        return native_observe(capture)
+
+    original_marker = collector._read_marker
+    collector._read_marker = marker
+    monkeypatch.setattr(pg, "_verify_physical_owner", physical)
+    monkeypatch.setattr(pg, "_verify_live_authority", authority)
+    monkeypatch.setattr(pg, "observe", observe)
+    monkeypatch.setattr(memory._NativeCapture, "observe", observe_native)
+    with pair(owned_children) as native:
+        if fault is None or fault == "crossing":
+            collector._capture_periodic(native)
+            assert events == [
+                "physical-pre",
+                "marker",
+                "authority-pre",
+                "pause",
+                "native-count",
+                "pg-count",
+                "unpause",
+                "authority-post",
+                "marker",
+                "physical-post",
+            ]
+            assert len(collector._samples) == int(fault is None)
+            assert collector._unassigned_count == int(fault == "crossing")
+        else:
+            with pytest.raises(BaseException) as refused:
+                collector._capture_periodic(native)
+            assert_failed_capture(collector, events, fault, refused.value)
+        native_state(False)
+        assert not freezer.paused
 
 
 @pytest.mark.parametrize("failure", [None, "counter", "cancelled"])
@@ -1309,7 +1515,7 @@ def test_counter_interval_is_bracketed_and_evidence_waits_for_native_restore(
             assert all(thread.state != "T" for thread in memory.thread_census(row))
 
     @contextmanager
-    def pg_barrier(*, timeout: float) -> Iterator[tuple[memory.ProcessBinding, ...]]:
+    def pg_barrier(**_kwargs) -> Iterator[tuple[memory.ProcessBinding, ...]]:
         events.append("postgres-stopped")
         try:
             yield (binding,)
@@ -1337,7 +1543,7 @@ def test_counter_interval_is_bracketed_and_evidence_waits_for_native_restore(
         original_write(destination, record)
 
     collector._read_marker = marker
-    monkeypatch.setattr(collector._postgres, "quiescent", pg_barrier)
+    monkeypatch.setattr(collector._postgres, "_quiescent", pg_barrier)
     monkeypatch.setattr(collector._postgres, "observe", observe)
     monkeypatch.setattr(memory, "write_capture_record", write)
     with pair(owned_children) as native:
@@ -1376,6 +1582,78 @@ def test_startup_marker_records_absence_without_creating_a_foundation() -> None:
         )
 
 
+@pytest.mark.parametrize("fault", ["unproven-thaw", "physical-post"])
+def test_startup_capture_failure_never_reenters_the_database(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    capture = capture_runner(tmp_path, owned_children, foundation=None)
+    pg = capture._postgres
+    events: list[str] = []
+    original = memory.CaptureRefusal(fault)
+    freezer = ModeledFreezer(pg, lambda _stopped: None, events, None, monkeypatch)
+
+    def marker() -> memory.CampaignMemoryMarker:
+        events.append("marker")
+        return memory.CampaignMemoryMarker(
+            campaign=capture._campaign,
+            foundation_sha256=None,
+            campaign_age_ticks=0,
+            tick_content_hash=None,
+        )
+
+    def physical() -> None:
+        events.append("physical")
+        if fault == "physical-post" and events.count("physical") == 2:
+            raise original
+
+    def verify(*, timeout: float, paused: bool) -> tuple[int, ...]:
+        if (
+            fault == "unproven-thaw"
+            and not paused
+            and events[-1] == "unpause"
+            and "thaw-proof-refused" not in events
+        ):
+            events.append("thaw-proof-refused")
+            raise original
+        return freezer.verify(timeout=timeout, paused=paused)
+
+    reader = ReaderDocker()
+
+    def command(arguments: list[str], *, timeout: float) -> bytes:
+        if arguments[0] in ("pause", "unpause"):
+            return freezer.command(arguments, timeout=timeout)
+        if arguments[0] == "exec":
+            assert freezer.paused
+        if arguments[:2] == ["container", "rm"]:
+            assert not freezer.paused
+        return reader(arguments, timeout=timeout)
+
+    monkeypatch.setattr(capture, "_read_marker", marker)
+    monkeypatch.setattr(pg, "verify", verify)
+    monkeypatch.setattr(memory, "docker_command", command)
+    monkeypatch.setattr(pg, "_verify_physical_owner", physical)
+    monkeypatch.setattr(pg, "_verify_live_authority", lambda: events.append("authority"))
+    with pytest.raises(BaseException) as failed, capture.lifecycle(*owned_children):
+        pytest.fail("startup capture failure must precede driver admission")
+    expected = ["physical", "marker", "authority", "pause", "unpause"]
+    expected += (
+        ["thaw-proof-refused"] if fault == "unproven-thaw" else ["authority", "marker", "physical"]
+    )
+    assert events == expected
+    assert leaf_errors(failed.value) == [original]
+    assert not list(capture._records.glob("*.json"))
+    assert not list(capture._unassigned_records.glob("*.json"))
+    assert not (tmp_path / "combined-memory.json").exists()
+    assert not freezer.paused
+    assert len(reader.creations) == 1 and reader.removed == reader.creations
+    with pytest.raises(memory.CaptureRefusal, match="reused"), capture.lifecycle(*owned_children):
+        pytest.fail("a failed capture lifecycle cannot be admitted again")
+    assert events == expected
+
+
 def test_startup_capture_finishes_absent_sample_before_releasing_the_driver(
     tmp_path: Path,
     owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
@@ -1410,6 +1688,99 @@ def test_startup_capture_finishes_absent_sample_before_releasing_the_driver(
         assert result.version == 2
         assert result.samples[0].foundation_sha256 is None
         assert all(s.foundation_sha256 == foundation for s in result.samples[1:])
+
+
+@pytest.mark.parametrize("worker_delay_ns", [0, 2_000_000_000, 4_000_000_000])
+def test_first_periodic_sample_counts_completed_startup_work(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    worker_delay_ns: int,
+) -> None:
+    capture = capture_runner(tmp_path, owned_children, foundation=None)
+    capture._stop_on_budget = True
+    now_ns = 100_000_000_000
+    capture._started_ns = now_ns
+    native = pair(owned_children)
+
+    def monotonic_ns() -> int:
+        return now_ns
+
+    def wait(timeout: float | None = None) -> bool:
+        nonlocal now_ns
+        assert timeout is not None
+        if not capture._stop.is_set():
+            now_ns += round(timeout * 1_000_000_000)
+        return capture._stop.is_set()
+
+    def collect(*_args: object, **kwargs: object) -> memory.QuiescentBatch:
+        nonlocal now_ns
+        # Model costly admission before counters, then restoration/owner proof
+        # after them. Only the middle interval is a measured sample.
+        now_ns += 1_100_000_000
+        started = now_ns
+        now_ns += 700_000_000
+        raw = synthetic_batch(int(kwargs["sequence"]), 0, foundation=None).model_dump()
+        raw["sample"]["monotonic_ns"] = started
+        raw["sample"]["capture_duration_ns"] = 700_000_000
+        now_ns += 1_500_000_000
+        if kwargs["sequence"] == 2:
+            capture._stop.set()
+        return memory.QuiescentBatch.model_validate(raw)
+
+    monkeypatch.setattr(
+        memory,
+        "time",
+        SimpleNamespace(monotonic_ns=monotonic_ns, monotonic=lambda: now_ns / 1_000_000_000),
+    )
+    monkeypatch.setattr(capture._stop, "wait", wait)
+    monkeypatch.setattr(memory, "collect_running_game", collect)
+    capture._capture_one(native)
+    now_ns += worker_delay_ns
+    mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    capture._run(native, mask)
+
+    assert len(capture._samples) == 2
+    first, second = capture._samples
+    gap = second.monotonic_ns - first.monotonic_ns - first.capture_duration_ns
+    if worker_delay_ns == 4_000_000_000:
+        # Scheduling cannot repair an already missed deadline or conceal it.
+        assert gap > 5_000_000_000
+        with pytest.raises(memory.CaptureRefusal, match="budget"):
+            capture.check()
+    else:
+        capture.check()
+        assert gap <= 5_000_000_000
+    assert len(list(capture._records.glob("*.json"))) == 2
+    assert capture._worker_finished.is_set()
+
+
+def test_admitted_driver_failure_still_captures_final_committed_boundary(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = capture_runner(tmp_path, owned_children, foundation=None)
+    foundation: str | None = None
+
+    def collect(*_args: object, **kwargs: object) -> memory.QuiescentBatch:
+        return synthetic_batch(
+            kwargs["sequence"], int(foundation is not None), foundation=foundation
+        )
+
+    monkeypatch.setattr(memory, "collect_running_game", collect)
+    driver = RuntimeError("admitted driver failure")
+    with pytest.raises(RuntimeError) as failed, capture.lifecycle(*owned_children) as monitor:
+        foundation = "a" * 64
+        monitor.bind_foundation(foundation)
+        raise driver
+    assert failed.value is driver
+    evidence = memory.CombinedMemoryEvidence.model_validate_json(
+        (tmp_path / "combined-memory.json").read_bytes()
+    )
+    assert evidence.samples[0].foundation_sha256 is None
+    assert evidence.samples[-1].foundation_sha256 == foundation
+    assert evidence.samples[-1].campaign_age_ticks == 1
 
 
 def test_worker_start_refusal_exits_and_preserves_the_original_failure(
@@ -1567,50 +1938,262 @@ def test_cancellation_after_kernel_accepts_stop_restores_attempted_child(
         )
 
 
-def test_helper_scope_is_fixed_and_cancellation_removes_only_authenticated_helper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    commands = []
-    helper_id = "d" * 64
-    owner = "e" * 32
-    monkeypatch.setattr(memory, "uuid4", lambda: memory.UUID(owner))
+class ReaderDocker:
+    """Model the confined container boundary, including CID creation before cancel."""
 
-    def command(arguments: list[str], *, timeout: float) -> bytes:
-        commands.append(arguments)
-        if arguments[0] == "run":
-            Path(arguments[arguments.index("--cidfile") + 1]).write_text(helper_id)
+    def __init__(self) -> None:
+        self.binding = memory.ProcessBinding(
+            pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
+        )
+        self.creations: list[str] = []
+        self.reads: list[str] = []
+        self.removed: list[str] = []
+        self.info: dict[str, object] = {}
+        self.fault = ""
+        self.last_response = b""
+
+    def __call__(self, arguments: list[str], *, timeout: float) -> bytes:
+        operation = arguments[0]
+        if operation == "create":
+            cid = f"{len(self.creations) + 1:064x}"
+            self.creations.append(cid)
+            path = Path(arguments[arguments.index("--cidfile") + 1])
+            path.write_text("" if self.fault == "cancel-empty-cidfile" else cid)
             assert "--pid" not in arguments and "--privileged" not in arguments
-            assert arguments[arguments.index("--user") + 1] == "70:70"
-            assert arguments[arguments.index("--network") + 1] == "none"
+            for flag, expected in (
+                ("--user", "70:70"),
+                ("--userns", "host"),
+                ("--network", "none"),
+                ("--cap-drop", "ALL"),
+                ("--security-opt", "no-new-privileges"),
+                ("--pull", "never"),
+            ):
+                assert arguments[arguments.index(flag) + 1] == expected
+            assert "--read-only" in arguments and "--no-healthcheck" in arguments
             mounts = [
                 arguments[index + 1] for index, value in enumerate(arguments) if value == "--mount"
             ]
+            pid = self.binding.pid
             assert mounts == [
                 "type=tmpfs,destination=/var/lib/postgresql/data,tmpfs-size=1048576",
-                "type=bind,source=/proc/17,destination=/owned/17,readonly",
+                f"type=bind,source=/proc/{pid},destination=/owned/{pid},readonly",
             ]
-            script = arguments[arguments.index("-c") + 1]
+            self.info = {
+                "id": cid,
+                "label": arguments[arguments.index("--label") + 1].split("=")[1],
+                "image": "sha256:" + "b" * 64,
+                "user": "70:70",
+                "network": "none",
+                "userns": "host",
+                "pid_mode": "",
+                "readonly": True,
+                "privileged": False,
+                "cap_add": None,
+                "cap_drop": ["ALL"],
+                "security": ["no-new-privileges"],
+                "devices": [],
+                "groups": None,
+                "path": "/bin/sleep",
+                "args": ["2147483647"],
+                "healthcheck": ["NONE"],
+                "mounts": [
+                    {
+                        "Type": "tmpfs",
+                        "Source": "",
+                        "Destination": "/var/lib/postgresql/data",
+                        "RW": True,
+                        "Propagation": "",
+                    },
+                    {
+                        "Type": "bind",
+                        "Source": f"/proc/{pid}",
+                        "Destination": f"/owned/{pid}",
+                        "RW": False,
+                        "Propagation": "rprivate",
+                    },
+                ],
+                "size": 1048576,
+                "started": "0001-01-01T00:00:00Z",
+                "pid": 0,
+                "status": "created",
+                "restarts": 0,
+            }
+            if self.fault in ("cancel-create", "cancel-empty-cidfile"):
+                raise KeyboardInterrupt("helper canceled after creation")
+            return cid.encode() + b"\n"
+        cid = self.creations[-1]
+        if operation == "ps":
+            if arguments == ["ps", "-aq", "--no-trunc", "--filter", "id=" + cid]:
+                return b"" if cid in self.removed else cid.encode() + b"\n"
+            assert arguments == [
+                "ps",
+                "-aq",
+                "--no-trunc",
+                "--filter",
+                f"name=^/babylon-memory-{self.info['label']}$",
+                "--filter",
+                f"label=babylon.memory-sampler={self.info['label']}",
+            ]
+            return cid.encode() + b"\n"
+        if operation == "start":
+            assert arguments == ["start", cid]
+            self.info.update(status="running", pid=94, started="2026-11-08T03:01:02Z")
+            return cid.encode() + b"\n"
+        if arguments[:2] == ["container", "inspect"]:
+            assert arguments[-1] == cid
+            if cid in self.removed:
+                raise memory.CaptureRefusal("modeled helper missing")
+            return json.dumps(self.info).encode()
+        if operation == "exec":
+            assert arguments[1:4] == [cid, "/bin/sh", "-c"]
             assert all(
-                value not in script for value in ("/environ", "/fd", "/root", "find ", "ls ")
+                path not in arguments[4] for path in ("/environ", "/fd", "/root", "find ", "ls ")
             )
-            raise KeyboardInterrupt("helper canceled after creation")
-        if arguments[0] == "ps":
-            return helper_id.encode() + b"\n"
-        if arguments[0:2] == ["container", "inspect"]:
-            return f"{owner}|sha256:{'b' * 64}\n".encode()
-        if arguments[0:2] == ["container", "rm"]:
-            assert arguments == ["container", "rm", "--force", helper_id]
-            return b""
-        pytest.fail("unexpected helper operation")
+            self.reads.append(cid)
+            if self.fault == "cancel-read":
+                raise KeyboardInterrupt("canceled counter read")
+            if self.fault == "replay":
+                return self.last_response
+            nonce = arguments[-2].encode()
+            assert arguments[-1] == str(self.binding.pid)
+            frame = helper_frame(self.binding).replace(
+                base64.b64encode(rollup()),
+                base64.b64encode(rollup().replace(b"12 kB", f"{12 + len(self.reads)} kB".encode())),
+            )
+            self.last_response = nonce + b"\n" + frame + nonce + b"\n"
+            return self.last_response
+        if arguments[:2] == ["container", "rm"]:
+            assert arguments == ["container", "rm", "--force", cid]
+            if self.fault == "close":
+                raise memory.CaptureRefusal("modeled exact helper removal failure")
+            self.removed.append(cid)
+            return cid.encode() + b"\n"
+        pytest.fail(f"unexpected helper operation {operation}")
+
+
+def test_reader_reuses_exact_roster_and_reads_fresh_counters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = ReaderDocker()
+    monkeypatch.setattr(memory, "docker_command", daemon)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
+    results = []
+    for pid, start in [(17, 123), (17, 123), (17, 124), (18, 125)]:
+        daemon.binding = memory.ProcessBinding(
+            pid=pid, start_time_ticks=start, role="game-postgresql", executable_sha256="c" * 64
+        )
+        results.append(scope.observe((daemon.binding,), timeout=2)[0].rss_bytes)
+    assert len(daemon.creations) == 3
+    scope._close_reader(timeout=2)
+    assert results == [value * 1024 for value in (13, 14, 15, 16)]
+    first, recycled, replaced = daemon.creations
+    assert daemon.reads == [first, first, recycled, replaced]
+    assert daemon.removed == daemon.creations
+
+
+@pytest.mark.parametrize(
+    "fault", ["cancel-create", "cancel-empty-cidfile", "cancel-read", "replay"]
+)
+def test_failed_helper_operation_retires_authenticated_cid(
+    monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    daemon = ReaderDocker()
+    monkeypatch.setattr(memory, "docker_command", daemon)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
+    if fault == "replay":
+        scope.observe((daemon.binding,), timeout=2)
+    daemon.fault = fault
+    with pytest.raises(memory.CaptureRefusal if fault == "replay" else KeyboardInterrupt):
+        scope.observe((daemon.binding,), timeout=2)
+    assert daemon.removed == daemon.creations and len(daemon.creations) == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("id", "0" * 64),
+        ("label", "f" * 32),
+        ("image", "sha256:" + "e" * 64),
+        ("readonly", False),
+        ("mounts", []),
+        ("status", "exited"),
+        ("started", "2026-11-08T03:07:04Z"),
+    ],
+)
+def test_changed_helper_refuses_before_another_read(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    daemon = ReaderDocker()
+    monkeypatch.setattr(memory, "docker_command", daemon)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
+    scope.observe((daemon.binding,), timeout=2)
+    daemon.info[field] = value
+    with pytest.raises(BaseException) as failed:
+        scope.observe((daemon.binding,), timeout=2)
+    assert all(isinstance(error, memory.CaptureRefusal) for error in leaf_errors(failed.value))
+    assert len(daemon.creations) == len(daemon.reads) == 1
+    if field in ("id", "label", "image", "readonly", "mounts"):
+        assert daemon.removed == []
+
+
+@pytest.mark.parametrize("fault", ["close", "inspect-interrupt", "remove-interrupt"])
+def test_finalizer_reports_failures_and_recovers_interrupted_retirement(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    daemon = ReaderDocker()
+    canceled = KeyboardInterrupt("interrupted final retirement")
+    sequences = []
+
+    def command(arguments: list[str], *, timeout: float) -> bytes:
+        closing = len(sequences) == 2
+        if (
+            closing
+            and daemon.fault == "inspect-interrupt"
+            and arguments[:2] == ["container", "inspect"]
+        ):
+            daemon.fault = ""
+            raise canceled
+        result = daemon(arguments, timeout=timeout)
+        if closing and daemon.fault == "remove-interrupt" and arguments[:2] == ["container", "rm"]:
+            daemon.fault = ""
+            raise canceled
+        return result
 
     monkeypatch.setattr(memory, "docker_command", command)
-    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
-    binding = memory.ProcessBinding(
-        pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
-    )
-    with pytest.raises(KeyboardInterrupt, match="helper canceled"):
-        scope.observe((binding,), timeout=2)
-    assert commands[-1] == ["container", "rm", "--force", helper_id]
+    capture = capture_runner(tmp_path, owned_children)
+
+    def sample(
+        _native: memory.OwnedNativePair,
+        postgres: memory.OwnedPostgresScope,
+        _marker: Callable[[], memory.CampaignMemoryMarker],
+        *,
+        sequence: int,
+        **_kwargs: object,
+    ) -> memory.QuiescentBatch:
+        postgres.observe((daemon.binding,), timeout=2)
+        sequences.append(sequence)
+        return synthetic_batch(sequence, 1)
+
+    monkeypatch.setattr(memory, "collect_running_game", sample)
+    refusal = KeyboardInterrupt("control canceled")
+    with pytest.raises(BaseExceptionGroup) as failed, capture.lifecycle(*owned_children):
+        wait_for(lambda: bool(capture._samples))
+        daemon.fault = fault
+        raise refusal
+    errors = leaf_errors(failed.value)
+    assert refusal in errors
+    if fault == "close":
+        assert any(str(error) == "modeled exact helper removal failure" for error in errors)
+    else:
+        assert canceled in errors
+        assert capture._postgres._reader is None
+        assert len(daemon.creations) == 1 and daemon.removed == daemon.creations
+    assert sequences == [1, 2]
+    assert not (tmp_path / "combined-memory.json").exists()
+    assert (tmp_path / "memory-samples/00000001.json").is_file()
 
 
 def leaf_errors(error: BaseException) -> list[BaseException]:
@@ -1639,10 +2222,12 @@ def test_capture_failure_is_preserved_when_progress_publication_also_fails(
     assert capture_failure in leaves and publication_failure in leaves
 
 
+@pytest.mark.parametrize("interrupt_at", ["entry", "wait", "stop"])
 def test_canceled_capture_drain_waits_until_real_native_stop_has_unwound(
     tmp_path: Path,
     owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
     monkeypatch: pytest.MonkeyPatch,
+    interrupt_at: str,
 ) -> None:
     stopped = threading.Event()
     release = threading.Event()
@@ -1659,6 +2244,16 @@ def test_canceled_capture_drain_waits_until_real_native_stop_has_unwound(
     monkeypatch.setattr(memory, "collect_running_game", held_capture)
     capture = capture_runner(tmp_path, owned_children)
     original_wait = capture._worker_finished.wait
+    original_stop = capture._stop.set
+    original_drain = capture._drain
+    close_finished = []
+    close_reader = capture._postgres._close_reader
+
+    def close(*, timeout: float) -> None:
+        close_finished.append(capture._worker_finished.is_set())
+        close_reader(timeout=timeout)
+
+    monkeypatch.setattr(capture._postgres, "_close_reader", close)
     interrupted = False
 
     def interrupt_once(timeout: float | None = None) -> bool:
@@ -1668,17 +2263,39 @@ def test_canceled_capture_drain_waits_until_real_native_stop_has_unwound(
             raise canceled
         return original_wait(timeout)
 
-    monkeypatch.setattr(capture._worker_finished, "wait", interrupt_once)
+    def cancel_stop_once() -> None:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise canceled
+        original_stop()
+
+    def cancel_drain_entry() -> None:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise canceled
+        original_drain()
+
+    if interrupt_at == "entry":
+        monkeypatch.setattr(capture, "_drain", cancel_drain_entry)
+    elif interrupt_at == "wait":
+        monkeypatch.setattr(capture._worker_finished, "wait", interrupt_once)
+    else:
+        monkeypatch.setattr(capture._stop, "set", cancel_stop_once)
     timer = threading.Timer(0.1, release.set)
     try:
         with (
-            pytest.raises(BaseExceptionGroup) as error,
+            pytest.raises(
+                BaseException if interrupt_at == "entry" else BaseExceptionGroup
+            ) as error,
             capture.lifecycle(*owned_children) as monitor,
         ):
             assert stopped.wait(2)
             timer.start()
             monitor.finish()
         assert canceled in leaf_errors(error.value)
+        assert close_finished and all(close_finished)
         assert capture._native is not None and not capture._native._capture_lock.locked()
         for child in owned_children:
             assert child.poll() is None
@@ -1689,6 +2306,43 @@ def test_canceled_capture_drain_waits_until_real_native_stop_has_unwound(
             timer.join(2)
         if capture._thread is not None:
             capture._thread.join(3)
+
+
+def test_interrupted_drain_retains_the_late_worker_failure_once(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stopped = threading.Event()
+    release = threading.Event()
+    canceled = KeyboardInterrupt("cancel during collector drain")
+    worker_failure = memory.CaptureRefusal("late worker restoration refused")
+    capture = capture_runner(tmp_path, owned_children)
+    original_drain = capture._drain
+
+    def fail_on_unwind(
+        native: memory.OwnedNativePair, *_args: object, **_kwargs: object
+    ) -> memory.QuiescentBatch:
+        with native.quiescent(timeout=2):
+            stopped.set()
+            assert release.wait(2)
+        raise worker_failure
+
+    def recover_drain() -> None:
+        release.set()
+        original_drain()
+
+    def interrupt_entry() -> None:
+        # The worker cannot publish its failure until the recovery drain.
+        monkeypatch.setattr(capture, "_drain", recover_drain)
+        raise canceled
+
+    monkeypatch.setattr(memory, "collect_running_game", fail_on_unwind)
+    monkeypatch.setattr(capture, "_drain", interrupt_entry)
+    with pytest.raises(BaseException) as failed, capture.lifecycle(*owned_children):
+        assert stopped.wait(2)
+    errors = leaf_errors(failed.value)
+    assert len(errors) == 2 and errors.count(canceled) == errors.count(worker_failure) == 1
 
 
 def test_periodic_capture_failure_is_visible_to_driver_and_never_publishes_result(
@@ -1713,3 +2367,54 @@ def test_periodic_capture_failure_is_visible_to_driver_and_never_publishes_resul
     assert not (tmp_path / "combined-memory.json").exists()
     assert json.loads((tmp_path / "combined-memory-progress.json").read_bytes())["capture_failed"]
     assert capture._thread is not None and not capture._thread.is_alive()
+
+
+@pytest.mark.parametrize("fixed,observed", [(0, 0), (10, 10), (0, 1), (10, 9)])
+def test_fixed_cold_pair_retains_its_actual_period_separately(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fixed: int,
+    observed: int,
+) -> None:
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(
+        memory,
+        "collect_running_game",
+        lambda *_args, **kwargs: synthetic_batch(kwargs["sequence"], observed),
+    )
+    capture = capture_runner(tmp_path, owned_children, cold_segment_period=fixed)
+    expected = (
+        nullcontext() if fixed == observed else pytest.raises(memory.CaptureRefusal, match="fixed")
+    )
+    with expected, capture.lifecycle(*owned_children) as monitor:
+        monitor.finish()
+    assert not (tmp_path / "combined-memory.json").exists()
+    if fixed == observed:
+        result = json.loads((tmp_path / "segment-memory.json").read_bytes())
+        assert result["period"] == fixed and result["scope"] == "fixed_period_cold_native_pair"
+        assert {r["campaign_age_ticks"] for r in result["samples"]} == {fixed}
+
+
+@pytest.mark.parametrize("over", ["rss", "gap"])
+def test_measured_overrun_preserves_sample_and_stops_producer(
+    tmp_path, owned_children, monkeypatch, over
+):
+    capture = capture_runner(tmp_path, owned_children)
+    capture._stop_on_budget = True
+    batch = synthetic_batch(1, 0)
+    sample = batch.sample
+    if over == "rss":
+        process = sample.processes[0].model_copy(update={"rss_bytes": 10_000_000_001})
+        sample = sample.model_copy(update={"processes": (process,)})
+    capture._started_ns = sample.monotonic_ns - (5_000_000_001 if over == "gap" else 0)
+    monkeypatch.setattr(
+        memory,
+        "collect_running_game",
+        lambda *_a, **_kw: batch.model_copy(update={"sample": sample}),
+    )
+    with pytest.raises(memory.CaptureRefusal, match="memory"):
+        capture._capture_locked(None)
+    assert (tmp_path / "memory-samples/00000001.json").is_file()
+    assert not (tmp_path / "combined-memory.json").exists()

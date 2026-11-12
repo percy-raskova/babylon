@@ -17,8 +17,6 @@ use crate::{CampaignFoundation, FoundationContentBundle};
 
 use crate::RustPersistenceRuntimeError;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_practice_contract::OrganizerPeriodJournal;
-use babylon_tick::material_world::MaterialWorldRegister;
 
 impl CapturedEconomicCatalog {
     /// Initialize through the same graph/material replay and marker-last runtime.
@@ -42,34 +40,12 @@ impl CapturedEconomicCatalog {
                 bundle.reference_digest(),
             )
             .map_err(catalog_error)?;
-        let compiled = catalog.opening.compile().map_err(catalog_error)?;
-        let mut register = MaterialWorldRegister::try_new(&compiled.catalog, 0, compiled.state)?;
-        if let Some(config) = &catalog.input.organizer {
-            let state = babylon_practice_contract::initial_organizer_state(config)
-                .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-            register = register.with_organizer(
-                &compiled.catalog,
-                config.clone(),
-                state,
-                OrganizerPeriodJournal::empty(),
-            )?;
-        }
-        if let Some(venue) = catalog.initial_public_venue().map_err(catalog_error)? {
-            register = register.with_public_venue(&compiled.catalog, venue, None)?;
-        }
-        if let Some(city_pd) = catalog
-            .initial_city_pd(&compiled.catalog, register.state(), graph.stable_resolver())
-            .map_err(catalog_error)?
-        {
-            register =
-                register.with_city_pd(&compiled.catalog, city_pd, graph.stable_resolver())?;
-        }
         let spec = MaterialFoundationSpec {
             preset_id: catalog.input.preset_id.clone(),
             duration: catalog.input.duration,
             content_digest: catalog.digest,
         };
-        MaterialRuntimeFoundation::capture_register(graph, bundle, register, spec)
+        MaterialRuntimeFoundation::capture_economic_opening(graph, bundle, spec)
     }
 
     pub(crate) fn initial_public_venue(

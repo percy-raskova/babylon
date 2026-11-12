@@ -294,6 +294,9 @@ fn describe_sources(site: &ProductionSite, snapshot: &ProductionSnapshot) -> Str
         site.industry_code.as_deref().unwrap_or(&site.function),
         site.roles
     );
+    if site.county_geoid().is_some() {
+        value.push_str("\nRegional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.\n");
+    }
     for process in &site.processes {
         writeln!(
             value,
@@ -635,6 +638,17 @@ fn describe_labor_accounts(
 }
 
 fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &ProductionSnapshot) {
+    let has_households = snapshot
+        .household_accounts
+        .iter()
+        .any(|row| row.retailer_site_id == site.id)
+        || snapshot
+            .household_service_accounts
+            .iter()
+            .any(|row| row.provider_site_ids.contains(&site.id));
+    if site.county_geoid().is_some() && has_households {
+        value.push_str("Regional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.\n");
+    }
     for row in snapshot
         .household_accounts
         .iter()
@@ -707,8 +721,10 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
     {
         writeln!(
             value,
-            "\nQUOTE / {}\n{} micro-currency per {}",
-            row.good, row.current_price_micro, row.unit
+            "\nQUOTE / {}\n{} currency per {}",
+            row.good,
+            crate::human_numbers::currency(row.current_price_micro),
+            row.unit
         )
         .expect("String write");
         if let Some(done) = &row.completed {
@@ -722,8 +738,8 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
             writeln!(
                 value,
                 "{reason}: {} → {}\n{} unserved · {} closing stock",
-                done.old_price_micro,
-                done.next_price_micro,
+                crate::human_numbers::currency(done.old_price_micro),
+                crate::human_numbers::currency(done.next_price_micro),
                 grouped(done.unserved_quantity),
                 grouped(done.closing_stock)
             )
@@ -738,7 +754,7 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
                     } else {
                         "released from seller stock"
                     };
-                    writeln!(value,"{} {} {basis} · {} carrying + {} handling wages (micro-currency)\nCommitted direct cost per unit: {}",grouped(done.basis_quantity),row.unit,done.carrying_cost_micro,done.handling_wages_micro,done.unit_cost_micro.expect("validated price evidence")).expect("String write");
+                    writeln!(value,"{} {} {basis} · {} carrying + {} handling wages (currency)\nCommitted direct cost per unit: {}",grouped(done.basis_quantity),row.unit,crate::human_numbers::currency(done.carrying_cost_micro),crate::human_numbers::currency(done.handling_wages_micro),crate::human_numbers::currency(done.unit_cost_micro.expect("validated price evidence"))).expect("String write");
                 }
             }
         }
@@ -748,6 +764,26 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
 #[cfg(test)]
 mod aid_reading_tests {
     use super::*;
+    #[test]
+    fn production_sources_and_households_explain_regional_accounts() {
+        let snapshot = crate::production_freight::tests::aid_fixture();
+        let site = snapshot
+            .sites
+            .iter()
+            .find(|site| site.id == "panels")
+            .expect("household seller");
+        for section in [
+            ProductionReadingSection::Sources,
+            ProductionReadingSection::Flow,
+        ] {
+            let reading = super::describe(site, &snapshot, section);
+            assert!(reading.contains("regional catchment"), "{reading}");
+            assert!(reading.contains("hub county"));
+            assert!(reading.contains("Detailed accounts keep their county scope"));
+            assert!(reading.contains("separate from observed county data"));
+        }
+    }
+
     #[test]
     fn household_reading_separates_purchases_and_both_gift_directions() {
         let mut snapshot = crate::production_freight::tests::aid_fixture();

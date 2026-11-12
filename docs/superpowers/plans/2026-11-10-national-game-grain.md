@@ -779,8 +779,38 @@ human acceptance.
 
 The first full walk stopped before any close: its script opened the Relationships inspector
 then attempted selection in the covered scene. All four opening screen variants were
-captured and inspected. The narrow walk-only navigation repair passes 109 coupled tests
-and independent review; it is committed locally. Existing source-binding rules cannot
-reuse the passed smoke after this script edit. Director steering is pending between a
-fresh human playtest first, with full automated walk explicitly open, and repeating the
-existing smoke before the remaining walk. No new harness or evidence bridge is authorized.
+captured and inspected. The narrow navigation repair passed 109 coupled tests and independent
+review at `533b9d1a993b4d3d00dfac0f509c800390eba57f`. The Director chose a fresh human playtest
+first, leaving the complete automated walk open. The later current-source smoke pair qualified:
+normal play took 423.376 seconds; full memory captured 153 samples with a 3.928693357-second
+maximum gap and observed charged RSS upper bound of 3,625,730,048 bytes.
+
+## Current closeout evidence: 12 November 2026
+
+The native national game at `533b9d1a993b4d3d00dfac0f509c800390eba57f` completed all ten funded-loop
+closes, ten authenticated checkpoint reopens and a final process-cold restart in
+2,611.817814361 seconds. Local food-only aid was consumed; remote cash settled before its food
+arrived; later delivery retained the first response without another participation debit.
+Cash-only aid settled in P5, followed by the normal P6 purchasing close and dated reports.
+Those reports retain unmet needs and refunded unperformed services; they do not attribute
+fungible purchases to a particular gift or claim that cash guaranteed provision.
+
+The closing checker rejected the retained Resume receipt because it expected `standing_resumed`
+with no standing work. Rust instead resumed and performed contact in P7, with `standing_work`
+true, `contact_completed` and two actual hours. The narrow checker repair now admits actual
+completed or uncompleted routine contact while retaining exact actor, authority, original,
+period, uniqueness and installed-state checks. Both regression cases failed before the fix;
+all 122 scoped runner cases and Ruff checks then passed, with the existing AnyIO deprecation
+warning recorded. No game rule, source-admission guard, numerical limit or retirement rule changed.
+
+The formal ten-period member remains unqualified, and its full-memory member has not run.
+The complete source-533 game evidence remains retained under namespace 27; the checker fix does
+not relabel it as evidence from later source. No evidence bridge, qualification reset or new
+validation layer was introduced. The human session supplied opening-exploration feedback only;
+full uncoached funded-loop comprehension and enjoyment remain unassessed.
+
+The ordinary full usable-turn benchmark remains **30 seconds**, with every other limit
+unchanged. The 11.43, 11.49 and 10.01-second ordinary endpoints above use the unchanged game
+build and include a useful report or pending brief, rendered pixels and usable next controls.
+The ten-period run's 8.00–9.58-second commit bounds measure a different endpoint and cannot
+replace that evidence. Three ordinary samples do not establish p95 or a speed improvement.

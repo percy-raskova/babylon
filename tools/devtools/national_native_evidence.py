@@ -2335,7 +2335,10 @@ def verify_directives(
     authority: tuple[int, ...],
     missing: list[str],
 ) -> None:
-    outcomes = {"pause_standing": "standing_paused", "resume_standing": "standing_resumed"}
+    outcomes = {
+        "pause_standing": ("standing_paused",),
+        "resume_standing": ("contact_completed", "contact_uncompleted"),
+    }
     directives = sorted(
         (
             (choice, c)
@@ -2352,6 +2355,7 @@ def verify_directives(
     applied = {}
     for choice, directive in directives:
         stage = stages[directive.resolves_period]
+        standing_work = choice == "resume_standing"
         matches = [
             r
             for r in stage.facts["receipts"]
@@ -2359,7 +2363,7 @@ def verify_directives(
             and r["period"] == directive.resolves_period
             and r["commitment_id"] == list(directive.commitment_id)
             and r["choice"] == choice
-            and r["standing_work"] is False
+            and r["standing_work"] is standing_work
         ]
         if (
             directive.command.actor_id != actor
@@ -2367,7 +2371,7 @@ def verify_directives(
             or len(matches) != 1
         ):
             raise ValueError("standing directive lacks the receipt of its exact actor and original")
-        if matches[0]["outcome"] != outcomes[choice]:
+        if matches[0]["outcome"] not in outcomes[choice]:
             missing.append(f"observed {choice} outcome {matches[0]['outcome']}")
             continue
         applied[choice] = directive.resolves_period

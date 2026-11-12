@@ -914,6 +914,105 @@ def test_missing_resume_preserves_quiet_authority_requirement_until_terminal():
         e.verify_directives([directive], {4: stage(False), 5: stage(True)}, actor, authority, [])
 
 
+def _standing_directive_periods(resume_outcome="contact_completed"):
+    actor, authority = 14, (3,) * 16
+    pause = SimpleNamespace(
+        command=SimpleNamespace(actor_id=actor, authority_id=authority, choice="pause_standing"),
+        commitment_id=(7,) * 32,
+        resolves_period=4,
+    )
+    resume = SimpleNamespace(
+        command=SimpleNamespace(actor_id=actor, authority_id=authority, choice="resume_standing"),
+        commitment_id=(8,) * 32,
+        resolves_period=7,
+    )
+    receipts = [
+        {
+            "actor_id": actor,
+            "period": directive.resolves_period,
+            "choice": directive.command.choice,
+            "standing_work": directive is resume,
+            "outcome": resume_outcome if directive is resume else "standing_paused",
+            "commitment_id": list(directive.commitment_id),
+        }
+        for directive in (pause, resume)
+    ]
+    stages = {
+        period: SimpleNamespace(
+            state=SimpleNamespace(
+                installed_organizer=SimpleNamespace(
+                    actor_id=actor,
+                    standing=SimpleNamespace(
+                        authorized=period == 7,
+                        paused_reason=None if period == 7 else "explicit",
+                    ),
+                    resume_reviewable=period != 7,
+                )
+            ),
+            facts={"receipts": [row for row in receipts if row["period"] == period]},
+        )
+        for period in range(4, 8)
+    }
+    return actor, authority, [pause, resume], stages
+
+
+@pytest.mark.parametrize("outcome", ["contact_completed", "contact_uncompleted"])
+def test_resume_standing_authenticates_its_actual_routine_outcome(outcome):
+    from tools.devtools import national_native_evidence as e
+
+    actor, authority, directives, stages = _standing_directive_periods(outcome)
+    missing = []
+    e.verify_directives(directives, stages, actor, authority, missing)
+    assert missing == []
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    [
+        "command_actor",
+        "authority",
+        "actor_id",
+        "period",
+        "commitment_id",
+        "choice",
+        "standing_work",
+        "duplicate",
+    ],
+)
+def test_resume_standing_requires_one_exact_actor_bound_original(forgery):
+    from tools.devtools import national_native_evidence as e
+
+    actor, authority, directives, stages = _standing_directive_periods()
+    receipt = stages[7].facts["receipts"][0]
+    if forgery == "command_actor":
+        directives[1].command.actor_id += 1
+    elif forgery == "authority":
+        directives[1].command.authority_id = (4,) * 16
+    elif forgery == "duplicate":
+        stages[7].facts["receipts"].append(dict(receipt))
+    else:
+        receipt[forgery] = {
+            "actor_id": actor + 1,
+            "period": 8,
+            "commitment_id": [9] * 32,
+            "choice": "hold",
+            "standing_work": False,
+        }[forgery]
+    with pytest.raises(ValueError, match="exact actor and original"):
+        e.verify_directives(directives, stages, actor, authority, [])
+
+
+@pytest.mark.parametrize(
+    "outcome", ["standing_resumed", "insufficient_time", "aid_practice_completed"]
+)
+def test_resume_standing_cannot_claim_authorization_from_an_unperformed_outcome(outcome):
+    from tools.devtools import national_native_evidence as e
+
+    actor, authority, directives, stages = _standing_directive_periods(outcome)
+    with pytest.raises(ValueError):
+        e.verify_directives(directives, stages, actor, authority, [])
+
+
 def test_bool_citation_ids_do_not_authenticate_the_same_integer_byte(tmp_path):
     run = SimpleNamespace(directory=tmp_path / "evidence", campaign="owned")
     run.directory.mkdir(mode=0o700)

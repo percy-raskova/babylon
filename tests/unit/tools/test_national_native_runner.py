@@ -1284,6 +1284,60 @@ def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler
         assert all(s[3:] == (900, "designed memory monitor") for s in segments)
 
 
+@pytest.mark.parametrize("kind", ["local", "remote"])
+@pytest.mark.parametrize("inspector", ["Closed", "Evidence"])
+def test_partner_inspection_selects_from_unblocked_relationship_scene(tmp_path, kind, inspector):
+    state = SimpleNamespace(
+        inspector=inspector,
+        scene_mode="Places",
+        selected_subject=None,
+        selected_report_id=None,
+        selected_report_observed_period=0,
+        selected_report_acquired_period=0,
+        viewed_tick=0,
+    )
+
+    def perform(action, _limit):
+        if action == "close_inspector":
+            assert state.inspector != "Closed"
+            state.inspector = "Closed"
+        elif action == "open_organizer":
+            assert state.inspector == "Closed"
+        elif action == "open_relationships":
+            state.inspector = "Relationships"
+        elif action == "scene_relationships":
+            assert state.inspector == "Closed"
+            state.scene_mode = "Relationships"
+        elif isinstance(action, runner.SelectAidPartner):
+            assert state.inspector == "Closed", "partner selection is blocked by a modal"
+            assert state.scene_mode == "Relationships"
+            state.selected_subject = "AidPartner(7)"
+        elif action == "inspect_subject_evidence":
+            assert state.selected_subject == "AidPartner(7)"
+            state.inspector, state.selected_report_id = "Evidence", "report"
+        return state
+
+    walk = SimpleNamespace(
+        run=SimpleNamespace(timeout=900),
+        stage="opening",
+        facts=lambda _: {
+            "reports": {
+                "report": {
+                    "subject_id": 7,
+                    "observed_period": 0,
+                    "acquired_period": 0,
+                    "report": {"kind": "partner"},
+                }
+            }
+        },
+        frame=lambda *_: None,
+    )
+    channel = SimpleNamespace(state=state, perform=perform)
+    assert runner.WayneWalk.inspect_partner(walk, channel, tmp_path, kind) == "report"
+    assert state.inspector == "Closed"
+    assert state.selected_subject == "AidPartner(7)"
+
+
 @pytest.mark.parametrize(
     "mode,focused,remaining", [("normal_play", 60, 1), ("memory_capture", 900, 721)]
 )
@@ -1291,7 +1345,12 @@ def test_terminal_archive_retries_share_deadline_and_return_uses_mode_limit(
     tmp_path, monkeypatch, mode, focused, remaining
 ):
     state = SimpleNamespace(
-        durable_tick=10, viewed_tick=10, selected_subject="partner", selected_report_id="report"
+        durable_tick=10,
+        viewed_tick=10,
+        selected_subject="partner",
+        selected_report_id="report",
+        inspector="Evidence",
+        scene_mode="Places",
     )
     calls = []
 
@@ -1299,6 +1358,23 @@ def test_terminal_archive_retries_share_deadline_and_return_uses_mode_limit(
         calls.append((action, limit))
         if action == "previous_period":
             return SimpleNamespace(durable_tick=10, viewed_tick=9)
+        if action == "close_inspector":
+            assert state.inspector != "Closed"
+            state.inspector = "Closed"
+        elif action == "open_organizer":
+            assert state.inspector == "Closed"
+        elif action == "open_relationships":
+            state.inspector = "Relationships"
+        elif action == "scene_relationships":
+            assert state.inspector == "Closed"
+            state.scene_mode = "Relationships"
+        elif isinstance(action, runner.SelectAidPartner):
+            assert state.inspector == "Closed", "partner selection is blocked by a modal"
+            assert state.scene_mode == "Relationships"
+        elif action == "inspect_subject_evidence":
+            state.inspector = "Evidence"
+        elif action == "archive_report":
+            state.inspector = "Closed"
         return state
 
     replies = iter((("refused", "control_stale_or_unavailable"), ("applied", None)))

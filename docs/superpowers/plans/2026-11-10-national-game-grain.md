@@ -767,5 +767,20 @@ Task 28 implementation candidate:
   by 119 storage cases after a test-fixture refactor). Scoped Ruff, format, type, pinned
   environment and shell syntax checks pass. The existing AnyIO pytest deprecation warning
   and mypy unused-configuration note remain recorded.
-- [ ] Complete independent review, final-source gates and the fresh ordinary and paired-smoke
-  retry. No game, Docker, SQL or native qualification ran for this implementation candidate.
+- [x] Complete independent review, final-source gates and the fresh ordinary and paired-smoke
+  retry at `d8d0fe2bdb61007026e285a060a11997fe3bccf2`. All ten hosted jobs passed.
+
+Observed qualification at that source: ordinary full endpoints were 11.43, 11.49 and 10.01
+seconds. The two-period normal/full-memory pair qualified, including both restarts and
+existing restore, access, archive and retirement checks. Normal play took 416.12 seconds;
+full memory captured 147 samples, maximum unsampled gap 3.564161029 seconds and observed
+charged RSS upper bound 3,779,100,672 bytes. These observations do not establish p95 or
+human acceptance.
+
+The first full walk stopped before any close: its script opened the Relationships inspector
+then attempted selection in the covered scene. All four opening screen variants were
+captured and inspected. The narrow walk-only navigation repair passes 109 coupled tests
+and independent review; it is committed locally. Existing source-binding rules cannot
+reuse the passed smoke after this script edit. Director steering is pending between a
+fresh human playtest first, with full automated walk explicitly open, and repeating the
+existing smoke before the remaining walk. No new harness or evidence bridge is authorized.

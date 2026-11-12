@@ -1939,7 +1939,10 @@ class WayneWalk:
         cite: bool = False,
         stage: str | None = None,
     ) -> str:
-        channel.perform("open_relationships", self.run.timeout)
+        if channel.state is not None and channel.state.inspector != "Closed":
+            channel.perform("close_inspector", self.run.timeout)
+        channel.perform("open_organizer", self.run.timeout)
+        channel.perform("scene_relationships", self.run.timeout)
         channel.perform(SelectAidPartner(select_aid_partner=kind), self.run.timeout)
         installed = channel.perform("inspect_subject_evidence", self.run.timeout)
         facts = self.facts(installed)
@@ -2254,7 +2257,10 @@ class WayneWalk:
         ):
             raise NativeRunRefusal("ordinary history changed its durable boundary")
         channel.perform("return_live", self.run.timeout)
-        channel.perform("open_relationships", self.run.timeout)
+        if channel.state is not None and channel.state.inspector != "Closed":
+            channel.perform("close_inspector", self.run.timeout)
+        channel.perform("open_organizer", self.run.timeout)
+        channel.perform("scene_relationships", self.run.timeout)
         channel.perform(SelectAidPartner(select_aid_partner="remote"), self.run.timeout)
         before = channel.perform("inspect_subject_evidence", self.run.timeout)
         rid = before.selected_report_id

@@ -27,7 +27,7 @@ if [ "${1:-}" = --wayne-ordinary-prefix ]; then
   export BABYLON_NATIVE_MEASUREMENT_MODE=normal_play BABYLON_NATIONAL_STORAGE_PERIODS=10
   export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only
   export BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-ordinary BABYLON_NATIONAL_QUALIFY_TIMING=0
-  BABYLON_STORAGE_REPORT_DIRECTORY="$(dirname -- "$REPO_ROOT")/qualification-26/ordinary-01/normal_play/evidence"
+  BABYLON_STORAGE_REPORT_DIRECTORY="$(dirname -- "$REPO_ROOT")/qualification-27/ordinary-01/normal_play/evidence"
   export BABYLON_STORAGE_REPORT_DIRECTORY
   exec bash "$REPO_ROOT/tools/run_rust_postgres.sh"
 fi

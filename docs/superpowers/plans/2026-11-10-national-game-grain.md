@@ -711,3 +711,61 @@ real rendered pixels and accepted next controls. Cold stays below 180 seconds, a
 Archive at most 180 seconds and normal smoke at most 900 seconds. Aggregate RSS and saves
 stay at most 10 GB, sample gaps at most five seconds and save growth at most 40 MB per tick.
 No optional performance work or qualification bypass belongs to this repair.
+
+
+### Task 28: Reduce physical-metadata transport overhead without relaxing capture
+
+Namespace 26's current source passed 4,112 Python cases and fresh ordinary complete endpoints
+of 10.330461090, 11.095155439 and 9.875502505 seconds. Its normal smoke completed two closes,
+two authenticated reopens and verified retirement. The paired memory member failed opening:
+qualified samples 13 and 14 had a 6.065988612-second gap. Charged RSS was 1,574,518,784 bytes.
+An intervening foundation-publication crossing was correctly retained as unassigned evidence.
+This is an unqualified pair; the normal member cannot qualify later source.
+
+Retained timing locates roughly one second in each full physical-owner reconstruction.
+A read-only prototype combined the six fixed container metadata reads into one nonce-framed
+reply while running the existing complete validators. Three observed prototype checks took
+0.563–0.583 seconds versus 0.867–0.934 seconds through the current supervisor. All complete
+owner values matched. These diagnostic samples are not native qualification or a p95 result.
+
+- Implement one fresh, bounded, strictly decoded reply for PGDATA stat, PID1 status, postgres
+  UID, postgres GID, lineage and PG_VERSION. Reuse the existing physical/credential validators.
+  Retire the six separate metadata execs. Keep the physical evidence schema unchanged.
+- Keep the current supervisor transport and its 30-second operation timeout. Keep every
+  fresh daemon/image/container/mount/port/role/SQL/ancestry/frozen-file/ownership check, both
+  physical checks around native restoration, and all native/PostgreSQL barriers.
+- Keep unassigned captures excluded. Do not reset the qualified-sample clock, add a cache,
+  skip verification, change charge accounting, or count a crossing as a qualified sample.
+- Show RED/GREEN for the framed producer/consumer and failure cases; retain all metadata
+  mismatch controls. Run the affected storage, backup, memory and public-entry contracts.
+- Route current storage, public ordinary consumers and coupled tests to fresh namespace 27.
+  No source bridge, old-format adapter or earlier member may qualify the new source.
+- Obtain independent source review, then run final-source gates and one fresh ordinary and
+  paired-smoke acceptance retry. If the same sampling cadence still fails, stop further
+  infrastructure changes and report measured options for Director steering.
+
+All numerical limits remain: warm full endpoints at most 30 seconds; cold below 180 seconds;
+advance at most 120 seconds; Archive at most 180 seconds; normal smoke at most 900 seconds;
+combined charged RSS at most 10,000,000,000 bytes; qualified gaps at most five seconds;
+saves at most 10 GB and growth at most 40 MB/tick. Optional game/SQL tuning remains deferred.
+
+Current retention follows the Director's latest instruction: retire inactive disposable-test
+backup bodies instead of maintaining or compressing them. Preserve source, required build
+artifacts, small historical result records and evidence actively used for qualification.
+The first cleanup reclaimed 10,116,096,000 allocated bytes. Earlier preservation notes record
+past actions; they do not require retaining inactive backup payloads indefinitely. Failed
+memory26 is normally stopped with its original files and exact owner record retained; no new
+backup was made and no completed memory/paired qualification is claimed.
+
+Task 28 implementation candidate:
+
+- [x] Replace the six metadata executions with one fresh reply. Keep its six typed fields,
+  nonce frames, strict base64, bounded reads and complete physical validation.
+- [x] Route current storage and public ordinary consumers to namespace 27. Admission tests
+  refuse namespaces 01 through 26. Earlier evidence remains unchanged.
+- [x] Show RED (18 missing-transport failures) and GREEN (759 scoped operator cases, followed
+  by 119 storage cases after a test-fixture refactor). Scoped Ruff, format, type, pinned
+  environment and shell syntax checks pass. The existing AnyIO pytest deprecation warning
+  and mypy unused-configuration note remain recorded.
+- [ ] Complete independent review, final-source gates and the fresh ordinary and paired-smoke
+  retry. No game, Docker, SQL or native qualification ran for this implementation candidate.

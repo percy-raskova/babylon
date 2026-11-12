@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import errno
 import grp
 import hashlib
@@ -37,7 +39,7 @@ if __name__ == "__main__":
 
     raise SystemExit(_canonical_main())
 
-RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-26")
+RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-27")
 MEDIA = Path("/media/user/data")
 PGDATA: Literal["/var/lib/postgresql/data"] = "/var/lib/postgresql/data"
 TEST_NAME = (
@@ -1209,6 +1211,79 @@ def _postgres_pid1_credentials(status: str) -> tuple[int, int]:
     return int(fields["Uid"][1]), int(fields["Gid"][1])
 
 
+class _PhysicalMetadata(Record):
+    """Fresh container reads; only physical_observation admits their meaning."""
+
+    pgdata_stat: bytes
+    pid1_status: bytes
+    postgres_uid: bytes
+    postgres_gid: bytes
+    lineage: bytes
+    pg_version: bytes
+
+
+# Bound each fixed read before encoding, including one overflow byte so the
+# consumer refuses truncation. pipefail propagates every failed command.
+_PHYSICAL_METADATA_SCRIPT = r"""set -eu
+set -o pipefail
+encode() {
+    "$@" | head -c 16385 | base64 | tr -d '\n'
+    printf '\n'
+}
+printf 'wayne-physical-metadata-v1:begin:%s\n' "$1"
+printf 'pgdata_stat:'; encode stat -c '%d %i %u %g %a' /var/lib/postgresql/data
+printf 'pid1_status:'; encode cat /proc/1/status
+printf 'postgres_uid:'; encode id -u postgres
+printf 'postgres_gid:'; encode id -g postgres
+printf 'lineage:'; encode cat /var/lib/postgresql/data/.babylon-postgres-lineage-v1
+printf 'pg_version:'; encode cat /var/lib/postgresql/data/PG_VERSION
+printf 'wayne-physical-metadata-v1:end:%s\n' "$1"
+"""
+
+
+def _decode_physical_metadata(raw: bytes, nonce: str) -> _PhysicalMetadata:
+    if len(raw) > 132000:
+        raise StorageRefusal("physical metadata reply exceeds its size bound")
+    lines = raw.split(b"\n")
+    if (
+        len(lines) != 9
+        or lines[0] != f"wayne-physical-metadata-v1:begin:{nonce}".encode()
+        or lines[-2] != f"wayne-physical-metadata-v1:end:{nonce}".encode()
+        or lines[-1] != b""
+    ):
+        raise StorageRefusal("physical metadata framing or fresh nonce differs")
+    fields: dict[str, bytes] = {}
+    for name, line in zip(_PhysicalMetadata.model_fields, lines[1:7], strict=True):
+        key, separator, encoded = line.partition(b":")
+        if key != name.encode() or separator != b":":
+            raise StorageRefusal("physical metadata field roster or order differs")
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except binascii.Error as exc:
+            raise StorageRefusal("physical metadata is not strict base64") from exc
+        if len(decoded) > 16384 or base64.b64encode(decoded) != encoded:
+            raise StorageRefusal("physical metadata is oversized or noncanonical base64")
+        fields[name] = decoded
+    return _PhysicalMetadata(**fields)
+
+
+def _physical_metadata(cid: str) -> _PhysicalMetadata:
+    nonce = uuid4().hex
+    raw = _exec_bytes(
+        [
+            "docker",
+            "exec",
+            cid,
+            "/bin/sh",
+            "-ceu",
+            _PHYSICAL_METADATA_SCRIPT,
+            "wayne-physical-metadata",
+            nonce,
+        ]
+    )
+    return _decode_physical_metadata(raw, nonce)
+
+
 def physical_observation(
     directory: PrivateEvidence,
     root: Path,
@@ -1237,8 +1312,8 @@ def physical_observation(
         }:
             raise StorageRefusal("created and live container ownership differ")
         port = _assigned_port(record, cid)
-        inside = ["docker", "exec", cid]
-        stat_fields = exact_output([*inside, "stat", "-c", "%d %i %u %g %a", PGDATA]).split()
+        metadata = _physical_metadata(cid)
+        stat_fields = metadata.pgdata_stat.decode().strip().split()
         if len(stat_fields) != 5:
             raise StorageRefusal("container PGDATA metadata is incomplete")
         dev, inode, uid, gid = map(int, stat_fields[:4])
@@ -1266,18 +1341,18 @@ def physical_observation(
         # The pinned entrypoint changes PGDATA's owner and preserves its original group.
         if host["gid"] != created["creator"]["gid"]:
             raise StorageRefusal("PGDATA host group changed since creation")
-        process = exact_output([*inside, "cat", "/proc/1/status"])
+        process = metadata.pid1_status.decode().strip()
         server_uid, server_gid = _postgres_pid1_credentials(process)
         if (
             server_uid != uid
-            or _exec_bytes([*inside, "id", "-u", "postgres"]) != f"{server_uid}\n".encode()
-            or _exec_bytes([*inside, "id", "-g", "postgres"]) != f"{server_gid}\n".encode()
+            or metadata.postgres_uid != f"{server_uid}\n".encode()
+            or metadata.postgres_gid != f"{server_gid}\n".encode()
         ):
             raise StorageRefusal(
                 "PostgreSQL process differs from the postgres account or PGDATA owner"
             )
-        lineage = _exec_bytes([*inside, "cat", PGDATA + "/.babylon-postgres-lineage-v1"])
-        major = _exec_bytes([*inside, "cat", PGDATA + "/PG_VERSION"])
+        lineage = metadata.lineage
+        major = metadata.pg_version
         if lineage != (LINEAGE + "\n").encode() or major != b"17\n":
             raise StorageRefusal("actual cluster version or lineage marker differs")
         native_settings: dict[str, int] = {}

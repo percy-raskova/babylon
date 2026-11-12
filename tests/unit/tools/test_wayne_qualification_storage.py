@@ -15,7 +15,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        run = lane / "qualification-26" / leaf
+        run = lane / "qualification-27" / leaf
         evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
@@ -33,16 +33,8 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
                 )
                 / "evidence",
             )
-        for reserved in (
-            "qualification-17",
-            "qualification-18",
-            "qualification-19",
-            "qualification-20",
-            "qualification-21",
-            "qualification-23",
-            "qualification-24",
-            "qualification-25",
-        ):
+        for number in range(1, 27):
+            reserved = f"qualification-{number:02d}"
             unused = lane / reserved / leaf
             unused_evidence = (unused if profile == "sql-01" else unused / mode) / "evidence"
             with pytest.raises(storage.StorageRefusal):
@@ -294,6 +286,9 @@ PID1_STATUS = "Name:\tpostgres\nPid:\t1\nUid:\t70\t70\t70\t70\nGid:\t70\t70\t70\
         "inode",
         "mapping",
         "matching_directory_wrong_account",
+        "lineage",
+        "pg_version",
+        "incomplete_stat",
     ],
 )
 def test_physical_observation_binds_process_account_and_private_directory(
@@ -308,8 +303,10 @@ def test_physical_observation_binds_process_account_and_private_directory(
     image, cid, canary = "sha256:" + "a" * 64, "b" * 64, "c" * 32
     host = {"major": 253, "minor": 5, "inode": 104470194, "uid": 70, "gid": 1000, "mode": 0o700}
     creator_gid = 1000
-    stat = "64773 104470194 70 1000 700"
+    stat = {"incomplete_stat": "64773 104470194 70 1000"}.get(fault, "64773 104470194 70 1000 700")
     status = PID1_STATUS
+    lineage = {"lineage": b"different cluster\n"}.get(fault, (storage.LINEAGE + "\n").encode())
+    pg_version = {"pg_version": b"16\n"}.get(fault, b"17\n")
     accounts = {"-u": b"70\n", "-g": b"70\n"}
     if fault in ("process_uid", "process_gid"):
         field = "Uid:" if fault == "process_uid" else "Gid:"
@@ -384,25 +381,20 @@ def test_physical_observation_binds_process_account_and_private_directory(
         ),
     )
 
-    def output(args):
-        assert args[:3] == ["docker", "exec", cid]
-        return {
-            ("cat", "/proc/1/status"): status,
-            ("stat", "-c", "%d %i %u %g %a", storage.PGDATA): stat,
-        }[tuple(args[3:])]
-
     def raw(args):
-        assert args[:3] == ["docker", "exec", cid]
-        return {
-            ("id", "-u", "postgres"): accounts["-u"],
-            ("id", "-g", "postgres"): accounts["-g"],
-            ("cat", storage.PGDATA + "/PG_VERSION"): b"17\n",
-            ("cat", storage.PGDATA + "/.babylon-postgres-lineage-v1"): (
-                storage.LINEAGE + "\n"
-            ).encode(),
-        }[tuple(args[3:])]
+        assert args[:5] == ["docker", "exec", cid, "/bin/sh", "-ceu"]
+        return metadata_reply(
+            args[-1],
+            (
+                ("pgdata_stat", (stat + "\n").encode()),
+                ("pid1_status", (status + "\n").encode()),
+                ("postgres_uid", accounts["-u"]),
+                ("postgres_gid", accounts["-g"]),
+                ("lineage", lineage),
+                ("pg_version", pg_version),
+            ),
+        )
 
-    monkeypatch.setattr(storage, "exact_output", output)
     monkeypatch.setattr(storage, "_exec_bytes", raw)
     conn = MagicMock()
     conn.execute.return_value.fetchone.return_value = (
@@ -447,6 +439,138 @@ def test_physical_observation_binds_process_account_and_private_directory(
     assert translated["creator"]["gid"] == translated["host"]["gid"] == 201000
     assert translated["container_root"]["gid"] == 1000
     assert translated["server_gid"] == 70
+
+
+METADATA_FIELDS = (
+    ("pgdata_stat", b"64773 104470194 70 1000 700\n"),
+    ("pid1_status", (PID1_STATUS + "\n").encode()),
+    ("postgres_uid", b"70\n"),
+    ("postgres_gid", b"70\n"),
+    ("lineage", (storage.LINEAGE + "\n").encode()),
+    ("pg_version", b"17\n"),
+)
+
+
+def metadata_reply(nonce, fields=METADATA_FIELDS):
+    import base64
+
+    return (
+        f"wayne-physical-metadata-v1:begin:{nonce}\n".encode()
+        + b"".join(name.encode() + b":" + base64.b64encode(raw) + b"\n" for name, raw in fields)
+        + f"wayne-physical-metadata-v1:end:{nonce}\n".encode()
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "missing",
+        "extra",
+        "duplicate",
+        "wrong_nonce",
+        "truncated",
+        "garbage",
+        "invalid_base64",
+        "noncanonical_base64",
+        "oversized_field",
+        "oversized_reply",
+        "wrong_footer",
+        "reordered",
+        "whitespace",
+    ],
+)
+def test_physical_metadata_reply_refuses_incomplete_or_unbound_bytes(fault):
+    nonce = "a" * 32
+    raw = metadata_reply(nonce)
+    if fault == "missing":
+        raw = metadata_reply(nonce, METADATA_FIELDS[:-1])
+    elif fault == "extra":
+        raw = metadata_reply(nonce, (*METADATA_FIELDS, ("extra", b"17\n")))
+    elif fault == "duplicate":
+        raw = metadata_reply(nonce, (*METADATA_FIELDS[:-1], METADATA_FIELDS[0]))
+    elif fault == "wrong_nonce":
+        raw = raw.replace(nonce.encode(), b"b" * 32)
+    elif fault == "truncated":
+        raw = raw[:-1]
+    elif fault == "garbage":
+        raw += b"unexpected\n"
+    elif fault == "invalid_base64":
+        raw = raw.replace(b"pg_version:MTcK", b"pg_version:MTcK!")
+    elif fault == "noncanonical_base64":
+        raw = raw.replace(b"postgres_uid:NzAK", b"postgres_uid:Zh==")
+    elif fault == "oversized_field":
+        raw = metadata_reply(nonce, (*METADATA_FIELDS[:-1], ("pg_version", b"x" * 16385)))
+    elif fault == "wrong_footer":
+        raw = raw.replace(b"end:" + nonce.encode(), b"end:" + b"b" * 32)
+    elif fault == "reordered":
+        raw = metadata_reply(nonce, (METADATA_FIELDS[1], METADATA_FIELDS[0], *METADATA_FIELDS[2:]))
+    elif fault == "whitespace":
+        raw = raw.replace(b"pg_version:MTcK", b"pg_version:MT cK")
+    elif fault == "oversized_reply":
+        raw = b"x" * 132001
+    if fault:
+        with pytest.raises(storage.StorageRefusal, match="metadata"):
+            storage._decode_physical_metadata(raw, nonce)
+    else:
+        result = storage._decode_physical_metadata(raw, nonce)
+        assert result.model_dump() == dict(METADATA_FIELDS)
+
+
+@pytest.mark.parametrize(
+    "failed_command", [None, "stat", "status", "uid", "gid", "lineage", "version", "oversized"]
+)
+def test_physical_metadata_fixed_producer_preserves_bytes_and_command_failures(
+    monkeypatch, failed_command
+):
+    import subprocess
+
+    calls = []
+    prelude = r"""
+set -eu
+stat() { [ "$*" = "-c %d %i %u %g %a /var/lib/postgresql/data" ] || return 81
+  [ "$failed" != stat ] || return 82; printf '64773 104470194 70 1000 700\n'; }
+id() { [ "$2" = postgres ] || return 81
+  case "$1" in -u) field=uid;; -g) field=gid;; *) return 81;; esac
+  [ "$failed" != "$field" ] || return 82; printf '70\n'; }
+cat() { case "$1" in
+  /proc/1/status) [ "$failed" != status ] || return 82; printf '%s\n' "$pid_status";;
+  /var/lib/postgresql/data/.babylon-postgres-lineage-v1) [ "$failed" != lineage ] || return 82; printf '%s\n' "$lineage";;
+  /var/lib/postgresql/data/PG_VERSION) [ "$failed" != version ] || return 82; printf '17\n';;
+  *) return 81;; esac; }
+"""
+
+    def execute(args):
+        calls.append(args)
+        assert args[:5] == ["docker", "exec", "b" * 64, "/bin/sh", "-ceu"]
+        assert len(args) == 8
+        return subprocess.run(
+            ["bash", "-c", prelude + args[5], args[6], args[7]],
+            env={
+                "PATH": "/usr/bin:/bin",
+                "failed": failed_command or "",
+                "pid_status": PID1_STATUS + ("x" * 16385 if failed_command == "oversized" else ""),
+                "lineage": storage.LINEAGE,
+            },
+            capture_output=True,
+            check=True,
+        ).stdout
+
+    monkeypatch.setattr(storage, "_exec_bytes", execute)
+    if failed_command:
+        error = (
+            storage.StorageRefusal
+            if failed_command == "oversized"
+            else subprocess.CalledProcessError
+        )
+        with pytest.raises(error):
+            storage._physical_metadata("b" * 64)
+    else:
+        first = storage._physical_metadata("b" * 64)
+        second = storage._physical_metadata("b" * 64)
+        assert first.model_dump() == second.model_dump() == dict(METADATA_FIELDS)
+        assert calls[0][-1] != calls[1][-1]
+    assert len(calls) == (1 if failed_command else 2)
 
 
 def test_physical_repeat_reuses_only_admitted_template1_connection(monkeypatch):
@@ -1227,7 +1351,7 @@ def test_native_pin_publishes_only_released_normal_copies(
 
 def test_ordinary_profile_is_independent_normal_only_and_never_a_qualified_member(monkeypatch):
     root = Path(
-        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-26/ordinary-01"
+        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-27/ordinary-01"
     )
     evidence = root / "normal_play/evidence"
     monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")

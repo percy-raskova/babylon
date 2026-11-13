@@ -308,19 +308,32 @@ fn spawn(mut commands: Commands) {
             DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
         ))
         .with_children(|shield| {
+            let resources = super::resource_hud::spawn(shield);
+            shield.commands().entity(resources).insert((
+                TextPart::InspectorMeans,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(18),
+                    right: px(18),
+                    top: px(8),
+                    height: px(60),
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ));
             shield
-                .spawn((text("", 14.0, theme::PAPER), TextPart::InspectorMeans))
-                .insert((
+                .spawn((
                     Node {
                         position_type: PositionType::Absolute,
                         left: px(18),
                         right: px(18),
-                        top: px(16),
-                        height: px(50),
+                        top: px(72),
+                        height: px(28),
                         ..default()
                     },
                     Pickable::IGNORE,
-                ));
+                ))
+                .with_children(super::processing_feedback::spawn);
         });
 
     spawn_scene(&mut commands);
@@ -335,7 +348,7 @@ fn spawn_scene(commands: &mut Commands) {
                 position_type: PositionType::Absolute,
                 left: px(16),
                 right: percent(28),
-                top: px(87),
+                top: px(107),
                 bottom: px(266),
                 display: Display::None,
                 ..column()
@@ -654,7 +667,7 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
                     buttons.commands().entity(subject).insert(Node {
                         width: percent(100),
                         max_width: percent(100),
-                        padding: UiRect::axes(px(8), px(5)),
+                        padding: UiRect::axes(px(8), px(3)),
                         border: UiRect::bottom(px(2)),
                         flex_shrink: 0.0,
                         row_gap: px(0),
@@ -1768,16 +1781,16 @@ fn unavailable_message(
             return client
                 .can_keep_evidence(session)
                 .err()
-                .unwrap_or("This report cannot be retained.")
+                .unwrap_or("This report cannot be retained.");
         }
         OrganizerAction::RemoveReference => {
             return client
                 .can_remove_reference(session)
                 .err()
-                .unwrap_or("No saved reference is selected.")
+                .unwrap_or("No saved reference is selected.");
         }
         OrganizerAction::PreviousEvidence | OrganizerAction::NextEvidence => {
-            return "No other report is available in that direction."
+            return "No other report is available in that direction.";
         }
         _ => {}
     }
@@ -2076,24 +2089,77 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
         let value = match part {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => board::subject_reading(scope),
-            TextPart::Means | TextPart::InspectorMeans => copy::resource_masthead(&scope.client, &scope.session),
+            TextPart::Means | TextPart::InspectorMeans => continue,
             TextPart::Context => scope.client.view.as_ref().filter(|view| view.period == scope.session.viewed_tick).map_or_else(String::new, presentation::context),
             TextPart::Aftermath => continue,
             TextPart::ReviewAvailability => copy::review_reason(&scope.client, comparison.as_ref()),
             TextPart::ChoiceHeading => if complete { "Campaign complete".into() } else if historical { "Past commitments".into() } else { format!("Work for period {}", scope.session.viewed_tick.saturating_add(1)) },
             TextPart::Approach(_) if historical => String::new(),
-            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
+            TextPart::Approach(choice) => {
+                if complete {
+                    "No further period remains. Inspect our practice history and retained reports."
+                        .into()
+                } else {
+                    comparison
+                        .as_ref()
+                        .and_then(|comparison| {
+                            comparison
+                                .all_practices
+                                .iter()
+                                .find(|term| term.choice == *choice)
+                        })
+                        .map_or_else(String::new, |term| {
+                            if *choice == scope.client.choice() {
+                                let detail =
+                                    scope.client.view.as_ref().map_or_else(String::new, |view| {
+                                        presentation::client_approach(&scope.client, view, *choice)
+                                    });
+                                format!(
+                                    "{}\n\nDetails · selected draft\n{}\n{detail}",
+                                    copy::terms(term),
+                                    term.intent
+                                )
+                            } else {
+                                copy::compact_terms(term)
+                            }
+                        })
+                }
+            }
             TextPart::ChoiceMarker(choice) => {
-                if complete { "CLOSED".into() }
-                else if scope.client.commitment.as_ref().is_some_and(|value| value.command.choice == *choice) { "ACCEPTED".into() }
-                else if scope.client.choice() == *choice { "SELECTED DRAFT".into() }
-                else { comparison.as_ref().and_then(|v| v.all_practices.iter().find(|p| p.choice == *choice)).map_or_else(|| "Unavailable".into(), |p| copy::availability(p.availability)) }
-            },
+                if complete {
+                    "CLOSED".into()
+                } else if scope
+                    .client
+                    .commitment
+                    .as_ref()
+                    .is_some_and(|value| value.command.choice == *choice)
+                {
+                    "ACCEPTED".into()
+                } else if scope.client.choice() == *choice {
+                    comparison
+                        .as_ref()
+                        .and_then(|v| v.all_practices.iter().find(|p| p.choice == *choice))
+                        .map_or_else(
+                            || "SELECTED DRAFT · unavailable".into(),
+                            |p| format!("SELECTED DRAFT · {}", copy::availability(p.availability)),
+                        )
+                } else {
+                    comparison
+                        .as_ref()
+                        .and_then(|v| v.all_practices.iter().find(|p| p.choice == *choice))
+                        .map_or_else(
+                            || "Unavailable".into(),
+                            |p| copy::availability(p.availability),
+                        )
+                }
+            }
             TextPart::SceneModeMarker(mode) => if *mode == scope.client.scene_mode { " · SELECTED".into() } else { String::new() },
             TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == SessionPhase::Advancing),
             TextPart::ReferenceSummary => format!("{} report reference(s) in this personal draft. References help you review evidence; they never execute a practice.", scope.client.draft.as_ref().map_or(0, |draft| draft.references.len())),
             TextPart::DraftStatus => if !scope.client.draft_writable { "Draft saving unavailable · original file retained".into() } else if scope.client.draft_dirty { "Draft changes awaiting save".into() } else { "Personal draft saved".into() },
-            TextPart::Message => if scope.session.advance_pending() {
+            TextPart::Message => if let Some(error) = &scope.session.error {
+                format!("Operation failed: {error}")
+            } else if scope.session.advance_pending() {
                 format!("Advance requested from P{} · awaiting commit", scope.session.durable_tick)
             } else if scope.client.message.is_empty() {
                 scope.client.commitment.as_ref().map_or_else(|| amount_editor::allocation(&scope.client).err().unwrap_or_default(), |ruling| format!("Ruling accepted · advance to resolve P{}", ruling.resolves_period))
@@ -2155,6 +2221,7 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
                 OrganizerAction::Advance => scope.client.commitment.is_some(),
                 _ => false,
             };
+        let accent = super::action_style::accent(button.0);
         let color = if paper.is_some() {
             if !available || *interaction == Interaction::Pressed {
                 theme::INK
@@ -2164,25 +2231,27 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
         } else if !available {
             theme::INK
         } else if *interaction == Interaction::Pressed {
-            theme::RED.with_alpha(0.4)
-        } else if *interaction == Interaction::Hovered || selected || next_action {
-            theme::YELLOW.with_alpha(0.2)
+            accent.with_alpha(0.4)
+        } else if *interaction == Interaction::Hovered {
+            accent.with_alpha(0.28)
+        } else if selected || next_action {
+            accent.with_alpha(0.18)
         } else {
             theme::PANEL
         };
         background.set_if_neq(BackgroundColor(color));
-        border.set_if_neq(BorderColor::all(
-            if selected
-                || next_action
-                || (paper.is_some() && available && *interaction == Interaction::Hovered)
-            {
-                theme::YELLOW
-            } else if available {
-                theme::GRAY
-            } else {
-                theme::GRAY.with_alpha(0.3)
-            },
-        ));
+        border.set_if_neq(BorderColor::all(if !available {
+            theme::GRAY.with_alpha(0.3)
+        } else if selected
+            || next_action
+            || (paper.is_some() && available && *interaction == Interaction::Hovered)
+        {
+            accent
+        } else if available {
+            accent.with_alpha(0.7)
+        } else {
+            theme::GRAY.with_alpha(0.3)
+        }));
     }
 }
 
@@ -2284,6 +2353,10 @@ mod render_geometry_tests;
 #[cfg(test)]
 #[path = "resource_header_tests.rs"]
 mod resource_header_tests;
+
+#[cfg(test)]
+#[path = "hud_interaction_tests.rs"]
+mod hud_interaction_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -4498,6 +4571,13 @@ pub(crate) mod tests {
                 for child in children {
                     assert_in_view(&app, child, area);
                     copy.push_str(&app.world().get::<Text>(child).expect("printed card line").0);
+                    if let Some(spans) = app.world().get::<Children>(child) {
+                        for span in spans {
+                            if let Some(text) = app.world().get::<TextSpan>(*span) {
+                                copy.push_str(&text.0);
+                            }
+                        }
+                    }
                 }
                 let cost = if viewport.x > 1400 {
                     "2 of 2"
@@ -4508,7 +4588,11 @@ pub(crate) mod tests {
                     copy.contains(cost) && copy.contains("Resolves P4"),
                     "{copy}"
                 );
-                assert!(copy.contains("work") && copy.contains("contact"), "{copy}");
+                let concepts = copy.to_lowercase();
+                assert!(
+                    concepts.contains("work") && concepts.contains("contact"),
+                    "{copy}"
+                );
             }
             let fixed = {
                 let world = app.world_mut();
@@ -4526,7 +4610,11 @@ pub(crate) mod tests {
                     })
                     .collect::<Vec<_>>()
             };
-            assert_eq!(fixed.len(), 3);
+            assert_eq!(
+                fixed.len(),
+                4,
+                "Review, Advance, All practices and Details stay visible"
+            );
             for entity in fixed {
                 assert_in_view(&app, entity, bounds);
             }
@@ -6203,7 +6291,11 @@ pub(crate) mod tests {
         press_named(&mut app, "Ask about work and output");
         let client = app.world().resource::<OrganizerClient>();
         assert_eq!(client.choice(), inquiry);
-        assert_eq!(client.inspector, OrganizerInspector::Closed);
+        assert_eq!(
+            client.inspector,
+            OrganizerInspector::Closed,
+            "selection returns to the decision and its amount controls"
+        );
         assert!(client.outbox.is_none());
     }
 

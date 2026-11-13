@@ -24,7 +24,7 @@ pub(super) fn spawn(commands: &mut Commands) {
                 position_type: PositionType::Absolute,
                 left: percent(14),
                 right: percent(14),
-                top: px(98),
+                top: px(106),
                 bottom: px(48),
                 padding: UiRect::all(px(20)),
                 border: UiRect::all(px(2)),

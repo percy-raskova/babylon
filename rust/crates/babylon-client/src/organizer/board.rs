@@ -48,6 +48,8 @@ struct DispatchPanel;
 #[derive(Component)]
 struct PeriodTitle;
 #[derive(Component)]
+struct CardCost(usize);
+#[derive(Component)]
 struct CardLine {
     slot: usize,
     field: CardField,
@@ -126,7 +128,7 @@ fn masthead(root: &mut ChildSpawnerCommands) {
             top: px(0),
             left: px(0),
             right: px(0),
-            height: px(82),
+            height: px(102),
             padding: UiRect::axes(px(18), px(2)),
             border: UiRect::bottom(px(2)),
             row_gap: px(2),
@@ -138,23 +140,32 @@ fn masthead(root: &mut ChildSpawnerCommands) {
     .with_children(|bar| {
         bar.spawn(Node {
             width: percent(100),
-            height: px(40),
+            height: px(34),
             flex_shrink: 0.0,
             column_gap: px(12),
             align_items: AlignItems::Center,
             ..default()
         })
         .with_children(|row| {
+            row.spawn((
+                Node {
+                    min_width: px(120),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Name::new("wayne.navigation"),
+            ));
             row.spawn((ui::text("", 22.0, theme::PAPER), TextPart::Title))
                 .insert((
                     ObserverFontRole::Display,
+                    super::processing_feedback::IdleHeading,
                     Node {
                         flex_grow: 1.0,
                         min_width: px(0),
                         ..default()
                     },
                 ));
-            ui::button(row, "Advance one period", OrganizerAction::Advance);
+            super::processing_feedback::spawn(row);
             crate::production::button(row, "World", ProductionCommand::Map);
             crate::production::button(row, "Evidence", ProductionCommand::Open);
             ui::button(row, "Archive", OrganizerAction::ArchiveSelection);
@@ -164,15 +175,13 @@ fn masthead(root: &mut ChildSpawnerCommands) {
                 ObserverCommand::Disclosure(ObserverDisclosure::Time),
             );
             crate::observer_ui::button(row, "Menu", ObserverCommand::Menu);
+            let advance = ui::button(row, "Advance one period", OrganizerAction::Advance);
+            row.commands()
+                .entity(advance)
+                .insert(Name::new("wayne.advance"));
         });
-        bar.spawn((ui::text("", 14.0, theme::PAPER), TextPart::Means))
-            .insert(Node {
-                width: percent(100),
-                height: px(34),
-                flex_shrink: 0.0,
-                min_width: px(0),
-                ..default()
-            });
+        let resources = super::resource_hud::spawn(bar);
+        bar.commands().entity(resources).insert(TextPart::Means);
     });
 }
 
@@ -183,7 +192,7 @@ fn dossier(root: &mut ChildSpawnerCommands) {
             position_type: PositionType::Absolute,
             right: px(16),
             width: percent(26),
-            top: px(87),
+            top: px(107),
             bottom: px(266),
             padding: UiRect::all(px(12)),
             border: UiRect::top(px(3)),
@@ -192,9 +201,10 @@ fn dossier(root: &mut ChildSpawnerCommands) {
         },
         BackgroundColor(RAIL),
         BorderColor::all(theme::COPPER),
+        Name::new("wayne.situation"),
     ))
     .with_children(|panel| {
-        kicker(panel, "FIELD DOSSIER   /   WAYNE", theme::COPPER);
+        kicker(panel, "SITUATION   /   WAYNE", theme::COPPER);
         ui::spawn_scrolling_reading(panel, |panel| {
             panel.spawn((
                 ImageNode::default(),
@@ -274,7 +284,10 @@ pub(super) fn subject_reading(scope: &Scope) -> String {
         OrganizerSubject::NeighborhoodGroup(id)
             if view.standing.partner_actor_id == id && view.standing.authorized =>
         {
-            format!("{} organizer-hours for the saved contact practice when eligible. Participation is independent.", view.contact_hours)
+            format!(
+                "{} organizer-hours for the saved contact practice when eligible. Participation is independent.",
+                view.contact_hours
+            )
         }
         OrganizerSubject::NeighborhoodGroup(_) => "Neighborhood work is paused.".into(),
         OrganizerSubject::Collective(_) => view.positions.first().map_or_else(
@@ -293,6 +306,7 @@ fn deck(root: &mut ChildSpawnerCommands) {
     root.spawn((
         Overlay,
         DecisionDeck,
+        Name::new("wayne.choices"),
         Node {
             position_type: PositionType::Absolute,
             left: px(16),
@@ -350,6 +364,12 @@ fn deck(root: &mut ChildSpawnerCommands) {
                 OrganizerAction::Inspect(OrganizerInspector::Practices),
             );
             bar.commands().entity(practices).insert(PaperAction);
+            let details = ui::button(
+                bar,
+                "Details",
+                OrganizerAction::Inspect(OrganizerInspector::Practices),
+            );
+            bar.commands().entity(details).insert(PaperAction);
             let review = ui::button(bar, "Review choice", OrganizerAction::Review);
             bar.commands().entity(review).insert(PaperAction);
         });
@@ -428,8 +448,22 @@ fn comparison_cards(pair: &mut ChildSpawnerCommands) {
                 },
             ))
             .insert(ObserverFontRole::Display);
+            card.spawn(ui::text("Cost: ", 14.0, PRINT))
+                .with_children(|line| {
+                    line.spawn((
+                        TextSpan::new(""),
+                        CardCost(i),
+                        TextFont {
+                            font_size: FontSize::Px(14.0),
+                            weight: FontWeight::BOLD,
+                            ..default()
+                        },
+                        TextColor(PRINT),
+                        ObserverFontRole::Body,
+                    ));
+                });
             card.spawn((
-                ui::text("", 15.0, PRINT),
+                ui::text("", 14.0, PRINT),
                 CardLine {
                     slot: i,
                     field: CardField::Terms,
@@ -492,6 +526,7 @@ fn paint_cards(
         &mut BorderColor,
     )>,
     mut texts: Query<(&CardLine, &mut Text)>,
+    mut costs: Query<(&CardCost, &mut TextSpan)>,
 ) {
     if *scope.view != PrimaryView::Organizer {
         return;
@@ -523,11 +558,26 @@ fn paint_cards(
             } else {
                 PAPER
             }));
-            border.set_if_neq(BorderColor::all(if selected {
-                RUST
+            let available = choice.availability == workspace::ChoiceAvailability::Reviewable;
+            let accent = super::action_style::choice(choice.choice);
+            border.set_if_neq(BorderColor::all(if available {
+                accent.with_alpha(if selected || hovered { 1.0 } else { 0.65 })
             } else {
                 Color::srgb_u8(142, 129, 103)
             }));
+        }
+    }
+    for (slot, mut span) in &mut costs {
+        let value = choices.as_ref().map_or_else(String::new, |choices| {
+            copy::terms(&choices.alternatives[slot.0])
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim_start_matches("Cost: ")
+                .to_owned()
+        });
+        if span.0 != value {
+            span.0 = value;
         }
     }
     for (field, mut value) in &mut texts {
@@ -547,7 +597,11 @@ fn paint_cards(
                 let term = &choices.alternatives[field.slot];
                 match field.field {
                     CardField::Title => term.title.into(),
-                    CardField::Terms => copy::terms(term),
+                    CardField::Terms => copy::terms(term)
+                        .lines()
+                        .skip(1)
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                     CardField::Status => {
                         let status = if term.choice == choices.draft_choice {
                             "DRAFT"
@@ -763,6 +817,8 @@ fn fit_scene(
 }
 
 pub(super) fn install(app: &mut App) {
+    super::resource_hud::install(app);
+    super::processing_feedback::install(app);
     app.add_systems(
         Update,
         (

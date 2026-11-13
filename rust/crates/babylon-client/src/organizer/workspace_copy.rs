@@ -1,4 +1,5 @@
 //! Short card copy and dated navigation derived from the admitted view.
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::{OrganizerReport, OrganizerView};
 use std::fmt::Write as _;
 
@@ -12,38 +13,6 @@ use crate::organizer::workspace::{
     ChoiceAvailability, ChoiceComparison, DispatchCoverage, DispatchDestination, DispatchRows,
     HourUse, PossibleBenefit, PracticeChoice, RoutineEffect,
 };
-use babylon_kernel::clock::CampaignDuration;
-use babylon_persistence::identity::CampaignId;
-
-/// One current resource reading shared by Organizer, World and Evidence headers.
-pub(crate) fn resource_masthead(client: &OrganizerClient, session: &ObserverSession) -> String {
-    let Some(means) = workspace::resources(client, session) else {
-        return format!("P{} · Resources unavailable for this inspected context\nCollective cash unavailable · Organizer-hours unavailable · Shared household time unavailable", session.viewed_tick);
-    };
-    let cash = means
-        .cash_micros
-        .map_or_else(|| "unavailable".into(), crate::human_numbers::currency);
-    let shared = means.shared_time.map_or_else(
-        || "unavailable · next period unknown".into(),
-        |(period, hours)| {
-            format!(
-                "{} h left in closed P{period} · next period unknown",
-                crate::observer_ui::grouped(hours)
-            )
-        },
-    );
-    let endpoint = session
-        .duration
-        .and_then(CampaignDuration::final_period)
-        .map_or_else(String::new, |period| format!(" / P{period}"));
-    let routine = if means.standing_authorized {
-        "authorized"
-    } else {
-        "paused"
-    };
-    format!("P{}{endpoint} committed · Collective cash {cash} · Organizer-hours pledged {}\nShared household time {shared} · Neighborhood {routine}", means.period, crate::observer_ui::grouped(means.organizer_hours))
-}
-
 /// Current earned subject knowledge for World; broad production remains undisclosed.
 pub(crate) fn world_reports(client: &OrganizerClient, session: &ObserverSession) -> Option<String> {
     workspace::resources(client, session)?;
@@ -130,7 +99,11 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
             OrganizerAidTransportPreview::Routed { .. } => "freight · delay and loss possible",
         });
     if matches!(choice.availability, ChoiceAvailability::PendingAid { .. }) {
-        return Some(format!("{name} · {route}\nUnsubmitted draft: {food_quantity} parcels + {}.\nEarlier support is still open on this route.", crate::human_numbers::currency(cash_micros)));
+        return Some(format!(
+            "Cost: {} parcels + {} · unsubmitted draft\nPartner: {name}\nTiming: {route} · earlier support still open\nRoutine: current authorization retained\nOutcome: review blocked until the earlier route closes",
+            crate::observer_ui::grouped(food_quantity),
+            crate::human_numbers::currency(cash_micros)
+        ));
     }
     let cash = if aid.cash_receiving_consent == OrganizerGiftConsent::Refuse {
         "cash receiving refused"
@@ -142,7 +115,16 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
     } else {
         "Displaces routine once."
     };
-    Some(format!("{name} · {route}\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours))
+    let timing = choice
+        .resolves_period
+        .map_or_else(|| "unknown".into(), |period| format!("P{period}"));
+    Some(format!(
+        "Cost: {} parcels + {}; up to {} fulfillment h + {} possible coordination h\nPartner: {name}\nTiming: {timing} · {route}\nRoutine: {routine}\nOutcome: {cash}; delivery and participation remain independent",
+        crate::observer_ui::grouped(food_quantity),
+        crate::human_numbers::currency(cash_micros),
+        hours.map_or_else(|| "unknown".into(), crate::observer_ui::grouped),
+        crate::observer_ui::grouped(aid.coordination_hours)
+    ))
 }
 
 /// Explain a blocked selected route beside its Review control.
@@ -168,8 +150,16 @@ pub(super) fn review_reason(
         "Amounts are a saved, unsubmitted draft."
     };
     match selected.availability {
-        ChoiceAvailability::PendingAid { admitted_period, dispatch_period } => format!("Review blocked on this route: earlier support is open (admitted P{admitted_period}, dispatch P{dispatch_period}). {saving}"),
-        _ => String::new(),
+        ChoiceAvailability::PendingAid {
+            admitted_period,
+            dispatch_period,
+        } => format!(
+            "Review blocked on this route: earlier support is open (admitted P{admitted_period}, dispatch P{dispatch_period}). {saving}"
+        ),
+        ChoiceAvailability::Reviewable => super::amount_editor::allocation(client)
+            .err()
+            .unwrap_or_default(),
+        blocked => format!("Review unavailable: {}. {saving}", availability(blocked)),
     }
 }
 
@@ -211,16 +201,14 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
     let benefit = match choice.benefit {
         PossibleBenefit::Report {
             observed_period: Some(period),
-        } => format!("Request the P{period} report if the partner participates."),
+        } => format!("P{period} report if the partner participates."),
         PossibleBenefit::Report {
             observed_period: None,
-        } => "No completed-period report exists yet.".into(),
+        } => "No completed-period report yet.".into(),
         PossibleBenefit::WorkplaceContact => {
-            "If the committee participates, contact can renew report sharing.".into()
+            "May renew report sharing if the committee participates.".into()
         }
-        PossibleBenefit::NeighborhoodContact => {
-            "Attempt contact if the neighborhood group participates.".into()
-        }
+        PossibleBenefit::NeighborhoodContact => "Contact if the group participates.".into(),
         PossibleBenefit::Collection => choice.collection.map_or_else(
             || "Collection terms unknown.".into(),
             |row| {
@@ -243,7 +231,7 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
                 )
             },
         ),
-        PossibleBenefit::PauseRoutine => "Suspend the routine until explicitly resumed.".into(),
+        PossibleBenefit::PauseRoutine => "Paused until explicitly resumed.".into(),
         PossibleBenefit::NoPractice => "No neighborhood practice will run.".into(),
     };
     let resolution = choice.resolves_period.map_or_else(
@@ -251,8 +239,20 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
         |period| format!("Resolves P{period}"),
     );
     format!(
-        "{}\n{parties}\n{cost}   ·   {resolution}\n{routine}. {benefit}",
-        choice.intent
+        "Cost: {cost}\nPartner: {parties}\nTiming: {resolution}\nRoutine: {routine}\nOutcome: {benefit}"
+    )
+}
+
+/// A collapsed choice keeps its captured parties and cost readable.
+pub(super) fn compact_terms(choice: &PracticeChoice) -> String {
+    let terms = terms(choice);
+    let cost = terms.lines().next().unwrap_or("Cost: unavailable");
+    format!(
+        "{cost}\nTarget: {} · Partner: {}",
+        choice.target.map_or("unavailable", |target| target.label),
+        choice
+            .partner
+            .map_or("unavailable", |partner| partner.label)
     )
 }
 
@@ -384,7 +384,11 @@ impl Bulletin {
             );
         }
         for row in &rows.encounters {
-            let _ = writeln!(self.copy, "CITY PD VISIT · PERIOD {}\nA public venue check-in records City PD visiting {}. Organizer presence and police knowledge remain unknown.", row.encounter.resolve_period, row.subject.label);
+            let _ = writeln!(
+                self.copy,
+                "CITY PD VISIT · PERIOD {}\nA public venue check-in records City PD visiting {}. Organizer presence and police knowledge remain unknown.",
+                row.encounter.resolve_period, row.subject.label
+            );
             self.link(
                 session,
                 period,
@@ -431,7 +435,10 @@ fn arrival_warning(client: &OrganizerClient, period: u64) -> Option<String> {
         || "Arrival period unknown.".into(),
         |at| format!("Earliest possible arrival P{at}. Delay or loss can change the outcome."),
     );
-    Some(format!("Food is in transit from P{}. {window} Coordination on arrival can compete with routine hours. Open Direction / routine to review Pause.",pending.dispatch_period))
+    Some(format!(
+        "Food is in transit from P{}. {window} Coordination on arrival can compete with routine hours. Open Direction / routine to review Pause.",
+        pending.dispatch_period
+    ))
 }
 
 pub(super) fn bulletin(scope: &Scope) -> Bulletin {

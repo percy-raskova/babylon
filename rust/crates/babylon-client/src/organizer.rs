@@ -6,6 +6,7 @@ use serde_json::Value;
 use crate::observer::Perspective;
 #[cfg(test)]
 use babylon_persistence::ArchiveEvidenceClass;
+mod action_style;
 mod amount_editor;
 mod draft;
 
@@ -20,6 +21,8 @@ mod presentation;
 mod scene;
 
 mod board;
+pub(crate) mod processing_feedback;
+pub(crate) mod resource_hud;
 mod workspace;
 pub(crate) use board::Overlay as OrganizerOverlay;
 pub(crate) use ui::SceneRoot as OrganizerSceneRegion;

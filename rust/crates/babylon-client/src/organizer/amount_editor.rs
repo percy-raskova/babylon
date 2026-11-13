@@ -63,7 +63,7 @@ impl AmountField {
                 target_cash_micros
             }
             (Self::Food, _, OrganizerAllocation::Aid { food_quantity, .. }) => {
-                return Some(food_quantity.to_string())
+                return Some(food_quantity.to_string());
             }
             (Self::Cash, _, OrganizerAllocation::Aid { cash_micros, .. }) => cash_micros,
             _ => return None,
@@ -217,7 +217,23 @@ pub(super) fn spawn(parent: &mut ChildSpawnerCommands) {
                     BorderColor::all(theme::COPPER),
                     DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
                 ))
-                .with_child((super::ui::text("", 15.0, theme::PAPER), FieldValue(field)));
+                .with_children(|control| {
+                    control
+                        .spawn((
+                            super::ui::text(format!("{}  ", field.label()), 15.0, theme::PAPER),
+                            FieldValue(field),
+                        ))
+                        .with_child((
+                            TextSpan::new(""),
+                            TextFont {
+                                font_size: FontSize::Px(15.0),
+                                weight: FontWeight::BOLD,
+                                ..default()
+                            },
+                            crate::observer_ui::ObserverFontRole::Body,
+                            TextColor(theme::PAPER),
+                        ));
+                });
             }
         });
 }
@@ -225,7 +241,8 @@ pub(super) fn spawn(parent: &mut ChildSpawnerCommands) {
 fn paint(
     scope: Scope,
     focus: Res<InputFocus>,
-    mut values: Query<(&FieldValue, &ChildOf, &mut Text)>,
+    mut values: Query<(&FieldValue, &ChildOf, &Children, &mut Text)>,
+    mut spans: Query<&mut TextSpan>,
 ) {
     if !(scope.client.is_changed()
         || scope.session.is_changed()
@@ -235,7 +252,10 @@ fn paint(
     {
         return;
     }
-    for (field, parent, mut text) in &mut values {
+    for (field, parent, children, mut label) in &mut values {
+        let Ok(mut text) = spans.get_mut(children[0]) else {
+            continue;
+        };
         if !super::ui::visible(
             OrganizerAction::FocusAmount(field.0),
             &scope.client,
@@ -243,9 +263,15 @@ fn paint(
             &scope.ui,
             *scope.view,
         ) {
-            text.set_if_neq(Text::new(""));
+            if !label.0.is_empty() {
+                label.0.clear();
+            }
+            if !text.0.is_empty() {
+                text.0.clear();
+            }
             continue;
         }
+        label.set_if_neq(Text::new(format!("{}  ", field.0.label())));
         let editor = scope.client.amounts.raw[field.0.index()]
             .clone()
             .unwrap_or_else(|| field.0.initial(&scope.client));
@@ -265,15 +291,17 @@ fn paint(
                 .map_or(shown, crate::human_numbers::grouped)
         };
         let display: String = shown.chars().take(15).collect();
-        text.set_if_neq(Text::new(format!(
-            "{}  {display}{}",
-            field.0.label(),
+        let value = format!(
+            "{display}{}",
             if display.len() < shown.len() {
                 "…"
             } else {
                 ""
             }
-        )));
+        );
+        if text.0 != value {
+            text.0 = value;
+        }
     }
 }
 

@@ -17,6 +17,7 @@ enum Operation {
         period: u64,
     },
     Reading(ObservationContext),
+    RefreshingOrganizer(ObservationContext),
 }
 impl Operation {
     fn current(state: &ObserverSession) -> Option<Self> {
@@ -40,7 +41,12 @@ impl Operation {
                 epoch: state.lifecycle_epoch(),
             });
         }
-        (state.phase == SessionPhase::Loading).then(|| Self::Reading(state.context()))
+        if state.phase == SessionPhase::Loading {
+            return Some(Self::Reading(state.context()));
+        }
+        state
+            .organizer_control_pending()
+            .then(|| Self::RefreshingOrganizer(state.context()))
     }
 }
 
@@ -109,6 +115,7 @@ impl OperationProgress {
                 "Loading opening observation".into()
             }
             Operation::Reading(context) => format!("Loading saved period {}", context.tick),
+            Operation::RefreshingOrganizer(_) => "Updating the organizer view".into(),
         };
         Some(format!("{phase} · {}s elapsed", self.seconds))
     }
@@ -134,6 +141,31 @@ pub(crate) fn track(
 mod tests {
     use super::*;
     use uuid::Uuid;
+    #[test]
+    fn committed_period_remains_pending_until_authenticated_organizer_refresh_finishes() {
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(7)));
+        state.ready(3, None);
+        assert!(state.installed(&state.context()));
+        state.set_organizer_control_pending(true);
+        let mut progress = OperationProgress::default();
+        progress.observe(&state, Duration::from_secs(10));
+        progress.observe(&state, Duration::from_secs(15));
+        assert_eq!(
+            progress.caption().as_deref(),
+            Some("Updating the organizer view · 5s elapsed"),
+            "a committed observation alone does not settle the organizer refresh"
+        );
+        assert!(
+            state.begin_advance().is_none(),
+            "refresh must block a duplicate advance"
+        );
+        state.set_organizer_control_pending(false);
+        progress.observe(&state, Duration::from_secs(16));
+        assert!(
+            progress.caption().is_none(),
+            "authenticated refresh ends pending feedback"
+        );
+    }
     #[test]
     fn progress_distinguishes_open_commit_and_authenticated_read_without_advancing_time() {
         let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(7)));

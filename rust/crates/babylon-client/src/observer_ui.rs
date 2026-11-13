@@ -133,7 +133,7 @@ impl NetworkSector {
             Self::Agriculture => "Agriculture / forestry",
             Self::Mining => "Extraction",
             Self::Manufacturing => "Manufacturing",
-            Self::Production => "Goods / service producers",
+            Self::Production => "Commodity / service producers",
             Self::Maintenance => "Maintenance",
             Self::Wholesale => "Wholesale",
             Self::Retail => "Retail",
@@ -412,7 +412,7 @@ fn scoped_button(
                     _ => Val::Auto,
                 },
                 justify_content: JustifyContent::Center,
-                padding: UiRect::axes(px(12), px(8)),
+                padding: UiRect::axes(px(12), px(6)),
                 border: match command {
                     ObserverCommand::TogglePlay | ObserverCommand::Step => UiRect {
                         left: px(1),
@@ -435,7 +435,12 @@ fn scoped_button(
         .with_child((
             label(text, 15.0, theme::PAPER),
             ObserverButtonCaption(command),
-        ));
+        ))
+        .insert(Name::new(if matches!(command, ObserverCommand::Step) {
+            "wayne.advance"
+        } else {
+            "observer.action"
+        }));
 }
 
 fn row() -> Node {
@@ -460,7 +465,7 @@ fn spawn_hud(commands: &mut Commands) {
                 left: px(16),
                 right: px(16),
                 top: px(8),
-                height: px(88),
+                height: px(98),
                 padding: UiRect::axes(px(8), px(2)),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(0),
@@ -475,32 +480,46 @@ fn spawn_hud(commands: &mut Commands) {
         .with_children(|hud| {
             hud.spawn(Node {
                 width: percent(100),
-                height: px(48),
+                height: px(34),
                 flex_shrink: 0.0,
                 ..row()
             })
             .with_children(|bar| {
+                bar.spawn((
+                    Node {
+                        min_width: px(120),
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    Name::new("wayne.navigation"),
+                ));
                 bar.spawn(role_label(
                     "BABYLON",
                     26.0,
                     theme::PAPER,
                     ObserverFontRole::Display,
+                ))
+                .insert((
+                    crate::organizer::processing_feedback::IdleHeading,
+                    Node::default(),
                 ));
                 bar.spawn((
-                    label("Opening campaign", 16.0, theme::PAPER),
+                    label("Opening campaign", 13.0, theme::PAPER),
                     Node {
                         width: px(160),
                         flex_shrink: 0.0,
                         ..default()
                     },
+                    crate::organizer::processing_feedback::IdleHeading,
                     ObserverText::Clock,
                     ObserverFocusTarget::reading(None),
                 ));
+                crate::organizer::processing_feedback::spawn(bar);
                 bar.spawn(Node {
                     flex_grow: 1.0,
                     ..default()
-                });
-                button(bar, "Advance period", ObserverCommand::Step);
+                })
+                .insert(crate::organizer::processing_feedback::IdleHeading);
                 button(
                     bar,
                     "Time +",
@@ -516,25 +535,37 @@ fn spawn_hud(commands: &mut Commands) {
                 crate::production::button(bar, "World [M]", ProductionCommand::Map);
                 crate::organizer::ui::button(bar, "Organize", OrganizerAction::Open);
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
+                button(bar, "Advance one period", ObserverCommand::Step);
             });
             hud.spawn(Node {
                 width: percent(100),
-                height: px(32),
+                height: px(60),
                 flex_shrink: 0.0,
                 ..row()
             })
             .with_children(|bar| {
-                bar.spawn((
-                    label("", 13.0, theme::PAPER),
+                let resources = crate::organizer::resource_hud::spawn(bar);
+                bar.commands().entity(resources).insert((
                     ObserverText::CampaignMeans,
                     Node {
                         flex_grow: 1.0,
                         flex_basis: px(0),
+                        height: px(60),
+                        column_gap: px(8),
                         min_width: px(0),
                         ..default()
                     },
                 ));
-                bar.spawn((label("", 14.0, theme::YELLOW), ObserverText::Status));
+                bar.spawn((
+                    label("", 12.0, theme::YELLOW),
+                    ObserverText::Status,
+                    Node {
+                        max_width: px(190),
+                        min_width: px(0),
+                        flex_shrink: 1.0,
+                        ..default()
+                    },
+                ));
                 bar.spawn((label("", 13.0, theme::GRAY), ObserverText::Identity));
             });
         });
@@ -673,8 +704,8 @@ fn spawn_footer(commands: &mut Commands) {
                         "Map lens +",
                         ObserverCommand::Disclosure(ObserverDisclosure::Lens),
                     );
-                    button(controls, "< Good", ObserverCommand::CycleGood(true));
-                    button(controls, "Good >", ObserverCommand::CycleGood(false));
+                    button(controls, "< Commodity", ObserverCommand::CycleGood(true));
+                    button(controls, "Commodity >", ObserverCommand::CycleGood(false));
                     controls.spawn((label("", 12.0, theme::PAPER), ObserverText::Legend));
                 });
             bar.spawn((
@@ -1545,18 +1576,23 @@ fn paint_buttons(
             _ => false,
         };
         let enabled = active_scope && available == ControlAvailability::Enabled;
+        let accent = if matches!(button.command, ObserverCommand::Step) {
+            theme::YELLOW
+        } else {
+            theme::GRAY
+        };
         let next = match interaction {
             _ if !enabled => theme::INK,
-            Interaction::Pressed => theme::RED.with_alpha(0.5),
-            Interaction::Hovered => theme::YELLOW.with_alpha(0.25),
-            Interaction::None if selected => theme::YELLOW.with_alpha(0.2),
+            Interaction::Pressed => accent.with_alpha(0.5),
+            Interaction::Hovered => accent.with_alpha(0.25),
+            Interaction::None if selected => accent.with_alpha(0.2),
             Interaction::None => theme::PANEL,
         };
         background.set_if_neq(BackgroundColor(next));
         border.set_if_neq(BorderColor::all(if !enabled {
             theme::GRAY.with_alpha(0.3)
-        } else if selected {
-            theme::YELLOW
+        } else if selected || matches!(button.command, ObserverCommand::Step) {
+            accent
         } else {
             theme::GRAY
         }));
@@ -1862,7 +1898,10 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
         .map(|event| event.description.as_str())
         .collect();
     if developments.is_empty() {
-        return format!("Period {}: no production developments are disclosed for this county in this observation. This does not establish that nothing changed. Open History or the cited Archive.", snapshot.resolve_tick);
+        return format!(
+            "Period {}: no production developments are disclosed for this county in this observation. This does not establish that nothing changed. Open History or the cited Archive.",
+            snapshot.resolve_tick
+        );
     }
     let mut text = format!("Period {} · reported developments", snapshot.resolve_tick);
     for description in developments.iter().take(4) {
@@ -2039,12 +2078,7 @@ fn repaint(
         }
         let value = match kind {
             ObserverText::Clock => turn.period.clone(),
-            ObserverText::CampaignMeans => if state.organizer_enabled {
-                organizer.as_deref().map_or_else(
-                    || "Collective cash unavailable · Organizer-hours unavailable · Shared household time unavailable".into(),
-                    |client| crate::organizer::workspace_copy::resource_masthead(client, &state),
-                )
-            } else { String::new() },
+            ObserverText::CampaignMeans => continue,
             ObserverText::Identity if state.organizer_enabled => String::new(),
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
             ObserverText::Status => status_with_organizer_message(&turn.status, organizer.as_deref(), &state),
@@ -2075,7 +2109,7 @@ fn repaint(
                 MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
                 MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
                 MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
-                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
+                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Commodities remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
             },
             ObserverText::Developments => world_developments(installed, county.as_ref().map(|county| county.fips), organizer.as_deref(), &state),
             ObserverText::Production => installed.and_then(|snapshot| snapshot.production.as_ref())

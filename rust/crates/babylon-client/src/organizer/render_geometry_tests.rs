@@ -155,8 +155,8 @@ fn rendered_choices_expose_both_actual_terms_at_all_native_fits() {
                 let visible = bounds.intersect(tests::workspace_rect(&app, card));
                 assert_eq!(
                     lines.len(),
-                    3,
-                    "status, actual heading and complete factual terms"
+                    4,
+                    "status, actual heading, bold cost and remaining factual terms"
                 );
                 for line in lines {
                     tests::assert_glyphs_in(&app, line, visible);
@@ -185,7 +185,10 @@ fn rendered_focused_period_stays_clear_of_resources_at_all_native_fits() {
         };
         let clock_bounds = tests::workspace_rect(&app, clock).inflate((width + offset) * scale);
         tests::assert_glyphs_in(&app, clock, tests::workspace_rect(&app, clock));
-        let resources = tests::glyph_rects(&app, means);
+        let resources: Vec<_> = super::resource_header_tests::chip_entities(&app, means)
+            .into_iter()
+            .flat_map(|chip| tests::glyph_rects(&app, chip))
+            .collect();
         assert_ne!(resources, []);
         assert!(
             resources
@@ -281,12 +284,11 @@ fn national_allocation_fields_and_choices_leave_the_subject_visible_at_all_four_
                     "selected group must remain visible in its scrolling dossier"
                 );
             }
-            tests::assert_glyphs_in(&app, means, viewport_bounds);
-            assert!(app
-                .world()
-                .get::<Text>(means)
-                .expect("treasury")
-                .contains("$1.00"));
+            super::resource_header_tests::assert_chip_glyphs_in(&app, means, viewport_bounds);
+            assert!(
+                super::resource_header_tests::resource_text(&app, means).contains("$1.00"),
+                "treasury remains exact"
+            );
             for (e, field, text) in fields {
                 let bounds = tests::workspace_rect(&app, e).intersect(deck_bounds);
                 assert!(field.applies(choice));

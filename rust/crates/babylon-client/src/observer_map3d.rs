@@ -226,6 +226,7 @@ fn hover_county(
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
+        || ui.interface_tour_open
     {
         return;
     }
@@ -268,6 +269,7 @@ fn select_county(
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
+        || ui.interface_tour_open
     {
         return;
     }
@@ -472,6 +474,34 @@ pub(crate) fn assert_paper_blocks_navigation(app: &mut App, point: Vec2) {
     assert_eq!(app.world().resource::<MapOrbit>().transform(), before);
 }
 
+#[cfg(test)]
+pub(crate) fn install_pointer_navigation_fixture(app: &mut App) -> Entity {
+    app.insert_resource(MapGeometry {
+        extent: Vec2::splat(200.0),
+        ..default()
+    })
+    .insert_resource(MapOrbit::new(200.0))
+    .insert_resource(ObserverViewport(Some(Rect::from_corners(
+        Vec2::ZERO,
+        Vec2::splat(500.0),
+    ))))
+    .add_systems(
+        Update,
+        navigate
+            .after(ObserverSet::Input)
+            .before(ObserverSet::Paint),
+    )
+    .add_systems(Update, sync_camera.after(ObserverSet::Paint));
+    app.world_mut()
+        .spawn((
+            ObserverMapCamera,
+            Camera::default(),
+            Transform::default(),
+            Projection::default(),
+        ))
+        .id()
+}
+
 #[derive(SystemParam)]
 struct NavigationInput<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
@@ -507,6 +537,7 @@ fn navigate(
         || input.ui.menu_open
         || input.ui.splash_visible
         || input.ui.comparison_open
+        || input.ui.interface_tour_open
         || input.ui.disclosure.is_some()
         || (*input.view == PrimaryView::Organizer
             && (input.ui.history_open
@@ -1030,6 +1061,55 @@ mod tests {
         assert_eq!(app.world().resource::<MapOrbit>().transform(), started);
     }
 
+    #[test]
+    fn raw_map_tour_resets_held_orbit_and_pan_until_a_new_gesture() {
+        for button in [MouseButton::Right, MouseButton::Middle] {
+            let (mut app, _, _) = focused_navigation_app();
+            app.insert_resource(PrimaryView::Organizer);
+            let navigate = app.world_mut().register_system(navigate);
+            let before = app.world().resource::<MapOrbit>().transform();
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .press(button);
+            app.world_mut()
+                .resource_mut::<AccumulatedMouseMotion>()
+                .delta = Vec2::new(40.0, 10.0);
+            app.world_mut()
+                .run_system(navigate)
+                .expect("normal map drag");
+            let started = app.world().resource::<MapOrbit>().transform();
+            assert_ne!(started, before, "positive control: a map drag starts");
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .clear();
+            app.world_mut()
+                .resource_mut::<ObserverUiState>()
+                .interface_tour_open = true;
+            app.world_mut()
+                .run_system(navigate)
+                .expect("tour interrupts map drag");
+            assert_eq!(app.world().resource::<MapOrbit>().transform(), started);
+            app.world_mut()
+                .resource_mut::<ObserverUiState>()
+                .interface_tour_open = false;
+            app.world_mut()
+                .run_system(navigate)
+                .expect("held drag after tour");
+            assert_eq!(
+                app.world().resource::<MapOrbit>().transform(),
+                started,
+                "a pre-tour held gesture cannot resume after closing"
+            );
+            {
+                let mut mouse = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+                mouse.release(button);
+                mouse.press(button);
+            }
+            app.world_mut().run_system(navigate).expect("new map drag");
+            assert_ne!(app.world().resource::<MapOrbit>().transform(), started);
+        }
+    }
+
     #[derive(Resource, Default)]
     struct OrbitChanged(bool);
 
@@ -1460,12 +1540,37 @@ mod tests {
         app.world_mut()
             .resource_mut::<ObserverUiState>()
             .comparison_open = false;
+        assert_tour_blocks_county_pointer_events(&mut app, click());
         app.world_mut().trigger(click());
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(42));
         app.world_mut().resource_mut::<SelectedCounty>().0 = None;
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.world_mut().trigger(click());
         assert_eq!(app.world().resource::<SelectedCounty>().0, None);
+    }
+
+    fn assert_tour_blocks_county_pointer_events(app: &mut App, click: PointerClick) {
+        app.init_resource::<HoveredCounty>();
+        app.world_mut()
+            .entity_mut(click.entity)
+            .observe(hover_county);
+        let over = PointerOver {
+            entity: click.entity,
+            pointer: click.pointer.clone(),
+            hit: click.hit.clone(),
+        };
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .interface_tour_open = true;
+        app.world_mut().trigger(over.clone());
+        app.world_mut().trigger(click);
+        assert_eq!(app.world().resource::<SelectedCounty>().0, None);
+        assert_eq!(app.world().resource::<HoveredCounty>().0, None);
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .interface_tour_open = false;
+        app.world_mut().trigger(over);
+        assert_eq!(app.world().resource::<HoveredCounty>().0, Some(42));
     }
 
     #[test]

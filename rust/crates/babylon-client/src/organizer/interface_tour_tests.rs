@@ -7,6 +7,8 @@ use babylon_persistence::runtime_session::{
     OrganizerGiftConsent, RuntimeSessionRequest,
 };
 use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+use bevy::input::mouse::{MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
+use bevy::input::touch::TouchPhase;
 use bevy::input::ButtonState;
 use bevy::input::InputPlugin;
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -604,6 +606,145 @@ fn skip_keeps_background_commands_blocked_for_the_entire_closing_input_frame() {
         PrimaryView::Organizer
     );
     cleanup(&app);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MapGesture {
+    Wheel,
+    Orbit,
+    Pan,
+}
+
+fn queue_map_gesture(app: &mut App, window: Entity, gesture: MapGesture) {
+    if let Some(button) = match gesture {
+        MapGesture::Orbit => Some(MouseButton::Right),
+        MapGesture::Pan => Some(MouseButton::Middle),
+        MapGesture::Wheel => None,
+    } {
+        app.world_mut().write_message(MouseButtonInput {
+            button,
+            state: ButtonState::Pressed,
+            window,
+        });
+        app.world_mut().write_message(MouseMotion {
+            delta: Vec2::new(40.0, 10.0),
+        });
+    } else {
+        app.world_mut().write_message(MouseWheel {
+            unit: MouseScrollUnit::Line,
+            x: 0.0,
+            y: 1.0,
+            window,
+            phase: TouchPhase::Moved,
+        });
+    }
+}
+
+fn map_pointer_fixture() -> (App, Entity, Entity) {
+    let (mut app, window, _, _) = fixture();
+    let camera = crate::observer_map3d::install_pointer_navigation_fixture(&mut app);
+    app.world_mut()
+        .get_mut::<Window>(window)
+        .expect("native window")
+        .set_cursor_position(Some(Vec2::splat(100.0)));
+    app.update();
+    app.update();
+    assert!(
+        app.world()
+            .resource::<ObserverUiState>()
+            .interface_tour_open
+    );
+    (app, window, camera)
+}
+
+#[test]
+fn raw_map_camera_gestures_cannot_move_the_camera_during_tour() {
+    for gesture in [MapGesture::Wheel, MapGesture::Orbit, MapGesture::Pan] {
+        let (mut app, window, camera) = map_pointer_fixture();
+        let before = *app
+            .world()
+            .get::<Transform>(camera)
+            .expect("actual map camera");
+        queue_map_gesture(&mut app, window, gesture);
+        app.update();
+        assert_eq!(
+            *app.world()
+                .get::<Transform>(camera)
+                .expect("actual map camera"),
+            before,
+            "tour shields {gesture:?}"
+        );
+        cleanup(&app);
+    }
+}
+
+#[test]
+fn raw_map_camera_gestures_stay_shielded_during_skip_then_work_after_close() {
+    for gesture in [MapGesture::Wheel, MapGesture::Orbit, MapGesture::Pan] {
+        let (mut app, window, camera) = map_pointer_fixture();
+        let before = *app
+            .world()
+            .get::<Transform>(camera)
+            .expect("actual map camera");
+        queue_map_gesture(&mut app, window, gesture);
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::Escape,
+            logical_key: Key::Escape,
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window,
+        });
+        app.update();
+        assert_eq!(
+            app.world().resource::<InterfaceTour>().outcome,
+            Some(preferences::Outcome::Skipped)
+        );
+        assert!(
+            app.world()
+                .resource::<ObserverUiState>()
+                .interface_tour_open,
+            "the closing input frame stays shielded"
+        );
+        assert_eq!(
+            *app.world()
+                .get::<Transform>(camera)
+                .expect("actual map camera"),
+            before,
+            "Skip closing frame shields {gesture:?}"
+        );
+        if matches!(gesture, MapGesture::Orbit | MapGesture::Pan) {
+            app.world_mut().write_message(MouseMotion {
+                delta: Vec2::new(40.0, 10.0),
+            });
+        }
+        app.update();
+        assert_eq!(
+            *app.world()
+                .get::<Transform>(camera)
+                .expect("actual map camera"),
+            before,
+            "blocked accumulated input never leaks next frame"
+        );
+        for button in [MouseButton::Right, MouseButton::Middle] {
+            app.world_mut().write_message(MouseButtonInput {
+                button,
+                state: ButtonState::Released,
+                window,
+            });
+        }
+        app.update();
+        queue_map_gesture(&mut app, window, gesture);
+        app.update();
+        assert_ne!(
+            *app.world()
+                .get::<Transform>(camera)
+                .expect("actual map camera"),
+            before,
+            "positive control: normal {gesture:?} moves the camera"
+        );
+        cleanup(&app);
+    }
 }
 
 #[test]

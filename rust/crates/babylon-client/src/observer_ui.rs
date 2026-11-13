@@ -36,6 +36,7 @@ use crate::observer_progress::OperationProgress;
 use crate::observer_theme as theme;
 use crate::observer_title::TitleMenuRoot;
 use crate::observer_warning::ObserverWarningRoot;
+use crate::organizer::interface_tour::TourRoot;
 use crate::organizer::ui::OrganizerAction;
 use crate::organizer::ui::OrganizerInspectorRoot;
 use crate::organizer::OrganizerClient;
@@ -165,6 +166,7 @@ pub struct ObserverUiState {
     pub disclosure: Option<ObserverDisclosure>,
     pub evidence_open: bool,
     pub economic_details_open: bool,
+    pub interface_tour_open: bool,
 }
 impl Default for ObserverUiState {
     fn default() -> Self {
@@ -183,6 +185,7 @@ impl Default for ObserverUiState {
             disclosure: None,
             evidence_open: false,
             economic_details_open: false,
+            interface_tour_open: false,
         }
     }
 }
@@ -538,32 +541,34 @@ fn spawn_hud(commands: &mut Commands) {
                 flex_shrink: 0.0,
                 ..row()
             })
-            .with_children(|bar| {
-                let resources = crate::organizer::resource_hud::spawn(bar);
-                bar.commands().entity(resources).insert((
-                    ObserverText::CampaignMeans,
-                    Node {
-                        flex_grow: 1.0,
-                        flex_basis: px(0),
-                        height: px(60),
-                        column_gap: px(8),
-                        min_width: px(0),
-                        ..default()
-                    },
-                ));
-                bar.spawn((
-                    label("", 12.0, theme::YELLOW),
-                    ObserverText::Status,
-                    Node {
-                        max_width: px(190),
-                        min_width: px(0),
-                        flex_shrink: 1.0,
-                        ..default()
-                    },
-                ));
-                bar.spawn((label("", 13.0, theme::GRAY), ObserverText::Identity));
-            });
+            .with_children(spawn_hud_readings);
         });
+}
+
+fn spawn_hud_readings(bar: &mut ChildSpawnerCommands) {
+    let resources = crate::organizer::resource_hud::spawn(bar);
+    bar.commands().entity(resources).insert((
+        ObserverText::CampaignMeans,
+        Node {
+            flex_grow: 1.0,
+            flex_basis: px(0),
+            height: px(60),
+            column_gap: px(8),
+            min_width: px(0),
+            ..default()
+        },
+    ));
+    bar.spawn((
+        label("", 12.0, theme::YELLOW),
+        ObserverText::Status,
+        Node {
+            max_width: px(190),
+            min_width: px(0),
+            flex_shrink: 1.0,
+            ..default()
+        },
+    ));
+    bar.spawn((label("", 13.0, theme::GRAY), ObserverText::Identity));
 }
 
 fn spawn_inspector(commands: &mut Commands) {
@@ -1092,6 +1097,7 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         scoped_button(panel, title, command, true);
     }
     panel.spawn((block_label("", 13.0, theme::YELLOW), ObserverText::Audio));
+    crate::organizer::interface_tour::settings_button(panel);
     scoped_button(
         panel,
         "Verification details +",
@@ -1308,7 +1314,10 @@ fn dispatch_button(
     opening: Option<&OpeningPresentation>,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
-    if button_visible(button, ui, session, view) && menu_scope_visible(button, opening) {
+    if !ui.interface_tour_open
+        && button_visible(button, ui, session, view)
+        && menu_scope_visible(button, opening)
+    {
         // The canonical observer command handler still admits or refuses the request.
         commands.write(button.command);
     }
@@ -1347,6 +1356,7 @@ struct ShellFocusState<'w, 's> {
     opening: Option<Res<'w, OpeningPresentation>>,
     productions: Query<'w, 's, Entity, With<ProductionRoot>>,
     titles: Query<'w, 's, Entity, With<TitleMenuRoot>>,
+    tours: Query<'w, 's, Entity, With<TourRoot>>,
 }
 
 fn sync_focus_policy(
@@ -1378,6 +1388,8 @@ fn sync_focus_policy(
             } else {
                 menus.single().ok()
             }
+        } else if state.ui.interface_tour_open {
+            state.tours.single().ok()
         } else if *state.view == PrimaryView::Organizer
             && organizer
                 .as_ref()
@@ -1410,11 +1422,14 @@ fn sync_focus_targets(
         let mut next = target.clone();
         if let Some(button) = button {
             next.available = button_visible(*button, &state.ui, &state.session, *state.view)
+                && !state.ui.interface_tour_open
                 && menu_scope_visible(*button, state.opening.as_deref())
                 && observer_controls::availability(button.command, &state.session)
                     == ControlAvailability::Enabled;
         } else if let Some(reading) = reading {
-            let scope_visible = !state.ui.splash_visible && !state.ui.comparison_open;
+            let scope_visible = !state.ui.splash_visible
+                && !state.ui.comparison_open
+                && !state.ui.interface_tour_open;
             next.available = scope_visible
                 && match reading {
                     ObserverText::Clock => !state.ui.menu_open,
@@ -1792,7 +1807,7 @@ pub(crate) fn keyboard(
         scope,
         mut selected,
     } = context;
-    if ui.splash_visible || ui.comparison_open {
+    if ui.splash_visible || ui.comparison_open || ui.interface_tour_open {
         return;
     }
     if !ui.menu_open

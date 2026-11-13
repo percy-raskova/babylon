@@ -905,6 +905,7 @@ impl Plugin for OrganizerPlugin {
                 .before(ObserverSet::Install),
         );
         ui::install(app);
+        super::interface_tour::install(app);
     }
 }
 

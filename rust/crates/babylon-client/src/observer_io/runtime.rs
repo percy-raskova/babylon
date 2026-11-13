@@ -890,7 +890,7 @@ pub(crate) fn handle_commands(
                 }
                 continue;
             }
-        } else if context.ui.comparison_open {
+        } else if context.ui.comparison_open || context.ui.interface_tour_open {
             if let Some(receipt) = qualification.as_deref_mut() {
                 receipt.observer_finished(
                     message_id,

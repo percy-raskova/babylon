@@ -624,7 +624,11 @@ pub(crate) fn inputs(
     buttons: Query<(&Interaction, &ProductionButton), Changed<Interaction>>,
     mut events: MessageWriter<ProductionCommand>,
 ) {
-    if ui.state.menu_open || ui.state.splash_visible || ui.state.comparison_open {
+    if ui.state.menu_open
+        || ui.state.splash_visible
+        || ui.state.comparison_open
+        || ui.state.interface_tour_open
+    {
         return;
     }
     let ProductionInputContext {
@@ -693,7 +697,11 @@ pub(crate) fn queue_production_button(
     ui: &mut ProductionUi,
     events: &mut MessageWriter<ProductionCommand>,
 ) {
-    if ui.state.menu_open || ui.state.splash_visible || ui.state.comparison_open {
+    if ui.state.menu_open
+        || ui.state.splash_visible
+        || ui.state.comparison_open
+        || ui.state.interface_tour_open
+    {
         return;
     }
     let snapshot = observation

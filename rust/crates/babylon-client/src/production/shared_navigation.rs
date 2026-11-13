@@ -53,8 +53,8 @@ impl ProductionNavigation {
         self.relationship_page = route.relationship_page;
         self.competitor_page = route.competitor_page;
         self.details_open = route.details_open;
-        self.selected_site = route.site.clone();
-        self.selected_process = route.process.clone();
+        self.selected_site.clone_from(&route.site);
+        self.selected_process.clone_from(&route.process);
         let site = snapshot.and_then(|snapshot| {
             snapshot
                 .sites

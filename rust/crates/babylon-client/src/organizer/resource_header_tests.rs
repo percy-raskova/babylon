@@ -226,8 +226,7 @@ fn native_resource_headers_keep_long_current_values_visible_across_views() {
             let text = resource_text(&app, reading);
             assert!(
                 text.contains("-$170,141,183,460,469,231,731,687,303,715,884.105728"),
-                "exact cash is visible in {view:?}: {}",
-                text
+                "exact cash is visible in {view:?}: {text}"
             );
             assert!(
                 text.contains("18,446,744,073,709,551,615"),

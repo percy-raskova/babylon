@@ -1470,6 +1470,13 @@ fn sync_organizer_return(
     }
 }
 
+/// Accepted Archive routes update both the local subject path and shared visit history.
+#[derive(SystemParam)]
+struct DossierNavigationState<'w> {
+    navigation: Option<ResMut<'w, ArchiveNavigation>>,
+    history: Option<ResMut<'w, NavigationHistory>>,
+}
+
 fn apply_page_requests(
     mut requests: MessageReader<DossierControl>,
     identity: DossierReadIdentity,
@@ -1477,9 +1484,12 @@ fn apply_page_requests(
     ui: Option<Res<ObserverUiState>>,
     mut refusal: DossierRefusal,
     mut receipt: Option<ResMut<ArchiveEvidenceReceipt>>,
-    mut navigation: Option<ResMut<ArchiveNavigation>>,
-    mut history: Option<ResMut<NavigationHistory>>,
+    navigation_state: DossierNavigationState,
 ) {
+    let DossierNavigationState {
+        mut navigation,
+        mut history,
+    } = navigation_state;
     let DossierWriteState {
         mut view,
         mut projection,

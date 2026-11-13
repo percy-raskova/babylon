@@ -8,6 +8,7 @@ use crate::navigation::position::ArchiveFocus;
 use crate::observer_ui::ObserverUiState;
 
 use super::dossier_card;
+use super::dossier_card::DossierRequestScope;
 use super::dossier_card::{
     DossierControl, DossierFetchState, DossierPageView, DossierPresentation, DossierReadIdentity,
     DossierRefusal, DossierWriteState, SubjectPageRequest,
@@ -215,23 +216,10 @@ pub(super) fn restore(
         return;
     }
     if let Some(target) = pending.route.subjects.get(pending.next_subject) {
-        let mut direct_scope = scope.clone();
-        direct_scope.subject = target.clone();
-        let direct = SubjectPageRequest {
-            scope: direct_scope,
-            kind: target.kind().as_str().into(),
-            id: target.id().into(),
-            label: None,
-        };
-        let earned_entry = pending.next_subject == 0
-            && identity.observer.as_ref().is_some_and(|session| {
-                identity
-                    .organizer
-                    .as_ref()
-                    .is_some_and(|client| client.body_for(session).is_some())
-            })
-            && identity.organizer_subject(&DossierPageView::Subject(Box::new(direct.clone())));
-        let request = if earned_entry {
+        let direct = (pending.next_subject == 0)
+            .then(|| earned_entry(&identity, &scope, target))
+            .flatten();
+        let request = if let Some(direct) = direct {
             Some(direct)
         } else {
             let Some(installed) = outputs
@@ -291,6 +279,30 @@ pub(super) fn restore(
     }
     outputs.presentation.details_open = pending.route.details;
     outputs.presentation.technical_open = pending.route.details && pending.route.technical;
+}
+
+/// Only a currently authenticated organizer body can directly admit the initial subject.
+fn earned_entry(
+    identity: &DossierReadIdentity,
+    scope: &DossierRequestScope,
+    target: &ArchivePageRef,
+) -> Option<SubjectPageRequest> {
+    let mut direct_scope = scope.clone();
+    direct_scope.subject = target.clone();
+    let direct = SubjectPageRequest {
+        scope: direct_scope,
+        kind: target.kind().as_str().into(),
+        id: target.id().into(),
+        label: None,
+    };
+    let admitted = identity.observer.as_ref().is_some_and(|session| {
+        identity
+            .organizer
+            .as_ref()
+            .is_some_and(|client| client.body_for(session).is_some())
+    }) && identity
+        .organizer_subject(&DossierPageView::Subject(Box::new(direct.clone())));
+    admitted.then_some(direct)
 }
 
 fn fallback(

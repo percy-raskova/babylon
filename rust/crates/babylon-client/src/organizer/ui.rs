@@ -17,7 +17,7 @@ use super::scene::{
 use super::workspace::DispatchDestination;
 #[cfg(test)]
 use crate::observer_focus::ObserverFocusPolicy;
-use babylon_persistence::runtime_session::OrganizerChoice;
+use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerChoice};
 #[cfg(test)]
 use babylon_persistence::ArchiveEvidenceClass;
 use bevy::ecs::system::SystemParam;
@@ -360,6 +360,7 @@ fn spawn_scene(commands: &mut Commands) {
             },
             ZIndex(8),
             SceneRoot,
+            Name::new("wayne.subject"),
             Pickable::IGNORE,
             TabGroup::new(9),
             DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
@@ -1362,6 +1363,7 @@ fn sync_targets(scope: Scope, mut targets: FocusTargets) {
                         && scope.client.inspector == OrganizerInspector::Closed
                 }
         };
+        next.available &= !scope.ui.interface_tour_open;
         target.set_if_neq(next);
     }
 }
@@ -1418,6 +1420,9 @@ fn feedback(action: OrganizerAction) -> Option<OrganizerFeedback> {
 }
 
 fn action_available(action: OrganizerAction, state: &mut ActionState) -> bool {
+    if state.ui.interface_tour_open {
+        return false;
+    }
     if !visible(
         action,
         &state.client,
@@ -1595,11 +1600,7 @@ fn actions(
                 client.inspector = OrganizerInspector::Evidence;
             }
             OrganizerAction::OpenReferences => {
-                if client.inspector == OrganizerInspector::Closed {
-                    client.return_focus = focus.get();
-                }
-                client.inspector = OrganizerInspector::Evidence;
-                client.open_saved_references();
+                open_references(client, focus);
             }
             OrganizerAction::PreviousEvidence
             | OrganizerAction::NextEvidence
@@ -1623,28 +1624,40 @@ fn actions(
             receipt.organizer_finished(message_id, true, &state.client);
         }
         if let Some(navigation) = navigation.as_deref_mut() {
-            if action == OrganizerAction::CloseInspector {
-                navigation.closed_detail();
-            } else if matches!(
-                action,
-                OrganizerAction::Open
-                    | OrganizerAction::SetSceneMode(_)
-                    | OrganizerAction::SelectSubject(_)
-                    | OrganizerAction::Review
-                    | OrganizerAction::Inspect(_)
-                    | OrganizerAction::OpenReferences
-                    | OrganizerAction::InspectSubjectEvidence
-                    | OrganizerAction::PreviousEvidence
-                    | OrganizerAction::NextEvidence
-                    | OrganizerAction::ArchiveWorkplace
-                    | OrganizerAction::ArchiveOrganization
-                    | OrganizerAction::ArchiveReport
-                    | OrganizerAction::ArchiveSelection
-            ) {
-                navigation.accepted();
-            }
+            record_navigation(action, navigation);
         }
     }
+}
+
+fn record_navigation(action: OrganizerAction, navigation: &mut NavigationHistory) {
+    if action == OrganizerAction::CloseInspector {
+        navigation.closed_detail();
+    } else if matches!(
+        action,
+        OrganizerAction::Open
+            | OrganizerAction::SetSceneMode(_)
+            | OrganizerAction::SelectSubject(_)
+            | OrganizerAction::Review
+            | OrganizerAction::Inspect(_)
+            | OrganizerAction::OpenReferences
+            | OrganizerAction::InspectSubjectEvidence
+            | OrganizerAction::PreviousEvidence
+            | OrganizerAction::NextEvidence
+            | OrganizerAction::ArchiveWorkplace
+            | OrganizerAction::ArchiveOrganization
+            | OrganizerAction::ArchiveReport
+            | OrganizerAction::ArchiveSelection
+    ) {
+        navigation.accepted();
+    }
+}
+
+fn open_references(client: &mut OrganizerClient, focus: &InputFocus) {
+    if client.inspector == OrganizerInspector::Closed {
+        client.return_focus = focus.get();
+    }
+    client.inspector = OrganizerInspector::Evidence;
+    client.open_saved_references();
 }
 
 fn inspect(
@@ -1871,7 +1884,7 @@ fn open_evidence(
     mut ui: ResMut<ObserverUiState>,
     mut navigation: Option<ResMut<NavigationHistory>>,
 ) {
-    if session.organizer_enabled {
+    if session.organizer_enabled && !ui.interface_tour_open {
         session.pause_playback();
         ui.archive_open = false;
         ui.history_open = false;
@@ -1906,22 +1919,37 @@ fn escape(
     }
 }
 
+#[derive(SystemParam)]
+struct NotesInput<'w> {
+    focus: Res<'w, InputFocus>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    client: ResMut<'w, OrganizerClient>,
+    session: Res<'w, ObserverSession>,
+    time: Res<'w, Time>,
+    ui: Res<'w, ObserverUiState>,
+}
+
 fn notes_input(
     mut event: On<FocusedInput<KeyboardInput>>,
     fields: Query<&ObserverFocusTarget, With<NotesField>>,
-    focus: Res<InputFocus>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut client: ResMut<OrganizerClient>,
-    session: Res<ObserverSession>,
-    time: Res<Time>,
+    input: NotesInput,
 ) {
+    let NotesInput {
+        focus,
+        keys,
+        mut client,
+        session,
+        time,
+        ui,
+    } = input;
     let Some(entity) = focus.get() else {
         return;
     };
     let Ok(target) = fields.get(entity) else {
         return;
     };
-    if !target.available
+    if ui.interface_tour_open
+        || !target.available
         || target.context != Some(session.context())
         || event.original_event_target() != entity
         || event.input.state != ButtonState::Pressed
@@ -2103,23 +2131,25 @@ fn paint_layout(scope: &Scope, primary: bool, paint: &mut Paint) {
     }
 }
 
-fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
-    let historical = scope.session.viewed_tick != scope.session.durable_tick;
-    let complete = scope.session.phase == SessionPhase::Complete;
+fn inspector_text(client: &OrganizerClient, session: &ObserverSession) -> (String, String) {
     let (inspector_title, mut inspector_body) =
-        presentation::inspector(&scope.client, scope.session.viewed_tick);
-    if scope.client.inspector == OrganizerInspector::Relationships {
-        if let Some((
-            babylon_persistence::runtime_session::OrganizerBodyDisclosure::Partial(part),
-            body_scope,
-        )) = scope.client.body_for(&scope.session)
+        presentation::inspector(client, session.viewed_tick);
+    if client.inspector == OrganizerInspector::Relationships {
+        if let Some((OrganizerBodyDisclosure::Partial(part), body_scope)) = client.body_for(session)
         {
-            if body_scope.period == scope.session.viewed_tick {
+            if body_scope.period == session.viewed_tick {
                 use std::fmt::Write as _;
                 let _ = write!(inspector_body, "\nDISCLOSED PART OF CONTROLLED BODY\nBody ID: {} · key: {} / {}\nOnly disclosed collective and contributor incidence is shown; other incidence is unknown.", part.runtime_hyperedge_id, part.scenario, part.local_name);
             }
         }
     }
+    (inspector_title, inspector_body)
+}
+
+fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
+    let historical = scope.session.viewed_tick != scope.session.durable_tick;
+    let complete = scope.session.phase == SessionPhase::Complete;
+    let (inspector_title, inspector_body) = inspector_text(&scope.client, &scope.session);
     let note_focused = focus
         .get()
         .is_some_and(|entity| paint.notes.contains(entity));
@@ -2133,9 +2163,8 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
         let value = match part {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => board::subject_reading(scope),
-            TextPart::Means | TextPart::InspectorMeans => continue,
+            TextPart::Means | TextPart::InspectorMeans | TextPart::Aftermath => continue,
             TextPart::Context => scope.client.view.as_ref().filter(|view| view.period == scope.session.viewed_tick).map_or_else(String::new, presentation::context),
-            TextPart::Aftermath => continue,
             TextPart::ReviewAvailability => copy::review_reason(&scope.client, comparison.as_ref()),
             TextPart::ChoiceHeading => if complete { "Campaign complete".into() } else if historical { "Past commitments".into() } else { format!("Work for period {}", scope.session.viewed_tick.saturating_add(1)) },
             TextPart::Approach(_) if historical => String::new(),
@@ -3674,7 +3703,7 @@ pub(crate) mod tests {
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<OrganizerArchiveTarget>);
 
-    pub(super) fn measured_board(viewport: UVec2, scale: f32, larger: bool, long: bool) -> App {
+    pub(crate) fn measured_board(viewport: UVec2, scale: f32, larger: bool, long: bool) -> App {
         let (mut app, body_font) = crate::test_support::ui_text_app();
         let display = Font::from_bytes(
             include_bytes!(concat!(
@@ -4591,6 +4620,34 @@ pub(crate) mod tests {
         }
     }
 
+    fn assert_comparison_review_geometry(app: &mut App, bounds: Rect) {
+        app.world_mut().resource_mut::<OrganizerClient>().scene_mode =
+            OrganizerSceneMode::Relationships;
+        app.update();
+        app.update();
+        let world = app.world_mut();
+        assert!(
+            world
+                .query_filtered::<Entity, With<RelationStage>>()
+                .single(world)
+                .is_ok(),
+            "measured Relationships stage"
+        );
+        app.world_mut().resource_mut::<OrganizerClient>().inspector = OrganizerInspector::Review;
+        app.update();
+        let confirm = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &ActionButton)>()
+                .iter(world)
+                .find_map(|(entity, button)| {
+                    (button.0 == OrganizerAction::Confirm).then_some(entity)
+                })
+                .expect("confirmation")
+        };
+        assert_in_view(app, confirm, bounds);
+    }
+
     #[test]
     fn native_comparison_measures_projected_costs_and_terms_inside_the_visible_cards() {
         for (viewport, scale) in [
@@ -4671,32 +4728,7 @@ pub(crate) mod tests {
             for entity in fixed {
                 assert_in_view(&app, entity, bounds);
             }
-            app.world_mut().resource_mut::<OrganizerClient>().scene_mode =
-                OrganizerSceneMode::Relationships;
-            app.update();
-            app.update();
-            let world = app.world_mut();
-            assert!(
-                world
-                    .query_filtered::<Entity, With<RelationStage>>()
-                    .single(world)
-                    .is_ok(),
-                "measured Relationships stage"
-            );
-            app.world_mut().resource_mut::<OrganizerClient>().inspector =
-                OrganizerInspector::Review;
-            app.update();
-            let confirm = {
-                let world = app.world_mut();
-                world
-                    .query::<(Entity, &ActionButton)>()
-                    .iter(world)
-                    .find_map(|(entity, button)| {
-                        (button.0 == OrganizerAction::Confirm).then_some(entity)
-                    })
-                    .expect("confirmation")
-            };
-            assert_in_view(&app, confirm, bounds);
+            assert_comparison_review_geometry(&mut app, bounds);
         }
     }
 

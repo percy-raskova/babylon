@@ -18,7 +18,7 @@ use crate::ui::dossier_card::DossierRefresh;
 use crate::ui::dossier_navigation::{ArchiveCapture, ArchiveDetails, ArchiveNavigation};
 
 use super::controls;
-use super::history::{NavigationHistory, Route, ViewedPeriod, Visit};
+use super::history::{ArchiveVisit, NavigationHistory, Route, ViewedPeriod, Visit};
 use super::position::{self, PendingPosition, PositionCapture, SavedPosition};
 use super::NavigationAction;
 
@@ -58,12 +58,11 @@ impl Capture<'_, '_> {
                                 && navigation.selected_site.is_some())
                     })
                     .map(|navigation| navigation.navigation_route()),
-                archive: self
-                    .ui
-                    .archive_open
-                    .then(|| self.archive.capture())
-                    .flatten(),
-                archive_open: self.ui.archive_open,
+                archive: if self.ui.archive_open {
+                    ArchiveVisit::Open(self.archive.capture())
+                } else {
+                    ArchiveVisit::Closed
+                },
                 disclosure: self.ui.disclosure,
                 history_open: self.ui.history_open,
                 evidence_open: self.ui.evidence_open,
@@ -185,7 +184,7 @@ impl Owners<'_> {
 
     fn restore(&mut self, visit: &Visit) -> bool {
         *self.view = visit.route.primary;
-        self.ui.archive_open = visit.route.archive_open;
+        self.ui.archive_open = matches!(visit.route.archive, ArchiveVisit::Open(_));
         self.ui.disclosure = visit.route.disclosure;
         self.ui.history_open = visit.route.history_open;
         self.ui.evidence_open = visit.route.evidence_open;
@@ -262,7 +261,9 @@ impl Owners<'_> {
         if let (Some(orbit), Some(saved)) = (self.orbit.as_deref_mut(), &visit.orbit) {
             orbit.clone_from(saved);
         }
-        if let (Some(archive), Some(route)) = (self.archive.as_deref_mut(), &visit.route.archive) {
+        if let (Some(archive), ArchiveVisit::Open(Some(route))) =
+            (self.archive.as_deref_mut(), &visit.route.archive)
+        {
             archive.begin(route.clone());
         }
         true
@@ -316,8 +317,7 @@ fn actions(
                     county: Some("26163".into()),
                     organizer: None,
                     production: None,
-                    archive: None,
-                    archive_open: false,
+                    archive: ArchiveVisit::Closed,
                     disclosure: None,
                     history_open: false,
                     evidence_open: false,

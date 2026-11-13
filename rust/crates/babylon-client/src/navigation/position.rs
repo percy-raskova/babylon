@@ -138,6 +138,10 @@ struct PositionRestore {
 }
 
 impl PendingPosition {
+    pub(crate) const fn is_restoring(&self) -> bool {
+        self.0.is_some()
+    }
+
     pub(crate) fn begin(&mut self, saved: SavedPosition) {
         self.0 = Some(PositionRestore { saved, frames: 0 });
     }
@@ -164,18 +168,30 @@ pub(crate) fn sync_readings(
     }
 }
 
+/// Current admitted destinations for a saved focus identity or its safe fallback.
+#[derive(SystemParam)]
+pub(crate) struct PositionTargets<'w, 's> {
+    tree: FocusTree<'w, 's>,
+    policy: Res<'w, ObserverFocusPolicy>,
+    keys: Query<'w, 's, (Entity, &'static NavigationFocus)>,
+    windows: Query<'w, 's, Entity, With<PrimaryWindow>>,
+}
+
 /// Runs in Last, after owner resets, layout, and ordinary focus reveal.
 pub(crate) fn restore_position(
     mut pending: ResMut<PendingPosition>,
     mut focus: ResMut<InputFocus>,
-    tree: FocusTree,
-    policy: Res<ObserverFocusPolicy>,
-    keys: Query<(Entity, &NavigationFocus)>,
+    targets: PositionTargets,
     mut readings: Query<(&ReadingRegion, &ComputedNode, &mut ScrollPosition)>,
     mut commands: Commands,
     archive: Option<Res<ArchiveNavigation>>,
-    windows: Query<Entity, With<PrimaryWindow>>,
 ) {
+    let PositionTargets {
+        tree,
+        policy,
+        keys,
+        windows,
+    } = targets;
     let Some(restore) = pending.0.as_mut() else {
         return;
     };

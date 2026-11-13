@@ -12,6 +12,7 @@ mod draft;
 
 mod developments;
 mod editor;
+pub(crate) mod interface_tour;
 
 mod evidence;
 pub(crate) mod navigation;

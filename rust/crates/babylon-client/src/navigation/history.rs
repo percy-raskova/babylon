@@ -39,6 +39,13 @@ impl ViewedPeriod {
     }
 }
 
+/// An open Archive can still be awaiting its first admitted reader result.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum ArchiveVisit {
+    Closed,
+    Open(Option<ArchiveRoute>),
+}
+
 /// Only the visible routes participate in visit identity; panning and lens changes do not.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Route {
@@ -47,8 +54,7 @@ pub(crate) struct Route {
     pub(crate) county: Option<String>,
     pub(crate) organizer: Option<OrganizerRoute>,
     pub(crate) production: Option<ProductionRoute>,
-    pub(crate) archive: Option<ArchiveRoute>,
-    pub(crate) archive_open: bool,
+    pub(crate) archive: ArchiveVisit,
     pub(crate) disclosure: Option<ObserverDisclosure>,
     pub(crate) history_open: bool,
     pub(crate) evidence_open: bool,

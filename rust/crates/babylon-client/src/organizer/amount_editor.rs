@@ -10,8 +10,10 @@ use crate::observer_focus::ObserverFocusTarget;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
+use crate::observer_ui::ObserverUiState;
 use crate::ui;
 use babylon_persistence::runtime_session::{OrganizerAllocation, OrganizerChoice};
+use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
 use bevy::input_focus::{FocusedInput, InputFocus};
@@ -353,20 +355,35 @@ fn edit_key(
     Ok(())
 }
 
+#[derive(SystemParam)]
+struct AmountInput<'w> {
+    focus: Res<'w, InputFocus>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    client: ResMut<'w, OrganizerClient>,
+    session: Res<'w, ObserverSession>,
+    time: Res<'w, Time>,
+    ui: Res<'w, ObserverUiState>,
+}
+
 fn input(
     mut event: On<FocusedInput<KeyboardInput>>,
     fields: Query<(&AmountField, &ObserverFocusTarget)>,
-    focus: Res<InputFocus>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut client: ResMut<OrganizerClient>,
-    session: Res<ObserverSession>,
-    time: Res<Time>,
+    input: AmountInput,
 ) {
+    let AmountInput {
+        focus,
+        keys,
+        mut client,
+        session,
+        time,
+        ui,
+    } = input;
     let Some(entity) = focus.get() else { return };
     let Ok((&field, target)) = fields.get(entity) else {
         return;
     };
-    if event.original_event_target() != entity
+    if ui.interface_tour_open
+        || event.original_event_target() != entity
         || event.input.state != ButtonState::Pressed
         || event.input.key_code == KeyCode::Tab
         || !target.available

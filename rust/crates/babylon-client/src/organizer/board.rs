@@ -152,6 +152,7 @@ fn masthead(root: &mut ChildSpawnerCommands) {
             crate::navigation::spawn(row);
             row.spawn((ui::text("", 22.0, theme::PAPER), TextPart::Title))
                 .insert((
+                    Name::new("wayne.workspace"),
                     ObserverFontRole::Display,
                     super::processing_feedback::IdleHeading,
                     Node {
@@ -336,38 +337,7 @@ fn deck(root: &mut ChildSpawnerCommands) {
             flex_shrink: 0.0,
             ..default()
         })
-        .with_children(|bar| {
-            bar.spawn((ui::text("", 24.0, PRINT), TextPart::ChoiceHeading))
-                .insert((
-                    ObserverFontRole::Display,
-                    Node {
-                        flex_grow: 1.0,
-                        flex_basis: px(0),
-                        min_width: px(0),
-                        ..default()
-                    },
-                ));
-            let direction = ui::button(
-                bar,
-                "Direction / routine",
-                OrganizerAction::Inspect(OrganizerInspector::Direction),
-            );
-            bar.commands().entity(direction).insert(PaperAction);
-            let practices = ui::button(
-                bar,
-                "All practices",
-                OrganizerAction::Inspect(OrganizerInspector::Practices),
-            );
-            bar.commands().entity(practices).insert(PaperAction);
-            let details = ui::button(
-                bar,
-                "Details",
-                OrganizerAction::Inspect(OrganizerInspector::Practices),
-            );
-            bar.commands().entity(details).insert(PaperAction);
-            let review = ui::button(bar, "Review choice", OrganizerAction::Review);
-            bar.commands().entity(review).insert(PaperAction);
-        });
+        .with_children(decision_controls);
         deck.spawn((ui::text("", 13.0, RUST), TextPart::ReviewAvailability));
         super::amount_editor::spawn(deck);
         deck.spawn((
@@ -400,6 +370,41 @@ fn deck(root: &mut ChildSpawnerCommands) {
                 });
         });
     });
+}
+
+fn decision_controls(bar: &mut ChildSpawnerCommands) {
+    bar.spawn((ui::text("", 24.0, PRINT), TextPart::ChoiceHeading))
+        .insert((
+            ObserverFontRole::Display,
+            Node {
+                flex_grow: 1.0,
+                flex_basis: px(0),
+                min_width: px(0),
+                ..default()
+            },
+        ));
+    let direction = ui::button(
+        bar,
+        "Direction / routine",
+        OrganizerAction::Inspect(OrganizerInspector::Direction),
+    );
+    bar.commands().entity(direction).insert(PaperAction);
+    let practices = ui::button(
+        bar,
+        "All practices",
+        OrganizerAction::Inspect(OrganizerInspector::Practices),
+    );
+    bar.commands().entity(practices).insert(PaperAction);
+    let details = ui::button(
+        bar,
+        "Details",
+        OrganizerAction::Inspect(OrganizerInspector::Practices),
+    );
+    bar.commands().entity(details).insert(PaperAction);
+    let review = ui::button(bar, "Review choice", OrganizerAction::Review);
+    bar.commands()
+        .entity(review)
+        .insert((PaperAction, Name::new("wayne.review")));
 }
 
 fn comparison_cards(pair: &mut ChildSpawnerCommands) {

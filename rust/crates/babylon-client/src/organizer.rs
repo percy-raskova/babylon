@@ -14,6 +14,7 @@ mod developments;
 mod editor;
 
 mod evidence;
+pub(crate) mod navigation;
 
 mod partner_copy;
 mod presentation;

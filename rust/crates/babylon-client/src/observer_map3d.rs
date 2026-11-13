@@ -65,7 +65,7 @@ struct MapGeometry {
 /// Camera motion is direct, without inertia or automatic drift. This also
 /// keeps reduced-motion mode free of incidental movement.
 #[derive(Resource, Clone, PartialEq)]
-struct MapOrbit {
+pub(crate) struct MapOrbit {
     target: Vec3,
     yaw: f32,
     pitch: f32,

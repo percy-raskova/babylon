@@ -258,6 +258,7 @@ pub(crate) fn navigate(
     observation: ProductionObservation,
     location: ProductionLocation,
     ui: ProductionUi,
+    mut shared_history: Option<ResMut<crate::navigation::NavigationHistory>>,
 ) {
     let ProductionLocation {
         atlas,
@@ -348,6 +349,13 @@ pub(crate) fn navigate(
         }
         if matches!(event, ProductionCommand::Open | ProductionCommand::Map) {
             commands.trigger(ObserverFocusWorld);
+        }
+        if let Some(history) = shared_history.as_deref_mut() {
+            match event {
+                ProductionCommand::Flat => {}
+                ProductionCommand::Back => history.closed_detail(),
+                _ => history.accepted(),
+            }
         }
         if !sync_county {
             continue;

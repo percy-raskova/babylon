@@ -228,6 +228,9 @@ pub(crate) fn button(
         .spawn((
             ui::pressable(),
             ActionButton(action),
+            crate::navigation::position::NavigationFocus::Organizer(
+                super::navigation::OrganizerFocus::from_action(action),
+            ),
             ObserverFocusTarget::action(None),
             Node {
                 padding: UiRect::axes(px(8), px(5)),
@@ -647,6 +650,11 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
                 ..column()
             },
             Overlay,
+            crate::navigation::position::ReadingRegion::OrganizerScene,
+            crate::navigation::position::NavigationFocus::Reading(
+                crate::navigation::position::ReadingRegion::OrganizerScene,
+            ),
+            ObserverFocusTarget::reading(None),
             BackgroundColor(theme::INK.with_alpha(0.9)),
         ))
         .with_children(|dock| {
@@ -708,6 +716,11 @@ fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene
                         ..default()
                     },
                     RelationStage,
+                    crate::navigation::position::ReadingRegion::OrganizerScene,
+                    crate::navigation::position::NavigationFocus::Reading(
+                        crate::navigation::position::ReadingRegion::OrganizerScene,
+                    ),
+                    ObserverFocusTarget::reading(None),
                 ))
                 .with_children(|space| {
                     spawn_relation_edges(space, scene);
@@ -955,16 +968,22 @@ fn position_relations(
 
 pub(super) fn spawn_scrolling_reading(
     parent: &mut ChildSpawnerCommands,
+    region: crate::navigation::position::ReadingRegion,
     contents: impl FnOnce(&mut ChildSpawnerCommands),
 ) {
     let reading = parent
-        .spawn(Node {
-            flex_grow: 1.0,
-            min_height: px(0),
-            row_gap: px(10),
-            overflow: Overflow::scroll_y(),
-            ..column()
-        })
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                min_height: px(0),
+                row_gap: px(10),
+                overflow: Overflow::scroll_y(),
+                ..column()
+            },
+            region,
+            crate::navigation::position::NavigationFocus::Reading(region),
+            ObserverFocusTarget::reading(None),
+        ))
         .with_children(contents)
         .id();
     parent
@@ -1504,6 +1523,7 @@ fn actions(
     mut commands: Commands,
     mut observer_commands: MessageWriter<ObserverCommand>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
+    mut navigation: Option<ResMut<crate::navigation::NavigationHistory>>,
 ) {
     for (&action, message_id) in events.read_with_id() {
         if !action_available(action, &mut state) {
@@ -1603,6 +1623,28 @@ fn actions(
         }
         if let Some(receipt) = qualification.as_deref_mut() {
             receipt.organizer_finished(message_id, true, &state.client);
+        }
+        if let Some(navigation) = navigation.as_deref_mut() {
+            if action == OrganizerAction::CloseInspector {
+                navigation.closed_detail();
+            } else if matches!(
+                action,
+                OrganizerAction::Open
+                    | OrganizerAction::SetSceneMode(_)
+                    | OrganizerAction::SelectSubject(_)
+                    | OrganizerAction::Review
+                    | OrganizerAction::Inspect(_)
+                    | OrganizerAction::OpenReferences
+                    | OrganizerAction::InspectSubjectEvidence
+                    | OrganizerAction::PreviousEvidence
+                    | OrganizerAction::NextEvidence
+                    | OrganizerAction::ArchiveWorkplace
+                    | OrganizerAction::ArchiveOrganization
+                    | OrganizerAction::ArchiveReport
+                    | OrganizerAction::ArchiveSelection
+            ) {
+                navigation.accepted();
+            }
         }
     }
 }
@@ -1829,6 +1871,7 @@ fn open_evidence(
     focus: Res<InputFocus>,
     mut session: ResMut<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
+    mut navigation: Option<ResMut<crate::navigation::NavigationHistory>>,
 ) {
     if session.organizer_enabled {
         session.pause_playback();
@@ -1839,6 +1882,9 @@ fn open_evidence(
         client.inspector = OrganizerInspector::Evidence;
         client.open_evidence_reports(session.viewed_tick);
         *view = PrimaryView::Organizer;
+        if let Some(navigation) = navigation.as_deref_mut() {
+            navigation.accepted();
+        }
     }
 }
 
@@ -2308,6 +2354,10 @@ pub(super) fn install(app: &mut App) {
     amount_editor::install(app);
     report_view::install(app);
     app.init_resource::<RenderedScene>()
+        .add_systems(
+            PreUpdate,
+            super::navigation::sync_focus_keys.in_set(ObserverFocusSystems::Eligibility),
+        )
         .add_message::<OrganizerAction>()
         .add_systems(Startup, spawn)
         .add_systems(
@@ -2694,7 +2744,7 @@ pub(crate) mod tests {
             Some(committee)
         );
         press_named(&mut app, "Inspect selected evidence");
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         app.world_mut()
             .write_message(OrganizerAction::SelectSubject(
                 OrganizerSubject::NeighborhoodGroup(93),
@@ -3384,7 +3434,7 @@ pub(crate) mod tests {
         };
         let (mut app, _) = reference_fixture();
         press_named(&mut app, "Keep report in draft");
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             client.pending_aid.push(OrganizerAidPending {
@@ -3431,13 +3481,13 @@ pub(crate) mod tests {
         assert!(!reports.contains("901"));
         assert!(!reports.contains("777 kg"));
         assert!(reports.contains("as-of total is unavailable"));
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         press_named(&mut app, "Personal notes");
         press_named(&mut app, "Open saved references");
         let saved = painted_text(&mut app, true);
         assert!(saved.contains("CURRENT PERSONAL DRAFT"));
         assert!(!saved.contains("777 kg"));
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         press_named(&mut app, "Practice history");
         let receipts = painted_text(&mut app, true);
         assert!(!receipts.contains("902"));
@@ -3446,7 +3496,7 @@ pub(crate) mod tests {
         assert!(!receipts.contains("No practice has completed"));
         assert!(receipts.contains("as-of total is unavailable"));
         assert!(receipts.contains("Our practice Archive"));
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         inspect_period(&mut app, 2);
         app.update();
         press_named(&mut app, "Historical evidence");
@@ -5051,6 +5101,9 @@ pub(crate) mod tests {
         )
         .add_observer(record_archive_request);
         install(&mut app);
+        app.init_resource::<ObserverFocusPolicy>()
+            .add_plugins(crate::navigation::NavigationPlugin);
+        crate::observer_ui::install_shell_focus_policy(&mut app);
         let focus = app.world_mut().spawn_empty().id();
         app.world_mut()
             .resource_mut::<InputFocus>()
@@ -5154,6 +5207,40 @@ pub(crate) mod tests {
     }
 
     fn press_named(app: &mut App, label: &str) {
+        if label == "Back" {
+            let entity = {
+                let world = app.world_mut();
+                let mut buttons = world.query::<(Entity, &crate::navigation::NavigationButton)>();
+                buttons
+                    .iter(world)
+                    .find_map(|(entity, button)| {
+                        if button.0 != crate::navigation::NavigationAction::Back {
+                            return None;
+                        }
+                        let mut cursor = Some(entity);
+                        while let Some(current) = cursor {
+                            if world
+                                .get::<Node>(current)
+                                .is_some_and(|node| node.display == Display::None)
+                            {
+                                return None;
+                            }
+                            cursor = world.get::<ChildOf>(current).map(ChildOf::parent);
+                        }
+                        Some(entity)
+                    })
+                    .expect("visible native Back control")
+            };
+            *app.world_mut()
+                .get_mut::<Interaction>(entity)
+                .expect("native Back interaction") = Interaction::Pressed;
+            app.update();
+            *app.world_mut()
+                .get_mut::<Interaction>(entity)
+                .expect("native Back survives the panel closure") = Interaction::None;
+            app.update();
+            return;
+        }
         let world = app.world_mut();
         let action = world
             .query::<(&ActionButton, &Children)>()
@@ -5278,7 +5365,7 @@ pub(crate) mod tests {
         app.world_mut()
             .resource_mut::<OrganizerClient>()
             .draft_writable = false;
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         press_named(&mut app, "Reinforce workplace contact");
         assert!(panel_has_visible_text(
             &mut app,
@@ -5371,7 +5458,7 @@ pub(crate) mod tests {
             Some(&draft)
         );
         assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         app.update();
         assert!(
             !app.world()
@@ -5464,7 +5551,7 @@ pub(crate) mod tests {
             .query::<&Text>()
             .iter(world)
             .any(|text| text.0.contains("changes awaiting save")));
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         inspect_period(&mut app, 2);
         press_named(&mut app, "Personal notes");
         press_named(&mut app, "Open saved references");
@@ -5490,7 +5577,7 @@ pub(crate) mod tests {
     fn evicted_draft_reference_stays_saved_and_routes_to_earned_archive() {
         let (mut app, _) = reference_fixture();
         press_named(&mut app, "Keep report in draft");
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         let retained = app.world().resource::<OrganizerClient>().draft.clone();
         let period = app.world().resource::<ObserverSession>().viewed_tick;
         let subject = Some(OrganizerSubject::NeighborhoodGroup(93));
@@ -5536,7 +5623,7 @@ pub(crate) mod tests {
         for fault in 0..4 {
             let (mut app, _) = reference_fixture();
             press_named(&mut app, "Keep report in draft");
-            press_named(&mut app, "Return to decision [Esc]");
+            press_named(&mut app, "Back");
             {
                 let mut client = app.world_mut().resource_mut::<OrganizerClient>();
                 let observations = &mut client
@@ -6001,6 +6088,11 @@ pub(crate) mod tests {
         );
     }
 
+    pub(crate) fn focused_notes_navigation() -> (App, Entity, Entity) {
+        let (app, window, focus, _) = focused_organizer(true);
+        (app, window, focus)
+    }
+
     fn focused_organizer(notes: bool) -> (App, Entity, Entity, OrganizerDraft) {
         use crate::observer_focus::ObserverFocusPlugin;
         use bevy::input::InputPlugin;
@@ -6162,7 +6254,7 @@ pub(crate) mod tests {
         assert!(!app.world().resource::<ObserverSession>().playing);
         assert_eq!(client.selected_evidence_id(3), Some([3; 32]));
         assert_eq!(client.draft, draft);
-        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Back");
         assert_eq!(
             app.world().resource::<OrganizerClient>().selected_subject,
             Some(subject)

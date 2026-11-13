@@ -147,14 +147,7 @@ fn masthead(root: &mut ChildSpawnerCommands) {
             ..default()
         })
         .with_children(|row| {
-            row.spawn((
-                Node {
-                    min_width: px(120),
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-                Name::new("wayne.navigation"),
-            ));
+            crate::navigation::spawn(row);
             row.spawn((ui::text("", 22.0, theme::PAPER), TextPart::Title))
                 .insert((
                     ObserverFontRole::Display,
@@ -205,48 +198,52 @@ fn dossier(root: &mut ChildSpawnerCommands) {
     ))
     .with_children(|panel| {
         kicker(panel, "SITUATION   /   WAYNE", theme::COPPER);
-        ui::spawn_scrolling_reading(panel, |panel| {
-            panel.spawn((
-                ImageNode::default(),
-                DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-                Portrait(None),
-                Node {
-                    width: percent(100),
-                    aspect_ratio: Some(2.8),
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-                Pickable::IGNORE,
-            ));
-            panel
-                .spawn((ui::text("", 18.0, theme::PAPER), SceneDetail))
-                .insert(ObserverFontRole::Display);
-            panel.spawn((
-                ui::text("", 14.0, theme::PAPER),
-                TextPart::Situation,
-                ObserverFocusTarget::reading(None),
-            ));
-            panel
-                .spawn((ui::row(), SceneEvidence))
-                .with_children(|links| {
-                    ui::button(
-                        links,
-                        "Inspect selected evidence",
-                        OrganizerAction::InspectSubjectEvidence,
-                    );
+        ui::spawn_scrolling_reading(
+            panel,
+            crate::navigation::position::ReadingRegion::OrganizerWorkspace,
+            |panel| {
+                panel.spawn((
+                    ImageNode::default(),
+                    DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+                    Portrait(None),
+                    Node {
+                        width: percent(100),
+                        aspect_ratio: Some(2.8),
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    Pickable::IGNORE,
+                ));
+                panel
+                    .spawn((ui::text("", 18.0, theme::PAPER), SceneDetail))
+                    .insert(ObserverFontRole::Display);
+                panel.spawn((
+                    ui::text("", 14.0, theme::PAPER),
+                    TextPart::Situation,
+                    ObserverFocusTarget::reading(None),
+                ));
+                panel
+                    .spawn((ui::row(), SceneEvidence))
+                    .with_children(|links| {
+                        ui::button(
+                            links,
+                            "Inspect selected evidence",
+                            OrganizerAction::InspectSubjectEvidence,
+                        );
+                    });
+                panel.spawn(ui::row()).with_children(|links| {
+                    for (label, dest) in [
+                        ("Acquired reports", OrganizerInspector::Evidence),
+                        ("Relationships", OrganizerInspector::Relationships),
+                        ("Practice history", OrganizerInspector::Receipts),
+                        ("Personal notes", OrganizerInspector::Notes),
+                    ] {
+                        ui::button(links, label, OrganizerAction::Inspect(dest));
+                    }
+                    crate::observer_ui::button(links, "Trends", ObserverCommand::History);
                 });
-            panel.spawn(ui::row()).with_children(|links| {
-                for (label, dest) in [
-                    ("Acquired reports", OrganizerInspector::Evidence),
-                    ("Relationships", OrganizerInspector::Relationships),
-                    ("Practice history", OrganizerInspector::Receipts),
-                    ("Personal notes", OrganizerInspector::Notes),
-                ] {
-                    ui::button(links, label, OrganizerAction::Inspect(dest));
-                }
-                crate::observer_ui::button(links, "Trends", ObserverCommand::History);
-            });
-        });
+            },
+        );
     });
 }
 
@@ -496,14 +493,18 @@ fn dispatch_panel(root: &mut ChildSpawnerCommands) {
         panel
             .spawn((ui::text("", 23.0, theme::PAPER), PeriodTitle))
             .insert(ObserverFontRole::Display);
-        ui::spawn_scrolling_reading(panel, |reading| {
-            reading.spawn((
-                ui::text("", 15.0, theme::PAPER),
-                TextPart::Aftermath,
-                ObserverFocusTarget::reading(None),
-            ));
-            reading.spawn((ui::row(), BulletinLinks));
-        });
+        ui::spawn_scrolling_reading(
+            panel,
+            crate::navigation::position::ReadingRegion::OrganizerDispatch,
+            |reading| {
+                reading.spawn((
+                    ui::text("", 15.0, theme::PAPER),
+                    TextPart::Aftermath,
+                    ObserverFocusTarget::reading(None),
+                ));
+                reading.spawn((ui::row(), BulletinLinks));
+            },
+        );
     });
 }
 

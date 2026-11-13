@@ -267,6 +267,7 @@ impl Plugin for ObserverFocusPlugin {
             )
             .add_observer(keyboard_input)
             .add_observer(focus_world)
+            .add_observer(navigation_position_restored)
             .add_systems(
                 PostUpdate,
                 (paint_outline, queue_reveal, move_reading, reveal_focus)
@@ -274,6 +275,15 @@ impl Plugin for ObserverFocusPlugin {
                     .after(UiSystems::Layout),
             );
     }
+}
+
+fn navigation_position_restored(
+    _event: On<crate::navigation::position::NavigationPositionRestored>,
+    focus: Res<InputFocus>,
+    mut reveal: ResMut<RevealFocus>,
+) {
+    reveal.target = None;
+    reveal.last_focus = focus.get();
 }
 
 fn focus_world(

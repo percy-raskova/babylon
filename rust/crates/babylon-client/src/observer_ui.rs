@@ -430,6 +430,7 @@ fn scoped_button(
             BackgroundColor(theme::PANEL),
             BorderColor::all(theme::GRAY),
             ObserverButton { command, in_menu },
+            crate::navigation::position::NavigationFocus::Observer(command),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_child((
@@ -485,14 +486,7 @@ fn spawn_hud(commands: &mut Commands) {
                 ..row()
             })
             .with_children(|bar| {
-                bar.spawn((
-                    Node {
-                        min_width: px(120),
-                        flex_shrink: 0.0,
-                        ..default()
-                    },
-                    Name::new("wayne.navigation"),
-                ));
+                crate::navigation::spawn(bar);
                 bar.spawn(role_label(
                     "BABYLON",
                     26.0,
@@ -533,7 +527,6 @@ fn spawn_hud(commands: &mut Commands) {
                     crate::production::button(bar, "Circuit [P]", ProductionCommand::Open);
                 bar.commands().entity(circuit).insert(CircuitNavigation);
                 crate::production::button(bar, "World [M]", ProductionCommand::Map);
-                crate::organizer::ui::button(bar, "Organize", OrganizerAction::Open);
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
                 button(bar, "Advance one period", ObserverCommand::Step);
             });
@@ -588,6 +581,7 @@ fn spawn_inspector(commands: &mut Commands) {
             BorderColor::all(theme::GRAY.with_alpha(0.35)),
             ZIndex(6),
             ObserverInspector,
+            crate::navigation::position::ReadingRegion::ObserverInspector,
             TabGroup::new(10),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
@@ -1838,6 +1832,7 @@ pub(crate) fn keyboard(
     }
     world_shortcuts(&keys, &mut commands);
     if *view == PrimaryView::Map
+        && !claimed.claimed(KeyCode::ArrowLeft)
         && (keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight))
     {
         if let Some(next) = scope

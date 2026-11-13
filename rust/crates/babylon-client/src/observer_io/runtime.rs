@@ -872,6 +872,8 @@ pub(crate) fn handle_commands(
     mut context: CommandContext,
     mut interlock: Option<ResMut<PlayInterlock>>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
+    mut navigation: Option<ResMut<crate::navigation::NavigationHistory>>,
+    mut organizer: Option<ResMut<OrganizerClient>>,
 ) {
     for (command, message_id) in commands.read_with_id() {
         let command = *command;
@@ -934,7 +936,30 @@ pub(crate) fn handle_commands(
         }
         context.feedback.message = None;
         let before = context.state.pending_advance_request();
+        if matches!(
+            command,
+            ObserverCommand::PreviousPeriod | ObserverCommand::NextPeriod | ObserverCommand::Live
+        ) {
+            if let Some(organizer) = organizer.as_deref_mut() {
+                organizer.navigation_context_changed();
+            }
+        }
         apply_command(command, &mut context);
+        if matches!(
+            command,
+            ObserverCommand::PreviousPeriod
+                | ObserverCommand::NextPeriod
+                | ObserverCommand::Live
+                | ObserverCommand::Archive
+                | ObserverCommand::History
+                | ObserverCommand::Disclosure(_)
+                | ObserverCommand::Evidence
+                | ObserverCommand::EconomicDetails
+        ) {
+            if let Some(navigation) = navigation.as_deref_mut() {
+                navigation.accepted();
+            }
+        }
         if command == ObserverCommand::TogglePlay {
             if let Some(lock) = interlock.as_deref_mut() {
                 lock.toggle_handled(message_id.id, &context.state);

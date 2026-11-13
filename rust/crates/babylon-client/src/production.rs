@@ -7,6 +7,7 @@ pub(crate) mod tests;
 pub(crate) mod maintenance;
 
 pub(crate) mod navigation;
+pub(crate) mod shared_navigation;
 
 mod readings;
 

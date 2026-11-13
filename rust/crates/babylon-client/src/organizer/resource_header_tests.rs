@@ -1,5 +1,7 @@
 //! Real-font resource readings across workspace, World and modal inspectors.
 
+use crate::observer::ObserverSession;
+use crate::observer_io::ObserverSet;
 use babylon_persistence::runtime_session::OrganizerSnapshot;
 use bevy::prelude::*;
 
@@ -282,10 +284,10 @@ fn actual_processing_caption_and_rightmost_advance_fit_both_header_sizes() {
         let (mut app, _, _) = measured_resource_board(viewport, size, expected_scale);
         app.init_resource::<OperationProgress>().add_systems(
             Update,
-            crate::observer_progress::track.before(crate::observer_io::ObserverSet::Paint),
+            crate::observer_progress::track.before(ObserverSet::Paint),
         );
         app.world_mut()
-            .resource_mut::<crate::observer::ObserverSession>()
+            .resource_mut::<ObserverSession>()
             .set_organizer_control_pending(true);
         for view in [
             PrimaryView::Organizer,

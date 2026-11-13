@@ -1,5 +1,6 @@
 //! Visible shared navigation and keyboard admission without gameplay commands.
 
+use crate::navigation::NavigationRegion as NavigationGroup;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
@@ -100,7 +101,7 @@ pub(super) fn sync_targets(
     session: Res<ObserverSession>,
     ui: Res<ObserverUiState>,
     modal: ModalAdmission,
-    mut groups: Query<&mut Node, With<crate::navigation::NavigationRegion>>,
+    mut groups: Query<&mut Node, With<NavigationGroup>>,
     mut buttons: Query<&mut ObserverFocusTarget, With<NavigationButton>>,
 ) {
     let supported =

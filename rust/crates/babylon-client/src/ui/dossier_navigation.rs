@@ -7,10 +7,10 @@ use crate::dossier;
 use crate::navigation::position::ArchiveFocus;
 use crate::observer_ui::ObserverUiState;
 
+use super::dossier_card;
 use super::dossier_card::{
-    chip_request, navigable_link, DossierControl, DossierFetchState, DossierPageView,
-    DossierPresentation, DossierReadIdentity, DossierRefusal, DossierWriteState,
-    SubjectPageRequest,
+    DossierControl, DossierFetchState, DossierPageView, DossierPresentation, DossierReadIdentity,
+    DossierRefusal, DossierWriteState, SubjectPageRequest,
 };
 use babylon_persistence::ArchivePageRef;
 
@@ -246,8 +246,8 @@ pub(super) fn restore(
             dossier::retained_page(&installed.read).and_then(|page| {
                 page.links
                     .iter()
-                    .filter(|link| navigable_link(link))
-                    .map(|link| chip_request(link, &installed.scope))
+                    .filter(|link| dossier_card::navigable_link(link))
+                    .map(|link| dossier_card::chip_request(link, &installed.scope))
                     .find(|request| request.target().as_ref() == Some(target))
             })
         };

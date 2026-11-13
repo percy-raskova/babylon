@@ -2,7 +2,11 @@
 
 use super::amount_editor::{self, AmountField};
 use super::evidence::EvidenceMode;
+use super::navigation::OrganizerFocus;
 use super::{board, workspace, workspace_copy as copy};
+use crate::navigation::position::NavigationFocus;
+use crate::navigation::position::ReadingRegion;
+use crate::navigation::NavigationHistory;
 
 #[path = "report_view.rs"]
 mod report_view;
@@ -228,9 +232,7 @@ pub(crate) fn button(
         .spawn((
             ui::pressable(),
             ActionButton(action),
-            crate::navigation::position::NavigationFocus::Organizer(
-                super::navigation::OrganizerFocus::from_action(action),
-            ),
+            NavigationFocus::Organizer(OrganizerFocus::from_action(action)),
             ObserverFocusTarget::action(None),
             Node {
                 padding: UiRect::axes(px(8), px(5)),
@@ -650,10 +652,8 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
                 ..column()
             },
             Overlay,
-            crate::navigation::position::ReadingRegion::OrganizerScene,
-            crate::navigation::position::NavigationFocus::Reading(
-                crate::navigation::position::ReadingRegion::OrganizerScene,
-            ),
+            ReadingRegion::OrganizerScene,
+            NavigationFocus::Reading(ReadingRegion::OrganizerScene),
             ObserverFocusTarget::reading(None),
             BackgroundColor(theme::INK.with_alpha(0.9)),
         ))
@@ -716,10 +716,8 @@ fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene
                         ..default()
                     },
                     RelationStage,
-                    crate::navigation::position::ReadingRegion::OrganizerScene,
-                    crate::navigation::position::NavigationFocus::Reading(
-                        crate::navigation::position::ReadingRegion::OrganizerScene,
-                    ),
+                    ReadingRegion::OrganizerScene,
+                    NavigationFocus::Reading(ReadingRegion::OrganizerScene),
                     ObserverFocusTarget::reading(None),
                 ))
                 .with_children(|space| {
@@ -968,7 +966,7 @@ fn position_relations(
 
 pub(super) fn spawn_scrolling_reading(
     parent: &mut ChildSpawnerCommands,
-    region: crate::navigation::position::ReadingRegion,
+    region: ReadingRegion,
     contents: impl FnOnce(&mut ChildSpawnerCommands),
 ) {
     let reading = parent
@@ -981,7 +979,7 @@ pub(super) fn spawn_scrolling_reading(
                 ..column()
             },
             region,
-            crate::navigation::position::NavigationFocus::Reading(region),
+            NavigationFocus::Reading(region),
             ObserverFocusTarget::reading(None),
         ))
         .with_children(contents)
@@ -1523,7 +1521,7 @@ fn actions(
     mut commands: Commands,
     mut observer_commands: MessageWriter<ObserverCommand>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
-    mut navigation: Option<ResMut<crate::navigation::NavigationHistory>>,
+    mut navigation: Option<ResMut<NavigationHistory>>,
 ) {
     for (&action, message_id) in events.read_with_id() {
         if !action_available(action, &mut state) {
@@ -1871,7 +1869,7 @@ fn open_evidence(
     focus: Res<InputFocus>,
     mut session: ResMut<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
-    mut navigation: Option<ResMut<crate::navigation::NavigationHistory>>,
+    mut navigation: Option<ResMut<NavigationHistory>>,
 ) {
     if session.organizer_enabled {
         session.pause_playback();
@@ -2409,9 +2407,14 @@ mod resource_header_tests;
 mod hud_interaction_tests;
 
 #[cfg(test)]
+#[path = "historical_status_tests.rs"]
+mod historical_status_tests;
+
+#[cfg(test)]
 pub(crate) mod tests {
     use super::super::draft::OrganizerDraft;
     use super::super::editor::NoteEditor;
+    use crate::navigation::{NavigationAction, NavigationButton};
     use babylon_persistence::runtime_session::OrganizerAllocation;
 
     use super::super::OrganizerCommand;
@@ -3125,7 +3128,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn scene_text(app: &mut App) -> String {
+    pub(super) fn scene_text(app: &mut App) -> String {
         let world = app.world_mut();
         let mut texts = world.query::<(Entity, &Text)>();
         texts
@@ -5010,7 +5013,7 @@ pub(crate) mod tests {
         requests.0.push(event.target);
     }
 
-    fn organizer_navigation() -> (App, Entity, OrganizerDraft) {
+    pub(super) fn organizer_navigation() -> (App, Entity, OrganizerDraft) {
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(927)));
         session.phase = SessionPhase::Ready;
         session.organizer_enabled = true;
@@ -5177,7 +5180,7 @@ pub(crate) mod tests {
             });
     }
 
-    fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
+    pub(super) fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
         OrganizerPreview {
             allocation: command.allocation,
             choice: command.choice,
@@ -5199,7 +5202,7 @@ pub(crate) mod tests {
         )
     }
 
-    fn inspect_period(app: &mut App, period: u64) {
+    pub(super) fn inspect_period(app: &mut App, period: u64) {
         let mut session = app.world_mut().resource_mut::<ObserverSession>();
         session.inspect_tick(period);
         let context = session.context();
@@ -5210,11 +5213,11 @@ pub(crate) mod tests {
         if label == "Back" {
             let entity = {
                 let world = app.world_mut();
-                let mut buttons = world.query::<(Entity, &crate::navigation::NavigationButton)>();
+                let mut buttons = world.query::<(Entity, &NavigationButton)>();
                 buttons
                     .iter(world)
                     .find_map(|(entity, button)| {
-                        if button.0 != crate::navigation::NavigationAction::Back {
+                        if button.0 != NavigationAction::Back {
                             return None;
                         }
                         let mut cursor = Some(entity);
@@ -6470,248 +6473,6 @@ pub(crate) mod tests {
             [OrganizerArchiveTarget::Workplace]
         );
         return_to_organizer(&mut app, focus, &draft);
-    }
-
-    #[test]
-    fn historical_navigation_reconciles_stale_status_without_disconnecting() {
-        let (mut app, focus, draft) = organizer_navigation();
-        let (mut client, session, request, snapshot) = crate::organizer::tests::status_fixture();
-        client.draft = Some(draft.clone());
-        let command = client
-            .make_command(&session, OrganizerChoice::Hold)
-            .expect("fixture command");
-        client.preview = Some(preview_for(&command));
-        client.reviewed_command = Some(command);
-        client.review_context = Some(session.context());
-        app.insert_resource(client).insert_resource(session);
-        let (requests, replies) = crate::observer_io::tests::install_status_pipe(&mut app);
-        app.add_systems(
-            Update,
-            super::super::transport
-                .after(ObserverSet::Receive)
-                .before(ObserverSet::Paint),
-        );
-        let RuntimeSessionRequest::OrganizerStatus {
-            scope, request_id, ..
-        } = request
-        else {
-            panic!("expected status request");
-        };
-        {
-            let mut session = app.world_mut().resource_mut::<ObserverSession>();
-            session.inspect_tick(1);
-            let context = session.context();
-            assert!(session.installed(&context));
-        }
-        replies
-            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
-                scope: scope.clone(),
-                request_id,
-                snapshot: Box::new(snapshot.clone()),
-            }))
-            .expect("response receiver remains open");
-        app.update();
-        let session = app.world().resource::<ObserverSession>();
-        assert!(
-            !session.runtime_disconnected(),
-            "local navigation must not disconnect the runtime"
-        );
-        assert_ne!(session.phase, SessionPhase::Failed);
-        let client = app.world().resource::<OrganizerClient>();
-        assert_eq!(
-            client
-                .view
-                .as_ref()
-                .expect("original view")
-                .organization_label,
-            "Fixture collective"
-        );
-        assert_eq!(client.city_pd_encounters.len(), 0);
-        assert_eq!(client.draft.as_ref(), Some(&draft));
-        assert!(client.reviewed_command.is_none());
-        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
-        let RuntimeSessionRequest::OrganizerStatus {
-            request_id: retry_id,
-            scope: retry_scope,
-            ..
-        } = requests.try_recv().expect("fresh status requested")
-        else {
-            panic!("expected fresh status");
-        };
-        assert_ne!(retry_id, request_id);
-        assert_eq!(retry_scope, scope);
-        replies
-            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
-                scope: retry_scope,
-                request_id: retry_id,
-                snapshot: Box::new(snapshot),
-            }))
-            .expect("response receiver remains open");
-        app.update();
-        let client = app.world().resource::<OrganizerClient>();
-        assert_eq!(
-            client
-                .view
-                .as_ref()
-                .expect("updated view")
-                .organization_label,
-            "Updated collective"
-        );
-        assert_eq!(client.city_pd_encounters.len(), 1);
-        assert_eq!(client.draft.as_ref(), Some(&draft));
-        assert!(client.reviewed_command.is_none());
-        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
-        assert!(!app
-            .world()
-            .resource::<ObserverSession>()
-            .runtime_disconnected());
-    }
-
-    #[test]
-    fn settled_scene_refreshes_after_history_and_return_live() {
-        use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
-        let (mut client, mut session, request, snapshot) = super::super::tests::status_fixture();
-        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
-            panic!("initial status request");
-        };
-        client
-            .status(request_id, snapshot.clone(), &mut session)
-            .expect("settled live status");
-        client.scene_mode = OrganizerSceneMode::Relationships;
-        let (mut app, _, draft) = organizer_navigation();
-        client.draft = Some(draft.clone());
-        app.insert_resource(client).insert_resource(session);
-        let (requests, replies) = crate::observer_io::tests::install_status_pipe(&mut app);
-        app.add_systems(
-            Update,
-            super::super::transport
-                .after(ObserverSet::Receive)
-                .before(ObserverSet::Paint),
-        );
-        app.update();
-        let neighborhood = OrganizerSubject::NeighborhoodGroup(93);
-        app.world_mut()
-            .write_message(OrganizerAction::SelectSubject(neighborhood));
-        app.update();
-        assert!(scene_text(&mut app).contains("Collective structure unknown"));
-        assert!(requests.try_recv().is_err());
-        inspect_period(&mut app, 2);
-        app.update();
-        let RuntimeSessionRequest::OrganizerStatus {
-            scope, request_id, ..
-        } = requests.try_recv().expect("history status requested")
-        else {
-            panic!("history status request");
-        };
-        assert!(scene_text(&mut app).contains("Loading organizer scene"));
-        assert!(!scene_text(&mut app).contains("Fixture workplace"));
-        replies
-            .send(Ok(RuntimeSessionResponse::Error {
-                scope,
-                request_id: Some(request_id),
-                code: RuntimeSessionErrorCode::StorageRefused,
-                tail: None,
-            }))
-            .expect("history refusal");
-        app.update();
-        assert!(scene_text(&mut app).contains("StorageRefused"));
-        app.update();
-        assert!(
-            requests.try_recv().is_err(),
-            "a matching refusal must not retry"
-        );
-        {
-            let mut session = app.world_mut().resource_mut::<ObserverSession>();
-            session.return_live();
-            let context = session.context();
-            assert!(session.installed(&context));
-        }
-        app.update();
-        let RuntimeSessionRequest::OrganizerStatus {
-            scope, request_id, ..
-        } = requests.try_recv().expect("returned live status requested")
-        else {
-            panic!("returned live status request");
-        };
-        assert!(scene_text(&mut app).contains("Loading organizer scene"));
-        replies
-            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
-                scope,
-                request_id,
-                snapshot: Box::new(snapshot),
-            }))
-            .expect("validated live status");
-        app.update();
-        assert!(scene_text(&mut app).contains("Collective structure unknown"));
-        let client = app.world().resource::<OrganizerClient>();
-        assert_eq!(client.selected_subject, Some(neighborhood));
-        assert_eq!(client.draft.as_ref(), Some(&draft));
-        assert!(client
-            .scene_for(app.world().resource::<ObserverSession>())
-            .is_some());
-        app.update();
-        assert!(
-            requests.try_recv().is_err(),
-            "settled context must not retry"
-        );
-    }
-
-    #[test]
-    fn stale_status_refusal_requeues_the_returned_live_context() {
-        use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
-        let (client, session, request, snapshot) = super::super::tests::status_fixture();
-        let RuntimeSessionRequest::OrganizerStatus {
-            scope, request_id, ..
-        } = request
-        else {
-            panic!("status request")
-        };
-        let (mut app, _, _) = organizer_navigation();
-        app.insert_resource(client).insert_resource(session);
-        let (requests, replies) = crate::observer_io::tests::install_status_pipe(&mut app);
-        app.add_systems(
-            Update,
-            super::super::transport
-                .after(ObserverSet::Receive)
-                .before(ObserverSet::Paint),
-        );
-        inspect_period(&mut app, 2);
-        inspect_period(&mut app, 3);
-        replies
-            .send(Ok(RuntimeSessionResponse::Error {
-                scope: scope.clone(),
-                request_id: Some(request_id),
-                code: RuntimeSessionErrorCode::StorageRefused,
-                tail: None,
-            }))
-            .expect("refusal delivered");
-        app.update();
-        let RuntimeSessionRequest::OrganizerStatus {
-            request_id: retry_id,
-            scope: retry_scope,
-            ..
-        } = requests.try_recv().expect("fresh status requested")
-        else {
-            panic!("replacement status")
-        };
-        assert_ne!(retry_id, request_id);
-        assert_eq!(retry_scope, scope);
-        assert!(scene_text(&mut app).contains("Loading organizer scene"));
-        assert!(!scene_text(&mut app).contains("StorageRefused"));
-        replies
-            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
-                scope: retry_scope,
-                request_id: retry_id,
-                snapshot: Box::new(snapshot),
-            }))
-            .expect("replacement delivered");
-        app.update();
-        let client = app.world().resource::<OrganizerClient>();
-        let session = app.world().resource::<ObserverSession>();
-        assert!(!client.status_due);
-        assert!(client.pending.is_none());
-        assert!(client.scene_for(session).is_some());
-        assert!(!session.runtime_disconnected());
     }
 
     #[test]

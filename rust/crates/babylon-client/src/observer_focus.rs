@@ -41,6 +41,7 @@
 //!   focused-input dispatch -> focus capture. Deferred commands are flushed at
 //!   these boundaries. Capture preserves claims already made in that frame.
 
+use crate::navigation::position::NavigationPositionRestored;
 use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::{ButtonState, InputSystems};
@@ -278,7 +279,7 @@ impl Plugin for ObserverFocusPlugin {
 }
 
 fn navigation_position_restored(
-    _event: On<crate::navigation::position::NavigationPositionRestored>,
+    _event: On<NavigationPositionRestored>,
     focus: Res<InputFocus>,
     mut reveal: ResMut<RevealFocus>,
 ) {

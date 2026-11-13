@@ -1,7 +1,13 @@
 //! Shared navigation regressions through native organizer and production handlers.
 
+use crate::observer::Perspective;
+use crate::observer_focus::ObserverFocusPolicy;
+use bevy::input::keyboard::Key;
+use bevy::input::ButtonState;
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
+use ui::OrganizerAction;
 
 use crate::navigation::{self, NavigationAction, NavigationButton, NavigationHistory};
 use crate::observer::ObserverSession;
@@ -20,7 +26,7 @@ fn app() -> App {
         .init_resource::<ObserverFrame>()
         .init_resource::<ObserverFeedback>()
         .init_resource::<DossierRefresh>()
-        .init_resource::<crate::observer_focus::ObserverFocusPolicy>()
+        .init_resource::<ObserverFocusPolicy>()
         .add_message::<ProductionCommand>()
         .add_systems(
             Update,
@@ -30,10 +36,7 @@ fn app() -> App {
     // controls as well. Their ordinary pointer/focus admission and handler remain unchanged.
     app.world_mut()
         .commands()
-        .spawn((
-            Node::default(),
-            bevy::input_focus::tab_navigation::TabGroup::new(0),
-        ))
+        .spawn((Node::default(), TabGroup::new(0)))
         .with_children(navigation::spawn);
     app.world_mut().flush();
     app.update();
@@ -62,9 +65,7 @@ fn press(app: &mut App, action: NavigationAction) {
 }
 
 fn visible(world: &World, entity: Entity) -> bool {
-    let modal = world
-        .resource::<crate::observer_focus::ObserverFocusPolicy>()
-        .modal;
+    let modal = world.resource::<ObserverFocusPolicy>().modal;
     let mut inside_modal = modal.is_none();
     let mut cursor = Some(entity);
     while let Some(current) = cursor {
@@ -268,7 +269,7 @@ fn perspective_reset_and_observer_only_campaigns_cannot_reuse_organizing_history
     );
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.update();
     assert!(
         !app.world().resource::<NavigationHistory>().can_go_back(),
@@ -401,7 +402,7 @@ fn draft_edits_and_refused_review_do_not_create_navigation_history() {
         .resource_mut::<ObserverSession>()
         .begin_advance()
         .expect("the fixture starts one pending advance before review");
-    app.world_mut().write_message(ui::OrganizerAction::Review);
+    app.world_mut().write_message(OrganizerAction::Review);
     app.update();
     assert_eq!(
         app.world().resource::<OrganizerClient>().inspector,
@@ -411,6 +412,65 @@ fn draft_edits_and_refused_review_do_not_create_navigation_history() {
     assert!(
         !app.world().resource::<NavigationHistory>().can_go_back(),
         "draft mutations and refused actions never push visits"
+    );
+}
+
+#[test]
+fn home_cancels_deferred_history_and_advance_completion_stays_live() {
+    let mut app = app();
+    let (client, mut session) = super::super::tests::ready();
+    session.inspect_tick(2);
+    assert!(
+        session.installed(&session.context()),
+        "fixture history is admitted"
+    );
+    app.insert_resource(client).insert_resource(session);
+    app.update();
+    press(&mut app, NavigationAction::Home);
+    let request = {
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        let context = session.context();
+        assert!(session.installed(&context), "live replacement is admitted");
+        session.begin_advance().expect("one advance begins")
+    };
+    press(&mut app, NavigationAction::Back);
+    assert!(
+        app.world()
+            .resource::<NavigationHistory>()
+            .restore
+            .is_some(),
+        "historical Back waits behind the existing advance"
+    );
+    press(&mut app, NavigationAction::Home);
+    assert!(app.world().resource::<NavigationHistory>().restore.is_none(), "Home supersedes the deferred historical Back even while the visible screen is already live");
+    {
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        assert_eq!(
+            session.pending_advance_request(),
+            Some(request),
+            "Home preserves the existing advance identity"
+        );
+        assert!(
+            session.acknowledge(request, 4, None),
+            "the original advance completes normally"
+        );
+        let context = session.context();
+        assert!(
+            session.installed(&context),
+            "the committed observation installs normally"
+        );
+    }
+    app.update();
+    let session = app.world().resource::<ObserverSession>();
+    assert_eq!(
+        session.viewed_tick, session.durable_tick,
+        "completing the advance cannot revive the canceled historical return"
+    );
+    assert_eq!(session.viewed_tick, 4, "Home stays at the new live period");
+    assert_eq!(
+        *app.world().resource::<PrimaryView>(),
+        PrimaryView::Organizer,
+        "Home stays on the decision screen"
     );
 }
 
@@ -469,8 +529,8 @@ fn key(app: &mut App, window: Entity, key_code: KeyCode) {
     app.world_mut()
         .write_message(bevy::input::keyboard::KeyboardInput {
             key_code,
-            logical_key: bevy::input::keyboard::Key::Character("".into()),
-            state: bevy::input::ButtonState::Pressed,
+            logical_key: Key::Character("".into()),
+            state: ButtonState::Pressed,
             text: None,
             repeat: false,
             window,

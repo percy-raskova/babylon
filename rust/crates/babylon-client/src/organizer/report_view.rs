@@ -4,6 +4,7 @@ use super::{
     OrganizerAction, OrganizerChoice, OrganizerInspector, OrganizerInspectorRoot, Overlay, Scope,
     SurfaceId, TextPart,
 };
+use crate::navigation::position::ReadingRegion;
 use crate::observer::ObservationContext;
 use crate::organizer::ui;
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -52,67 +53,63 @@ pub(super) fn spawn(commands: &mut Commands) {
                 .with_children(|controls| {
                     ui::button(controls, "Confirm ruling", OrganizerAction::Confirm);
                 });
-            ui::spawn_scrolling_reading(
-                panel,
-                crate::navigation::position::ReadingRegion::OrganizerInspector,
-                |body| {
-                    board::all_practices(body);
-                    body.spawn((ui::column(), DetailControls(OrganizerInspector::Review)))
-                        .with_children(|review| {
-                            review.spawn((
-                                ui::text("", 19.0, theme::PAPER),
-                                TextPart::Review,
-                                ObserverFocusTarget::reading(None),
-                            ));
-                        });
-                    direction(body);
-                    body.spawn((ui::column(), DetailControls(OrganizerInspector::Receipts)))
-                        .with_children(board::history_links);
-                    ui::spawn_notes(body);
-                    body.spawn((
-                        ui::text("", 17.0, theme::PAPER),
-                        TextPart::InspectorBody,
-                        ObserverFocusTarget::reading(None),
-                    ));
-                    body.spawn((ui::column(), DetailControls(OrganizerInspector::Evidence)))
-                        .with_children(|controls| {
-                            ui::button(controls, "Report Archive", OrganizerAction::ArchiveReport);
-                            ui::button(
-                                controls,
-                                "Prepare aid from this report",
-                                OrganizerAction::DraftFromReport,
-                            );
-                            neighbor(controls, ReportDirection::Previous);
-                            neighbor(controls, ReportDirection::Next);
-                            controls.spawn(ui::row()).with_children(|buttons| {
-                                ui::button(
-                                    buttons,
-                                    "Keep report in draft",
-                                    OrganizerAction::KeepEvidence,
-                                );
-                                ui::button(
-                                    buttons,
-                                    "Remove saved reference",
-                                    OrganizerAction::RemoveReference,
-                                );
-                            });
-                        });
-                    body.spawn(ui::row()).with_children(|controls| {
-                        ui::button(
-                            controls,
-                            "Cited workplace Archive",
-                            OrganizerAction::ArchiveWorkplace,
-                        );
-                        ui::button(
-                            controls,
-                            "Our practice Archive",
-                            OrganizerAction::ArchiveOrganization,
-                        );
+            ui::spawn_scrolling_reading(panel, ReadingRegion::OrganizerInspector, |body| {
+                board::all_practices(body);
+                body.spawn((ui::column(), DetailControls(OrganizerInspector::Review)))
+                    .with_children(|review| {
+                        review.spawn((
+                            ui::text("", 19.0, theme::PAPER),
+                            TextPart::Review,
+                            ObserverFocusTarget::reading(None),
+                        ));
                     });
-                    body.spawn((ui::text("", 12.0, theme::GRAY), TextPart::DraftStatus));
-                    body.spawn((ui::text("", 13.0, theme::YELLOW), TextPart::Message));
-                },
-            );
+                direction(body);
+                body.spawn((ui::column(), DetailControls(OrganizerInspector::Receipts)))
+                    .with_children(board::history_links);
+                ui::spawn_notes(body);
+                body.spawn((
+                    ui::text("", 17.0, theme::PAPER),
+                    TextPart::InspectorBody,
+                    ObserverFocusTarget::reading(None),
+                ));
+                body.spawn((ui::column(), DetailControls(OrganizerInspector::Evidence)))
+                    .with_children(|controls| {
+                        ui::button(controls, "Report Archive", OrganizerAction::ArchiveReport);
+                        ui::button(
+                            controls,
+                            "Prepare aid from this report",
+                            OrganizerAction::DraftFromReport,
+                        );
+                        neighbor(controls, ReportDirection::Previous);
+                        neighbor(controls, ReportDirection::Next);
+                        controls.spawn(ui::row()).with_children(|buttons| {
+                            ui::button(
+                                buttons,
+                                "Keep report in draft",
+                                OrganizerAction::KeepEvidence,
+                            );
+                            ui::button(
+                                buttons,
+                                "Remove saved reference",
+                                OrganizerAction::RemoveReference,
+                            );
+                        });
+                    });
+                body.spawn(ui::row()).with_children(|controls| {
+                    ui::button(
+                        controls,
+                        "Cited workplace Archive",
+                        OrganizerAction::ArchiveWorkplace,
+                    );
+                    ui::button(
+                        controls,
+                        "Our practice Archive",
+                        OrganizerAction::ArchiveOrganization,
+                    );
+                });
+                body.spawn((ui::text("", 12.0, theme::GRAY), TextPart::DraftStatus));
+                body.spawn((ui::text("", 13.0, theme::YELLOW), TextPart::Message));
+            });
         });
 }
 

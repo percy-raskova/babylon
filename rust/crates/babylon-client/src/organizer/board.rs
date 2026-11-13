@@ -9,6 +9,7 @@ use super::workspace::ALL_PRACTICES;
 use super::workspace_copy::{self as copy, Bulletin, DatedLink, Destination};
 use super::{presentation, OrganizerInspector};
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
+use crate::navigation::position::ReadingRegion;
 use crate::observer_focus::ObserverFocusTarget;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
@@ -20,6 +21,7 @@ use crate::visual_assets::{SurfaceKind, VisualAssetId, VisualAssets};
 use babylon_persistence::runtime_session::OrganizerChoice;
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
+use workspace::ChoiceAvailability;
 
 const PAPER: Color = Color::srgb_u8(229, 217, 191);
 const PAPER_LIGHT: Color = Color::srgb_u8(246, 235, 212);
@@ -198,52 +200,48 @@ fn dossier(root: &mut ChildSpawnerCommands) {
     ))
     .with_children(|panel| {
         kicker(panel, "SITUATION   /   WAYNE", theme::COPPER);
-        ui::spawn_scrolling_reading(
-            panel,
-            crate::navigation::position::ReadingRegion::OrganizerWorkspace,
-            |panel| {
-                panel.spawn((
-                    ImageNode::default(),
-                    DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-                    Portrait(None),
-                    Node {
-                        width: percent(100),
-                        aspect_ratio: Some(2.8),
-                        flex_shrink: 0.0,
-                        ..default()
-                    },
-                    Pickable::IGNORE,
-                ));
-                panel
-                    .spawn((ui::text("", 18.0, theme::PAPER), SceneDetail))
-                    .insert(ObserverFontRole::Display);
-                panel.spawn((
-                    ui::text("", 14.0, theme::PAPER),
-                    TextPart::Situation,
-                    ObserverFocusTarget::reading(None),
-                ));
-                panel
-                    .spawn((ui::row(), SceneEvidence))
-                    .with_children(|links| {
-                        ui::button(
-                            links,
-                            "Inspect selected evidence",
-                            OrganizerAction::InspectSubjectEvidence,
-                        );
-                    });
-                panel.spawn(ui::row()).with_children(|links| {
-                    for (label, dest) in [
-                        ("Acquired reports", OrganizerInspector::Evidence),
-                        ("Relationships", OrganizerInspector::Relationships),
-                        ("Practice history", OrganizerInspector::Receipts),
-                        ("Personal notes", OrganizerInspector::Notes),
-                    ] {
-                        ui::button(links, label, OrganizerAction::Inspect(dest));
-                    }
-                    crate::observer_ui::button(links, "Trends", ObserverCommand::History);
+        ui::spawn_scrolling_reading(panel, ReadingRegion::OrganizerWorkspace, |panel| {
+            panel.spawn((
+                ImageNode::default(),
+                DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+                Portrait(None),
+                Node {
+                    width: percent(100),
+                    aspect_ratio: Some(2.8),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ));
+            panel
+                .spawn((ui::text("", 18.0, theme::PAPER), SceneDetail))
+                .insert(ObserverFontRole::Display);
+            panel.spawn((
+                ui::text("", 14.0, theme::PAPER),
+                TextPart::Situation,
+                ObserverFocusTarget::reading(None),
+            ));
+            panel
+                .spawn((ui::row(), SceneEvidence))
+                .with_children(|links| {
+                    ui::button(
+                        links,
+                        "Inspect selected evidence",
+                        OrganizerAction::InspectSubjectEvidence,
+                    );
                 });
-            },
-        );
+            panel.spawn(ui::row()).with_children(|links| {
+                for (label, dest) in [
+                    ("Acquired reports", OrganizerInspector::Evidence),
+                    ("Relationships", OrganizerInspector::Relationships),
+                    ("Practice history", OrganizerInspector::Receipts),
+                    ("Personal notes", OrganizerInspector::Notes),
+                ] {
+                    ui::button(links, label, OrganizerAction::Inspect(dest));
+                }
+                crate::observer_ui::button(links, "Trends", ObserverCommand::History);
+            });
+        });
     });
 }
 
@@ -493,18 +491,14 @@ fn dispatch_panel(root: &mut ChildSpawnerCommands) {
         panel
             .spawn((ui::text("", 23.0, theme::PAPER), PeriodTitle))
             .insert(ObserverFontRole::Display);
-        ui::spawn_scrolling_reading(
-            panel,
-            crate::navigation::position::ReadingRegion::OrganizerDispatch,
-            |reading| {
-                reading.spawn((
-                    ui::text("", 15.0, theme::PAPER),
-                    TextPart::Aftermath,
-                    ObserverFocusTarget::reading(None),
-                ));
-                reading.spawn((ui::row(), BulletinLinks));
-            },
-        );
+        ui::spawn_scrolling_reading(panel, ReadingRegion::OrganizerDispatch, |reading| {
+            reading.spawn((
+                ui::text("", 15.0, theme::PAPER),
+                TextPart::Aftermath,
+                ObserverFocusTarget::reading(None),
+            ));
+            reading.spawn((ui::row(), BulletinLinks));
+        });
     });
 }
 
@@ -559,7 +553,7 @@ fn paint_cards(
             } else {
                 PAPER
             }));
-            let available = choice.availability == workspace::ChoiceAvailability::Reviewable;
+            let available = choice.availability == ChoiceAvailability::Reviewable;
             let accent = super::action_style::choice(choice.choice);
             border.set_if_neq(BorderColor::all(if available {
                 accent.with_alpha(if selected || hovered { 1.0 } else { 0.65 })

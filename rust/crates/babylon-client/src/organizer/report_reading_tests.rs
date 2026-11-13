@@ -1,4 +1,5 @@
 //! Selected report identity, real glyphs and reading continuity.
+use super::OrganizerInspectorRoot;
 use super::Scope;
 use super::{
     tests, ActionButton, Destination, DispatchDestination, OrganizerAction,
@@ -6,6 +7,8 @@ use super::{
 };
 use crate::atlas::CountyAtlas;
 use crate::map::SelectedCounty;
+use crate::navigation::NavigationAction;
+use crate::navigation::NavigationButton;
 use crate::observer::ObserverSession;
 use crate::observer_io::ObserverSet;
 use crate::observer_ui::{ObserverCommand, ObserverFrame};
@@ -128,14 +131,11 @@ fn inquiry_dispatch_opens_its_exact_answer_beside_a_newer_automatic_report() {
 }
 
 fn assert_return_visible(app: &mut App, bounds: Rect) {
-    for action in [
-        crate::navigation::NavigationAction::Back,
-        crate::navigation::NavigationAction::Home,
-    ] {
+    for action in [NavigationAction::Back, NavigationAction::Home] {
         let label = {
             let world = app.world_mut();
             world
-                .query::<(Entity, &crate::navigation::NavigationButton, &Children)>()
+                .query::<(Entity, &NavigationButton, &Children)>()
                 .iter(world)
                 .find_map(|(entity, button, children)| {
                     if button.0 != action {
@@ -143,10 +143,7 @@ fn assert_return_visible(app: &mut App, bounds: Rect) {
                     }
                     let mut cursor = Some(entity);
                     while let Some(current) = cursor {
-                        if world
-                            .get::<super::OrganizerInspectorRoot>(current)
-                            .is_some()
-                        {
+                        if world.get::<OrganizerInspectorRoot>(current).is_some() {
                             return Some(children[0]);
                         }
                         cursor = world.get::<ChildOf>(current).map(ChildOf::parent);

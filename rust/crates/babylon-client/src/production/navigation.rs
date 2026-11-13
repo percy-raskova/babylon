@@ -1,5 +1,6 @@
 //! Observer navigation, scoped command admission, and production selection.
 
+use crate::navigation::NavigationHistory;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
 use bevy::ecs::system::SystemParam;
@@ -258,7 +259,7 @@ pub(crate) fn navigate(
     observation: ProductionObservation,
     location: ProductionLocation,
     ui: ProductionUi,
-    mut shared_history: Option<ResMut<crate::navigation::NavigationHistory>>,
+    mut shared_history: Option<ResMut<NavigationHistory>>,
 ) {
     let ProductionLocation {
         atlas,

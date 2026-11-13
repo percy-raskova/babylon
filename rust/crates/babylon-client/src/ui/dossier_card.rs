@@ -6,9 +6,13 @@
 //! current-page search or global progress counter fills missing historical data.
 //! Keyboard and pointer controls share admission and are checked again on apply.
 
+use crate::navigation::position::NavigationFocus;
+use crate::navigation::position::ReadingRegion;
+use crate::navigation::NavigationHistory;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::OrganizerView;
 use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+use navigation::ArchiveNavigation;
 
 use bevy::ecs::system::SystemParam;
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -365,7 +369,7 @@ fn spawn_dossier_card(mut commands: Commands) {
             Visibility::Hidden,
             DeclaredSurface::new(CARD_SURFACE),
             DossierCardRoot,
-            crate::navigation::position::ReadingRegion::Archive,
+            ReadingRegion::Archive,
             TabGroup::new(20),
         ))
         .with_children(|card| {
@@ -379,9 +383,7 @@ fn spawn_dossier_card(mut commands: Commands) {
                 },
                 ObserverFontRole::Display,
                 zone(DossierZone::Title),
-                crate::navigation::position::NavigationFocus::Reading(
-                    crate::navigation::position::ReadingRegion::Archive,
-                ),
+                NavigationFocus::Reading(ReadingRegion::Archive),
                 ObserverFocusTarget::reading(None),
             ));
             card.spawn((
@@ -972,7 +974,7 @@ fn spawn_control(commands: &mut Commands, zone: Entity, label: String, control: 
             parent
                 .commands()
                 .entity(entity)
-                .insert(crate::navigation::position::NavigationFocus::Archive(key));
+                .insert(NavigationFocus::Archive(key));
         }
     });
 }
@@ -1373,7 +1375,7 @@ fn open_organizer_archive(
     identity: DossierReadIdentity,
     mut outputs: DossierWriteState,
     mut origin: ResMut<OrganizerArchiveOrigin>,
-    mut navigation: Option<ResMut<navigation::ArchiveNavigation>>,
+    mut navigation: Option<ResMut<ArchiveNavigation>>,
 ) {
     let Some(view) = &organizer.view else {
         return;
@@ -1475,8 +1477,8 @@ fn apply_page_requests(
     ui: Option<Res<ObserverUiState>>,
     mut refusal: DossierRefusal,
     mut receipt: Option<ResMut<ArchiveEvidenceReceipt>>,
-    mut navigation: Option<ResMut<navigation::ArchiveNavigation>>,
-    mut history: Option<ResMut<crate::navigation::NavigationHistory>>,
+    mut navigation: Option<ResMut<ArchiveNavigation>>,
+    mut history: Option<ResMut<NavigationHistory>>,
 ) {
     let DossierWriteState {
         mut view,
@@ -2017,7 +2019,7 @@ pub struct DossierCardPlugin;
 impl Plugin for DossierCardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ObserverFocusPolicy>()
-            .init_resource::<navigation::ArchiveNavigation>()
+            .init_resource::<ArchiveNavigation>()
             .add_message::<OpenArchiveEvidence>()
             .init_resource::<ArchiveEvidenceReceipt>()
             .add_message::<SubjectPageRequest>()

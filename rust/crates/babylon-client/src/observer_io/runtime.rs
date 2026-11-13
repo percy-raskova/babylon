@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::qualification;
+use crate::navigation::NavigationHistory;
 
 use std::io::{BufRead, Read, Write};
 
@@ -872,7 +873,7 @@ pub(crate) fn handle_commands(
     mut context: CommandContext,
     mut interlock: Option<ResMut<PlayInterlock>>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
-    mut navigation: Option<ResMut<crate::navigation::NavigationHistory>>,
+    mut navigation: Option<ResMut<NavigationHistory>>,
     mut organizer: Option<ResMut<OrganizerClient>>,
 ) {
     for (command, message_id) in commands.read_with_id() {

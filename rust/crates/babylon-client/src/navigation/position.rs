@@ -1,9 +1,14 @@
 //! Stable identities for restoring actual native focus and reading offsets.
 
+use crate::observer::ObserverSession;
+use crate::observer_focus::ObserverFocusTarget;
+use crate::observer_ui::ObserverUiState;
+use crate::ui::dossier_navigation::ArchiveNavigation;
 use babylon_persistence::ArchivePageRef;
 use bevy::ecs::system::SystemParam;
 use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 use crate::observer_focus::{self, FocusTree, ObserverFocusPolicy};
 use crate::observer_ui::ObserverCommand;
@@ -147,9 +152,9 @@ impl PendingPosition {
 pub(crate) struct NavigationPositionRestored;
 
 pub(crate) fn sync_readings(
-    session: Res<crate::observer::ObserverSession>,
-    ui: Res<crate::observer_ui::ObserverUiState>,
-    mut targets: Query<&mut crate::observer_focus::ObserverFocusTarget, With<ReadingRegion>>,
+    session: Res<ObserverSession>,
+    ui: Res<ObserverUiState>,
+    mut targets: Query<&mut ObserverFocusTarget, With<ReadingRegion>>,
 ) {
     for mut target in &mut targets {
         let mut next = target.clone();
@@ -168,8 +173,8 @@ pub(crate) fn restore_position(
     keys: Query<(Entity, &NavigationFocus)>,
     mut readings: Query<(&ReadingRegion, &ComputedNode, &mut ScrollPosition)>,
     mut commands: Commands,
-    archive: Option<Res<crate::ui::dossier_navigation::ArchiveNavigation>>,
-    windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    archive: Option<Res<ArchiveNavigation>>,
+    windows: Query<Entity, With<PrimaryWindow>>,
 ) {
     let Some(restore) = pending.0.as_mut() else {
         return;

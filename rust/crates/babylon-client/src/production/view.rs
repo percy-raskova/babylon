@@ -1,6 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::navigation;
+use crate::navigation::position::NavigationFocus;
+use crate::navigation::position::ProductionFocus;
+use crate::navigation::position::ReadingRegion;
 
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
@@ -299,9 +302,7 @@ pub(crate) fn button_node(command: ProductionCommand) -> impl Bundle {
     let context = production_command_context(&command).cloned();
     (
         ui::pressable(),
-        crate::navigation::position::NavigationFocus::Production(
-            crate::navigation::position::ProductionFocus::from_command(&command),
-        ),
+        NavigationFocus::Production(ProductionFocus::from_command(&command)),
         ProductionButton(command),
         ObserverFocusTarget::action(context),
         Node {
@@ -388,7 +389,7 @@ pub(crate) fn setup_panel(commands: &mut Commands) {
             ZIndex(7),
             Visibility::Hidden,
             ProductionPanel,
-            crate::navigation::position::ReadingRegion::ProductionPanel,
+            ReadingRegion::ProductionPanel,
             TabGroup::new(10),
             ObserverRegion::Context,
             DeclaredSurface::new(SurfaceId::ObserverProduction),
@@ -536,10 +537,8 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
     panel
         .spawn((
             ProductionReadingBody,
-            crate::navigation::position::ReadingRegion::ProductionReading,
-            crate::navigation::position::NavigationFocus::Reading(
-                crate::navigation::position::ReadingRegion::ProductionReading,
-            ),
+            ReadingRegion::ProductionReading,
+            NavigationFocus::Reading(ReadingRegion::ProductionReading),
             ObserverFocusTarget::reading(None),
             Node {
                 flex_direction: FlexDirection::Column,

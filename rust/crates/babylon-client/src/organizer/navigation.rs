@@ -1,6 +1,10 @@
 //! Presentation descriptors restored against the current organizer disclosure.
 
+use super::ui::ActionButton;
+use crate::navigation::position::NavigationFocus;
 use crate::observer::ObserverSession;
+use bevy::input_focus::FocusCause;
+use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
 
 use super::evidence::EvidenceMode;
@@ -41,17 +45,11 @@ impl OrganizerFocus {
 }
 
 pub(super) fn sync_focus_keys(
-    buttons: Query<(
-        Entity,
-        &super::ui::ActionButton,
-        Option<&crate::navigation::position::NavigationFocus>,
-    )>,
+    buttons: Query<(Entity, &ActionButton, Option<&NavigationFocus>)>,
     mut commands: Commands,
 ) {
     for (entity, action, current) in &buttons {
-        let next = crate::navigation::position::NavigationFocus::Organizer(
-            OrganizerFocus::from_action(action.0),
-        );
+        let next = NavigationFocus::Organizer(OrganizerFocus::from_action(action.0));
         if current != Some(&next) {
             commands.entity(entity).insert(next);
         }
@@ -99,10 +97,10 @@ impl OrganizerClient {
         self.return_focus = None;
     }
 
-    pub(crate) fn close_navigation_detail(&mut self, focus: &mut bevy::input_focus::InputFocus) {
+    pub(crate) fn close_navigation_detail(&mut self, focus: &mut InputFocus) {
         self.inspector = OrganizerInspector::Closed;
         if let Some(entity) = self.return_focus.take() {
-            focus.set(entity, bevy::input_focus::FocusCause::Navigated);
+            focus.set(entity, FocusCause::Navigated);
         }
     }
 

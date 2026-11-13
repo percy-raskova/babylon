@@ -3,6 +3,7 @@
 use bevy::ecs::system::SystemParam;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
+use controls::ModalAdmission;
 
 use crate::atlas::CountyAtlas;
 use crate::map::SelectedCounty;
@@ -273,7 +274,7 @@ fn actions(
     mut owners: Owners,
     mut history: ResMut<NavigationHistory>,
     mut position: ResMut<PendingPosition>,
-    modal: controls::ModalAdmission,
+    modal: ModalAdmission,
 ) {
     for action in requests.read() {
         if !owners.session.organizer_enabled
@@ -300,6 +301,8 @@ fn actions(
                 }
             }
             NavigationAction::Home => {
+                // Home supersedes a historical return waiting for the current operation.
+                history.restore = None;
                 if owners.is_home() {
                     continue;
                 }

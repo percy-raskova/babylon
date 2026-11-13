@@ -2,8 +2,11 @@
 
 use bevy::input_focus::tab_navigation::TabGroup;
 
-use super::*;
+use super::{NavigationFocus, PendingPosition, PositionCapture, ReadingRegion, SavedPosition};
+use crate::observer_focus::ObserverFocusPolicy;
 use crate::observer_focus::ObserverFocusTarget;
+use bevy::input_focus::{FocusCause, InputFocus};
+use bevy::prelude::*;
 
 #[derive(Resource, Default)]
 struct Captured(Option<SavedPosition>);
@@ -48,7 +51,7 @@ fn restored_focus_resolves_repainted_entities_and_offsets_are_applied_once() {
         .init_resource::<PendingPosition>()
         .init_resource::<Captured>()
         .add_systems(Update, capture_once)
-        .add_systems(Last, restore_position);
+        .add_systems(Last, super::restore_position);
     let root = app
         .world_mut()
         .spawn((Node::default(), TabGroup::new(0)))
@@ -109,7 +112,7 @@ fn missing_focus_uses_a_valid_reading_and_clamps_to_current_geometry() {
         .init_resource::<InputFocus>()
         .init_resource::<ObserverFocusPolicy>()
         .init_resource::<PendingPosition>()
-        .add_systems(Last, restore_position);
+        .add_systems(Last, super::restore_position);
     let root = app
         .world_mut()
         .spawn((Node::default(), TabGroup::new(0)))

@@ -9,6 +9,7 @@ use crate::observer::{ObservationContext, ObserverSession};
 use crate::observer_focus::ObserverFocusTarget;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
+use crate::observer_ui::ObserverFontRole;
 use crate::ui;
 use babylon_persistence::runtime_session::{OrganizerAllocation, OrganizerChoice};
 use bevy::input::keyboard::{Key, KeyboardInput};
@@ -230,7 +231,7 @@ pub(super) fn spawn(parent: &mut ChildSpawnerCommands) {
                                 weight: FontWeight::BOLD,
                                 ..default()
                             },
-                            crate::observer_ui::ObserverFontRole::Body,
+                            ObserverFontRole::Body,
                             TextColor(theme::PAPER),
                         ));
                 });

@@ -1,5 +1,7 @@
 //! Native observer shell. All economic readings come from one installed frame.
 
+use crate::navigation::position::NavigationFocus;
+use crate::navigation::position::ReadingRegion;
 use std::fmt::Write as _;
 
 use babylon_persistence::observer_reader::ObserverEconomySnapshot;
@@ -430,7 +432,7 @@ fn scoped_button(
             BackgroundColor(theme::PANEL),
             BorderColor::all(theme::GRAY),
             ObserverButton { command, in_menu },
-            crate::navigation::position::NavigationFocus::Observer(command),
+            NavigationFocus::Observer(command),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_child((
@@ -581,7 +583,7 @@ fn spawn_inspector(commands: &mut Commands) {
             BorderColor::all(theme::GRAY.with_alpha(0.35)),
             ZIndex(6),
             ObserverInspector,
-            crate::navigation::position::ReadingRegion::ObserverInspector,
+            ReadingRegion::ObserverInspector,
             TabGroup::new(10),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))

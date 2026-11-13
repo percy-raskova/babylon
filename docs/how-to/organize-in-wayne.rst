@@ -7,8 +7,8 @@ This creates a national campaign and opens the Wayne organizer workspace.
 
 Wayne's households and workplaces share production, trade and freight with
 other counties and foreign counterparts. A sourcing policy does not guarantee
-that goods arrive or that a payment settles. The separately labeled Michigan
-organizer control does not offer household aid or collection.
+that commodities arrive or that a payment settles. The separately labeled
+Michigan organizer control does not offer household aid or collection.
 Choose **Load Game** to return to a saved campaign later. **Continue** enters the campaign already
 prepared or reopened by the launcher.
 

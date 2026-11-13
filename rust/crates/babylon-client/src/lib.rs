@@ -9,6 +9,7 @@
 pub mod app;
 pub mod atlas;
 pub mod cli;
+mod county_palette;
 pub mod decision_surface;
 pub mod dossier;
 mod economy_status;

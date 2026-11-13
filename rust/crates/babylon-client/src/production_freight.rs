@@ -394,7 +394,7 @@ pub(crate) fn account_reading_with_index<'a>(
     for route in remaining_routes {
         writeln!(output, "Participant: {}\n", route_label(route, snapshot)).expect("String write");
     }
-    writeln!(output, "Next opening (period {}): {} available\nReservations use capacity; goods arrive after travel. Follow arrivals in Flow and staffing in Work.",
+    writeln!(output, "Next opening (period {}): {} available\nReservations use capacity; commodities arrive after travel. Follow arrivals in Flow and staffing in Work.",
         account.next_opening_period, format_freight_mass(account.next_opening_available_grams),
     ).expect("String write");
     output
@@ -1099,7 +1099,7 @@ pub(crate) mod tests {
         assert_eq!(text.matches("mill -> meals / meal").count(), 1);
         assert!(text.contains("Requested 600 kg | dispatched 120 kg\nUnshipped 480 kg"));
         assert!(text.contains("Requested 200 kg | dispatched 40 kg\nUnshipped 160 kg"));
-        assert!(text.contains("Reservations use capacity; goods arrive after travel"));
+        assert!(text.contains("Reservations use capacity; commodities arrive after travel"));
     }
 
     #[test]

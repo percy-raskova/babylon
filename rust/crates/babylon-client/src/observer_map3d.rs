@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::atlas::CountyAtlas;
+use crate::county_palette;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::map_economy_lens::MapLens;
 use crate::observer::ObserverSession;
@@ -315,15 +316,10 @@ fn update_observation(
         if (data_changed || input.view.is_changed()) && transform.scale.y.ne(&target_height) {
             transform.scale.y = target_height;
         }
-        let color = if *input.view == PrimaryView::Organizer {
-            // Ink and ochre distinguish the geographic focus, independent of economic readings.
-            if county.fips == "26163" {
-                Color::srgb_u8(133, 105, 67)
-            } else {
-                Color::srgb_u8(60, 69, 63)
-            }
-        } else if matches!(input.ui.lens, MapLens::Relationships) {
-            theme::LAND
+        let color = if *input.view == PrimaryView::Organizer
+            || matches!(input.ui.lens, MapLens::Relationships)
+        {
+            county_palette::color(&county.fips)
         } else {
             value.map_or(theme::GRAY, |value| {
                 let weight = maximum
@@ -344,6 +340,8 @@ fn update_observation(
                 theme::PAPER
             } else if input.hovered.0 == Some(county.atlas_index) {
                 theme::BLUE
+            } else if county.fips == "26163" {
+                county_palette::WAYNE_OUTLINE
             } else {
                 theme::INK
             };
@@ -1178,6 +1176,116 @@ mod tests {
             height(Some(u64::MAX), Some(u64::MAX)).to_bits(),
             (BASE_HEIGHT + DATA_HEIGHT).to_bits()
         );
+    }
+
+    fn geographic_observation() -> (ObserverSession, ObserverEconomySnapshot) {
+        use babylon_persistence::observer_reader::ObserverCountyEconomy;
+
+        let campaign = CampaignId::from_uuid(Uuid::nil());
+        let mut session = ObserverSession::new(campaign);
+        session.ready(4, Some("a".repeat(64)));
+        let snapshot = ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 4,
+            foundation_digest: "f".repeat(64),
+            tick_content_hash: Some("a".repeat(64)),
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: vec![ObserverCountyEconomy {
+                county_geoid: "26163".into(),
+                annual_avg_estabs_count: None,
+                annual_avg_emplvl: Some(10),
+                total_annual_wages: None,
+                annual_avg_wkly_wage: None,
+            }],
+            production: None,
+        };
+        (session, snapshot)
+    }
+
+    #[test]
+    fn geographic_fills_survive_context_changes_without_replacing_metric_colors_or_outlines() {
+        let (session, snapshot) = geographic_observation();
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(session)
+            .insert_resource(ObserverFrame(Some(snapshot), None))
+            .init_resource::<ObserverUiState>()
+            .insert_resource(PrimaryView::Organizer)
+            .init_resource::<SelectedCounty>()
+            .init_resource::<HoveredCounty>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .add_systems(Update, update_observation);
+        let mut handles = Vec::new();
+        for (atlas_index, fips) in ["26163", "26099"].into_iter().enumerate() {
+            let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+            let fill = materials.add(StandardMaterial::default());
+            let outline = materials.add(StandardMaterial::default());
+            app.world_mut().spawn((
+                CountySlab {
+                    atlas_index,
+                    fips: fips.into(),
+                    outline: outline.clone(),
+                },
+                Transform::default(),
+                MeshMaterial3d(fill.clone()),
+            ));
+            handles.push((fill, outline));
+        }
+        let material_color = |app: &App, handle: &Handle<StandardMaterial>| {
+            app.world()
+                .resource::<Assets<StandardMaterial>>()
+                .get(handle)
+                .expect("fixture material")
+                .base_color
+        };
+        app.update();
+        let geographic = [
+            county_palette::color("26163"),
+            county_palette::color("26099"),
+        ];
+        assert_ne!(geographic[0], geographic[1]);
+        for ((fill, _), color) in handles.iter().zip(geographic) {
+            assert_eq!(material_color(&app, fill), color);
+        }
+        assert_eq!(
+            material_color(&app, &handles[0].1),
+            county_palette::WAYNE_OUTLINE
+        );
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(0);
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), geographic[0]);
+        assert_eq!(material_color(&app, &handles[0].1), theme::PAPER);
+        app.world_mut().resource_mut::<SelectedCounty>().0 = None;
+        app.world_mut().resource_mut::<HoveredCounty>().0 = Some(0);
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].1), theme::BLUE);
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), geographic[0]);
+        app.world_mut().resource_mut::<ObserverUiState>().lens =
+            MapLens::Qcew(EconomyMetric::Employment);
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), theme::YELLOW);
+        assert_eq!(material_color(&app, &handles[1].0), theme::GRAY);
+        let world = app.world_mut();
+        for (county, transform) in world.query::<(&CountySlab, &Transform)>().iter(world) {
+            let expected = if county.fips == "26163" {
+                BASE_HEIGHT + DATA_HEIGHT
+            } else {
+                BASE_HEIGHT
+            };
+            assert_eq!(transform.scale.y.to_bits(), expected.to_bits());
+        }
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .viewed_tick = 9;
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), geographic[0]);
+        assert_eq!(material_color(&app, &handles[1].0), geographic[1]);
     }
 
     #[test]

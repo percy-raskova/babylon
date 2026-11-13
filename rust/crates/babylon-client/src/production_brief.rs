@@ -198,7 +198,7 @@ impl<'a> MaterialRelation<'a> {
             labels.push("no shipment recorded");
         }
         if self.facts.contains(&FlowFact::InTransit) {
-            labels.push("goods in transit");
+            labels.push("commodities in transit");
         }
         if self.facts.contains(&FlowFact::Delivered) {
             labels.push("delivery recorded to date");
@@ -645,7 +645,7 @@ mod tests {
             &snapshot,
         );
         assert!(requirement.contains("shipment evidence unavailable"));
-        assert!(!requirement.contains("goods in transit"));
+        assert!(!requirement.contains("commodities in transit"));
         snapshot.physical_routes = vec![physical_route()];
         snapshot.routes.push(route());
         snapshot.freight.push(freight());
@@ -657,7 +657,7 @@ mod tests {
         );
         for fact in [
             "requirement + route",
-            "goods in transit",
+            "commodities in transit",
             "delivery recorded to date",
             "backlog remains",
         ] {
@@ -671,7 +671,7 @@ mod tests {
             DependencyDirection::Upstream,
             &snapshot
         )
-        .contains("goods in transit"));
+        .contains("commodities in transit"));
         snapshot.freight.clear();
         snapshot.routes[0].backlog = 0;
         let arrived = dependency_flow_summary(
@@ -681,7 +681,7 @@ mod tests {
             &snapshot,
         );
         assert!(arrived.contains("delivery recorded to date; no backlog"));
-        assert!(!arrived.contains("goods in transit"));
+        assert!(!arrived.contains("commodities in transit"));
         assert!(!arrived.contains("this period"));
         snapshot.routes[0].shipped = 0;
         snapshot.routes[0].delivered = 0;
@@ -713,7 +713,7 @@ mod tests {
         for material in ["Input a (kg)", "Input a (tonne)", "Food (kg)"] {
             assert!(before.contains(material), "missing {material}: {before}");
         }
-        assert_eq!(before.matches("goods in transit").count(), 1);
+        assert_eq!(before.matches("commodities in transit").count(), 1);
         assert!(!before.contains("100"));
         snapshot.sites[1].processes[0].inputs.reverse();
         snapshot.sites.reverse();
@@ -734,7 +734,7 @@ mod tests {
             "Cohort a",
             "Cohort c",
             "Input a",
-            "goods in transit",
+            "commodities in transit",
             "delivery recorded",
         ] {
             assert!(!text.contains(absent), "undisclosed {absent}: {text}");

@@ -44,7 +44,7 @@ pub(crate) fn read(reader: &SemanticArchiveReader, campaign: CampaignId) -> Resu
         .production_evidence_digest()
         .map_err(|error| {
             format!(
-                "{error}; sites={}, household goods={}, household services={}",
+                "{error}; sites={}, household commodities={}, household services={}",
                 counts.0, counts.1, counts.2
             )
         })?

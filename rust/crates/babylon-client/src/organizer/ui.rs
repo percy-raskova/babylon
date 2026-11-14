@@ -2188,9 +2188,8 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                                         presentation::client_approach(&scope.client, view, *choice)
                                     });
                                 format!(
-                                    "{}\n\nDetails · selected draft\n{}\n{detail}",
-                                    copy::terms(term),
-                                    term.intent
+                                    "{}\n\nDetails · selected draft\n{detail}",
+                                    copy::terms(term)
                                 )
                             } else {
                                 copy::compact_terms(term)
@@ -2304,11 +2303,11 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
         } else if !available {
             theme::INK
         } else if *interaction == Interaction::Pressed {
-            accent.with_alpha(0.4)
+            accent.with_alpha(0.10)
         } else if *interaction == Interaction::Hovered {
-            accent.with_alpha(0.28)
+            accent.with_alpha(0.08)
         } else if selected || next_action {
-            accent.with_alpha(0.18)
+            accent.with_alpha(0.04)
         } else {
             theme::PANEL
         };
@@ -2434,6 +2433,10 @@ mod resource_header_tests;
 #[cfg(test)]
 #[path = "hud_interaction_tests.rs"]
 mod hud_interaction_tests;
+
+#[cfg(test)]
+#[path = "native_capture_tests.rs"]
+mod native_capture_tests;
 
 #[cfg(test)]
 #[path = "historical_status_tests.rs"]

@@ -562,9 +562,10 @@ fn spawn_hud_readings(bar: &mut ChildSpawnerCommands) {
         label("", 12.0, theme::YELLOW),
         ObserverText::Status,
         Node {
+            width: px(190),
             max_width: px(190),
             min_width: px(0),
-            flex_shrink: 1.0,
+            flex_shrink: 0.0,
             ..default()
         },
     ));
@@ -2408,6 +2409,15 @@ pub(crate) mod tests {
             .expect("actual period reading");
         crate::observer_focus::install_outline_fixture(app, entity);
         entity
+    }
+
+    pub(crate) fn resource_header_status(app: &mut App) -> Entity {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &ObserverText)>()
+            .iter(world)
+            .find_map(|(entity, kind)| matches!(kind, ObserverText::Status).then_some(entity))
+            .expect("the actual shared header includes the complete period status")
     }
 
     pub(crate) fn install_resource_header_fixture(app: &mut App, viewport: UVec2) -> Entity {

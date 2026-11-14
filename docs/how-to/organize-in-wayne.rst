@@ -9,8 +9,8 @@ Wayne's households and workplaces share production, trade and freight with
 other counties and foreign counterparts. A sourcing policy does not guarantee
 that commodities arrive or that a payment settles. The separately labeled
 Michigan organizer control does not offer household aid or collection.
-Choose **Load Game** to return to a saved campaign later. **Continue** enters the campaign already
-prepared or reopened by the launcher.
+Choose **Load Game** to return to a saved campaign later. **Continue** enters
+the campaign already prepared or reopened by the launcher.
 
 During play, choose **Menu** or press Escape to open the campaign menu.
 Choose **Resume campaign** or press Escape to return to the same view.
@@ -28,6 +28,12 @@ Resize the game window without changing your desktop resolution.
 Settings also controls audio and reduced motion. The start menu loops
 **The Purge**. **Next in-game track** selects the music for the campaign.
 
+The interface tour opens when your first supported organizer workspace is ready.
+Use **Next** and **Previous** to read the callouts, or **Skip** to close them.
+Escape also skips the tour. To see it again, choose **Replay interface tour**
+in **Settings**. The tour explains the interface and submits no ruling.
+It pauses Play; closing it leaves Play paused.
+
 You direct the fictional **Wayne Organizing Collective**. Its workplace
 committee and neighborhood contact group are independent partners. The scenario
 classifies all three groups and their time commitments as Designed. They do
@@ -36,18 +42,29 @@ not represent observed organizations or the whole industrial workforce.
 Read the situation
 ------------------
 
-The header names your collective and shows the current period and available
-time. **Our situation** gives the organization's concern and neighborhood
-routine. A concern expresses the organization's direction. It does not count
-as an acquired workplace report. **Workplace report** shows the latest evidence
-available at the inspected period, with its source and age. **Last period**
-describes the most recent completed practice.
+The header names your collective and shows three resource readings:
+
+* **Cash** shows the collective's disclosed cash balance.
+* **Organizer-hours** shows the organization's available hours for the current
+  period. Each choice shows its captured cost separately.
+* **Household time** shows remaining hours in a named closed period. Its caption
+  says that next-period capacity is unknown.
+
+An unavailable reading means that the current observation does not disclose it.
+It does not mean zero. Selecting a draft or asking for a review reserves no cash
+or time. Household time is a dated reading, not a balance you can allocate to a
+future practice.
+
+Read the situation beside the map, then compare the choices. The selected
+subject's field dossier gives its disclosed situation. The latest workplace
+report identifies the inspected period, source and age. The organization's
+concern expresses its direction; it does not count as an acquired report.
+**Last period** describes the most recent completed practice.
 
 Each campaign period covers 28 days. The campaign has no designed final period.
-The header shows the collective's available organizer-hours, bounded by its
-participants' actual household time and authorized commitments. Each choice
-card shows its captured cost. A participating partner uses its own authorized
-time. Unused time expires.
+The collective's organizer-hours are bounded by its participants' actual
+household time and authorized commitments. A participating partner uses its
+own authorized time. Unused time expires.
 
 The campaign opens at period 0 without a completed-period workplace report.
 If you confirm an inquiry and advance from period 0, it asks about a period
@@ -60,11 +77,19 @@ receives a report.
 Choose and review a practice
 ----------------------------
 
-Compare the available cards. Each gives its cost, partner, effect on the routine
-and resolving period. For example, select **Keep current routine**, then
-**Review choice**. Check the terms before choosing **Confirm ruling**. The
-interface calls the ruling accepted only after the runtime acknowledges its
-durable commitment. Select **Advance one period** to resolve it.
+Compare the available cards. Each gives its cost, partner, timing, effect on the
+routine and possible outcome. Open **Details** for the longer explanation and
+all practices. The selected draft expands; the other practices keep their short
+summaries. Selecting a practice returns you to the decision and any amount
+controls that apply to it. Read the displayed reason when a control is unavailable.
+
+For a first decision, read the three resource chips and the selected subject's
+situation. Select **Keep current routine**, then **Review choice**. Check the
+actual cost, resolving period, routine replacement and warnings before choosing
+**Confirm ruling**. The interface calls the ruling accepted only after the
+runtime acknowledges its durable commitment. Choose **Advance one period** at
+the far right of the header to resolve it, then read **Last period** and
+**Practice history**. Review, Confirm and Advance are separate actions.
 
 The authorized routine also runs when you advance without a specific ruling.
 A specific inquiry or workplace contact replaces it for one period. Afterward,
@@ -122,10 +147,10 @@ The cap is an upper bound. Actual household consumption, essential services,
 closing pantry, due payments and the protected cash floor come first. A smaller
 available amount can produce a partial contribution.
 
-A positive contribution uses the full captured collection hours once. Collecting less cash does not
-create spare hours. A refused collection transfers no cash and performs no
-collection work. It still resolves the original accepted ruling, which replaces
-the routine for that period.
+A positive contribution uses the full captured collection hours once.
+Collecting less cash does not create spare hours. A refused collection
+transfers no cash and performs no collection work. It still resolves the
+original accepted ruling, which replaces the routine for that period.
 
 Review reserves no funds or time. Advance closes the material period and reports
 the amount actually received. That money can fund a later aid ruling. It does
@@ -187,8 +212,12 @@ a report. Open **Practice history** for earlier receipts.
 Distinguish organizational results from factory conditions. Political choices
 do not repair the factory. Its recovery follows the maintenance economy.
 
-During the tick, the ruling panel shows **Resolving**. It credits no outcome
-before the period commits. Read the completed receipt after resolution.
+While processing, the header names the current operation or reported stage and
+shows elapsed time. The indicator remains active while the committed organizer
+view refreshes. Reduced motion keeps its activity bars still. Read-only
+navigation remains available while processing. A visible failure explains why
+the operation has not finished; read the completed receipt after resolution.
+The indicator gives no percentage and credits no outcome before commitment.
 
 **Relationships** shows the period through which workplace report sharing
 remains active. An automatic workplace report appears only when performed
@@ -206,7 +235,7 @@ inspect **Relationships**. Expiry stops automatic workplace reports. Contact
 through the existing workplace relationship can restore the agreement even
 after it expires.
 
-In the organizer workspace, **Evidence [P]** opens workplace evidence. Held
+In the organizer workspace, **Evidence** opens workplace evidence. Held
 history and Archive keep the knowledge available at the inspected period.
 An inquiry can reveal one period's report, not future accounts. Older reports
 keep their observed and acquisition periods. Follow **Cited workplace
@@ -214,8 +243,27 @@ Archive** or **Our practice Archive** for the cited records, then use
 **Back to this decision** to return to the organizer workspace.
 
 Held history filters reports and practice receipts. Relationships and
-Direction explicitly describe the current organization. Return to the current
-period and refresh the preview before submitting.
+Direction explicitly describe the current organization. Returning from another
+period or context requires a fresh review before confirmation.
+
+Move between views
+------------------
+
+Use **World**, **Evidence** and **Archive** to inspect the context for your
+decision. **Back** closes the topmost detail first, then returns to the previous
+view with its selection and reading position. Alt+Left also goes Back outside
+text editing. **Organizing Home** closes the detail and returns to the current
+live organizer decision. Back can return to the view you left when choosing Home.
+
+Your personal draft and accepted ruling remain in place while you read. Back
+and Home do not undo gameplay. The interface reads restored views against the
+current disclosure; a report or subject that is unavailable at that period
+remains unavailable.
+
+Blue, sage, ochre and mauve distinguish counties on the geographic base map.
+County labels and selection outlines remain visible. Economic lenses use their
+own palettes and legends. The commodity controls select the commodity whose
+accounts the lens displays; check the named unit and inspected period.
 
 Close and reopen the saved campaign to check a pending ruling or its
 completed receipt. The runtime reconciles saved commitments without a new
@@ -232,9 +280,9 @@ overwrite. The workspace explains when saving the personal draft is unavailable.
 This does not replace or discard the campaign's authoritative commitments.
 
 Use Tab and Shift+Tab to move focus, Enter to activate a focused control, and
-the notes field's displayed editing keys for text. **Return to decision** or
+the notes field's displayed editing keys for text. **Back** or
 **Escape** closes a detail view. Scroll the situation or detail view when its
 contents do not fit. A hint below each panel shows when more content lies above
-or below. The decision controls remain below the situation and choice cards.
-Resize the game window to change its size without changing the
-desktop resolution.
+or below. The decision controls stay with the choice cards.
+During the interface tour, Escape skips its callouts. Resize the game window to
+change its size without changing the desktop resolution.

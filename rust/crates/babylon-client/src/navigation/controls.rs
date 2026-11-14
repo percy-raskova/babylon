@@ -4,6 +4,7 @@ use crate::navigation::NavigationRegion as NavigationGroup;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::ObserverSession;
 use crate::observer_focus::{
     FocusTree, ObserverFocusPolicy, ObserverFocusTarget, ObserverKeyboardActivate,
@@ -56,6 +57,7 @@ pub(crate) fn button(
         .spawn((
             ui::pressable(),
             NavigationButton(action),
+            DeclaredSurface::new(SurfaceId::ObserverShell),
             match action {
                 NavigationAction::Back => NavigationFocus::Back,
                 NavigationAction::Home => NavigationFocus::Home,
@@ -78,6 +80,7 @@ pub(crate) fn button(
             },
             TextColor(theme::PAPER),
             ObserverFontRole::Body,
+            DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .id()
 }

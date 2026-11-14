@@ -307,6 +307,7 @@ pub(crate) fn settings_button(parent: &mut ChildSpawnerCommands) {
 
 pub(crate) fn install(app: &mut App) {
     app.init_resource::<InterfaceTour>()
+        .add_message::<NavigationAction>()
         .add_systems(Startup, view::spawn)
         .add_systems(
             PreUpdate,

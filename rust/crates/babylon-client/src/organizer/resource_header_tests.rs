@@ -6,6 +6,7 @@ use babylon_persistence::runtime_session::OrganizerSnapshot;
 use bevy::prelude::*;
 
 use crate::observer_focus::ObserverFocusTarget;
+use crate::observer_ui::ObserverViewport;
 use crate::organizer::{OrganizerClient, OrganizerInspector};
 use crate::production::PrimaryView;
 
@@ -347,5 +348,93 @@ fn actual_processing_caption_and_rightmost_advance_fit_both_header_sizes() {
                 "Advance remains the far-right header action"
             );
         }
+    }
+}
+
+#[test]
+fn shared_status_help_and_disabled_reasons_keep_readable_glyphs_in_the_header() {
+    use crate::observer_ui::ObserverUiState;
+    for (viewport, size, scale) in [
+        (UVec2::new(1366, 768), InterfaceSize::Standard, 1.0),
+        (UVec2::new(1366, 768), InterfaceSize::Larger, 1.15),
+        (UVec2::new(1920, 1080), InterfaceSize::Standard, 1.25),
+        (UVec2::new(1920, 1080), InterfaceSize::Larger, 1.4375),
+    ] {
+        let (mut app, shared, _) = measured_resource_board(viewport, size, scale);
+        let status = crate::observer_ui::tests::resource_header_status(&mut app);
+        for phase in ["current", "history", "pending", "closing"] {
+            prepare_header_status(&mut app, phase);
+            for (view, archive) in [
+                (PrimaryView::Map, false),
+                (PrimaryView::Production, false),
+                (PrimaryView::Map, true),
+            ] {
+                *app.world_mut().resource_mut::<PrimaryView>() = view;
+                app.world_mut()
+                    .resource_mut::<ObserverUiState>()
+                    .archive_open = archive;
+                for _ in 0..4 {
+                    app.update();
+                }
+                let expected = crate::observer_controls::turn_presentation(
+                    app.world().resource::<ObserverSession>(),
+                )
+                .status;
+                assert_eq!(app.world().get::<Text>(status).expect("complete status copy").0, expected,
+                    "layout must retain the full {phase} help/reason in {view:?}, archive={archive}");
+                let row = app
+                    .world()
+                    .get::<ChildOf>(status)
+                    .expect("shared resource/status row")
+                    .parent();
+                let row_bounds = tests::workspace_rect(&app, row);
+                tests::assert_glyphs_in(&app, status, row_bounds);
+                let status_bounds = tests::workspace_rect(&app, status);
+                assert!(status_bounds.width() > status_bounds.height(),
+                    "{phase} status must remain a readable block, not a one-character column: {status_bounds:?}");
+                assert_chip_glyphs_in(&app, shared, row_bounds);
+                assert!(
+                    tests::workspace_rect(&app, shared).max.x <= status_bounds.min.x,
+                    "status must not overlap exact resource readings"
+                );
+                let world = app.world().resource::<ObserverViewport>();
+                assert!(
+                    tests::glyph_rects(&app, status)
+                        .iter()
+                        .all(|glyph| glyph.max.y < world.0.expect("current world viewport").min.y),
+                    "the complete status must stay above the game view"
+                );
+            }
+        }
+    }
+}
+
+fn prepare_header_status(app: &mut App, phase: &str) {
+    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+    match phase {
+        "current" => {}
+        "history" => {
+            session.inspect_tick(2);
+            let context = session.context();
+            assert!(
+                session.installed(&context),
+                "the historical reading installs before its reason is measured"
+            );
+        }
+        "pending" => {
+            let live = session.durable_tick;
+            session.inspect_tick(live);
+            let context = session.context();
+            assert!(
+                session.installed(&context),
+                "the live reading installs before one advance"
+            );
+            assert!(
+                session.begin_advance().is_some(),
+                "the pending reason belongs to an actual accepted client request"
+            );
+        }
+        "closing" => session.quit_requested = true,
+        _ => unreachable!("the fixture declares each lifecycle phase explicitly"),
     }
 }

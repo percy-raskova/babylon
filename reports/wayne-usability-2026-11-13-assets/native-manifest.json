@@ -1,0 +1,978 @@
+{
+  "adapter": {
+    "backend": "Vulkan",
+    "device": "Cpu",
+    "name": "llvmpipe (LLVM 19.1.7, 256 bits)"
+  },
+  "capture_count": 84,
+  "captures": [
+    {
+      "bytes": 448336,
+      "file": "1366x768-larger-tour-1.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-1",
+      "sha256": "53254ce44b76fb90b8ddb0c550e00c766e1141377edd572662a093f67421c503",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 449100,
+      "file": "1366x768-larger-tour-2.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-2",
+      "sha256": "2002c06458a4d2b81eb04314bdc9f90f59e2d24a51db8185d8f195d0dd10bb6e",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 455891,
+      "file": "1366x768-larger-tour-3.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-3",
+      "sha256": "d0e895272f7df679b4a113bfe63fd171b26c426f6132d54bca88e4bd2bc3867f",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 427109,
+      "file": "1366x768-larger-tour-4.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-4",
+      "sha256": "c51286d8d6f90f7b75ccfd1e84edd7e05e4f4f3981a27fcdd666ee4c4f4959db",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 424268,
+      "file": "1366x768-larger-tour-5.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-5",
+      "sha256": "5d983953cab328339dde28a540f0814eaa344825bf9f28e10c9666685c517b83",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 454299,
+      "file": "1366x768-larger-tour-6.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-6",
+      "sha256": "8270e9b02fe709dda0b543b39bcbc188d0a3178a66fe0efece2f5bbfea7a129d",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 462864,
+      "file": "1366x768-larger-tour-7.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "tour-7",
+      "sha256": "096fec4e48d126961529ee0317898af0f0292c6893377d5909b0e179f3aa4391",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 452533,
+      "file": "1366x768-larger-organizer.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "organizer",
+      "sha256": "bef9658927f698d4350686e39191117b697a16e72d7c487a2cef496c329537f8",
+      "visual_observation": "Three dated resource chips and semantic choice summaries fit; known oblique county-label overlap persists.",
+      "width": 1366
+    },
+    {
+      "bytes": 182612,
+      "file": "1366x768-larger-practices.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "practices",
+      "sha256": "923efb227e656b71a88ccf213806342a771e91a8bacb1caaff67181b934ff0aa",
+      "visual_observation": "Scrollable practice list, costs/reasons and Back/Home fit; clipped continuation explicitly marked below.",
+      "width": 1366
+    },
+    {
+      "bytes": 259256,
+      "file": "1366x768-larger-receipts.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "receipts",
+      "sha256": "c7238ddba481eb041dc90a05a2fd2136bc0d0d29881dab98d2b07c5bbafbeda3",
+      "visual_observation": "Receipt history terms, source scopes, Archive actions and navigation fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 141918,
+      "file": "1366x768-larger-relationships.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "relationships",
+      "sha256": "bac15ed1673cf9048740f799f85dc6d8867239762b2ef22b106eb958c1f36573",
+      "visual_observation": "Agreement scope, committed date and Archive/navigation actions fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 268564,
+      "file": "1366x768-larger-reports.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "reports",
+      "sha256": "0934c5d165651094ca9ef79fb27b887447f824d969d69ee5e75d68863474d0c2",
+      "visual_observation": "Historical report terms, source dates, limits and navigation fit with explicit scroll continuation.",
+      "width": 1366
+    },
+    {
+      "bytes": 268564,
+      "file": "1366x768-larger-evidence-shell.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "evidence-shell",
+      "sha256": "0934c5d165651094ca9ef79fb27b887447f824d969d69ee5e75d68863474d0c2",
+      "visual_observation": "Actual Evidence inspector shell and read-only report scope fit; Back/Home visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 258251,
+      "file": "1366x768-larger-archive-unavailable.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "archive-unavailable",
+      "sha256": "15d04bb2cab8a65f4f301101ed0d4278c832e7d5d261e83f6eb9478406687dc3",
+      "visual_observation": "Reader-not-configured refusal visible; corrected two-line status contained, chips and Back/Home fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 176360,
+      "file": "1366x768-larger-expanded-details.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "expanded-details",
+      "sha256": "b68ef2a416dd184cb18f68e8f64ac90cd9482a1828d61f00ddf9326715589437",
+      "visual_observation": "Selected Details text readable on corrected fill; cost/partner/timing/routine/outcome and one explanation visible; focus and hover retained.",
+      "width": 1366
+    },
+    {
+      "bytes": 311891,
+      "file": "1366x768-larger-world-neutral.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "world-neutral",
+      "sha256": "bae1e3b4809509d1a26df7b77be30652b67e11456e7f817e8aa5420fb92d0624",
+      "visual_observation": "Full Michigan neutral map (three hues assigned by the national four-color artifact) and independent county boundaries visible; county inspector and navigation fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 356470,
+      "file": "1366x768-larger-world-economic.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "world-economic",
+      "sha256": "7f43678dad71cffce701aceb2f08943ff37b3cc575797a15ee5d54a1f12f75fb",
+      "visual_observation": "Employment metric height/color encoding and actual period/range legend retained; navigation fits.",
+      "width": 1366
+    },
+    {
+      "bytes": 338819,
+      "file": "1366x768-larger-world-commodity-labels.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "world-commodity-labels",
+      "sha256": "0842b56285a089ed1fe0def1423a39140e877cdf7115a4a3efe677eb445bca31",
+      "visual_observation": "Unavailable material stays gray; longer Commodity cycling labels fit with actual legend.",
+      "width": 1366
+    },
+    {
+      "bytes": 459196,
+      "file": "1366x768-larger-refresh-pending.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "refresh-pending",
+      "sha256": "fa3a9c8f287196d927c9fc1f779025d3f213764614fe03e9dc0873292055c225",
+      "visual_observation": "Actual organizer refresh stage and elapsed time visible; Advance/Review unavailable, read-only navigation retained.",
+      "width": 1366
+    },
+    {
+      "bytes": 459206,
+      "file": "1366x768-larger-refresh-reduced-motion.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "refresh-reduced-motion",
+      "sha256": "aa1a003ee90aa922d36125c3ea56b36b694e061d96f3b6533ff1e7e9cf56ca37",
+      "visual_observation": "Static activity bars, elapsed refresh text and unavailable actions fit with Reduced Motion.",
+      "width": 1366
+    },
+    {
+      "bytes": 465374,
+      "file": "1366x768-larger-visible-error.png",
+      "height": 768,
+      "interface": "larger",
+      "scene": "visible-error",
+      "sha256": "f88b33daed72681c32967e632216c0d3476b849ff1ecc195b9ad5a3be6ad0546",
+      "visual_observation": "Explicit fixture-authored refresh error visible at footer; committed period and controls remain displayed.",
+      "width": 1366
+    },
+    {
+      "bytes": 473032,
+      "file": "1366x768-standard-tour-1.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-1",
+      "sha256": "1e8e38a6039e06e736de1668c1604c7b343cc04a73bef145008caf1be51c833e",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 472808,
+      "file": "1366x768-standard-tour-2.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-2",
+      "sha256": "060eab9470cef120919add3325d5aa876768e9c5209abc4c595fe3b6358addc6",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 478798,
+      "file": "1366x768-standard-tour-3.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-3",
+      "sha256": "c7a0bccb851d805565b6e518732e9f2b5ca1f9576d784ee4609ca02645d74567",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 477106,
+      "file": "1366x768-standard-tour-4.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-4",
+      "sha256": "49ac3c098a52d3b50111d864c143605a6e1925107c1c937ed4e6b3950ccb208b",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 476397,
+      "file": "1366x768-standard-tour-5.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-5",
+      "sha256": "a65f5e8e3ab96af5a40cf342b77b3517d39ab5da532a392badcdb6159a2f9afe",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 477685,
+      "file": "1366x768-standard-tour-6.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-6",
+      "sha256": "9a51385331b1dac624618cf6ab0b89d89e18709a979b09dd7ac16740e6e768c9",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 485105,
+      "file": "1366x768-standard-tour-7.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "tour-7",
+      "sha256": "4ecbb6c8f759bad619b77462cb8a55e42a175daf0166fa17c7a1f9067f7cfca7",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 480852,
+      "file": "1366x768-standard-organizer.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "organizer",
+      "sha256": "9e4b3af5e1a5afd8f9181df7eb0f6ccc1c21c9fc2fe5726e448f9be666e5aaba",
+      "visual_observation": "Three dated resource chips and semantic choice summaries fit; known oblique county-label overlap persists.",
+      "width": 1366
+    },
+    {
+      "bytes": 173679,
+      "file": "1366x768-standard-practices.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "practices",
+      "sha256": "ab1718fb8a0e6966b94d70310ebba45c66b208561974472131acc959b0b8f11c",
+      "visual_observation": "Scrollable practice list, costs/reasons and Back/Home fit; clipped continuation explicitly marked below.",
+      "width": 1366
+    },
+    {
+      "bytes": 232843,
+      "file": "1366x768-standard-receipts.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "receipts",
+      "sha256": "b844f3de25e36d14df26e4dfdffd4555455456c8dff4ba65bba64759f04718eb",
+      "visual_observation": "Receipt history terms, source scopes, Archive actions and navigation fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 132804,
+      "file": "1366x768-standard-relationships.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "relationships",
+      "sha256": "444e8d258490aa8398d68dce215987882683aa03946c71f6b7842af0aead64a4",
+      "visual_observation": "Agreement scope, committed date and Archive/navigation actions fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 251815,
+      "file": "1366x768-standard-reports.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "reports",
+      "sha256": "54f4be6ea3b988ef4faa09f550db36170e3602a141e85357159acd56a9325c67",
+      "visual_observation": "Historical report terms, source dates, limits and navigation fit with explicit scroll continuation.",
+      "width": 1366
+    },
+    {
+      "bytes": 251815,
+      "file": "1366x768-standard-evidence-shell.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "evidence-shell",
+      "sha256": "54f4be6ea3b988ef4faa09f550db36170e3602a141e85357159acd56a9325c67",
+      "visual_observation": "Actual Evidence inspector shell and read-only report scope fit; Back/Home visible.",
+      "width": 1366
+    },
+    {
+      "bytes": 222249,
+      "file": "1366x768-standard-archive-unavailable.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "archive-unavailable",
+      "sha256": "040d9c86b4df122c99df5f41d0842f90286dccf0032deec7c19a9d669b79a095",
+      "visual_observation": "Reader-not-configured refusal visible; corrected two-line status contained, chips and Back/Home fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 170866,
+      "file": "1366x768-standard-expanded-details.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "expanded-details",
+      "sha256": "1c83ce292582790b9f42cc44ca2a252b9356111944dd9683a9b14c946798b37a",
+      "visual_observation": "Selected Details text readable on corrected fill; cost/partner/timing/routine/outcome and one explanation visible; focus and hover retained.",
+      "width": 1366
+    },
+    {
+      "bytes": 298287,
+      "file": "1366x768-standard-world-neutral.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "world-neutral",
+      "sha256": "c8e76fcfecd739eb496781ab7a472af80b345c081d14dc54d2b82d61563f8bc5",
+      "visual_observation": "Full Michigan neutral map (three hues assigned by the national four-color artifact) and independent county boundaries visible; county inspector and navigation fit.",
+      "width": 1366
+    },
+    {
+      "bytes": 353972,
+      "file": "1366x768-standard-world-economic.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "world-economic",
+      "sha256": "604763d27ad104578371ab3c60b0b0c618b3d232e3505da59476ee6ea447890f",
+      "visual_observation": "Employment metric height/color encoding and actual period/range legend retained; navigation fits.",
+      "width": 1366
+    },
+    {
+      "bytes": 332814,
+      "file": "1366x768-standard-world-commodity-labels.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "world-commodity-labels",
+      "sha256": "df597c5bc7877b95a1cad865766425bb77e3ab301b8929572347f3e8e6f74a29",
+      "visual_observation": "Unavailable material stays gray; longer Commodity cycling labels fit with actual legend.",
+      "width": 1366
+    },
+    {
+      "bytes": 485743,
+      "file": "1366x768-standard-refresh-pending.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "refresh-pending",
+      "sha256": "4921887142618d42244b17be24fa5b191bf4cb6f61d63d824c3b1b948ea6d106",
+      "visual_observation": "Actual organizer refresh stage and elapsed time visible; Advance/Review unavailable, read-only navigation retained.",
+      "width": 1366
+    },
+    {
+      "bytes": 485824,
+      "file": "1366x768-standard-refresh-reduced-motion.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "refresh-reduced-motion",
+      "sha256": "a8f370b75e07194d35a5da565ee99a62777ece596e623f59b5d1aa84c489e52e",
+      "visual_observation": "Static activity bars, elapsed refresh text and unavailable actions fit with Reduced Motion.",
+      "width": 1366
+    },
+    {
+      "bytes": 491330,
+      "file": "1366x768-standard-visible-error.png",
+      "height": 768,
+      "interface": "standard",
+      "scene": "visible-error",
+      "sha256": "9d785d2275a315c24478b0eb134b25830d23a066e539dce7d7cd69f3df3e31a3",
+      "visual_observation": "Explicit fixture-authored refresh error visible at footer; committed period and controls remain displayed.",
+      "width": 1366
+    },
+    {
+      "bytes": 817251,
+      "file": "1920x1080-standard-tour-1.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-1",
+      "sha256": "12a2d138349e4ee8702c9a8f33b9fe6697f67dfa0497a4183edd414902d50264",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 816472,
+      "file": "1920x1080-standard-tour-2.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-2",
+      "sha256": "90cc90ac4398772976cfcb0856abf1f47ff71c447dc7e0a1a9f3bf9eefe9e1a5",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 825244,
+      "file": "1920x1080-standard-tour-3.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-3",
+      "sha256": "a85c4d9f9d1e5028f66158998cf7a71996810632ff3609c02cb926986457a5a9",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 840551,
+      "file": "1920x1080-standard-tour-4.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-4",
+      "sha256": "5135d9514a5edb952bd5676b1a6bfab1f5109af66fbd4439ca28a5a7384e7aac",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 835203,
+      "file": "1920x1080-standard-tour-5.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-5",
+      "sha256": "a1a805f73166f7c4f2d74c4d520b90c232a2e88a182b5179d4cef97c72c4c052",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 823726,
+      "file": "1920x1080-standard-tour-6.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-6",
+      "sha256": "71663d2f97aba8e2b80b7a671b205d1a7a0538a5acef6ad9f7d267ccf87ed688",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 832919,
+      "file": "1920x1080-standard-tour-7.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "tour-7",
+      "sha256": "a314a170b687fe56145b3dc2a8415a4b9936fb9d602a6b4b21e00eae08631664",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 829597,
+      "file": "1920x1080-standard-organizer.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "organizer",
+      "sha256": "8b9f066e9d631f7b095b59488d3d08ed7943d420d3f88c236ed643c2d2ce47c8",
+      "visual_observation": "Three dated resource chips and semantic choice summaries fit; known oblique county-label overlap persists.",
+      "width": 1920
+    },
+    {
+      "bytes": 287310,
+      "file": "1920x1080-standard-practices.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "practices",
+      "sha256": "cffc2134a3bc049038f50e9bf0610263f482aae8222b71d00609ce13a9089cda",
+      "visual_observation": "Scrollable practice list, costs/reasons and Back/Home fit; clipped continuation explicitly marked below.",
+      "width": 1920
+    },
+    {
+      "bytes": 352637,
+      "file": "1920x1080-standard-receipts.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "receipts",
+      "sha256": "16a3dcfa16536e6b47790b8d665ff2f1246784fafbbd8ce79842b13be2940d70",
+      "visual_observation": "Receipt history terms, source scopes, Archive actions and navigation fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 218809,
+      "file": "1920x1080-standard-relationships.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "relationships",
+      "sha256": "1334ddca93bb3e3e44998d8a267a09fa17166887ee8a338108338b78c7fbdf6e",
+      "visual_observation": "Agreement scope, committed date and Archive/navigation actions fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 403370,
+      "file": "1920x1080-standard-reports.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "reports",
+      "sha256": "662400e81dad54bfc8aac7e97e24e632ad978cc4b0755a11cce5f52addcbdd36",
+      "visual_observation": "Historical report terms, source dates, limits and navigation fit with explicit scroll continuation.",
+      "width": 1920
+    },
+    {
+      "bytes": 403370,
+      "file": "1920x1080-standard-evidence-shell.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "evidence-shell",
+      "sha256": "662400e81dad54bfc8aac7e97e24e632ad978cc4b0755a11cce5f52addcbdd36",
+      "visual_observation": "Actual Evidence inspector shell and read-only report scope fit; Back/Home visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 380694,
+      "file": "1920x1080-standard-archive-unavailable.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "archive-unavailable",
+      "sha256": "b01f38d38b9090bf5e3e0f69e3c08ee700ff49738a5330a9a13cf90196246574",
+      "visual_observation": "Reader-not-configured refusal visible; corrected two-line status contained, chips and Back/Home fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 287130,
+      "file": "1920x1080-standard-expanded-details.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "expanded-details",
+      "sha256": "e3eb8eb10e898e8b2cd283242a7e22c03a17e1b406ce039f2b17aad58f69175a",
+      "visual_observation": "Selected Details text readable on corrected fill; cost/partner/timing/routine/outcome and one explanation visible; focus and hover retained.",
+      "width": 1920
+    },
+    {
+      "bytes": 482474,
+      "file": "1920x1080-standard-world-neutral.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "world-neutral",
+      "sha256": "60bba418be26f51bdd70f8dd0a8c596bcb31023d94906a7acd93ee139ac6f88a",
+      "visual_observation": "Full Michigan neutral map (three hues assigned by the national four-color artifact) and independent county boundaries visible; county inspector and navigation fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 582772,
+      "file": "1920x1080-standard-world-economic.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "world-economic",
+      "sha256": "519870cbf5e92cb32c2431b52749c729da1ad43a9b58982cc4389b7ddba1f622",
+      "visual_observation": "Employment metric height/color encoding and actual period/range legend retained; navigation fits.",
+      "width": 1920
+    },
+    {
+      "bytes": 578585,
+      "file": "1920x1080-standard-world-commodity-labels.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "world-commodity-labels",
+      "sha256": "a6fe452c2c191322840eec54baada45f2068d0ae82eef7a04a783f9047aaab78",
+      "visual_observation": "Unavailable material stays gray; longer Commodity cycling labels fit with actual legend.",
+      "width": 1920
+    },
+    {
+      "bytes": 832704,
+      "file": "1920x1080-standard-refresh-pending.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "refresh-pending",
+      "sha256": "a9ff66c92e8df208c1e0b1a17abc8516d2d0b2c4314387b04235768b68bc2672",
+      "visual_observation": "Actual organizer refresh stage and elapsed time visible; Advance/Review unavailable, read-only navigation retained.",
+      "width": 1920
+    },
+    {
+      "bytes": 832807,
+      "file": "1920x1080-standard-refresh-reduced-motion.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "refresh-reduced-motion",
+      "sha256": "2e2d7eba21299c5b1926f2a8574087e23ccebc8e7ddc818146392c5fdbdcaf5d",
+      "visual_observation": "Static activity bars, elapsed refresh text and unavailable actions fit with Reduced Motion.",
+      "width": 1920
+    },
+    {
+      "bytes": 846962,
+      "file": "1920x1080-standard-visible-error.png",
+      "height": 1080,
+      "interface": "standard",
+      "scene": "visible-error",
+      "sha256": "2c0053acc4239b30f806ebe559517bfa4fa2465d30bb5539a833e6bf7fd062b5",
+      "visual_observation": "Explicit fixture-authored refresh error visible at footer; committed period and controls remain displayed.",
+      "width": 1920
+    },
+    {
+      "bytes": 793146,
+      "file": "1920x1080-larger-tour-1.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-1",
+      "sha256": "ce231f7c0637ae8afa0b6fe95d08509b9f8f076afa6f34f88fef8a6674a4e96e",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 792163,
+      "file": "1920x1080-larger-tour-2.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-2",
+      "sha256": "afca4cb853767936b27b2f0902dcd0ae203d72f3b3c9d68f4d68d4bfbab47471",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 802779,
+      "file": "1920x1080-larger-tour-3.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-3",
+      "sha256": "0aa40d6178bfec9d3dd15bec1d0812729023b2c724f9b3adc3dc68121a9e6bf1",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 789456,
+      "file": "1920x1080-larger-tour-4.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-4",
+      "sha256": "06bee14f33ab48a8b642f1e0e129762651adfa68e76f14442396e96dfbd75fae",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 788582,
+      "file": "1920x1080-larger-tour-5.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-5",
+      "sha256": "f2a1dcf23361060621d703c9fe66ccbe998c8bd829ead31d14b3e44a7a44cede",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 800700,
+      "file": "1920x1080-larger-tour-6.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-6",
+      "sha256": "ce9468076efe2a51ac509f31a02cf111e2ac531d8a090aba501459b6b3c76df4",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 812342,
+      "file": "1920x1080-larger-tour-7.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "tour-7",
+      "sha256": "9a75c729360b91ba300115f29cb5ee9574ad02d5fbcf8a997329b0ccb3b3b3f4",
+      "visual_observation": "Tour heading, full copy, Previous/Next/Skip and paused caption fit; named target highlight visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 805595,
+      "file": "1920x1080-larger-organizer.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "organizer",
+      "sha256": "dd2c2435ab937b2a99790083bd27aedd7c5305a4abff39cb464122c3bcd9549f",
+      "visual_observation": "Three dated resource chips and semantic choice summaries fit; known oblique county-label overlap persists.",
+      "width": 1920
+    },
+    {
+      "bytes": 273294,
+      "file": "1920x1080-larger-practices.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "practices",
+      "sha256": "82eb22d19d6279ee592cf0f093845f8efa168b05ee25263833f6b71e7668e56c",
+      "visual_observation": "Scrollable practice list, costs/reasons and Back/Home fit; clipped continuation explicitly marked below.",
+      "width": 1920
+    },
+    {
+      "bytes": 385480,
+      "file": "1920x1080-larger-receipts.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "receipts",
+      "sha256": "d3b0d703db9c9a711ded96312bbc8de846a91286a867b045006cb724c7fcc911",
+      "visual_observation": "Receipt history terms, source scopes, Archive actions and navigation fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 230475,
+      "file": "1920x1080-larger-relationships.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "relationships",
+      "sha256": "a589a6a477aee490e93749f4ade5d8e939fde352c16866c60f8d880565560095",
+      "visual_observation": "Agreement scope, committed date and Archive/navigation actions fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 411580,
+      "file": "1920x1080-larger-reports.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "reports",
+      "sha256": "6360e9b200f5ed77d14c79400fcab8a98731d7a6a85bfe056beee7f7690fb603",
+      "visual_observation": "Historical report terms, source dates, limits and navigation fit with explicit scroll continuation.",
+      "width": 1920
+    },
+    {
+      "bytes": 411579,
+      "file": "1920x1080-larger-evidence-shell.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "evidence-shell",
+      "sha256": "4cfee2568b487c30e74526c29f8d08330bb78bd288960bbf94ba742a0cf40ee4",
+      "visual_observation": "Actual Evidence inspector shell and read-only report scope fit; Back/Home visible.",
+      "width": 1920
+    },
+    {
+      "bytes": 390138,
+      "file": "1920x1080-larger-archive-unavailable.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "archive-unavailable",
+      "sha256": "18f24e728ccfbfac911542d862d4f3d5565034f48dd0eb82586b4bf76b9dc991",
+      "visual_observation": "Reader-not-configured refusal visible; corrected two-line status contained, chips and Back/Home fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 291025,
+      "file": "1920x1080-larger-expanded-details.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "expanded-details",
+      "sha256": "15940ded0c7f3933753143c99b498c0f10cedf2597c276a206056d203f90b8ca",
+      "visual_observation": "Selected Details text readable on corrected fill; cost/partner/timing/routine/outcome and one explanation visible; focus and hover retained.",
+      "width": 1920
+    },
+    {
+      "bytes": 508930,
+      "file": "1920x1080-larger-world-neutral.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "world-neutral",
+      "sha256": "fe214c9965b64e77259cf767677df3e1bbcf6e1dc8be919bc8ec07f483e80756",
+      "visual_observation": "Full Michigan neutral map (three hues assigned by the national four-color artifact) and independent county boundaries visible; county inspector and navigation fit.",
+      "width": 1920
+    },
+    {
+      "bytes": 594830,
+      "file": "1920x1080-larger-world-economic.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "world-economic",
+      "sha256": "7c0d9d352be23361beabda9bcd5d1aa498de5735e47b0e76671a2a74df2cccf9",
+      "visual_observation": "Employment metric height/color encoding and actual period/range legend retained; navigation fits.",
+      "width": 1920
+    },
+    {
+      "bytes": 554337,
+      "file": "1920x1080-larger-world-commodity-labels.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "world-commodity-labels",
+      "sha256": "6d2f4995a1a78c4cbe2c4df28b492e1cf32c0323c9cbc294c5cf93b0d2bc016c",
+      "visual_observation": "Unavailable material stays gray; longer Commodity cycling labels fit with actual legend.",
+      "width": 1920
+    },
+    {
+      "bytes": 816315,
+      "file": "1920x1080-larger-refresh-pending.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "refresh-pending",
+      "sha256": "d7491be2f68d6ec4761ae8c464aa86f1207f176235136952c2e29e63184433af",
+      "visual_observation": "Actual organizer refresh stage and elapsed time visible; Advance/Review unavailable, read-only navigation retained.",
+      "width": 1920
+    },
+    {
+      "bytes": 816402,
+      "file": "1920x1080-larger-refresh-reduced-motion.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "refresh-reduced-motion",
+      "sha256": "82e701e5d64db3ae42b432e7e974a67ee190278d519d36d4edc9031f2adb6638",
+      "visual_observation": "Static activity bars, elapsed refresh text and unavailable actions fit with Reduced Motion.",
+      "width": 1920
+    },
+    {
+      "bytes": 824121,
+      "file": "1920x1080-larger-visible-error.png",
+      "height": 1080,
+      "interface": "larger",
+      "scene": "visible-error",
+      "sha256": "e93330571334f4a8c985f51c057524efaf8ab41da3c49e45daeff9ab94f26f5c",
+      "visual_observation": "Explicit fixture-authored refresh error visible at footer; committed period and controls remain displayed.",
+      "width": 1920
+    }
+  ],
+  "disposable_personal_state": "/tmp/wayne-native-af6e194f-fd01-4361-9246-4188f22a3726",
+  "evidence": "fixture-based native rendering",
+  "final_gates": {
+    "bsl": {
+      "command": "cargo run -p bsl-lint --locked -- all",
+      "exit": 0,
+      "log": "/tmp/babylon-usability-bsl-final-02.log",
+      "log_sha256": "c147f87b8ea3660ecfbf4496ca9c091ee9cae8fbbae6635acd4a13c672ed12e8"
+    },
+    "clippy": {
+      "command": "cargo clippy -p babylon-client --all-targets --locked -- -D warnings -D clippy::cognitive_complexity",
+      "exit": 0,
+      "log": "/tmp/babylon-usability-clippy-final-02.log",
+      "log_sha256": "ebfa1d975a2c5698acb1e41c08ac5b8f7d8ddc88b25dc68b0d168ae5f34b915b"
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit": 0,
+      "log": "/tmp/babylon-usability-fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests": {
+      "command": "cargo test -p babylon-client --locked",
+      "exit": 0,
+      "log": "/tmp/babylon-usability-client-full-final-02.log",
+      "log_sha256": "eb20c7f25658b1bb0c4f8c9054a7c2a921943cc733912d3bb24e31a03fe00202"
+    }
+  },
+  "fixture_campaign": "dd188b1c-c41f-451a-9219-f92b293b6695",
+  "full_capture_directory": "/tmp/wayne-usability-native-captures-03",
+  "input": "focused Bevy KeyboardInput press/release and ordinary Interaction handlers",
+  "limitations": [
+    "no live runtime/PostgreSQL qualification",
+    "Archive ReaderAbsent refusal",
+    "fixture-authored error/refresh states",
+    "no uncoached human playtest",
+    "inherited county-label overlap in oblique Organizer map",
+    "Michigan matrix uses3 hues; four hues observed in one supplemental263-county regional fixture"
+  ],
+  "manifest_written_utc": "2026-11-14T00:56:19.323321+00:00",
+  "matrix_tested_source_sha256": {
+    "rust/crates/babylon-client/src/navigation/controls.rs": "f63ee8ffbeec71909b4571a63e696d3e1def0b2cbaa7c48f48f1915829e8d38a",
+    "rust/crates/babylon-client/src/observer_ui.rs": "3c9675837476bae4c15fa61c12e31ff0169afbd451e55851277a70474cbda648",
+    "rust/crates/babylon-client/src/organizer/hud_interaction_tests.rs": "e0d6d05408e7e1e2d478c7ae4e247f4433137b6ee7323bc2cee202d25259a41d",
+    "rust/crates/babylon-client/src/organizer/interface_tour_runtime.rs": "9ea1162cebf789304a28ffe88ac84e4b9633a80541412c216e1f69f7dce49657",
+    "rust/crates/babylon-client/src/organizer/native_capture_tests.rs": "0f01ee43d82d51d07e24fce50cb1c4a871e6e63921e3a3250231d94854e384d1",
+    "rust/crates/babylon-client/src/organizer/resource_header_tests.rs": "a11c64224387dd50960415326924990a1ce51b445b946676abc148e69708893a",
+    "rust/crates/babylon-client/src/organizer/ui.rs": "d1288df285fa8609a29010bffd056936c337dba5c6ced89b318ab6bd1b770814",
+    "rust/crates/babylon-client/src/organizer/workspace.rs": "45f6dca25b5162602b7b3f6f08adf9f73a169db58f9de3dabc4e44a5f8be36a5"
+  },
+  "native_log_sha256": "1d03245baad29637d5fedc66ac152578454da5a6e00738344418671ff58339ae",
+  "observed_ui_scales": {
+    "1366x768-larger-organizer": "1.15",
+    "1366x768-standard-organizer": "1",
+    "1920x1080-larger-organizer": "1.4375",
+    "1920x1080-standard-organizer": "1.25"
+  },
+  "post_matrix_harness_change": "Additive ignored regional-map scenario and shared helper; canonical behavior unchanged",
+  "post_native_registration_change": {
+    "change": "Tour install owns its NavigationAction message registration",
+    "file": "rust/crates/babylon-client/src/organizer/interface_tour_runtime.rs",
+    "final_sha256": "56f5d7e8f8c85218f05efcbc87db28dd017dc3fb2fc9bb8704d4c4cb41d974c4",
+    "native_tested_sha256": "9ea1162cebf789304a28ffe88ac84e4b9633a80541412c216e1f69f7dce49657",
+    "proof": "Bevy0.20 SubApp::add_message registers only if Messages<T> is absent; canonical native/app NavigationPlugin already registers it",
+    "validation": "Final exact-source fmt,771passing tests,strict all-target clippy and BSL all passed; see report for scoped RED/GREEN"
+  },
+  "post_native_surface_change": {
+    "change": "Direct existing ObserverShell decision-surface declarations on navigation button/text entities",
+    "file": "rust/crates/babylon-client/src/navigation/controls.rs",
+    "final_sha256": "bb6caa6797b1102b3078b53d00fe5f7ab2471b2baf6e7ac094ef0a784dd4c30b",
+    "native_tested_sha256": "f63ee8ffbeec71909b4571a63e696d3e1def0b2cbaa7c48f48f1915829e8d38a",
+    "proof": "Metadata only; no style, geometry, input, gameplay agency or new surface identity",
+    "validation": "Final exact-source fmt,771passing tests,strict all-target clippy and BSL all passed; see report for scoped RED/GREEN"
+  },
+  "post_native_test_import_change": {
+    "change": "Explicit ObserverViewport type import; assertions and behavior unchanged",
+    "file": "rust/crates/babylon-client/src/organizer/resource_header_tests.rs",
+    "final_sha256": "08416fd824722b03785a232d2550121338f0704838609b5074f1cb710c674258",
+    "native_tested_sha256": "a11c64224387dd50960415326924990a1ce51b445b946676abc148e69708893a",
+    "validation": "Final exact-source fmt,771passing tests,strict all-target clippy and BSL all passed; see report for scoped RED/GREEN"
+  },
+  "source_base": "7ccb77323c7e74fc8d3d2a16b8590803ffab1dee",
+  "source_sha256": {
+    "rust/crates/babylon-client/src/navigation/controls.rs": "bb6caa6797b1102b3078b53d00fe5f7ab2471b2baf6e7ac094ef0a784dd4c30b",
+    "rust/crates/babylon-client/src/observer_ui.rs": "3c9675837476bae4c15fa61c12e31ff0169afbd451e55851277a70474cbda648",
+    "rust/crates/babylon-client/src/organizer/hud_interaction_tests.rs": "e0d6d05408e7e1e2d478c7ae4e247f4433137b6ee7323bc2cee202d25259a41d",
+    "rust/crates/babylon-client/src/organizer/interface_tour_runtime.rs": "56f5d7e8f8c85218f05efcbc87db28dd017dc3fb2fc9bb8704d4c4cb41d974c4",
+    "rust/crates/babylon-client/src/organizer/native_capture_tests.rs": "2db72fe45515921d207f49f58e14b658b162eb182d29f9fb92bb4b0485f7ce40",
+    "rust/crates/babylon-client/src/organizer/resource_header_tests.rs": "08416fd824722b03785a232d2550121338f0704838609b5074f1cb710c674258",
+    "rust/crates/babylon-client/src/organizer/ui.rs": "d1288df285fa8609a29010bffd056936c337dba5c6ced89b318ab6bd1b770814",
+    "rust/crates/babylon-client/src/organizer/workspace.rs": "45f6dca25b5162602b7b3f6f08adf9f73a169db58f9de3dabc4e44a5f8be36a5"
+  },
+  "supplemental_regional_capture": {
+    "bytes": 543850,
+    "counties": 263,
+    "disposable_personal_state": "/tmp/wayne-native-74cde3f6-c8e7-4d98-9549-abde839a2b3b",
+    "file": "1920x1080-standard-regional-neutral.png",
+    "fixture_campaign": "1279c125-a246-45b3-9025-530e00b42c69",
+    "height": 1080,
+    "interface": "Standard/Automatic",
+    "limitations": "Does not qualify simultaneous national rendering or a live campaign.",
+    "log_sha256": "6462852de10e6c431ea48e602bb10c7e92b97990cac8c75f95a7e769d3492a5c",
+    "palette_counts": {
+      "blue": 105,
+      "mauve": 3,
+      "ochre": 55,
+      "sage": 100
+    },
+    "result": "1 passed; 0 failed; 66.11 seconds",
+    "sha256": "c0bca94c319f7e717f98f0615609399d77717a65f343b0a4707f1d5ad375ba05",
+    "states": [
+      "18",
+      "26",
+      "39"
+    ],
+    "tested_source_sha256": {
+      "rust/crates/babylon-client/src/navigation/controls.rs": "f63ee8ffbeec71909b4571a63e696d3e1def0b2cbaa7c48f48f1915829e8d38a",
+      "rust/crates/babylon-client/src/observer_ui.rs": "3c9675837476bae4c15fa61c12e31ff0169afbd451e55851277a70474cbda648",
+      "rust/crates/babylon-client/src/organizer/hud_interaction_tests.rs": "e0d6d05408e7e1e2d478c7ae4e247f4433137b6ee7323bc2cee202d25259a41d",
+      "rust/crates/babylon-client/src/organizer/interface_tour_runtime.rs": "9ea1162cebf789304a28ffe88ac84e4b9633a80541412c216e1f69f7dce49657",
+      "rust/crates/babylon-client/src/organizer/native_capture_tests.rs": "2db72fe45515921d207f49f58e14b658b162eb182d29f9fb92bb4b0485f7ce40",
+      "rust/crates/babylon-client/src/organizer/resource_header_tests.rs": "a11c64224387dd50960415326924990a1ce51b445b946676abc148e69708893a",
+      "rust/crates/babylon-client/src/organizer/ui.rs": "d1288df285fa8609a29010bffd056936c337dba5c6ced89b318ab6bd1b770814",
+      "rust/crates/babylon-client/src/organizer/workspace.rs": "45f6dca25b5162602b7b3f6f08adf9f73a169db58f9de3dabc4e44a5f8be36a5"
+    },
+    "visual_observation": "Complete Michigan/Indiana/Ohio atlas region, real neutral palette assignments; blue/sage/ochre and three mauve counties visibly distinguishable; borders and shared UI retained.",
+    "width": 1920
+  }
+}

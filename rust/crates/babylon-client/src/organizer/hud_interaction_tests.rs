@@ -188,3 +188,141 @@ fn failed_pending_advance_keeps_its_actual_error_visible_without_resubmitting() 
         "displaying an error cannot retry the advance"
     );
 }
+
+fn composite(foreground: Color, background: Color) -> Color {
+    let foreground = foreground.to_linear();
+    let background = background.to_linear();
+    let remaining = 1.0 - foreground.alpha;
+    Color::linear_rgb(
+        foreground.red * foreground.alpha + background.red * remaining,
+        foreground.green * foreground.alpha + background.green * remaining,
+        foreground.blue * foreground.alpha + background.blue * remaining,
+    )
+}
+
+fn painted_background(world: &World, entity: Entity) -> Color {
+    let mut layers = Vec::new();
+    let mut current = entity;
+    loop {
+        if let Some(background) = world.get::<BackgroundColor>(current) {
+            layers.push(background.0);
+            if background.0.to_linear().alpha >= 1.0 {
+                break;
+            }
+        }
+        current = world
+            .get::<ChildOf>(current)
+            .expect("practice text has an opaque inspector backdrop")
+            .parent();
+    }
+    let mut result = layers
+        .pop()
+        .expect("the painted practice includes a background");
+    for layer in layers.into_iter().rev() {
+        result = composite(layer, result);
+    }
+    result
+}
+
+fn text_contrast(foreground: Color, background: Color) -> f32 {
+    fn luminance(color: Color) -> f32 {
+        let color = color.to_linear();
+        0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
+    }
+    let ink = luminance(composite(foreground, background));
+    let surface = luminance(background);
+    (ink.max(surface) + 0.05) / (ink.min(surface) + 0.05)
+}
+
+fn assert_painted_practice_contrast(
+    app: &App,
+    button: Entity,
+    choice: OrganizerChoice,
+    interaction: Interaction,
+) {
+    let world = app.world();
+    let background = painted_background(world, button);
+    let mut copy_checked = false;
+    for child in world
+        .get::<Children>(button)
+        .expect("actual practice-card text")
+    {
+        let Some(text) = world.get::<Text>(*child).filter(|text| !text.0.is_empty()) else {
+            continue;
+        };
+        let foreground = world
+            .get::<TextColor>(*child)
+            .expect("painted text color")
+            .0;
+        let ratio = text_contrast(foreground, background);
+        assert!(ratio >= 4.5,
+            "{choice:?} {interaction:?} text must remain readable on its actual composited surface: contrast={ratio}, foreground={foreground:?}, background={background:?}, text={}", text.0);
+        if matches!(world.get::<TextPart>(*child), Some(TextPart::Approach(current)) if *current == choice)
+        {
+            assert!(
+                text.0.contains("Cost:"),
+                "the contrast check includes the actual cost and explanatory body"
+            );
+            copy_checked = true;
+        }
+    }
+    assert!(
+        copy_checked,
+        "the test measures actual practice details, not just the action label"
+    );
+}
+
+#[test]
+fn practice_costs_and_details_keep_contrast_in_selected_hover_and_pressed_states() {
+    use bevy::ecs::system::RunSystemOnce as _;
+    for choice in [
+        OrganizerChoice::Hold,
+        OrganizerChoice::Reinforce,
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+        OrganizerChoice::Collect,
+        OrganizerChoice::LocalAid,
+    ] {
+        let mut app = if matches!(choice, OrganizerChoice::Collect | OrganizerChoice::LocalAid) {
+            tests::allocation_opening().0
+        } else {
+            tests::admitted_scene_fixture().0
+        };
+        let button = practice_button(&mut app, choice);
+        for selected in [
+            choice,
+            if choice == OrganizerChoice::Hold {
+                OrganizerChoice::Reinforce
+            } else {
+                OrganizerChoice::Hold
+            },
+        ] {
+            {
+                let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+                client.draft.as_mut().expect("personal draft").choice = selected;
+                client.inspector = OrganizerInspector::Practices;
+            }
+            assert!(
+                super::enabled(
+                    OrganizerAction::Choose(choice),
+                    app.world().resource::<OrganizerClient>(),
+                    app.world().resource::<ObserverSession>()
+                ),
+                "the {choice:?} fixture measures enabled semantic accents"
+            );
+            for interaction in [
+                Interaction::None,
+                Interaction::Hovered,
+                Interaction::Pressed,
+            ] {
+                *app.world_mut()
+                    .get_mut::<Interaction>(button)
+                    .expect("real interaction state") = interaction;
+                // Invoke the actual painter without dispatching a Pressed gameplay action.
+                app.world_mut()
+                    .run_system_once(super::paint)
+                    .expect("the normal organizer painter accepts the admitted fixture");
+                assert_painted_practice_contrast(&app, button, choice, interaction);
+            }
+        }
+    }
+}

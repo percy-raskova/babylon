@@ -15,7 +15,8 @@ WITH batch AS MATERIALIZED (
         FROM expected GROUP BY body
     ) e
     LEFT JOIN babylon_state.labor_node_descriptor_v1 d
-      ON d.campaign_id=(e.body).campaign_id AND d.descriptor_sha256=(e.body).descriptor_sha256
+      ON (pg_catalog.uuid_send(d.campaign_id) || d.descriptor_sha256)
+        = (pg_catalog.uuid_send((e.body).campaign_id) || (e.body).descriptor_sha256)
      AND d IS NOT DISTINCT FROM jsonb_populate_record(e.body,jsonb_build_object('descriptor_key',d.descriptor_key))
 ), prior AS MATERIALIZED (
     SELECT c.campaign_id, coalesce((SELECT max(d.descriptor_key)

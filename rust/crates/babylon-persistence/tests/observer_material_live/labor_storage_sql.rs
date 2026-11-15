@@ -226,7 +226,7 @@ fn check_shared_node_repair(
               'point_revision',NULL,'physical_scope',to_jsonb(logical))) AS body FROM changed
         ), staged AS (
           INSERT INTO babylon_state.labor_node_identity_v1 SELECT (body).* FROM keyed
-          ON CONFLICT (campaign_id,descriptor_sha256) DO NOTHING
+          ON CONFLICT ON CONSTRAINT labor_node_campaign_digest_v1 DO NOTHING
           RETURNING descriptor_key,descriptor_sha256
         ), resolved AS (
           SELECT descriptor_key,descriptor_sha256 FROM staged UNION ALL
@@ -289,6 +289,17 @@ fn check_physical_reference(
             .expect_err("deferred link must resolve")
             .code(),
         Some(&postgres::error::SqlState::FOREIGN_KEY_VIOLATION)
+    );
+    let duplicate = owner.execute(
+        "INSERT INTO babylon_state.labor_node_identity_v1
+         SELECT (jsonb_populate_record(d,jsonb_build_object('descriptor_key',
+             (SELECT max(descriptor_key)+1 FROM babylon_state.labor_node_identity_v1 WHERE campaign_id=$1)))).*
+         FROM babylon_state.labor_node_identity_v1 d WHERE campaign_id=$1 AND descriptor_sha256=$2",
+        &[id, &original],
+    ).expect_err("two physical keys cannot identify the same campaign and full digest");
+    assert_eq!(
+        duplicate.code(),
+        Some(&postgres::error::SqlState::EXCLUSION_VIOLATION)
     );
     let collision = owner.execute(
         "UPDATE babylon_state.labor_node_identity_v1 SET location_key=coalesce(location_key,'')||'!'

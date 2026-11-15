@@ -42,6 +42,7 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
     let mut source = from.writer.connect(NoTls).expect("disposable source");
     let raw = markers(&mut source, campaign);
     assert_eq!(raw.len(), 2);
+    check_predecessor_labor_indexes(&from, &mut source, campaign, &raw);
     source
         .batch_execute(include_str!("predecessor_2824cf38e.sql"))
         .expect("restore exact predecessor in the disposable clone");
@@ -79,6 +80,34 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
             .expect_err("the source schema differs from the recorded predecessor"),
         InspectionCopyError::SourceSchema
     );
+}
+
+/// The preceding layout differs only in the physical indexes over derived labor rows.
+fn check_predecessor_labor_indexes(
+    source_db: &DisposableTarget,
+    source: &mut Client,
+    campaign: CampaignId,
+    expected: &[Vec<u8>],
+) {
+    let marker = "85346ef39af0c28ce6455ab60fb2f2abb2f39b7f23bbbf07ad5ab4afd1013ba3";
+    source.batch_execute("ALTER TABLE babylon_state.labor_node_identity_v1
+        DROP CONSTRAINT labor_node_campaign_digest_v1, ADD UNIQUE (campaign_id,descriptor_sha256);
+        CREATE INDEX labor_node_block_descriptors_v1 ON babylon_state.labor_node_block_v1 USING gin(descriptor_keys) WITH (fastupdate=off)")
+        .expect("restore the preceding physical indexes in the private source");
+    source
+        .execute(
+            "UPDATE babylon_meta.current_schema SET schema_sha256=decode($1,'hex')",
+            &[&marker],
+        )
+        .expect("restore the preceding marker");
+    let target = DisposableTarget::create();
+    let report = inspection_copy::copy_campaign(&source_db.writer, &target.writer, campaign)
+        .expect("copy original committed rows from the preceding catalog");
+    assert_eq!(report.source_schema, marker);
+    assert_eq!(report.committed_periods, 2);
+    let mut copied = target.writer.connect(NoTls).expect("copied campaign");
+    assert_eq!(markers(&mut copied, campaign), expected);
+    assert_eq!(markers(source, campaign), expected);
 }
 
 fn inspect_copied_history(to: &mut DisposableTarget, campaign: CampaignId, site: SiteId) {

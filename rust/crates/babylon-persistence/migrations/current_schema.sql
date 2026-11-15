@@ -2365,7 +2365,10 @@ CREATE TABLE babylon_state.labor_node_identity_v1 (
          AND ((physical_scope).longitude IS NULL OR ((physical_scope).longitude BETWEEN -180 AND 180 AND (physical_scope).latitude BETWEEN -90 AND 90)))),
     CHECK((kind IN ('site_stock','household_stock','commercial_freight','aid_freight','equipment','installation','work','household_work'))=(product_key IS NOT NULL)),
     CHECK((kind IN ('maintenance','process','equipment','installation'))=(process_id IS NOT NULL)),
-    PRIMARY KEY(campaign_id,descriptor_key), UNIQUE(campaign_id,descriptor_sha256),
+    PRIMARY KEY(campaign_id,descriptor_key),
+    -- The hash index rechecks equality of the complete fixed-width campaign and SHA bytes.
+    CONSTRAINT labor_node_campaign_digest_v1 EXCLUDE USING hash
+        ((pg_catalog.uuid_send(campaign_id) || descriptor_sha256) WITH =),
     FOREIGN KEY(campaign_id,product_key) REFERENCES babylon_state.labor_product_v1 ON UPDATE RESTRICT ON DELETE RESTRICT,
     FOREIGN KEY(campaign_id,scope_key,scope_revision)
         REFERENCES babylon_state.economic_flow_account_v1(campaign_id,account_key,labor_scope_revision) ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -2449,7 +2452,6 @@ CREATE TABLE babylon_state.labor_node_block_v1 (
     UNIQUE(campaign_id,resolve_tick,block_ordinal,last_ordinal),
     FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 );
-CREATE INDEX labor_node_block_descriptors_v1 ON babylon_state.labor_node_block_v1 USING gin(descriptor_keys) WITH (fastupdate=off);
 CREATE VIEW babylon_state.labor_node_v1 AS
 SELECT b.campaign_id,b.resolve_tick,b.block_ordinal*256+(s.ordinal-1) AS node_ordinal,
        s.descriptor_key,s.opening_quantity,s.opening_recorded_micro_hours,s.opening_unknown_opening,

@@ -10,7 +10,7 @@ struct SourceSchema {
     marker: &'static str,
     footprints: [&'static str; 4],
 }
-const SOURCES: [SourceSchema; 3] = [
+const SOURCES: [SourceSchema; 4] = [
     // 2824cf38eb5c26fd721f1bf28c50989091448491, 155 catalog objects.
     SourceSchema {
         marker: "f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071",
@@ -41,6 +41,16 @@ const SOURCES: [SourceSchema; 3] = [
             "d15e5c8745c5682d1d8920741dcfc30aceb0779c631fd46547246e9ec6397b1d",
         ],
     },
+    // bfa871b08, 248 catalog objects.
+    SourceSchema {
+        marker: "85346ef39af0c28ce6455ab60fb2f2abb2f39b7f23bbbf07ad5ab4afd1013ba3",
+        footprints: [
+            "3e8df25ec079f7200370ca587237dd1f9575d4ec890f647d11d2f4e8e7ace929",
+            "71e2f20dd8e61a0122c5b0b273bb35a076f07e3d531ff2d86664b108bbde3b99",
+            "73b9e867afbc830f8a68b3207c52b0d7742c34303cf888c6b26e4c9a4cfe346f",
+            "bc983e892397c35f9963550f817a6610288977df85eee63830580c9851642c9b",
+        ],
+    },
 ];
 const INTEL: &str = "c3eac28a2cc8dcc019a4d1158d1e22c79737113927816086ca7d268f7ad77184";
 
@@ -63,11 +73,13 @@ pub(super) fn check(tx: &mut Transaction<'_>) -> Result<&'static str, Inspection
         let key = entry.key();
         let kind = match key.kind() {
             CatalogObjectKind::Database => "database",
+            CatalogObjectKind::Domain => "domain",
             CatalogObjectKind::Extension => "extension",
             CatalogObjectKind::Relation => "relation",
             CatalogObjectKind::Routine => "routine",
             CatalogObjectKind::Schema => "schema",
             CatalogObjectKind::SchemaGrant => "schema_grant",
+            CatalogObjectKind::UserType => "user_type",
             CatalogObjectKind::View => "view",
             CatalogObjectKind::Role
                 if key.schema() == "pg_roles"

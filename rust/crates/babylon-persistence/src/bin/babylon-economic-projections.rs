@@ -139,6 +139,7 @@ fn watch_connection(
     writer: &MoneyJournalWriter,
     stopped: Option<&Receiver<()>>,
     reopen: &mut Option<CampaignId>,
+    new: &mut Option<CampaignId>,
 ) -> Result<(), JournalQueueError> {
     let mut queue =
         JournalQueue::connect(observer, writer, None).map_err(JournalQueueError::Discovery)?;
@@ -170,6 +171,13 @@ fn watch_connection(
             }
             // Recheck durable gaps after this bounded, read-only operation.
             continue;
+        }
+        if stopped.is_some() {
+            match queue.warm_new_opening(new.take()) {
+                Ok(Some(_)) => continue,
+                Ok(None) => {}
+                Err(cause) => eprintln!("economic projections: new opening: {cause}"),
+            }
         }
         let started = Instant::now();
         while started.elapsed() < RESCAN && !shutdown_requested(stopped) {
@@ -277,15 +285,16 @@ fn run(command: Command) -> Result<(), String> {
     }
     let shutdown = matches!(command, Command::WatchSession).then(session_shutdown);
     let stopped = shutdown.as_ref();
-    let mut reopen = if stopped.is_some() {
-        std::env::var_os("BABYLON_REOPEN_CAMPAIGN")
+    let selected = |name: &str| {
+        stopped
+            .and_then(|_| std::env::var_os(name))
             .map(|id| campaign(id.to_str().ok_or("campaign_refused")?))
-            .transpose()?
-    } else {
-        None
+            .transpose()
     };
+    let mut reopen = selected("BABYLON_REOPEN_CAMPAIGN")?;
+    let mut new = selected("BABYLON_NEW_CAMPAIGN")?;
     loop {
-        match watch_connection(&observer, &writer, stopped, &mut reopen) {
+        match watch_connection(&observer, &writer, stopped, &mut reopen, &mut new) {
             Ok(()) => return Ok(()),
             Err(error) if shutdown_requested(stopped) => return Err(error.to_string()),
             Err(error) => eprintln!("{error}; retrying"),

@@ -299,6 +299,7 @@ def _clean_environment(environment: Mapping[str, str]) -> dict[str, str]:
             "BABYLON_SESSION_STDIO",
             "BABYLON_CAMPAIGN_ID",
             "BABYLON_REOPEN_CAMPAIGN",
+            "BABYLON_NEW_CAMPAIGN",
             "BABYLON_DOSSIER_DEMO_PASSWORD",
         }
     }
@@ -486,15 +487,17 @@ def _start_projections(
     root: Path,
     writer: Mapping[str, str],
     reader: Mapping[str, str],
-    reopen: UUID | None,
+    target: NewCampaignTarget | OpenCampaignTarget,
 ) -> subprocess.Popen[bytes] | None:
-    """Pass the selected existing campaign to the independent publisher for idle warmup."""
+    """Pass the initial campaign nomination to the independent publisher for idle warmup."""
     environment = {
         "BABYLON_RUNTIME_DSN": writer["BABYLON_RUNTIME_DSN"],
         "BABYLON_OBSERVER_DSN": reader["BABYLON_OBSERVER_DSN"],
     }
-    if reopen is not None:
-        environment["BABYLON_REOPEN_CAMPAIGN"] = str(reopen)
+    if isinstance(target, OpenCampaignTarget):
+        environment["BABYLON_REOPEN_CAMPAIGN"] = str(target.campaign)
+    elif target.preset in {"national-world", "national-economy"}:
+        environment["BABYLON_NEW_CAMPAIGN"] = str(target.campaign)
     try:
         return subprocess.Popen(
             [str(binary), "watch-database", "--session-stdin"],
@@ -963,7 +966,7 @@ def run_pair(
                 root,
                 runtime_environment,
                 client_environment,
-                initial_target.campaign if isinstance(initial_target, OpenCampaignTarget) else None,
+                initial_target,
             )
         if on_publisher_started is not None:
             if publisher is None:

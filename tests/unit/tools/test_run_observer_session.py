@@ -400,9 +400,9 @@ def test_two_anonymous_pipes_connect_children_without_parent_forwarding(
             os.fstat(fd)
 
 
-@pytest.mark.parametrize("reopen", [True, False])
+@pytest.mark.parametrize("preset", [None, "national-world", "national-economy", "delayed"])
 def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, reopen: bool
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, preset: str | None
 ) -> None:
     children = []
 
@@ -425,6 +425,7 @@ def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
         {
             "BABYLON_RUNTIME_DSN": "owner",
             "BABYLON_REOPEN_CAMPAIGN": "untrusted ambient campaign",
+            "BABYLON_NEW_CAMPAIGN": "untrusted ambient campaign",
             "PGPASSWORD": "unwanted",
         },
         launcher.ReaderCredentials("observer", "known"),
@@ -438,8 +439,8 @@ def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
         defines_path=tmp_path / "defines",
         initial_target=(
             launcher.OpenCampaignTarget(CAMPAIGN)
-            if reopen
-            else launcher.NewCampaignTarget(CAMPAIGN, "national-world")
+            if preset is None
+            else launcher.NewCampaignTarget(CAMPAIGN, preset)
         ),
         analytics_binary=tmp_path / "babylon-economic-projections",
     )
@@ -451,8 +452,13 @@ def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
         "--session-stdin",
     ]
     assert worker.options["env"].get("BABYLON_REOPEN_CAMPAIGN") == (
-        str(CAMPAIGN) if reopen else None
+        str(CAMPAIGN) if preset is None else None
     )
+    assert worker.options["env"].get("BABYLON_NEW_CAMPAIGN") == (
+        str(CAMPAIGN) if preset in {"national-world", "national-economy"} else None
+    )
+    assert "BABYLON_NEW_CAMPAIGN" not in runtime.options["env"]
+    assert "BABYLON_NEW_CAMPAIGN" not in client.options["env"]
     assert "BABYLON_REOPEN_CAMPAIGN" not in runtime.options["env"]
     assert "BABYLON_REOPEN_CAMPAIGN" not in client.options["env"]
     assert worker.options["env"]["BABYLON_RUNTIME_DSN"] == "owner"

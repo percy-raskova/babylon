@@ -13,6 +13,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 const BATCH_SIZE: i64 = 8;
+const MAX_OPENINGS: usize = 64;
 const PENDING: &str = "SELECT t.campaign_id,t.resolve_tick
     FROM public.v_committed_tick_status_v1 t
     JOIN public.v_material_campaign_identity_v2 f USING (campaign_id)
@@ -71,6 +72,7 @@ pub struct JournalQueue<'a> {
     writer: &'a MoneyJournalWriter,
     scope: Option<CampaignId>,
     after: Option<(Uuid, i64)>,
+    national_openings: Option<Vec<Uuid>>,
     cursor: Option<ObserverMaterialCursor>,
 }
 
@@ -95,6 +97,7 @@ impl<'a> JournalQueue<'a> {
             writer,
             scope,
             after: None,
+            national_openings: None,
             cursor: None,
         })
     }
@@ -194,6 +197,54 @@ impl<'a> JournalQueue<'a> {
             .map_err(JournalError::Observer)?;
         self.cursor = cursor;
         Ok(Some(period))
+    }
+
+    /// Reconcile the ordinary enrollment wakeup after all committed gaps have had a turn.
+    /// An initial New carries its launcher-minted UUID, even when founding beat LISTEN.
+    /// Later discoveries compare complete, bounded P0 sets so preexisting saves stay cold.
+    /// # Errors
+    /// Refuses unconfined readers, database errors, or unauthenticated foundations.
+    pub fn warm_new_opening(
+        &mut self,
+        initial: Option<CampaignId>,
+    ) -> Result<Option<CampaignId>, JournalError> {
+        // The retained listener was confined at connect. This cheap nomination reads only
+        // catalog identities; admission rechecks the full role on its own fresh connection.
+        let scope = self.scope.map(|campaign| *campaign.as_uuid());
+        let current = self.listener.query(
+            "SELECT f.campaign_id FROM public.v_material_campaign_identity_v2 f
+             WHERE f.preset_id='national-world' AND ($1::uuid IS NULL OR f.campaign_id=$1)
+               AND NOT EXISTS (SELECT 1 FROM public.v_committed_tick_status_v1 t WHERE t.campaign_id=f.campaign_id)
+             ORDER BY f.campaign_id LIMIT 65", &[&scope],
+        ).map_err(|_| JournalError::Database)?.into_iter().map(|row| row.try_get::<_,Uuid>(0))
+          .collect::<Result<Vec<_>,_>>().map_err(|_| JournalError::Projection)?;
+        let previous = self.national_openings.take();
+        let candidate = initial
+            .filter(|id| current.contains(id.as_uuid()))
+            .or_else(|| {
+                let previous = previous.as_ref()?;
+                if current.len() > MAX_OPENINGS {
+                    return None;
+                }
+                current
+                    .iter()
+                    .find(|id| previous.binary_search(id).is_err())
+                    .copied()
+                    .map(CampaignId::from_uuid)
+            });
+        // An oversized set cannot distinguish a new foundation from an old UUID outside the page.
+        self.national_openings = (current.len() <= MAX_OPENINGS).then_some(current);
+        match candidate {
+            Some(campaign)
+                if self
+                    .observer
+                    .warm_new_national_opening(campaign)
+                    .map_err(JournalError::Observer)? =>
+            {
+                Ok(Some(campaign))
+            }
+            _ => Ok(None),
+        }
     }
 
     /// Receive an untrusted wakeup hint. The next discovery query verifies the durable marker.

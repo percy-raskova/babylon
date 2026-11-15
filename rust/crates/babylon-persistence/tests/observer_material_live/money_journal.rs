@@ -11,11 +11,13 @@ use super::{
     CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls,
     ObserverEconomyReader, ObserverVisibility, Uuid,
 };
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
 use babylon_persistence::money_journal::{
     self as journal, FlowGroup, JournalError, JournalQueue, MoneyJournalWriter, MoneyMovement,
     MoneyPurpose, MoneyTotal,
 };
 use babylon_persistence::observer_reader::{CommittedMaterialReceipts, ObserverMaterialCursor};
+use babylon_persistence::site_financial_statements::SiteFinancialStatements;
 use postgres::{Client, Config};
 use serde_json::Value;
 use std::process::Command;
@@ -102,6 +104,18 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
         }
     }
     let writer = MoneyJournalWriter::connect(&target.writer).expect("the owner target is bounded");
+    assert!(matches!(
+        JournalQueue::connect(&preview, &writer, None),
+        Err(JournalError::Authority)
+    ));
+    let mut regional = JournalQueue::connect(&observer, &writer, None).expect("regional queue");
+    assert_eq!(
+        regional
+            .warm_new_opening(Some(campaign))
+            .expect("regional P0"),
+        None
+    );
+
     assert!(
         matches!(
             writer.publish(&preview, campaign, 1),
@@ -328,16 +342,14 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
                 ReplaySeed::new(319),
             )
             .expect("national observer foundation");
-    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
-        .expect("national opening commits");
     super::provision_observer_role(&target.writer).expect("observer grants");
     let observer_config = target.login("babylon_observer", "nationalmoney");
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
             .expect("observer target");
-    let site_opening =
-        super::site_statements::opening(&observer, &target.writer, campaign, &runtime);
-    super::advance_material_period(&mut runtime);
+    let writer = MoneyJournalWriter::connect(&target.writer).expect("owner target");
+    let (runtime, site_opening) =
+        advance_new_national_campaign(&target.writer, &observer, &writer, campaign, foundation);
     let source = observer
         .committed_material_receipts(campaign, 1)
         .expect("source authenticates");
@@ -345,7 +357,6 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     let next_without_projection = super::projection_recovery::next_without_projection(&runtime);
     let expected = journal::derive_movements(&source).expect("source transfer projection");
     assert_ne!(expected.len(), 0, "actual monetary period has transfers");
-    let writer = MoneyJournalWriter::connect(&target.writer).expect("owner target");
     assert_published_source(
         &observer,
         &observer_config,
@@ -416,6 +427,67 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     super::site_statements::native_cli(&observer_config, campaign, &site_opening);
     account_directory::check(&mut owner, &target.writer, &observer, &writer, campaign);
     assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
+}
+
+fn advance_new_national_campaign(
+    owner_config: &Config,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+    foundation: MaterialRuntimeFoundation,
+) -> (DurableMaterialRuntime, SiteFinancialStatements) {
+    let mut watching = JournalQueue::connect(observer, writer, None).expect("registered watcher");
+    assert_eq!(
+        watching
+            .warm_new_opening(None)
+            .expect("baseline before New"),
+        None
+    );
+    let mut runtime = DurableMaterialRuntime::create(owner_config, campaign, foundation)
+        .expect("national opening commits");
+    assert!(watching
+        .wait(std::time::Duration::from_secs(3))
+        .expect("actual enrollment wake"));
+    assert_eq!(
+        watching.warm_new_opening(None).expect("discover menu New"),
+        Some(campaign)
+    );
+    assert_eq!(
+        watching.warm_new_opening(None).expect("repeated wake"),
+        None
+    );
+    let mut late = JournalQueue::connect(observer, writer, None).expect("late session watcher");
+    assert_eq!(
+        late.warm_new_opening(None).expect("existing P0 stays cold"),
+        None
+    );
+    assert_eq!(
+        late.warm_new_opening(Some(campaign))
+            .expect("launcher-minted initial New"),
+        Some(campaign)
+    );
+    let rows: i64 = owner_config.connect(NoTls).expect("owner").query_one(
+        "SELECT (SELECT count(*) FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1)
+            + (SELECT count(*) FROM babylon_state.company_accounting_period_v1 WHERE campaign_id=$1)
+            + (SELECT count(*) FROM babylon_state.company_statement_balance_v1 WHERE campaign_id=$1)
+            + (SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1)",
+        &[campaign.as_uuid()],
+    ).expect("inspect durable parents, children and canonical periods").get(0);
+    assert_eq!(
+        rows, 0,
+        "warming a newly founded campaign only admits its source in memory"
+    );
+    let site_opening = super::site_statements::opening(observer, owner_config, campaign, &runtime);
+    super::advance_material_period(&mut runtime);
+    assert_eq!(
+        watching
+            .warm_new_opening(Some(campaign))
+            .expect("uncovered P1 wins"),
+        None
+    );
+    drop(watching);
+    drop(late);
+    (runtime, site_opening)
 }
 
 fn reject_incomplete_county_labor(

@@ -23,6 +23,7 @@ use crate::national_cohorts::IndustrySourceComposition;
 use crate::observer_material::MaterialHeader;
 use crate::postgres_catalog;
 use crate::production_observation::ProductionSnapshot;
+use crate::production_projection::diagnostics::{Stage, Timing};
 use crate::recorded_labor::RecordedLaborError;
 use crate::site_financial_statements::{SiteFinancialStatements, SiteStatementsError};
 use crate::CampaignFoundation;
@@ -305,6 +306,30 @@ impl ObserverEconomyReader {
                 None,
             ))
         })
+    }
+
+    /// Only a newly discovered P0 reaches this read. Recheck the head in the same snapshot
+    /// as the authenticated components before retaining the admission for the first publisher.
+    pub(crate) fn warm_new_national_opening(
+        &self,
+        campaign: CampaignId,
+    ) -> Result<bool, ObserverEconomyError> {
+        let _timing = Timing::start(Stage::JournalWarmup, 0);
+        match self.with_statement_source(campaign, 0, |tx, source| {
+            if source.preset_id() != "national-world" || tx.query_opt(
+                "SELECT 1 FROM public.v_committed_tick_status_v1 WHERE campaign_id=$1 LIMIT 1",
+                &[campaign.as_uuid()],
+            ).map_err(|_| ObserverEconomyError::Database)?.is_some() {
+                return Err(ObserverEconomyError::TickAbsent);
+            }
+            Ok(((), None))
+        }) {
+            Ok(()) => Ok(true),
+            Err(ObserverEconomyError::TickAbsent | ObserverEconomyError::CampaignAbsent) => {
+                Ok(false)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub(super) fn with_statement_source<T, E: From<ObserverEconomyError>>(

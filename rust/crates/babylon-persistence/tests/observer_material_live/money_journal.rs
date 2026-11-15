@@ -3,6 +3,8 @@
 mod account_directory;
 #[path = "journal_snapshot.rs"]
 mod journal_snapshot;
+#[path = "movement_blocks.rs"]
+mod movement_blocks;
 
 use self::account_directory::PointScale;
 use super::{
@@ -86,11 +88,19 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
             .expect("the full observer target is bounded");
-    let preview = ObserverEconomyReader::connect(
-        &target.login("babylon_reader", "moneypreview"),
-        ObserverVisibility::KnownPreview,
-    )
-    .expect("the preview target is bounded");
+    let preview_config = target.login("babylon_reader", "moneypreview");
+    let preview = ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview)
+        .expect("the preview target is bounded");
+    for config in [&observer_config, &preview_config] {
+        let mut login = config.connect(NoTls).expect("confined login");
+        for sql in [
+            "DELETE FROM babylon_state.money_movement_block_v1 WHERE false",
+            "UPDATE babylon_state.labor_movement_block_v1 SET unknown_opening=ARRAY[true] WHERE false",
+        ] {
+            let error = login.execute(sql, &[]).expect_err("movement storage requires writer authority");
+            assert_eq!(error.code(), Some(&postgres::error::SqlState::INSUFFICIENT_PRIVILEGE), "{sql}");
+        }
+    }
     let writer = MoneyJournalWriter::connect(&target.writer).expect("the owner target is bounded");
     assert!(
         matches!(
@@ -241,6 +251,8 @@ fn assert_empty_retention(
         14,
         "empty periods also retain permanent coverage"
     );
+    movement_blocks::retained_labor(&mut owner, campaign);
+    movement_blocks::retired(&mut owner, campaign);
     super::labor_storage_sql::retention_and_repair(&mut owner, observer, writer, campaign);
     owner
 }
@@ -253,15 +265,6 @@ fn assert_authority_and_cursor(
     campaign: CampaignId,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) {
-    let mut reader = observer_config
-        .connect(NoTls)
-        .expect("observer SQL connection");
-    assert!(
-        reader
-            .execute("DELETE FROM babylon_state.money_movement_v1", &[])
-            .is_err(),
-        "full observer remains read only"
-    );
     assert!(
         matches!(
             MoneyJournalWriter::connect(observer_config)
@@ -357,6 +360,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     assert_eq!(cli["page"]["total"]["current"]["net_micros"], "0");
     let totals = assert_source_totals(&observer, &observer_config, campaign, &source, &expected);
     let mut owner = target.writer.connect(NoTls).expect("owner connection");
+    movement_blocks::retained_money(&mut owner, campaign);
     check_reserve_payer_integrity(&mut owner, &observer, &writer, campaign);
     super::labor_storage_sql::national_descriptor_sources(&mut owner, campaign);
     assert_nonzero_history(&mut owner, &observer, &writer, campaign, &expected, &totals);
@@ -511,14 +515,11 @@ fn assert_source_totals(
         sales.movement_count > 0 && reservations.movement_count > 0,
         "reservation must not count as another sale"
     );
-    assert!(
-        sql.execute(
-            "UPDATE public.v_observer_money_movement_v1 SET amount_micros=1",
-            &[]
-        )
-        .is_err(),
-        "observer cannot mutate projected facts"
-    );
+    let public_update: bool = sql.query_one(
+        "SELECT pg_catalog.has_column_privilege(current_user, 'public.v_observer_money_movement_v1', 'amount_micros', 'UPDATE')",
+        &[],
+    ).expect("inspect the observer's effective movement-view grant").get(0);
+    assert!(!public_update, "observer cannot update a projected amount");
     totals
 }
 
@@ -543,7 +544,7 @@ fn check_reserve_payer_integrity(
     let recipient: i32 = row.get("recipient_key");
     let change = "UPDATE babylon_state.money_movement_block_v1
         SET payer_key[array_position(slots,($2::bigint%128)::smallint)]=$3
-        WHERE campaign_id=$1 AND resolve_tick=1 AND block_ordinal=$2/128";
+        WHERE campaign_id=$1 AND resolve_tick=1 AND block_ordinal=$2::bigint/128";
     assert_eq!(
         owner
             .execute(change, &[campaign.as_uuid(), &ordinal, &recipient])
@@ -615,11 +616,12 @@ fn assert_nonzero_history(
     babylon_persistence::money_journal::prune_money_journal_detail(&mut pruning, campaign, 1)
         .expect("controlled expired-period pruning uses production deletions");
     pruning.commit().expect("publish retained period coverage");
+    movement_blocks::retired(owner, campaign);
     owner
-        .batch_execute("ANALYZE babylon_state.money_movement_v1")
+        .batch_execute("ANALYZE babylon_state.money_movement_block_v1")
         .expect("the statistical collector can sample an expired empty ledger");
     let population = "SELECT reltuples > 0 FROM pg_catalog.pg_class
-        WHERE oid='babylon_state.money_movement_v1'::regclass";
+        WHERE oid='babylon_state.money_movement_block_v1'::regclass";
     assert!(!owner
         .query_one(population, &[])
         .expect("read the sampled-empty movement estimate")

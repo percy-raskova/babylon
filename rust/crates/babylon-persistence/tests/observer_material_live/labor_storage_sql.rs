@@ -4,9 +4,6 @@ use babylon_persistence::money_journal::{self, JournalError, MoneyJournalWriter}
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use postgres::Client;
 
-#[path = "movement_blocks.rs"]
-mod movement_blocks;
-
 #[path = "labor_positions.rs"]
 mod labor_positions;
 
@@ -18,7 +15,6 @@ pub(super) fn retention_and_repair(
 ) {
     labor_positions::check(owner, observer, writer, campaign);
     cold_window(owner, observer, writer, campaign);
-    movement_blocks::check(owner, campaign);
     compare_retained_rows(owner, observer, writer, campaign);
     let id = campaign.as_uuid();
     let source = observer

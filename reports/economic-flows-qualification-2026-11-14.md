@@ -7,20 +7,45 @@ Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route
 | Delivery | What the local project demonstrates | What remains |
 | --- | --- | --- |
 | Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | Repeat the live tests on the final build. |
-| Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. | Describe all groups outside a ranked page accurately and expose selected controls to screen readers. |
-| Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. A restored five-period manufacturing case connects a company choice to a parent payment, an equipment order and consolidated books. | Correct the priority of two overlapping investment conditions and repeat the funded example under the specified priority. |
+| Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. The inspector labels all groups outside each page and exposes selected controls through AccessKit. | Repeat the native checks on the final build. |
+| Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. The current runtime reproduced the historic company's decision and books. A fresh six-period replay followed one machine from parent funding in Kodiak to local delivery. | Restore the six-period case from Postgres and repeat the two-seed comparisons with the current policy. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
-| National qualification | Three turns after reopening displayed Wayne’s finances in 24.998–29.742 seconds. Two national queries took 1.032 and 1.226 seconds at the median. | A fresh first turn took 37.551 seconds against 30. The latest running game added 42,385,408 bytes through its first close and reopen against a 40,000,000-byte limit. The current build still needs 52- and 325-period evidence for storage, memory and reopening. |
+| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. Three earlier rendered turns after reopening displayed Wayne’s finances in 24.998–29.742 seconds. | A fresh first turn took 37.551 seconds against 30. The running game added 42,385,408 bytes through its first close and reopen against a 40,000,000-byte limit. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
 
-The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The current engine gives larger expansion a weight of 20. The plan places spare capacity first, giving larger expansion a weight of zero in that case. The saved accounts still show what this campaign paid. A qualifying example must follow the stated order through selection and next-period admission.
+The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 
-A profitable company at full capacity with unmet demand and no replacement need qualifies for the high-demand row.
+At eight of ten batches used, the v9 material test recorded the spare-capacity weights of 60, 25, 15 and 0. With all ten batches used and demand still outstanding, the same test inputs gave weights of 10, 10, 60 and 20. A third check reproduced the earlier v8 weights from the same eight-batch observation.
 
 The company measures profitability from member operating income across up to three closes. [Weight selection](../rust/crates/babylon-material-circuit/src/portfolio/strategy.rs) · [Restored company accounts](#a-parent-finances-equipment-in-oklahoma-county)
 
 The original 83 period records include 12,488 loss decisions and 149 replacement decisions. Another 1,644 used spare capacity and 254 used the fallback. None of the 14,535 decisions reached the high-demand row or authorized parent funding. The manufacturing example used its own Designed opening. [Original company comparisons](#controller-count-and-investment)
 
-The remaining qualification uses the ordinary national launcher. Time runs from the first advance to Wayne’s three figures on screen. The save and running game each have a 10 GB limit. One campaign can reach 52 and 325 periods with measured storage, memory and recovery. The existing 52-period evidence covers an earlier build. [Fresh and restored turn times](#the-first-turn-of-a-new-national-observer-campaign) · [Storage policy](../contracts/national_storage_qualification_v6.json)
+The [ordinary national campaign](#five-and-twenty-years-in-the-ordinary-national-economy) ran through period 65 and continued through period 260. A game year has thirteen four-week periods. The national launcher measures the time from the first advance to Wayne’s three figures on screen. The save and running game each have a 10 GB limit. The earlier 52-period measurements came from a separate campaign. [Game clock](../rust/crates/babylon-kernel/src/clock/tick_clock.rs) · [Fresh and restored turn times](#the-first-turn-of-a-new-national-observer-campaign) · [Storage policy](../contracts/national_storage_qualification_v6.json)
+
+## Five and twenty years in the ordinary national economy
+
+The run used the ordinary national opening and its default seed of 319. All 99 company controllers made one investment choice each period. Each close recorded purchases, distributions, contributions and production from the engine's receipts. A production batch counts one execution of a recipe. Different recipes produce different goods and services.
+
+| Model year | Closing tick | Batches planned during year | Batches completed during year | Share completed | Cash in company treasuries at close |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 13 | 68,684,083,724 | 13,647,847,887 | 19.870% | $154.39 billion |
+| 5 | 65 | 62,141,827,807 | 528,137,118 | 0.850% | $95.60 billion |
+| 10 | 130 | 67,000,533,055 | 125,981,532 | 0.188% | $93.05 billion |
+| 20 | 260 | 68,068,253,527 | 54,764,353 | 0.080% | $92.83 billion |
+
+![Annual planned and completed production in the ordinary national economy over twenty years](economic-flows-qualification-2026-11-14-assets/national-economic-trajectory-260.png)
+
+The economy produced something in every period. Its companies deferred investment 25,702 times, chose modest expansion 37 times and chose replacement alone once. They paid $988.06 billion to their owners across twenty years. They made no capital contributions to member sites.
+
+At tick 260 the economy completed 4,216,085 batches. Member sites accounted for 18,012 of them. Energy and utilities supplied 17,997 and construction and housing supplied 15.
+
+Member food and manufacturing sites each completed zero batches at both ticks 65 and 260. At tick 260 food had 11,606,755,727 units of accepted demand outstanding and manufacturing had 12,351,479,310. The checkpoints identify spare capacity in both sectors. The cause of the production shortfall remains open.
+
+National equipment purchases totaled 1,740,110 units in 74 orders. Of these, 26 orders for 1,739,285 units came in period 2 after all 99 companies deferred. The engine gives controlled sites a zero limit after that choice, so these orders came from sites outside the company groups. The last order was in period 158. [Company limits on purchases](../rust/crates/babylon-material-circuit/src/portfolio/execution.rs)
+
+At period 65 a fresh process reopened four checkpoint files and reproduced world hash `65b3b67a1db77e645c85a41b4c8810575ff46b323b7ed87392a66b12348f2701`. That process continued to period 260. Another fresh process reopened the final files and reproduced `b9c4d66587805cfa3c20a3b16e4479a6240b9a181dc96b7c5ebc8efea9f4e6f6`. The run used the material engine directly. The [per-period records](economic-flows-qualification-2026-11-14-assets/national-economic-trajectory-260.csv) give the quantities, decisions and source hashes for all 260 closes.
+
+The media drive holds the captured opening, both checkpoints and the replay instructions in `babylon-recovery/per293-ordinary-v9-seed319-t260`. All 298 files matched their SHA-256 manifest.
 
 ## Money and recorded labor in the v7 campaign
 
@@ -442,6 +467,10 @@ A fresh local Postgres 17.11 run on the source in commit `1a531db05` passed all 
 
 The observer opens freight access at Wayne. It can show the captured corridors in each direction, with the same selected endpoint on the geographic and network views. The local reference identifies 83 Michigan county terminals. The complete directed distance matrix was absent from the available source drives. Its pinned upstream road extract, dated September 8, 2026, returned HTTP 404. The pinned extract has 19,349,498,972 bytes and SHA-256 `31abe79b95cab2836ac9c6924701dc5ed0e6001ff102c572581097573df1d094`.
 
+The retained Michigan road capture contains 7,085 selected edges and 83 terminals. Its 581 captured orders cover 97 directed pairs between counties and 83 pairs within a county. Its source record identifies the full graph by SHA-256 `d6ec26e347bfabcd3c86c3f9e784c7d9fbb4d32e8a7cb76ae724e53fdc745550`. [Captured road edges and terminals](../content/scenarios/michigan/statewide-physical.json.gz) · [Captured order paths](../content/scenarios/michigan/statewide-qualification.json.gz)
+
+The capture also records SHA-256 `66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4` for the compressed file `michigan-county-paths-v6.json.gz`. Compare the compressed bytes of a recovered copy with that digest.
+
 An executable directed-road case exercised access restrictions, asymmetric distance and selection with a missing matrix. Captured corridors remain inspectable when reference distances are unavailable. Airports appear as facility locations. Complete Great Lakes reachability and observed air services remain unqualified. The [source manifest](../tools/michigan_road_network_source_manifest.json) identifies the exact extract for a future rebuild.
 
 ## Controller count and investment
@@ -497,6 +526,21 @@ The local Postgres campaign `d624e480-7a8c-46c9-93ef-cbdec234016e` committed the
 
 Restoring the 90,489,270-byte backup into a fresh database reproduced the decision report byte for byte and the same published company statements. The local archive is `babylon-recovery/per293-funded-d624e480-7a8c-46c9-93ef-cbdec234016e/campaign.pgdump` on the media drive. The accompanying README gives the restore and observer commands.
 
+A second restore used the runtime that creates v9 campaigns. The full observer reproduced the original period-4 decision report byte for byte and the complete period-5 company books. The saved decision selected larger expansion. The consolidated books eliminated the site's $51,568,000 capital contribution.
+
+### Equipment funding in Philadelphia and Kodiak
+
+A fresh v9 national replay used seed 2 and the manufacturing opening described above. It supplied three periods of opening feedstock. All 99 company controllers made their own choices at each close.
+
+| Site | Company decision | Following period | Equipment |
+| --- | --- | --- | --- |
+| Philadelphia County | In period 3, Middle Atlantic Manufacturing used all 2,132,920 available batches and had 12,050,627 units of accepted demand outstanding. It drew larger expansion. | In period 4 the parent paid $220,400,000. The site requested 20,455 units and had $0 above its operating floor when it tried to buy them. | It placed no equipment order. |
+| Kodiak Island Borough | In period 4, the first national manufacturing company used 16,484,908 of 21,263,210 available batches. It drew modest expansion and authorized $352,000 for up to 22 units at the site. | In period 5 the parent paid $352,000. The site requested 15 units and had $24,506.887187 above its floor. | It reserved $16,000 for one unit. The period-6 local transfer delivered that unit against the same order. |
+
+The Kodiak equipment order was `dbc46f011032aed20c857e11e50482cf4eae88d35fbc000b8dfb6b65822b806d`. The delivery receipt identifies this order. Installation records pool equipment by site and process.
+
+Kodiak opened period 5 with $153,600 and closed with $162,106.887187 in cash. Its cash-flow statement records the $16,000 equipment reservation as an investing outflow. The group's accounts eliminated $2,692,972,400 in contributions to member sites, including Kodiak's $352,000. The [six-period replay](../rust/crates/babylon-persistence/tests/support/company_governed_admission.rs) checks the balance and the delivery.
+
 ## Repeat the local checks
 
 From the project root, run the financial publication, recovery and role checks in a disposable Postgres database.
@@ -519,4 +563,11 @@ To reproduce the five-close Oklahoma County case and print the decision, order a
 ```bash
 BLAS=1 cargo test --locked -p babylon-persistence --test national_company_replay \
   high_demand_company_funds_an_admitted_equipment_purchase -- --ignored --nocapture
+```
+
+From `rust/`, run the six-period Philadelphia and Kodiak case with the current national policy.
+
+```bash
+BLAS=1 cargo test --locked -p babylon-persistence --test national_company_replay \
+  governed_expansion_settles_at_the_site_and_follows_its_equipment_order -- --ignored --nocapture
 ```

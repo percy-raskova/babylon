@@ -65,5 +65,18 @@
     "site_investing_micros": "-48176000000000",
     "site_opening_cash_micros": "50135040000000",
     "world": "4d6d078950cbfb2159c20c41f6e73a20c8553c13604df6836c01d5899903a7f8"
+  },
+  "postgres": {
+    "campaign": "d624e480-7a8c-46c9-93ef-cbdec234016e",
+    "foundation": "f481f3fb1ea4e3905900923ef6b8602372135d2025a197dfce2f7d0df356adc0",
+    "p4_tick_content_hash": "7c3bce1cd38f6e6db626bf35cb69f2a88f5ae04d8b0e8f27eb307076d3b2ceab",
+    "p5_tick_content_hash": "ac7fa0c5c93a1262e4ba648799db5ab57d5e7c3d0facf2adec2aa859e57f7474",
+    "dump_bytes": 90489270,
+    "dump_sha256": "163610db877190d2cb31d8ac118d94ad8633a57f8f2fbe62b333f8240987990b",
+    "runtime_sha256": "5b60fdd28503ebe54c78c157c69a652754c1685d3080d830cb9d7f7308b21a9d",
+    "observer_cli_sha256": "83a59d57db0c334c51bd22d1ee100eff97044704b49bc45ddf808032a7061983",
+    "restore_verified": true,
+    "decision_report_sha256": "205e136f18c49778c3c7297a7b44e97978db04682dd639c60d597b17b3888e08",
+    "published_company_report_sha256": "8083b26feb0fce0f1d983f384c371b115fda269ad0ec0c876e875f8b7aa4a4ee"
   }
 }

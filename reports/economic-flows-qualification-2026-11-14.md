@@ -6,13 +6,19 @@ Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route
 
 A full observer can start a new national campaign, follow a settled county payment to its recipient, switch between the map and Sankey, and inspect site, parent and consolidated books. In the saved period-2 game, nine payments from Sitka to Anchorage through the same company totaled $800,060.625. The source records and native controls are documented [below](#following-a-company-payment-to-its-destination). The live PostgreSQL checks also passed for national totals, concurrent reads, damaged or expired detail, inspection of an older campaign, and organizer actions during a financial write.
 
-The 99-company opening covers 2,788 private sites. The fixed-site comparisons with 300 and 600 controllers and the two-seed investment experiments have run. Across the 83 period records, the national experiments assigned 12,488 company decisions to the loss row, 149 to replacement, 1,644 to spare capacity and 254 to the fallback. **Zero decisions reached the high-utilization, unmet-demand row. Zero authorized investment funding from a parent treasury.** The opening transfer to company treasuries and direct tests of investment funding are separate evidence. A focused national case can test the missing sequence from operating conditions through the selected portfolio to the next period's contribution and equipment purchase. [Experiment records](economic-flows-qualification-2026-11-14-assets/national-company-experiments.jsonl)
+The 99-company opening covers 2,788 private sites. The fixed-site comparisons with 300 and 600 controllers and the two-seed investment experiments have run. The original 83 period records contain 14,535 company decisions. Of those, 12,488 used the loss row, 149 used replacement, 1,644 used spare capacity and 254 used the fallback. None reached the high-demand row or authorized investment funding from a parent treasury.
+
+A separately captured manufacturing case now traces both outcomes through five closes. [Original experiment records](economic-flows-qualification-2026-11-14-assets/national-company-experiments.jsonl) · [Oklahoma County investment](#a-parent-finances-equipment-in-oklahoma-county)
 
 The decision rule measures profitability from member sites’ operating income over up to three closes. The consolidated books also account for taxes and internal margins. In a focused case with eight of ten batches used, unmet accepted demand, positive earnings and no replacement need, the rule selects the high-demand weight row. The original table lists spare capacity first. The interpretation matters when some capacity is unused and utilization is at least 80%. [Operating income](../rust/crates/babylon-material-circuit/src/portfolio/evidence.rs) · [Weight selection](../rust/crates/babylon-material-circuit/src/portfolio/strategy.rs)
 
-The current native Sankey separates origins and recipients. It reports opening and closing labor balances in text. The map colors ribbons by direction and selection, while the industry Sankey uses industry colors. The native comparison uses the previous period. The SQL reader supports explicit periods and map bounds. The freight display uses captured corridors until the pinned road graph becomes available.
+The native observer already preserves the selection across the map and Sankey and lets the observer follow a payment to its destination. The latest client changes give selected industries the same color on both views and give opening and closing labor holdings their own bars. Hardware verification of those changes is pending. The native comparison uses the previous period. The SQL reader supports explicit periods and map bounds. The freight display uses captured corridors until the pinned road graph becomes available.
 
 The two fresh opening turns took 44.940 and 44.374 seconds to display Wayne’s three figures. The three turns from a restored campaign took 24.998–29.742 seconds. The compact build met the 40,000,000-byte growth limit on its first two measured closes. The 52-period recovery record comes from an earlier build. Long-save storage and running-game memory remain open on the current build. [First-turn measurements](#the-first-turn-of-a-new-national-observer-campaign) · [Storage policy](../contracts/national_storage_qualification_v6.json)
+
+The full observer read the period-4 investment decision and period-5 accounts again after a database restore. The remaining native checks cover industry colors and labor balances on both layouts. Time the first advance from **Observe national economy** until Wayne’s figures appear. The limit is 30 seconds.
+
+One fresh campaign can measure memory, storage and reopening after 52 and 325 periods. The limit on growth is 40,000,000 bytes per close. The save and running game each have a 10 GB limit.
 
 ## Money and recorded labor in the v7 campaign
 
@@ -369,6 +375,16 @@ The rebuilt database from each earlier layout reproduced all 439,481 rows across
 
 Each close reproduced its recorded world hash and fit both the 30-second usable-turn limit and the 40,000,000-byte growth limit. Warm labor rankings took 1.145 seconds for Wayne counterparties, 1.174 seconds for national companies and 1.350 seconds for national counterparties. All three pages matched the earlier results. The Wayne query exceeded its one-second target. Both nationwide queries fit their two-second target. The [measurements for each build](economic-flows-qualification-2026-11-14-assets/national-compact-native-turns.csv) include the executable hashes, world identities and screen times.
 
+The revised labor reader checks every retained node and movement count inside the ranking query. Deleting a block of movements wholly outside Wayne made the Wayne query refuse the incomplete ledger. On a fresh restore of the same period-2 archive, three warm runs per case returned the same complete response as the previous executable.
+
+| Period 2 compared with period 1 | Previous CLI median (s) | Revised CLI, three warm runs (s) |
+| --- | ---: | --- |
+| Wayne, by `counterparty` | 1.335 | 0.988, 1.017, 0.985 |
+| National companies | 1.347 | 1.032, 1.051, 1.031 |
+| National, by `counterparty` | 1.484 | 1.259, 1.226, 1.162 |
+
+Two of the three Wayne reads met the one-second target. All six national reads met two seconds. These timings include starting the full-observer CLI and reading the response.
+
 ### The first turn of a new national observer campaign
 
 The local launcher and the **Observe national economy** menu entry use the `national-economy` preset. The native client opened a new campaign at period 0 on the geographic map with the full observer. The period-1 source commit appeared between 8.819 and 9.223 seconds after the advance. Financial publication became visible between 44.121 and 44.524 seconds. The screen showed Wayne had received $0.00, paid $348,926,580.00 and settled $5,766,096,168.20 within the county by 44.940 seconds. This opening turn exceeded the 30-second budget.
@@ -434,6 +450,26 @@ At period 2 both seeds recorded demand for 2,843 equipment units. Each seed had 
 
 The [period records](economic-flows-qualification-2026-11-14-assets/national-company-experiments.jsonl) show the capture identities, world hashes, observed conditions and timing samples. The [portfolio decision table](economic-flows-qualification-2026-11-14-assets/national-company-portfolio-decisions.csv) shows how many companies qualified for each choice, gave it positive weight and selected it. It also records purchases under each preceding choice.
 
+### A parent finances equipment in Oklahoma County
+
+This national case used seed 2. In period 4, West South Central Manufacturing used 1,751,327 of 2,054,670 available batches (85.24%). Its sites still had 3,000,307 units of accepted demand outstanding. Member operating income across the last three closes was $1,769,479,129.159460. Period-4 consolidated profit was $611,620,428.448339.
+
+The original weights for defer, replacement, modest expansion and larger expansion were 10, 10, 60 and 20. The company had no eligible replacement plan, leaving weights of 10, 0, 60 and 20. The recorded draw selected larger expansion. Its Oklahoma County site had no cash above its operating floor. The selected plan authorized $51,568,000 from the treasury for up to 3,223 equipment units at that site.
+
+In period 5 the parent paid the full $51,568,000. The site requested 3,227 units. Material admission permitted 3,011 at $16,000 apiece, and the site reserved $48,176,000 against the order. Its cash-flow statement records that amount as an investing outflow.
+
+Consolidation eliminated the site's contribution along with the payments to other members, totaling $377,552,000. The group's contribution income was zero. This trace ends at the equipment order and cash reservation. [Receipt identities and exact accounts](economic-flows-qualification-2026-11-14-assets/national-funded-manufacturing.json)
+
+This Designed treatment changes the national opening. Extraction uses the local deposit, and manufacturing converts one unit of resources into one unit of materials. The resource, material and equipment price bands are 12, 10 and 4 times their ordinary values.
+
+Each equipment unit supplies one batch per period. The treatment allows half of workforce hours for installation. All eligible earnings enter the expansion budget. All founding cash above site floors goes to the parent treasury.
+
+The same decision weights, investment rules and material admission apply. The ordinary capture yielded no parent-funded investment in the original experiments. [Captured treatment and receipt checks](../rust/crates/babylon-persistence/tests/support/company_funded_expansion.rs)
+
+The local Postgres campaign `d624e480-7a8c-46c9-93ef-cbdec234016e` committed the same five periods. The full observer read the four investment alternatives and their draw from period 4. The period-5 receipts contained the parent debit, the matching site credit and the equipment reservation. All five periods published their accounts.
+
+Restoring the 90,489,270-byte backup into a fresh database reproduced the decision report byte for byte and the same published company statements. The local archive is `babylon-recovery/per293-funded-d624e480-7a8c-46c9-93ef-cbdec234016e/campaign.pgdump` on the media drive. The accompanying README gives the restore and observer commands.
+
 ## Repeat the local checks
 
 From the project root, run the financial publication, recovery and role checks in a disposable Postgres database.
@@ -449,4 +485,11 @@ BLAS=1 cargo test --locked -p babylon-persistence --test national_company_replay
   national_99_choices_bound_next_purchases_and_survive_full_checkpoint -- --nocapture
 BLAS=1 cargo test --locked -p babylon-persistence --lib \
   protected_member_cash_limits_observed_requests_and_the_following_real_committed_purchases -- --ignored --nocapture
+```
+
+To reproduce the five-close Oklahoma County case and print the decision, order and reconciled accounts, run the following command from `rust/`.
+
+```bash
+BLAS=1 cargo test --locked -p babylon-persistence --test national_company_replay \
+  high_demand_company_funds_an_admitted_equipment_purchase -- --ignored --nocapture
 ```

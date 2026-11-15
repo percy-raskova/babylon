@@ -203,43 +203,6 @@ fn verify_totals(
     Ok(())
 }
 
-fn insert_rows(
-    tx: &mut Transaction<'_>,
-    campaign: CampaignId,
-    tick: i64,
-    rows: &[MoneyMovement],
-) -> Result<(), JournalError> {
-    for chunk in rows.chunks(1024) {
-        let mut ordinals = Vec::with_capacity(chunk.len());
-        let mut purposes = Vec::with_capacity(chunk.len());
-        let mut references = Vec::with_capacity(chunk.len());
-        let mut reference_ids = Vec::with_capacity(chunk.len());
-        let mut debits = Vec::with_capacity(chunk.len());
-        let mut debit_ids = Vec::with_capacity(chunk.len());
-        let mut credits = Vec::with_capacity(chunk.len());
-        let mut credit_ids = Vec::with_capacity(chunk.len());
-        let mut amounts = Vec::with_capacity(chunk.len());
-        for row in chunk {
-            ordinals.push(i64::try_from(row.ordinal).map_err(|_| JournalError::Range)?);
-            purposes.push(row.purpose.as_str());
-            references.push(row.reference.as_ref().map(|r| r.kind.as_str()));
-            reference_ids.push(row.reference.as_ref().map(|r| r.id.to_vec()));
-            debits.push(row.debit.kind.as_str());
-            debit_ids.push(row.debit.id.to_vec());
-            credits.push(row.credit.kind.as_str());
-            credit_ids.push(row.credit.id.to_vec());
-            amounts.push(row.amount_micros.as_str());
-        }
-        tx.execute("INSERT INTO babylon_state.money_movement_v1 SELECT $1,$2,r.ordinal,r.purpose,r.reference_kind,r.reference_id,r.debit_kind,r.debit_id,r.credit_kind,r.credit_id,n.amount_micros FROM \
-            unnest($3::bigint[],$4::text[],$5::text[],$6::bytea[],$7::text[],$8::bytea[],$9::text[],$10::bytea[],$11::text[]) \
-            AS r(ordinal,purpose,reference_kind,reference_id,debit_kind,debit_id,credit_kind,credit_id,amount) \
-            CROSS JOIN LATERAL (SELECT r.amount::numeric AS amount_micros) n",
-            &[campaign.as_uuid(), &tick, &ordinals, &purposes, &references, &reference_ids, &debits, &debit_ids, &credits, &credit_ids, &amounts])
-            .map_err(|_| JournalError::Database)?;
-    }
-    Ok(())
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Publication {
     Publish,
@@ -377,13 +340,7 @@ impl MoneyJournalWriter {
                     return Err(JournalError::Projection);
                 }
                 if retained {
-                    payment_storage::payments(
-                        &mut tx,
-                        campaign,
-                        tick,
-                        &economic.settlements,
-                        mode,
-                    )?;
+                    super::custody_storage::verify_payers(&mut tx, economic, tick)?;
                 }
                 verify_totals(&mut tx, campaign, tick, &movements)?;
             } else {
@@ -392,8 +349,7 @@ impl MoneyJournalWriter {
         }
         if changed {
             // Deferred FK permits staging all detail and SQL totals before the publication marker.
-            insert_rows(&mut tx, campaign, tick, &movements)?;
-            payment_storage::payments(&mut tx, campaign, tick, &economic.settlements, mode)?;
+            super::custody_storage::insert(&mut tx, economic, tick, &movements)?;
             tx.execute("INSERT INTO babylon_state.money_movement_total_v1 SELECT campaign_id,resolve_tick,purpose,count(*),sum(amount_micros) \
                 FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2 GROUP BY campaign_id,resolve_tick,purpose", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         }
@@ -408,6 +364,7 @@ impl MoneyJournalWriter {
                     &source.identity.foundation_digest().as_slice(), &binding.content.as_slice(), &source.identity.canonical_bytes(),
                     &source.identity.receipt_digest().as_slice(), &digest.as_slice(), &count, &binding.detail_retained,&payment_digest.as_slice(),&payment_count,
                     &site.digest.as_slice(),&site.monetary,&site.sites,&site.stocks,&site.directory]).map_err(|_| JournalError::Database)?;
+            super::publication_watch::notify(&mut tx)?;
         } else {
             verify_period(&mut tx, source, &digest, count)?;
         }
@@ -427,13 +384,23 @@ fn remove_detail(
     campaign: CampaignId,
     periods: RangeInclusive<i64>,
 ) -> Result<(), JournalError> {
+    let has_nodes = tx
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM babylon_state.labor_node_v1
+             WHERE campaign_id=$1 AND resolve_tick BETWEEN $2 AND $3)",
+            &[campaign.as_uuid(), periods.start(), periods.end()],
+        )
+        .and_then(|row| row.try_get::<_, bool>(0))
+        .map_err(|_| JournalError::Database)?;
+    if has_nodes {
+        tx.batch_execute(include_str!("labor_prune_statistics.sql"))
+            .map_err(|_| JournalError::Database)?;
+    }
     // Each statement finishes before deleting the referenced rows. FK cascades
-    // therefore find no live period edges, positions, or settlements to remove.
+    // therefore find no live period edges or positions to remove.
     for table in [
         "labor_movement_v1",
         "labor_position_v1",
-        "labor_node_v1",
-        "economic_payment_v1",
         "money_movement_v1",
     ] {
         let sql = format!(
@@ -442,6 +409,11 @@ fn remove_detail(
         tx.execute(&sql, &[campaign.as_uuid(), periods.start(), periods.end()])
             .map_err(|_| JournalError::Database)?;
     }
+    tx.execute(
+        include_str!("labor_node_prune.sql"),
+        &[campaign.as_uuid(), periods.start(), periods.end()],
+    )
+    .map_err(|_| JournalError::Database)?;
     Ok(())
 }
 

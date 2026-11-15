@@ -5,23 +5,28 @@ mod company_books;
 mod company_dimensions;
 
 mod county_accounts;
+mod custody_storage;
 mod flow_model;
 mod flow_query;
 #[cfg(test)]
 mod labor_fact_tests;
 mod labor_facts;
 mod labor_flows;
+mod labor_positions;
 mod labor_replay;
 mod labor_source;
 mod labor_storage;
 mod labor_verification;
 mod model;
 mod payment_storage;
+mod publication_watch;
 mod queue;
+mod site_storage_keys;
 mod statement_integrity;
 mod statement_lines;
 mod statement_read;
 mod statement_storage;
+mod stock_storage;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -41,6 +46,7 @@ pub use model::{
     derive_movements, JournalError, MoneyEndpoint, MoneyLocationKind, MoneyMovement, MoneyPurpose,
     MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
 };
+pub use publication_watch::JournalPublicationWatch;
 pub use queue::{JournalQueue, JournalQueueError};
 pub use statement_read::PublishedSitePeriod;
 pub(crate) use statement_storage::JournalPeriodSource;

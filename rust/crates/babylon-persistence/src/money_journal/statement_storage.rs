@@ -3,11 +3,12 @@ use super::payment_storage::Admission;
 use super::statement_integrity::SiteEvidence;
 use super::statement_lines::Lines;
 use super::JournalError;
+use super::{site_storage_keys, stock_storage};
 use crate::economic_content::EconomicContentHandle;
 use crate::economic_flows::EconomicPaymentPeriod;
 use crate::identity::CampaignId;
 use crate::qualification_audit::trade;
-use crate::site_financial_statements::{SiteAccountingPeriod, SiteStockBalance, SiteStockPosition};
+use crate::site_financial_statements::SiteAccountingPeriod;
 use babylon_material_circuit::SiteId;
 use postgres::{Statement, Transaction};
 use serde::Serialize;
@@ -34,45 +35,13 @@ struct StatementRow<'a> {
     site_ordinal: usize,
     campaign_id: &'a str,
     resolve_tick: u64,
-    site_id: String,
+    site_key: i32,
     #[serde(flatten)]
     lines: Lines,
 }
 
-#[derive(Serialize)]
-struct StockRow<'a> {
-    campaign_id: &'a str,
-    resolve_tick: u64,
-    site_id: String,
-    good_id: String,
-    unit_id: String,
-    opening_quantity: Option<u64>,
-    closing_quantity: Option<u64>,
-    opening_carrying_cost_micros: Option<String>,
-    closing_carrying_cost_micros: Option<String>,
-}
-
 pub(super) fn bytea(id: &[u8; 32]) -> String {
     format!("\\x{}", trade::hex(id))
-}
-
-impl<'a> StockRow<'a> {
-    fn from_source(campaign_id: &'a str, resolve_tick: u64, row: &SiteStockBalance) -> Self {
-        fn cost(position: SiteStockPosition) -> Option<String> {
-            position.carrying_cost.map(|v| v.micro_units().to_string())
-        }
-        Self {
-            campaign_id,
-            resolve_tick,
-            site_id: bytea(&row.site_id.as_bytes()),
-            good_id: bytea(&row.good_id.as_bytes()),
-            unit_id: bytea(&row.unit_id.as_bytes()),
-            opening_quantity: row.opening.map(|v| v.quantity),
-            closing_quantity: row.closing.map(|v| v.quantity),
-            opening_carrying_cost_micros: row.opening.and_then(cost),
-            closing_carrying_cost_micros: row.closing.and_then(cost),
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -92,6 +61,7 @@ pub(super) enum Table {
     LaborMovement,
     LaborPosition,
     Statement,
+    StockKey,
     Stock,
 }
 impl Table {
@@ -136,7 +106,7 @@ impl Table {
             ),
 
             Self::LaborNode => (
-                "babylon_state.labor_node_v1",
+                "babylon_state.labor_node_fact_v1",
                 "campaign_id,resolve_tick,node_ordinal",
             ),
             Self::LaborMovement => (
@@ -145,21 +115,28 @@ impl Table {
             ),
             Self::LaborPosition => (
                 "babylon_state.labor_position_v1",
-                "campaign_id,resolve_tick,side,node_ordinal",
+                "campaign_id,resolve_tick,node_ordinal",
             ),
             Self::Statement => (
                 "babylon_state.site_statement_v1",
-                "campaign_id,resolve_tick,site_id",
+                "campaign_id,resolve_tick,site_key",
+            ),
+            Self::StockKey => (
+                "babylon_state.site_stock_key_v1",
+                "campaign_id,resolve_tick,commodity_ordinal",
             ),
             Self::Stock => (
                 "babylon_state.site_stock_balance_v1",
-                "campaign_id,resolve_tick,site_id,good_id,unit_id",
+                "campaign_id,resolve_tick,site_key,commodity_ordinal",
             ),
         }
     }
 
     fn sql(self, admission: Admission) -> String {
         let (table, keys) = self.relation();
+        if matches!(self, Self::LaborNode) && admission != Admission::Verify {
+            return include_str!("labor_node_insert.sql").to_owned();
+        }
         let input = format!("jsonb_populate_recordset(NULL::{table},$1::text::jsonb)");
         if admission == Admission::Verify {
             // Each expected composite gets one scalar lookup by the full primary key.
@@ -269,32 +246,31 @@ pub(super) fn publish(
         receipts: receipts.identity.receipt_digest(),
     };
     let directory = directory(source, &evidence)?;
+    let keys = site_storage_keys::admit(tx, source, admission)?;
+    let period_site_keys: Vec<_> = source
+        .sites
+        .iter()
+        .map(|id| keys.get(id).copied().ok_or(JournalError::Projection))
+        .collect::<Result<_, _>>()?;
     let mut batch = Batch { tx, admission };
     let mut summaries = period.statements.as_deref().unwrap_or_default().iter();
     batch.stage(
         Table::Statement,
-        source
-            .sites
-            .iter()
+        period_site_keys
+            .into_iter()
             .enumerate()
-            .map(|(ordinal, site)| StatementRow {
+            .map(|(ordinal, site_key)| StatementRow {
                 site_ordinal: ordinal,
                 campaign_id: &campaign_text,
                 resolve_tick: tick,
-                site_id: bytea(&site.as_bytes()),
+                site_key,
                 lines: summaries
                     .next()
                     .map(Lines::from_summary)
                     .unwrap_or_default(),
             }),
     )?;
-    batch.stage(
-        Table::Stock,
-        period
-            .stocks
-            .iter()
-            .map(|row| StockRow::from_source(&campaign_text, tick, row)),
-    )?;
+    stock_storage::stage(&mut batch, campaign, tick, &keys, &period.stocks)?;
     let binding = SiteBinding {
         digest: Sha256::digest(&directory).into(),
         directory,

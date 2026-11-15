@@ -20,7 +20,7 @@ WITH windows(first_tick,last_tick,comparison) AS (
     SELECT resolve_tick,node_ordinal,kind,entity_id,purpose,scope_kind,scope_id,
            location_key,catchment_key,industry_key,industry_label,longitude,latitude
     FROM public.v_observer_labor_node_v1 n WHERE $13::text='page' AND n.campaign_id=$1 AND
-        EXISTS (SELECT FROM windows w WHERE n.resolve_tick BETWEEN w.first_tick AND w.last_tick)
+        (n.resolve_tick BETWEEN $2 AND $3 OR n.resolve_tick BETWEEN $4 AND $5)
     UNION ALL
     SELECT $14::bigint,n.node_ordinal,n.kind,n.entity_id,n.purpose,n.scope_kind,n.scope_id,
            n.location_key,n.catchment_key,n.industry_key,n.industry_label,n.longitude,n.latitude
@@ -29,20 +29,25 @@ WITH windows(first_tick,last_tick,comparison) AS (
 ), moves AS (
     SELECT resolve_tick,source_node,destination_node,receipt_family,recorded_micro_hours,unknown_opening
     FROM public.v_observer_labor_movement_v1 m WHERE $13='page' AND m.campaign_id=$1 AND
-        EXISTS (SELECT FROM windows w WHERE m.resolve_tick BETWEEN w.first_tick AND w.last_tick)
+        (m.resolve_tick BETWEEN $2 AND $3 OR m.resolve_tick BETWEEN $4 AND $5)
     UNION ALL
     SELECT $14::bigint,m.source_node,m.destination_node,m.receipt_family,m.recorded_micro_hours,m.unknown_opening
     FROM jsonb_to_recordset($12::text::jsonb) AS m(source_node bigint,destination_node bigint,receipt_family text,
         recorded_micro_hours numeric,unknown_opening boolean)
+), company_labels AS MATERIALIZED (
+    SELECT company_id,label,foundation_sha256 FROM public.v_observer_economic_company_v1 WHERE campaign_id=$1
+), owners AS MATERIALIZED (
+    SELECT 'company_cash'::text AS account_kind, company_id AS account_id, company_id, foundation_sha256 FROM company_labels
+    UNION ALL
+    SELECT 'site_cash',site_id,company_id,foundation_sha256 FROM public.v_observer_economic_company_member_v1 WHERE campaign_id=$1
 ), company_accounts AS MATERIALIZED (
-    -- One captured company per account key. Build the small ownership lookup once for
-    -- this campaign instead of rescanning its account directory for every labor node.
-    SELECT jsonb_object_agg(a.account_kind||':'||encode(a.account_id,'hex'),
-               jsonb_build_array('company:'||encode(a.company_id,'hex'),a.company_label)) AS by_principal
-    FROM public.v_observer_economic_flow_account_v2 a
-    WHERE a.campaign_id=$1 AND a.company_id IS NOT NULL
-        AND ($6::text IN ('company','counterparty') OR ($7::text IS NOT NULL AND $15::text IN ('company','counterparty'))
-            OR $16::text IN ('company','counterparty'))
+    -- Only a captured account in this foundation can name its legal principal.
+    SELECT jsonb_object_agg(o.account_kind||':'||encode(o.account_id,'hex'),
+               jsonb_build_array('company:'||encode(c.company_id,'hex'),c.label)) AS by_principal
+    FROM owners o JOIN company_labels c USING(company_id,foundation_sha256)
+    JOIN public.v_observer_economic_flow_account_v1 a USING (account_kind,account_id,foundation_sha256)
+    WHERE a.campaign_id=$1 AND ($6::text IN ('company','counterparty')
+        OR ($7::text IS NOT NULL AND $15::text IN ('company','counterparty')) OR $16::text IN ('company','counterparty'))
 ), scopes AS (
     SELECT n.resolve_tick,n.node_ordinal,n.kind,n.purpose,n.scope_kind||':'||encode(n.scope_id,'hex') AS principal,
         owner.company->>0 AS company,owner.company->>1 AS company_label,

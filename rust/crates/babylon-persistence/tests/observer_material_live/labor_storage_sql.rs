@@ -4,12 +4,16 @@ use babylon_persistence::money_journal::{self, JournalError, MoneyJournalWriter}
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use postgres::Client;
 
+#[path = "labor_positions.rs"]
+mod labor_positions;
+
 pub(super) fn retention_and_repair(
     owner: &mut Client,
     observer: &ObserverEconomyReader,
     writer: &MoneyJournalWriter,
     campaign: CampaignId,
 ) {
+    labor_positions::check(owner, observer, writer, campaign);
     cold_window(owner, observer, writer, campaign);
     compare_retained_rows(owner, observer, writer, campaign);
     let id = campaign.as_uuid();
@@ -141,35 +145,7 @@ fn compare_retained_rows(
     campaign: CampaignId,
 ) {
     let id = campaign.as_uuid();
-    let row = owner
-        .query_one(
-            "WITH target AS (
-             SELECT node_ordinal, location_key FROM babylon_state.labor_node_v1
-             WHERE campaign_id=$1 AND resolve_tick=2 ORDER BY node_ordinal DESC LIMIT 1
-         )
-         UPDATE babylon_state.labor_node_v1 d SET location_key =
-             CASE WHEN t.location_key IS NULL THEN 'changed' ELSE NULL END
-         FROM target t WHERE d.campaign_id=$1 AND d.resolve_tick=2 AND d.node_ordinal=t.node_ordinal
-         RETURNING t.node_ordinal, t.location_key",
-            &[id],
-        )
-        .expect("change one nullable attribute without changing the node count");
-    assert_eq!(
-        writer.publish(observer, campaign, 2),
-        Err(JournalError::Projection)
-    );
-    let ordinal: i64 = row.get(0);
-    let location: Option<String> = row.get(1);
-    assert_eq!(
-        owner
-            .execute(
-                "UPDATE babylon_state.labor_node_v1 SET location_key=$3
-         WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2",
-                &[id, &ordinal, &location],
-            )
-            .expect("restore exact captured location"),
-        1
-    );
+    check_shared_node_repair(owner, observer, writer, campaign);
 
     let last: i64 = owner
         .query_one(
@@ -204,4 +180,79 @@ fn compare_retained_rows(
             .expect("admit restored facts")
             .changed
     );
+}
+
+/// A moved nullable scalar, with a valid content key and unchanged counts, must fail idempotent
+/// verification. Rebuilding the one period must preserve a neighbor using the original identity.
+fn check_shared_node_repair(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+) {
+    let id = campaign.as_uuid();
+    let selected=owner.query_one("SELECT n.node_ordinal,n.descriptor_sha256,
+            (SELECT min(peer.resolve_tick) FROM babylon_state.labor_node_v1 peer WHERE
+                peer.campaign_id=n.campaign_id AND peer.descriptor_sha256=n.descriptor_sha256 AND peer.resolve_tick<>2) AS neighbor
+        FROM babylon_state.labor_node_v1 n WHERE n.campaign_id=$1 AND n.resolve_tick=2
+        AND EXISTS (SELECT FROM babylon_state.labor_node_v1 peer WHERE peer.campaign_id=n.campaign_id
+            AND peer.descriptor_sha256=n.descriptor_sha256 AND peer.resolve_tick<>2) ORDER BY n.node_ordinal LIMIT 1",
+        &[id]).expect("one recurring identity used in two retained periods");
+    let ordinal: i64 = selected.get(0);
+    let original: Vec<u8> = selected.get(1);
+    let neighbor: i64 = selected.get(2);
+    let snapshot = |db: &mut Client, tick| -> String {
+        db.query_one(
+            "SELECT to_jsonb(d)::text FROM babylon_state.labor_node_v1 n
+            JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_sha256)
+            WHERE n.campaign_id=$1 AND n.resolve_tick=$2 AND n.descriptor_sha256=$3 LIMIT 1",
+            &[id, &tick, &original],
+        )
+        .expect("original typed identity")
+        .get(0)
+    };
+    let before = snapshot(owner, neighbor);
+    let corrupt=owner.query_one("WITH changed AS (
+          SELECT jsonb_populate_record(d,jsonb_build_object('location_key',
+              CASE WHEN d.location_key IS NULL THEN 'changed' ELSE NULL END)) AS body
+          FROM babylon_state.labor_node_identity_v1 d WHERE campaign_id=$1 AND descriptor_sha256=$2
+        ), keyed AS (
+          SELECT jsonb_populate_record(body,jsonb_build_object('descriptor_sha256',
+              babylon_state.labor_node_fingerprint_v1(body))) AS body FROM changed
+        ), staged AS (
+          INSERT INTO babylon_state.labor_node_identity_v1 SELECT (body).* FROM keyed
+          ON CONFLICT (campaign_id,descriptor_sha256) DO NOTHING
+        )
+        UPDATE babylon_state.labor_node_v1 n SET descriptor_sha256=(k.body).descriptor_sha256 FROM keyed k
+        WHERE n.campaign_id=$1 AND n.resolve_tick=2 AND n.node_ordinal=$3 RETURNING n.descriptor_sha256",
+        &[id,&original,&ordinal]).expect("alter only one nullable source field behind a retained reference");
+    assert_ne!(corrupt.get::<_, Vec<u8>>(0), original);
+    assert_eq!(
+        writer.publish(observer, campaign, 2),
+        Err(JournalError::Projection)
+    );
+    writer
+        .rebuild(observer, campaign, 2)
+        .expect("repair from authenticated node facts");
+    assert_eq!(snapshot(owner, neighbor), before);
+    assert_eq!(snapshot(owner, 2), before);
+    let restored: Vec<u8> = owner
+        .query_one(
+            "SELECT descriptor_sha256 FROM babylon_state.labor_node_v1
+        WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2",
+            &[id, &ordinal],
+        )
+        .expect("same original receipt ordinal")
+        .get(0);
+    assert_eq!(restored, original);
+    let orphan: bool = owner
+        .query_one(
+            "SELECT EXISTS (SELECT FROM babylon_state.labor_node_identity_v1 d
+        WHERE d.campaign_id=$1 AND NOT EXISTS (SELECT FROM babylon_state.labor_node_v1 n
+          WHERE (n.campaign_id,n.descriptor_sha256)=(d.campaign_id,d.descriptor_sha256)))",
+            &[id],
+        )
+        .expect("membership after recovery and thirteen-period retention")
+        .get(0);
+    assert!(!orphan);
 }

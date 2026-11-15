@@ -132,26 +132,33 @@ impl<'a> JournalQueue<'a> {
     /// # Errors
     /// A disconnected listener must register again and perform a fresh pass.
     pub fn wait(&mut self, duration: Duration) -> Result<bool, JournalError> {
-        let notified = {
-            let mut hints = self.listener.notifications();
-            let first = hints
-                .timeout_iter(duration)
-                .next()
-                .map_err(|_| JournalError::Database)?;
-            let mut notified = first
-                .is_some_and(|n| n.channel() == ARCHIVE_WAKEUP_CHANNEL && n.payload().is_empty());
-            let mut buffered = hints.iter();
-            for _ in 0..64 {
-                let Some(hint) = buffered.next().map_err(|_| JournalError::Database)? else {
-                    break;
-                };
-                notified |= hint.channel() == ARCHIVE_WAKEUP_CHANNEL && hint.payload().is_empty();
-            }
-            notified
-        };
-        if self.listener.is_closed() {
-            return Err(JournalError::Database);
-        }
-        Ok(notified)
+        wait_for_hint(&mut self.listener, ARCHIVE_WAKEUP_CHANNEL, duration)
     }
+}
+
+pub(super) fn wait_for_hint(
+    client: &mut Client,
+    channel: &str,
+    duration: Duration,
+) -> Result<bool, JournalError> {
+    let notified = {
+        let mut hints = client.notifications();
+        let first = hints
+            .timeout_iter(duration)
+            .next()
+            .map_err(|_| JournalError::Database)?;
+        let mut notified = first.is_some_and(|n| n.channel() == channel && n.payload().is_empty());
+        let mut buffered = hints.iter();
+        for _ in 0..64 {
+            let Some(hint) = buffered.next().map_err(|_| JournalError::Database)? else {
+                break;
+            };
+            notified |= hint.channel() == channel && hint.payload().is_empty();
+        }
+        notified
+    };
+    if client.is_closed() {
+        return Err(JournalError::Database);
+    }
+    Ok(notified)
 }

@@ -117,8 +117,7 @@ pub(super) fn recover_and_follow(
             .expect("launch independent watcher"),
     );
     worker.wait_for_period(database, campaign, 10);
-    super::advance_material_period(runtime);
-    worker.wait_for_period(database, campaign, 15);
+    check_publication_wakeup(&mut worker, database, runtime, observer, campaign);
     worker.finish();
     let total: i64 = database
         .query_one(
@@ -131,4 +130,55 @@ pub(super) fn recover_and_follow(
         total, 15,
         "every committed period has identity-bound coverage"
     );
+}
+
+fn check_publication_wakeup(
+    worker: &mut Worker,
+    database: &mut Client,
+    runtime: &mut DurableMaterialRuntime,
+    config: &Config,
+    campaign: CampaignId,
+) {
+    use babylon_persistence::money_journal::PeriodWindow;
+    use babylon_persistence::observer_reader::{ObserverEconomyReader, ObserverVisibility};
+    use postgres::fallible_iterator::FallibleIterator as _;
+
+    let reader = ObserverEconomyReader::connect(config, ObserverVisibility::FullObserver)
+        .expect("confined observer");
+    let window = PeriodWindow {
+        first: 14,
+        last: 15,
+    };
+    let mut wait = reader
+        .watch_journal_periods(campaign, window)
+        .expect("subscribe");
+    assert!(!wait.wait(Duration::ZERO).expect("period 15 is missing"));
+    database
+        .batch_execute("NOTIFY babylon_economic_publication_v1")
+        .expect("send an untrusted empty hint");
+    assert!(!wait
+        .wait(Duration::from_secs(1))
+        .expect("reconcile hinted coverage"));
+    database
+        .batch_execute("LISTEN babylon_economic_publication_v1")
+        .expect("register for writer commit");
+    super::advance_material_period(runtime);
+    worker.wait_for_period(database, campaign, 15);
+    let notification = database
+        .notifications()
+        .timeout_iter(Duration::from_secs(2))
+        .next()
+        .expect("read writer notification")
+        .expect("changed journal emits a committed hint");
+    assert_eq!(notification.channel(), "babylon_economic_publication_v1");
+    assert_eq!(notification.payload(), "");
+    assert!(wait
+        .wait(Duration::from_secs(1))
+        .expect("marker and both periods are covered"));
+    let mut after = reader
+        .watch_journal_periods(campaign, window)
+        .expect("late subscriber");
+    assert!(after
+        .wait(Duration::ZERO)
+        .expect("a preexisting marker is visible immediately"));
 }

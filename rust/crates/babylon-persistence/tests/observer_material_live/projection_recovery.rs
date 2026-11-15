@@ -82,7 +82,7 @@ pub(super) fn interrupt_and_retry(
         "SELECT (SELECT count(*) FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=2),
                 (SELECT count(*) FROM babylon_state.money_movement_total_v1 WHERE campaign_id=$1 AND resolve_tick=2),
                 (SELECT count(*) FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=2),
-                (SELECT count(*) FROM babylon_state.economic_payment_v1 WHERE campaign_id=$1 AND resolve_tick=2),
+                (SELECT count(*) FROM public.v_observer_economic_payment_v1 WHERE campaign_id=$1 AND resolve_tick=2),
                 (SELECT count(*) FROM babylon_state.company_statement_balance_v1 WHERE campaign_id=$1 AND resolve_tick=2),
                 (SELECT count(*) FROM babylon_state.company_accounting_checkpoint_v1 WHERE campaign_id=$1 AND resolve_tick=2)",
         &[campaign.as_uuid()],

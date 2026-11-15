@@ -5,6 +5,7 @@ use super::compare::Periods;
 use super::freight::{Command as FreightCommand, Freight, Source as FreightSource};
 use super::geographic_legs::{self, Locations, Worker as LocationWorker};
 use super::industry::{self, Sources as IndustrySources, Worker as IndustryWorker};
+use super::publication::Publication;
 use super::{freight, freight_plot, freight_rail, geometry, rail, sankey};
 use crate::atlas::CountyAtlas;
 use crate::map::{CountyMapScope, MapScopeSet, SelectedCounty};
@@ -28,6 +29,7 @@ use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::tasks::{self, AsyncComputeTaskPool, Task};
+use std::task::Poll;
 
 #[derive(Component)]
 pub(crate) struct MoneyRail;
@@ -369,6 +371,7 @@ struct PendingPage {
 #[derive(Resource, Default)]
 struct Loader {
     pending: Option<PendingPage>,
+    publication: Publication,
     retry_at: f64,
     delay: f64,
 }
@@ -474,6 +477,9 @@ fn update(
     {
         refresh_scope(&observation, &mut view, &mut loader);
     }
+    if view.status != Status::Publishing || view.freight.enabled {
+        loader.publication = default();
+    }
     if let Some(pending) = &mut loader.pending {
         // PostgreSQL reads block within a worker. Drain an obsolete read before launching its successor.
         let Some(result) =
@@ -511,9 +517,13 @@ fn update(
         }
         return;
     }
-    if !matches!(view.status, Status::Waiting | Status::Publishing)
-        || (view.status == Status::Publishing && time.elapsed_secs_f64() < loader.retry_at)
-    {
+    if view.status == Status::Publishing {
+        match loader.publication.poll(scope) {
+            Poll::Pending => return,
+            Poll::Ready(false) if time.elapsed_secs_f64() < loader.retry_at => return,
+            Poll::Ready(_) => {}
+        }
+    } else if view.status != Status::Waiting {
         return;
     }
     let scope = scope.clone();

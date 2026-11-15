@@ -354,6 +354,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     assert_eq!(cli["page"]["total"]["current"]["net_micros"], "0");
     let totals = assert_source_totals(&observer, &observer_config, campaign, &source, &expected);
     let mut owner = target.writer.connect(NoTls).expect("owner connection");
+    check_reserve_payer_integrity(&mut owner, &observer, &writer, campaign);
     assert_nonzero_history(&mut owner, &observer, &writer, campaign, &expected, &totals);
     super::projection_recovery::commit_after_projection(
         &target.writer,
@@ -487,6 +488,45 @@ fn assert_source_totals(
         "observer cannot mutate projected facts"
     );
     totals
+}
+
+/// The custody debit for a delivery settlement remains its escrow. Changing
+/// only the underlying payer must still cause repeat publication to refuse.
+fn check_reserve_payer_integrity(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+) {
+    let row = owner
+        .query_one(
+            "SELECT ordinal,payer_key,recipient_key FROM babylon_state.money_movement_v1
+         WHERE campaign_id=$1 AND resolve_tick=1 AND purpose='delivery_settlement'
+           AND payer_key<>recipient_key ORDER BY ordinal LIMIT 1",
+            &[campaign.as_uuid()],
+        )
+        .expect("real sale between distinct cash accounts");
+    let ordinal: i64 = row.get("ordinal");
+    let payer: i32 = row.get("payer_key");
+    let recipient: i32 = row.get("recipient_key");
+    let change = "UPDATE babylon_state.money_movement_v1 SET payer_key=$3
+        WHERE campaign_id=$1 AND resolve_tick=1 AND ordinal=$2";
+    assert_eq!(
+        owner
+            .execute(change, &[campaign.as_uuid(), &ordinal, &recipient])
+            .expect("replace the economic payer on the captured settlement"),
+        1
+    );
+    assert_eq!(
+        writer.publish(observer, campaign, 1),
+        Err(JournalError::Projection)
+    );
+    assert_eq!(
+        owner
+            .execute(change, &[campaign.as_uuid(), &ordinal, &payer])
+            .expect("restore the authenticated economic payer"),
+        1
+    );
 }
 
 fn assert_nonzero_history(

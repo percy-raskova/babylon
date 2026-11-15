@@ -63,13 +63,17 @@ pub(super) fn national(
         observer.published_site_period(campaign, 1, SiteId::from_bytes([0xff; 32])),
         Err(JournalError::SiteAbsent)
     );
-    assert_eq!(owner.execute("UPDATE babylon_state.site_statement_v1 SET income_productive_labor_capitalized_micros=income_productive_labor_capitalized_micros+1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2", &[campaign.as_uuid(), &site.as_bytes().as_slice()]).expect("alter book disclosure"), 1);
+    let site_key: i32 = owner.query_one(
+        "SELECT site_key FROM babylon_state.site_principal_v1 WHERE campaign_id=$1 AND site_id=$2",
+        &[campaign.as_uuid(), &site.as_bytes().as_slice()],
+    ).expect("captured site key").get(0);
+    assert_eq!(owner.execute("UPDATE babylon_state.site_statement_v1 SET income_productive_labor_capitalized_micros=income_productive_labor_capitalized_micros+1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2", &[campaign.as_uuid(), &site_key]).expect("alter book disclosure"), 1);
     assert_eq!(
         observer.published_site_period(campaign, 1, site),
         Err(JournalError::Projection)
     );
     let stock_owner = corrupt_stock(owner, observer, campaign, site);
-    assert_eq!(owner.execute("DELETE FROM babylon_state.site_statement_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2", &[campaign.as_uuid(), &site.as_bytes().as_slice()]).expect("one disposable damaged statement"), 1);
+    assert_eq!(owner.execute("DELETE FROM babylon_state.site_statement_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2", &[campaign.as_uuid(), &site_key]).expect("one disposable damaged statement"), 1);
     assert_eq!(
         observer.published_site_period(campaign, 1, site),
         Err(JournalError::Projection)
@@ -104,21 +108,61 @@ fn corrupt_stock(
     campaign: CampaignId,
     different_site: SiteId,
 ) -> PublishedSitePeriod {
-    let row=owner.query_one("SELECT site_id, good_id, unit_id FROM babylon_state.site_stock_balance_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id<>$2 AND closing_quantity < 18446744073709551615 ORDER BY site_id,good_id,unit_id LIMIT 1",&[campaign.as_uuid(),&different_site.as_bytes().as_slice()]).expect("real national stock");
-    let site = row.get::<_, Vec<u8>>("site_id");
-    let good = row.get::<_, Vec<u8>>("good_id");
-    let unit = row.get::<_, Vec<u8>>("unit_id");
+    let row = owner.query_one(
+        "SELECT p.site_id, s.site_key, s.commodity_ordinal, k.unit_id
+         FROM babylon_state.site_stock_balance_v1 s
+         JOIN babylon_state.site_stock_key_v1 k USING(campaign_id,resolve_tick,commodity_ordinal)
+         JOIN babylon_state.site_principal_v1 p ON (p.campaign_id,p.site_key)=(s.campaign_id,s.site_key)
+         WHERE s.campaign_id=$1 AND s.resolve_tick=1 AND p.site_id<>$2
+           AND s.closing_quantity < 18446744073709551615
+         ORDER BY p.site_id,k.good_id,k.unit_id LIMIT 1",
+        &[campaign.as_uuid(), &different_site.as_bytes().as_slice()],
+    ).expect("real stock with its recorded good and unit");
+    let site: Vec<u8> = row.get("site_id");
+    let commodity: i32 = row.get("commodity_ordinal");
+    let unit: Vec<u8> = row.get("unit_id");
     let id = SiteId::from_bytes(site.as_slice().try_into().expect("stock identity"));
     let saved = observer
         .published_site_period(campaign, 1, id)
         .expect("validated source stock");
-    let params: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &site, &good, &unit];
-    assert_eq!(owner.execute("UPDATE babylon_state.site_stock_balance_v1 SET closing_quantity=closing_quantity+1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2 AND good_id=$3 AND unit_id=$4",params).expect("change one stock quantity"),1);
+    let site_key: i32 = row.get("site_key");
+    let params: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &site_key, &commodity];
+    let binding: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &commodity];
+    assert_eq!(owner.execute(
+        "UPDATE babylon_state.site_stock_key_v1 SET unit_id=set_byte(unit_id,0,get_byte(unit_id,0) # 1)
+         WHERE campaign_id=$1 AND resolve_tick=1 AND commodity_ordinal=$2",
+        binding).expect("alter just the stored unit identity"), 1);
     assert_eq!(
         observer.published_site_period(campaign, 1, id),
         Err(JournalError::Projection)
     );
-    assert_eq!(owner.execute("DELETE FROM babylon_state.site_stock_balance_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2 AND good_id=$3 AND unit_id=$4",params).expect("remove one selected stock"),1);
+    assert_eq!(owner.execute(
+        "UPDATE babylon_state.site_stock_key_v1 SET unit_id=$3 WHERE campaign_id=$1 AND resolve_tick=1 AND commodity_ordinal=$2",
+        &[campaign.as_uuid(), &commodity, &unit]).expect("restore the actual unit identity"), 1);
+    assert_eq!(
+        owner
+            .execute(
+                "UPDATE babylon_state.site_stock_balance_v1 SET closing_quantity=closing_quantity+1
+         WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2 AND commodity_ordinal=$3",
+                params
+            )
+            .expect("change one stock quantity"),
+        1
+    );
+    assert_eq!(
+        observer.published_site_period(campaign, 1, id),
+        Err(JournalError::Projection)
+    );
+    assert_eq!(
+        owner
+            .execute(
+                "DELETE FROM babylon_state.site_stock_balance_v1
+         WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2 AND commodity_ordinal=$3",
+                params
+            )
+            .expect("remove one selected stock"),
+        1
+    );
     assert_eq!(
         observer.published_site_period(campaign, 1, id),
         Err(JournalError::Projection)

@@ -1,5 +1,6 @@
 //! Compare retained labor with its authenticated source in bounded, ordered batches.
 use super::labor_facts::LaborFacts;
+use super::labor_positions;
 use super::statement_storage::Table;
 use super::JournalError;
 use postgres::Transaction;
@@ -17,12 +18,11 @@ pub(super) fn period(
     let scope = Scope { campaign, tick };
     scope.verify(tx, Table::LaborNode, "node_ordinal", &facts.nodes)?;
     scope.verify(tx, Table::LaborMovement, "ordinal", &facts.movements)?;
-    // The source ledger emits opening, then closing, in ascending native node order.
     scope.verify(
         tx,
         Table::LaborPosition,
-        "(side = 'opening') DESC, node_ordinal",
-        &facts.positions,
+        "node_ordinal",
+        &labor_positions::pairs(&facts.positions)?,
     )
 }
 

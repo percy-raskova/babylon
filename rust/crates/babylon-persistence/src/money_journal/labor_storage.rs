@@ -1,5 +1,6 @@
 //! Atomically stage compact labor facts and coverage under the journal's shared publish marker.
 use super::labor_facts::LaborFacts;
+use super::labor_positions;
 use super::labor_source::LaborPublication;
 use super::labor_verification;
 use super::payment_storage::Admission;
@@ -78,11 +79,13 @@ fn stage(
     )?;
     batch.stage(
         Table::LaborPosition,
-        facts.positions.iter().map(|fact| Scoped {
-            campaign_id: campaign,
-            resolve_tick: tick,
-            fact,
-        }),
+        labor_positions::pairs(&facts.positions)?
+            .iter()
+            .map(|fact| Scoped {
+                campaign_id: campaign,
+                resolve_tick: tick,
+                fact,
+            }),
     )
 }
 
@@ -132,7 +135,15 @@ pub(super) fn publish(
         if !valid {
             return Err(JournalError::Projection);
         }
-        let counts=tx.query_one("SELECT (SELECT count(*) FROM babylon_state.labor_node_v1 WHERE campaign_id=$1 AND resolve_tick=$2),(SELECT count(*) FROM babylon_state.labor_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2),(SELECT count(*) FROM babylon_state.labor_position_v1 WHERE campaign_id=$1 AND resolve_tick=$2)", &[campaign,&tick]).map_err(|_|JournalError::Database)?;
+        let counts = tx.query_one(
+            "SELECT (SELECT count(*) FROM babylon_state.labor_node_v1
+                     WHERE campaign_id=$1 AND resolve_tick=$2),
+                    (SELECT count(*) FROM babylon_state.labor_movement_v1
+                     WHERE campaign_id=$1 AND resolve_tick=$2),
+                    (SELECT count(opening_quantity) + count(closing_quantity)
+                     FROM babylon_state.labor_position_v1 WHERE campaign_id=$1 AND resolve_tick=$2)",
+            &[campaign, &tick],
+        ).map_err(|_| JournalError::Database)?;
         for (index, expected) in [nodes, movements, positions].into_iter().enumerate() {
             let actual: i64 = counts
                 .try_get(index)

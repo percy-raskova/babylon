@@ -1235,45 +1235,57 @@ CREATE TABLE babylon_state.graph_node_f64_chunk_v1 (
  FOREIGN KEY(campaign_id,vector_id) REFERENCES babylon_state.graph_node_vector_v1 DEFERRABLE INITIALLY DEFERRED,
  CHECK(array_ndims(value_bits)=1 AND array_lower(value_bits,1)=1 AND cardinality(value_bits) BETWEEN 1 AND 4096 AND array_position(value_bits,NULL) IS NULL)
 );
--- Prevent stale statistics from multiplying entire campaign lookup tables
--- before their exact ID matches. OFFSET 0 keeps each dependent lookup local;
--- it removes no rows and changes neither marker nor component admission.
+-- Restrict vectors to this committed period before expanding their node IDs.
+-- Materializing its campaign dictionaries once avoids an index probe per field.
 CREATE VIEW babylon_state.graph_node_v1 AS
- SELECT c.campaign_id,c.resolve_tick,s.value AS local_name,t.value AS node_type
- FROM babylon_state.graph_node_chunk_v1 c
- JOIN babylon_state.tick_commit m USING(campaign_id,resolve_tick)
- JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id)
- CROSS JOIN LATERAL unnest(v.node_ids) u(node_id)
- CROSS JOIN LATERAL (
-  SELECT n.name_id,n.type_id FROM babylon_state.graph_node_lookup_v1 n
-  WHERE n.campaign_id=c.campaign_id AND n.node_id=u.node_id OFFSET 0
- ) n
- CROSS JOIN LATERAL (
-  SELECT s.value FROM babylon_state.graph_string_lookup_v1 s
-  WHERE s.campaign_id=c.campaign_id AND s.string_id=n.name_id OFFSET 0
- ) s
- CROSS JOIN LATERAL (
-  SELECT t.value FROM babylon_state.graph_string_lookup_v1 t
-  WHERE t.campaign_id=c.campaign_id AND t.string_id=n.type_id OFFSET 0
- ) t;
+SELECT marker.campaign_id, marker.resolve_tick, projected.local_name, projected.node_type
+FROM babylon_state.tick_commit marker
+CROSS JOIN LATERAL (
+    WITH names AS MATERIALIZED (
+        SELECT string_id, value FROM babylon_state.graph_string_lookup_v1
+        WHERE campaign_id = marker.campaign_id
+    ), nodes AS MATERIALIZED (
+        SELECT node_id, name_id, type_id FROM babylon_state.graph_node_lookup_v1
+        WHERE campaign_id = marker.campaign_id
+    ), chunks AS MATERIALIZED (
+        SELECT vector.node_ids FROM babylon_state.graph_node_chunk_v1 chunk
+        JOIN babylon_state.graph_node_vector_v1 vector USING (campaign_id, vector_id)
+        WHERE chunk.campaign_id = marker.campaign_id AND chunk.resolve_tick = marker.resolve_tick
+    ), members AS MATERIALIZED (
+        SELECT member.node_id FROM chunks
+        CROSS JOIN LATERAL unnest(chunks.node_ids) member(node_id)
+    )
+    SELECT name.value AS local_name, kind.value AS node_type
+    FROM members JOIN nodes USING (node_id)
+    JOIN names name ON name.string_id = nodes.name_id
+    JOIN names kind ON kind.string_id = nodes.type_id
+    OFFSET 0
+) projected;
 CREATE VIEW babylon_state.graph_node_f64_v1 AS
- SELECT c.campaign_id,c.resolve_tick,s.value AS local_name,q.value AS qname,u.value_bits
- FROM babylon_state.graph_node_f64_chunk_v1 c
- JOIN babylon_state.tick_commit m USING(campaign_id,resolve_tick)
- JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id)
- CROSS JOIN LATERAL unnest(v.node_ids,c.value_bits) u(node_id,value_bits)
- CROSS JOIN LATERAL (
-  SELECT n.name_id FROM babylon_state.graph_node_lookup_v1 n
-  WHERE n.campaign_id=c.campaign_id AND n.node_id=u.node_id OFFSET 0
- ) n
- CROSS JOIN LATERAL (
-  SELECT s.value FROM babylon_state.graph_string_lookup_v1 s
-  WHERE s.campaign_id=c.campaign_id AND s.string_id=n.name_id OFFSET 0
- ) s
- CROSS JOIN LATERAL (
-  SELECT q.value FROM babylon_state.graph_string_lookup_v1 q
-  WHERE q.campaign_id=c.campaign_id AND q.string_id=c.qname_id OFFSET 0
- ) q;
+SELECT marker.campaign_id, marker.resolve_tick, projected.local_name, projected.qname, projected.value_bits
+FROM babylon_state.tick_commit marker
+CROSS JOIN LATERAL (
+    WITH names AS MATERIALIZED (
+        SELECT string_id, value FROM babylon_state.graph_string_lookup_v1
+        WHERE campaign_id = marker.campaign_id
+    ), nodes AS MATERIALIZED (
+        SELECT node_id, name_id, type_id FROM babylon_state.graph_node_lookup_v1
+        WHERE campaign_id = marker.campaign_id
+    ), chunks AS MATERIALIZED (
+        SELECT vector.node_ids, chunk.qname_id, chunk.value_bits
+        FROM babylon_state.graph_node_f64_chunk_v1 chunk
+        JOIN babylon_state.graph_node_vector_v1 vector USING (campaign_id, vector_id)
+        WHERE chunk.campaign_id = marker.campaign_id AND chunk.resolve_tick = marker.resolve_tick
+    ), members AS MATERIALIZED (
+        SELECT member.node_id, chunks.qname_id, member.value_bits FROM chunks
+        CROSS JOIN LATERAL unnest(chunks.node_ids, chunks.value_bits) member(node_id, value_bits)
+    )
+    SELECT name.value AS local_name, field.value AS qname, members.value_bits
+    FROM members JOIN nodes USING (node_id)
+    JOIN names name ON name.string_id = nodes.name_id
+    JOIN names field ON field.string_id = members.qname_id
+    OFFSET 0
+) projected;
 REVOKE ALL ON babylon_state.graph_node_vector_v1,babylon_state.graph_string_lookup_v1,babylon_state.graph_node_lookup_v1,babylon_state.graph_node_manifest_v1,babylon_state.graph_node_chunk_v1,babylon_state.graph_node_f64_chunk_v1,babylon_state.graph_node_v1,babylon_state.graph_node_f64_v1 FROM PUBLIC;
 CREATE FUNCTION babylon_state.graph_lookup_immutable_v1() RETURNS trigger LANGUAGE plpgsql SET search_path TO 'pg_catalog' AS $$
 BEGIN
@@ -1726,12 +1738,10 @@ CREATE TABLE babylon_state.money_movement_v1 (
         'household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')),
     reference_kind text CHECK (reference_kind IN ('delivery','local_final_demand','service','shift')),
     reference_id bytea CHECK (octet_length(reference_id) = 32),
-    debit_kind text NOT NULL CHECK (debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash',
-        'delivery_reserve','local_final_demand_reserve','service_reserve','payroll_reserve')),
-    debit_id bytea NOT NULL CHECK (octet_length(debit_id) = 32),
-    credit_kind text NOT NULL CHECK (credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash',
-        'delivery_reserve','local_final_demand_reserve','service_reserve','payroll_reserve')),
-    credit_id bytea NOT NULL CHECK (octet_length(credit_id) = 32),
+    -- One-sided reservations and refunds need one cash principal. A settled
+    -- transfer keeps its economic payer and cash recipient, including escrow sales.
+    payer_key integer,
+    recipient_key integer,
     amount_micros numeric NOT NULL CHECK (scale(amount_micros) = 0 AND amount_micros > 0
         AND amount_micros <= 170141183460469231731687303715884105727),
     PRIMARY KEY (campaign_id, resolve_tick, ordinal),
@@ -1745,18 +1755,14 @@ CREATE TABLE babylon_state.money_movement_v1 (
         OR (purpose IN ('tax','public_transfer','household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')
             AND reference_kind IS NULL AND reference_id IS NULL)),
     CONSTRAINT money_movement_postings_v1 CHECK (
-        (purpose = 'purchase_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
-            AND credit_kind = reference_kind || '_reserve' AND credit_id = reference_id)
-        OR (purpose IN ('delivery_settlement','purchase_refund') AND debit_kind = reference_kind || '_reserve'
-            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash'))
-        OR (purpose = 'shift_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
-            AND credit_kind = 'payroll_reserve' AND credit_id = reference_id)
-        OR (purpose IN ('wage_payment','shift_cancellation') AND debit_kind = 'payroll_reserve'
-            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash'))
-        OR (purpose IN ('tax','public_transfer','household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')
-            AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
-            AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
-            AND (debit_kind, debit_id) <> (credit_kind, credit_id)))
+        (purpose IN ('purchase_reservation','shift_reservation')
+            AND payer_key IS NOT NULL AND recipient_key IS NULL)
+        OR (purpose IN ('purchase_refund','shift_cancellation')
+            AND payer_key IS NULL AND recipient_key IS NOT NULL)
+        OR (purpose IN ('delivery_settlement','wage_payment')
+            AND payer_key IS NOT NULL AND recipient_key IS NOT NULL)
+        OR (reference_kind IS NULL AND payer_key IS NOT NULL AND recipient_key IS NOT NULL
+            AND payer_key <> recipient_key))
 );
 -- NUMERIC aggregates intentionally exceed i128: individual transfers remain bounded.
 CREATE TABLE babylon_state.money_movement_total_v1 (
@@ -1877,6 +1883,7 @@ REVOKE ALL ON babylon_state.economic_company_claim_source_v1 FROM PUBLIC;
 -- A missing classification is distinct from a zero balance or zero payments.
 CREATE TABLE babylon_state.economic_flow_account_v1 (
     campaign_id uuid NOT NULL,
+    account_key integer NOT NULL CHECK (account_key >= 0),
     foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
     account_kind text NOT NULL CHECK (account_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')),
     account_id bytea NOT NULL CHECK (octet_length(account_id) = 32),
@@ -1885,32 +1892,33 @@ CREATE TABLE babylon_state.economic_flow_account_v1 (
     industry_key text CHECK (length(industry_key) > 0),
     industry_label text CHECK (length(industry_label) > 0),
     CHECK ((industry_key IS NULL) = (industry_label IS NULL)),
-    PRIMARY KEY (campaign_id, account_kind, account_id),
+    PRIMARY KEY (campaign_id, account_key),
+    UNIQUE (campaign_id, account_kind, account_id) DEFERRABLE INITIALLY DEFERRED,
     FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
         DEFERRABLE INITIALLY DEFERRED
 );
--- The custody journal already records the credited recipient, amount and purpose.
--- The additional fact identifies the underlying payer of this particular settlement.
-CREATE TABLE babylon_state.economic_payment_v1 (
-    campaign_id uuid NOT NULL,
-    resolve_tick bigint NOT NULL,
-    ordinal bigint NOT NULL,
-    payer_kind text NOT NULL,
-    payer_id bytea NOT NULL,
-    PRIMARY KEY (campaign_id, resolve_tick, ordinal),
-    FOREIGN KEY (campaign_id, resolve_tick, ordinal)
-        REFERENCES babylon_state.money_movement_v1(campaign_id, resolve_tick, ordinal) ON DELETE CASCADE,
-    FOREIGN KEY (campaign_id, payer_kind, payer_id)
-        REFERENCES babylon_state.economic_flow_account_v1(campaign_id, account_kind, account_id)
-);
-REVOKE ALL ON babylon_state.economic_flow_account_v1, babylon_state.economic_payment_v1 FROM PUBLIC;
+ALTER TABLE babylon_state.money_movement_v1
+    ADD FOREIGN KEY (campaign_id,payer_key)
+        REFERENCES babylon_state.economic_flow_account_v1(campaign_id,account_key),
+    ADD FOREIGN KEY (campaign_id,recipient_key)
+        REFERENCES babylon_state.economic_flow_account_v1(campaign_id,account_key);
+REVOKE ALL ON babylon_state.economic_flow_account_v1 FROM PUBLIC;
 
 -- Compact per-site accounts and physical stock survive movement detail retention.
+CREATE TABLE babylon_state.site_principal_v1 (
+    campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
+        DEFERRABLE INITIALLY DEFERRED,
+    site_key integer NOT NULL CHECK (site_key BETWEEN 0 AND 16777214),
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256)=32),
+    site_id bytea NOT NULL CHECK (octet_length(site_id)=32),
+    PRIMARY KEY (campaign_id,site_key),
+    UNIQUE (campaign_id,site_id) DEFERRABLE INITIALLY DEFERRED
+);
 CREATE TABLE babylon_state.site_statement_v1 (
     campaign_id uuid NOT NULL,
     site_ordinal integer NOT NULL CHECK (site_ordinal BETWEEN 0 AND 16777214),
     resolve_tick bigint NOT NULL,
-    site_id bytea NOT NULL CHECK (octet_length(site_id) = 32),
+    site_key integer NOT NULL CHECK (site_key BETWEEN 0 AND 16777214),
     opening_cash_micros numeric(39,0),
     opening_purchase_reserves_micros numeric(39,0),
     opening_payroll_reserves_micros numeric(39,0),
@@ -1992,7 +2000,9 @@ CREATE TABLE babylon_state.site_statement_v1 (
         income_agency_observation_labor_expense_micros, cash_flow_operating_micros, cash_flow_investing_micros,
         cash_flow_financing_micros, cash_flow_reserve_reclassification_micros, net_income_micros,
         contributions_received_micros, distributions_paid_micros, change_in_equity_micros) IN (0,60)),
-    PRIMARY KEY (campaign_id, resolve_tick, site_id),
+    PRIMARY KEY (campaign_id, resolve_tick, site_key),
+    FOREIGN KEY (campaign_id,site_key) REFERENCES babylon_state.site_principal_v1
+        DEFERRABLE INITIALLY DEFERRED,
     FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.money_journal_period_v1(campaign_id, resolve_tick)
         ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
     CHECK (closing_total_assets_micros = closing_total_liabilities_micros + closing_total_equity_micros
@@ -2002,24 +2012,38 @@ CREATE TABLE babylon_state.site_statement_v1 (
         AND closing_cash_micros - opening_cash_micros = cash_flow_operating_micros
             + cash_flow_investing_micros + cash_flow_financing_micros + cash_flow_reserve_reclassification_micros)
 );
+-- Per-period commodity identities come from the actual opening/closing stock union.
+CREATE TABLE babylon_state.site_stock_key_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    commodity_ordinal integer NOT NULL CHECK (commodity_ordinal>=0),
+    good_id bytea NOT NULL CHECK (octet_length(good_id)=32),
+    unit_id bytea NOT NULL CHECK (octet_length(unit_id)=32),
+    PRIMARY KEY (campaign_id,resolve_tick,commodity_ordinal),
+    UNIQUE (campaign_id,resolve_tick,good_id,unit_id),
+    FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_state.money_journal_period_v1
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
 CREATE TABLE babylon_state.site_stock_balance_v1 (
     campaign_id uuid NOT NULL,
     resolve_tick bigint NOT NULL,
-    site_id bytea NOT NULL,
-    good_id bytea NOT NULL CHECK (octet_length(good_id) = 32),
-    unit_id bytea NOT NULL CHECK (octet_length(unit_id) = 32),
+    site_key integer NOT NULL,
+    commodity_ordinal integer NOT NULL,
     opening_quantity numeric(20,0) CHECK (opening_quantity BETWEEN 0 AND 18446744073709551615),
     closing_quantity numeric(20,0) CHECK (closing_quantity BETWEEN 0 AND 18446744073709551615),
     opening_carrying_cost_micros numeric(39,0) CHECK (opening_carrying_cost_micros >= 0),
     closing_carrying_cost_micros numeric(39,0) CHECK (closing_carrying_cost_micros >= 0),
-    PRIMARY KEY (campaign_id, resolve_tick, site_id, good_id, unit_id),
-    FOREIGN KEY (campaign_id, resolve_tick, site_id) REFERENCES babylon_state.site_statement_v1(campaign_id, resolve_tick, site_id)
+    PRIMARY KEY (campaign_id, resolve_tick, site_key, commodity_ordinal),
+    FOREIGN KEY (campaign_id,resolve_tick,commodity_ordinal) REFERENCES babylon_state.site_stock_key_v1
+        DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY (campaign_id, resolve_tick, site_key) REFERENCES babylon_state.site_statement_v1(campaign_id, resolve_tick, site_key)
         ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
     CHECK (opening_quantity IS NOT NULL OR closing_quantity IS NOT NULL),
     CHECK ((opening_quantity IS NOT NULL OR opening_carrying_cost_micros IS NULL)
         AND (closing_quantity IS NOT NULL OR closing_carrying_cost_micros IS NULL))
 );
-REVOKE ALL ON babylon_state.site_statement_v1, babylon_state.site_stock_balance_v1 FROM PUBLIC;
+REVOKE ALL ON babylon_state.site_principal_v1, babylon_state.site_stock_key_v1,
+    babylon_state.site_statement_v1, babylon_state.site_stock_balance_v1 FROM PUBLIC;
 
 -- Versioned, rebuildable recorded-labor coverage and physically indexed carrying checkpoints.
 CREATE TABLE babylon_state.labor_period_v1 (
@@ -2050,8 +2074,10 @@ CREATE TABLE babylon_state.labor_checkpoint_v1 (
     FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1
         ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 );
-CREATE TABLE babylon_state.labor_node_v1 (
-    campaign_id uuid NOT NULL,resolve_tick bigint NOT NULL,node_ordinal bigint NOT NULL CHECK(node_ordinal>=0),
+-- The content key covers every typed descriptor field. Period ordinals remain receipt-local.
+CREATE TABLE babylon_state.labor_node_identity_v1 (
+    campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id),
+    descriptor_sha256 bytea NOT NULL CHECK (octet_length(descriptor_sha256)=32),
     kind text NOT NULL CHECK(kind IN ('site_stock','household_stock','work','household_work','maintenance','process','sink','commercial_freight','aid_freight','equipment','installation')),
     entity_id bytea CHECK(octet_length(entity_id)=32),good_id bytea CHECK(octet_length(good_id)=32),
     unit_id bytea CHECK(octet_length(unit_id)=32),purpose text CHECK(purpose IN ('agency_observation','aid_freight_loss','final_demand_outlay','freight_loss','household_consumption','household_service_use','maintenance_expiry','unallocated_service_expiry','unused_service_expiry','organizer_cash_collection')),
@@ -2069,9 +2095,39 @@ CREATE TABLE babylon_state.labor_node_v1 (
         AND (kind IN ('site_stock','household_stock','commercial_freight','aid_freight','equipment','installation','work','household_work'))=(unit_id IS NOT NULL)),
     CHECK((kind IN ('maintenance','process','equipment','installation'))=(process_id IS NOT NULL)),
     CHECK((longitude IS NULL)=(latitude IS NULL) AND (industry_key IS NULL)=(industry_label IS NULL)),
-    PRIMARY KEY(campaign_id,resolve_tick,node_ordinal),
-    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+    PRIMARY KEY(campaign_id,descriptor_sha256)
 );
+CREATE FUNCTION babylon_state.labor_node_fingerprint_v1(n babylon_state.labor_node_identity_v1)
+RETURNS bytea LANGUAGE sql STABLE STRICT SET search_path TO pg_catalog AS $$
+    SELECT sha256(record_send(ROW(
+        ($1).kind, ($1).entity_id, ($1).good_id, ($1).unit_id, ($1).purpose, ($1).scope_kind, ($1).scope_id,
+        ($1).process_id, ($1).route_id, ($1).origin_id, ($1).destination_id, ($1).location_key, ($1).catchment_key,
+        ($1).industry_key, ($1).industry_label, ($1).longitude, ($1).latitude
+    )))
+$$;
+ALTER TABLE babylon_state.labor_node_identity_v1
+    ADD CHECK (descriptor_sha256=sha256(record_send(ROW(
+        kind, entity_id, good_id, unit_id, purpose, scope_kind, scope_id,
+        process_id, route_id, origin_id, destination_id, location_key, catchment_key,
+        industry_key, industry_label, longitude, latitude
+    ))));
+REVOKE ALL ON FUNCTION babylon_state.labor_node_fingerprint_v1(babylon_state.labor_node_identity_v1) FROM PUBLIC;
+CREATE TABLE babylon_state.labor_node_v1 (
+    campaign_id uuid NOT NULL,resolve_tick bigint NOT NULL,node_ordinal bigint NOT NULL CHECK(node_ordinal>=0),
+    descriptor_sha256 bytea NOT NULL,
+    PRIMARY KEY(campaign_id,resolve_tick,node_ordinal),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(campaign_id,descriptor_sha256) REFERENCES babylon_state.labor_node_identity_v1 DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX labor_node_identity_period_v1 ON babylon_state.labor_node_v1(campaign_id,descriptor_sha256,resolve_tick);
+-- Owner-side projection also supports exact verification while the marker is staged.
+CREATE VIEW babylon_state.labor_node_fact_v1 AS
+SELECT n.campaign_id,n.resolve_tick,n.node_ordinal,
+       d.kind, d.entity_id, d.good_id, d.unit_id, d.purpose, d.scope_kind, d.scope_id,
+       d.process_id, d.route_id, d.origin_id, d.destination_id, d.location_key, d.catchment_key,
+       d.industry_key, d.industry_label, d.longitude, d.latitude
+FROM babylon_state.labor_node_v1 n JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_sha256);
+REVOKE ALL ON babylon_state.labor_node_identity_v1,babylon_state.labor_node_fact_v1 FROM PUBLIC;
 CREATE TABLE babylon_state.labor_movement_v1 (
     campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL, ordinal bigint NOT NULL CHECK(ordinal>=0),
     source_node bigint NOT NULL,destination_node bigint NOT NULL,
@@ -2087,19 +2143,27 @@ CREATE TABLE babylon_state.labor_movement_v1 (
       ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 );
 CREATE TABLE babylon_state.labor_position_v1 (
-    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL, side text NOT NULL CHECK(side IN ('opening','closing')),node_ordinal bigint NOT NULL,
-    quantity numeric NOT NULL CHECK(scale(quantity)=0 AND quantity BETWEEN 1 AND 18446744073709551615),
-    recorded_micro_hours numeric NOT NULL CHECK(scale(recorded_micro_hours)=0 AND recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
-    unknown_opening boolean NOT NULL,
-    PRIMARY KEY(campaign_id,resolve_tick,side,node_ordinal),
-    FOREIGN KEY(campaign_id,resolve_tick,node_ordinal) REFERENCES babylon_state.labor_node_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    node_ordinal bigint NOT NULL,
+    opening_quantity numeric CHECK (scale(opening_quantity)=0 AND opening_quantity BETWEEN 1 AND 18446744073709551615),
+    opening_recorded_micro_hours numeric CHECK (scale(opening_recorded_micro_hours)=0 AND opening_recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
+    opening_unknown_opening boolean,
+    closing_quantity numeric CHECK (scale(closing_quantity)=0 AND closing_quantity BETWEEN 1 AND 18446744073709551615),
+    closing_recorded_micro_hours numeric CHECK (scale(closing_recorded_micro_hours)=0 AND closing_recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
+    closing_unknown_opening boolean,
+    CHECK (num_nonnulls(opening_quantity, opening_recorded_micro_hours, opening_unknown_opening) IN (0, 3)),
+    CHECK (num_nonnulls(closing_quantity, closing_recorded_micro_hours, closing_unknown_opening) IN (0, 3)),
+    CHECK (opening_quantity IS NOT NULL OR closing_quantity IS NOT NULL),
+    PRIMARY KEY (campaign_id, resolve_tick, node_ordinal),
+    FOREIGN KEY (campaign_id, resolve_tick, node_ordinal) REFERENCES babylon_state.labor_node_v1
+      ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 );
 CREATE INDEX labor_movement_source_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,source_node);
 CREATE INDEX labor_movement_destination_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,destination_node);
-CREATE INDEX labor_position_node_v1 ON babylon_state.labor_position_v1(campaign_id,resolve_tick,node_ordinal);
 -- Geographic probes have a known location. The partial predicate keeps bare
 -- node references on their complete primary key while a period is being loaded.
-CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_v1(campaign_id,resolve_tick,location_key,node_ordinal)
+CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_identity_v1(campaign_id,location_key,descriptor_sha256)
     WHERE location_key IS NOT NULL;
 REVOKE ALL ON babylon_state.labor_period_v1,babylon_state.labor_checkpoint_v1,babylon_state.labor_node_v1,babylon_state.labor_movement_v1,babylon_state.labor_position_v1 FROM PUBLIC;
 

@@ -24,6 +24,8 @@ mod geometry;
 mod grouping;
 #[path = "money_map/industry.rs"]
 mod industry;
+#[path = "money_map/publication.rs"]
+mod publication;
 #[path = "money_map/rail.rs"]
 mod rail;
 

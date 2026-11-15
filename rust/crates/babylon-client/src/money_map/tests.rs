@@ -65,7 +65,7 @@ fn payment_locations_name_foreign_and_dependency_markets() {
     assert_eq!(rail::location(None, atlas), "Location unreported");
 }
 
-use super::state::{Action, Connection, MoneyView, Page, Scope, Status, Target};
+use super::state::{Action, Connection, ConnectionKey, MoneyView, Page, Scope, Status, Target};
 use crate::atlas::CountyAtlas;
 use crate::map::{CountyMapScope, SelectedCounty};
 use crate::map_economy_lens::MapLens;
@@ -75,6 +75,7 @@ use crate::observer_io::tests as observer_io_tests;
 use crate::observer_ui::{ObserverFrame, ObserverUiState};
 use crate::production::PrimaryView;
 use babylon_persistence::identity::CampaignId;
+use bevy::a11y::AccessibilityNode;
 use bevy::picking::backend::HitData;
 use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::prelude::*;
@@ -852,12 +853,9 @@ fn ranked_remainder_reports_all_off_page_groups_and_keeps_paging_directional() {
     }
 }
 
-#[test]
-fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
-    use super::rail;
+fn set_industry_page(view: &mut MoneyView, scope: Scope) -> (ConnectionKey, ConnectionKey) {
     use babylon_persistence::money_journal::FlowPage;
-    let (mut app, select, mut scope, _) = interaction_fixture();
-    scope.group = FlowGroup::Industry;
+
     let mut groups = [
         counterparty(Some("food"), "12", "0", "0"),
         counterparty(None, "9", "0", "0"),
@@ -871,21 +869,30 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
     let rows = state::connections(&groups);
     let food = rows[0].key.clone();
     let unreported = rows[1].key.clone();
-    {
-        let mut view = app.world_mut().resource_mut::<MoneyView>();
-        view.scope = Some(scope.clone());
-        view.rows = rows;
-        let mut total = counterparty(None, "21", "0", "0");
-        total.current.net_micros = "21".into();
-        total.groups = 2;
-        let mut remainder = counterparty(None, "0", "0", "0");
-        remainder.groups = 0;
-        view.page = Some(Page::Money(Box::new(FlowPage {
-            groups: groups.into(),
-            total,
-            remainder,
-        })));
-    }
+    view.scope = Some(scope);
+    view.rows = rows;
+    let mut total = counterparty(None, "21", "0", "0");
+    total.current.net_micros = "21".into();
+    total.groups = 2;
+    let mut remainder = counterparty(None, "0", "0", "0");
+    remainder.groups = 0;
+    view.page = Some(Page::Money(Box::new(FlowPage {
+        groups: groups.into(),
+        total,
+        remainder,
+    })));
+    (food, unreported)
+}
+
+#[test]
+fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
+    use super::rail;
+    let (mut app, select, mut scope, _) = interaction_fixture();
+    scope.group = FlowGroup::Industry;
+    let (food, unreported) = set_industry_page(
+        &mut app.world_mut().resource_mut::<MoneyView>(),
+        scope.clone(),
+    );
     app.world_mut().spawn((state::MoneyRail, Node::default()));
     app.add_systems(Update, (rail::paint, rail::highlight).chain());
     let has_text = |app: &mut App, expected: &str| {
@@ -908,7 +915,7 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
     let pressed = |app: &mut App, action: Action| {
         let world = app.world_mut();
         world
-            .query::<(&Target, &bevy::a11y::AccessibilityNode)>()
+            .query::<(&Target, &AccessibilityNode)>()
             .iter(world)
             .find(|(target, _)| target.action == action)
             .expect("named inspector control")

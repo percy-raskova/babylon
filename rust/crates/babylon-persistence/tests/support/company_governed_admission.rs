@@ -1,6 +1,5 @@
 //! A three-period opening feedstock supply lets two manufacturing companies reach distinct
 //! financing and admission outcomes under the current first-applicable portfolio policy.
-use super::{manufacturing_capture, paid_contribution, settlement};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
@@ -108,7 +107,7 @@ fn investment<'a>(
 #[test]
 #[ignore = "six complete national material and financial closes"]
 fn governed_expansion_settles_at_the_site_and_follows_its_equipment_order() {
-    let c = manufacturing_capture("opening_input_periods = 2", "opening_input_periods = 3");
+    let c = super::manufacturing_capture("opening_input_periods = 2", "opening_input_periods = 3");
     assert_eq!(c.compiler_version(), "national-world-v9");
     assert_eq!(
         babylon_tick::hex(&c.digest()),
@@ -178,7 +177,7 @@ fn governed_expansion_settles_at_the_site_and_follows_its_equipment_order() {
                     kodiak.0,
                     kodiak_plan.as_ref().expect("P4 Kodiak plan"),
                     report(kodiak.0),
-                ))
+                ));
             }
             6 => verify_local_transfer(
                 &receipts,
@@ -227,7 +226,7 @@ fn verify_refusal(
     plan: &CompanyProcessPlan,
     group: &CompanyPeriod,
 ) {
-    paid_contribution(receipts, company, plan, group);
+    super::paid_contribution(receipts, company, plan, group);
     let declined = investment(receipts, plan);
     assert_eq!(declined.expansion_requested_units, 20_455);
     assert!(declined.earnings_budget.micro_units() >= declined.unit_price.micro_units());
@@ -269,7 +268,7 @@ fn verify_purchase(
     plan: &CompanyProcessPlan,
     group: &CompanyPeriod,
 ) -> OrderRow {
-    let paid = settlement(receipts, company, plan, group);
+    let paid = super::settlement(receipts, company, plan, group);
     let purchase = investment(receipts, plan);
     assert_eq!(purchase.expansion_requested_units, 15);
     assert_eq!(purchase.free_cash.micro_units(), 24_506_887_187);

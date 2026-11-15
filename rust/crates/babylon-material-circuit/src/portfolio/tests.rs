@@ -1,9 +1,11 @@
-use super::{CompanyPortfolioEvidence, CompanyPortfolioPolicy, CompanyProcessEvidence};
+use super::{
+    CompanyConditionOrder, CompanyPortfolioEvidence, CompanyPortfolioPolicy, CompanyProcessEvidence,
+};
 use crate::{CompanyId, ProcessId, SiteId};
 use babylon_kernel::currency::Currency;
 fn terms() -> CompanyPortfolioPolicy {
     CompanyPortfolioPolicy {
-        condition_order: super::CompanyConditionOrder::FirstApplicable,
+        condition_order: CompanyConditionOrder::FirstApplicable,
         rows: [
             [70, 30, 0, 0],
             [10, 70, 15, 5],
@@ -63,7 +65,7 @@ fn unused_capacity_precedes_high_utilization_with_unmet_accepted_demand() {
 fn archived_policy_reproduces_high_demand_with_spare_capacity() {
     let row = evidence(8)
         .recompute(&CompanyPortfolioPolicy {
-            condition_order: super::CompanyConditionOrder::HighDemandBeforeSpare,
+            condition_order: CompanyConditionOrder::HighDemandBeforeSpare,
             ..terms()
         })
         .expect("recompute from original closing facts");

@@ -1053,6 +1053,7 @@ fn refresh_first_publication_statistics(
          ANALYZE babylon_state.graph_string_lookup_v1 (campaign_id,string_id,first_tick); \
          ANALYZE babylon_state.tick_choice_receipt_v1 (campaign_id,resolve_tick,encounter_ordinal); \
          ANALYZE babylon_state.tick_commit (campaign_id,resolve_tick); \
+         ANALYZE babylon_state.territory_tick_membership_v1 (campaign_id,resolve_tick,definition_id); \
          ANALYZE babylon_state.graph_node_chunk_v1 (campaign_id,resolve_tick,vector_id,ordinal); \
          ANALYZE babylon_state.graph_node_f64_chunk_v1 (campaign_id,resolve_tick,vector_id,qname_id,ordinal); \
          ANALYZE babylon_state.graph_node_vector_v1 (campaign_id,vector_id,node_ids,first_tick); \

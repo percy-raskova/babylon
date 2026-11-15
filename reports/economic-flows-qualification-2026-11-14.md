@@ -35,7 +35,7 @@ The run used the ordinary national opening and its default seed of 319. All 99 c
 
 ![Annual planned and completed production in the ordinary national economy over twenty years](economic-flows-qualification-2026-11-14-assets/national-economic-trajectory-260.png)
 
-The economy produced something in every period. Its companies deferred investment 25,702 times, chose modest expansion 37 times and chose replacement alone once. They paid $988.06 billion to their owners across twenty years. They made no capital contributions to member sites.
+The economy produced something in every period. From period 9 onward it completed less than 10% of planned batches in each period. That share stayed below 1% from period 58 onward. Its companies deferred investment 25,702 times, chose modest expansion 37 times and chose replacement alone once. They paid $988.06 billion to their owners across twenty years. They made no capital contributions to member sites.
 
 At tick 260 the economy completed 4,216,085 batches. Member sites accounted for 18,012 of them. Energy and utilities supplied 17,997 and construction and housing supplied 15.
 
@@ -558,6 +558,8 @@ Kodiak opened period 5 with $153,600 and closed with $162,106.887187 in cash. It
 Postgres campaign `11be3a5e-366e-42c8-9461-479e914ff9ad` committed and published all six periods. A second database restored the 104,486,610-byte archive. The native runtime reopened period 6 with the original world hash. The full observer reproduced both decision reports, five company reports and the Philadelphia and Kodiak site statements byte for byte.
 
 The media drive holds the archive and its restore instructions in `babylon-recovery/per293-kodiak-11be3a5e-366e-42c8-9461-479e914ff9ad`. The archive SHA-256 is `461c58dcf8e36a788246f3db0fb2bf1951500301082fee0406d0c97316672050`. The direct restore used the v9 runtime and database schema in revision `bfa871b08`.
+
+The current runtime also read the same campaign after copying its six commits to a fresh database and rebuilding the financial reports there. The final world, both decisions and all seven financial reports matched. Kodiak’s original order still showed one unit bought in period 5 and delivered locally in period 6. The media drive holds the original and copied report digests in `babylon-recovery/per293-kodiak-current-copy-11be3a5e-366e-42c8-9461-479e914ff9ad`. [Instructions for opening the saved campaign](../SETUP_GUIDE.md#read-a-campaign-from-the-earlier-schema)
 
 ## Repeat the local checks
 

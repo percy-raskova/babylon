@@ -239,7 +239,8 @@ also sum `public.v_observer_money_movement_total_v1` or inspect
 
 ### Read a campaign from the earlier schema
 
-For a campaign from the Postgres schema at `2824cf38e` or `dccef45d6`, copy the
+For a campaign from the Postgres schema at `2824cf38e`, `dccef45d6`,
+`3db768eeb` or `bfa871b08`, copy the
 recorded history to a second database. Prepare the destination with the new schema,
 the same reference data and no campaigns. Set `BABYLON_PRE293_SOURCE_DSN`
 to the source owner connection and `BABYLON_INSPECTION_TARGET_DSN` to the
@@ -256,6 +257,18 @@ The command reads the source in a read-only transaction. It checks the copied
 foundation and committed periods before it saves the destination. The report
 identifies the source schema, foundation and latest committed tick. Use the destination
 observer and runtime connections to publish the financial history there.
+
+The six-period Philadelphia and Kodiak archive uses the schema at `bfa871b08`.
+Its bundled README gives the direct-restore procedure for that revision.
+For the current schema, restore its dump to the source database, then run the
+copy above with campaign `11be3a5e-366e-42c8-9461-479e914ff9ad`. Point
+`BABYLON_RUNTIME_DSN` and `BABYLON_OBSERVER_DSN` at the destination.
+Publish all six periods there, then run the company report commands in the README.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- \
+  sweep --campaign 11be3a5e-366e-42c8-9461-479e914ff9ad
+```
 
 ### Read site accounts and stock history
 

@@ -22,16 +22,16 @@ struct ExpiredBinding {
     count: i64,
 }
 
-struct Bounds {
-    first: i64,
-    last: i64,
-    compare_first: Option<i64>,
-    compare_last: Option<i64>,
-    offset: i64,
-    viewport: Option<Vec<f64>>,
+pub(super) struct Bounds {
+    pub(super) first: i64,
+    pub(super) last: i64,
+    pub(super) compare_first: Option<i64>,
+    pub(super) compare_last: Option<i64>,
+    pub(super) offset: i64,
+    pub(super) viewport: Option<Vec<f64>>,
 }
 impl Bounds {
-    fn new(request: &FlowQuery) -> Result<Self, JournalError> {
+    pub(super) fn new(request: &FlowQuery) -> Result<Self, JournalError> {
         let (first, last) = request.window.bounds()?;
         let comparison = request.comparison.map(PeriodWindow::bounds).transpose()?;
         let offset = i64::try_from(request.offset).map_err(|_| JournalError::Range)?;
@@ -263,7 +263,7 @@ impl Ranking<'_> {
     }
 }
 
-fn snapshot(client: &mut Client) -> Result<Transaction<'_>, JournalError> {
+pub(super) fn snapshot(client: &mut Client) -> Result<Transaction<'_>, JournalError> {
     client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)

@@ -687,6 +687,10 @@ if [ "$status" -eq 0 ]; then
     money_journal)
       run_phase money_journal 1800 cargo test -p babylon-persistence \
         --test observer_material_live money_journal:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      if [ "$status" -eq 0 ]; then
+        run_phase inspection_copy 600 cargo test -p babylon-persistence \
+          --test observer_material_live inspection_copy:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      fi
       ;;
     reader_recovery)
       # Bounded repairs and receipt authentication use the same owned roles,
@@ -708,7 +712,7 @@ if [ "$status" -eq 0 ]; then
         [ "$reader_suite" != observer_material_live ] || reader_threads=4
         run_phase "$reader_suite" 600 cargo test -p babylon-persistence --test "$reader_suite" \
           --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
-          --skip staffing_history::production_history --skip organizer:: --skip money_journal:: \
+          --skip staffing_history::production_history --skip organizer:: --skip money_journal:: --skip inspection_copy:: \
           --skip state_opponent_history:: --skip state_opponent_nonwitness:: \
           --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break

@@ -3,7 +3,8 @@ use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{JournalQueue, JournalQueueError, MoneyJournalWriter};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use serde_json::json;
-use std::io::{self, Read as _};
+use std::collections::BTreeMap;
+use std::io::{self, BufWriter, Read as _, Write as _};
 use std::process::{self, ExitCode};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
@@ -17,8 +18,53 @@ const RETRY: Duration = Duration::from_secs(5);
 #[derive(Clone, Copy)]
 enum Command {
     Sweep(CampaignId),
+    LaborTrace {
+        campaign: CampaignId,
+        first: u64,
+        last: u64,
+    },
     WatchDatabase,
     WatchSession,
+}
+
+fn campaign(value: &str) -> Result<CampaignId, &'static str> {
+    let id = Uuid::parse_str(value).map_err(|_| "campaign_refused")?;
+    if id.is_nil() || id.to_string() != value {
+        return Err("campaign_refused");
+    }
+    Ok(CampaignId::from_uuid(id))
+}
+
+fn labor_arguments(args: &[String]) -> Result<Command, &'static str> {
+    let mut flags = BTreeMap::new();
+    let (pairs, remainder) = args.as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err("labor_trace_flag_requires_value");
+    }
+    for pair in pairs {
+        if !matches!(pair[0].as_str(), "--campaign" | "--first" | "--last")
+            || flags.insert(pair[0].as_str(), pair[1].as_str()).is_some()
+        {
+            return Err("labor_trace_flag_refused");
+        }
+    }
+    let id = campaign(flags.get("--campaign").ok_or("campaign_required")?)?;
+    let first: u64 = flags
+        .get("--first")
+        .ok_or("first_period_required")?
+        .parse()
+        .map_err(|_| "period_refused")?;
+    let last = flags
+        .get("--last")
+        .map(|value| value.parse::<u64>())
+        .transpose()
+        .map_err(|_| "period_refused")?
+        .unwrap_or(first);
+    Ok(Command::LaborTrace {
+        campaign: id,
+        first,
+        last,
+    })
 }
 
 fn arguments(args: &[String]) -> Result<Command, &'static str> {
@@ -27,14 +73,12 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
         [watch, pipe] if watch == "watch-database" && pipe == "--session-stdin" => {
             Ok(Command::WatchSession)
         }
-        [sweep, campaign, value] if sweep == "sweep" && campaign == "--campaign" => {
-            let id = Uuid::parse_str(value).map_err(|_| "campaign_refused")?;
-            if id.is_nil() || id.to_string() != *value {
-                return Err("campaign_refused");
-            }
-            Ok(Command::Sweep(CampaignId::from_uuid(id)))
+        [sweep, flag, value] if sweep == "sweep" && flag == "--campaign" => {
+            Ok(Command::Sweep(campaign(value)?))
         }
-        _ => Err("use watch-database or sweep --campaign <uuid>"),
+        [trace, options @ ..] if trace == "labor-trace" => labor_arguments(options),
+        _ => Err("use watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
+
     }
 }
 
@@ -95,8 +139,43 @@ fn watch_connection(
     }
 }
 
+fn emit_labor_trace(
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    first: u64,
+    last: u64,
+) -> Result<(), String> {
+    let window = observer
+        .recorded_labor_window(campaign, first, last)
+        .map_err(|error| error.to_string())?;
+    let mut output = BufWriter::new(io::stdout().lock());
+    for period in window {
+        let report = period.map_err(|error| error.to_string())?;
+        serde_json::to_writer(&mut output, &report).map_err(|error| error.to_string())?;
+        output.write_all(b"\n").map_err(|error| error.to_string())?;
+    }
+    let end = json!({
+        "record": "labor_trace_complete",
+        "version": 1,
+        "campaign": campaign.as_uuid().to_string(),
+        "first": first,
+        "last": last,
+    });
+    writeln!(output, "{end}")
+        .and_then(|()| output.flush())
+        .map_err(|error| error.to_string())
+}
+
 fn run(command: Command) -> Result<(), String> {
     let observer = ObserverEconomyReader::from_observer_env().map_err(|e| e.to_string())?;
+    if let Command::LaborTrace {
+        campaign,
+        first,
+        last,
+    } = command
+    {
+        return emit_labor_trace(&observer, campaign, first, last);
+    }
     let config = std::env::var("BABYLON_RUNTIME_DSN")
         .map_err(|_| "writer_credential_absent")?
         .parse()

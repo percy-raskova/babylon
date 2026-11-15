@@ -10,7 +10,13 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 use uuid::Uuid;
 
+enum Measure {
+    Money,
+    Labor,
+}
+
 struct Arguments {
+    measure: Measure,
     operation: String,
     campaign: CampaignId,
     first: u64,
@@ -31,7 +37,8 @@ fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'stat
         let flow_option = operation == "flows"
             && matches!(
                 flag.as_str(),
-                "--group"
+                "--measure"
+                    | "--group"
                     | "--compare-first"
                     | "--compare-last"
                     | "--focus"
@@ -80,7 +87,13 @@ fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'stat
     } else {
         None
     };
+    let measure = match flags.get("--measure").map(String::as_str) {
+        None | Some("money") => Measure::Money,
+        Some("labor") => Measure::Labor,
+        Some(_) => return Err("flow_measure_refused"),
+    };
     Ok(Arguments {
+        measure,
         query,
         site,
         operation,
@@ -184,11 +197,27 @@ fn run(args: &Arguments) -> Result<Value, String> {
         }
         "flows" => {
             let query = args.query.as_ref().ok_or("flow_request_absent")?;
-            let page = observer
-                .economic_payment_flows(args.campaign, query)
-                .map_err(|e| e.to_string())?;
+            let (unit, page) = match args.measure {
+                Measure::Money => (
+                    "currency_micros",
+                    serde_json::to_value(
+                        observer
+                            .economic_payment_flows(args.campaign, query)
+                            .map_err(|e| e.to_string())?,
+                    ),
+                ),
+                Measure::Labor => (
+                    "recorded_micro_hours",
+                    serde_json::to_value(
+                        observer
+                            .recorded_labor_flows(args.campaign, query)
+                            .map_err(|e| e.to_string())?,
+                    ),
+                ),
+            };
+            let page = page.map_err(|e| e.to_string())?;
             Ok(
-                json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"unit":"currency_micros","request":query,"page":page}),
+                json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"unit":unit,"request":query,"page":page}),
             )
         }
         "site-history" => {

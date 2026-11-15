@@ -74,13 +74,28 @@ impl<'a> StockRow<'a> {
 }
 
 #[derive(Clone, Copy)]
-enum Table {
+pub(super) enum Table {
+    LaborNode,
+    LaborMovement,
+    LaborPosition,
     Statement,
     Stock,
 }
 impl Table {
     fn sql(self, admission: Admission) -> String {
         let (table, keys) = match self {
+            Self::LaborNode => (
+                "babylon_state.labor_node_v1",
+                "campaign_id,resolve_tick,node_ordinal",
+            ),
+            Self::LaborMovement => (
+                "babylon_state.labor_movement_v1",
+                "campaign_id,resolve_tick,ordinal",
+            ),
+            Self::LaborPosition => (
+                "babylon_state.labor_position_v1",
+                "campaign_id,resolve_tick,side,node_ordinal",
+            ),
             Self::Statement => (
                 "babylon_state.site_statement_v1",
                 "campaign_id,resolve_tick,site_id",
@@ -92,12 +107,19 @@ impl Table {
         };
         let input = format!("jsonb_populate_recordset(NULL::{table},$1::text::jsonb)");
         if admission == Admission::Verify {
+            // Each expected composite gets one scalar lookup by the full primary key.
+            // An absent row is NULL. IS DISTINCT FROM also compares nullable fields.
+            let lookup = keys
+                .split(',')
+                .map(|key| format!("d.{key}=e.{key}"))
+                .collect::<Vec<_>>()
+                .join(" AND ");
             format!(
-                "WITH expected AS (SELECT * FROM {input})
-                     SELECT NOT EXISTS (
-                         SELECT * FROM expected
-                         EXCEPT SELECT d.* FROM {table} d JOIN expected USING ({keys})
-                     )"
+                "SELECT NOT EXISTS (
+                     SELECT FROM {input} e WHERE e IS DISTINCT FROM (
+                         SELECT d FROM {table} d WHERE {lookup}
+                     )
+                 )"
             )
         } else {
             format!("INSERT INTO {table} SELECT * FROM {input}")
@@ -105,13 +127,13 @@ impl Table {
     }
 }
 
-struct Batch<'a, 'b> {
-    tx: &'a mut Transaction<'b>,
-    admission: Admission,
+pub(super) struct Batch<'a, 'b> {
+    pub(super) tx: &'a mut Transaction<'b>,
+    pub(super) admission: Admission,
 }
 
 impl Batch<'_, '_> {
-    fn stage<T: Serialize>(
+    pub(super) fn stage<T: Serialize>(
         &mut self,
         table: Table,
         rows: impl Iterator<Item = T>,

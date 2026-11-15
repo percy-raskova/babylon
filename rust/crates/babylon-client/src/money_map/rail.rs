@@ -1,6 +1,8 @@
 //! The selected county's bilateral connections share the inspector's focus group and scroll area.
+use super::compare::{self, Periods};
 use super::state::{
-    self, Action, Connection, Direction, MoneyRail, MoneyView, Observation, Scope, Status, Target,
+    self, Action, Connection, Diagram, Direction, Measure, MoneyRail, MoneyView, Observation, Page,
+    Quantity, Scope, Status, Target,
 };
 use crate::atlas::CountyAtlas;
 use crate::observer_focus::ObserverFocusTarget;
@@ -8,11 +10,13 @@ use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
 use crate::ui::{self, Interaction};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
-use babylon_persistence::money_journal::{FlowAmounts, FlowPage};
+use babylon_persistence::money_journal::{
+    FlowAmounts, FlowRow, LaborAmount, LaborDirections, LaborFlowRow,
+};
 use bevy::a11y::AccessibilityNode;
 use bevy::prelude::*;
 
-fn amount(micros: &str) -> String {
+pub(super) fn amount(micros: &str) -> String {
     // A period sum may exceed one posting's currency range. Keep its complete decimal then.
     micros.parse::<i128>().map_or_else(
         |_| format!("{micros} micros"),
@@ -63,10 +67,56 @@ pub(super) fn location(key: Option<&str>, atlas: &CountyAtlas) -> String {
     }
 }
 
+pub(super) fn labor_hours(micros: &str) -> String {
+    micros.parse::<u128>().map_or_else(
+        |_| format!("{micros} recorded microhours"),
+        |value| {
+            let whole = crate::human_numbers::grouped(value / 1_000_000);
+            let fraction = format!("{:06}", value % 1_000_000);
+            let fraction = fraction.trim_end_matches('0');
+            if fraction.is_empty() {
+                format!("{whole} recorded h")
+            } else {
+                format!("{whole}.{fraction} recorded h")
+            }
+        },
+    )
+}
+
+fn labor_reading(labor: &LaborAmount) -> String {
+    let known = labor_hours(&labor.recorded_micro_hours);
+    if labor.unknown_basis_movements == "0" {
+        return known;
+    }
+    format!(
+        "{known} · unknown prior labor in {} of {} movements",
+        labor.unknown_basis_movements, labor.movement_count
+    )
+}
+
+pub(super) fn reading(quantity: &Quantity) -> String {
+    match quantity {
+        Quantity::Money(micros) => amount(micros),
+        Quantity::Labor(labor) => labor_reading(labor),
+    }
+}
+
+fn labor_figures(group: &LaborDirections) -> String {
+    format!(
+        "Received {}\nSent {}\nWithin county {}",
+        labor_reading(&group.outbound),
+        labor_reading(&group.inbound),
+        labor_reading(&group.within)
+    )
+}
+
 fn caption(row: &Connection, atlas: &CountyAtlas) -> String {
     let peer = location(row.key.peer.as_deref(), atlas);
-    let amount = amount(&row.micros);
+    let amount = reading(&row.quantity);
     match row.key.direction {
+        Direction::PaidTo if matches!(row.quantity, Quantity::Labor(_)) => {
+            format!("Sent to {peer}\n{amount}")
+        }
         Direction::PaidTo => format!("Paid to {peer}\n{amount}"),
         Direction::ReceivedFrom => format!("Received from {peer}\n{amount}"),
         Direction::Internal => format!("Within county\n{amount}"),
@@ -82,7 +132,12 @@ fn figures(group: &FlowAmounts) -> String {
     )
 }
 
-fn label(text: impl Into<String>, size: f32, color: Color, role: ObserverFontRole) -> impl Bundle {
+pub(super) fn label(
+    text: impl Into<String>,
+    size: f32,
+    color: Color,
+    role: ObserverFontRole,
+) -> impl Bundle {
     (
         Text::new(text),
         TextFont {
@@ -95,7 +150,7 @@ fn label(text: impl Into<String>, size: f32, color: Color, role: ObserverFontRol
     )
 }
 
-fn control(
+pub(super) fn control(
     parent: &mut ChildSpawnerCommands,
     view: &MoneyView,
     scope: &Scope,
@@ -104,6 +159,7 @@ fn control(
 ) {
     let mut focus = ObserverFocusTarget::action(Some(scope.context.clone()));
     focus.available = true;
+    let paired_control = matches!(action, Action::Diagram(_) | Action::Measure(_));
     let mut button = parent.spawn((
         ui::pressable(),
         focus,
@@ -113,7 +169,11 @@ fn control(
             action,
         },
         Node {
-            width: percent(100),
+            width: if paired_control {
+                percent(50)
+            } else {
+                percent(100)
+            },
             min_width: px(0),
             flex_shrink: 0.0,
             padding: UiRect::axes(px(8), px(5)),
@@ -140,6 +200,7 @@ pub(super) struct RailKey {
     scope: Option<Scope>,
     offset: u64,
     status: Status,
+    books: (Option<u64>, bool),
     active: bool,
 }
 
@@ -166,6 +227,7 @@ pub(super) fn paint(
         scope: view.scope.clone(),
         offset: view.offset,
         status: view.status,
+        books: view.books.key(),
         active,
     };
     if previous.as_ref() == Some(&key) {
@@ -182,12 +244,15 @@ pub(super) fn paint(
     }
     commands
         .entity(panel)
-        .with_children(|rail| populate(rail, &view, &obs.atlas));
+        .with_children(|rail| populate(rail, &view, &obs));
 }
 
-fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, atlas: &CountyAtlas) {
+fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, obs: &Observation) {
     rail.spawn(label(
-        "Settled payments",
+        match view.scope.as_ref().map(|scope| scope.measure) {
+            Some(Measure::Labor) => "Recorded labor flows",
+            _ => "Settled payments",
+        },
         22.0,
         theme::PAPER,
         ObserverFontRole::Display,
@@ -201,19 +266,75 @@ fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, atlas: &CountyAtl
         ));
         return;
     };
+    rail.spawn(Node {
+        width: percent(100),
+        flex_direction: FlexDirection::Row,
+        ..default()
+    })
+    .with_children(|choices| {
+        control(
+            choices,
+            view,
+            scope,
+            Action::Measure(Measure::Money),
+            "Money".into(),
+        );
+        control(
+            choices,
+            view,
+            scope,
+            Action::Measure(Measure::Labor),
+            "Labor hours".into(),
+        );
+    });
+    rail.spawn(Node {
+        width: percent(100),
+        flex_direction: FlexDirection::Row,
+        ..default()
+    })
+    .with_children(|choices| {
+        control(
+            choices,
+            view,
+            scope,
+            Action::Diagram(Diagram::Map),
+            "Map".into(),
+        );
+        control(
+            choices,
+            view,
+            scope,
+            Action::Diagram(Diagram::Sankey),
+            "Sankey".into(),
+        );
+    });
+    if super::books::panel(rail, view, obs, scope) {
+        return;
+    }
+    comparison_control(rail, view, scope);
     let notice = match view.status {
         Status::Opening => Some(
-            "The opening records balances. Payments begin with the first committed period."
-                .to_owned(),
+            match scope.measure {
+                Measure::Money => {
+                    "The opening records balances. Payments begin with the first committed period."
+                }
+                Measure::Labor => "Recorded labor transfers begin with the first committed period.",
+            }
+            .to_owned(),
         ),
         Status::Waiting | Status::Loading => {
             Some(format!("Reading period {}…", scope.context.tick))
         }
-        Status::Publishing => Some(format!(
-            "Period {} has committed. Its payment report is being prepared.",
+        Status::Publishing if scope.periods == Periods::WithPrior => Some(format!(
+            "Waiting for published flow coverage in periods {} and {}.",
+            scope.context.tick - 1,
             scope.context.tick
         )),
-        Status::Failed(error) => Some(format!("The payment report could not be read ({error}).")),
+        Status::Publishing => Some(format!(
+            "Period {} has committed. Its flow report is being prepared.",
+            scope.context.tick
+        )),
+        Status::Failed(error) => Some(format!("The flow report could not be read ({error}).")),
         Status::Ready => None,
     };
     if let Some(notice) = notice {
@@ -224,8 +345,44 @@ fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, atlas: &CountyAtl
         return;
     }
     if let Some(page) = &view.page {
-        ranked_page(rail, view, scope, atlas, page);
+        ranked_page(rail, view, scope, &obs.atlas, page);
     }
+}
+
+fn comparison_control(rail: &mut ChildSpawnerCommands, view: &MoneyView, scope: &Scope) {
+    let tick = scope.context.tick;
+    if tick == 1 {
+        rail.spawn(label(
+            "Period 1 is the first completed period.",
+            13.0,
+            theme::GRAY,
+            ObserverFontRole::Body,
+        ));
+    } else if tick > 1 {
+        let (next, text) = match scope.periods {
+            Periods::Current => (
+                Periods::WithPrior,
+                format!("Compare with period {}", tick - 1),
+            ),
+            Periods::WithPrior => (Periods::Current, format!("Show period {tick} only")),
+        };
+        control(rail, view, scope, Action::Compare(next), text);
+    }
+}
+
+fn money_figures(row: &FlowRow, tick: u64) -> String {
+    format!(
+        "{}\n{}",
+        figures(&row.current),
+        compare::money_net(row, tick)
+    )
+}
+fn recorded_figures(row: &LaborFlowRow, tick: u64) -> String {
+    format!(
+        "{}\n{}",
+        labor_figures(&row.current),
+        compare::labor_net(row, tick)
+    )
 }
 
 fn ranked_page(
@@ -233,12 +390,18 @@ fn ranked_page(
     view: &MoneyView,
     scope: &Scope,
     atlas: &CountyAtlas,
-    page: &FlowPage,
+    page: &Page,
 ) {
-    if page.total.groups == 0 {
+    let total_groups = page.total_groups();
+    if total_groups == 0 {
         rail.spawn(label(
             format!(
-                "No settled payments for this county in period {}.",
+                "No {} for this county in period {}.",
+                if scope.measure == Measure::Labor {
+                    "recorded labor movements"
+                } else {
+                    "settled payments"
+                },
                 scope.context.tick
             ),
             15.0,
@@ -247,34 +410,65 @@ fn ranked_page(
         ));
         return;
     }
-    rail.spawn(label(
-        format!(
-            "Period {}\n{}",
-            scope.context.tick,
-            figures(&page.total.current)
+    let (visible, total, remaining_groups, remainder) = match page {
+        Page::Money(p) => (
+            p.groups.len(),
+            money_figures(&p.total, scope.context.tick),
+            p.remainder.groups,
+            money_figures(&p.remainder, scope.context.tick),
         ),
+        Page::Labor(p) => (
+            p.groups.len(),
+            recorded_figures(&p.total, scope.context.tick),
+            p.remainder.groups,
+            recorded_figures(&p.remainder, scope.context.tick),
+        ),
+    };
+    rail.spawn(label(
+        format!("Period {}\n{total}", scope.context.tick),
         17.0,
         theme::PAPER,
         ObserverFontRole::Exact,
     ));
-    let visible = page.groups.len() as u64;
+    let visible = visible as u64;
     rail.spawn(label(
         format!(
             "Counterparties {}–{} of {}",
             view.offset + 1,
             view.offset + visible,
-            page.total.groups
+            total_groups
         ),
         15.0,
         theme::GRAY,
         ObserverFontRole::Body,
     ));
     rail.spawn(label(
-        "Arrows follow the payment. Width compares amounts on this page.",
+        match scope.measure {
+            Measure::Money => "Arrows follow the payment. Width compares amounts on this page.",
+            Measure::Labor => "Arrows follow labor carried by transfers. Width shows recorded hours. Unknown prior labor appears in the list.",
+        },
         13.0,
         theme::GRAY,
         ObserverFontRole::Body,
     ));
+    connection_controls(rail, view, scope, atlas);
+    if remaining_groups > 0 {
+        rail.spawn(label(
+            format!("Other {remaining_groups} counterparties\n{remainder}"),
+            15.0,
+            theme::GRAY,
+            ObserverFontRole::Exact,
+        ));
+    }
+    page_controls(rail, view, scope, visible, total_groups);
+}
+
+fn connection_controls(
+    rail: &mut ChildSpawnerCommands,
+    view: &MoneyView,
+    scope: &Scope,
+    atlas: &CountyAtlas,
+) {
     rail.spawn((
         label("", 15.0, theme::YELLOW, ObserverFontRole::Body),
         SelectionLabel,
@@ -286,6 +480,25 @@ fn ranked_page(
         Action::Follow,
         "Open counterparty county".into(),
     );
+    if view.rows.iter().any(|row| {
+        row.quantity.micros() != "0"
+            && (row.key.direction == Direction::Internal
+                || row
+                    .key
+                    .peer
+                    .as_deref()
+                    .and_then(|key| key.strip_prefix("county:"))
+                    .and_then(|peer| atlas.index_of_fips(peer))
+                    .is_some())
+    }) {
+        control(
+            rail,
+            view,
+            scope,
+            Action::Frame,
+            "Frame connections on map".into(),
+        );
+    }
     for row in &view.rows {
         control(
             rail,
@@ -295,18 +508,15 @@ fn ranked_page(
             caption(row, atlas),
         );
     }
-    if page.remainder.groups > 0 {
-        rail.spawn(label(
-            format!(
-                "Other {} counterparties\n{}",
-                page.remainder.groups,
-                figures(&page.remainder.current)
-            ),
-            15.0,
-            theme::GRAY,
-            ObserverFontRole::Exact,
-        ));
-    }
+}
+
+fn page_controls(
+    rail: &mut ChildSpawnerCommands,
+    view: &MoneyView,
+    scope: &Scope,
+    visible: u64,
+    total_groups: u64,
+) {
     if view.offset > 0 {
         control(
             rail,
@@ -316,7 +526,7 @@ fn ranked_page(
             "Previous counterparties".into(),
         );
     }
-    if view.offset + visible < page.total.groups {
+    if view.offset + visible < total_groups {
         control(
             rail,
             view,
@@ -359,11 +569,18 @@ pub(super) fn highlight(
                 Direction::ReceivedFrom => (peer, county),
                 Direction::Internal => (county.clone(), county),
             };
-            let amount = amount(&row.micros);
-            row.key.peer.as_deref().map_or_else(
+            let amount = reading(&row.quantity);
+            let mut text = row.key.peer.as_deref().map_or_else(
                 || format!("{from} → {to}\n{amount}"),
                 |key| format!("{from} → {to}\n{amount}\nLocation code {key}"),
-            )
+            );
+            if let (Some(scope), Some(page)) = (&view.scope, &view.page) {
+                if let Some(net) = compare::group_net(page, &row.key, scope.context.tick) {
+                    text.push_str("\nCounty net with this counterparty\n");
+                    text.push_str(&net);
+                }
+            }
+            text
         });
         text.set_if_neq(Text::new(value));
     }
@@ -403,7 +620,9 @@ pub(super) fn highlight(
         if target.action != Action::Follow && focus.available != obs.interactive() {
             focus.available = obs.interactive();
         }
-        let active = matches!(&target.action,Action::Select(row) if view.selected_row().is_some_and(|active| &active.key == row));
+        let active = matches!(&target.action,Action::Select(row) if view.selected_row().is_some_and(|active| &active.key == row))
+            || matches!(target.action,Action::Diagram(diagram) if diagram==view.diagram)
+            || matches!(target.action,Action::Measure(measure) if measure==target.scope.measure);
         border.set_if_neq(BorderColor::all(if active {
             theme::YELLOW
         } else {

@@ -396,3 +396,19 @@ CREATE VIEW public.v_observer_site_stock_balance_v1 AS
 SELECT s.*, p.site_monetary_books, p.receipt_sha256 FROM babylon_state.site_stock_balance_v1 s
 JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
 REVOKE ALL ON public.v_observer_site_statement_v1, public.v_observer_site_stock_balance_v1 FROM PUBLIC;
+
+CREATE VIEW public.v_observer_labor_period_v1 AS
+SELECT l.*,p.detail_retained,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256
+FROM babylon_state.labor_period_v1 l JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_labor_checkpoint_v1 AS
+SELECT c.*,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256,p.result_world_hash
+FROM babylon_state.labor_checkpoint_v1 c JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick)
+WHERE c.sha256=p.checkpoint_sha256;
+CREATE VIEW public.v_observer_labor_node_v1 AS
+SELECT n.* FROM babylon_state.labor_node_v1 n JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
+CREATE VIEW public.v_observer_labor_movement_v1 AS
+SELECT e.* FROM babylon_state.labor_movement_v1 e JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
+CREATE VIEW public.v_observer_labor_position_v1 AS
+SELECT b.* FROM babylon_state.labor_position_v1 b JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
+REVOKE ALL ON public.v_observer_labor_period_v1,public.v_observer_labor_checkpoint_v1,public.v_observer_labor_node_v1,
+public.v_observer_labor_movement_v1,public.v_observer_labor_position_v1 FROM PUBLIC;

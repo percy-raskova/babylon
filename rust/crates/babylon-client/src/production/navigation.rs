@@ -1,5 +1,6 @@
 //! Observer navigation, scoped command admission, and production selection.
 
+use super::ProductionReadingSection;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
 use bevy::ecs::system::SystemParam;
@@ -104,8 +105,15 @@ impl ProductionControlAvailability {
         }
     }
 
-    pub(super) fn display(&self, command: &ProductionCommand) -> Option<Display> {
+    pub(super) fn display(
+        &self,
+        command: &ProductionCommand,
+        state: &ObserverSession,
+    ) -> Option<Display> {
         let available = match command {
+            ProductionCommand::Reading(ProductionReadingSection::Accounts) => {
+                self.readings && super::accounting::authorized(state)
+            }
             ProductionCommand::Back => self.previous_index.is_some() || self.county_back,
             ProductionCommand::Details | ProductionCommand::Reading(_) => self.readings,
             ProductionCommand::Flat => self.scene,
@@ -126,6 +134,11 @@ impl ProductionControlAvailability {
         state: &ObserverSession,
     ) -> Option<&'static str> {
         match command {
+            ProductionCommand::Reading(ProductionReadingSection::Accounts)
+                if !super::accounting::authorized(state) =>
+            {
+                Some("Operating-site accounts require the full observer.")
+            }
             ProductionCommand::Back if self.previous_index.is_none() && !self.county_back => {
                 Some("There is no previous work view in this observation.")
             }

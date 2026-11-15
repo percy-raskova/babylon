@@ -1941,3 +1941,82 @@ CREATE TABLE babylon_state.site_stock_balance_v1 (
 CREATE INDEX site_statement_history_v1 ON babylon_state.site_statement_v1(campaign_id,site_id,resolve_tick);
 CREATE INDEX site_stock_history_v1 ON babylon_state.site_stock_balance_v1(campaign_id,site_id,resolve_tick,good_id,unit_id);
 REVOKE ALL ON babylon_state.site_statement_v1, babylon_state.site_stock_balance_v1 FROM PUBLIC;
+
+-- Versioned, rebuildable recorded-labor coverage and physically indexed carrying checkpoints.
+CREATE TABLE babylon_state.labor_period_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK (resolve_tick>0),
+    fact_sha256 bytea NOT NULL CHECK (octet_length(fact_sha256)=32),
+    checkpoint_sha256 bytea NOT NULL CHECK (octet_length(checkpoint_sha256)=32),
+    result_world_hash bytea NOT NULL CHECK (octet_length(result_world_hash)=32),
+    node_count bigint NOT NULL CHECK (node_count>=0),
+    movement_count bigint NOT NULL CHECK (movement_count>=0),
+    position_count bigint NOT NULL CHECK (position_count>=0),
+    opening_micro_hours numeric NOT NULL, closing_micro_hours numeric NOT NULL,
+    direct_micro_hours numeric NOT NULL, released_micro_hours numeric NOT NULL,
+    CHECK (LEAST(opening_micro_hours,closing_micro_hours,direct_micro_hours,released_micro_hours)>=0
+       AND GREATEST(opening_micro_hours,closing_micro_hours,direct_micro_hours,released_micro_hours)<=340282366920938463463374607431768211455
+       AND GREATEST(scale(opening_micro_hours),scale(closing_micro_hours),scale(direct_micro_hours),scale(released_micro_hours))=0
+       AND opening_micro_hours+direct_micro_hours=closing_micro_hours+released_micro_hours),
+    PRIMARY KEY(campaign_id,resolve_tick),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.money_journal_period_v1
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+ALTER TABLE babylon_state.money_journal_period_v1 ADD CONSTRAINT money_labor_coverage_v1
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1 DEFERRABLE INITIALLY DEFERRED;
+CREATE TABLE babylon_state.labor_checkpoint_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL,
+    sha256 bytea NOT NULL CHECK(octet_length(sha256)=32),
+    checkpoint_bytes bytea NOT NULL CHECK(pg_catalog.sha256(checkpoint_bytes)=sha256),
+    PRIMARY KEY(campaign_id,resolve_tick),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.labor_node_v1 (
+    campaign_id uuid NOT NULL,resolve_tick bigint NOT NULL,node_ordinal bigint NOT NULL CHECK(node_ordinal>=0),
+    kind text NOT NULL CHECK(kind IN ('site_stock','household_stock','work','household_work','maintenance','process','sink','commercial_freight','aid_freight','equipment','installation')),
+    entity_id bytea CHECK(octet_length(entity_id)=32),good_id bytea CHECK(octet_length(good_id)=32),
+    unit_id bytea CHECK(octet_length(unit_id)=32),purpose text CHECK(purpose IN ('agency_observation','aid_freight_loss','final_demand_outlay','freight_loss','household_consumption','household_service_use','maintenance_expiry','unallocated_service_expiry','unused_service_expiry','organizer_cash_collection')),
+    scope_kind text CHECK(scope_kind IN ('site_cash','household_cash')),scope_id bytea CHECK(octet_length(scope_id)=32),
+    process_id bytea CHECK(octet_length(process_id)=32),route_id bytea CHECK(octet_length(route_id)=32),
+    origin_id bytea CHECK(octet_length(origin_id)=32),destination_id bytea CHECK(octet_length(destination_id)=32),
+    location_key text,catchment_key text,industry_key text,industry_label text,
+    longitude numeric CHECK(longitude BETWEEN -180 AND 180),latitude numeric CHECK(latitude BETWEEN -90 AND 90),
+    CHECK((kind='sink')=(entity_id IS NULL) AND (kind='sink')=(purpose IS NOT NULL)),
+    CHECK((kind IN ('commercial_freight','aid_freight'))=(route_id IS NOT NULL)
+        AND (route_id IS NULL)=(origin_id IS NULL) AND (route_id IS NULL)=(destination_id IS NULL)),
+    CHECK((kind IN ('work','household_work','site_stock','household_stock','maintenance','process','equipment','installation'))=(scope_kind IS NOT NULL)
+        AND (scope_kind IS NULL)=(scope_id IS NULL)),
+    CHECK((kind IN ('site_stock','household_stock','commercial_freight','aid_freight','equipment','installation'))=(good_id IS NOT NULL)
+        AND (kind IN ('site_stock','household_stock','commercial_freight','aid_freight','equipment','installation','work','household_work'))=(unit_id IS NOT NULL)),
+    CHECK((kind IN ('maintenance','process','equipment','installation'))=(process_id IS NOT NULL)),
+    CHECK((longitude IS NULL)=(latitude IS NULL) AND (industry_key IS NULL)=(industry_label IS NULL)),
+    PRIMARY KEY(campaign_id,resolve_tick,node_ordinal),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.labor_movement_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL, ordinal bigint NOT NULL CHECK(ordinal>=0),
+    source_node bigint NOT NULL,destination_node bigint NOT NULL,
+    receipt_family text NOT NULL CHECK(receipt_family IN ('production','maintenance','installation','equipment_wear','handling','aid','dispatches','arrivals','losses','local_fulfillments','local_transfers','service_outputs','service_performance','household_consumption','household_services','household_time','member_labor_use','agency_paid','collections')),
+    receipt_ordinal bigint NOT NULL CHECK(receipt_ordinal>=0),
+    quantity numeric NOT NULL CHECK(scale(quantity)=0 AND quantity BETWEEN 1 AND 18446744073709551615),
+    recorded_micro_hours numeric NOT NULL CHECK(scale(recorded_micro_hours)=0 AND recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
+    unknown_opening boolean NOT NULL,
+    PRIMARY KEY(campaign_id,resolve_tick,ordinal),
+    FOREIGN KEY(campaign_id,resolve_tick,source_node) REFERENCES babylon_state.labor_node_v1
+      ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(campaign_id,resolve_tick,destination_node) REFERENCES babylon_state.labor_node_v1
+      ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.labor_position_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL, side text NOT NULL CHECK(side IN ('opening','closing')),node_ordinal bigint NOT NULL,
+    quantity numeric NOT NULL CHECK(scale(quantity)=0 AND quantity BETWEEN 1 AND 18446744073709551615),
+    recorded_micro_hours numeric NOT NULL CHECK(scale(recorded_micro_hours)=0 AND recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
+    unknown_opening boolean NOT NULL,
+    PRIMARY KEY(campaign_id,resolve_tick,side,node_ordinal),
+    FOREIGN KEY(campaign_id,resolve_tick,node_ordinal) REFERENCES babylon_state.labor_node_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX labor_movement_source_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,source_node);
+CREATE INDEX labor_movement_destination_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,destination_node);
+CREATE INDEX labor_position_node_v1 ON babylon_state.labor_position_v1(campaign_id,resolve_tick,node_ordinal);
+CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_v1(campaign_id,resolve_tick,location_key,node_ordinal);
+REVOKE ALL ON babylon_state.labor_period_v1,babylon_state.labor_checkpoint_v1,babylon_state.labor_node_v1,babylon_state.labor_movement_v1,babylon_state.labor_position_v1 FROM PUBLIC;

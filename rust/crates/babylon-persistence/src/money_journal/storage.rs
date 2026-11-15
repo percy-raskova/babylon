@@ -1,8 +1,9 @@
 //! Atomic owner publication and full-observer SQL access.
 use super::payment_storage::Admission;
 use super::{
-    model, payment_storage, statement_storage, JournalError, MoneyEndpoint, MoneyLocationKind,
-    MoneyMovement, MoneyPurpose, MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
+    labor_source, labor_storage, model, payment_storage, statement_storage, JournalError,
+    MoneyEndpoint, MoneyLocationKind, MoneyMovement, MoneyPurpose, MoneyReference,
+    MoneyReferenceKind, MoneyTotal, PublishReport,
 };
 use crate::identity::CampaignId;
 use crate::observer_reader::{
@@ -18,7 +19,7 @@ pub struct MoneyJournalWriter {
     config: Config,
 }
 
-pub(crate) const VIEWS: [&str; 8] = [
+pub(crate) const VIEWS: [&str; 13] = [
     "public.v_observer_money_journal_period_v1",
     "public.v_observer_money_movement_v1",
     "public.v_observer_money_movement_total_v1",
@@ -27,6 +28,11 @@ pub(crate) const VIEWS: [&str; 8] = [
     "public.v_observer_economic_payment_v1",
     "public.v_observer_site_statement_v1",
     "public.v_observer_site_stock_balance_v1",
+    "public.v_observer_labor_period_v1",
+    "public.v_observer_labor_checkpoint_v1",
+    "public.v_observer_labor_node_v1",
+    "public.v_observer_labor_movement_v1",
+    "public.v_observer_labor_position_v1",
 ];
 const COLUMNS: &str = "ordinal, purpose, reference_kind, reference_id, debit_kind, debit_id, credit_kind, credit_id, amount_micros::text";
 const KEEP_PERIODS: i64 = 13;
@@ -35,7 +41,9 @@ const KEEP_PERIODS: i64 = 13;
 /// Parameters are campaign UUID and the inclusive expired-period cutoff.
 /// Publication derives that cutoff from the latest committed source period minus thirteen.
 /// Permanent coverage and purpose totals survive this statement.
-pub const MONEY_DETAIL_RETENTION_SQL: &str = "WITH removed AS (\
+pub const MONEY_DETAIL_RETENTION_SQL: &str = "WITH discarded_labor AS (\
+    DELETE FROM babylon_state.labor_node_v1 WHERE campaign_id=$1 AND resolve_tick<=$2), discarded_checkpoints AS (\
+    DELETE FROM babylon_state.labor_checkpoint_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 AND resolve_tick%13<>0), removed AS (\
     DELETE FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick<=$2) \
     UPDATE babylon_state.money_journal_period_v1 SET detail_retained=false \
     WHERE campaign_id=$1 AND resolve_tick<=$2 AND detail_retained";
@@ -286,9 +294,8 @@ impl MoneyJournalWriter {
     ) -> Result<PublishReport, JournalError> {
         self.require_target(observer)?;
         let mut candidate = cursor.clone();
-        let period_source = observer
-            .committed_journal_period(campaign, period, &mut candidate)
-            .map_err(JournalError::Observer)?;
+        let (period_source, labor) =
+            labor_source::period(observer, campaign, period, &mut candidate)?;
         let economic = &period_source.payments;
         let source = &economic.source;
         let movements = model::derive_movements(source)?;
@@ -311,6 +318,12 @@ impl MoneyJournalWriter {
         } else {
             Admission::Verify
         };
+        let retained = existing
+            .as_ref()
+            .map(|row| row.try_get::<_, bool>("detail_retained"))
+            .transpose()
+            .map_err(|_| JournalError::Projection)?
+            .unwrap_or(true);
         payment_storage::accounts(&mut tx, economic, mode)?;
         if let Some(existing) = existing {
             if operation == Publication::Publish {
@@ -353,6 +366,7 @@ impl MoneyJournalWriter {
                 FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2 GROUP BY campaign_id,resolve_tick,purpose", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         }
         let site = statement_storage::publish(&mut tx, &period_source, mode)?;
+        labor_storage::publish(&mut tx, source, &labor, mode, retained)?;
         let binding = pin_after_pruning(&mut tx, source, tick)?;
         if changed {
             tx.execute("INSERT INTO babylon_state.money_journal_period_v1 (campaign_id,resolve_tick,journal_version,tick_content_hash,envelope_digest,schema_sha256,foundation_sha256,content_sha256,source_identity_bytes,receipt_sha256,movement_sha256,movement_count,detail_retained,payment_sha256,payment_count,site_accounting_sha256,site_monetary_books,site_count,site_stock_count,site_accounting_directory) \

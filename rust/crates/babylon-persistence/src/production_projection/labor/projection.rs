@@ -33,6 +33,31 @@ pub(in crate::production_projection) struct LaborTotals {
     pub(in crate::production_projection) installation_used: u64,
 }
 
+/// Reconcile actual batch, handling, maintenance and installation hours to member attendance.
+pub(crate) fn validate_completed_labor(
+    catalog: &MaterialCatalog,
+    opening: &MaterialCircuitState,
+    state: &MaterialCircuitState,
+    receipt: &MaterialTickReceipts,
+) -> Result<(), ProductionProjectionError> {
+    let maintenance =
+        super::super::maintenance::completed(catalog, state, Some(opening), Some(receipt))?;
+    close_labor(catalog, opening, state, receipt, maintenance).map(|_| ())
+}
+
+fn close_labor(
+    catalog: &MaterialCatalog,
+    prior: &MaterialCircuitState,
+    state: &MaterialCircuitState,
+    receipt: &MaterialTickReceipts,
+    maintenance: Option<&MaintenanceReceipt>,
+) -> Result<(Budgets, Totals), ProductionProjectionError> {
+    let available = budgets(catalog, prior)?;
+    let equipment = super::super::equipment::validate(catalog, prior, state, receipt)?;
+    let totals = completed_totals(catalog, prior, receipt, maintenance, &available, &equipment)?;
+    Ok((available, totals))
+}
+
 pub(in crate::production_projection) fn project_labor_accounts(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
@@ -47,10 +72,7 @@ pub(in crate::production_projection) fn project_labor_accounts(
             if prior.period.checked_add(1) == Some(state.period)
                 && receipt.resolve_tick == prior.period =>
         {
-            let available = budgets(catalog, prior)?;
-            let equipment = super::super::equipment::validate(catalog, prior, state, receipt)?;
-            let totals =
-                completed_totals(catalog, prior, receipt, maintenance, &available, &equipment)?;
+            let (available, totals) = close_labor(catalog, prior, state, receipt, maintenance)?;
             (Some(available), totals)
         }
         _ => return Err(ProductionProjectionError::History),

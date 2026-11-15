@@ -1,5 +1,6 @@
 //! Exact textual readings from one disclosed production snapshot.
 
+use super::accounting::AccountsView;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
@@ -52,8 +53,15 @@ pub(super) fn describe(
     site: &ProductionSite,
     snapshot: &ProductionSnapshot,
     section: ProductionReadingSection,
+    accounts: Option<&AccountsView>,
 ) -> String {
     match section {
+        ProductionReadingSection::Accounts => accounts
+            .map_or(
+                "Waiting for the selected site’s accounts.",
+                AccountsView::text,
+            )
+            .to_owned(),
         ProductionReadingSection::Flow => describe_flow(site, snapshot),
         ProductionReadingSection::Freight => describe_freight(site, snapshot),
         ProductionReadingSection::Work => describe_work(site, snapshot),
@@ -820,7 +828,7 @@ mod aid_reading_tests {
             ProductionReadingSection::Sources,
             ProductionReadingSection::Flow,
         ] {
-            let reading = super::describe(site, &snapshot, section);
+            let reading = super::describe(site, &snapshot, section, None);
             assert!(reading.contains("regional catchment"), "{reading}");
             assert!(reading.contains("hub county"));
             assert!(reading.contains("Detailed accounts keep their county scope"));

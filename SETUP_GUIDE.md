@@ -237,7 +237,30 @@ Warm detail and total queries use the SQL facts directly. The full observer can
 also sum `public.v_observer_money_movement_total_v1` or inspect
 `public.v_observer_money_movement_v1` with SQL.
 
+### Read a campaign from the earlier schema
+
+For a campaign from the Postgres schema at `2824cf38e`, copy the recorded
+accounts to a second database. Prepare the destination with the new schema,
+the same reference data and no campaigns. Set `BABYLON_PRE293_SOURCE_DSN`
+to the source owner connection and `BABYLON_INSPECTION_TARGET_DSN` to the
+destination owner connection.
+
+From `rust/`, run the copy for one campaign.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-inspection-copy -- \
+  --campaign "$CAMPAIGN_ID"
+```
+
+The command reads the source in a read-only transaction. It checks the copied
+foundation and committed periods before it saves the destination. The report
+identifies the foundation and the latest committed tick. Use the destination
+observer and runtime connections to publish the financial history there.
+
 ### Read site accounts and stock history
+
+In **Circuit**, select a site and open **Accounts** to see its cash change, profit
+and retained earnings for the selected period.
 
 Use the site ID from the native `economy sites` command. With the full observer
 login, read one published period or an inclusive range from `rust/`.
@@ -265,6 +288,15 @@ selected period. Select a map arrow or its entry in the list to see both
 endpoints and the amount. Choose `Open counterparty county` to
 follow a payment to another mapped county. The list also includes payments
 with no mapped endpoint.
+
+Choose **Frame connections on map** to show the payer and recipient on the map.
+Choose **County site accounts** to read the change in cash, profit and retained
+earnings for all sites that operate in the county. Select a site to open its **Accounts**
+for the same period.
+
+From period two, choose **Compare with period** to see the county's net amount
+and how it changed from the period before it. The ribbons show the selected period.
+In Labor mode, the list includes transfers with unknown earlier hours.
 
 From `rust/`, use the full observer login to rank payments in a published
 campaign. The movement journal records each reserve posting. The flow report
@@ -295,6 +327,38 @@ NAD83 longitude and latitude. A county uses its captured TIGER internal point.
 Other locations with no captured point stay outside the selected area. A site’s
 operating county and the catchment it serves have distinct grouping keys.
 Missing classifications appear as a null key when viewing all locations.
+
+### Follow recorded labor
+
+Select a county in the full observer. In the **Settled payments** panel, choose
+**Labor hours**. The panel shows hours that entered or left the county and hours
+that moved between local accounts. Choose **Map** or **Sankey** to follow the same connection.
+
+The list includes movements with unknown earlier labor. The diagram sizes
+each connection by its recorded hours. A movement with zero recorded hours
+and unknown earlier labor stays in the list.
+
+From `rust/`, rank movements for the same county and compare two periods.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- flows \
+  --campaign "$CAMPAIGN_ID" --measure labor --group location --focus county:26163 \
+  --first 2 --compare-first 1
+```
+
+Each direction reports millionths of an hour, the number of movements, and the
+number with unknown earlier labor. The same hours can appear in production, freight and
+consumption. To see how many hours
+people added and how much remained at each boundary, read the period ledger.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- labor-trace \
+  --campaign "$CAMPAIGN_ID" --first 2 --last 4
+```
+
+The command writes one JSON object for each period and a `labor_trace_complete`
+record. Each period identifies its foundation, committed tick and receipts.
+Opening hours plus hours worked equal closing hours plus released hours.
 
 ### Read a site's financial statements
 

@@ -443,7 +443,9 @@ pub(crate) fn require_current_schema_timed(
     Ok(CurrentSchemaIdentity(expected))
 }
 
-fn verify_owner_and_server(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
+pub(crate) fn verify_owner_and_server(
+    client: &mut impl GenericClient,
+) -> Result<(), CurrentSchemaError> {
     let row = client
         .query_one(OWNER_SQL, &[])
         .map_err(|error| database(CurrentSchemaOperation::VerifyOwner, &error))?;
@@ -471,7 +473,7 @@ fn verify_owner_and_server(client: &mut impl GenericClient) -> Result<(), Curren
     }
     Ok(())
 }
-fn verify_sentinels(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
+pub(crate) fn verify_sentinels(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
     let row = client
         .query_one(SENTINELS_SQL, &[])
         .map_err(|error| database(CurrentSchemaOperation::VerifySentinels, &error))?;

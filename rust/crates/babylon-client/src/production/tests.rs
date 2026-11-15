@@ -1,3 +1,4 @@
+use super::accounting::AccountsView;
 use super::view;
 use super::view::{
     PrimaryView, ProductionBrief, ProductionButton, ProductionCamera, ProductionCommand,
@@ -414,6 +415,7 @@ fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(text.contains("COMMITTED WORK TIME / PERIOD 5 / DERIVED"));
     assert!(text.contains("80 used + 40 unused = 120 available"));
@@ -441,6 +443,7 @@ fn foundation_labor_account_does_not_invent_a_completed_work_period() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(!text.contains("COMMITTED WORK TIME"));
     assert!(text.contains("Next opening (period 1): 120 labor-hours (Derived)"));
@@ -517,6 +520,7 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(text.contains("MODELED WORKFORCE / DERIVED"));
     assert!(text.contains("2 employed + 2 reserve = 4 people"));
@@ -554,6 +558,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(foundation.contains("Opening workforce; no completed staffing period."));
     assert!(foundation.contains("MODELED WORKFORCE / DESIGNED"));
@@ -566,6 +571,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot.sites[2],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(missing.contains("No workforce account disclosed for this subject."));
     assert!(!missing.contains("0 employed"));
@@ -602,6 +608,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(quiet.contains("Work activations: 0 | releases: 0"));
     assert!(!quiet.contains("no completed staffing period"));
@@ -662,6 +669,7 @@ fn inspector_distinguishes_shared_sector_context_from_process_workers() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Sources,
+        None,
     );
     assert!(text.contains("SECTOR CONTEXT / OBSERVED 2024"));
     assert!(text.contains("Manufacturing | NAICS 31-33"));
@@ -674,7 +682,8 @@ fn inspector_distinguishes_shared_sector_context_from_process_workers() {
     assert!(!readings::describe(
         &snapshot.sites[2],
         &snapshot,
-        ProductionReadingSection::Sources
+        ProductionReadingSection::Sources,
+        None
     )
     .contains("SECTOR CONTEXT"));
 }
@@ -690,6 +699,7 @@ fn inspector_keeps_undisclosed_sector_metrics_distinct_from_zero() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Sources,
+        None,
     );
     assert!(text.contains("Annual-average jobs: not disclosed"));
     assert!(text.contains("USD 0 annual payroll"));
@@ -2498,6 +2508,38 @@ fn reading_sections_switch_by_keyboard_without_changing_the_observed_period() {
 }
 
 #[test]
+fn accounts_keyboard_selection_shows_invalid_evidence_without_changing_the_ledger_period() {
+    use bevy::input_focus::InputFocus;
+    let ReadingsFocusFixture {
+        mut app, window, ..
+    } = readings_focus_app();
+    app.init_resource::<AccountsView>().add_systems(
+        Update,
+        super::accounting::update
+            .after(navigation::navigate)
+            .before(view::paint_readings),
+    );
+    let selected = {
+        let world = app.world_mut();
+        world
+            .query::<(&Text, &ChildOf)>()
+            .iter(world)
+            .find_map(|(text, parent)| (text.0 == "Accounts").then_some(parent.parent()))
+            .expect("an Accounts reading tab")
+    };
+    let period = app.world().resource::<ObserverSession>().viewed_tick;
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(selected, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Enter);
+    assert!(panel_text::<ProductionDetails>(&mut app).contains("Invalid operating-site identity"));
+    assert_eq!(
+        app.world().resource::<ObserverSession>().viewed_tick,
+        period
+    );
+}
+
+#[test]
 fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ancestor() {
     use bevy::input_focus::InputFocus;
     let ReadingsFocusFixture {
@@ -2517,6 +2559,7 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         ProductionReadingSection::Freight,
         ProductionReadingSection::Work,
         ProductionReadingSection::Sources,
+        ProductionReadingSection::Accounts,
     ] {
         readings_key(&mut app, window, KeyCode::Tab);
         let focused = app
@@ -2893,7 +2936,8 @@ fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
         "{work}"
     );
     assert!(!work.contains("MERCHANT HANDLING"));
-    let sources = super::readings::describe(provider, &snapshot, ProductionReadingSection::Sources);
+    let sources =
+        super::readings::describe(provider, &snapshot, ProductionReadingSection::Sources, None);
     assert!(
         sources.contains("2 kg parts + 10 labor-hours per job / Designed"),
         "{sources}"
@@ -2965,7 +3009,12 @@ fn production_labels_and_inspector_show_actual_function_and_preserve_source_code
     let mut snapshot = attributed_snapshot();
     snapshot.sites[0].function = "capital_goods".into();
     let selected = snapshot.sites[0].clone();
-    let sources = readings::describe(&selected, &snapshot, ProductionReadingSection::Sources);
+    let sources = readings::describe(
+        &selected,
+        &snapshot,
+        ProductionReadingSection::Sources,
+        None,
+    );
     assert!(sources.contains("Capital goods"), "{sources}");
     assert!(sources.contains("Function code: capital_goods"));
     assert!(sources.contains("Industry / NAICS: 331"));
@@ -3060,6 +3109,7 @@ fn production_subject_replaces_only_governed_national_name_tokens() {
             &operating_site,
             &snapshot,
             ProductionReadingSection::Sources,
+            None,
         );
         assert!(sources.contains(&format!("Site name: {authored}")));
         assert!(sources.contains("Site ID: a"));

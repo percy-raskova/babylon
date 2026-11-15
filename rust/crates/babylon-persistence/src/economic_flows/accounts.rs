@@ -16,6 +16,14 @@ pub(super) fn project(
     catalog: &CapturedEconomicCatalog,
     book: &MonetaryBook,
 ) -> FlowResult<Vec<FlowAccount>> {
+    geographies(catalog, book.cash_accounts().map(|(&account, _)| account))
+}
+
+/// Captured geography can also describe physical work sites without a monetary book.
+pub(crate) fn geographies(
+    catalog: &CapturedEconomicCatalog,
+    principals: impl Iterator<Item = AccountId>,
+) -> FlowResult<Vec<FlowAccount>> {
     let view = catalog.view();
     let opening = view.opening;
     let mut locations = BTreeMap::new();
@@ -61,8 +69,8 @@ pub(super) fn project(
         .map(catchments)
         .transpose()?
         .unwrap_or_default();
-    book.cash_accounts()
-        .map(|(&account, _)| {
+    principals
+        .map(|account| {
             let location = locations.get(&account).copied();
             let industry = functions
                 .get(&account)

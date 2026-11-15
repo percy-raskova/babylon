@@ -26,6 +26,7 @@ pub(super) fn national(
     let saved = observer
         .published_site_period(campaign, 1, site)
         .expect("stored site");
+    county_accounts(observer, owner, &saved);
     let summary = saved.statement.as_ref().expect("monetary site");
     let activity = source.books.activity.as_ref().expect("period activity");
     assert_eq!(source.books.opening.as_ref(), Some(&summary.opening));
@@ -146,6 +147,21 @@ pub(super) fn stocks(
         CircuitAccounting::PhysicalControl => None,
     };
     assert_eq!(saved.statement.is_some(), costs.is_some());
+    if costs.is_none() {
+        assert_eq!(
+            observer
+                .county_site_accounts_for_frame(
+                    campaign,
+                    tick,
+                    "26163".try_into().expect("Wayne"),
+                    &trade::hex(&saved.foundation_sha256),
+                    &trade::hex(&saved.tick_content_hash),
+                    0,
+                )
+                .expect("authenticated physical period"),
+            babylon_persistence::money_journal::CountySiteAccounts::PhysicalOnly
+        );
+    }
     let mut count = 0;
     for row in state
         .inventory
@@ -175,6 +191,17 @@ pub(super) fn stocks(
 }
 
 pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId, site: SiteId) {
+    assert_eq!(
+        observer.county_site_accounts_for_frame(
+            campaign,
+            1,
+            "26163".try_into().expect("Wayne"),
+            "",
+            "",
+            0
+        ),
+        Err(JournalError::Authority)
+    );
     assert_eq!(
         observer.published_site_period(campaign, 1, site),
         Err(JournalError::Authority)
@@ -238,4 +265,83 @@ pub(super) fn cli(config: &Config, expected: &PublishedSitePeriod, last: u64) {
             .iter()
             .all(|row| row["closing"]["carrying_cost_micros"].is_null()));
     }
+}
+
+fn county_accounts(
+    observer: &ObserverEconomyReader,
+    owner: &mut Client,
+    frame: &PublishedSitePeriod,
+) {
+    use babylon_persistence::money_journal::CountySiteAccounts;
+    let campaign = frame.campaign_id;
+    let county = "26163".try_into().expect("Wayne");
+    let foundation = trade::hex(&frame.foundation_sha256);
+    let tick_hash = trade::hex(&frame.tick_content_hash);
+    let expected = owner.query(
+        "SELECT s.site_id, s.closing_cash_micros::text, s.opening_cash_micros::text, s.net_income_micros::text,
+                s.closing_retained_earnings_micros::text FROM babylon_state.site_statement_v1 s
+          WHERE s.campaign_id=$1 AND s.resolve_tick=1 AND EXISTS
+                (SELECT 1 FROM babylon_state.economic_flow_account_v1 a WHERE a.campaign_id=s.campaign_id
+                 AND a.account_kind='site_cash' AND a.account_id=s.site_id AND a.location_key='county:26163')
+          ORDER BY s.site_id", &[campaign.as_uuid()]).expect("independent actual-site rows");
+    assert!(
+        expected.len() > 6,
+        "national Wayne fixture exercises paging"
+    );
+    let mut totals = [0_i128; 3];
+    let mut members = Vec::new();
+    for row in &expected {
+        let num = |index: usize| {
+            row.get::<_, &str>(index)
+                .parse::<i128>()
+                .expect("exact micros")
+        };
+        totals[0] += num(1) - num(2);
+        totals[1] += num(3);
+        totals[2] += num(4);
+        members.push(SiteId::from_bytes(
+            row.get::<_, &[u8]>(0).try_into().expect("site"),
+        ));
+    }
+    let mut read = Vec::new();
+    for pos in (0..members.len()).step_by(6) {
+        let CountySiteAccounts::Monetary(page) = observer
+            .county_site_accounts_for_frame(
+                campaign,
+                1,
+                county,
+                &foundation,
+                &tick_hash,
+                u64::try_from(pos).expect("site index"),
+            )
+            .expect("county accounts")
+        else {
+            panic!("national books are monetary")
+        };
+        assert_eq!(
+            usize::try_from(page.site_count).expect("site count"),
+            members.len()
+        );
+        assert_eq!(
+            [
+                page.cash_change_micros,
+                page.period_profit_micros,
+                page.closing_retained_earnings_micros
+            ],
+            totals.map(|value| value.to_string())
+        );
+        read.extend(page.sites);
+    }
+    assert_eq!(read, members);
+    assert_eq!(
+        observer.county_site_accounts_for_frame(
+            campaign,
+            1,
+            county,
+            &foundation,
+            &"00".repeat(32),
+            0
+        ),
+        Err(JournalError::SourceChanged)
+    );
 }

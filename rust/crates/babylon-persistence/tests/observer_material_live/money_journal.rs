@@ -90,6 +90,7 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
         "preview credentials cannot admit source receipts"
     );
     super::payment_flows::restricted(&preview, campaign);
+    super::recorded_labor::restricted(&preview, campaign);
     let mut cursor = publish_fourteen_periods(&mut runtime, &writer, &observer, campaign);
     let site = super::site_accounting_sql::stocks(&runtime, &observer, campaign, 14);
     super::site_accounting_sql::restricted(&preview, campaign, site);
@@ -122,6 +123,7 @@ fn publish_fourteen_periods(
     campaign: CampaignId,
 ) -> Option<ObserverMaterialCursor> {
     let mut cursor = None;
+    let mut retained = None;
     for period in 1..=14 {
         super::advance_material_period(runtime);
         if period == 14 {
@@ -154,7 +156,14 @@ fn publish_fourteen_periods(
                 "sequential publication advances the receipt-only history cursor"
             );
         }
+        if period == 1 {
+            retained = Some(super::recorded_labor::first_period_flows(
+                observer, campaign,
+            ));
+        }
     }
+    let expired = super::recorded_labor::first_period_flows(observer, campaign);
+    assert_eq!(Some(expired),retained,"reconstructed labor has exactly the same signed totals, known hours, unresolved movement counts and page as retained detail");
     cursor
 }
 
@@ -218,6 +227,7 @@ fn assert_empty_retention(
         14,
         "empty periods also retain permanent coverage"
     );
+    super::labor_storage_sql::retention_and_repair(&mut owner, observer, writer, campaign);
     owner
 }
 
@@ -353,6 +363,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
         .published_site_period(campaign, 1, site_opening.site_id)
         .expect("permanent site accounts");
     super::site_accounting_sql::cli(&observer_config, &compact, 2);
+    super::recorded_labor::national(&observer, &observer_config, campaign);
     super::site_statements::native_cli(&observer_config, campaign, &site_opening);
     assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
 }

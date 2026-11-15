@@ -41,6 +41,7 @@ use crate::production_projection::metadata::Metadata;
 use crate::production_projection::sites;
 use crate::production_projection::sites::Quantities;
 use crate::production_projection::staffing;
+use crate::recorded_labor::{RecordedLaborLedger, RecordedLaborPeriod};
 use crate::site_financial_statements::{self, SiteFinancialStatements, SiteStatementsError};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::CircuitAccounting;
@@ -193,6 +194,35 @@ pub struct ObserverOpeningFoundations {
 }
 
 impl ObserverMaterialCursor {
+    pub(crate) fn labor_opening<'a>(
+        &'a self,
+        foundation: &'a EconomicContentAdmission,
+    ) -> Result<&'a MaterialWorldRegister, ObserverEconomyError> {
+        self.history
+            .opening(foundation)
+            .ok_or(ObserverEconomyError::InvalidProjection)
+    }
+
+    pub(crate) fn advance_recorded_labor(
+        &self,
+        foundation: &EconomicContentAdmission,
+        source: &CommittedMaterialReceipts,
+        ledger: &mut RecordedLaborLedger,
+    ) -> Result<RecordedLaborPeriod, ObserverEconomyError> {
+        let opening = self
+            .history
+            .opening(foundation)
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        ledger
+            .advance(
+                foundation.material_catalog(),
+                opening,
+                self.history.register(foundation),
+                &source.receipts,
+            )
+            .map_err(ObserverEconomyError::RecordedLabor)
+    }
+
     pub(crate) fn journal_period(
         &self,
         foundation: &EconomicContentAdmission,

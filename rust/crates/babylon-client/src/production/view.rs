@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::navigation;
+use super::accounting::AccountsView;
+use super::{accounting, navigation};
 
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
@@ -77,6 +78,7 @@ pub enum ProductionReadingSection {
     Freight,
     Work,
     Sources,
+    Accounts,
 }
 
 impl ProductionReadingSection {
@@ -86,6 +88,7 @@ impl ProductionReadingSection {
             Self::Freight => "Freight",
             Self::Work => "Work",
             Self::Sources => "Sources",
+            Self::Accounts => "Accounts",
         }
     }
 }
@@ -516,6 +519,8 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
     panel
         .spawn(Node {
             column_gap: px(4),
+            row_gap: px(4),
+            flex_wrap: FlexWrap::Wrap,
             flex_shrink: 0.0,
             ..default()
         })
@@ -525,6 +530,7 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
                 ProductionReadingSection::Freight,
                 ProductionReadingSection::Work,
                 ProductionReadingSection::Sources,
+                ProductionReadingSection::Accounts,
             ] {
                 button(tabs, section.label(), ProductionCommand::Reading(section));
             }
@@ -1530,7 +1536,7 @@ pub(crate) fn paint_disclosure(
         .and_then(|frame| frame.production.as_ref());
     let available = ProductionControlAvailability::for_snapshot(snapshot, &navigation);
     for (button, mut node) in &mut controls {
-        if let Some(next) = available.display(&button.0) {
+        if let Some(next) = available.display(&button.0, &observation.state) {
             if node.display != next {
                 node.display = next;
             }
@@ -1779,13 +1785,18 @@ pub(crate) type ReadingFocusTargets<'w, 's> = Query<
 pub(crate) fn paint_readings(
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
+    accounts: Option<Res<AccountsView>>,
     mut details: Query<ReadingText, ReadingMarkers>,
     mut reading_targets: ReadingFocusTargets,
     mut last_context: Local<Option<ObservationContext>>,
 ) {
     let ProductionObservation { frame, state } = observation;
     let context = state.context();
-    if navigation.is_changed() || frame.is_changed() || last_context.as_ref() != Some(&context) {
+    if navigation.is_changed()
+        || frame.is_changed()
+        || last_context.as_ref() != Some(&context)
+        || accounts.as_ref().is_some_and(DetectChanges::is_changed)
+    {
         *last_context = Some(context.clone());
         for mut target in &mut reading_targets {
             let mut next = target.clone();
@@ -1817,7 +1828,7 @@ pub(crate) fn paint_readings(
             }
             text.0 = match (snapshot, site, brief.is_some()) {
                 (Some(snapshot), Some(site), true) => production_brief::describe_brief(site, snapshot),
-                (Some(snapshot), Some(site), false) if navigation.details_open => readings::describe(site, snapshot, navigation.reading_section),
+                (Some(snapshot), Some(site), false) if navigation.details_open => readings::describe(site, snapshot, navigation.reading_section, accounts.as_deref()),
                 (Some(snapshot), None, true) if navigation.county_open => format!("COUNTY {}\nChoose a commodity cohort to follow its circuit.\n{}", navigation.county_geoid.as_deref().unwrap_or("unavailable"), snapshot.scenario_label),
                 (Some(snapshot), None, true) => production_brief::describe_overview(snapshot),
                 (None, _, true) => "No production relationships are disclosed at this period and perspective. Open World to explore the information available to you.".into(),
@@ -1833,6 +1844,7 @@ impl Plugin for ProductionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PrimaryView>()
             .init_resource::<ProductionNavigation>()
+            .init_resource::<AccountsView>()
             .init_resource::<ProductionOrbit>()
             .init_resource::<ObserverFeedback>()
             .add_message::<ProductionCommand>()
@@ -1864,6 +1876,7 @@ impl Plugin for ProductionPlugin {
                     rebuild_county_cohorts,
                     paint_scene,
                     paint_labels,
+                    accounting::update,
                     paint_readings,
                     paint_disclosure,
                     paint_buttons,

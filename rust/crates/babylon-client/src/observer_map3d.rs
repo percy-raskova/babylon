@@ -25,6 +25,7 @@ use crate::production::PrimaryView;
 
 #[path = "money_map.rs"]
 pub(crate) mod money_map;
+use self::money_map::MoneyView;
 
 #[path = "map_relationships.rs"]
 mod relationships;
@@ -482,6 +483,7 @@ struct NavigationInput<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     overlays: OrganizerOverlays<'w, 's>,
     organizer: Option<Res<'w, OrganizerClient>>,
+    money: Option<Res<'w, MoneyView>>,
     viewport: Res<'w, ObserverViewport>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
@@ -508,7 +510,10 @@ fn navigate(
     mut orbit: ResMut<MapOrbit>,
     mut drag: Local<OrganizerDrag>,
 ) {
-    if !matches!(*input.view, PrimaryView::Map | PrimaryView::Organizer)
+    if (*input.view == PrimaryView::Map
+        && input.ui.lens == MapLens::Money
+        && input.money.as_deref().is_some_and(MoneyView::shows_sankey))
+        || !matches!(*input.view, PrimaryView::Map | PrimaryView::Organizer)
         || input.ui.menu_open
         || input.ui.splash_visible
         || input.ui.comparison_open

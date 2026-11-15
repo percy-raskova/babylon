@@ -4,6 +4,8 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
+mod accounting;
+
 pub(crate) mod maintenance;
 
 pub(crate) mod navigation;

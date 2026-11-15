@@ -549,16 +549,23 @@ fn resolve_campaign(flag: Option<String>) -> Result<CampaignId, CliError> {
 }
 
 fn parse_site_identity(value: &str) -> Result<[u8; 32], CliError> {
+    identity_bytes(value).ok_or_else(|| {
+        CliError::at(
+            concat!(file!(), ":", line!()),
+            "site identity must be 64 lowercase hexadecimal digits; discover it with economy sites"
+                .into(),
+        )
+    })
+}
+
+/// Decode a canonical lowercase 32-byte identifier or digest.
+pub(crate) fn identity_bytes(value: &str) -> Option<[u8; 32]> {
     if value.len() != 64
         || !value
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     {
-        return Err(CliError::at(
-            concat!(file!(), ":", line!()),
-            "site identity must be 64 lowercase hexadecimal digits; discover it with economy sites"
-                .into(),
-        ));
+        return None;
     }
     let mut result = [0; 32];
     for (output, pair) in result.iter_mut().zip(value.as_bytes().as_chunks::<2>().0) {
@@ -571,7 +578,7 @@ fn parse_site_identity(value: &str) -> Result<[u8; 32], CliError> {
         };
         *output = digit(pair[0]) * 16 + digit(pair[1]);
     }
-    Ok(result)
+    Some(result)
 }
 
 fn parse_command(words: &[String]) -> Result<CliCommand, CliError> {

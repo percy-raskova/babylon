@@ -1,10 +1,13 @@
-//! Directed, fixed county-to-county ribbons. Width encodes relative payment value on this page.
+//! Directed county ribbons. Width compares positive settlement amounts or recorded hours on this page.
 use super::super::relationships;
 use super::super::relationships::CountyAnchors;
-use super::super::MAP_LAYER;
-use super::state::{self, Action, Direction, MoneyView, Target};
+use super::super::{MapOrbit, MAP_LAYER};
+use super::state::{
+    self, Action, Connection, Diagram, Direction, MoneyView, Observation, Scope, Target,
+};
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_theme as theme;
+use crate::observer_ui::ObserverViewport;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
@@ -35,6 +38,9 @@ pub(super) fn render(
         commands.entity(entity).despawn();
         meshes.remove(mesh.0.id());
     }
+    if view.shows_sankey() {
+        return;
+    }
     let Some(scope) = &view.scope else {
         return;
     };
@@ -55,7 +61,7 @@ pub(super) fn render(
         .rows
         .iter()
         .filter_map(|row| {
-            let n = row.micros.parse::<f64>().ok()?;
+            let n = row.quantity.micros().parse::<f64>().ok()?;
             (n.is_finite() && n > 0.0).then_some((row, n))
         })
         .collect();
@@ -94,5 +100,74 @@ pub(super) fn render(
                 DeclaredSurface::new(SurfaceId::ObserverProduction),
             ))
             .observe(state::pointer);
+    }
+}
+
+#[derive(Event)]
+pub(super) struct FrameConnections {
+    pub(super) scope: Scope,
+    pub(super) offset: u64,
+}
+
+fn endpoint(row: &Connection, home: Vec3, anchors: &CountyAnchors) -> Option<Vec3> {
+    if row.quantity.micros() == "0" {
+        return None;
+    }
+    if row.key.direction == Direction::Internal {
+        return Some(home);
+    }
+    row.key
+        .peer
+        .as_deref()?
+        .strip_prefix("county:")
+        .and_then(|county| anchors.county_position(county))
+}
+
+pub(super) fn frame_bounds(orbit: &mut MapOrbit, min: Vec3, max: Vec3, aspect: f32) {
+    // The map camera uses a 45-degree vertical field of view. Include the arrow bend and
+    // loop outside the endpoint chord, and keep the current pitch, yaw and national reset.
+    let half_angle = ((std::f32::consts::FRAC_PI_8).tan() * aspect.min(1.0)).atan();
+    let radius = (max - min).length() * 0.5 + 30.0;
+    orbit.target = min.midpoint(max);
+    orbit.distance = (1.12 * radius / half_angle.sin())
+        .clamp(orbit.fitted_distance * 0.08, orbit.fitted_distance * 3.0);
+}
+
+pub(super) fn frame_connections(
+    event: On<FrameConnections>,
+    obs: Observation,
+    mut view: ResMut<MoneyView>,
+    viewport: Res<ObserverViewport>,
+    anchors: Res<CountyAnchors>,
+    mut orbit: ResMut<MapOrbit>,
+) {
+    if !obs.interactive()
+        || obs.scope(event.scope.measure, event.scope.periods).as_ref() != Some(&event.scope)
+        || view.scope.as_ref() != Some(&event.scope)
+        || view.offset != event.offset
+    {
+        return;
+    }
+    let Some(home) = anchors.county_position(&event.scope.county) else {
+        return;
+    };
+    let Some(rect) = viewport.0.filter(|r| r.width() > 0.0 && r.height() > 0.0) else {
+        return;
+    };
+    let selected = view
+        .selected_row()
+        .and_then(|row| endpoint(row, home, &anchors));
+    let bounds = if let Some(peer) = selected {
+        Some((home.min(peer), home.max(peer)))
+    } else {
+        view.rows
+            .iter()
+            .filter_map(|row| endpoint(row, home, &anchors))
+            .map(|point| (home.min(point), home.max(point)))
+            .reduce(|(lo, hi), (next_lo, next_hi)| (lo.min(next_lo), hi.max(next_hi)))
+    };
+    if let Some((min, max)) = bounds {
+        frame_bounds(&mut orbit, min, max, rect.width() / rect.height());
+        view.diagram = Diagram::Map;
     }
 }

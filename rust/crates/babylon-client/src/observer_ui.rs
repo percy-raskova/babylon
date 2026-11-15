@@ -1994,7 +1994,7 @@ fn status_with_organizer_message(
 fn lens_source(selected: &MapLens, lens: &MapLensProjection) -> String {
     match selected {
                 MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
-                MapLens::Money => "Each ribbon joins recorded payer and recipient locations. A county anchor represents the account location or catchment hub.".into(),
+                MapLens::Money => "Each ribbon joins the recorded origin and destination. A county anchor represents the account location or catchment hub.".into(),
                 MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
                 MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
                 MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
@@ -2073,7 +2073,7 @@ fn repaint(
                 MapLens::Material {..} => lens.good_label.as_ref().map_or_else(|| "Material unavailable".into(), |good|format!("{good} ({})", lens.unit)),
             },
             ObserverText::County => county.as_ref().map_or_else(|| "Select a county".into(), |county| county.name.to_owned()),
-            ObserverText::Measures if matches!(ui.lens, MapLens::Money) => "Amounts come from settled payments in the viewed period.".into(),
+            ObserverText::Measures if matches!(ui.lens, MapLens::Money) => "Inspect settled payments or recorded labor transfers for the viewed period.".into(),
             ObserverText::Measures if matches!(ui.lens, MapLens::Relationships) => "Choose an economic lens to inspect exact county readings.".into(),
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Hover if *view != PrimaryView::Map => String::new(),

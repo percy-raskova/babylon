@@ -1,5 +1,7 @@
-//! Period-bound payment reads and native connection selection.
-use super::{geometry, rail};
+//! Period-bound money and labor queries with native connection selection.
+use super::books::{self, Books, Worker as BooksWorker};
+use super::compare::Periods;
+use super::{geometry, rail, sankey};
 use crate::atlas::CountyAtlas;
 use crate::map::{CountyMapScope, MapScopeSet, SelectedCounty};
 use crate::map_economy_lens::MapLens;
@@ -9,9 +11,11 @@ use crate::observer_io::ObserverSet;
 use crate::observer_ui::{ObserverFrame, ObserverUiState};
 use crate::production::PrimaryView;
 use crate::ui::Interaction;
+use babylon_material_circuit::SiteId;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
-    FlowGroup, FlowPage, FlowQuery, FlowRow, JournalError, PeriodWindow,
+    FlowGroup, FlowPage, FlowQuery, FlowRow, JournalError, LaborAmount, LaborFlowPage,
+    LaborFlowRow, PeriodWindow,
 };
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use bevy::ecs::system::SystemParam;
@@ -39,7 +43,22 @@ pub(super) struct ConnectionKey {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Connection {
     pub(super) key: ConnectionKey,
-    pub(super) micros: String,
+    pub(super) quantity: Quantity,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Quantity {
+    Money(String),
+    Labor(LaborAmount),
+}
+
+impl Quantity {
+    pub(super) fn micros(&self) -> &str {
+        match self {
+            Self::Money(value) => value,
+            Self::Labor(amount) => &amount.recorded_micro_hours,
+        }
+    }
 }
 
 /// A chosen direction within a foundation and county survives period reevaluation.
@@ -48,6 +67,7 @@ pub(super) struct Selection {
     campaign: CampaignId,
     foundation: String,
     home: String,
+    measure: Measure,
     key: ConnectionKey,
 }
 impl Selection {
@@ -56,6 +76,7 @@ impl Selection {
             campaign: scope.context.campaign,
             foundation: scope.foundation.clone(),
             home: scope.county.clone(),
+            measure: scope.measure,
             key: key.clone(),
         }
     }
@@ -75,18 +96,31 @@ impl Selection {
 pub(super) fn connections(groups: &[FlowRow]) -> Vec<Connection> {
     let mut rows = Vec::new();
     for peer in groups {
-        for (direction, micros) in [
-            (Direction::PaidTo, &peer.current.inflow_micros),
-            (Direction::ReceivedFrom, &peer.current.outflow_micros),
-            (Direction::Internal, &peer.current.internal_micros),
+        let prior = peer.comparison.as_ref();
+        for (direction, micros, before) in [
+            (
+                Direction::PaidTo,
+                &peer.current.inflow_micros,
+                prior.map(|p| &p.inflow_micros),
+            ),
+            (
+                Direction::ReceivedFrom,
+                &peer.current.outflow_micros,
+                prior.map(|p| &p.outflow_micros),
+            ),
+            (
+                Direction::Internal,
+                &peer.current.internal_micros,
+                prior.map(|p| &p.internal_micros),
+            ),
         ] {
-            if micros != "0" {
+            if micros != "0" || before.is_some_and(|value| value != "0") {
                 rows.push(Connection {
                     key: ConnectionKey {
                         peer: peer.key.clone(),
                         direction,
                     },
-                    micros: micros.clone(),
+                    quantity: Quantity::Money(micros.clone()),
                 });
             }
         }
@@ -94,8 +128,75 @@ pub(super) fn connections(groups: &[FlowRow]) -> Vec<Connection> {
     rows
 }
 
+pub(super) fn labor_connections(groups: &[LaborFlowRow]) -> Vec<Connection> {
+    let mut rows = Vec::new();
+    for peer in groups {
+        let prior = peer.comparison.as_ref();
+        for (direction, amount, before) in [
+            (
+                Direction::PaidTo,
+                &peer.current.inbound,
+                prior.map(|p| &p.inbound),
+            ),
+            (
+                Direction::ReceivedFrom,
+                &peer.current.outbound,
+                prior.map(|p| &p.outbound),
+            ),
+            (
+                Direction::Internal,
+                &peer.current.within,
+                prior.map(|p| &p.within),
+            ),
+        ] {
+            if amount.movement_count != "0"
+                || before.is_some_and(|value| value.movement_count != "0")
+            {
+                rows.push(Connection {
+                    key: ConnectionKey {
+                        peer: peer.key.clone(),
+                        direction,
+                    },
+                    quantity: Quantity::Labor(amount.clone()),
+                });
+            }
+        }
+    }
+    rows
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(super) enum Measure {
+    #[default]
+    Money,
+    Labor,
+}
+
+pub(super) enum Page {
+    Money(Box<FlowPage>),
+    Labor(Box<LaborFlowPage>),
+}
+
+impl Page {
+    pub(super) fn total_groups(&self) -> u64 {
+        match self {
+            Self::Money(p) => p.total.groups,
+            Self::Labor(p) => p.total.groups,
+        }
+    }
+
+    fn connections(&self) -> Vec<Connection> {
+        match self {
+            Self::Money(p) => connections(&p.groups),
+            Self::Labor(p) => labor_connections(&p.groups),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Scope {
+    pub(super) periods: Periods,
+    pub(super) measure: Measure,
     pub(super) context: ObservationContext,
     pub(super) county: String,
     pub(super) foundation: String,
@@ -131,13 +232,15 @@ impl Observation<'_> {
             && !self.ui.history_open
     }
 
-    fn scope(&self) -> Option<Scope> {
+    pub(super) fn scope(&self, measure: Measure, periods: Periods) -> Option<Scope> {
         if !self.active() {
             return None;
         }
         let frame = self.frame.for_session(&self.session)?;
         let selected = self.atlas.county(self.selected.0?)?;
         Some(Scope {
+            periods: periods.available(self.session.viewed_tick),
+            measure,
             context: self.session.context(),
             county: selected.fips.to_owned(),
             foundation: frame.foundation_digest.clone(),
@@ -157,21 +260,36 @@ pub(super) enum Status {
     Ready,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Diagram {
+    #[default]
+    Map,
+    Sankey,
+}
+
 #[derive(Resource, Default)]
-pub(super) struct MoneyView {
+pub(in crate::observer_map3d) struct MoneyView {
+    pub(super) books: Books,
+    pub(super) diagram: Diagram,
+    pub(super) measure: Measure,
     pub(super) scope: Option<Scope>,
     pub(super) offset: u64,
-    pub(super) page: Option<FlowPage>,
+    pub(super) page: Option<Page>,
     pub(super) rows: Vec<Connection>,
     pub(super) selected: Option<Selection>,
     pub(super) status: Status,
 }
 
 impl MoneyView {
+    pub(in crate::observer_map3d) fn shows_sankey(&self) -> bool {
+        self.diagram == Diagram::Sankey && self.scope.is_some()
+    }
+
     pub(super) fn selected_row(&self) -> Option<&Connection> {
         let selected = self.selected.as_ref()?;
         let scope = self.scope.as_ref()?;
-        if scope.county != selected.home
+        if scope.measure != selected.measure
+            || scope.county != selected.home
             || scope.foundation != selected.foundation
             || scope.context.campaign != selected.campaign
         {
@@ -184,7 +302,7 @@ impl MoneyView {
 struct PendingPage {
     scope: Scope,
     offset: u64,
-    task: Task<Result<FlowPage, JournalError>>,
+    task: Task<Result<Page, JournalError>>,
 }
 
 #[derive(Resource, Default)]
@@ -194,7 +312,7 @@ struct Loader {
     delay: f64,
 }
 
-fn read_page(scope: &Scope, offset: u64) -> Result<FlowPage, JournalError> {
+fn read_page(scope: &Scope, offset: u64) -> Result<Page, JournalError> {
     let tick_hash = scope
         .tick_hash
         .as_deref()
@@ -207,16 +325,28 @@ fn read_page(scope: &Scope, offset: u64) -> Result<FlowPage, JournalError> {
             first: scope.context.tick,
             last: scope.context.tick,
         },
-        comparison: None,
+        comparison: scope.periods.window(scope.context.tick),
         offset,
         viewport_4269: None,
     };
-    reader.economic_payment_flows_for_frame(
-        scope.context.campaign,
-        &query,
-        &scope.foundation,
-        tick_hash,
-    )
+    match scope.measure {
+        Measure::Money => reader
+            .economic_payment_flows_for_frame(
+                scope.context.campaign,
+                &query,
+                &scope.foundation,
+                tick_hash,
+            )
+            .map(|page| Page::Money(Box::new(page))),
+        Measure::Labor => reader
+            .recorded_labor_flows_for_frame(
+                scope.context.campaign,
+                &query,
+                &scope.foundation,
+                tick_hash,
+            )
+            .map(|page| Page::Labor(Box::new(page))),
+    }
 }
 
 fn update(
@@ -231,14 +361,29 @@ fn update(
         || observation.primary.is_changed()
         || observation.ui.is_changed()
     {
-        let scope = observation.scope();
+        let mode = view
+            .scope
+            .as_ref()
+            .map_or(Periods::Current, |scope| scope.periods);
+        let scope = observation.scope(view.measure, mode);
         let selection_refused = view
             .selected
             .as_ref()
             .is_some_and(|selected| !selected.admitted(&observation));
         if view.scope != scope || selection_refused {
             let selected = view.selected.take().filter(|s| s.admitted(&observation));
+            let diagram = if observation.active() {
+                view.diagram
+            } else {
+                Diagram::Map
+            };
             *view = MoneyView {
+                diagram,
+                measure: if observation.active() {
+                    view.measure
+                } else {
+                    Measure::Money
+                },
                 scope,
                 selected,
                 ..default()
@@ -258,7 +403,7 @@ fn update(
             if view.scope.as_ref() == Some(&scope) && view.offset == offset {
                 match result {
                     Ok(page) => {
-                        view.rows = connections(&page.groups);
+                        view.rows = page.connections();
                         view.page = Some(page);
                         view.status = Status::Ready;
                     }
@@ -282,7 +427,7 @@ fn update(
         return;
     }
     if !matches!(view.status, Status::Waiting | Status::Publishing)
-        || time.elapsed_secs_f64() < loader.retry_at
+        || (view.status == Status::Publishing && time.elapsed_secs_f64() < loader.retry_at)
     {
         return;
     }
@@ -301,9 +446,15 @@ fn update(
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Action {
+    Diagram(Diagram),
+    Measure(Measure),
     Select(ConnectionKey),
+    Books { from: Option<u64>, to: Option<u64> },
+    Site { offset: u64, site: SiteId },
     Page(u64),
+    Compare(Periods),
     Follow,
+    Frame,
     Retry,
 }
 #[derive(Component)]
@@ -313,28 +464,75 @@ pub(super) struct Target {
     pub(super) action: Action,
 }
 
-fn activate(
+pub(super) fn activate(
     target: &Target,
     observed: &Observation,
     view: &mut MoneyView,
     commands: &mut Commands,
 ) -> bool {
     if !observed.interactive()
-        || observed.scope().as_ref() != Some(&target.scope)
+        || observed
+            .scope(target.scope.measure, target.scope.periods)
+            .as_ref()
+            != Some(&target.scope)
         || view.scope.as_ref() != Some(&target.scope)
         || view.offset != target.offset
     {
         return false;
     }
     match &target.action {
+        Action::Books { from, to } if target.scope.measure == Measure::Money => {
+            return view.books.navigate(*from, *to)
+        }
+        Action::Site { offset, site } if target.scope.measure == Measure::Money => {
+            return view
+                .books
+                .open_site(*site, *offset, observed, &target.scope, commands)
+        }
+        Action::Compare(periods)
+            if target.scope.context.tick > 1 && *periods != target.scope.periods =>
+        {
+            let mut scope = target.scope.clone();
+            scope.periods = *periods;
+            let selected = view.selected.take();
+            *view = MoneyView {
+                scope: Some(scope),
+                measure: view.measure,
+                diagram: view.diagram,
+                selected,
+                ..default()
+            };
+        }
+        Action::Diagram(diagram) => view.diagram = *diagram,
+        Action::Measure(measure) if *measure != target.scope.measure => {
+            let mut scope = target.scope.clone();
+            scope.measure = *measure;
+            *view = MoneyView {
+                measure: *measure,
+                scope: Some(scope),
+                diagram: view.diagram,
+                ..default()
+            };
+        }
         Action::Select(key) if view.rows.iter().any(|row| &row.key == key) => {
             view.selected = Some(Selection::for_scope(&target.scope, key));
         }
-        Action::Page(offset) if view.page.as_ref().is_some_and(|p| *offset < p.total.groups) => {
+        Action::Page(offset)
+            if view
+                .page
+                .as_ref()
+                .is_some_and(|p| *offset < p.total_groups()) =>
+        {
             view.offset = *offset;
             view.page = None;
             view.rows.clear();
             view.status = Status::Waiting;
+        }
+        Action::Frame => {
+            commands.trigger(geometry::FrameConnections {
+                scope: target.scope.clone(),
+                offset: target.offset,
+            });
         }
         Action::Follow => {
             if let Some(index) = view
@@ -408,11 +606,17 @@ pub(super) fn keyboard(
 pub(in crate::observer_map3d) fn install(app: &mut App) {
     app.init_resource::<MoneyView>()
         .init_resource::<Loader>()
+        .init_resource::<BooksWorker>()
+        .add_observer(geometry::frame_connections)
+        .add_systems(
+            Update,
+            books::update.after(update).before(ObserverSet::Paint),
+        )
         .add_systems(Update, press_rail.in_set(ObserverSet::Input))
         .add_systems(Update, update.after(MapScopeSet).before(ObserverSet::Paint))
         .add_systems(
             Update,
-            (rail::paint, geometry::render).in_set(ObserverSet::Paint),
+            (rail::paint, geometry::render, sankey::paint).in_set(ObserverSet::Paint),
         )
         .add_systems(Update, rail::highlight.after(rail::paint));
 }

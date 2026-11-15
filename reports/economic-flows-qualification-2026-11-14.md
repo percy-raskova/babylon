@@ -1,6 +1,6 @@
 # Economic flows and company accounting on the local national campaign
 
-Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route) to open a national campaign and follow a payment from a county to a company’s books. The first measurements below use the earlier national opening. The company results begin with [the v8 opening](#the-first-company-enabled-national-opening). The [three-turn measurements](#three-full-observer-turns) cover the time until the observer shows usable amounts, storage growth and memory.
+Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route) to open a national campaign and follow a payment from a county to a company’s books. The first measurements below use the earlier national opening. The company results begin with [the v8 opening](#the-first-company-enabled-national-opening). The [latest three rendered turns](#opening-a-restored-campaign-and-measuring-three-turns) measure how long the observer takes to show Wayne’s financial figures. The [52-period campaign](#a-fresh-national-campaign-through-52-periods) records storage and recovery on an earlier build.
 
 ## Money and recorded labor in the v7 campaign
 
@@ -55,6 +55,8 @@ The capture test compared physical sites and staffing across v7 and v8. It check
 | Sites before the sweep | 18,386,523,946,435.10 |
 | Sites after the sweep | 18,293,765,369,856.10 |
 | Company treasuries after the sweep | 92,758,576,579.00 |
+
+The workplace summary initially reported the original cash total after sites had transferred $92,758,576,579 to their treasuries. The site and treasury ledgers reconciled. The summary now reads each site's cash after its transfer. A separate check compared each member's transfer with 10% of its cash above the operating floor from the pre-company opening. All 14 household and workplace checks passed, and the 99-company capture reopened with the same graph.
 
 The exact integer headcounts and percentages for every cell are in the [opening employment table](economic-flows-qualification-2026-11-14-assets/national-company-employment.csv).
 
@@ -295,6 +297,22 @@ All three turns fit the 40,000,000-byte limit and reproduced the earlier world h
 
 Warm labor queries with `--group counterparty` took 0.854 seconds for Wayne and 1.051 seconds nationwide. The national company ranking took 0.860 seconds. The [native measurements](economic-flows-qualification-2026-11-14-assets/national-compact-native-turns.csv) identify each of the three database layouts and saved inputs.
 
+### Following a company payment to its destination
+
+On the same period-2 save, nine settlements from Sitka to Anchorage totaled $800,060.625. In the **By Company** view, selecting **Energy/utilities · National 2** showed Anchorage as the destination for the full amount. The RTX 3060 client kept the company and amount selected across a switch to the Sankey and back. Clicking **Open Anchorage Municipality** opened county `02020` at period 2. In a separate run, Tab focused the same county and amount in the Sankey. Enter opened the same Anchorage period.
+
+With reduced motion enabled, the Anchorage industry view showed the same three payment totals as the observer query at both 1366 × 768 and 1920 × 1080. Each window size passed at its standard and larger text settings. The captures also verified industry labels and ribbon colors in the rendered Sankey.
+
+After the account-directory and county-display changes, the first Wayne query took 0.339 seconds. All three opening amounts appeared within 3.419 seconds. Three further closes reproduced the saved world hashes and Wayne amounts.
+
+| Period | Wayne amounts first visible between (s) | Charged growth (bytes) |
+| ---: | ---: | ---: |
+| 3 | 32.501–32.753 | 33,267,712 |
+| 4 | 28.623–28.876 | 36,700,160 |
+| 5 | 28.016–28.269 | 32,571,392 |
+
+Period 3 exceeded the 30-second usable-turn budget. Writing or verifying the captured account directory took 0.560 seconds, down from 1.071 seconds in the preceding run on the same save. The full financial publication took 23.386 seconds, up from 21.847 seconds. Warm labor rankings took 0.808 seconds for Wayne counterparties, 0.877 seconds for national companies and 1.123 seconds for national counterparties.
+
 ### A fresh national campaign through 52 periods
 
 Campaign `3461d4d4-0531-440d-9589-d6ed4d890f6a` used the national company opening at revision `2b206fc33`. The runtime committed 52 periods, published the financial and labor records after every close, then reopened the game each time. All 52 world hashes and material register digests survived restart. The 95th-percentile canonical advance took 7.020 seconds. The longest cold reopen took 12.455 seconds. The full run took 30 minutes 43 seconds without rendering a game window.
@@ -309,6 +327,43 @@ Period 1 used 76,595,200 bytes against the 40,000,000-byte limit. The labor node
 | 40–52 | 10,436,608 | 15,982,592 |
 
 The database peaked at 863,852,211 bytes. The policy charged 931,993,267 bytes including the opening and growth during recovery. It counts positive allocations at both boundaries even if another table shrinks. The first close failed the 52-period storage test. The long-save test requires 325 observed periods. The [per-period measurements](economic-flows-qualification-2026-11-14-assets/national-storage-52.csv) include the charge, restart result and financial publication time for each close.
+
+### Writing the first two periods from the saved national records
+
+Postgres initially scanned the campaign's growing labor directory once for each incoming node. By the 71st batch it rejected 4,587,520 comparisons while matching 256 new nodes. Collecting statistics after the first 256 records let it look up each node by campaign and content digest. The same batch then used 768 shared-buffer hits instead of 102,912.
+
+The cash writer also looked up the same account several times per block. It now inserts each distinct key in order and locks existing keys on conflict. Two transactions tried to remove an account that a payment still used. Postgres rejected the stale transaction with a serialization failure and the fresh transaction with a foreign-key violation.
+
+| Timed write | Period 1 before / after (s) | Period 2 before / after (s) | Rows checked across both periods |
+| --- | ---: | ---: | ---: |
+| Labor nodes and their opening and closing holdings | 103.830 / 7.922 | 3.044 / 2.993 | 65,721 |
+| Cash movements and their account references | 32.488 / 2.755 | 13.060 / 1.588 | 125,109 |
+
+Each comparison started from a disposable copy of the same national save. Every decoded row matched the source in both directions. The timings cover these writes within the financial publication. The first-close storage and usable-turn limits apply to the whole running game.
+
+The compact schema imported the saved campaign from each of two earlier database layouts. After the financial writer rebuilt periods 1 and 2, the full observer read the same 439,481 rows across 14 views in each copy. All 28 period and view checksums matched the sealed originals. Both original campaigns reopened with their recorded identities.
+
+The first archive of the compact database was 56,703,202 bytes with SHA-256 `228268a75634cfcff872d38e1c0ef09153cf03914a09967b1c6ddd981bf21bf4`. After restoring that archive, the native runtime refused to open period 2. Postgres had recorded default values on two columns added after table creation. A logical restore recreated both columns when creating their tables, which changed their catalog fingerprints. The campaign and its financial data matched. The revised schema declares both columns when it creates the tables.
+
+### Opening a restored campaign and measuring three turns
+
+The rebuilt database from each earlier layout reproduced all 439,481 rows across the fourteen views. The native full observer opened the 56,703,218-byte period-2 archive on the RTX 3060. The archive SHA-256 was `83a2713fe0e268bdc30a66832c7dd8c315b6f6dc5572a682e8211a66c2dd45e0`. The first Wayne payment query took 0.389 seconds. The screen showed the three matching amounts by 0.515 seconds from the opening measurement.
+
+| Period | Wayne amounts first visible between (s) | Financial publication (s) | Charged growth (bytes) |
+| ---: | ---: | ---: | ---: |
+| 3 | 29.490–29.742 | 20.074 | 12,992,512 |
+| 4 | 25.825–26.077 | 16.892 | 18,227,200 |
+| 5 | 24.747–24.998 | 15.866 | 15,802,368 |
+
+Each close reproduced its recorded world hash and fit both the 30-second usable-turn limit and the 40,000,000-byte growth limit. Warm labor rankings took 1.145 seconds for Wayne counterparties, 1.174 seconds for national companies and 1.350 seconds for national counterparties. All three pages matched the earlier results. The Wayne query exceeded its one-second target. Both nationwide queries fit their two-second target. The [measurements for each build](economic-flows-qualification-2026-11-14-assets/national-compact-native-turns.csv) include the executable hashes, world identities and screen times.
+
+### The first turn of a new national observer campaign
+
+The local launcher and the **Observe national economy** menu entry use the `national-economy` preset. The native client opened a new campaign at period 0 on the geographic map with the full observer. The period-1 source commit appeared between 8.819 and 9.223 seconds after the advance. Financial publication became visible between 44.121 and 44.524 seconds. The screen showed Wayne had received $0.00, paid $348,926,580.00 and settled $5,766,096,168.20 within the county by 44.940 seconds. This opening turn exceeded the 30-second budget.
+
+In a second new campaign, the same Wayne amounts appeared between 44.122 and 44.374 seconds. The full observer then returned to the main menu and reopened the save. The new session reproduced the period-1 world hash and financial records for 7,463 sites, 99 companies, 35,290 payments and 40,609 labor movements.
+
+A separate fresh campaign at revision `ce2c266ed` measured storage through the first two closes. Period 1 used 39,337,984 bytes, down from 76,595,200 in the earlier campaign. Period 2 used 13,336,576 bytes. Both fit the 40,000,000-byte limit and reopened with identical committed world and register hashes. The first two financial publications in this run took 25.620 and 13.832 seconds.
 
 ### Organizer action during financial publication
 

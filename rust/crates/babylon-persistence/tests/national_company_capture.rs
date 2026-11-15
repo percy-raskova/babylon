@@ -21,9 +21,11 @@ fn pre_company_input(mut input: EconomicCatalogInput) -> EconomicCatalogInput {
         let bytes = match source.kind() {
             SourceArtifactKind::NationalGamePolicy => {
                 let text = std::str::from_utf8(source.bytes()).expect("current admitted policy");
-                let (previous, _) = text.split_once("\n[companies]").expect("v8 company table");
+                let (previous, _) = text
+                    .split_once("\n[companies]")
+                    .expect("captured company table");
                 previous
-                    .replacen("schema_version = 3", "schema_version = 2", 1)
+                    .replacen("schema_version = 4", "schema_version = 2", 1)
                     .into_bytes()
             }
             SourceArtifactKind::Rules => {
@@ -45,7 +47,7 @@ fn captured_99_company_roster_preserves_sites_and_employment_and_reopens() {
     let original = original_sites(input.clone());
     let capture =
         CapturedEconomicCatalog::capture(input, None).expect("company-enabled national opening");
-    assert_eq!(capture.compiler_version(), "national-world-v8");
+    assert_eq!(capture.compiler_version(), "national-world-v9");
     let finances = capture
         .national_company_finances()
         .expect("source-bound treasury");

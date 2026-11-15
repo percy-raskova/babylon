@@ -1,7 +1,7 @@
 # Designed first national/world campaign policy. These are gameplay units,
 # not source-derived production, subsistence thresholds or a forecast.
 # Every price is millionths of one common currency unit; no exchange rates.
-schema_version = 3
+schema_version = 4
 evidence_class = "Designed"
 period_days = 28
 work_hours_per_person = 160

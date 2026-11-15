@@ -1,7 +1,7 @@
 //! Due capital, actual purchases and rejected alternatives on the equipment fixture.
 use babylon_material_circuit::{
-    AccountId, CashAccount, CompanyId, CompanyPayoutPolicy, CompanyPortfolio,
-    CompanyPortfolioPolicy, CompanyPortfolioRegister, CompanyPortfolioSelection,
+    AccountId, CashAccount, CompanyConditionOrder, CompanyId, CompanyPayoutPolicy,
+    CompanyPortfolio, CompanyPortfolioPolicy, CompanyPortfolioRegister, CompanyPortfolioSelection,
     DistributionPolicy, EquityCarryingValue, HistoricalCostBook, LaborCapacityRow, MaterialCatalog,
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow,
     MonetaryBook, OwnershipClaim, StaffingMemberId,
@@ -13,6 +13,7 @@ fn company_equipment() -> (MaterialCatalog, MaterialCircuitState, CompanyId) {
     let owner = AccountId::Company(id);
     let mut d = catalog.into_definition();
     d.company_portfolios = Some(CompanyPortfolioPolicy {
+        condition_order: CompanyConditionOrder::FirstApplicable,
         rows: [
             [70, 30, 0, 0],
             [10, 70, 15, 5],

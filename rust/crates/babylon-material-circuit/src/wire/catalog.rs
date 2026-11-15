@@ -1,11 +1,11 @@
 //! Canonical immutable-catalog bytes; the digest travels with every state.
 
-use crate::CapacitySupply;
 use crate::MaintenanceBinding;
 use crate::{
     AidMandate, AidTransport, HouseholdNeed, HouseholdTimeCommitment, HouseholdTimePolicy,
     MaterialCatalogDefinition, MaterialCircuitError, ServiceInputPolicy,
 };
+use crate::{CapacitySupply, CompanyConditionOrder};
 
 /// Canonical domain for one immutable material catalog.
 pub const MATERIAL_CATALOG_DOMAIN_BYTES: &[u8] = b"babylon.material-catalog.v2";
@@ -159,12 +159,14 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);
-    let version = if catalog.company_portfolios.is_some() {
-        4
-    } else if catalog.company_payouts.is_empty() {
-        CATALOG_SCHEMA_VERSION
-    } else {
-        3
+    let version = match catalog
+        .company_portfolios
+        .map(|policy| policy.condition_order)
+    {
+        Some(CompanyConditionOrder::FirstApplicable) => 5,
+        Some(CompanyConditionOrder::HighDemandBeforeSpare) => 4,
+        None if catalog.company_payouts.is_empty() => CATALOG_SCHEMA_VERSION,
+        None => 3,
     };
     out.extend_from_slice(&version.to_be_bytes());
     append_policy(&mut out, &catalog.capacity_policy)?;

@@ -35,18 +35,20 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         catalog.digest(),
         content_digest::sha256_of(catalog.canonical_bytes())
     );
-    assert_eq!(catalog.compiler_version(), "national-world-v8");
+    assert_eq!(catalog.compiler_version(), "national-world-v9");
     let mut obsolete = catalog.canonical_bytes().to_vec();
-    let compiler = b"national-world-v8";
+    let compiler = b"national-world-v9";
     let offset = obsolete
         .windows(compiler.len())
         .position(|s| s == compiler)
         .expect("the fixture sequence holds the addressed position");
-    obsolete[offset + compiler.len() - 1] = b'1';
-    assert_eq!(
-        CapturedEconomicCatalog::decode(&obsolete, content_digest::sha256_of(&obsolete)),
-        Err(babylon_persistence::economic_catalog::EconomicCatalogError::CompilerVersion)
-    );
+    for incompatible in [b'1', b'8'] {
+        obsolete[offset + compiler.len() - 1] = incompatible;
+        assert_eq!(
+            CapturedEconomicCatalog::decode(&obsolete, content_digest::sha256_of(&obsolete)),
+            Err(babylon_persistence::economic_catalog::EconomicCatalogError::CompilerVersion)
+        );
+    }
     let witness = catalog
         .national_generation()
         .expect("captured current grain witness");

@@ -21,6 +21,7 @@ use crate::national_economy::NationalGamePolicy;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::CompanyConditionOrder;
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use std::collections::BTreeSet;
 use std::fmt::Formatter;
@@ -358,19 +359,24 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
             let kind = SourceArtifactKind::NationalGamePolicy;
             let policy = NationalGamePolicy::from_captured_bytes(source(input, kind)?)
                 .map_err(|_| EconomicCatalogError::Source(kind))?;
-            let experiment = policy.companies.and_then(|terms| terms.experiment);
-            match (input.preset_id.as_str(), experiment) {
-                ("national-world", None) => Ok(if policy.companies.is_some() {
-                    "national-world-v8"
-                } else {
-                    "national-world-v7"
-                }),
-                ("national-company-scale-experiment", Some(_))
-                    if input.geography == CatalogGeography::NationalCounties
+            match (input.preset_id.as_str(), policy.companies) {
+                ("national-world", None) => Ok("national-world-v7"),
+                ("national-world", Some(terms)) if terms.experiment.is_none() => {
+                    Ok(match terms.portfolio.condition_order {
+                        CompanyConditionOrder::HighDemandBeforeSpare => "national-world-v8",
+                        CompanyConditionOrder::FirstApplicable => "national-world-v9",
+                    })
+                }
+                ("national-company-scale-experiment", Some(terms))
+                    if terms.experiment.is_some()
+                        && input.geography == CatalogGeography::NationalCounties
                         && input.organizer.is_none()
                         && input.city_pd.is_none() =>
                 {
-                    Ok("national-company-scale-v1")
+                    Ok(match terms.portfolio.condition_order {
+                        CompanyConditionOrder::HighDemandBeforeSpare => "national-company-scale-v1",
+                        CompanyConditionOrder::FirstApplicable => "national-company-scale-v2",
+                    })
                 }
                 _ => Err(EconomicCatalogError::Identity),
             }

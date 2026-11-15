@@ -11,7 +11,7 @@ use crate::national_transport::CargoClass;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
-use babylon_material_circuit::CompanyPortfolioPolicy;
+use babylon_material_circuit::{CompanyConditionOrder, CompanyPortfolioPolicy};
 
 use super::GameAidPolicy;
 use super::GameOrganizerPolicy;
@@ -210,6 +210,11 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
                 c.opening_employment_bps,
                 c.opening_treasury_bps,
                 CompanyPortfolioPolicy {
+                    condition_order: if raw.schema_version == 3 {
+                        CompanyConditionOrder::HighDemandBeforeSpare
+                    } else {
+                        CompanyConditionOrder::FirstApplicable
+                    },
                     rows: c.portfolio_weights,
                     high_utilization_bps: c.high_utilization_bps,
                     history_periods: c.history_periods,
@@ -430,7 +435,7 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
     }
     if !matches!(
         (raw.schema_version, raw.companies.is_some()),
-        (2, false) | (3, true)
+        (2, false) | (3 | 4, true)
     ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0

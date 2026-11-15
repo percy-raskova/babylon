@@ -53,7 +53,7 @@ fn reprice(text: &mut String, good: &str, multiple: u64) {
     text.replace_range(start..end, &table);
 }
 
-fn capture() -> CapturedEconomicCatalog {
+fn archived_capture() -> CapturedEconomicCatalog {
     let mut input = economic_catalog::national_catalog_input();
     let source = input
         .sources
@@ -63,6 +63,8 @@ fn capture() -> CapturedEconomicCatalog {
     let mut text = std::str::from_utf8(source.bytes())
         .expect("policy text")
         .to_owned();
+    // This recorded P5 study used the original v8 portfolio condition order.
+    replace(&mut text, "schema_version = 4", "schema_version = 3");
     // Scarce supplies made from costly feedstock sustain funded orders for the manufacturer.
     replace(
         &mut text,
@@ -112,7 +114,12 @@ fn capture() -> CapturedEconomicCatalog {
 #[test]
 #[ignore = "five complete national material and financial closes"]
 fn high_demand_company_funds_an_admitted_equipment_purchase() {
-    let c = capture();
+    let c = archived_capture();
+    assert_eq!(c.compiler_version(), "national-world-v8");
+    assert_eq!(
+        babylon_tick::hex(&c.digest()),
+        "377327f391050d1ab3260a9a54cec2c49278829d38c08094ea5cb3f1dfb0f6b7"
+    );
     let roster = c.national_companies().expect("company capture");
     assert_eq!(roster.companies.len(), 99);
     let company = roster

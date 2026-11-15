@@ -375,6 +375,12 @@ and the draw ticket. The company measures profitability by adding its member
 sites’ operating income over up to three completed periods. The report gives
 those period totals in currency micros, oldest first.
 
+In a new national campaign, a profitable company checks replacement needs
+first. If it needs no replacement and used eight of ten available batches,
+it uses the spare-capacity weights even if orders went unfilled. If it used
+all ten batches and still has unfilled accepted orders, it uses the
+high-demand weights. Each saved campaign keeps its captured policy.
+
 Choose **Freight access** to inspect Wayne’s captured corridors. Switch between
 **Outbound from origin** and **Inbound to origin** to inspect each direction.
 Select an endpoint, then choose **Geographic map** or **Terminal network**.

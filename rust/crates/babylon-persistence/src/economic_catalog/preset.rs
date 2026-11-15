@@ -9,7 +9,13 @@ pub(super) enum NationalGraph {
 }
 impl NationalGraph {
     pub(super) fn from_compiler(compiler: &str) -> Self {
-        if matches!(compiler, "national-world-v8" | "national-company-scale-v1") {
+        if matches!(
+            compiler,
+            "national-world-v8"
+                | "national-world-v9"
+                | "national-company-scale-v1"
+                | "national-company-scale-v2"
+        ) {
             Self::Companies
         } else {
             Self::OperatingSites

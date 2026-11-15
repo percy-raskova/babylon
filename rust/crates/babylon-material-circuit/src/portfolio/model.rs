@@ -4,8 +4,18 @@ use babylon_kernel::currency::Currency;
 use std::result::Result as StdResult;
 pub(super) type Result<T> = StdResult<T, MaterialCircuitError>;
 
+/// Condition precedence bound to the source capture and its material catalog digest.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CompanyConditionOrder {
+    /// The first company captures gave high utilization with unmet demand priority over spare capacity.
+    HighDemandBeforeSpare,
+    /// Use the first applicable table row, including spare capacity whenever any batches are unused.
+    FirstApplicable,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct CompanyPortfolioPolicy {
+    pub condition_order: CompanyConditionOrder,
     pub rows: [[u16; 4]; 4],
     pub high_utilization_bps: u16,
     pub history_periods: u8,

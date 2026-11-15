@@ -1,8 +1,8 @@
 //! Whole-unit allocations use member cash once, then the conserved parent balance.
 use super::model::{self, Result};
 use super::{
-    CompanyCondition, CompanyPortfolioEvidence, CompanyPortfolioPolicy, CompanyProcessEvidence,
-    CompanyProcessPlan,
+    CompanyCondition, CompanyConditionOrder, CompanyPortfolioEvidence, CompanyPortfolioPolicy,
+    CompanyProcessEvidence, CompanyProcessPlan,
 };
 use crate::{CompanyId, MaterialCircuitError, SiteId};
 use babylon_kernel::currency::Currency;
@@ -67,13 +67,15 @@ impl CompanyPortfolioEvidence {
             .sum();
         let high = cap > 0 && used * 10_000 >= cap * u128::from(policy.high_utilization_bps);
         let unmet = processes.iter().any(|r| r.unmet_accepted_units > 0);
+        let prefer_high_demand =
+            policy.condition_order == CompanyConditionOrder::HighDemandBeforeSpare && high && unmet;
         let condition = if income < 0 {
             CompanyCondition::Loss
         } else if income == 0 {
             CompanyCondition::NoMatchingRow
         } else if processes.iter().any(|r| r.replacement > 0) {
             CompanyCondition::Replacement
-        } else if used < cap && (!high || !unmet) {
+        } else if used < cap && !prefer_high_demand {
             CompanyCondition::Spare
         } else if high && unmet {
             CompanyCondition::UnmetDemand

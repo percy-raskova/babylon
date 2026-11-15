@@ -69,9 +69,9 @@ pub use payments::{
     MAX_MONEY_TRANSFERS_PER_PERIOD,
 };
 pub use portfolio::{
-    CompanyCondition, CompanyPortfolio, CompanyPortfolioEvidence, CompanyPortfolioPolicy,
-    CompanyPortfolioRegister, CompanyPortfolioSelection, CompanyProcessEvidence,
-    CompanyProcessPlan, COMPANY_PORTFOLIO_DOMAIN,
+    CompanyCondition, CompanyConditionOrder, CompanyPortfolio, CompanyPortfolioEvidence,
+    CompanyPortfolioPolicy, CompanyPortfolioRegister, CompanyPortfolioSelection,
+    CompanyProcessEvidence, CompanyProcessPlan, COMPANY_PORTFOLIO_DOMAIN,
 };
 pub use recurring::*;
 pub use services::{

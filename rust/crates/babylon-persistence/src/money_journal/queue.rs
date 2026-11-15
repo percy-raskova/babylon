@@ -2,8 +2,9 @@
 use super::{storage, JournalError, MoneyJournalWriter};
 use crate::identity::CampaignId;
 use crate::observer_reader::{
-    self, ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
+    self, ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
 };
+use crate::production_projection::diagnostics::{Stage, Timing};
 use crate::ARCHIVE_WAKEUP_CHANNEL;
 use postgres::fallible_iterator::FallibleIterator as _;
 use postgres::Client;
@@ -21,6 +22,20 @@ const PENDING: &str = "SELECT t.campaign_id,t.resolve_tick
       AND NOT EXISTS (SELECT 1 FROM public.v_observer_money_journal_period_v1 p
           WHERE p.campaign_id=t.campaign_id AND p.resolve_tick=t.resolve_tick)
     ORDER BY t.campaign_id,t.resolve_tick LIMIT $4";
+
+// The latest canonical commit must already be covered. On a long-lived save a
+// speculative read covers at most one material-history page, including opening.
+const REOPENED: &str = "
+    SELECT seed.resolve_tick, seed.source_identity_bytes, seed.receipt_sha256 FROM (
+        SELECT t.resolve_tick FROM public.v_committed_tick_status_v1 t
+        JOIN public.v_material_campaign_identity_v2 f USING(campaign_id)
+        WHERE t.campaign_id=$1 AND t.envelope_layout_version=3 AND f.preset_id='national-world'
+        ORDER BY t.resolve_tick DESC LIMIT 1
+    ) latest
+    JOIN public.v_observer_money_journal_period_v1 tail
+        ON tail.campaign_id=$1 AND tail.resolve_tick=latest.resolve_tick
+    JOIN public.v_observer_money_journal_period_v1 seed
+        ON seed.campaign_id=$1 AND seed.resolve_tick=least(latest.resolve_tick,$2::bigint)";
 
 #[derive(Debug)]
 pub enum JournalQueueError {
@@ -126,6 +141,59 @@ impl<'a> JournalQueue<'a> {
             self.after = Some((id, stored));
         }
         Ok(rows.len())
+    }
+
+    /// Warm a single launcher-selected continuation after ordinary catchup. Coverage
+    /// and the canonical receipt must agree; no journal row is published by this read.
+    /// Returns the newly admitted boundary, if one was needed.
+    /// # Errors
+    /// Refuses the wrong scope, changed coverage, or a failed source admission.
+    pub fn warm_reopened_campaign(
+        &mut self,
+        campaign: CampaignId,
+    ) -> Result<Option<u64>, JournalError> {
+        if self.scope.is_some_and(|scope| scope != campaign) {
+            return Err(JournalError::Authority);
+        }
+        observer_reader::confine_authority(&mut self.listener, ObserverVisibility::FullObserver)
+            .map_err(JournalError::Observer)?;
+        let last = i64::try_from(crate::observer_material::MATERIAL_PAGE_ROWS - 1)
+            .map_err(|_| JournalError::Range)?;
+        let Some(seed) = self
+            .listener
+            .query_opt(REOPENED, &[campaign.as_uuid(), &last])
+            .map_err(|_| JournalError::Database)?
+        else {
+            return Ok(None);
+        };
+        let period = u64::try_from(
+            seed.try_get::<_, i64>(0)
+                .map_err(|_| JournalError::Projection)?,
+        )
+        .map_err(|_| JournalError::Projection)?;
+        if self
+            .cursor
+            .as_ref()
+            .is_some_and(|c| c.admission(campaign).is_some() && c.completed_tick() >= period)
+        {
+            return Ok(None);
+        }
+        let identity: Vec<u8> = seed.try_get(1).map_err(|_| JournalError::Projection)?;
+        let receipt: Vec<u8> = seed.try_get(2).map_err(|_| JournalError::Projection)?;
+        let _timing = Timing::start(Stage::JournalWarmup, period);
+        let mut cursor = None;
+        self.observer
+            .with_committed_receipts(campaign, period, &mut cursor, |_, _, source| {
+                if source.identity.canonical_bytes() != identity
+                    || source.identity.receipt_digest().as_slice() != receipt
+                {
+                    return Err(ObserverEconomyError::InvalidProjection);
+                }
+                Ok(())
+            })
+            .map_err(JournalError::Observer)?;
+        self.cursor = cursor;
+        Ok(Some(period))
     }
 
     /// Receive an untrusted wakeup hint. The next discovery query verifies the durable marker.

@@ -295,6 +295,7 @@ def _clean_environment(environment: Mapping[str, str]) -> dict[str, str]:
             "BABYLON_READER_DSN",
             "BABYLON_SESSION_STDIO",
             "BABYLON_CAMPAIGN_ID",
+            "BABYLON_REOPEN_CAMPAIGN",
             "BABYLON_DOSSIER_DEMO_PASSWORD",
         }
     }
@@ -478,17 +479,24 @@ def _stop(child: subprocess.Popen[bytes]) -> None:
 
 
 def _start_projections(
-    binary: Path, root: Path, writer: Mapping[str, str], reader: Mapping[str, str]
+    binary: Path,
+    root: Path,
+    writer: Mapping[str, str],
+    reader: Mapping[str, str],
+    reopen: UUID | None,
 ) -> subprocess.Popen[bytes] | None:
-    """Give the independent publisher its two database logins and a private lifetime pipe."""
+    """Pass the selected existing campaign to the independent publisher for idle warmup."""
+    environment = {
+        "BABYLON_RUNTIME_DSN": writer["BABYLON_RUNTIME_DSN"],
+        "BABYLON_OBSERVER_DSN": reader["BABYLON_OBSERVER_DSN"],
+    }
+    if reopen is not None:
+        environment["BABYLON_REOPEN_CAMPAIGN"] = str(reopen)
     try:
         return subprocess.Popen(
             [str(binary), "watch-database", "--session-stdin"],
             cwd=root,
-            env={
-                "BABYLON_RUNTIME_DSN": writer["BABYLON_RUNTIME_DSN"],
-                "BABYLON_OBSERVER_DSN": reader["BABYLON_OBSERVER_DSN"],
-            },
+            env=environment,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=None,
@@ -948,7 +956,11 @@ def run_pair(
         descriptors.clear()
         if analytics_binary is not None:
             publisher = _start_projections(
-                analytics_binary, root, runtime_environment, client_environment
+                analytics_binary,
+                root,
+                runtime_environment,
+                client_environment,
+                initial_target.campaign if isinstance(initial_target, OpenCampaignTarget) else None,
             )
         if on_publisher_started is not None:
             if publisher is None:

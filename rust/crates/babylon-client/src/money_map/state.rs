@@ -30,6 +30,7 @@ use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::tasks::{self, AsyncComputeTaskPool, Task};
 use std::task::Poll;
+use std::time::Instant;
 
 #[derive(Component)]
 pub(crate) struct MoneyRail;
@@ -368,6 +369,29 @@ struct PendingPage {
     task: Task<Result<Page, JournalError>>,
 }
 
+impl PendingPage {
+    fn start(scope: &Scope, offset: u64) -> Self {
+        let requested = scope.clone();
+        let queued = Instant::now();
+        let task = AsyncComputeTaskPool::get().spawn(async move {
+            let started = Instant::now();
+            let result = read_page(&requested, &flow_query(&requested, offset));
+            bevy::log::info!(target: "babylon_client::timing",
+                stage = "authenticated_flow_report", campaign = %requested.context.campaign.as_uuid(),
+                tick = requested.context.tick, generation = requested.context.generation,
+                measure = ?requested.measure, offset, queue_us = (started - queued).as_micros(),
+                elapsed_us = started.elapsed().as_micros(), success = result.is_ok(),
+                "Frame-bound flow report read completed");
+            result
+        });
+        Self {
+            scope: scope.clone(),
+            offset,
+            task,
+        }
+    }
+}
+
 #[derive(Resource, Default)]
 struct Loader {
     pending: Option<PendingPage>,
@@ -494,6 +518,10 @@ fn update(
                         view.rows = page.connections();
                         view.page = Some(page);
                         view.status = Status::Ready;
+                        bevy::log::info!(target: "babylon_client::timing",
+                            stage = "flow_report_installed", campaign = %scope.context.campaign.as_uuid(),
+                            tick = scope.context.tick, generation = scope.context.generation,
+                            measure = ?scope.measure, offset, "Frame-bound flow report applied");
                     }
                     Err(JournalError::CoverageAbsent) => {
                         view.status = Status::Publishing;
@@ -526,15 +554,7 @@ fn update(
     } else if view.status != Status::Waiting {
         return;
     }
-    let scope = scope.clone();
-    let requested = scope.clone();
-    let offset = view.offset;
-    loader.pending = Some(PendingPage {
-        scope,
-        offset,
-        task: AsyncComputeTaskPool::get()
-            .spawn(async move { read_page(&requested, &flow_query(&requested, offset)) }),
-    });
+    loader.pending = Some(PendingPage::start(scope, view.offset));
     if view.status != Status::Publishing {
         view.status = Status::Loading;
     }

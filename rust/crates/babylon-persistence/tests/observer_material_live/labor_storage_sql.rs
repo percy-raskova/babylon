@@ -191,12 +191,12 @@ fn check_shared_node_repair(
     campaign: CampaignId,
 ) {
     let id = campaign.as_uuid();
-    let selected=owner.query_one("SELECT n.node_ordinal,n.descriptor_sha256,
+    let selected=owner.query_one("SELECT n.node_ordinal,d.descriptor_sha256,
             (SELECT min(peer.resolve_tick) FROM babylon_state.labor_node_v1 peer WHERE
-                peer.campaign_id=n.campaign_id AND peer.descriptor_sha256=n.descriptor_sha256 AND peer.resolve_tick<>2) AS neighbor
-        FROM babylon_state.labor_node_v1 n WHERE n.campaign_id=$1 AND n.resolve_tick=2
+                peer.campaign_id=n.campaign_id AND peer.descriptor_key=n.descriptor_key AND peer.resolve_tick<>2) AS neighbor
+        FROM babylon_state.labor_node_v1 n JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_key) WHERE n.campaign_id=$1 AND n.resolve_tick=2
         AND EXISTS (SELECT FROM babylon_state.labor_node_v1 peer WHERE peer.campaign_id=n.campaign_id
-            AND peer.descriptor_sha256=n.descriptor_sha256 AND peer.resolve_tick<>2) ORDER BY n.node_ordinal LIMIT 1",
+            AND peer.descriptor_key=n.descriptor_key AND peer.resolve_tick<>2) ORDER BY n.node_ordinal LIMIT 1",
         &[id]).expect("one recurring identity used in two retained periods");
     let ordinal: i64 = selected.get(0);
     let original: Vec<u8> = selected.get(1);
@@ -204,17 +204,18 @@ fn check_shared_node_repair(
     let snapshot = |db: &mut Client, tick| -> String {
         db.query_one(
             "SELECT to_jsonb(d)::text FROM babylon_state.labor_node_v1 n
-            JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_sha256)
-            WHERE n.campaign_id=$1 AND n.resolve_tick=$2 AND n.descriptor_sha256=$3 LIMIT 1",
+            JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_key)
+            WHERE n.campaign_id=$1 AND n.resolve_tick=$2 AND d.descriptor_sha256=$3 LIMIT 1",
             &[id, &tick, &original],
         )
         .expect("original typed identity")
         .get(0)
     };
+    check_physical_reference(owner, campaign, ordinal, &original);
     let before = snapshot(owner, neighbor);
     let corrupt=owner.query_one("WITH changed AS (
-          SELECT jsonb_populate_record(d,jsonb_build_object('location_key',
-              CASE WHEN d.location_key IS NULL THEN 'changed' ELSE NULL END)) AS body
+          SELECT jsonb_populate_record(d,jsonb_build_object('descriptor_key',(SELECT max(descriptor_key)+1 FROM babylon_state.labor_node_identity_v1 WHERE campaign_id=$1),
+              'location_key',CASE WHEN d.location_key IS NULL THEN 'changed' ELSE NULL END)) AS body
           FROM babylon_state.labor_node_identity_v1 d WHERE campaign_id=$1 AND descriptor_sha256=$2
         ), keyed AS (
           SELECT jsonb_populate_record(body,jsonb_build_object('descriptor_sha256',
@@ -222,9 +223,14 @@ fn check_shared_node_repair(
         ), staged AS (
           INSERT INTO babylon_state.labor_node_identity_v1 SELECT (body).* FROM keyed
           ON CONFLICT (campaign_id,descriptor_sha256) DO NOTHING
+          RETURNING descriptor_key,descriptor_sha256
+        ), resolved AS (
+          SELECT descriptor_key,descriptor_sha256 FROM staged UNION ALL
+          SELECT d.descriptor_key,d.descriptor_sha256 FROM babylon_state.labor_node_identity_v1 d
+          JOIN keyed k ON (d.campaign_id,d.descriptor_sha256)=((k.body).campaign_id,(k.body).descriptor_sha256)
         )
-        UPDATE babylon_state.labor_node_v1 n SET descriptor_sha256=(k.body).descriptor_sha256 FROM keyed k
-        WHERE n.campaign_id=$1 AND n.resolve_tick=2 AND n.node_ordinal=$3 RETURNING n.descriptor_sha256",
+        UPDATE babylon_state.labor_node_v1 n SET descriptor_key=k.descriptor_key FROM resolved k
+        WHERE n.campaign_id=$1 AND n.resolve_tick=2 AND n.node_ordinal=$3 RETURNING k.descriptor_sha256",
         &[id,&original,&ordinal]).expect("alter only one nullable source field behind a retained reference");
     assert_ne!(corrupt.get::<_, Vec<u8>>(0), original);
     assert_eq!(
@@ -238,8 +244,8 @@ fn check_shared_node_repair(
     assert_eq!(snapshot(owner, 2), before);
     let restored: Vec<u8> = owner
         .query_one(
-            "SELECT descriptor_sha256 FROM babylon_state.labor_node_v1
-        WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2",
+            "SELECT d.descriptor_sha256 FROM babylon_state.labor_node_v1 n JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_key)
+        WHERE n.campaign_id=$1 AND n.resolve_tick=2 AND n.node_ordinal=$2",
             &[id, &ordinal],
         )
         .expect("same original receipt ordinal")
@@ -249,10 +255,45 @@ fn check_shared_node_repair(
         .query_one(
             "SELECT EXISTS (SELECT FROM babylon_state.labor_node_identity_v1 d
         WHERE d.campaign_id=$1 AND NOT EXISTS (SELECT FROM babylon_state.labor_node_v1 n
-          WHERE (n.campaign_id,n.descriptor_sha256)=(d.campaign_id,d.descriptor_sha256)))",
+          WHERE (n.campaign_id,n.descriptor_key)=(d.campaign_id,d.descriptor_key)))",
             &[id],
         )
         .expect("membership after recovery and thirteen-period retention")
         .get(0);
     assert!(!orphan);
+}
+
+fn check_physical_reference(
+    owner: &mut Client,
+    campaign: CampaignId,
+    ordinal: i64,
+    original: &[u8],
+) {
+    let id = campaign.as_uuid();
+    let mut broken = owner.transaction().expect("exercise physical reference");
+    broken
+        .execute(
+            "UPDATE babylon_state.labor_node_v1 SET descriptor_key=-1
+             WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2",
+            &[id, &ordinal],
+        )
+        .expect("stage missing physical descriptor");
+    assert_eq!(
+        broken
+            .commit()
+            .expect_err("deferred link must resolve")
+            .code(),
+        Some(&postgres::error::SqlState::FOREIGN_KEY_VIOLATION)
+    );
+    let collision = owner.execute(
+        "UPDATE babylon_state.labor_node_identity_v1 SET location_key=coalesce(location_key,'')||'!'
+         WHERE campaign_id=$1 AND descriptor_sha256=$2",
+        &[id, &original],
+    );
+    assert_eq!(
+        collision
+            .expect_err("a physical key cannot authorize changed content")
+            .code(),
+        Some(&postgres::error::SqlState::CHECK_VIOLATION)
+    );
 }

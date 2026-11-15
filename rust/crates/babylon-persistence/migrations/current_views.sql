@@ -424,16 +424,28 @@ LEFT JOIN public.v_observer_economic_company_v1 c
     ON (c.campaign_id,c.foundation_sha256)=(a.campaign_id,a.foundation_sha256)
     AND c.company_id=CASE WHEN a.account_kind='company_cash' THEN a.account_id ELSE m.company_id END;
 REVOKE ALL ON public.v_observer_economic_flow_account_v2 FROM PUBLIC;
+-- Keep each settlement within its admitted period. Resolve both compact keys
+-- against the same campaign and foundation, including a payer behind escrow.
 CREATE VIEW public.v_observer_economic_payment_v1 AS
-SELECT m.campaign_id, m.resolve_tick, m.ordinal, m.purpose, m.reference_kind, m.reference_id,
-    payer.account_kind AS payer_kind, payer.account_id AS payer_id,
-    recipient.account_kind AS recipient_kind, recipient.account_id AS recipient_id, m.amount_micros
-FROM babylon_state.money_movement_v1 m
-JOIN public.v_observer_money_journal_period_v1 p USING (campaign_id,resolve_tick)
-JOIN babylon_state.economic_flow_account_v1 payer
-    ON (payer.campaign_id,payer.account_key,payer.foundation_sha256)=(m.campaign_id,m.payer_key,p.foundation_sha256)
-JOIN babylon_state.economic_flow_account_v1 recipient
-    ON (recipient.campaign_id,recipient.account_key,recipient.foundation_sha256)=(m.campaign_id,m.recipient_key,p.foundation_sha256)
+SELECT p.campaign_id, p.resolve_tick, paid.ordinal, paid.purpose, paid.reference_kind, paid.reference_id,
+    paid.payer_kind, paid.payer_id, paid.recipient_kind, paid.recipient_id, paid.amount_micros
+FROM public.v_observer_money_journal_period_v1 p
+CROSS JOIN LATERAL (
+    WITH accounts AS (
+        SELECT jsonb_object_agg(account_key,jsonb_build_array(account_kind,encode(account_id,'hex'))) AS by_key
+        FROM babylon_state.economic_flow_account_v1
+        WHERE campaign_id=p.campaign_id AND foundation_sha256=p.foundation_sha256
+    )
+    SELECT m.ordinal,m.purpose,m.reference_kind,m.reference_id,
+        key.payer->>0 AS payer_kind,decode(key.payer->>1,'hex') AS payer_id,
+        key.recipient->>0 AS recipient_kind,decode(key.recipient->>1,'hex') AS recipient_id,m.amount_micros
+    FROM babylon_state.money_movement_v1 m CROSS JOIN accounts
+    CROSS JOIN LATERAL (SELECT accounts.by_key->m.payer_key::text AS payer,
+        accounts.by_key->m.recipient_key::text AS recipient) key
+    WHERE m.campaign_id=p.campaign_id AND m.resolve_tick=p.resolve_tick
+        AND key.payer IS NOT NULL AND key.recipient IS NOT NULL
+    OFFSET 0
+) AS paid
 WHERE p.detail_retained;
 REVOKE ALL ON public.v_observer_economic_flow_account_v1, public.v_observer_economic_payment_v1 FROM PUBLIC;
 
@@ -492,13 +504,17 @@ SELECT c.*,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256,p.result_wor
 FROM babylon_state.labor_checkpoint_v1 c JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick)
 WHERE c.sha256=p.checkpoint_sha256;
 CREATE VIEW public.v_observer_labor_node_v1 AS
-SELECT n.* FROM babylon_state.labor_node_fact_v1 n JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
+SELECT n.campaign_id,n.resolve_tick,n.node_ordinal,n.kind,n.entity_id,n.good_id,n.unit_id,n.purpose,
+       n.scope_kind,n.scope_id,n.process_id,n.route_id,n.origin_id,n.destination_id,
+       n.location_key,n.catchment_key,n.industry_key,n.industry_label,n.longitude,n.latitude
+FROM babylon_state.labor_node_fact_v1 n JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick)
+WHERE p.detail_retained;
 CREATE VIEW public.v_observer_labor_movement_v1 AS
 SELECT e.* FROM babylon_state.labor_movement_v1 e JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
 CREATE VIEW public.v_observer_labor_position_v1 AS
 SELECT b.campaign_id, b.resolve_tick, endpoint.side, b.node_ordinal,
        endpoint.quantity, endpoint.recorded_micro_hours, endpoint.unknown_opening
-FROM babylon_state.labor_position_v1 b
+FROM babylon_state.labor_node_v1 b
 JOIN public.v_observer_labor_period_v1 p USING (campaign_id, resolve_tick)
 CROSS JOIN LATERAL (VALUES
     ('opening'::text, b.opening_quantity, b.opening_recorded_micro_hours, b.opening_unknown_opening),

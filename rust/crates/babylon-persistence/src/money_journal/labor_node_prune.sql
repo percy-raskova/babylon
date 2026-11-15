@@ -3,12 +3,12 @@
 WITH removed AS (
     DELETE FROM babylon_state.labor_node_v1
     WHERE campaign_id=$1 AND resolve_tick BETWEEN $2 AND $3
-    RETURNING descriptor_sha256
+    RETURNING descriptor_key
 )
 DELETE FROM babylon_state.labor_node_identity_v1 d
-WHERE d.campaign_id=$1 AND d.descriptor_sha256 IN (SELECT descriptor_sha256 FROM removed)
+WHERE d.campaign_id=$1 AND d.descriptor_key IN (SELECT descriptor_key FROM removed)
   AND NOT EXISTS (
       SELECT FROM babylon_state.labor_node_v1 n
-      WHERE n.campaign_id=d.campaign_id AND n.descriptor_sha256=d.descriptor_sha256
+      WHERE n.campaign_id=d.campaign_id AND n.descriptor_key=d.descriptor_key
         AND n.resolve_tick NOT BETWEEN $2 AND $3
   )

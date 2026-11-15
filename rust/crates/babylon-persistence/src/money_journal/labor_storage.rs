@@ -63,11 +63,13 @@ fn stage(
     let mut batch = Batch { tx, admission };
     batch.stage(
         Table::LaborNode,
-        facts.nodes.iter().map(|fact| Scoped {
-            campaign_id: campaign,
-            resolve_tick: tick,
-            fact,
-        }),
+        labor_positions::attach(&facts.nodes, &facts.positions)?
+            .iter()
+            .map(|fact| Scoped {
+                campaign_id: campaign,
+                resolve_tick: tick,
+                fact,
+            }),
     )?;
     batch.stage(
         Table::LaborMovement,
@@ -76,17 +78,37 @@ fn stage(
             resolve_tick: tick,
             fact,
         }),
-    )?;
-    batch.stage(
-        Table::LaborPosition,
-        labor_positions::pairs(&facts.positions)?
-            .iter()
-            .map(|fact| Scoped {
-                campaign_id: campaign,
-                resolve_tick: tick,
-                fact,
-            }),
     )
+}
+
+/// Key-share probes for both endpoints run at commit. A restored or fully pruned
+/// relation may still have the planner's empty estimate after staging a whole close.
+fn prepare_node_checks(tx: &mut Transaction<'_>, nodes: i64) -> Result<(), JournalError> {
+    if nodes == 0 {
+        return Ok(());
+    }
+    let needs_statistics: bool = tx
+        .query_one(
+            "WITH parents(rel,cols) AS (VALUES
+              ('babylon_state.labor_node_v1'::regclass,ARRAY['campaign_id','resolve_tick','node_ordinal']),
+              ('babylon_state.labor_node_identity_v1'::regclass,ARRAY['campaign_id','descriptor_key','descriptor_sha256']))
+             SELECT EXISTS (SELECT FROM parents p JOIN pg_catalog.pg_class c ON c.oid=p.rel
+               WHERE c.reltuples < $1::bigint OR EXISTS (SELECT FROM unnest(p.cols) k(name)
+                 WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_stats s
+                   WHERE s.schemaname='babylon_state' AND s.tablename=c.relname
+                     AND s.attname=k.name::name AND NOT s.inherited)))",
+            &[&nodes],
+        )
+        .and_then(|row| row.try_get(0))
+        .map_err(|_| JournalError::Database)?;
+    if needs_statistics {
+        tx.batch_execute(
+            "ANALYZE babylon_state.labor_node_v1 (campaign_id,resolve_tick,node_ordinal,descriptor_key);
+             ANALYZE babylon_state.labor_node_identity_v1 (campaign_id,descriptor_key,descriptor_sha256)",
+        )
+        .map_err(|_| JournalError::Database)?;
+    }
+    Ok(())
 }
 
 pub(super) fn publish(
@@ -135,15 +157,15 @@ pub(super) fn publish(
         if !valid {
             return Err(JournalError::Projection);
         }
-        let counts = tx.query_one(
-            "SELECT (SELECT count(*) FROM babylon_state.labor_node_v1
+        let counts = tx
+            .query_one(
+                "SELECT count(*), (SELECT count(*) FROM babylon_state.labor_movement_v1
                      WHERE campaign_id=$1 AND resolve_tick=$2),
-                    (SELECT count(*) FROM babylon_state.labor_movement_v1
-                     WHERE campaign_id=$1 AND resolve_tick=$2),
-                    (SELECT count(opening_quantity) + count(closing_quantity)
-                     FROM babylon_state.labor_position_v1 WHERE campaign_id=$1 AND resolve_tick=$2)",
-            &[campaign, &tick],
-        ).map_err(|_| JournalError::Database)?;
+                    count(opening_quantity) + count(closing_quantity)
+             FROM babylon_state.labor_node_v1 WHERE campaign_id=$1 AND resolve_tick=$2",
+                &[campaign, &tick],
+            )
+            .map_err(|_| JournalError::Database)?;
         for (index, expected) in [nodes, movements, positions].into_iter().enumerate() {
             let actual: i64 = counts
                 .try_get(index)
@@ -179,6 +201,7 @@ pub(super) fn publish(
         Admission::Verify => {}
         Admission::Insert | Admission::Rebuild => {
             stage(tx, facts, &campaign.to_string(), tick, admission)?;
+            prepare_node_checks(tx, nodes)?;
         }
     }
     Ok(())

@@ -7,8 +7,8 @@ use super::{
     ObserverEconomyReader, ObserverVisibility, Uuid,
 };
 use babylon_persistence::money_journal::{
-    self as journal, FlowGroup, JournalError, MoneyJournalWriter, MoneyMovement, MoneyPurpose,
-    MoneyTotal,
+    self as journal, FlowGroup, JournalError, JournalQueue, MoneyJournalWriter, MoneyMovement,
+    MoneyPurpose, MoneyTotal,
 };
 use babylon_persistence::observer_reader::{CommittedMaterialReceipts, ObserverMaterialCursor};
 use postgres::{Client, Config};
@@ -356,12 +356,39 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     let mut owner = target.writer.connect(NoTls).expect("owner connection");
     check_reserve_payer_integrity(&mut owner, &observer, &writer, campaign);
     assert_nonzero_history(&mut owner, &observer, &writer, campaign, &expected, &totals);
+    let mut returning_session = JournalQueue::connect(&observer, &writer, None)
+        .expect("returning session has ordinary database-wide catchup");
+    assert_eq!(
+        returning_session
+            .warm_reopened_campaign(campaign)
+            .expect("authenticate the reopened covered national period"),
+        Some(1)
+    );
+    assert_eq!(
+        returning_session
+            .warm_reopened_campaign(campaign)
+            .expect("check the admitted period on repeated warmup"),
+        None
+    );
     super::projection_recovery::commit_after_projection(
         &target.writer,
         campaign,
         &next_without_projection,
     );
-    super::projection_recovery::interrupt_and_retry(&mut owner, &writer, &observer, campaign);
+    assert_eq!(
+        returning_session
+            .warm_reopened_campaign(campaign)
+            .expect("discover the newly committed uncovered period"),
+        None,
+        "a new uncovered head is left to the normal writer"
+    );
+    super::projection_recovery::interrupt_and_retry(
+        &mut owner,
+        &writer,
+        &observer,
+        campaign,
+        &mut returning_session,
+    );
     super::payment_flows::comparison(&observer, campaign);
     super::payment_flows::check_company_rebuild(&mut owner, &observer, &writer, campaign);
     super::site_accounting_sql::stocks(&runtime, &observer, campaign, 1);
@@ -527,6 +554,41 @@ fn check_reserve_payer_integrity(
             .expect("restore the authenticated economic payer"),
         1
     );
+    let change_foundation = "UPDATE babylon_state.economic_flow_account_v1
+        SET foundation_sha256=set_byte(foundation_sha256,0,get_byte(foundation_sha256,0) # 1)
+        WHERE campaign_id=$1 AND account_key=$2";
+    assert_eq!(
+        owner
+            .execute(change_foundation, &[campaign.as_uuid(), &payer])
+            .expect("damage the real economic payer behind the settlement"),
+        1
+    );
+    let query = super::payment_flows::query(FlowGroup::Location);
+    assert_eq!(
+        observer.economic_payment_flows(campaign, &query),
+        Err(JournalError::Projection),
+        "settlement coverage requires the recorded payer's foundation even when the debit is a reserve"
+    );
+    assert_eq!(
+        owner
+            .execute(change_foundation, &[campaign.as_uuid(), &payer])
+            .expect("restore the recorded payer's foundation"),
+        1
+    );
+}
+
+fn labor_parent_row_estimates(owner: &mut Client) -> Vec<i64> {
+    owner
+        .query(
+            "SELECT reltuples::bigint FROM pg_catalog.pg_class WHERE oid IN
+             ('babylon_state.labor_node_v1'::regclass,'babylon_state.labor_node_identity_v1'::regclass)
+             ORDER BY relname",
+            &[],
+        )
+        .expect("read both labor foreign-key parent estimates")
+        .iter()
+        .map(|row| row.get(0))
+        .collect()
 }
 
 fn assert_nonzero_history(
@@ -547,6 +609,15 @@ fn assert_nonzero_history(
     babylon_persistence::money_journal::prune_money_journal_detail(&mut pruning, campaign, 1)
         .expect("controlled expired-period pruning uses production deletions");
     pruning.commit().expect("publish retained period coverage");
+    owner
+        .batch_execute("ANALYZE babylon_state.money_movement_v1")
+        .expect("the statistical collector can sample an expired empty ledger");
+    let population = "SELECT reltuples > 0 FROM pg_catalog.pg_class
+        WHERE oid='babylon_state.money_movement_v1'::regclass";
+    assert!(!owner
+        .query_one(population, &[])
+        .expect("read the sampled-empty movement estimate")
+        .get::<_, bool>(0));
     let retained_rows: i64 = owner.query_one("SELECT count(*) FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=1",
         &[campaign.as_uuid()]).expect("expired detail count").get(0);
     assert_eq!(
@@ -590,9 +661,27 @@ fn assert_nonzero_history(
         ),
         "repeat publication must detect an incorrect purpose sum even without retained detail"
     );
+    // Reproduce stale empty planner estimates on the two real FK parents. The
+    // rebuild must size them after staging new rows and before committing its edges.
+    owner
+        .batch_execute(
+            "ANALYZE babylon_state.labor_node_v1; ANALYZE babylon_state.labor_node_identity_v1",
+        )
+        .expect("sample the actually empty parent relations");
+    assert_eq!(labor_parent_row_estimates(owner), [0, 0]);
     writer
         .rebuild(observer, campaign, 1)
         .expect("explicit authenticated rebuild restores current-window detail");
+    assert!(
+        owner
+            .query_one(population, &[])
+            .expect("read the rebuilt movement estimate")
+            .get::<_, bool>(0),
+        "rebuilding nonempty national payments must replace the sampled-empty population estimate"
+    );
+    assert!(labor_parent_row_estimates(owner)
+        .iter()
+        .all(|count| *count > 0));
     assert_eq!(
         observer
             .money_totals(campaign, 1, 1)

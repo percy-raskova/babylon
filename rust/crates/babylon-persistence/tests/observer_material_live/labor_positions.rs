@@ -6,7 +6,7 @@ use postgres::error::SqlState;
 use postgres::types::ToSql;
 use postgres::{Client, GenericClient};
 
-const TABLE: &str = "babylon_state.labor_position_v1";
+const TABLE: &str = "babylon_state.labor_node_v1";
 const VIEW: &str = "public.v_observer_labor_position_v1";
 
 pub(super) fn check(
@@ -28,8 +28,9 @@ pub(super) fn check(
     assert_eq!(endpoints, projected.get::<_, i64>(1));
     let physical = owner
         .query_one(
-            "SELECT count(*), min(node_ordinal) FILTER (WHERE opening_quantity IS NOT NULL
-             AND closing_quantity IS NOT NULL) FROM babylon_state.labor_position_v1
+            "SELECT count(*) FILTER (WHERE opening_quantity IS NOT NULL OR closing_quantity IS NOT NULL),
+             min(node_ordinal) FILTER (WHERE opening_quantity IS NOT NULL
+             AND closing_quantity IS NOT NULL) FROM babylon_state.labor_node_v1
          WHERE campaign_id=$1 AND resolve_tick=2",
             &[id],
         )
@@ -115,7 +116,6 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
     );
     for damage in [
         "closing_recorded_micro_hours=NULL",
-        "closing_quantity=NULL, closing_recorded_micro_hours=NULL, closing_unknown_opening=NULL",
         "closing_quantity=0",
         "closing_quantity=18446744073709551616",
         "closing_recorded_micro_hours=340282366920938463463374607431768211456",
@@ -131,6 +131,32 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
         assert_eq!(err.code(), Some(&SqlState::CHECK_VIOLATION));
         probe.rollback().expect("preserve prior valid boundary");
     }
+    let unknown_zero =
+        format!("UPDATE {TABLE} SET closing_quantity=1, closing_recorded_micro_hours=0 {scope}");
+    assert_eq!(
+        tx.execute(&unknown_zero, params)
+            .expect("unknown prior hours with no recorded work"),
+        1
+    );
+    assert_eq!(
+        logical(&mut tx, campaign, node),
+        [("closing".into(), "1".into(), "0".into(), true)]
+    );
+    let clear = format!(
+        "UPDATE {TABLE} SET closing_quantity=NULL, closing_recorded_micro_hours=NULL,
+                         closing_unknown_opening=NULL {scope}"
+    );
+    assert_eq!(
+        tx.execute(&clear, params).expect("clear the last holding"),
+        1
+    );
+    assert_eq!(logical(&mut tx, campaign, node), [] as [Endpoint; 0]);
+    let class = format!("SELECT count(*) FROM public.v_observer_labor_node_v1 {scope}");
+    let count: i64 = tx
+        .query_one(&class, params)
+        .expect("retain the movement endpoint")
+        .get(0);
+    assert_eq!(count, 1);
     tx.rollback()
         .expect("retain the authentic source-derived cells");
 }

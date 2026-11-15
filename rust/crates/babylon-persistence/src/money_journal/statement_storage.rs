@@ -59,7 +59,6 @@ pub(super) enum Table {
 
     LaborNode,
     LaborMovement,
-    LaborPosition,
     Statement,
     StockKey,
     Stock,
@@ -112,10 +111,6 @@ impl Table {
             Self::LaborMovement => (
                 "babylon_state.labor_movement_v1",
                 "campaign_id,resolve_tick,ordinal",
-            ),
-            Self::LaborPosition => (
-                "babylon_state.labor_position_v1",
-                "campaign_id,resolve_tick,node_ordinal",
             ),
             Self::Statement => (
                 "babylon_state.site_statement_v1",

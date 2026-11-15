@@ -1,8 +1,7 @@
 //! Store positive positions at both period boundaries under their single scoped node key.
-use super::labor_facts::LaborPositionFact;
+use super::labor_facts::{LaborNodeFact, LaborPositionFact};
 use super::JournalError;
 use serde::{Serialize, Serializer};
-use std::collections::BTreeMap;
 
 /// PostgreSQL consumes decimal strings exactly, including the full unsigned microhour range.
 #[derive(Clone, Copy)]
@@ -15,8 +14,7 @@ impl Serialize for MicroHours {
 }
 
 #[derive(Default, Serialize)]
-pub(super) struct PositionPair {
-    node_ordinal: i64,
+struct PositionPair {
     opening_quantity: Option<u64>,
     opening_recorded_micro_hours: Option<MicroHours>,
     opening_unknown_opening: Option<bool>,
@@ -25,16 +23,36 @@ pub(super) struct PositionPair {
     closing_unknown_opening: Option<bool>,
 }
 
-/// Keep the receipt-derived logical order and fingerprint independent of the physical layout.
-pub(super) fn pairs(positions: &[LaborPositionFact]) -> Result<Vec<PositionPair>, JournalError> {
-    let mut pairs = BTreeMap::new();
+#[derive(Serialize)]
+pub(super) struct NodeWithPositions<'a> {
+    #[serde(flatten)]
+    node: &'a LaborNodeFact,
+    #[serde(flatten)]
+    positions: PositionPair,
+}
+
+/// Attach each positive boundary to its actual node without changing canonical fact order.
+pub(super) fn attach<'a>(
+    nodes: &'a [LaborNodeFact],
+    positions: &[LaborPositionFact],
+) -> Result<Vec<NodeWithPositions<'a>>, JournalError> {
+    let mut rows: Vec<_> = nodes
+        .iter()
+        .map(|node| NodeWithPositions {
+            node,
+            positions: PositionPair::default(),
+        })
+        .collect();
     for position in positions {
-        let row = pairs
-            .entry(position.node_ordinal)
-            .or_insert_with(|| PositionPair {
-                node_ordinal: position.node_ordinal,
-                ..PositionPair::default()
-            });
+        if position.quantity == 0 {
+            return Err(JournalError::Projection);
+        }
+        let idx = usize::try_from(position.node_ordinal).map_err(|_| JournalError::Projection)?;
+        let row = rows
+            .get_mut(idx)
+            .filter(|row| row.node.node_ordinal == position.node_ordinal)
+            .ok_or(JournalError::Projection)?;
+        let row = &mut row.positions;
         let (quantity, hours, unknown) = match position.side {
             "opening" => (
                 &mut row.opening_quantity,
@@ -54,5 +72,5 @@ pub(super) fn pairs(positions: &[LaborPositionFact]) -> Result<Vec<PositionPair>
         *hours = Some(MicroHours(position.recorded_micro_hours));
         *unknown = Some(position.unknown_opening);
     }
-    Ok(pairs.into_values().collect())
+    Ok(rows)
 }

@@ -321,13 +321,28 @@ fn county_accounts(
     let county = "26163".try_into().expect("Wayne");
     let foundation = trade::hex(&frame.foundation_sha256);
     let tick_hash = trade::hex(&frame.tick_content_hash);
-    let expected = owner.query(
-        "SELECT s.site_id, s.closing_cash_micros::text, s.opening_cash_micros::text, s.net_income_micros::text,
-                s.closing_retained_earnings_micros::text FROM babylon_state.site_statement_v1 s
-          WHERE s.campaign_id=$1 AND s.resolve_tick=1 AND EXISTS
-                (SELECT 1 FROM babylon_state.economic_flow_account_v1 a WHERE a.campaign_id=s.campaign_id
-                 AND a.account_kind='site_cash' AND a.account_id=s.site_id AND a.location_key='county:26163')
-          ORDER BY s.site_id", &[campaign.as_uuid()]).expect("independent actual-site rows");
+    let period = frame.resolve_tick;
+    let tick = i64::try_from(period).expect("site period fits the SQL tick");
+    let expected = owner
+        .query(
+            "SELECT k.site_id, s.closing_cash_micros::text, s.opening_cash_micros::text,
+                    s.net_income_micros::text, s.closing_retained_earnings_micros::text
+             FROM babylon_state.site_statement_v1 s
+             JOIN babylon_state.site_principal_v1 k USING (campaign_id,site_key)
+             WHERE s.campaign_id=$1 AND s.resolve_tick=$2 AND k.foundation_sha256=$3
+               AND EXISTS (
+                   SELECT FROM babylon_state.economic_flow_account_v1 a
+                   WHERE a.campaign_id=k.campaign_id AND a.foundation_sha256=k.foundation_sha256
+                     AND a.account_kind='site_cash' AND a.account_id=k.site_id
+                     AND a.location_key='county:26163')
+             ORDER BY k.site_id",
+            &[
+                campaign.as_uuid(),
+                &tick,
+                &frame.foundation_sha256.as_slice(),
+            ],
+        )
+        .expect("independent Wayne roster and raw statements for the selected frame");
     assert!(
         expected.len() > 6,
         "national Wayne fixture exercises paging"
@@ -352,7 +367,7 @@ fn county_accounts(
         let CountySiteAccounts::Monetary(page) = observer
             .county_site_accounts_for_frame(
                 campaign,
-                1,
+                period,
                 county,
                 &foundation,
                 &tick_hash,
@@ -380,7 +395,7 @@ fn county_accounts(
     assert_eq!(
         observer.county_site_accounts_for_frame(
             campaign,
-            1,
+            period,
             county,
             &foundation,
             &"00".repeat(32),

@@ -2,7 +2,9 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
-use babylon_persistence::money_journal::{JournalError, MoneyJournalWriter};
+use babylon_persistence::money_journal::{
+    self, JournalError, JournalQueue, JournalQueueError, MoneyJournalWriter,
+};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::{Client, Config, Transaction};
@@ -64,6 +66,7 @@ pub(super) fn interrupt_and_retry(
     writer: &MoneyJournalWriter,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
+    queue: &mut JournalQueue<'_>,
 ) {
     let mut lock = owner.transaction().expect("start interruption control");
     lock.batch_execute("LOCK TABLE babylon_state.money_movement_total_v1 IN SHARE MODE")
@@ -98,15 +101,83 @@ pub(super) fn interrupt_and_retry(
         observer.money_movements(campaign, 2),
         Err(JournalError::CoverageAbsent)
     );
-    let retry = writer
-        .publish(observer, campaign, 2)
-        .expect("retry interrupted period");
-    let source = observer
-        .committed_material_receipts(campaign, 2)
-        .expect("independent retry source");
-    assert!(retry.changed && retry.movement_count > 0);
+    check_warm_retry(owner, observer, campaign, queue);
+}
+
+fn check_warm_retry(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    queue: &mut JournalQueue<'_>,
+) {
+    owner
+        .execute(
+            "CREATE TEMP TABLE warmup_original_receipt AS SELECT receipt_storage_bytes
+         FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=1",
+            &[campaign.as_uuid()],
+        )
+        .expect("preserve exact prior source");
     assert_eq!(
-        usize::try_from(retry.movement_count).expect("bounded receipt count"),
-        source.receipts.money_transfers.len()
+        owner
+            .execute(
+                "UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=decode('00','hex')
+         WHERE campaign_id=$1 AND resolve_tick=1",
+                &[campaign.as_uuid()],
+            )
+            .expect("damage the stored period-one receipt"),
+        1
     );
+    assert!(matches!(
+        queue.publish_batch(),
+        Err(JournalQueueError::Publication { period: 2, .. })
+    ));
+    assert!(observer.committed_material_receipts(campaign, 2).is_err());
+    assert_eq!(
+        observer.money_movements(campaign, 2),
+        Err(JournalError::CoverageAbsent)
+    );
+    let restored = owner
+        .execute(
+            "UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=s.receipt_storage_bytes
+             FROM warmup_original_receipt s WHERE campaign_id=$1 AND resolve_tick=1",
+            &[campaign.as_uuid()],
+        )
+        .expect("restore the exact period-one receipt");
+    assert_eq!(restored, 1);
+    assert_eq!(
+        queue
+            .publish_batch()
+            .expect("complete discovery after the failed publication"),
+        0,
+        "failed campaign finishes its pass"
+    );
+    assert_eq!(
+        queue
+            .publish_batch()
+            .expect("publish the one repaired national period"),
+        1,
+        "warmed retry fills only the gap"
+    );
+    let fresh = observer
+        .committed_material_receipts(campaign, 2)
+        .expect("cold canonical control");
+    let expected = money_journal::derive_movements(&fresh).expect("canonical movement tape");
+    let recovered = observer
+        .money_movements(campaign, 2)
+        .expect("read the complete retried movement tape");
+    let last_amount = fresh
+        .receipts
+        .money_transfers
+        .last()
+        .expect("the second national close posts cash movements")
+        .credit
+        .delta
+        .micro_units()
+        .to_string();
+    assert_eq!(
+        recovered.last().map(|row| row.amount_micros.as_str()),
+        Some(last_amount.as_str()),
+        "the retried tape includes the final source posting at its exact amount"
+    );
+    assert_eq!(recovered, expected);
 }

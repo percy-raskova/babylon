@@ -121,17 +121,21 @@ pub(super) fn insert(
 
 /// A new directory and its first populated custody period can become visible before
 /// autovacuum has sampled either relation. Restored databases can also lack planner
-/// statistics. Check the actual join columns before publishing nonempty detail.
+/// statistics. A sample taken after retention emptied a relation can preserve every
+/// column statistic while reporting zero live rows. After a nonempty write, refresh
+/// either unusable estimate before the newly covered cash facts become visible.
 fn analyze_missing_statistics(tx: &mut Transaction<'_>) -> Result<(), JournalError> {
     let missing = tx.query_one(
         "WITH required(tab, cols) AS (VALUES
              ('economic_flow_account_v1', ARRAY['campaign_id','account_key','account_kind','account_id','foundation_sha256']),
              ('money_movement_v1', ARRAY['campaign_id','resolve_tick','payer_key','recipient_key'])
          ), missing AS (
-             SELECT r.tab FROM required r CROSS JOIN LATERAL unnest(r.cols) col(name)
-             WHERE NOT EXISTS (
-                 SELECT FROM pg_catalog.pg_stats s WHERE s.schemaname='babylon_state'
-                 AND s.tablename=r.tab::name AND s.attname=col.name::name AND NOT s.inherited))
+             SELECT r.tab FROM required r
+             JOIN pg_catalog.pg_class c ON c.oid=pg_catalog.to_regclass('babylon_state.'||r.tab)
+             WHERE c.reltuples<=0 OR EXISTS (
+                 SELECT FROM unnest(r.cols) col(name) WHERE NOT EXISTS (
+                     SELECT FROM pg_catalog.pg_stats s WHERE s.schemaname='babylon_state'
+                     AND s.tablename=r.tab::name AND s.attname=col.name::name AND NOT s.inherited)))
          SELECT EXISTS (SELECT FROM missing WHERE tab='economic_flow_account_v1'),
                 EXISTS (SELECT FROM missing WHERE tab='money_movement_v1')",
         &[],

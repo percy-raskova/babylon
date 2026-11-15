@@ -400,8 +400,9 @@ def test_two_anonymous_pipes_connect_children_without_parent_forwarding(
             os.fstat(fd)
 
 
+@pytest.mark.parametrize("reopen", [True, False])
 def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, reopen: bool
 ) -> None:
     children = []
 
@@ -421,7 +422,11 @@ def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
 
     monkeypatch.setattr(launcher.subprocess, "Popen", Child)
     writer, reader = launcher.child_environments(
-        {"BABYLON_RUNTIME_DSN": "owner", "PGPASSWORD": "unwanted"},
+        {
+            "BABYLON_RUNTIME_DSN": "owner",
+            "BABYLON_REOPEN_CAMPAIGN": "untrusted ambient campaign",
+            "PGPASSWORD": "unwanted",
+        },
         launcher.ReaderCredentials("observer", "known"),
     )
     code = launcher.run_pair(
@@ -431,7 +436,11 @@ def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
         writer,
         reader,
         defines_path=tmp_path / "defines",
-        initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+        initial_target=(
+            launcher.OpenCampaignTarget(CAMPAIGN)
+            if reopen
+            else launcher.NewCampaignTarget(CAMPAIGN, "national-world")
+        ),
         analytics_binary=tmp_path / "babylon-economic-projections",
     )
     assert code == 0
@@ -441,6 +450,11 @@ def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
         "watch-database",
         "--session-stdin",
     ]
+    assert worker.options["env"].get("BABYLON_REOPEN_CAMPAIGN") == (
+        str(CAMPAIGN) if reopen else None
+    )
+    assert "BABYLON_REOPEN_CAMPAIGN" not in runtime.options["env"]
+    assert "BABYLON_REOPEN_CAMPAIGN" not in client.options["env"]
     assert worker.options["env"]["BABYLON_RUNTIME_DSN"] == "owner"
     assert worker.options["env"]["BABYLON_OBSERVER_DSN"] == "observer"
     assert (

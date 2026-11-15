@@ -25,11 +25,26 @@ WITH windows(first_tick,last_tick,is_compare) AS (
 ), visible_locations AS (
   SELECT DISTINCT l.location_key FROM rectangles b JOIN public.v_observer_economic_flow_location_v1 l
     ON l.campaign_id=$1 AND public.ST_Covers(b.box,l.county_internal_point)
+), companies AS MATERIALIZED (
+  -- Each public directory is bound to the campaign's captured foundation.
+  -- Geographic requests do not need legal ownership to identify either endpoint.
+  SELECT jsonb_object_agg(encode(company_id,'hex'),
+      jsonb_build_array('company:'||encode(company_id,'hex'),label)) AS labels
+  FROM public.v_observer_economic_company_v1 WHERE campaign_id=$1
+    AND ARRAY['company','counterparty'] && ARRAY[$6::text,$13::text,$14::text]
+), ownership AS MATERIALIZED (
+  SELECT jsonb_object_agg(encode(site_id,'hex'),encode(company_id,'hex')) AS by_site
+  FROM public.v_observer_economic_company_member_v1 WHERE campaign_id=$1
+    AND ARRAY['company','counterparty'] && ARRAY[$6::text,$13::text,$14::text]
 ), accounts AS (
   SELECT a.account_kind,a.account_id,a.account_kind||':'||encode(a.account_id,'hex') AS principal,
-    'company:'||encode(a.company_id,'hex') AS company,a.company_label,
+    owner.company->>0 AS company, owner.company->>1 AS company_label,
     a.location_key,a.catchment_key,a.industry_key,a.industry_label,($8 IS NULL OR v.location_key IS NOT NULL) AS in_view
-  FROM public.v_observer_economic_flow_account_v2 a LEFT JOIN visible_locations v USING(location_key)
+  FROM public.v_observer_economic_flow_account_v1 a LEFT JOIN visible_locations v USING(location_key)
+  CROSS JOIN companies c CROSS JOIN ownership o
+  CROSS JOIN LATERAL (SELECT c.labels -> CASE a.account_kind
+    WHEN 'company_cash' THEN encode(a.account_id,'hex')
+    WHEN 'site_cash' THEN o.by_site->>encode(a.account_id,'hex') END AS company) owner
   WHERE a.campaign_id=$1
 ), dimensions AS (
   SELECT a.account_kind,a.account_id,a.in_view,

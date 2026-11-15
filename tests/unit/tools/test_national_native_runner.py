@@ -1112,6 +1112,7 @@ def test_cold_failure_uses_actual_partial_spawn_roster(
             if role == "publisher":
                 assert args[1:] == ["watch-database", "--session-stdin"]
                 assert kw["env"] == {
+                    "BABYLON_REOPEN_CAMPAIGN": str(UUID(int=13)),
                     "BABYLON_RUNTIME_DSN": "writer",
                     "BABYLON_OBSERVER_DSN": "observer",
                 }

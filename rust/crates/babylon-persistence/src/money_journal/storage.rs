@@ -397,12 +397,8 @@ fn remove_detail(
             .map_err(|_| JournalError::Database)?;
     }
     // Each statement finishes before deleting the referenced rows. FK cascades
-    // therefore find no live period edges or positions to remove.
-    for table in [
-        "labor_movement_v1",
-        "labor_position_v1",
-        "money_movement_v1",
-    ] {
+    // therefore find no live movement edges when the period nodes and their positions retire.
+    for table in ["labor_movement_v1", "money_movement_v1"] {
         let sql = format!(
             "DELETE FROM babylon_state.{table} WHERE campaign_id=$1 AND resolve_tick BETWEEN $2 AND $3"
         );

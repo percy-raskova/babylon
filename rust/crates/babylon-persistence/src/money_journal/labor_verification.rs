@@ -16,14 +16,13 @@ pub(super) fn period(
     facts: &LaborFacts,
 ) -> Result<(), JournalError> {
     let scope = Scope { campaign, tick };
-    scope.verify(tx, Table::LaborNode, "node_ordinal", &facts.nodes)?;
-    scope.verify(tx, Table::LaborMovement, "ordinal", &facts.movements)?;
     scope.verify(
         tx,
-        Table::LaborPosition,
+        Table::LaborNode,
         "node_ordinal",
-        &labor_positions::pairs(&facts.positions)?,
-    )
+        &labor_positions::attach(&facts.nodes, &facts.positions)?,
+    )?;
+    scope.verify(tx, Table::LaborMovement, "ordinal", &facts.movements)
 }
 
 struct Scope<'a> {

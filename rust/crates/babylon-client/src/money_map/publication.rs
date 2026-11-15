@@ -26,6 +26,7 @@ impl Publication {
             let (interest, receiver) = mpsc::channel();
             let campaign = scope.context.campaign;
             let last = scope.context.tick;
+            let generation = scope.context.generation;
             let first = scope.periods.window(last).map_or(last, |prior| prior.first);
             let task = IoTaskPool::get().spawn(async move {
                 let reader =
@@ -34,6 +35,9 @@ impl Publication {
                     reader.watch_journal_periods(campaign, PeriodWindow { first, last })?;
                 while let Err(TryRecvError::Empty) = receiver.try_recv() {
                     if listener.wait(Duration::from_millis(250))? {
+                        bevy::log::info!(target: "babylon_client::timing",
+                            stage = "journal_coverage_wake", campaign = %campaign.as_uuid(),
+                            tick = last, generation, first, "Journal listener confirmed scoped coverage");
                         return Ok(true);
                     }
                 }

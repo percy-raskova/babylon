@@ -122,6 +122,7 @@ fn watch_connection(
     observer: &ObserverEconomyReader,
     writer: &MoneyJournalWriter,
     stopped: Option<&Receiver<()>>,
+    reopen: &mut Option<CampaignId>,
 ) -> Result<(), JournalQueueError> {
     let mut queue =
         JournalQueue::connect(observer, writer, None).map_err(JournalQueueError::Discovery)?;
@@ -142,6 +143,16 @@ fn watch_connection(
         if shutdown_requested(stopped) {
             // Take a fresh discovery snapshot after the launcher has reaped the runtime.
             final_pass = true;
+            continue;
+        }
+        if let Some(campaign) = reopen.take() {
+            if let Err(cause) = queue.warm_reopened_campaign(campaign) {
+                eprintln!(
+                    "economic projections: reopening {}: {cause}",
+                    campaign.as_uuid()
+                );
+            }
+            // Recheck durable gaps after this bounded, read-only operation.
             continue;
         }
         let started = Instant::now();
@@ -243,8 +254,15 @@ fn run(command: Command) -> Result<(), String> {
     }
     let shutdown = matches!(command, Command::WatchSession).then(session_shutdown);
     let stopped = shutdown.as_ref();
+    let mut reopen = if stopped.is_some() {
+        std::env::var_os("BABYLON_REOPEN_CAMPAIGN")
+            .map(|id| campaign(id.to_str().ok_or("campaign_refused")?))
+            .transpose()?
+    } else {
+        None
+    };
     loop {
-        match watch_connection(&observer, &writer, stopped) {
+        match watch_connection(&observer, &writer, stopped, &mut reopen) {
             Ok(()) => return Ok(()),
             Err(error) if shutdown_requested(stopped) => return Err(error.to_string()),
             Err(error) => eprintln!("{error}; retrying"),

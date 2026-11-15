@@ -1343,14 +1343,48 @@ BEGIN
   RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_f64_chunk_gap_or_count';
  END IF;
  -- Validate array refs and one current type per local name in one set operation.
- WITH members AS (SELECT u.node_id FROM babylon_state.graph_node_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) CROSS JOIN LATERAL unnest(v.node_ids) u(node_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick),
- joined AS (SELECT a.node_id,n.name_id,n.first_tick,s.first_tick AS name_tick,t.first_tick AS type_tick FROM members a LEFT JOIN babylon_state.graph_node_lookup_v1 n ON n.campaign_id=m.campaign_id AND n.node_id=a.node_id LEFT JOIN babylon_state.graph_string_lookup_v1 s ON s.campaign_id=m.campaign_id AND s.string_id=n.name_id LEFT JOIN babylon_state.graph_string_lookup_v1 t ON t.campaign_id=m.campaign_id AND t.string_id=n.type_id)
+ WITH chunks AS MATERIALIZED (
+  SELECT v.node_ids FROM babylon_state.graph_node_chunk_v1 c
+  JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id)
+  WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick
+ ), members AS MATERIALIZED (
+  SELECT u.node_id FROM chunks c CROSS JOIN LATERAL unnest(c.node_ids) u(node_id)
+ ), nodes AS MATERIALIZED (
+  SELECT node_id,name_id,type_id,first_tick FROM babylon_state.graph_node_lookup_v1 WHERE campaign_id=m.campaign_id
+ ), strings AS MATERIALIZED (
+  SELECT string_id,first_tick FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=m.campaign_id
+ ), joined AS (
+  SELECT a.node_id,n.name_id,n.first_tick,s.first_tick AS name_tick,t.first_tick AS type_tick
+  FROM members a LEFT JOIN nodes n USING(node_id)
+  LEFT JOIN strings s ON s.string_id=n.name_id LEFT JOIN strings t ON t.string_id=n.type_id
+ )
  SELECT count(*)<>count(name_id) OR count(*)<>count(DISTINCT name_id) OR coalesce(bool_or(first_tick>m.resolve_tick OR name_tick>m.resolve_tick OR type_tick>m.resolve_tick),false) INTO bad FROM joined;
  IF bad THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_node_reference_or_duplicate'; END IF;
- WITH members AS (SELECT u.node_id FROM babylon_state.graph_node_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) CROSS JOIN LATERAL unnest(v.node_ids) u(node_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick),
- attrs AS (SELECT c.qname_id,u.node_id FROM babylon_state.graph_node_f64_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) CROSS JOIN LATERAL unnest(v.node_ids) u(node_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick),
- joined AS (SELECT a.node_id,a.qname_id,b.node_id AS member_id,q.first_tick FROM attrs a LEFT JOIN members b USING(node_id) LEFT JOIN babylon_state.graph_string_lookup_v1 q ON q.campaign_id=m.campaign_id AND q.string_id=a.qname_id)
- SELECT count(*)<>count(member_id) OR count(*)<>count(DISTINCT (node_id,qname_id)) OR coalesce(bool_or(first_tick>m.resolve_tick),false) INTO bad FROM joined;
+ WITH chunks AS MATERIALIZED (
+  SELECT v.node_ids FROM babylon_state.graph_node_chunk_v1 c
+  JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id)
+  WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick
+ ), members AS MATERIALIZED (
+  SELECT u.node_id FROM chunks c CROSS JOIN LATERAL unnest(c.node_ids) u(node_id)
+ ), attribute_chunks AS MATERIALIZED (
+  SELECT c.qname_id,v.node_ids FROM babylon_state.graph_node_f64_chunk_v1 c
+  JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id)
+  WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick
+ ), attrs AS MATERIALIZED (
+  SELECT c.qname_id,u.node_id FROM attribute_chunks c CROSS JOIN LATERAL unnest(c.node_ids) u(node_id)
+ )
+ -- The planner cannot derive expanded vector lengths from chunk estimates.
+ -- Set difference checks membership once even for a not-yet-analyzed period.
+ SELECT EXISTS (
+  SELECT node_id FROM attrs EXCEPT SELECT node_id FROM members
+ ) OR EXISTS (
+  SELECT 1 FROM attrs GROUP BY node_id,qname_id HAVING count(*)>1
+ ) OR EXISTS (
+  SELECT qname_id FROM attribute_chunks
+  INTERSECT
+  SELECT string_id FROM babylon_state.graph_string_lookup_v1
+  WHERE campaign_id=m.campaign_id AND first_tick>m.resolve_tick
+ ) INTO bad;
  IF bad THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_f64_reference_or_duplicate'; END IF;
  -- Dense append-only IDs make count-based assignment explicit and checked.
  IF EXISTS(SELECT 1 FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=m.campaign_id HAVING min(string_id)<>0 OR max(string_id)<>count(*)-1)
@@ -2077,6 +2111,7 @@ CREATE TABLE babylon_state.labor_checkpoint_v1 (
 -- The content key covers every typed descriptor field. Period ordinals remain receipt-local.
 CREATE TABLE babylon_state.labor_node_identity_v1 (
     campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id),
+    descriptor_key bigint NOT NULL CHECK(descriptor_key>0),
     descriptor_sha256 bytea NOT NULL CHECK (octet_length(descriptor_sha256)=32),
     kind text NOT NULL CHECK(kind IN ('site_stock','household_stock','work','household_work','maintenance','process','sink','commercial_freight','aid_freight','equipment','installation')),
     entity_id bytea CHECK(octet_length(entity_id)=32),good_id bytea CHECK(octet_length(good_id)=32),
@@ -2095,7 +2130,8 @@ CREATE TABLE babylon_state.labor_node_identity_v1 (
         AND (kind IN ('site_stock','household_stock','commercial_freight','aid_freight','equipment','installation','work','household_work'))=(unit_id IS NOT NULL)),
     CHECK((kind IN ('maintenance','process','equipment','installation'))=(process_id IS NOT NULL)),
     CHECK((longitude IS NULL)=(latitude IS NULL) AND (industry_key IS NULL)=(industry_label IS NULL)),
-    PRIMARY KEY(campaign_id,descriptor_sha256)
+    PRIMARY KEY(campaign_id,descriptor_key),
+    UNIQUE(campaign_id,descriptor_sha256)
 );
 CREATE FUNCTION babylon_state.labor_node_fingerprint_v1(n babylon_state.labor_node_identity_v1)
 RETURNS bytea LANGUAGE sql STABLE STRICT SET search_path TO pg_catalog AS $$
@@ -2114,19 +2150,30 @@ ALTER TABLE babylon_state.labor_node_identity_v1
 REVOKE ALL ON FUNCTION babylon_state.labor_node_fingerprint_v1(babylon_state.labor_node_identity_v1) FROM PUBLIC;
 CREATE TABLE babylon_state.labor_node_v1 (
     campaign_id uuid NOT NULL,resolve_tick bigint NOT NULL,node_ordinal bigint NOT NULL CHECK(node_ordinal>=0),
-    descriptor_sha256 bytea NOT NULL,
+    descriptor_key bigint NOT NULL,
+    opening_quantity numeric CHECK (scale(opening_quantity)=0 AND opening_quantity BETWEEN 1 AND 18446744073709551615),
+    opening_recorded_micro_hours numeric CHECK (scale(opening_recorded_micro_hours)=0 AND opening_recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
+    opening_unknown_opening boolean,
+    closing_quantity numeric CHECK (scale(closing_quantity)=0 AND closing_quantity BETWEEN 1 AND 18446744073709551615),
+    closing_recorded_micro_hours numeric CHECK (scale(closing_recorded_micro_hours)=0 AND closing_recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
+    closing_unknown_opening boolean,
+    CHECK (num_nonnulls(opening_quantity, opening_recorded_micro_hours, opening_unknown_opening) IN (0, 3)),
+    CHECK (num_nonnulls(closing_quantity, closing_recorded_micro_hours, closing_unknown_opening) IN (0, 3)),
     PRIMARY KEY(campaign_id,resolve_tick,node_ordinal),
     FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.labor_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-    FOREIGN KEY(campaign_id,descriptor_sha256) REFERENCES babylon_state.labor_node_identity_v1 DEFERRABLE INITIALLY DEFERRED
+    FOREIGN KEY(campaign_id,descriptor_key) REFERENCES babylon_state.labor_node_identity_v1 DEFERRABLE INITIALLY DEFERRED
 );
-CREATE INDEX labor_node_identity_period_v1 ON babylon_state.labor_node_v1(campaign_id,descriptor_sha256,resolve_tick);
+-- Equal descriptor references across retained periods can share a B-tree posting list.
+CREATE INDEX labor_node_identity_period_v1 ON babylon_state.labor_node_v1(campaign_id,descriptor_key);
 -- Owner-side projection also supports exact verification while the marker is staged.
 CREATE VIEW babylon_state.labor_node_fact_v1 AS
 SELECT n.campaign_id,n.resolve_tick,n.node_ordinal,
        d.kind, d.entity_id, d.good_id, d.unit_id, d.purpose, d.scope_kind, d.scope_id,
        d.process_id, d.route_id, d.origin_id, d.destination_id, d.location_key, d.catchment_key,
-       d.industry_key, d.industry_label, d.longitude, d.latitude
-FROM babylon_state.labor_node_v1 n JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_sha256);
+       d.industry_key, d.industry_label, d.longitude, d.latitude,
+       n.opening_quantity, n.opening_recorded_micro_hours, n.opening_unknown_opening,
+       n.closing_quantity, n.closing_recorded_micro_hours, n.closing_unknown_opening
+FROM babylon_state.labor_node_v1 n JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_key);
 REVOKE ALL ON babylon_state.labor_node_identity_v1,babylon_state.labor_node_fact_v1 FROM PUBLIC;
 CREATE TABLE babylon_state.labor_movement_v1 (
     campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL, ordinal bigint NOT NULL CHECK(ordinal>=0),
@@ -2142,30 +2189,13 @@ CREATE TABLE babylon_state.labor_movement_v1 (
     FOREIGN KEY(campaign_id,resolve_tick,destination_node) REFERENCES babylon_state.labor_node_v1
       ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 );
-CREATE TABLE babylon_state.labor_position_v1 (
-    campaign_id uuid NOT NULL,
-    resolve_tick bigint NOT NULL,
-    node_ordinal bigint NOT NULL,
-    opening_quantity numeric CHECK (scale(opening_quantity)=0 AND opening_quantity BETWEEN 1 AND 18446744073709551615),
-    opening_recorded_micro_hours numeric CHECK (scale(opening_recorded_micro_hours)=0 AND opening_recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
-    opening_unknown_opening boolean,
-    closing_quantity numeric CHECK (scale(closing_quantity)=0 AND closing_quantity BETWEEN 1 AND 18446744073709551615),
-    closing_recorded_micro_hours numeric CHECK (scale(closing_recorded_micro_hours)=0 AND closing_recorded_micro_hours BETWEEN 0 AND 340282366920938463463374607431768211455),
-    closing_unknown_opening boolean,
-    CHECK (num_nonnulls(opening_quantity, opening_recorded_micro_hours, opening_unknown_opening) IN (0, 3)),
-    CHECK (num_nonnulls(closing_quantity, closing_recorded_micro_hours, closing_unknown_opening) IN (0, 3)),
-    CHECK (opening_quantity IS NOT NULL OR closing_quantity IS NOT NULL),
-    PRIMARY KEY (campaign_id, resolve_tick, node_ordinal),
-    FOREIGN KEY (campaign_id, resolve_tick, node_ordinal) REFERENCES babylon_state.labor_node_v1
-      ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
-);
 CREATE INDEX labor_movement_source_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,source_node);
 CREATE INDEX labor_movement_destination_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,destination_node);
 -- Geographic probes have a known location. The partial predicate keeps bare
 -- node references on their complete primary key while a period is being loaded.
-CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_identity_v1(campaign_id,location_key,descriptor_sha256)
+CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_identity_v1(campaign_id,location_key,descriptor_key)
     WHERE location_key IS NOT NULL;
-REVOKE ALL ON babylon_state.labor_period_v1,babylon_state.labor_checkpoint_v1,babylon_state.labor_node_v1,babylon_state.labor_movement_v1,babylon_state.labor_position_v1 FROM PUBLIC;
+REVOKE ALL ON babylon_state.labor_period_v1,babylon_state.labor_checkpoint_v1,babylon_state.labor_node_v1,babylon_state.labor_movement_v1 FROM PUBLIC;
 
 -- Retained company legal and consolidated books, authenticated by the completed journal marker.
 CREATE TABLE babylon_state.company_accounting_period_v1 (

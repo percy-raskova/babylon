@@ -19,7 +19,6 @@ DROP TABLE
     babylon_state.labor_node_v1,
     babylon_state.labor_node_identity_v1,
     babylon_state.labor_period_v1,
-    babylon_state.labor_position_v1,
     babylon_state.money_journal_period_v1,
     babylon_state.money_movement_total_v1,
     babylon_state.money_movement_v1,
@@ -73,3 +72,49 @@ CREATE OR REPLACE VIEW babylon_state.graph_node_f64_v1 AS
   SELECT q.value FROM babylon_state.graph_string_lookup_v1 q
   WHERE q.campaign_id=c.campaign_id AND q.string_id=c.qname_id OFFSET 0
  ) q;
+
+-- Restore the exact deferred graph marker guard of the admitted predecessor.
+CREATE OR REPLACE FUNCTION babylon_state.graph_node_marker_complete_v1() RETURNS trigger LANGUAGE plpgsql SET search_path TO 'pg_catalog' AS $$
+DECLARE m babylon_state.graph_node_manifest_v1%ROWTYPE; bad boolean;
+BEGIN
+ SELECT * INTO m FROM babylon_state.graph_node_manifest_v1 WHERE campaign_id=NEW.campaign_id AND resolve_tick=NEW.resolve_tick;
+ IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_node_manifest_missing'; END IF;
+ -- References are direct, campaign-owned and from this tick or a durable origin.
+ IF EXISTS(
+  SELECT 1 FROM (
+   SELECT campaign_id,vector_id FROM babylon_state.graph_node_chunk_v1 WHERE campaign_id=m.campaign_id AND resolve_tick=m.resolve_tick
+   UNION ALL SELECT campaign_id,vector_id FROM babylon_state.graph_node_f64_chunk_v1 WHERE campaign_id=m.campaign_id AND resolve_tick=m.resolve_tick
+  ) c LEFT JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id)
+  WHERE v.vector_id IS NULL OR v.first_tick>m.resolve_tick OR (v.first_tick<>m.resolve_tick AND NOT EXISTS(SELECT 1 FROM babylon_state.tick_commit p WHERE p.campaign_id=v.campaign_id AND p.resolve_tick=v.first_tick))
+ ) THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_vector_reference'; END IF;
+ IF EXISTS(SELECT 1 FROM babylon_state.graph_node_f64_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick AND cardinality(c.value_bits)<>cardinality(v.node_ids)) THEN
+  RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_f64_vector_length';
+ END IF;
+
+ SELECT count(*)<>m.node_chunks OR coalesce(sum(cardinality(v.node_ids)),0)<>m.node_count
+  OR (count(*)>0 AND (min(ordinal)<>0 OR max(ordinal)<>count(*)-1)) INTO bad
+ FROM babylon_state.graph_node_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick;
+ IF bad THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_node_chunk_gap_or_count'; END IF;
+ SELECT count(*)<>m.f64_chunks OR coalesce(sum(cardinality(v.node_ids)),0)<>m.f64_count INTO bad
+ FROM babylon_state.graph_node_f64_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick;
+ IF bad OR EXISTS(SELECT 1 FROM babylon_state.graph_node_f64_chunk_v1 WHERE campaign_id=m.campaign_id AND resolve_tick=m.resolve_tick GROUP BY qname_id HAVING min(ordinal)<>0 OR max(ordinal)<>count(*)-1) THEN
+  RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_f64_chunk_gap_or_count';
+ END IF;
+ -- Validate array refs and one current type per local name in one set operation.
+ WITH members AS (SELECT u.node_id FROM babylon_state.graph_node_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) CROSS JOIN LATERAL unnest(v.node_ids) u(node_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick),
+ joined AS (SELECT a.node_id,n.name_id,n.first_tick,s.first_tick AS name_tick,t.first_tick AS type_tick FROM members a LEFT JOIN babylon_state.graph_node_lookup_v1 n ON n.campaign_id=m.campaign_id AND n.node_id=a.node_id LEFT JOIN babylon_state.graph_string_lookup_v1 s ON s.campaign_id=m.campaign_id AND s.string_id=n.name_id LEFT JOIN babylon_state.graph_string_lookup_v1 t ON t.campaign_id=m.campaign_id AND t.string_id=n.type_id)
+ SELECT count(*)<>count(name_id) OR count(*)<>count(DISTINCT name_id) OR coalesce(bool_or(first_tick>m.resolve_tick OR name_tick>m.resolve_tick OR type_tick>m.resolve_tick),false) INTO bad FROM joined;
+ IF bad THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_node_reference_or_duplicate'; END IF;
+ WITH members AS (SELECT u.node_id FROM babylon_state.graph_node_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) CROSS JOIN LATERAL unnest(v.node_ids) u(node_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick),
+ attrs AS (SELECT c.qname_id,u.node_id FROM babylon_state.graph_node_f64_chunk_v1 c JOIN babylon_state.graph_node_vector_v1 v USING(campaign_id,vector_id) CROSS JOIN LATERAL unnest(v.node_ids) u(node_id) WHERE c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick),
+ joined AS (SELECT a.node_id,a.qname_id,b.node_id AS member_id,q.first_tick FROM attrs a LEFT JOIN members b USING(node_id) LEFT JOIN babylon_state.graph_string_lookup_v1 q ON q.campaign_id=m.campaign_id AND q.string_id=a.qname_id)
+ SELECT count(*)<>count(member_id) OR count(*)<>count(DISTINCT (node_id,qname_id)) OR coalesce(bool_or(first_tick>m.resolve_tick),false) INTO bad FROM joined;
+ IF bad THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_f64_reference_or_duplicate'; END IF;
+ -- Dense append-only IDs make count-based assignment explicit and checked.
+ IF EXISTS(SELECT 1 FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=m.campaign_id HAVING min(string_id)<>0 OR max(string_id)<>count(*)-1)
+ OR EXISTS(SELECT 1 FROM babylon_state.graph_node_lookup_v1 WHERE campaign_id=m.campaign_id HAVING min(node_id)<>0 OR max(node_id)<>count(*)-1)
+ OR EXISTS(SELECT 1 FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=m.campaign_id HAVING min(vector_id)<>0 OR max(vector_id)<>count(*)-1) THEN
+  RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='graph_lookup_gap';
+ END IF;
+ RETURN NEW;
+END $$;

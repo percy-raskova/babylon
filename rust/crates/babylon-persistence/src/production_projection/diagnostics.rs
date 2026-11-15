@@ -17,6 +17,7 @@ pub(crate) enum Stage {
     FoundationGraphSession,
     FoundationAdmission,
     JournalPublication,
+    JournalWarmup,
     JournalSource,
     JournalAccounts,
     JournalPayments,

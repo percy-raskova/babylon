@@ -139,3 +139,6 @@ fn national_99_choices_bound_next_purchases_and_survive_full_checkpoint() {
 
 #[path = "support/company_scale.rs"]
 mod scale;
+
+#[path = "support/company_funded_expansion.rs"]
+mod funded_expansion;

@@ -1,0 +1,69 @@
+{
+  "opening": {
+    "capture": "377327f391050d1ab3260a9a54cec2c49278829d38c08094ea5cb3f1dfb0f6b7",
+    "county": "40109",
+    "site": "representative manufacturing — Oklahoma County/AboveCellReserveRate"
+  },
+  "decision": {
+    "capacity_batches": 2054670,
+    "company": "Manufacturing · West South Central",
+    "company_id": "b49c6f9aa98cc6369d0ec2e18c68c589bee7a803dae09970e2c91cf53fb8ceea",
+    "consolidated_current_profit_micros": "611620428448339",
+    "designed_weights": [
+      10,
+      10,
+      60,
+      20
+    ],
+    "draw": 15954924389649206716,
+    "eligible_weights": [
+      10,
+      0,
+      60,
+      20
+    ],
+    "member_operating_income_micros": [
+      "498120148000000",
+      "544933369885361",
+      "726425611274099"
+    ],
+    "period": 4,
+    "price_micros": "16000000000",
+    "process": "6d01f0352691ea823c411fcd552eead5e9a28500030bf94a8528ff9935fa8d36",
+    "produced_batches": 1751327,
+    "receipts": "fb13770767b375ae7b015dc0a07c6f120c54185b3720bff9bcbc73e7856fefb2",
+    "seed": 2,
+    "selected_expansion_limit": 3223,
+    "selected_funding_micros": "51568000000000",
+    "selection": "LARGER_EXPANSION",
+    "site_id": "ca0e59c3dbccc25e466dc7738da5f4ea4ac8d2ec8d454dae7e372f9091dc914b",
+    "site_requested_expansion": 3223,
+    "site_spendable_micros": "0",
+    "treasury_available_micros": "3342555903122032",
+    "unmet_accepted_units": 3000307,
+    "world": "b4ac9e0cae321a83ed0034ac268f4b1e46a55d76ed3506a6ddbf7e3890609e7f"
+  },
+  "equipment_order": {
+    "cash_reserved_micros": "48176000000000",
+    "contribution_id": "1ba7c8a4b604e42cb2e7a9217e67cecf683cba9f0348f7f1936af98a0ed49ff3",
+    "equipment_admitted": 3011,
+    "equipment_requested": 3227,
+    "group_eliminated_contributions_micros": "377552000000000",
+    "order_id": "483161dd8964016c0943446b3eeeced6836ff6934c1a202266a8490a21a9b3c5",
+    "paid_contribution_micros": "51568000000000",
+    "period": 5,
+    "requested_contribution_micros": "51568000000000",
+    "unit_price_micros": "16000000000"
+  },
+  "closing_accounts": {
+    "consolidated_contribution_micros": "0",
+    "consolidated_profit_micros": "535029897041773",
+    "parent_profit_micros": "542439457342891",
+    "period": 5,
+    "receipts": "d4b94c3b658bc9701687366fa33f63ddeda2c83389d10065d5e89cc5bc4bdfef",
+    "site_closing_cash_micros": "50143803085805",
+    "site_investing_micros": "-48176000000000",
+    "site_opening_cash_micros": "50135040000000",
+    "world": "4d6d078950cbfb2159c20c41f6e73a20c8553c13604df6836c01d5899903a7f8"
+  }
+}

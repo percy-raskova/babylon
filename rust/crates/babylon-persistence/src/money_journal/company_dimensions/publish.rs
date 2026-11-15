@@ -7,6 +7,7 @@ use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
 use postgres::Transaction;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use uuid::Uuid;
 
 struct CompanyDirectory<'a> {
     roster: &'a CompanyCapture,
@@ -36,15 +37,19 @@ impl Binding {
 }
 
 impl CompanyDirectory<'_> {
-    fn counts(&self) -> [usize; 4] {
+    fn counts(&self) -> [usize; 3] {
         [
             self.roster.companies.len(),
             self.roster.members.len(),
-            self.finances.claims.len(),
             self.finances.sources.len(),
         ]
     }
-    fn stage(&self, batch: &mut Batch<'_, '_>, key: &Binding) -> Result<(), JournalError> {
+    fn stage(
+        &self,
+        batch: &mut Batch<'_, '_>,
+        key: &Binding,
+        campaign: &Uuid,
+    ) -> Result<(), JournalError> {
         let treasury: BTreeMap<_, _> = self
             .finances
             .treasuries
@@ -80,16 +85,31 @@ impl CompanyDirectory<'_> {
                 .collect::<Result<Vec<_>, JournalError>>()?;
             batch.stage(Table::CompanyMember, rows.into_iter())?;
         }
-        batch.stage(
-            Table::CompanyClaim,
-            self.finances.claims.iter().map(|r| key.row(Claim::from(r))),
-        )?;
-        batch.stage(
+        if batch.admission != Admission::Verify {
+            batch.stage(
+                Table::CompanyClaimSource,
+                self.finances
+                    .sources
+                    .iter()
+                    .map(|r| key.row(Source::from(r))),
+            )?;
+        }
+        // A single ordered scan compares every recovered field, including share totals,
+        // original carrying value, exact beneficial weights and the captured foundation.
+        super::verification::verify(
+            batch.tx,
             Table::CompanyClaimSource,
+            campaign,
             self.finances
                 .sources
                 .iter()
                 .map(|r| key.row(Source::from(r))),
+        )?;
+        super::verification::verify(
+            batch.tx,
+            Table::CompanyClaim,
+            campaign,
+            self.finances.claims.iter().map(|r| key.row(Claim::from(r))),
         )
     }
 }
@@ -116,37 +136,39 @@ pub(in crate::money_journal) fn publish(
     };
     let payments = &source.payments.source;
     let id = payments.campaign_id.as_uuid();
-    let row=tx.query_one("SELECT ARRAY[
-        (SELECT count(*) FROM babylon_state.economic_company_v1 WHERE campaign_id=$1),
-        (SELECT count(*) FROM babylon_state.economic_company_member_v1 WHERE campaign_id=$1),
-        (SELECT count(*) FROM babylon_state.economic_company_claim_v1 WHERE campaign_id=$1),
-        (SELECT count(*) FROM babylon_state.economic_company_claim_source_v1 WHERE campaign_id=$1)]",&[id])
-        .map_err(|_|JournalError::Database)?;
-    let stored: Vec<i64> = row.try_get(0).map_err(|_| JournalError::Projection)?;
-    let expected = directory.as_ref().map_or([0; 4], CompanyDirectory::counts);
-    let counts = stored
-        .iter()
-        .map(|&n| usize::try_from(n).map_err(|_| JournalError::Range))
-        .collect::<Result<Vec<_>, _>>()?;
-    let admission = match mode {
-        Admission::Rebuild => {
-            tx.execute(
-                "DELETE FROM babylon_state.economic_company_v1 WHERE campaign_id=$1",
-                &[id],
-            )
+    let admission = if mode == Admission::Rebuild {
+        tx.execute(
+            "DELETE FROM babylon_state.economic_company_v1 WHERE campaign_id=$1",
+            &[id],
+        )
+        .map_err(|_| JournalError::Database)?;
+        Admission::Insert
+    } else {
+        let count_sql = "SELECT ARRAY[
+            (SELECT count(*) FROM babylon_state.economic_company_v1 WHERE campaign_id=$1),
+            (SELECT count(*) FROM babylon_state.economic_company_member_key_v1 WHERE campaign_id=$1),
+            (SELECT count(*) FROM babylon_state.economic_company_original_share_v1 WHERE campaign_id=$1)]";
+        let row = tx
+            .query_one(count_sql, &[id])
             .map_err(|_| JournalError::Database)?;
-            Admission::Insert
+        let stored: Vec<i64> = row.try_get(0).map_err(|_| JournalError::Projection)?;
+        let expected = directory.as_ref().map_or([0; 3], CompanyDirectory::counts);
+        let counts = stored
+            .into_iter()
+            .map(|n| usize::try_from(n).map_err(|_| JournalError::Range))
+            .collect::<Result<Vec<_>, _>>()?;
+        match mode {
+            Admission::Insert if counts == [0; 3] => Admission::Insert,
+            _ if counts == expected => Admission::Verify,
+            _ => return Err(JournalError::Projection),
         }
-        Admission::Insert if counts == [0; 4] => Admission::Insert,
-        _ if counts == expected => Admission::Verify,
-        _ => return Err(JournalError::Projection),
     };
     if let Some(directory) = &directory {
         let key = Binding {
             campaign: id.to_string(),
             digest: statement_storage::bytea(&payments.identity.foundation_digest()),
         };
-        directory.stage(&mut Batch { tx, admission }, &key)?;
+        directory.stage(&mut Batch { tx, admission }, &key, id)?;
     }
     Ok(())
 }

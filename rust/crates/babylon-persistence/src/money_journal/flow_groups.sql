@@ -10,11 +10,21 @@ WITH windows(first_tick,last_tick,is_compare) AS (
   SELECT t AS resolve_tick,pk AS payer_kind,decode(p,'hex') AS payer_id,
     rk AS recipient_kind,decode(r,'hex') AS recipient_id,n AS amount_micros
   FROM jsonb_to_recordset($9::text::jsonb) AS h(t bigint,pk text,p text,rk text,r text,n numeric)
-), payments AS (
+), county_accounts AS MATERIALIZED (
+  SELECT account_kind,account_id FROM public.v_observer_economic_flow_account_v1
+  WHERE campaign_id=$1 AND $13::text='location' AND location_key=$10::text
+), payments AS MATERIALIZED (
   SELECT s.resolve_tick,s.payer_kind,s.payer_id,s.recipient_kind,s.recipient_id,s.amount_micros
   FROM public.v_observer_economic_payment_v1 s WHERE $12::text='page' AND s.campaign_id=$1
     AND EXISTS(SELECT 1 FROM windows w WHERE s.resolve_tick BETWEEN w.first_tick AND w.last_tick)
+    AND ($13::text<>'location' OR $10::text IS NULL
+        OR (s.payer_kind,s.payer_id) IN (SELECT account_kind,account_id FROM county_accounts)
+        OR (s.recipient_kind,s.recipient_id) IN (SELECT account_kind,account_id FROM county_accounts))
   UNION ALL SELECT * FROM historical
+), participating AS MATERIALIZED (
+  SELECT payer_kind AS kind,payer_id AS id FROM payments WHERE $13::text='location' AND $10 IS NOT NULL
+  UNION
+  SELECT recipient_kind,recipient_id FROM payments WHERE $13::text='location' AND $10 IS NOT NULL
 ), bounds AS (
   SELECT ($8::double precision[])[1] AS west, ($8::double precision[])[2] AS south,
          ($8::double precision[])[3] AS east, ($8::double precision[])[4] AS north
@@ -41,11 +51,11 @@ WITH windows(first_tick,last_tick,is_compare) AS (
     owner.company->>0 AS company, owner.company->>1 AS company_label,
     a.location_key,a.catchment_key,a.industry_key,a.industry_label,($8 IS NULL OR v.location_key IS NOT NULL) AS in_view
   FROM public.v_observer_economic_flow_account_v1 a LEFT JOIN visible_locations v USING(location_key)
-  CROSS JOIN companies c CROSS JOIN ownership o
-  CROSS JOIN LATERAL (SELECT c.labels -> CASE a.account_kind
+  CROSS JOIN LATERAL (SELECT (SELECT labels FROM companies) -> CASE a.account_kind
     WHEN 'company_cash' THEN encode(a.account_id,'hex')
-    WHEN 'site_cash' THEN o.by_site->>encode(a.account_id,'hex') END AS company) owner
-  WHERE a.campaign_id=$1
+    WHEN 'site_cash' THEN (SELECT by_site FROM ownership)->>encode(a.account_id,'hex') END AS company) owner
+  WHERE a.campaign_id=$1 AND ($13::text<>'location' OR $10 IS NULL
+    OR (a.account_kind,a.account_id) IN (SELECT kind,id FROM participating))
 ), dimensions AS (
   SELECT a.account_kind,a.account_id,a.in_view,
     CASE $6::text WHEN 'account' THEN a.principal

@@ -20,6 +20,7 @@ pub(super) fn national(
     campaign: CampaignId,
     site: SiteId,
 ) {
+    rejects_partial_source_books(owner, campaign);
     let source = observer
         .site_financial_statements(campaign, 1, site)
         .expect("source site");
@@ -67,13 +68,13 @@ pub(super) fn national(
         "SELECT site_key FROM babylon_state.site_principal_v1 WHERE campaign_id=$1 AND site_id=$2",
         &[campaign.as_uuid(), &site.as_bytes().as_slice()],
     ).expect("captured site key").get(0);
-    assert_eq!(owner.execute("UPDATE babylon_state.site_statement_v1 SET income_productive_labor_capitalized_micros=income_productive_labor_capitalized_micros+1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2", &[campaign.as_uuid(), &site_key]).expect("alter book disclosure"), 1);
+    assert_eq!(owner.execute("UPDATE babylon_state.site_statement_block_v1 SET lines[($2::integer%32)*60+34]=coalesce(lines[($2%32)*60+34],0)+1 WHERE campaign_id=$1 AND resolve_tick=1 AND block_key=$2/32", &[campaign.as_uuid(), &site_key]).expect("alter book disclosure"), 1);
     assert_eq!(
         observer.published_site_period(campaign, 1, site),
         Err(JournalError::Projection)
     );
     let stock_owner = corrupt_stock(owner, observer, campaign, site);
-    assert_eq!(owner.execute("DELETE FROM babylon_state.site_statement_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2", &[campaign.as_uuid(), &site_key]).expect("one disposable damaged statement"), 1);
+    assert_eq!(owner.execute("DELETE FROM babylon_state.site_statement_block_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND block_key=$2::integer/32", &[campaign.as_uuid(), &site_key]).expect("one disposable damaged statement block"), 1);
     assert_eq!(
         observer.published_site_period(campaign, 1, site),
         Err(JournalError::Projection)
@@ -100,6 +101,24 @@ pub(super) fn national(
             .expect("restored source stock"),
         stock_owner
     );
+}
+
+fn rejects_partial_source_books(owner: &mut Client, campaign: CampaignId) {
+    let mut tx = owner.transaction().expect("open isolated statement source");
+    tx.batch_execute(include_str!("../../src/money_journal/site_sources.sql"))
+        .expect("prepare actual publication staging tables");
+    let error = tx
+        .execute(
+            "INSERT INTO pg_temp.site_statement_source
+         (campaign_id,site_ordinal,resolve_tick,site_key,opening_cash_micros) VALUES ($1,0,1,0,0)",
+            &[campaign.as_uuid()],
+        )
+        .expect_err("an incomplete monetary book must not acquire zero values when packed");
+    assert_eq!(
+        error.code(),
+        Some(&postgres::error::SqlState::CHECK_VIOLATION)
+    );
+    tx.rollback().expect("discard partial source");
 }
 
 fn corrupt_stock(
@@ -142,8 +161,8 @@ fn corrupt_stock(
     assert_eq!(
         owner
             .execute(
-                "UPDATE babylon_state.site_stock_balance_v1 SET closing_quantity=closing_quantity+1
-         WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2 AND commodity_ordinal=$3",
+                "UPDATE babylon_state.site_stock_block_v1 SET closing_quantities[$2::integer%32+1]=closing_quantities[$2%32+1]+1
+         WHERE campaign_id=$1 AND resolve_tick=1 AND block_key=$2/32 AND commodity_ordinal=$3",
                 params
             )
             .expect("change one stock quantity"),
@@ -156,11 +175,11 @@ fn corrupt_stock(
     assert_eq!(
         owner
             .execute(
-                "DELETE FROM babylon_state.site_stock_balance_v1
-         WHERE campaign_id=$1 AND resolve_tick=1 AND site_key=$2 AND commodity_ordinal=$3",
+                "DELETE FROM babylon_state.site_stock_block_v1
+         WHERE campaign_id=$1 AND resolve_tick=1 AND block_key=$2::integer/32 AND commodity_ordinal=$3",
                 params
             )
-            .expect("remove one selected stock"),
+            .expect("remove one selected commodity block"),
         1
     );
     assert_eq!(

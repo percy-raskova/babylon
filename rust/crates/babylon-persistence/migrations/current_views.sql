@@ -388,7 +388,8 @@ REVOKE ALL ON public.v_observer_money_journal_period_v1, public.v_observer_money
     public.v_observer_money_movement_total_v1 FROM PUBLIC;
 
 CREATE VIEW public.v_observer_economic_flow_location_v1 AS
-SELECT l.*, 'tiger_county_internal_point'::text AS point_basis
+SELECT l.campaign_id,l.foundation_sha256,l.location_key,l.longitude,l.latitude,l.county_internal_point,
+       'tiger_county_internal_point'::text AS point_basis
 FROM babylon_state.economic_flow_location_v1 l
 JOIN babylon_state.material_campaign_foundation_v3 f ON f.campaign_id=l.campaign_id
     AND f.foundation_sha256=l.foundation_sha256;

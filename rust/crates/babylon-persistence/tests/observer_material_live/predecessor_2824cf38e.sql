@@ -8,29 +8,58 @@ DROP TABLE
     babylon_state.company_statement_balance_v1,
     babylon_state.company_statement_cash_flow_v1,
     babylon_state.company_statement_income_v1,
-    babylon_state.economic_company_claim_source_v1,
-    babylon_state.economic_company_claim_v1,
-    babylon_state.economic_company_member_v1,
+    babylon_state.economic_company_original_share_v1,
+    babylon_state.economic_company_member_key_v1,
     babylon_state.economic_company_v1,
     babylon_state.economic_flow_account_v1,
     babylon_state.economic_flow_location_v1,
     babylon_state.labor_checkpoint_v1,
-    babylon_state.labor_movement_v1,
-    babylon_state.labor_node_v1,
+    babylon_state.labor_movement_block_v1,
+    babylon_state.labor_movement_roster_v1,
+    babylon_state.labor_node_block_v1,
+    babylon_state.economic_reference_guard_v1,
     babylon_state.labor_node_identity_v1,
+    babylon_state.labor_product_v1,
     babylon_state.labor_period_v1,
     babylon_state.money_journal_period_v1,
     babylon_state.money_movement_total_v1,
-    babylon_state.money_movement_v1,
+    babylon_state.money_movement_block_v1,
+    babylon_state.money_movement_account_v1,
     babylon_state.site_principal_v1,
     babylon_state.site_stock_key_v1,
-    babylon_state.site_statement_v1,
-    babylon_state.site_stock_balance_v1 CASCADE;
+    babylon_state.site_roster_guard_v1,
+    babylon_state.site_roster_block_v1,
+    babylon_state.site_statement_block_v1,
+    babylon_state.site_stock_block_v1 CASCADE;
+
+DROP FUNCTION babylon_state.touch_site_roster_v1(), babylon_state.verify_site_roster_v1(),
+    babylon_state.prevent_site_roster_truncate_v1(), babylon_state.site_ordinals_valid_v1(integer,bit,integer[]),
+    babylon_state.site_postings_valid_v1(bit,numeric[]),
+    babylon_state.site_stock_slots_valid_v1(bit,numeric[],numeric[],numeric[],numeric[]);
+
+DROP FUNCTION
+    babylon_state.movement_slots_v1(smallint[]),
+    babylon_state.money_movement_values_v1(text[],text[],bytea[],integer[],integer[],numeric[]),
+    babylon_state.labor_movement_values_v1(bigint[],bigint[],text[],bigint[],numeric[],numeric[],boolean[]),
+    babylon_state.money_movement_accounts_v1(),
+    babylon_state.labor_movement_nodes_v1(),
+    babylon_state.money_movement_reference_change_v1(),
+    babylon_state.labor_movement_reference_change_v1();
+
+DROP FUNCTION babylon_state.revise_labor_account_scope_v1(),babylon_state.revise_labor_point_v1(),
+    babylon_state.retain_labor_identity_v1(),babylon_state.check_labor_descriptors_v1();
+DROP TYPE babylon_state.labor_physical_scope_v1;
+
+DROP FUNCTION babylon_state.economic_reference_lock_v1(uuid),babylon_state.labor_node_changed_v1(),babylon_state.labor_node_validate_v1(),
+    babylon_state.labor_node_no_truncate_v1(),babylon_state.labor_node_guard_private_v1(),
+    babylon_state.labor_holding_block_valid_v1(numeric[],numeric[],boolean[],integer);
 
 ALTER TABLE babylon_state.material_tick_v3
     DROP CONSTRAINT material_tick_v3_receipt_storage_bytes_check,
     ADD CONSTRAINT material_tick_v3_receipt_storage_bytes_check
         CHECK (octet_length(receipt_storage_bytes) <= 925437040);
+
+DROP DOMAIN babylon_state.company_site_shares_v1, babylon_state.company_claim_weight_v1;
 
 UPDATE babylon_meta.current_schema
 SET schema_sha256 = decode('f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071', 'hex');

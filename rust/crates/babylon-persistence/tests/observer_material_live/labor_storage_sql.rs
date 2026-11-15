@@ -4,6 +4,9 @@ use babylon_persistence::money_journal::{self, JournalError, MoneyJournalWriter}
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use postgres::Client;
 
+#[path = "movement_blocks.rs"]
+mod movement_blocks;
+
 #[path = "labor_positions.rs"]
 mod labor_positions;
 
@@ -15,6 +18,7 @@ pub(super) fn retention_and_repair(
 ) {
     labor_positions::check(owner, observer, writer, campaign);
     cold_window(owner, observer, writer, campaign);
+    movement_blocks::check(owner, campaign);
     compare_retained_rows(owner, observer, writer, campaign);
     let id = campaign.as_uuid();
     let source = observer
@@ -149,15 +153,15 @@ fn compare_retained_rows(
 
     let last: i64 = owner
         .query_one(
-            "SELECT max(ordinal) FROM babylon_state.labor_movement_v1
-         WHERE campaign_id=$1 AND resolve_tick=2",
+            "SELECT max(block_ordinal) FROM babylon_state.labor_movement_block_v1
+             WHERE campaign_id=$1 AND resolve_tick=2",
             &[id],
         )
         .expect("retained work movements")
         .get(0);
-    let shift = "UPDATE babylon_state.labor_movement_v1 SET ordinal=$3
-                 WHERE campaign_id=$1 AND resolve_tick=2 AND ordinal=$2";
-    let extra = last.checked_add(1).expect("fixture ordinal fits");
+    let shift = "UPDATE babylon_state.labor_movement_block_v1 SET block_ordinal=$3
+                 WHERE campaign_id=$1 AND resolve_tick=2 AND block_ordinal=$2";
+    let extra = last.checked_add(1).expect("fixture block fits");
     assert_eq!(
         owner
             .execute(shift, &[id, &last, &extra])
@@ -195,6 +199,7 @@ fn check_shared_node_repair(
             (SELECT min(peer.resolve_tick) FROM babylon_state.labor_node_v1 peer WHERE
                 peer.campaign_id=n.campaign_id AND peer.descriptor_key=n.descriptor_key AND peer.resolve_tick<>2) AS neighbor
         FROM babylon_state.labor_node_v1 n JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_key) WHERE n.campaign_id=$1 AND n.resolve_tick=2
+        AND d.kind IN ('site_stock','household_stock','work','household_work','process','equipment')
         AND EXISTS (SELECT FROM babylon_state.labor_node_v1 peer WHERE peer.campaign_id=n.campaign_id
             AND peer.descriptor_key=n.descriptor_key AND peer.resolve_tick<>2) ORDER BY n.node_ordinal LIMIT 1",
         &[id]).expect("one recurring identity used in two retained periods");
@@ -204,7 +209,7 @@ fn check_shared_node_repair(
     let snapshot = |db: &mut Client, tick| -> String {
         db.query_one(
             "SELECT to_jsonb(d)::text FROM babylon_state.labor_node_v1 n
-            JOIN babylon_state.labor_node_identity_v1 d USING(campaign_id,descriptor_key)
+            JOIN babylon_state.labor_node_descriptor_v1 d USING(campaign_id,descriptor_key)
             WHERE n.campaign_id=$1 AND n.resolve_tick=$2 AND d.descriptor_sha256=$3 LIMIT 1",
             &[id, &tick, &original],
         )
@@ -214,12 +219,15 @@ fn check_shared_node_repair(
     check_physical_reference(owner, campaign, ordinal, &original);
     let before = snapshot(owner, neighbor);
     let corrupt=owner.query_one("WITH changed AS (
-          SELECT jsonb_populate_record(d,jsonb_build_object('descriptor_key',(SELECT max(descriptor_key)+1 FROM babylon_state.labor_node_identity_v1 WHERE campaign_id=$1),
-              'location_key',CASE WHEN d.location_key IS NULL THEN 'changed' ELSE NULL END)) AS body
-          FROM babylon_state.labor_node_identity_v1 d WHERE campaign_id=$1 AND descriptor_sha256=$2
+          SELECT d AS physical,jsonb_populate_record(f,jsonb_build_object('catchment_key',
+              CASE WHEN f.catchment_key IS NULL THEN 'changed' ELSE NULL END)) AS logical
+          FROM babylon_state.labor_node_identity_v1 d JOIN babylon_state.labor_node_descriptor_v1 f USING(campaign_id,descriptor_key)
+          WHERE d.campaign_id=$1 AND d.descriptor_sha256=$2
         ), keyed AS (
-          SELECT jsonb_populate_record(body,jsonb_build_object('descriptor_sha256',
-              babylon_state.labor_node_fingerprint_v1(body))) AS body FROM changed
+          SELECT jsonb_populate_record(physical,jsonb_build_object(
+              'descriptor_key',(SELECT max(descriptor_key)+1 FROM babylon_state.labor_node_identity_v1 WHERE campaign_id=$1),
+              'descriptor_sha256',babylon_state.labor_node_fingerprint_v1(logical),'scope_key',NULL,'scope_revision',NULL,
+              'point_revision',NULL,'physical_scope',to_jsonb(logical))) AS body FROM changed
         ), staged AS (
           INSERT INTO babylon_state.labor_node_identity_v1 SELECT (body).* FROM keyed
           ON CONFLICT (campaign_id,descriptor_sha256) DO NOTHING
@@ -229,8 +237,8 @@ fn check_shared_node_repair(
           SELECT d.descriptor_key,d.descriptor_sha256 FROM babylon_state.labor_node_identity_v1 d
           JOIN keyed k ON (d.campaign_id,d.descriptor_sha256)=((k.body).campaign_id,(k.body).descriptor_sha256)
         )
-        UPDATE babylon_state.labor_node_v1 n SET descriptor_key=k.descriptor_key FROM resolved k
-        WHERE n.campaign_id=$1 AND n.resolve_tick=2 AND n.node_ordinal=$3 RETURNING k.descriptor_sha256",
+        UPDATE babylon_state.labor_node_block_v1 n SET descriptor_keys[(($3::bigint%256)::integer+1)]=k.descriptor_key FROM resolved k
+        WHERE n.campaign_id=$1 AND n.resolve_tick=2 AND n.block_ordinal=$3::bigint/256 RETURNING k.descriptor_sha256",
         &[id,&original,&ordinal]).expect("alter only one nullable source field behind a retained reference");
     assert_ne!(corrupt.get::<_, Vec<u8>>(0), original);
     assert_eq!(
@@ -273,8 +281,9 @@ fn check_physical_reference(
     let mut broken = owner.transaction().expect("exercise physical reference");
     broken
         .execute(
-            "UPDATE babylon_state.labor_node_v1 SET descriptor_key=-1
-             WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2",
+            "UPDATE babylon_state.labor_node_block_v1 SET descriptor_keys[(($2::bigint%256)::integer+1)]=
+                 (SELECT max(descriptor_key)+1 FROM babylon_state.labor_node_identity_v1 WHERE campaign_id=$1)
+             WHERE campaign_id=$1 AND resolve_tick=2 AND block_ordinal=$2::bigint/256",
             &[id, &ordinal],
         )
         .expect("stage missing physical descriptor");
@@ -296,4 +305,60 @@ fn check_physical_reference(
             .code(),
         Some(&postgres::error::SqlState::CHECK_VIOLATION)
     );
+}
+
+/// Full scopes in the national source share the authenticated cash directory and
+/// county points. PostgreSQL protects retained identities before another writer
+/// can change a parent's typed payload or remove the row.
+pub(super) fn national_descriptor_sources(owner: &mut Client, campaign: CampaignId) {
+    use postgres::error::SqlState;
+    let id = campaign.as_uuid();
+    let row = owner
+        .query_one(
+            "SELECT scope_key,location_key,product_key FROM babylon_state.labor_node_identity_v1
+             WHERE campaign_id=$1 AND scope_key IS NOT NULL AND point_revision IS NOT NULL AND product_key IS NOT NULL LIMIT 1",
+            &[id],
+        )
+        .expect("a located national stock uses all three shared parents");
+    let account: i32 = row.get(0);
+    let point: String = row.get(1);
+    let product: i32 = row.get(2);
+    let change = owner
+        .execute(
+            "UPDATE babylon_state.economic_flow_account_v1 SET catchment_key=coalesce(catchment_key,'')||'!'
+             WHERE campaign_id=$1 AND account_key=$2",
+            &[id, &account],
+        )
+        .expect_err("a retained scope pins its nullable classification");
+    assert_eq!(change.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
+    let change = owner
+        .execute(
+            "UPDATE babylon_state.economic_flow_location_v1 SET longitude=longitude + ('0.'||repeat('0',scale(longitude)+1))::numeric
+             WHERE campaign_id=$1 AND location_key=$2",
+            &[id, &point],
+        )
+        .expect_err("numeric scale is part of the binary location descriptor");
+    assert_eq!(change.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
+    let remove = owner
+        .execute(
+            "DELETE FROM babylon_state.economic_flow_location_v1 WHERE campaign_id=$1 AND location_key=$2",
+            &[id, &point],
+        )
+        .expect_err("a retained coordinate pair requires its county point");
+    assert_eq!(remove.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
+    let change = owner
+        .execute(
+            "UPDATE babylon_state.labor_product_v1 SET unit_id=sha256(unit_id) WHERE campaign_id=$1 AND product_key=$2",
+            &[id, &product],
+        )
+        .expect_err("a retained unit cannot change under its compact key");
+    assert_eq!(change.code(), Some(&SqlState::CHECK_VIOLATION));
+    let wrong = owner.execute(
+        "INSERT INTO babylon_state.labor_node_identity_v1
+         SELECT (jsonb_populate_record(d,jsonb_build_object('descriptor_key',(SELECT max(descriptor_key)+1 FROM babylon_state.labor_node_identity_v1 WHERE campaign_id=$1),
+             'descriptor_sha256',sha256(d.descriptor_sha256)))).*
+         FROM babylon_state.labor_node_identity_v1 d WHERE campaign_id=$1 AND scope_key=$2 LIMIT 1",
+        &[id, &account],
+    ).expect_err("a newly inserted identity must match the recomputed full descriptor SHA");
+    assert_eq!(wrong.code(), Some(&SqlState::CHECK_VIOLATION));
 }

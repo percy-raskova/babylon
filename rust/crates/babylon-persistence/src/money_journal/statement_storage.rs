@@ -2,8 +2,8 @@
 use super::payment_storage::Admission;
 use super::statement_integrity::SiteEvidence;
 use super::statement_lines::Lines;
+use super::stock_storage;
 use super::JournalError;
-use super::{site_storage_keys, stock_storage};
 use crate::economic_content::EconomicContentHandle;
 use crate::economic_flows::EconomicPaymentPeriod;
 use crate::identity::CampaignId;
@@ -13,6 +13,7 @@ use babylon_material_circuit::SiteId;
 use postgres::{Statement, Transaction};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 pub(crate) struct JournalPeriodSource {
     pub foundation: EconomicContentHandle,
@@ -128,11 +129,26 @@ impl Table {
     }
 
     fn sql(self, admission: Admission) -> String {
+        if matches!(self, Self::LaborMovement) {
+            return match admission {
+                Admission::Verify => include_str!("labor_movement_verify.sql"),
+                _ => include_str!("labor_movement_insert.sql"),
+            }
+            .to_owned();
+        }
         let (table, keys) = self.relation();
         if matches!(self, Self::LaborNode) && admission != Admission::Verify {
             return include_str!("labor_node_insert.sql").to_owned();
         }
         let input = format!("jsonb_populate_recordset(NULL::{table},$1::text::jsonb)");
+        let staged = match self {
+            Self::Statement => Some("pg_temp.site_statement_source"),
+            Self::Stock => Some("pg_temp.site_stock_source"),
+            _ => None,
+        };
+        if let Some(target) = staged {
+            return format!("INSERT INTO {target} SELECT * FROM {input}");
+        }
         if admission == Admission::Verify {
             // Each expected composite gets one scalar lookup by the full primary key.
             // An absent row is NULL. IS DISTINCT FROM also compares nullable fields.
@@ -149,7 +165,15 @@ impl Table {
                  )"
             )
         } else {
-            format!("INSERT INTO {table} SELECT * FROM {input}")
+            match self {
+                Self::CompanyMember => {
+                    include_str!("company_dimensions/member_insert.sql").to_owned()
+                }
+                Self::CompanyClaimSource => {
+                    include_str!("company_dimensions/source_insert.sql").to_owned()
+                }
+                _ => format!("INSERT INTO {table} SELECT * FROM {input}"),
+            }
         }
     }
 }
@@ -165,9 +189,12 @@ impl Batch<'_, '_> {
         table: Table,
         rows: impl Iterator<Item = T>,
     ) -> Result<(), JournalError> {
+        let verify = self.admission == Admission::Verify
+            && !matches!(table, Table::Statement | Table::Stock);
         let sql = table.sql(self.admission);
         let prepared = self.tx.prepare(&sql).map_err(|_| JournalError::Database)?;
         let mut payload = String::from("[");
+        let mut first_node_batch = !verify && matches!(table, Table::LaborNode);
         let mut count = 0;
         for row in rows {
             let json = serde_json::to_string(&row).map_err(|_| JournalError::Projection)?;
@@ -177,19 +204,28 @@ impl Batch<'_, '_> {
             payload.push_str(&json);
             count += 1;
             if count == 256 {
-                self.send(&prepared, &mut payload)?;
+                self.send(&prepared, &mut payload, verify)?;
+                if first_node_batch {
+                    super::labor_storage::prepare_descriptor_lookup(self.tx)?;
+                    first_node_batch = false;
+                }
                 count = 0;
             }
         }
         if count != 0 {
-            self.send(&prepared, &mut payload)?;
+            self.send(&prepared, &mut payload, verify)?;
         }
         Ok(())
     }
 
-    fn send(&mut self, query: &Statement, payload: &mut String) -> Result<(), JournalError> {
+    fn send(
+        &mut self,
+        query: &Statement,
+        payload: &mut String,
+        verify: bool,
+    ) -> Result<(), JournalError> {
         payload.push(']');
-        if self.admission == Admission::Verify {
+        if verify {
             let valid: bool = self
                 .tx
                 .query_one(query, &[payload])
@@ -213,6 +249,7 @@ impl Batch<'_, '_> {
 pub(super) fn publish(
     tx: &mut Transaction<'_>,
     source: &JournalPeriodSource,
+    keys: &BTreeMap<SiteId, i32>,
     admission: Admission,
 ) -> Result<SiteBinding, JournalError> {
     let period = &source.accounting;
@@ -241,12 +278,12 @@ pub(super) fn publish(
         receipts: receipts.identity.receipt_digest(),
     };
     let directory = directory(source, &evidence)?;
-    let keys = site_storage_keys::admit(tx, source, admission)?;
     let period_site_keys: Vec<_> = source
         .sites
         .iter()
         .map(|id| keys.get(id).copied().ok_or(JournalError::Projection))
         .collect::<Result<_, _>>()?;
+    super::site_blocks::prepare(tx)?;
     let mut batch = Batch { tx, admission };
     let mut summaries = period.statements.as_deref().unwrap_or_default().iter();
     batch.stage(
@@ -265,7 +302,8 @@ pub(super) fn publish(
                     .unwrap_or_default(),
             }),
     )?;
-    stock_storage::stage(&mut batch, campaign, tick, &keys, &period.stocks)?;
+    stock_storage::stage(&mut batch, campaign, tick, keys, &period.stocks)?;
+    super::site_blocks::publish(tx, campaign, tick, admission)?;
     let binding = SiteBinding {
         digest: Sha256::digest(&directory).into(),
         directory,
@@ -322,9 +360,9 @@ fn verify_binding(
         .query_one(
             "SELECT site_accounting_sha256 = $3 AND site_monetary_books = $4 AND site_count = $5
                 AND site_stock_count = $6 AND site_accounting_directory = $7
-                AND site_count = (SELECT count(*) FROM babylon_state.site_statement_v1
+                AND site_count = (SELECT coalesce(sum(bit_count(present)),0) FROM babylon_state.site_statement_block_v1
                                    WHERE campaign_id = $1 AND resolve_tick = $2)
-                AND site_stock_count = (SELECT count(*) FROM babylon_state.site_stock_balance_v1
+                AND site_stock_count = (SELECT coalesce(sum(bit_count(stocks)),0) FROM babylon_state.site_stock_block_v1
                                          WHERE campaign_id = $1 AND resolve_tick = $2)
            FROM babylon_state.money_journal_period_v1 WHERE campaign_id = $1 AND resolve_tick = $2",
             &[

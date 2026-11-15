@@ -1,4 +1,7 @@
 //! Real full-observer settlement, geographic scope and rank reconciliation.
+#[path = "payment_registry.rs"]
+mod payment_registry;
+
 use babylon_material_circuit::CompanyId;
 use babylon_persistence::company_statements::CompanyPeriodReport;
 use babylon_persistence::economic_flows::EconomicPaymentPeriod;
@@ -581,6 +584,23 @@ fn check_county_counterparties(
 
 use babylon_persistence::money_journal::MoneyJournalWriter;
 
+// A positive mutation of one original carrying amount leaves the number of claims,
+// every beneficial weight and the parent's capital intact. Retry still rechecks it.
+fn alter_original_holding(owner: &mut Client, campaign: CampaignId) -> (i32, String, Vec<u8>) {
+    let sql = "UPDATE babylon_state.economic_company_original_share_v1 h
+        SET original_carrying_micros = h.original_carrying_micros+1
+        WHERE (campaign_id,site_key,beneficiary_kind,beneficiary_id) = (
+            SELECT campaign_id,site_key,beneficiary_kind,beneficiary_id
+            FROM babylon_state.economic_company_original_share_v1
+            WHERE campaign_id=$1 AND original_carrying_micros=0
+            ORDER BY site_key,beneficiary_kind,beneficiary_id LIMIT 1)
+        RETURNING site_key,beneficiary_kind,beneficiary_id";
+    let row = owner
+        .query_one(sql, &[campaign.as_uuid()])
+        .expect("one historical zero-cost holding");
+    (row.get(0), row.get(1), row.get(2))
+}
+
 pub(super) fn check_company_rebuild(
     owner: &mut Client,
     observer: &ObserverEconomyReader,
@@ -590,6 +610,13 @@ pub(super) fn check_company_rebuild(
     let expected = observer
         .published_company_period_statements(campaign, 2)
         .expect("prior committed company statements");
+    let (site_key, owner_kind, owner_id) = alter_original_holding(owner, campaign);
+    assert_eq!(
+        writer.publish(observer, campaign, 2),
+        Err(JournalError::Projection),
+        "unchanged rank and row counts must not hide an altered original holding"
+    );
+    let registry = payment_registry::seed(owner, campaign);
     let original:Vec<u8>=owner.query_one("SELECT checkpoint_bytes FROM babylon_state.company_accounting_checkpoint_v1 WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid()]).expect("prior basis seed").get(0);
     owner.execute("UPDATE babylon_state.company_accounting_checkpoint_v1 SET checkpoint_bytes=checkpoint_bytes||decode('ff','hex') WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid()]).expect("damage only the disposable derived seed");
     let company:Vec<u8>=owner.query_one("SELECT company_id FROM babylon_state.company_elimination_v1 WHERE campaign_id=$1 AND resolve_tick=2 ORDER BY company_id LIMIT 1",&[campaign.as_uuid()]).expect("one group").get(0);
@@ -629,5 +656,12 @@ pub(super) fn check_company_rebuild(
         selected().expect("repaired selected company"),
         original_selected
     );
+    registry.check_repair(owner, campaign);
+    let repaired = owner.query_one(
+        "SELECT original_carrying_micros=0 FROM babylon_state.economic_company_original_share_v1
+         WHERE (campaign_id,site_key,beneficiary_kind,beneficiary_id)=($1,$2,$3,$4)",
+        &[campaign.as_uuid(), &site_key, &owner_kind, &owner_id],
+    ).expect("reconstructed historical holding");
+    assert!(repaired.get::<_, bool>(0));
     owner.execute("UPDATE babylon_state.company_accounting_checkpoint_v1 SET checkpoint_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid(),&original]).expect("restore the original fixture seed");
 }

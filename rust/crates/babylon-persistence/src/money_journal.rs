@@ -21,6 +21,7 @@ mod model;
 mod payment_storage;
 mod publication_watch;
 mod queue;
+mod site_blocks;
 mod site_storage_keys;
 mod statement_integrity;
 mod statement_lines;

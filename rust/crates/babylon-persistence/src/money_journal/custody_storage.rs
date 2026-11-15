@@ -53,13 +53,7 @@ fn posting(
     }
 }
 
-const INSERT: &str = "
-    INSERT INTO babylon_state.money_movement_v1
-        (campaign_id, resolve_tick, ordinal, purpose, reference_kind, reference_id,
-         payer_key, recipient_key, amount_micros)
-    SELECT $1,$2,r.ordinal,r.purpose,r.reference_kind,r.reference_id,r.payer_key,r.recipient_key,r.amount::numeric
-    FROM unnest($3::bigint[],$4::text[],$5::text[],$6::bytea[],$7::integer[],$8::integer[],$9::text[])
-    AS r(ordinal,purpose,reference_kind,reference_id,payer_key,recipient_key,amount)";
+const INSERT: &str = include_str!("custody_insert.sql");
 
 pub(super) fn insert(
     tx: &mut Transaction<'_>,
@@ -128,7 +122,7 @@ fn analyze_missing_statistics(tx: &mut Transaction<'_>) -> Result<(), JournalErr
     let missing = tx.query_one(
         "WITH required(tab, cols) AS (VALUES
              ('economic_flow_account_v1', ARRAY['campaign_id','account_key','account_kind','account_id','foundation_sha256']),
-             ('money_movement_v1', ARRAY['campaign_id','resolve_tick','payer_key','recipient_key'])
+             ('money_movement_block_v1', ARRAY['campaign_id','resolve_tick','block_ordinal'])
          ), missing AS (
              SELECT r.tab FROM required r
              JOIN pg_catalog.pg_class c ON c.oid=pg_catalog.to_regclass('babylon_state.'||r.tab)
@@ -137,12 +131,12 @@ fn analyze_missing_statistics(tx: &mut Transaction<'_>) -> Result<(), JournalErr
                      SELECT FROM pg_catalog.pg_stats s WHERE s.schemaname='babylon_state'
                      AND s.tablename=r.tab::name AND s.attname=col.name::name AND NOT s.inherited)))
          SELECT EXISTS (SELECT FROM missing WHERE tab='economic_flow_account_v1'),
-                EXISTS (SELECT FROM missing WHERE tab='money_movement_v1')",
+                EXISTS (SELECT FROM missing WHERE tab='money_movement_block_v1')",
         &[],
     ).map_err(|_| JournalError::Database)?;
     for (index, analyze) in [
         "ANALYZE babylon_state.economic_flow_account_v1",
-        "ANALYZE babylon_state.money_movement_v1",
+        "ANALYZE babylon_state.money_movement_block_v1",
     ]
     .into_iter()
     .enumerate()

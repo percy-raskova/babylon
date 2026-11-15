@@ -1,4 +1,4 @@
-//! Paired physical rows project the original two logical endpoint disclosures.
+//! Ordinal blocks with independent holding sides project the original two logical endpoint disclosures.
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{JournalError, MoneyJournalWriter};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
@@ -6,7 +6,9 @@ use postgres::error::SqlState;
 use postgres::types::ToSql;
 use postgres::{Client, GenericClient};
 
-const TABLE: &str = "babylon_state.labor_node_v1";
+const TABLE: &str = "babylon_state.labor_node_block_v1";
+const SLOT: &str = "(($2::bigint % 256)::integer + 1)";
+const SCOPE: &str = "WHERE campaign_id=$1 AND resolve_tick=2 AND block_ordinal=$2::bigint/256";
 const VIEW: &str = "public.v_observer_labor_position_v1";
 
 pub(super) fn check(
@@ -39,11 +41,9 @@ pub(super) fn check(
     let node: i64 = physical.get(1);
     let before = logical(owner, campaign, node);
     assert_eq!(before.len(), 2);
+    check_block_membership(owner, campaign);
     check_sparse_sides(owner, campaign, node);
-    let update = format!(
-        "UPDATE {TABLE} SET closing_unknown_opening = NOT closing_unknown_opening
-        WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2"
-    );
+    let update = format!("UPDATE {TABLE} SET closing_unknown_opening[{SLOT}] = NOT closing_unknown_opening[{SLOT}] {SCOPE}");
     assert_eq!(
         owner
             .execute(&update, &[id, &node])
@@ -79,10 +79,9 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
     let mut tx = owner
         .transaction()
         .expect("uncommitted synthetic boundary values");
-    let scope = "WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2";
     let opening = format!("UPDATE {TABLE}
-        SET opening_quantity=1, opening_recorded_micro_hours=0, opening_unknown_opening=false,
-            closing_quantity=NULL, closing_recorded_micro_hours=NULL, closing_unknown_opening=NULL {scope}");
+        SET opening_quantity[{SLOT}]=1, opening_recorded_micro_hours[{SLOT}]=0, opening_unknown_opening[{SLOT}]=false,
+            closing_quantity[{SLOT}]=NULL, closing_recorded_micro_hours[{SLOT}]=NULL, closing_unknown_opening[{SLOT}]=NULL {SCOPE}");
     let params: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &node];
     assert_eq!(
         tx.execute(&opening, params)
@@ -95,10 +94,10 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
     );
     let closing = format!(
         "UPDATE {TABLE}
-        SET closing_quantity=18446744073709551615,
-            closing_recorded_micro_hours=340282366920938463463374607431768211455,
-            closing_unknown_opening=true, opening_quantity=NULL, opening_recorded_micro_hours=NULL,
-            opening_unknown_opening=NULL {scope}"
+        SET closing_quantity[{SLOT}]=18446744073709551615,
+            closing_recorded_micro_hours[{SLOT}]=340282366920938463463374607431768211455,
+            closing_unknown_opening[{SLOT}]=true, opening_quantity[{SLOT}]=NULL, opening_recorded_micro_hours[{SLOT}]=NULL,
+            opening_unknown_opening[{SLOT}]=NULL {SCOPE}"
     );
     assert_eq!(
         tx.execute(&closing, params)
@@ -114,17 +113,20 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
             true
         )]
     );
-    for damage in [
-        "closing_recorded_micro_hours=NULL",
-        "closing_quantity=0",
-        "closing_quantity=18446744073709551616",
-        "closing_recorded_micro_hours=340282366920938463463374607431768211456",
-        "closing_recorded_micro_hours=0.5",
+    for (field, invalid) in [
+        ("closing_recorded_micro_hours", "NULL"),
+        ("closing_quantity", "0"),
+        ("closing_quantity", "18446744073709551616"),
+        (
+            "closing_recorded_micro_hours",
+            "340282366920938463463374607431768211456",
+        ),
+        ("closing_recorded_micro_hours", "0.5"),
     ] {
         let mut probe = tx
             .transaction()
             .expect("savepoint for individual constraint");
-        let update = format!("UPDATE {TABLE} SET {damage} {scope}");
+        let update = format!("UPDATE {TABLE} SET {field}[{SLOT}]={invalid} {SCOPE}");
         let err = probe
             .execute(&update, params)
             .expect_err("physical basis rejects malformed endpoint");
@@ -132,7 +134,7 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
         probe.rollback().expect("preserve prior valid boundary");
     }
     let unknown_zero =
-        format!("UPDATE {TABLE} SET closing_quantity=1, closing_recorded_micro_hours=0 {scope}");
+        format!("UPDATE {TABLE} SET closing_quantity[{SLOT}]=1, closing_recorded_micro_hours[{SLOT}]=0 {SCOPE}");
     assert_eq!(
         tx.execute(&unknown_zero, params)
             .expect("unknown prior hours with no recorded work"),
@@ -143,20 +145,51 @@ fn check_sparse_sides(owner: &mut Client, campaign: CampaignId, node: i64) {
         [("closing".into(), "1".into(), "0".into(), true)]
     );
     let clear = format!(
-        "UPDATE {TABLE} SET closing_quantity=NULL, closing_recorded_micro_hours=NULL,
-                         closing_unknown_opening=NULL {scope}"
+        "UPDATE {TABLE} SET closing_quantity[{SLOT}]=NULL, closing_recorded_micro_hours[{SLOT}]=NULL,
+                         closing_unknown_opening[{SLOT}]=NULL {SCOPE}"
     );
     assert_eq!(
         tx.execute(&clear, params).expect("clear the last holding"),
         1
     );
     assert_eq!(logical(&mut tx, campaign, node), [] as [Endpoint; 0]);
-    let class = format!("SELECT count(*) FROM public.v_observer_labor_node_v1 {scope}");
+    let class = "SELECT count(*) FROM public.v_observer_labor_node_v1 WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2";
     let count: i64 = tx
-        .query_one(&class, params)
+        .query_one(class, params)
         .expect("retain the movement endpoint")
         .get(0);
     assert_eq!(count, 1);
     tx.rollback()
         .expect("retain the authentic source-derived cells");
+}
+
+fn check_block_membership(owner: &mut Client, campaign: CampaignId) {
+    let id = campaign.as_uuid();
+    let (blocks, nodes, expected): (i64, i64, i64) = {
+        let row = owner.query_one(
+            "SELECT count(b.block_ordinal),coalesce(sum(cardinality(b.descriptor_keys)),0)::bigint,l.node_count
+             FROM babylon_state.labor_period_v1 l LEFT JOIN babylon_state.labor_node_block_v1 b
+             USING(campaign_id,resolve_tick) WHERE l.campaign_id=$1 AND l.resolve_tick=2 GROUP BY l.node_count",
+            &[id],
+        ).expect("compare physical blocks with the authenticated roster");
+        (row.get(0), row.get(1), row.get(2))
+    };
+    assert_eq!(nodes, expected);
+    assert_eq!(blocks, 1 + (expected - 1) / 256);
+    let mut tx = owner
+        .transaction()
+        .expect("attempt a hole in the sealed roster");
+    assert_eq!(
+        tx.execute(
+            "DELETE FROM babylon_state.labor_node_block_v1
+        WHERE campaign_id=$1 AND resolve_tick=2 AND block_ordinal=0",
+            &[id]
+        )
+        .expect("stage a roster hole"),
+        1
+    );
+    let err = tx
+        .commit()
+        .expect_err("deleting a live roster block cannot leave dangling movement endpoints");
+    assert_eq!(err.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
 }

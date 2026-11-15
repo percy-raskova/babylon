@@ -358,6 +358,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     let totals = assert_source_totals(&observer, &observer_config, campaign, &source, &expected);
     let mut owner = target.writer.connect(NoTls).expect("owner connection");
     check_reserve_payer_integrity(&mut owner, &observer, &writer, campaign);
+    super::labor_storage_sql::national_descriptor_sources(&mut owner, campaign);
     assert_nonzero_history(&mut owner, &observer, &writer, campaign, &expected, &totals);
     let mut returning_session = JournalQueue::connect(&observer, &writer, None)
         .expect("returning session has ordinary database-wide catchup");
@@ -540,8 +541,9 @@ fn check_reserve_payer_integrity(
     let ordinal: i64 = row.get("ordinal");
     let payer: i32 = row.get("payer_key");
     let recipient: i32 = row.get("recipient_key");
-    let change = "UPDATE babylon_state.money_movement_v1 SET payer_key=$3
-        WHERE campaign_id=$1 AND resolve_tick=1 AND ordinal=$2";
+    let change = "UPDATE babylon_state.money_movement_block_v1
+        SET payer_key[array_position(slots,($2::bigint%128)::smallint)]=$3
+        WHERE campaign_id=$1 AND resolve_tick=1 AND block_ordinal=$2/128";
     assert_eq!(
         owner
             .execute(change, &[campaign.as_uuid(), &ordinal, &recipient])
@@ -585,7 +587,7 @@ fn labor_parent_row_estimates(owner: &mut Client) -> Vec<i64> {
     owner
         .query(
             "SELECT reltuples::bigint FROM pg_catalog.pg_class WHERE oid IN
-             ('babylon_state.labor_node_v1'::regclass,'babylon_state.labor_node_identity_v1'::regclass)
+             ('babylon_state.labor_node_block_v1'::regclass,'babylon_state.labor_node_identity_v1'::regclass)
              ORDER BY relname",
             &[],
         )
@@ -670,7 +672,7 @@ fn assert_nonzero_history(
     // rebuild must size them after staging new rows and before committing its edges.
     owner
         .batch_execute(
-            "ANALYZE babylon_state.labor_node_v1; ANALYZE babylon_state.labor_node_identity_v1",
+            "ANALYZE babylon_state.labor_node_block_v1; ANALYZE babylon_state.labor_node_identity_v1",
         )
         .expect("sample the actually empty parent relations");
     assert_eq!(labor_parent_row_estimates(owner), [0, 0]);

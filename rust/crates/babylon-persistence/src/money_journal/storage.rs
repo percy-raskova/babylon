@@ -12,8 +12,10 @@ use crate::observer_reader::{
     CommittedMaterialReceipts, ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
 };
 use crate::production_projection::diagnostics::{Stage, Timing};
+use babylon_material_circuit::SiteId;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
 const JOURNAL_LOCK_KEY: i64 = 0xbab1_4d01;
@@ -314,38 +316,42 @@ impl MoneyJournalWriter {
         let existing = tx.query_opt("SELECT movement_sha256,movement_count,payment_count,payment_sha256,detail_retained FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=$2", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         let (mode, retained) = publication_admission(operation, existing.as_ref())?;
         let changed = mode != Admission::Verify;
-        {
+        // A withdrawn payment can leave its account in the period's reference roster.
+        // Release the period's children before repairing the shared account directory.
+        // The ordinary FK continues to protect references held by any other period.
+        if operation == Publication::Rebuild && existing.is_some() {
+            remove_period(&mut tx, campaign, tick)?;
+        }
+        let site_keys = {
             let _accounts = Timing::start(Stage::JournalAccounts, period);
+            let keys = super::site_storage_keys::admit(&mut tx, &period_source, mode)?;
             super::company_dimensions::publish(&mut tx, &period_source, mode)?;
             payment_storage::accounts(&mut tx, economic, mode)?;
-        }
+            keys
+        };
         let payments_timing = Timing::start(Stage::JournalPayments, period);
-        if let Some(existing) = existing {
-            if operation == Publication::Publish {
-                let retained: bool = existing
-                    .try_get("detail_retained")
-                    .map_err(|_| JournalError::Projection)?;
-                if bytes(&existing, "payment_sha256")? != payment_digest
-                    || existing
-                        .try_get::<_, i64>("payment_count")
-                        .map_err(|_| JournalError::Projection)?
-                        != payment_count
-                    || bytes(&existing, "movement_sha256")? != digest
-                    || existing
-                        .try_get::<_, i64>("movement_count")
-                        .map_err(|_| JournalError::Projection)?
-                        != count
-                    || (retained && rows(&mut tx, campaign, tick)? != movements)
-                {
-                    return Err(JournalError::Projection);
-                }
-                if retained {
-                    super::custody_storage::verify_payers(&mut tx, economic, tick)?;
-                }
-                verify_totals(&mut tx, campaign, tick, &movements)?;
-            } else {
-                remove_period(&mut tx, campaign, tick)?;
+        if let Some(existing) = existing.filter(|_| operation == Publication::Publish) {
+            let retained: bool = existing
+                .try_get("detail_retained")
+                .map_err(|_| JournalError::Projection)?;
+            if bytes(&existing, "payment_sha256")? != payment_digest
+                || existing
+                    .try_get::<_, i64>("payment_count")
+                    .map_err(|_| JournalError::Projection)?
+                    != payment_count
+                || bytes(&existing, "movement_sha256")? != digest
+                || existing
+                    .try_get::<_, i64>("movement_count")
+                    .map_err(|_| JournalError::Projection)?
+                    != count
+                || (retained && rows(&mut tx, campaign, tick)? != movements)
+            {
+                return Err(JournalError::Projection);
             }
+            if retained {
+                super::custody_storage::verify_payers(&mut tx, economic, tick)?;
+            }
+            verify_totals(&mut tx, campaign, tick, &movements)?;
         }
         if changed {
             // Deferred FK permits staging all detail and SQL totals before the publication marker.
@@ -354,7 +360,14 @@ impl MoneyJournalWriter {
                 FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2 GROUP BY campaign_id,resolve_tick,purpose", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         }
         drop(payments_timing);
-        let site = publish_statements_and_labor(&mut tx, &period_source, &labor, mode, retained)?;
+        let site = publish_statements_and_labor(
+            &mut tx,
+            &period_source,
+            &site_keys,
+            &labor,
+            mode,
+            retained,
+        )?;
         let commit_timing = Timing::start(Stage::JournalCommit, period);
         let binding = pin_after_pruning(&mut tx, source, tick)?;
         if changed {
@@ -386,7 +399,7 @@ fn remove_detail(
 ) -> Result<(), JournalError> {
     let has_nodes = tx
         .query_one(
-            "SELECT EXISTS(SELECT 1 FROM babylon_state.labor_node_v1
+            "SELECT EXISTS(SELECT 1 FROM babylon_state.labor_node_block_v1
              WHERE campaign_id=$1 AND resolve_tick BETWEEN $2 AND $3)",
             &[campaign.as_uuid(), periods.start(), periods.end()],
         )
@@ -398,7 +411,12 @@ fn remove_detail(
     }
     // Each statement finishes before deleting the referenced rows. FK cascades
     // therefore find no live movement edges when the period nodes and their positions retire.
-    for table in ["labor_movement_v1", "money_movement_v1"] {
+    for table in [
+        "labor_movement_block_v1",
+        "labor_movement_roster_v1",
+        "money_movement_block_v1",
+        "money_movement_account_v1",
+    ] {
         let sql = format!(
             "DELETE FROM babylon_state.{table} WHERE campaign_id=$1 AND resolve_tick BETWEEN $2 AND $3"
         );
@@ -420,8 +438,8 @@ fn remove_period(
 ) -> Result<(), JournalError> {
     remove_detail(tx, campaign, tick..=tick)?;
     for table in [
-        "site_stock_balance_v1",
-        "site_statement_v1",
+        "site_stock_block_v1",
+        "site_statement_block_v1",
         "money_journal_period_v1",
     ] {
         let sql =
@@ -452,6 +470,7 @@ fn publication_admission(
 fn publish_statements_and_labor(
     tx: &mut Transaction<'_>,
     period_source: &JournalPeriodSource,
+    site_keys: &BTreeMap<SiteId, i32>,
     labor: &LaborPublication,
     mode: Admission,
     retained: bool,
@@ -460,7 +479,7 @@ fn publish_statements_and_labor(
     let period = source.identity.resolve_tick();
     let site = {
         let _timing = Timing::start(Stage::JournalSiteStatements, period);
-        statement_storage::publish(tx, period_source, mode)?
+        statement_storage::publish(tx, period_source, site_keys, mode)?
     };
     {
         let _timing = Timing::start(Stage::JournalCompanyStatements, period);

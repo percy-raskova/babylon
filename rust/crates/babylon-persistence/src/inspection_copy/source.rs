@@ -10,7 +10,7 @@ struct SourceSchema {
     marker: &'static str,
     footprints: [&'static str; 4],
 }
-const SOURCES: [SourceSchema; 2] = [
+const SOURCES: [SourceSchema; 3] = [
     // 2824cf38eb5c26fd721f1bf28c50989091448491, 155 catalog objects.
     SourceSchema {
         marker: "f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071",
@@ -29,6 +29,16 @@ const SOURCES: [SourceSchema; 2] = [
             "239da0c94f1335d02420cf370c6c471e2f51a94a82a1e687bc8e6df1162d3817",
             "4b95c3623343aaff76e6de458fa2f93fe71a715645e269a53ff8712a8c3ee997",
             "e672d7a3026cd7b3c0beacccd4d6774a5c0cbe5446fcfa94025cb4e28a0402f5",
+        ],
+    },
+    // 3db768eeb, 207 catalog objects.
+    SourceSchema {
+        marker: "27a833249a240ffdb2e524a45905f77b19dadb7dd05cf5db2e1c59d83318396b",
+        footprints: [
+            "9ef76248952dd552ea86cdba24b21c27a00d188d74925e517518501c23968bb6",
+            "7bc8db465b231b6363a86585a9f898f2d4d33c15233d6986bb822b51fa416a82",
+            "1e54dab3af3df74ad252d7eb87fe675ea4e7d7e4925d65b3d8885a72ad7693b7",
+            "d15e5c8745c5682d1d8920741dcfc30aceb0779c631fd46547246e9ec6397b1d",
         ],
     },
 ];
@@ -98,26 +108,28 @@ mod tests {
 
     #[test]
     fn inspection_requires_marker_and_role_footprint_from_the_same_layout() {
-        let [legacy, national] = &SOURCES;
-        for layout in [legacy, national] {
-            for footprint in layout.footprints {
-                assert_eq!(admit(layout.marker, footprint), Ok(layout.marker));
+        let archive_marker = "27a833249a240ffdb2e524a45905f77b19dadb7dd05cf5db2e1c59d83318396b";
+        let reader_observer = "d15e5c8745c5682d1d8920741dcfc30aceb0779c631fd46547246e9ec6397b1d";
+        assert_eq!(admit(archive_marker, reader_observer), Ok(archive_marker));
+
+        for source in &SOURCES {
+            for candidate in &SOURCES {
+                for footprint in candidate.footprints {
+                    let expected = if candidate.marker == source.marker {
+                        Ok(source.marker)
+                    } else {
+                        Err(InspectionCopyError::SourceSchema)
+                    };
+                    assert_eq!(admit(source.marker, footprint), expected);
+                }
             }
+            assert_eq!(
+                admit(source.marker, "unknown footprint"),
+                Err(InspectionCopyError::SourceSchema)
+            );
         }
         assert_eq!(
-            admit(legacy.marker, national.footprints[0]),
-            Err(InspectionCopyError::SourceSchema)
-        );
-        assert_eq!(
-            admit(national.marker, legacy.footprints[3]),
-            Err(InspectionCopyError::SourceSchema)
-        );
-        assert_eq!(
-            admit(national.marker, "unknown footprint"),
-            Err(InspectionCopyError::SourceSchema)
-        );
-        assert_eq!(
-            admit("unknown marker", national.footprints[2]),
+            admit("unknown marker", reader_observer),
             Err(InspectionCopyError::SourceSchema)
         );
     }

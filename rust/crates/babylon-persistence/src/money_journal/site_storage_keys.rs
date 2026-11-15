@@ -6,6 +6,7 @@ use babylon_material_circuit::SiteId;
 use postgres::types::ToSql;
 use postgres::Transaction;
 use std::collections::BTreeMap;
+use uuid::Uuid;
 
 const VERIFY: &str = "
     SELECT count(*),
@@ -22,6 +23,42 @@ const WRITE: &str = "
     ON CONFLICT (campaign_id,site_key) DO UPDATE SET
         site_id=EXCLUDED.site_id, foundation_sha256=EXCLUDED.foundation_sha256
     WHERE (known.site_id,known.foundation_sha256) IS DISTINCT FROM (EXCLUDED.site_id,EXCLUDED.foundation_sha256)";
+
+fn admit_roster(
+    tx: &mut Transaction<'_>,
+    campaign: &Uuid,
+    mode: Admission,
+) -> Result<(), JournalError> {
+    let row = tx.query_one(
+        "WITH source AS MATERIALIZED (SELECT * FROM babylon_state.site_roster_source_v1 WHERE campaign_id=$1),
+              stored AS MATERIALIZED (SELECT * FROM babylon_state.site_roster_block_v1 WHERE campaign_id=$1)
+         SELECT EXISTS(TABLE stored), NOT EXISTS(SELECT FROM ((TABLE stored EXCEPT TABLE source)
+             UNION ALL (TABLE source EXCEPT TABLE stored)) AS difference)", &[campaign])
+        .map_err(|_| JournalError::Database)?;
+    let valid: bool = row.try_get(1).map_err(|_| JournalError::Projection)?;
+    if valid {
+        return Ok(());
+    }
+    let exists: bool = row.try_get(0).map_err(|_| JournalError::Projection)?;
+    if mode == Admission::Verify || (exists && mode == Admission::Insert) {
+        return Err(JournalError::Projection);
+    }
+    if mode == Admission::Rebuild {
+        tx.execute(
+            "DELETE FROM babylon_state.site_roster_block_v1 b WHERE b.campaign_id=$1
+             AND NOT EXISTS(SELECT FROM babylon_state.site_principal_v1 k
+                 WHERE k.campaign_id=b.campaign_id AND k.site_key/32=b.block_key)",
+            &[campaign],
+        )
+        .map_err(|_| JournalError::Database)?;
+    }
+    tx.execute("INSERT INTO babylon_state.site_roster_block_v1 AS b
+         SELECT * FROM babylon_state.site_roster_source_v1 WHERE campaign_id=$1 ORDER BY block_key
+         ON CONFLICT(campaign_id,block_key) DO UPDATE SET members=excluded.members,sha256=excluded.sha256
+           WHERE (b.members,b.sha256) IS DISTINCT FROM (excluded.members,excluded.sha256)", &[campaign])
+        .map_err(|_| JournalError::Database)?;
+    Ok(())
+}
 
 pub(super) fn admit(
     tx: &mut Transaction<'_>,
@@ -66,6 +103,7 @@ pub(super) fn admit(
         tx.execute(WRITE, params)
             .map_err(|_| JournalError::Database)?;
     }
+    admit_roster(tx, campaign, mode)?;
     sites
         .into_iter()
         .enumerate()

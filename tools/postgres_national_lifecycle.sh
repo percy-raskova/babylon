@@ -222,17 +222,17 @@ national_sql() {
 }
 
 national_create_game() {
+  # Production session admission grants the fixed view rosters as their
+  # owner. Create the standard non-login principals through this exact
+  # owned cluster admin so the writer never needs CREATEROLE.
+  national_sql "CREATE ROLE babylon_observer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;"
+  local observer="national_observer_${CANARY:0:12}"
+  national_sql "CREATE ROLE $observer LOGIN PASSWORD '$CANARY' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS IN ROLE babylon_observer;"
+  national_sql "GRANT SET ON PARAMETER event_triggers TO $observer;"
+  printf '%s\n' "$observer" > "$BABYLON_STORAGE_REPORT_DIRECTORY/observer-role"
+  export BABYLON_NATIONAL_STORAGE_OBSERVER_DSN="postgresql://$observer:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
   if [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ]; then
-    # Production session admission grants the fixed view rosters as their
-    # owner. Create the standard non-login principals through this exact
-    # owned cluster admin so the writer never needs CREATEROLE.
     national_sql "CREATE ROLE babylon_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;"
-    national_sql "CREATE ROLE babylon_observer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;"
-    local observer="national_observer_${CANARY:0:12}"
-    national_sql "CREATE ROLE $observer LOGIN PASSWORD '$CANARY' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS IN ROLE babylon_observer;"
-    national_sql "GRANT SET ON PARAMETER event_triggers TO $observer;"
-    printf '%s\n' "$observer" > "$BABYLON_STORAGE_REPORT_DIRECTORY/observer-role"
-    export BABYLON_NATIONAL_STORAGE_OBSERVER_DSN="postgresql://$observer:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
     local reader="national_reader_${CANARY:0:12}"
     national_sql "CREATE ROLE $reader LOGIN PASSWORD '$CANARY' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS IN ROLE babylon_reader;"
     national_sql "GRANT SET ON PARAMETER event_triggers TO $reader;"
@@ -257,9 +257,9 @@ national_create_game() {
 import os
 import psycopg
 
-names = ["BABYLON_NATIONAL_STORAGE_WRITER_DSN"]
+names = ["BABYLON_NATIONAL_STORAGE_WRITER_DSN", "BABYLON_NATIONAL_STORAGE_OBSERVER_DSN"]
 if os.environ["BABYLON_NATIONAL_CAPTURE_MODE"] == "playable-aid":
-    names.extend(["BABYLON_NATIONAL_STORAGE_OBSERVER_DSN", "BABYLON_NATIONAL_STORAGE_READER_DSN"])
+    names.append("BABYLON_NATIONAL_STORAGE_READER_DSN")
 for name in names:
     try:
         with psycopg.connect(os.environ[name], connect_timeout=10, options="-c event_triggers=off") as connection:
@@ -868,10 +868,10 @@ launcher=importlib.util.module_from_spec(spec); sys.modules[spec.name]=launcher;
 environment=dict(os.environ)
 target=Path(environment.get('CARGO_TARGET_DIR','target'))
 if not target.is_absolute(): target=root/'rust'/target
-runtime=target/'debug/babylon-runtime'; client=target/'debug/babylon-client'
-if not runtime.is_file() or not client.is_file():
+runtime=target/'debug/babylon-runtime'; client=target/'debug/babylon-client'; publisher=target/'debug/babylon-economic-projections'
+if not all(p.is_file() for p in (runtime,client,publisher)):
     raise SystemExit('existing native binaries required; build separately')
-expected={str(runtime.resolve()),str(client.resolve())}
+expected={str(p.resolve()) for p in (runtime,client,publisher)}
 rows={}
 for line in (Path(environment['BABYLON_STORAGE_REPORT_DIRECTORY'])/'native-executables.sha256').read_text().splitlines():
     match=re.fullmatch(r'([0-9a-f]{64})  (/.+)',line)
@@ -892,7 +892,7 @@ if environment.get('BABYLON_WAYNE_PROFILE') in ('smoke-01','walk-01'):
 credentials=launcher.ReaderCredentials(environment['BABYLON_OBSERVER_DSN'],environment['BABYLON_READER_DSN'])
 writer,reader=launcher.child_environments(environment,credentials)
 raise SystemExit(launcher.run_pair(runtime,client,root,writer,reader,
-    defines_path=launcher.DEFAULT_DEFINES,initial_target=launcher.OpenCampaignTarget(UUID(sys.argv[2]))))
+    analytics_binary=publisher,defines_path=launcher.DEFAULT_DEFINES,initial_target=launcher.OpenCampaignTarget(UUID(sys.argv[2]))))
 PY_OPEN
   )
 }

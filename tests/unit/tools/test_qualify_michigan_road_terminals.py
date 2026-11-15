@@ -202,6 +202,51 @@ def test_streamed_view_keeps_via_way_entry_history(tmp_path):
     assert view.turn_rules == graph.turn_rules
 
 
+def test_observer_freight_matrix_carries_restricted_direction_and_reverse(tmp_path):
+    source = roads()
+    nodes = [Node(i, -850000000 + i * 10000, 440000000) for i in range(1, 5)]
+    graph = build_graph(
+        nodes,
+        [
+            Way(i * 10, (i, i % 4 + 1), (("highway", "primary"), ("oneway", "yes")))
+            for i in range(1, 5)
+        ],
+        [
+            Restriction(
+                100,
+                (
+                    RestrictionMember("w", 10, "from"),
+                    RestrictionMember("w", 20, "via"),
+                    RestrictionMember("w", 30, "to"),
+                ),
+                (("type", "restriction"), ("restriction", "no_straight_on")),
+            )
+        ],
+        source=source.source,
+        profile=source.profile,
+    )
+    path = tmp_path / "freight-graph.json"
+    path.write_bytes(canonical_bytes(graph))
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    view = load_routing_view(path, sha, memory_budget_bytes=64 * 1024 * 1024)
+    terminals = attach_terminals(
+        (
+            CountyAnchor("26163", "Wayne fixture", nodes[0].lon_e7, nodes[0].lat_e7, 1, 1),
+            CountyAnchor("26099", "Macomb fixture", nodes[3].lon_e7, nodes[3].lat_e7, 2, 1),
+        ),
+        view,
+        attachment_limit_mm=5000,
+    )
+    paths = qualify_paths(view, terminals)
+    assert paths["26163", "26099"] is None
+    assert paths["26099", "26163"].distance_mm > 0
+    document = matrix_document(terminals, paths, {"graph_sha256": sha}, attachment_limit_mm=5000)
+    fixture = ROOT / "rust/crates/babylon-persistence/src/freight_access/fixtures/restricted.json"
+    written = tmp_path / "restricted-matrix.json.gz"
+    write_matrix(document, written)
+    assert json.loads(fixture.read_bytes()) == json.loads(gzip.decompress(written.read_bytes()))
+
+
 def test_streamed_view_refuses_missing_turn_edges_even_with_a_matching_file_hash(tmp_path):
     path = tmp_path / "graph.json"
     document = json.loads(canonical_bytes(roads()))

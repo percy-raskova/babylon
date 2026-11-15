@@ -319,7 +319,13 @@ class TestTheManifestHasRowsAtAll:
                 "rule": "struggle/spark-mechanic",
                 "sample": "struggle/spark",
                 "slot": 0,
-            }
+            },
+            {
+                "ordinal": 1,
+                "rule": "company/portfolio-investment",
+                "sample": "company/investment-portfolio",
+                "slot": 0,
+            },
         ]
 
 

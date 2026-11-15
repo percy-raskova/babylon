@@ -557,7 +557,7 @@ if [ "$status" -eq 0 ]; then
           wayne_media pin-binaries --container "$CONTAINER_ID" || die "prebuilt native source/executable admission refused"
         fi
         BLAS=1 cargo build -p babylon-persistence -p babylon-client \
-          --bin babylon-runtime --bin babylon-client --bin babylon-material-audit \
+          --bin babylon-runtime --bin babylon-client --bin babylon-material-audit --bin babylon-economic-projections \
           --locked || status=$?
         if [ "$status" -eq 0 ]; then
           cd "$REPO_ROOT"
@@ -690,6 +690,12 @@ if [ "$status" -eq 0 ]; then
       if [ "$status" -eq 0 ]; then
         run_phase inspection_copy 600 cargo test -p babylon-persistence \
           --test observer_material_live inspection_copy:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        # The ordinary organizer submits and advances with a live financial foreign-key check.
+        run_phase financial_writer_concurrency 600 cargo test -p babylon-persistence \
+          --test observer_material_live organizer::organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       fi
       ;;
     reader_recovery)

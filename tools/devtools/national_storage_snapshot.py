@@ -10,11 +10,19 @@ import psycopg
 from psycopg import sql
 
 if TYPE_CHECKING:
-    from tools.devtools.national_storage_qualification import package_claim_from_headers
+    from tools.devtools.national_storage_qualification import (
+        ECONOMIC_COVERAGE_SQL,
+        captured_relation_sizes,
+        package_claim_from_headers,
+    )
 else:
     # The frozen operator executes beside its exact captured helper, outside
     # the repository package tree. It never imports mutable checkout code.
-    from national_storage_qualification import package_claim_from_headers
+    from national_storage_qualification import (
+        ECONOMIC_COVERAGE_SQL,
+        captured_relation_sizes,
+        package_claim_from_headers,
+    )
 
 type Row = tuple[Any, ...]
 
@@ -85,7 +93,18 @@ with psycopg.connect(
         assert actual == expected, (
             "unsupported current encoded storage shape: " + schema + "." + relation
         )
-    relations = connection.execute((here / "national_storage_relations.sql").read_text()).fetchall()
+    heaps = connection.execute((here / "national_storage_relations.sql").read_text()).fetchall()
+    # One physical size observation serves both the parent charge and its index diagnostic.
+    # Repeatable read fixes catalog membership, but a running archive can still grow index files.
+    indexes = connection.execute(
+        """SELECT n.nspname,t.relname,i.relname,pg_total_relation_size(i.oid)
+             FROM pg_index x JOIN pg_class i ON i.oid=x.indexrelid
+             JOIN pg_class t ON t.oid=x.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+            WHERE x.indislive AND t.relkind IN ('r','m')
+              AND n.nspname IN ('babylon_state','babylon_ref','babylon_meta','public')
+            ORDER BY n.nspname,t.relname,i.relname"""
+    ).fetchall()
+    relations = captured_relation_sizes(heaps, indexes)
     metadata = required_row(
         connection.execute(
             "SELECT current_database(),current_setting('server_version'),pg_database_size(current_database()),pg_current_wal_lsn()::text"
@@ -106,6 +125,19 @@ with psycopg.connect(
     assert markers["tick_commit"] == markers["material_tick_v3"], (
         "material rows lack matching acknowledged markers"
     )
+    # A per-period charge includes the committed economic journal. V21 requires
+    # its company books as well as the money, site and labor marker binding.
+    count, maximum = required_row(
+        connection.execute(
+            ECONOMIC_COVERAGE_SQL,
+            (args.campaign, b"BabylonReceiptStorageV4\0"),
+        ),
+        2,
+        "completed economic journal periods",
+    )
+    markers["economic_journal_v1"] = {"count": count, "maximum_resolve_tick": maximum}
+    if markers["economic_journal_v1"] != markers["tick_commit"]:
+        raise ValueError("storage boundary lacks complete source-bound economic journal coverage")
     columns: dict[str, Row] = {}
     expected_columns = {
         "material_campaign_foundation_v3": {
@@ -165,10 +197,6 @@ with psycopg.connect(
                 4,
                 relation + "." + column + " storage aggregate",
             )
-    # Every index diagnostic is separate: these are already included in relation totals.
-    indexes = connection.execute(
-        "SELECT n.nspname,t.relname,i.relname,pg_total_relation_size(i.oid) FROM pg_index x JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_class t ON t.oid=x.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname IN ('babylon_state','babylon_ref','babylon_meta','public') ORDER BY n.nspname,t.relname,i.relname"
-    ).fetchall()
     package_claims: list[dict[str, object]] = []
     for (
         tick,

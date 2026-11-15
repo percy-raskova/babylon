@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from tools.devtools.national_storage_qualification import (
     MeasurementMode,
     Sha256,
+    Snapshot,
     measurement_mode,
     selected_policy,
     strict_json_bytes,
@@ -672,12 +673,14 @@ class NativeExpectations(Record):
     runtime: Reference
     client: Reference
     material_audit: Reference
+    economic_projections: Reference
 
     def products(self) -> dict[str, Reference]:
         return {
             "babylon-runtime": self.runtime,
             "babylon-client": self.client,
             "babylon-material-audit": self.material_audit,
+            "babylon-economic-projections": self.economic_projections,
         }
 
 
@@ -2186,7 +2189,12 @@ def actual_host_context() -> HostContext:
             continue
         try:
             name = (candidate / "comm").read_text().strip()
-            if name not in {"babylon-runtime", "babylon-client", "babylon-material"[:15]}:
+            if name not in {
+                "babylon-runtime",
+                "babylon-client",
+                "babylon-material"[:15],
+                "babylon-economic"[:15],
+            }:
                 continue
             pid = int(candidate.name)
             start = parse_start_time((candidate / "stat").read_bytes(), pid)
@@ -2399,6 +2407,7 @@ def reauthenticate_native_owner(
         "babylon-runtime",
         "babylon-client",
         "babylon-material-audit",
+        "babylon-economic-projections",
     }:
         raise StorageRefusal("release binary roster is incomplete")
     for name, entry in roster.items():
@@ -2450,6 +2459,22 @@ def _ordinary_stopped(
         )
 
 
+def validate_ordinary_publication(
+    snapshot: Snapshot,
+    database: str,
+    campaign: str,
+    frames: tuple[tuple[int, str | None], ...],
+) -> None:
+    """Check that the retained publisher snapshot belongs to the measured closes."""
+    if (
+        snapshot.stage != "ordinary-p3-published"
+        or snapshot.database != database
+        or snapshot.campaign != campaign
+        or tuple((row[0], row[1]) for row in snapshot.marker_and_encoded_package_hashes) != frames
+    ):
+        raise StorageRefusal("ordinary published snapshot differs from the measured closes")
+
+
 def retain_ordinary(root: Path, evidence: Path, cid: str, exit_status: int) -> None:
     """Preserve an ordinary fixture after exact clean stop; never remove or qualify it."""
     from tools.devtools.national_native_runner import OrdinaryWarmEvidence
@@ -2472,6 +2497,10 @@ def retain_ordinary(root: Path, evidence: Path, cid: str, exit_status: int) -> N
     if not isinstance(physical, dict) or physical.get("container") != cid:
         raise StorageRefusal("ordinary preservation physical record differs from its owner")
     report_ref = None
+    published_name = "ordinary-p3-published.json"
+    published_ref = (
+        directory.reference(published_name) if os.path.lexists(evidence / published_name) else None
+    )
     measurement: Literal["completed", "incomplete"] = "incomplete"
     if os.path.lexists(evidence / "ordinary-warm-prefix.json"):
         report_ref = directory.reference("ordinary-warm-prefix.json")
@@ -2484,10 +2513,23 @@ def retain_ordinary(root: Path, evidence: Path, cid: str, exit_status: int) -> N
                 or any(sample.usable_elapsed_ns > 30_000_000_000 for sample in report.samples)
                 or any(sample.ready.state.campaign_id != campaign for sample in report.samples)
                 or not os.path.lexists(evidence / "ordinary-terminal.json")
+                or published_ref is None
             ):
                 raise StorageRefusal(
                     "completed ordinary evidence lacks its exact three-close terminal"
                 )
+            published = Snapshot.model_validate(
+                strict_json_bytes(directory.read_reference(published_ref, 32 * 1024 * 1024))
+            )
+            validate_ordinary_publication(
+                published,
+                owner[7],
+                campaign,
+                tuple(
+                    (sample.period, sample.ready.state.tick_content_hash)
+                    for sample in report.samples
+                ),
+            )
             measurement = "completed"
     names = (
         "campaign",
@@ -2512,6 +2554,8 @@ def retain_ordinary(root: Path, evidence: Path, cid: str, exit_status: int) -> N
         )
         if os.path.lexists(evidence / name)
     )
+    if published_ref is not None:
+        references.append(published_ref)
     raw = PrivateEvidence(evidence.parent / "raw")
     pixels = tuple(raw.reference(path.name) for path in sorted(raw.path.iterdir()))
     control = held_native_lock(root)
@@ -2737,7 +2781,8 @@ def main() -> int:
                     "".join(
                         entry["sha256"] + "  " + str(args.root / "rust/target/debug" / name) + "\n"
                         for name, entry in roster.items()
-                        if name in ("babylon-runtime", "babylon-client")
+                        if name
+                        in ("babylon-runtime", "babylon-client", "babylon-economic-projections")
                     ).encode(),
                 )
             elif args.operation == "owner":

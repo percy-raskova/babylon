@@ -646,7 +646,7 @@ def wait_native_resumed(descriptor: int, binding: ProcessBinding, deadline: floa
 class OwnedNativePair:
     """Own pidfds from actual live Popen handles; never select arbitrary PIDs.
 
-    This scope controls only the two direct children. Any descendant causes
+    This scope controls the admitted direct children. Any descendant causes
     refusal. A quiescent context restores every stop requested by this owner,
     including a request whose all-thread barrier subsequently failed.
     """
@@ -658,8 +658,15 @@ class OwnedNativePair:
         *,
         runtime_sha256: str,
         client_sha256: str,
+        publisher: tuple[subprocess.Popen[bytes], str] | None = None,
     ) -> None:
-        self._children = (runtime, client)
+        roster: list[tuple[subprocess.Popen[bytes], MemoryRole, str]] = [
+            (runtime, "engine-runtime", runtime_sha256),
+            (client, "native-client", client_sha256),
+        ]
+        if publisher is not None:
+            roster.append((publisher[0], "economic-projections", publisher[1]))
+        self._children = tuple(child for child, _, _ in roster)
         self._pidfds: list[int] = []
         self._identities: tuple[_ExecutableIdentity, ...] = ()
         self._capture_lock = threading.Lock()
@@ -667,10 +674,9 @@ class OwnedNativePair:
         try:
             bindings = []
             identities = []
-            for child, role, digest in (
-                (runtime, "engine-runtime", runtime_sha256),
-                (client, "native-client", client_sha256),
-            ):
+            if len({child.pid for child in self._children}) != len(roster):
+                raise CaptureRefusal("native scope requires distinct owned children")
+            for child, role, digest in roster:
                 if child.poll() is not None:
                     raise CaptureRefusal("owned native child already exited")
                 descriptor = os.pidfd_open(child.pid, 0)
@@ -688,8 +694,6 @@ class OwnedNativePair:
                 )
                 identities.append(self._verify(child, descriptor, binding))
                 bindings.append(binding)
-            if runtime.pid == client.pid:
-                raise CaptureRefusal("native pair requires distinct owned children")
             self.bindings = tuple(bindings)
             self._identities = tuple(identities)
         except BaseException:
@@ -735,7 +739,7 @@ class OwnedNativePair:
             self._verify(child, descriptor, binding, identity)
 
     def verify(self) -> None:
-        if len(self._pidfds) != 2:
+        if len(self._pidfds) != len(self._children):
             raise CaptureRefusal("native capture scope is closed")
         self._verify_capture(self._identities)
 
@@ -752,7 +756,7 @@ class OwnedNativePair:
         suspension_started: int | None = None
         deadline = time.monotonic() + timeout
         try:
-            if len(self._pidfds) != 2:
+            if len(self._pidfds) != len(self._children):
                 raise CaptureRefusal("native capture scope is closed")
             identities = self._identities
             self._verify_capture(identities)
@@ -1477,6 +1481,7 @@ class RunningMemoryCapture:
         foundation_sha256: str | None,
         runtime_sha256: str,
         client_sha256: str,
+        publisher: Callable[[], tuple[subprocess.Popen[bytes], str]] | None = None,
         postgres: OwnedPostgresScope,
         read_marker: Callable[[], CampaignMemoryMarker],
         sample_gap_seconds: int,
@@ -1517,6 +1522,7 @@ class RunningMemoryCapture:
         self._foundation = foundation_sha256
         self._runtime_sha = runtime_sha256
         self._client_sha = client_sha256
+        self._publisher = publisher
         self._postgres = postgres
         self._read_marker = read_marker
         self._stop_on_budget = stop_on_budget
@@ -1853,6 +1859,7 @@ class RunningMemoryCapture:
             client,
             runtime_sha256=self._runtime_sha,
             client_sha256=self._client_sha,
+            publisher=self._publisher() if self._publisher is not None else None,
         ) as native:
             self._native = native
             self._started_ns = time.monotonic_ns()

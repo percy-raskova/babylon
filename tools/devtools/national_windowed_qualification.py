@@ -1595,6 +1595,8 @@ def drive_pair(
     on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
     | None = None,
     on_stopped: Callable[[], None] | None = None,
+    organizer_view: bool = True,
+    on_publisher_started: Callable[[subprocess.Popen[bytes]], None] | None = None,
     capture_lifecycle: Callable[
         [subprocess.Popen[bytes], subprocess.Popen[bytes]],
         AbstractContextManager[CaptureMonitor | None],
@@ -1813,11 +1815,14 @@ def drive_pair(
                                 "native opening navigation deadline exceeded",
                                 reason="navigation_deadline",
                             )
-                    if current.primary_view != "Organizer":
+                    if organizer_view and current.primary_view != "Organizer":
                         channel.perform("open_organizer", opening_timeout())
                     phase = "organizer_readiness"
                     current = wait_ready(
-                        channel, opening_timeout(), organizer=True, cold=on_opened is not None
+                        channel,
+                        opening_timeout(),
+                        organizer=organizer_view,
+                        cold=on_opened is not None,
                     )
                     phase = "opening_boundary"
                     if on_opened is not None:
@@ -1934,6 +1939,10 @@ def drive_pair(
                 client_environment,
                 defines_path=defines_path,
                 initial_target=initial_target,
+                analytics_binary=runtime_binary.with_name("babylon-economic-projections")
+                if on_publisher_started is not None
+                else None,
+                on_publisher_started=on_publisher_started,
                 qualification_control=endpoint,
                 on_started=started,
                 on_spawned=spawned if on_spawned is not None or on_stopped is not None else None,

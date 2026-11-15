@@ -532,6 +532,7 @@ def boundary_run(tmp_path):
         return ticks[0]
 
     run.archive = archive
+    run.wait_for_economic_period = lambda tick: calls.append(("publication", tick))
     run.snapshot = snapshot
     return run, state, calls, records
 
@@ -552,7 +553,24 @@ def test_actual_boundary_checks_follow_matching_published_proof(tmp_path, fault)
         assert calls == []
     else:
         run.on_boundary(state)
-        assert calls == ["archive", "storage"] and len(run.boundaries) == 1
+        assert (
+            calls == ["archive", ("publication", state.durable_tick), "storage"]
+            and len(run.boundaries) == 1
+        )
+
+
+def test_unpublished_economic_period_prevents_storage_snapshot(tmp_path):
+    run, state, calls, _records = boundary_run(tmp_path)
+
+    def refuse(tick):
+        calls.append(("publication", tick))
+        raise runner.NativeRunRefusal("economic period unavailable")
+
+    run.wait_for_economic_period = refuse
+    with pytest.raises(runner.NativeRunRefusal, match="economic period unavailable"):
+        run.on_boundary(state)
+    assert calls == ["archive", ("publication", state.durable_tick)]
+    assert run.boundaries == []
 
 
 @pytest.mark.parametrize(
@@ -1040,44 +1058,64 @@ def test_bool_citation_ids_do_not_authenticate_the_same_integer_byte(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("fault", "expected", "stage"),
+    ("fault", "expected_roles", "stage"),
     [
-        ("second-spawn", [["runtime", 701]], "spawn-client"),
-        ("source", [["runtime", 701], ["client", 702]], "verify-sources"),
+        ("client", ["runtime"], "spawn-client"),
+        ("publisher", ["runtime", "client"], "spawn-publisher"),
+        ("identity", ["runtime", "client", "publisher"], "authenticate-publisher"),
+        ("source", ["runtime", "client", "publisher"], "verify-sources"),
     ],
 )
 def test_cold_failure_uses_actual_partial_spawn_roster(
-    tmp_path, monkeypatch, fault, expected, stage
+    tmp_path, monkeypatch, fault, expected_roles, stage
 ):
+    from io import BytesIO
     from uuid import UUID
 
     from tools.devtools import national_windowed_qualification as w
 
-    run = SimpleNamespace(
-        root=tmp_path,
-        directory=tmp_path,
-        owner_fields=(),
-        mode="memory_capture",
-        cold_seconds=lambda: 900,
-        runtime=tmp_path / "runtime",
-        client=tmp_path / "client",
-        timeout=1,
-        policy=SimpleNamespace(maximum_cold_open_seconds=180),
-        boundaries=[],
-        capture=lambda *_args, **_kwargs: SimpleNamespace(lifecycle=None),
-        verify_live=lambda: None,
-    )
+    run = object.__new__(runner.NativeRun)
+    run.root = run.directory = tmp_path
+    run.owner_fields = ()
+    run.mode = "memory_capture"
+    run.cold_seconds = lambda: 900
+    run.runtime = tmp_path / "runtime"
+    run.client = tmp_path / "client"
+    run.timeout = 1
+    run.policy = SimpleNamespace(maximum_cold_open_seconds=180)
+    run.boundaries = []
+    run.capture = lambda *_args, **_kwargs: SimpleNamespace(lifecycle=None)
+    run.verify_live = lambda: None
 
     def refuse():
         raise runner.NativeRunRefusal("source witness refused")
 
     run.verify_sources = refuse
+    run.publisher = tmp_path / "babylon-economic-projections"
+    pids = {"runtime": 701, "client": 702, "publisher": 703}
+    publisher_identity = (pids["publisher"], 53, "e" * 64)
+
+    def identity(process, binary):
+        assert binary == run.publisher and process.pid == pids["publisher"]
+        if fault == "identity":
+            raise runner.NativeRunRefusal("publisher identity refused")
+        return publisher_identity
+
+    run.process_identity = identity
 
     class Child:
         def __init__(self, args, **kw):
-            self.pid = 701 if args[0] == str(run.runtime) else 702
-            if self.pid == 702 and fault == "second-spawn":
-                raise OSError("second spawn")
+            role = "publisher" if args[0] == str(run.publisher) else Path(args[0]).name
+            self.pid = pids[role]
+            if role == fault:
+                raise OSError(f"{role} spawn")
+            if role == "publisher":
+                assert args[1:] == ["watch-database", "--session-stdin"]
+                assert kw["env"] == {
+                    "BABYLON_RUNTIME_DSN": "writer",
+                    "BABYLON_OBSERVER_DSN": "observer",
+                }
+                self.stdin = BytesIO()
 
         def wait(self, timeout=None):
             return 0
@@ -1088,12 +1126,22 @@ def test_cold_failure_uses_actual_partial_spawn_roster(
     monkeypatch.setattr(w.launcher.subprocess, "Popen", Child)
     monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_: None)
     walk = runner.WayneWalk(run)
+    walk.authenticated_publisher = (607, 41, "d" * 64)
     with pytest.raises((runner.NativeRunRefusal, w.launcher.ObserverLaunchError)):
-        walk.pair("opening", w.launcher.OpenCampaignTarget(UUID(int=13)), 0, 0, {}, {})
+        walk.pair(
+            "opening",
+            w.launcher.OpenCampaignTarget(UUID(int=13)),
+            0,
+            0,
+            {"BABYLON_RUNTIME_DSN": "writer"},
+            {"BABYLON_OBSERVER_DSN": "observer"},
+        )
     packet = json.loads((tmp_path / "pair-incomplete-opening.json").read_bytes())
     assert packet["launch_stage"] == stage
-    assert packet["attempted_processes"] == expected
-    assert packet["authenticated_processes"] == []
+    assert packet["attempted_processes"] == [[role, pids[role]] for role in expected_roles]
+    assert packet["authenticated_processes"] == (
+        [list(publisher_identity)] if fault == "source" else []
+    )
 
 
 @pytest.mark.parametrize("initial", [None, b"", b"partial"])
@@ -1335,10 +1383,15 @@ def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler
 
     segments = []
     captures = []
+    publishers = []
 
     def capture(directory, *, fixed_period):
         captures.append((directory, fixed_period))
         return SimpleNamespace(lifecycle="designed memory monitor")
+
+    def bind_publisher(child):
+        publishers.append(child.pid)
+        return (child.pid, 53, "e" * 64)
 
     run = SimpleNamespace(
         root=tmp_path,
@@ -1350,6 +1403,7 @@ def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler
         timeout=900,
         campaign=str(uuid.uuid4()),
         capture=capture,
+        bind_publisher=bind_publisher,
         cold_seconds=lambda: 180 if mode == "normal_play" else 900,
         verify_live=lambda: None,
         verify_sources=lambda: None,
@@ -1357,6 +1411,7 @@ def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler
     )
 
     def drive(*_args, **kwargs):
+        kwargs["on_publisher_started"](SimpleNamespace(pid=700 + len(segments)))
         segments.append(
             (
                 kwargs["initial_tick"],
@@ -1375,6 +1430,7 @@ def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler
     monkeypatch.setattr(runner, "drive_pair", drive)
     monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_a: None)
     runner.WayneWalk(run).drive({}, {})
+    assert publishers == [700, 701, 702]
     assert [s[:3] for s in segments] == [(0, 0, False), (0, 10, True), (10, 0, False)]
     if mode == "normal_play":
         assert not captures and all(s[3:] == (180, None) for s in segments)
@@ -1631,7 +1687,7 @@ def test_boundary_diagnostics_bind_callback_scope_and_keep_progress_inside_the_t
     # Exercise actual progress publication; all other boundary evidence uses the existing fixture.
     run.progress = runner.NativeRun.progress.__get__(run)
     run.on_boundary(state)
-    assert calls == ["archive", "storage"]
+    assert calls == ["archive", ("publication", state.durable_tick), "storage"]
     assert not (tmp_path / "verification-diagnostics.json").exists()
     run.publish_verification_diagnostics()
     spans = json.loads((tmp_path / "verification-diagnostics.json").read_bytes())["spans"]
@@ -1709,6 +1765,7 @@ def test_ordinary_drive_strips_audit_only_on_copies_and_reuses_existing_owned_la
     run = SimpleNamespace(
         root=tmp_path,
         directory=tmp_path / "evidence",
+        publisher_started=object(),
         timeout=12,
         policy=SimpleNamespace(maximum_cold_open_seconds=180),
         runtime=tmp_path / "runtime",
@@ -1740,6 +1797,7 @@ def test_ordinary_drive_strips_audit_only_on_copies_and_reuses_existing_owned_la
         assert options["periods"] == 0 and options["choices"] == ()
         assert options["capture_lifecycle"] is None and options["on_installed"] is companion
         assert options["on_started"] is started
+        assert options["on_publisher_started"] is run.publisher_started
         assert options["on_stopped"] == companion.walk.retain_stopped_frame
         assert options["initial_tick"] == 0
         assert options["initial_target"].campaign == runner.UUID(run.campaign)

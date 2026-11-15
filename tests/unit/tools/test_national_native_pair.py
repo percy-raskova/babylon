@@ -514,7 +514,12 @@ def member_bundle(releases, mode, *, defect=None, retire=True):
     manifest["inputs_sha256"] = store.reference("inputs.sha256").sha256
     store.publish("source-head", b"a" * 40 + b"\n")
     products = {}
-    for name in ("babylon-runtime", "babylon-client", "babylon-material-audit"):
+    for name in (
+        "babylon-runtime",
+        "babylon-client",
+        "babylon-material-audit",
+        "babylon-economic-projections",
+    ):
         products[name] = store.publish("normal-" + name, name.encode()).model_dump()
     products_ref = store.publish_json("normal-binaries.json", products)
     host = {
@@ -564,6 +569,7 @@ def member_bundle(releases, mode, *, defect=None, retire=True):
                 "runtime": products["babylon-runtime"],
                 "client": products["babylon-client"],
                 "material_audit": products["babylon-material-audit"],
+                "economic_projections": products["babylon-economic-projections"],
             },
         )
     store.publish_json(
@@ -687,6 +693,7 @@ def member_bundle(releases, mode, *, defect=None, retire=True):
         "native-client": products["babylon-client"]["sha256"],
         "engine-runtime": products["babylon-runtime"]["sha256"],
         "game-postgresql": "ab" * 32,
+        "economic-projections": products["babylon-economic-projections"]["sha256"],
     }
     boot = memory.boot_id
     store.publish_json("host-native-admission.json", host)
@@ -694,6 +701,7 @@ def member_bundle(releases, mode, *, defect=None, retire=True):
         "client": [offset + 1, 10, role_digests["native-client"]],
         "runtime": [offset + 2, 10, role_digests["engine-runtime"]],
         "postgres": [offset + 3, 10, role_digests["game-postgresql"]],
+        "publisher": [offset + 4, 10, role_digests["economic-projections"]],
     }
     store.publish_json(
         "processes-smoke.json",

@@ -883,6 +883,7 @@ def run_pair(
     defines_path: Path,
     initial_target: NewCampaignTarget | OpenCampaignTarget,
     analytics_binary: Path | None = None,
+    on_publisher_started: Callable[[subprocess.Popen[bytes]], None] | None = None,
     qualification_control: Path | None = None,
     on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None] | None = None,
     on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
@@ -949,6 +950,10 @@ def run_pair(
             publisher = _start_projections(
                 analytics_binary, root, runtime_environment, client_environment
             )
+        if on_publisher_started is not None:
+            if publisher is None:
+                raise ObserverLaunchError("qualified session cannot start its economic publisher")
+            on_publisher_started(publisher)
         if on_started is not None:
             # Bind these actual owned children only after parent pipe ends are
             # closed. A failed observation follows the same exact-child cleanup.

@@ -8,6 +8,8 @@ import json
 import math
 import os
 import re
+from collections import Counter
+from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
@@ -26,6 +28,19 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+# A charged close must also be readable through the campaign's source-bound observer view.
+ECONOMIC_COVERAGE_SQL = """
+SELECT count(*), coalesce(max(j.resolve_tick), 0)
+FROM public.v_observer_money_journal_period_v1 j
+JOIN babylon_state.material_tick_v3 m USING (campaign_id, resolve_tick)
+JOIN babylon_state.labor_period_v1 l USING (campaign_id, resolve_tick)
+LEFT JOIN babylon_state.company_accounting_period_v1 c USING (campaign_id, resolve_tick)
+WHERE j.campaign_id = %s::uuid
+  AND j.receipt_sha256 = substr(m.receipt_storage_bytes, 33, 32)
+  AND (c.resolve_tick IS NOT NULL) = (substr(m.receipt_storage_bytes, 1, 24) = %s::bytea)
+  AND (c.resolve_tick IS NULL OR c.result_world_hash = l.result_world_hash)
+"""
 
 MeasurementMode = Literal["normal_play", "memory_capture"]
 
@@ -249,10 +264,24 @@ IndexDiagnostic = tuple[str, str, str, Nonnegative]
 LookupHashRow = tuple[Nonnegative, Sha256]
 
 
+def captured_relation_sizes(
+    heaps: Iterable[tuple[str, str, int, int, float]], indexes: Iterable[IndexDiagnostic]
+) -> list[Relation]:
+    """Charge each measured index to its parent without reading the live size twice."""
+    by_table: Counter[tuple[str, str]] = Counter()
+    for schema, table, _index, amount in indexes:
+        by_table[schema, table] += amount
+    relations = []
+    for schema, table, heap, toast, estimate in heaps:
+        size = by_table[schema, table]
+        relations.append((schema, table, heap, size, toast, heap + size + toast, estimate))
+    return relations
+
+
 class PackageClaim(FrozenRecord):
     storage_layout: Literal["period_local_lookup_v3"]
     state_storage_version: Literal[4]
-    receipt_storage_version: Literal[3]
+    receipt_storage_version: Literal[3, 4]
     tick: Nonnegative
     register_storage_bytes: Nonnegative
     receipt_storage_bytes: Nonnegative
@@ -289,7 +318,7 @@ class PackageClaim(FrozenRecord):
     @field_validator("receipt_storage_version", mode="before")
     @classmethod
     def current_receipt_version(cls, value: object) -> object:
-        if type(value) is not int or value != 3:
+        if type(value) is not int or value not in (3, 4):
             raise ValueError("unsupported receipt storage evidence version")
         return value
 
@@ -321,21 +350,23 @@ class PackageClaim(FrozenRecord):
             raise ValueError("descriptor length disagrees with logical entry count")
         if self.lookup_packed_bytes > 1_000_000_000:
             raise ValueError("lookup packed bytes exceed current Rust bound")
+        company = self.receipt_storage_version == 4
+        family_count = 39 if company else 37
+        canonical_limit = 947_585_922 if company else 925_434_745
+        stored_limit = 947_588_276 if company else 925_437_040
         limits = (
             (self.canonical_register_bytes, 1_000_000_000),
-            (self.canonical_receipt_bytes, 925_434_745),
+            (self.canonical_receipt_bytes, canonical_limit),
             (self.register_storage_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 16_384),
-            (
-                self.receipt_storage_bytes,
-                925_434_745 + len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59,
-            ),
+            (self.receipt_storage_bytes, stored_limit),
             (self.lookup_delta_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 1024),
         )
         if any(not 0 < value <= maximum for value, maximum in limits):
             raise ValueError("package or canonical length exceeds current Rust bound")
         if (
             self.register_storage_bytes < len(b"babylon.state-storage.v4\0") + 142
-            or self.receipt_storage_bytes < len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59
+            or self.receipt_storage_bytes
+            < len(b"BabylonReceiptStorageV3\0") + 88 + family_count * 59
             or self.lookup_delta_bytes < len(b"BabylonPeriodLookupV3\0") + 162
         ):
             raise ValueError("storage package shorter than current header framing")
@@ -358,7 +389,8 @@ def package_claim_from_headers(
 ) -> PackageClaim:
     """Read current headers; full body authentication belongs to the Rust reopen."""
     sd = b"babylon.state-storage.v4\0"
-    rd = b"BabylonReceiptStorageV3\0"
+    version: Literal[3, 4] = 4 if receipt_head.startswith(b"BabylonReceiptStorageV4\0") else 3
+    rd = f"BabylonReceiptStorageV{version}\0".encode("ascii")
     ld = b"BabylonPeriodLookupV3\0"
     for head, domain, fields in (
         (state_head, sd, 142),
@@ -395,7 +427,7 @@ def package_claim_from_headers(
     return PackageClaim(
         storage_layout="period_local_lookup_v3",
         state_storage_version=4,
-        receipt_storage_version=3,
+        receipt_storage_version=version,
         tick=tick,
         register_storage_bytes=state_size,
         receipt_storage_bytes=receipt_size,
@@ -454,13 +486,24 @@ class Snapshot(FrozenRecord):
         if not all((self.stage, self.database, self.campaign, self.server)):
             raise ValueError("snapshot identity and stage must be nonempty")
         self.check_relations()
-        if set(self.acknowledged_markers) != {"tick_commit", "material_tick_v3"}:
-            raise ValueError("both exact acknowledged marker families are required")
+        if set(self.acknowledged_markers) != {
+            "tick_commit",
+            "material_tick_v3",
+            "economic_journal_v1",
+        }:
+            raise ValueError("canonical and economic journal marker families are required")
         if (
             self.acknowledged_markers["tick_commit"]
             != self.acknowledged_markers["material_tick_v3"]
         ):
             raise ValueError("material rows require matching committed markers")
+        if (
+            self.acknowledged_markers["economic_journal_v1"]
+            != self.acknowledged_markers["tick_commit"]
+        ):
+            raise ValueError(
+                "storage boundary lacks complete source-bound economic journal coverage"
+            )
         columns = self.bytea_columns_count_canonical_octets_column_storage_compression
         material_columns = {key for key in columns if key.startswith("material_tick_v3.")}
         if material_columns != {
@@ -1960,7 +2003,13 @@ def evaluate_playable(
     }
 
 
-MemoryRole = Literal["native-client", "engine-runtime", "game-postgresql", "native-test-composite"]
+MemoryRole = Literal[
+    "native-client",
+    "engine-runtime",
+    "economic-projections",
+    "game-postgresql",
+    "native-test-composite",
+]
 
 
 class CombinedMemoryToolingReport(FrozenRecord):
@@ -2149,6 +2198,7 @@ def authenticate_combined_memory_capture(
         "engine-runtime",
         "game-postgresql",
         "native-test-composite",
+        "economic-projections",
     }:
         raise ValueError("combined memory executable role manifest differs")
     for digests in roles.values():
@@ -2198,7 +2248,7 @@ def evaluate_combined_memory(
         raise ValueError("combined memory policy/campaign/foundation differs")
     if evidence.periods != len(tick_hashes):
         raise ValueError("combined memory horizon differs from actual authenticated periods")
-    required = {"native-client", "engine-runtime", "game-postgresql"}
+    required = {"native-client", "engine-runtime", "economic-projections", "game-postgresql"}
     rows = []
     ages = set()
     complete = True

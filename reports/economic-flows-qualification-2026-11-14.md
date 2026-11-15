@@ -212,6 +212,45 @@ The restricted observer returned the same rows for a site with stock, a site wit
 
 Both queries returned the same full rows, including the signed statement lines and stock basis. The 325-period fixture measures query behavior. The full campaign still needs separate measurements of storage growth and usable turns at that age.
 
+A second restore measured the physical tables and indexes used for cash movements, site accounts and stock. The observer read 80,546 cash movements in period 1 and 44,563 in period 2. In both periods, the compact tables reproduced every original movement, economic payment, site statement and stock balance, including nulls and duplicate counts. Changing the paying account on an escrow settlement changed exactly one economic payment. Its custody debit still identified the same reserve.
+
+| Family | Original growth, period 1 to 2 (bytes) | Compact growth (bytes) |
+| --- | ---: | ---: |
+| Cash movements and their economic payers | 15,908,864 | 8,486,912 |
+| Site statements and stock balances | 11,132,928 | 4,317,184 |
+
+The two families saved 14,237,696 bytes together. The old site-history indexes account for 4,243,456 of those bytes. The compact representation saved a further 9,994,240 bytes. These figures cover the listed relations and their keys. The campaign growth limit applies to the entire database.
+
+On the two-period labor data, the old ranking query checked the source marker once for each of 68,942 movements. The revised query checks the marker for each selected period and reads the captured company roster once. On compact storage, Wayne’s `--group counterparty` query fell from 1.906 to 0.625 seconds. The nationwide query ranked 5,654 groups in 0.839 seconds, down from 1.968 seconds. All five ordered pages matched, including their comparisons and the totals outside each page.
+
+The repair check removed 34,181 period-1 labor nodes while keeping period 2. With sparse planner statistics, Postgres scanned the destination index once for each source node and reached the 120-second statement limit. Sampling the endpoint columns took 0.108 seconds. The deletion then took 2.843 seconds and the deferred checks took 0.281 seconds. Every period-2 node and balance still matched the original.
+
+### Inspecting the earlier national save
+
+The campaign-copy command read `…7398` from the schema at `dccef45d6` and copied its two committed periods into a fresh database in 24.580 seconds. The foundation, tick identities, actions, register and receipt bytes matched. The financial publisher rebuilt both periods in 51.968 seconds.
+
+Separate full-observer logins read each database. All 439,481 rows across 14 observer views matched field for field in the same order. These included 58,302 economic payments, 125,109 custody movements and 14,926 site statements. Company statements, eliminations, realized margins and labor balances also matched. The [comparison record](economic-flows-qualification-2026-11-14-assets/national-inspection-copy.csv) gives the tick hash, row count and digest for each view and period.
+
+### Reading the committed graph for the observer
+
+The national period-2 frame contains 33,370 nodes and 56,628 numeric node attributes. The two graph queries formerly looked up identifiers and strings for each returned field. The revised queries select the vectors for one period and read the campaign dictionaries once. Combined Postgres execution time fell from 2.270 seconds to 0.241 seconds. The two queries touched 2,443 shared buffers, down from 3,441,015.
+
+The restricted observer returned the same ordered bytes for both queries in periods 1 and 2. These times cover Postgres execution. Separate measurements cover the time to install the frame and display the financial figures.
+
+### Three turns after the compact journal rebuild
+
+The native client reopened the verified copy on a GeForce RTX 3060. Each step reproduced the earlier tick hash, world hash and counts for payments, labor, sites and companies. A full-observer connection checked the financial markers. Screen samples identified the first frame with all three correct Wayne amounts.
+
+| Period | Commit visible by (s) | Frame rendered by (s) | Journal visible by (s) | First correct amounts between (s) | Charged growth (bytes) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 3 | 12.029 | 23.415 | 40.896 | 41.074–41.326 | 39,362,560 |
+| 4 | 13.465 | 26.255 | 34.315 | 34.726–34.978 | 39,976,960 |
+| 5 | 14.289 | 26.147 | 34.339 | 37.272–37.524 | 45,662,208 |
+
+Periods 3 and 4 fit the 40,000,000-byte limit. Period 5 exceeded it by 5,662,208 bytes. All three turns exceeded the 30-second budget for visible financial figures. The [native measurements](economic-flows-qualification-2026-11-14-assets/national-compact-native-turns.csv) include the observation bounds, hashes and counts.
+
+After the three turns, fresh full-observer CLI processes compared period 2 with period 1. Warm `--group counterparty` queries took 0.850 seconds for Wayne and 1.108 seconds nationwide. The national company ranking took 0.959 seconds. Each complete ranked page matched the earlier SQL result.
+
 ### Organizer action during financial publication
 
 An ordinary organizer submitted remote aid while the financial writer was running. The second confirmation timed out. In a two-connection replay, an uncommitted financial row held a foreign-key lock on the campaign foundation. Postgres refused the organizer’s original update lock with SQLSTATE `55P03`.

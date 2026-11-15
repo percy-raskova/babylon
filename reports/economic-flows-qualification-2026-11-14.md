@@ -4,21 +4,23 @@ Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route
 
 ## Evidence against the original plan on November 15
 
-A full observer can start a new national campaign, follow a settled county payment to its recipient, switch between the map and Sankey, and inspect site, parent and consolidated books. In the saved period-2 game, nine payments from Sitka to Anchorage through the same company totaled $800,060.625. The source records and native controls are documented [below](#following-a-company-payment-to-its-destination). The live PostgreSQL checks also passed for national totals, concurrent reads, damaged or expired detail, inspection of an older campaign, and organizer actions during a financial write.
+| Delivery | What the local project demonstrates | What remains |
+| --- | --- | --- |
+| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | Repeat the live tests on the final build. |
+| Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. | Describe all groups outside a ranked page accurately and expose selected controls to screen readers. |
+| Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. A restored five-period manufacturing case connects a company choice to a parent payment, an equipment order and consolidated books. | Correct the priority of two overlapping investment conditions and repeat the funded example under the specified priority. |
+| Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
+| National qualification | Three turns after reopening displayed Wayne’s finances in 24.998–29.742 seconds. Two national queries took 1.032 and 1.226 seconds at the median. | A fresh first turn took 37.551 seconds against 30. The latest running game added 42,385,408 bytes through its first close and reopen against a 40,000,000-byte limit. The current build still needs 52- and 325-period evidence for storage, memory and reopening. |
 
-The 99-company opening covers 2,788 private sites. The fixed-site comparisons with 300 and 600 controllers and the two-seed investment experiments have run. The original 83 period records contain 14,535 company decisions. Of those, 12,488 used the loss row, 149 used replacement, 1,644 used spare capacity and 254 used the fallback. None reached the high-demand row or authorized investment funding from a parent treasury.
+The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The current engine gives larger expansion a weight of 20. The plan places spare capacity first, giving larger expansion a weight of zero in that case. The saved accounts still show what this campaign paid. A qualifying example must follow the stated order through selection and next-period admission.
 
-A separately captured manufacturing case now traces both outcomes through five closes. [Original experiment records](economic-flows-qualification-2026-11-14-assets/national-company-experiments.jsonl) · [Oklahoma County investment](#a-parent-finances-equipment-in-oklahoma-county)
+A profitable company at full capacity with unmet demand and no replacement need qualifies for the high-demand row.
 
-The decision rule measures profitability from member sites’ operating income over up to three closes. The consolidated books also account for taxes and internal margins. In a focused case with eight of ten batches used, unmet accepted demand, positive earnings and no replacement need, the rule selects the high-demand weight row. The original table lists spare capacity first. The interpretation matters when some capacity is unused and utilization is at least 80%. [Operating income](../rust/crates/babylon-material-circuit/src/portfolio/evidence.rs) · [Weight selection](../rust/crates/babylon-material-circuit/src/portfolio/strategy.rs)
+The company measures profitability from member operating income across up to three closes. [Weight selection](../rust/crates/babylon-material-circuit/src/portfolio/strategy.rs) · [Restored company accounts](#a-parent-finances-equipment-in-oklahoma-county)
 
-The native observer already preserves the selection across the map and Sankey and lets the observer follow a payment to its destination. The latest client changes give selected industries the same color on both views and give opening and closing labor holdings their own bars. Hardware verification of those changes is pending. The native comparison uses the previous period. The SQL reader supports explicit periods and map bounds. The freight display uses captured corridors until the pinned road graph becomes available.
+The original 83 period records include 12,488 loss decisions and 149 replacement decisions. Another 1,644 used spare capacity and 254 used the fallback. None of the 14,535 decisions reached the high-demand row or authorized parent funding. The manufacturing example used its own Designed opening. [Original company comparisons](#controller-count-and-investment)
 
-The two fresh opening turns took 44.940 and 44.374 seconds to display Wayne’s three figures. The three turns from a restored campaign took 24.998–29.742 seconds. The compact build met the 40,000,000-byte growth limit on its first two measured closes. The 52-period recovery record comes from an earlier build. Long-save storage and running-game memory remain open on the current build. [First-turn measurements](#the-first-turn-of-a-new-national-observer-campaign) · [Storage policy](../contracts/national_storage_qualification_v6.json)
-
-The full observer read the period-4 investment decision and period-5 accounts again after a database restore. The remaining native checks cover industry colors and labor balances on both layouts. Time the first advance from **Observe national economy** until Wayne’s figures appear. The limit is 30 seconds.
-
-One fresh campaign can measure memory, storage and reopening after 52 and 325 periods. The limit on growth is 40,000,000 bytes per close. The save and running game each have a 10 GB limit.
+The remaining qualification uses the ordinary national launcher. Time runs from the first advance to Wayne’s three figures on screen. The save and running game each have a 10 GB limit. One campaign can reach 52 and 325 periods with measured storage, memory and recovery. The existing 52-period evidence covers an earlier build. [Fresh and restored turn times](#the-first-turn-of-a-new-national-observer-campaign) · [Storage policy](../contracts/national_storage_qualification_v6.json)
 
 ## Money and recorded labor in the v7 campaign
 
@@ -171,6 +173,21 @@ On a fresh restore, the first native Labor selection showed the county figures b
 The text reader mistook the slashed zero for a copyright symbol. The original screenshot shows zero for period 1. Its pixels match the zero in the same frame’s confirmed outbound total. Eight consecutive frames showed the same three values as the independent ledger check.
 
 The national integration case independently checked both county balances and their unknown-hour counts through the full observer login. In a separate 15-period case, the reader recovered the same county balances and flow page after period 1 had passed the detail retention cutoff.
+
+### Industry colors and labor holdings on the native display
+
+In period 2, Wayne had $25,145,340 in food-industry payments within the county. Selecting Food colored the geographic loop and its Sankey band green. A dashed outline marked the selection within the band. The test compared the screen before and after selection at the same camera position.
+
+Wayne held 1,236,417 recorded hours at the opening and 1,854,677.889424 hours at the close. Both balances included 59 positions with unknown earlier labor. The bars matched their ratio of 0.666648 on the local RTX 3060. Both labels fit in one frame at each tested size.
+
+| Window | Text scale | Opening bar | Closing bar |
+| --- | ---: | ---: | ---: |
+| 1366 × 768 | 1.00 | 601 pixels | 901 pixels |
+| 1920 × 1080 | 1.44 | 842 pixels | 1,263 pixels |
+
+The native comparison selects the preceding period. The SQL reader also accepts explicit period ranges and map bounds.
+
+At 1366 × 768, the ranked list identified all ten industries. The Food selection showed $25,145,340 in internal payments and a county net of −$1,512. Expanding its source revealed the Food code and NAICS 311. The captured records for NAICS 311 reported 1,446,647 jobs, 1,317 reporting cells and 1,332 suppressed cells across the campaign.
 
 ### Third-period publication
 
@@ -391,7 +408,17 @@ The local launcher and the **Observe national economy** menu entry use the `nati
 
 In a second new campaign, the same Wayne amounts appeared between 44.122 and 44.374 seconds. The full observer then returned to the main menu and reopened the save. The new session reproduced the period-1 world hash and financial records for 7,463 sites, 99 companies, 35,290 payments and 40,609 labor movements.
 
+A third new campaign used the idle publisher to read and authenticate the foundation in 4.316 seconds at period 0. The source commit appeared between 9.220 and 9.627 seconds after the advance. The financial publication appeared between 36.495 and 36.899 seconds. The full observer displayed the same three Wayne amounts between 37.299 and 37.551 seconds. Reopening the save reproduced the world hash.
+
+The writer spent 27.315 seconds on the first publication. This included 4.968 seconds reading the authenticated source and 10.952 seconds publishing recorded labor. The previous full publication took 34.348 seconds. Both runs used the same national opening and the ordinary windowed launcher.
+
 A separate fresh campaign at revision `ce2c266ed` measured storage through the first two closes. Period 1 used 39,337,984 bytes, down from 76,595,200 in the earlier campaign. Period 2 used 13,336,576 bytes. Both fit the 40,000,000-byte limit and reopened with identical committed world and register hashes. The first two financial publications in this run took 25.620 and 13.832 seconds.
+
+The running-game pilot used a fresh database and took its first size reading after founding. Period 1 grew by 41,230,336 bytes. The largest component was the labor-node directory at 11,673,600 bytes of growth. The semantic Archive had verified period 0 at that reading. The pilot reached the title screen during its first reopen and timed out waiting for Saved Games. It produced no period-2 or terminal measurement.
+
+The next pilot held the physical menu click across two rendered updates. It reopened both periods with their original world hashes. The first close added 40,927,232 bytes before reopening and 42,385,408 bytes including reopening. The second close and its reopen added 16,162,816 bytes. After the Archive verified period 2, that period’s total charge was 18,817,024 bytes. The first close exceeded the limit by 2,385,408 bytes.
+
+Across founding and both closes, 159 samples covered the runtime, client, publisher and database. The largest combined resident-memory reading was 4,491,423,744 bytes. The longest gap between samples was 2.676 seconds against the five-second limit. The 10 GB memory limit held in this two-period run.
 
 ### Organizer action during financial publication
 

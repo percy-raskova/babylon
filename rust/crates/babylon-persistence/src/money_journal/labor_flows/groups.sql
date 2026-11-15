@@ -34,16 +34,25 @@ WITH windows(first_tick,last_tick,comparison) AS (
     SELECT $14::bigint,m.source_node,m.destination_node,m.recorded_micro_hours,m.unknown_opening
     FROM jsonb_to_recordset($12::text::jsonb) AS m(source_node bigint,destination_node bigint,
         recorded_micro_hours numeric,unknown_opening boolean)
+), company_accounts AS MATERIALIZED (
+    -- One captured company per account key. Build the small ownership lookup once for
+    -- this campaign instead of rescanning its account directory for every labor node.
+    SELECT jsonb_object_agg(a.account_kind||':'||encode(a.account_id,'hex'),
+               jsonb_build_array('company:'||encode(a.company_id,'hex'),a.company_label)) AS by_principal
+    FROM public.v_observer_economic_flow_account_v2 a
+    WHERE a.campaign_id=$1 AND a.company_id IS NOT NULL
+        AND ($6::text IN ('company','counterparty') OR ($7::text IS NOT NULL AND $15::text IN ('company','counterparty'))
+            OR $16::text IN ('company','counterparty'))
 ), scopes AS (
     SELECT n.resolve_tick,n.node_ordinal,n.scope_kind||':'||encode(n.scope_id,'hex') AS principal,
-        'company:'||encode(a.company_id,'hex') AS company,a.company_label,
+        owner.company->>0 AS company,owner.company->>1 AS company_label,
         n.location_key,n.catchment_key,n.industry_key,n.industry_label,
         ($9 IS NULL OR v.location_key IS NOT NULL OR
          (n.longitude IS NOT NULL AND n.latitude IS NOT NULL AND EXISTS (SELECT FROM envelopes e WHERE
           public.ST_Covers(e.area,public.ST_SetSRID(public.ST_MakePoint(n.longitude::double precision,n.latitude::double precision),4269))))) AS in_view
     FROM nodes n LEFT JOIN visible v ON n.location_key=v.location_key
-    LEFT JOIN public.v_observer_economic_flow_account_v2 a
-        ON a.campaign_id=$1 AND (a.account_kind,a.account_id)=(n.scope_kind,n.scope_id)
+    CROSS JOIN company_accounts a
+    CROSS JOIN LATERAL (SELECT a.by_principal -> (n.scope_kind||':'||encode(n.scope_id,'hex')) AS company) owner
 ), dimensions AS (
     SELECT s.resolve_tick,s.node_ordinal,s.in_view,
         CASE $6::text WHEN 'account' THEN s.principal
@@ -92,22 +101,28 @@ WITH windows(first_tick,last_tick,comparison) AS (
 ), folded AS (
     SELECT comparison,key,max(label) AS label,direction,sum(hours) AS hours,sum(unknown) AS unknown,
         sum(movements) AS movements FROM combined GROUP BY comparison,key,direction
-), ranks AS (
-    SELECT key,max(label) AS label,row_number() OVER (ORDER BY coalesce(sum(hours) FILTER (WHERE NOT comparison),0) DESC,
-        key COLLATE pg_catalog."C" NULLS LAST) AS rank FROM folded GROUP BY key
+), weights AS (
+    SELECT f.*,coalesce(sum(hours) FILTER (WHERE NOT comparison) OVER (PARTITION BY key),0) AS current_hours
+    FROM folded f
+), ranked AS (
+    SELECT w.*,dense_rank() OVER (ORDER BY current_hours DESC,key COLLATE pg_catalog."C" NULLS LAST) AS rank
+    FROM weights w
 ), page AS (
-    SELECT *,rank>$8::bigint AND rank<=$8::bigint+20 AS shown FROM ranks
+    SELECT *,rank>$8::bigint AND rank<=$8::bigint+20 AS shown FROM ranked
 ), entries AS (
-    SELECT 'group'::text AS row_kind,key,label,rank,1::bigint AS groups FROM page WHERE shown
-    UNION ALL SELECT 'remainder',NULL,NULL,NULL,count(*) FROM page WHERE NOT shown
-    UNION ALL SELECT 'total',NULL,NULL,NULL,count(*) FROM page
+    SELECT 'group'::text AS row_kind,key,max(label) AS label,rank,1::bigint AS groups
+    FROM page WHERE shown GROUP BY key,rank
+    UNION ALL SELECT 'remainder',NULL,NULL,NULL,count(DISTINCT rank) FROM page WHERE NOT shown
+    UNION ALL SELECT 'total',NULL,NULL,NULL,count(DISTINCT rank) FROM page
 ), amounts AS (
-    SELECT e.row_kind,e.key,e.rank,m.comparison,m.direction,
-        sum(m.hours) AS hours,sum(m.unknown) AS missing,sum(m.movements) AS movements
-    FROM entries e JOIN page p ON e.row_kind='total' OR (e.row_kind='remainder' AND NOT p.shown)
-        OR (e.row_kind='group' AND e.key IS NOT DISTINCT FROM p.key)
-    JOIN folded m ON m.key IS NOT DISTINCT FROM p.key
-    GROUP BY e.row_kind,e.key,e.rank,m.comparison,m.direction
+    -- Each folded direction contributes once to its group or remainder, and once to the total.
+    SELECT bucket.row_kind,bucket.rank,p.comparison,p.direction,
+        sum(p.hours) AS hours,sum(p.unknown) AS missing,sum(p.movements) AS movements
+    FROM page p CROSS JOIN LATERAL (VALUES
+        ('total'::text,NULL::bigint),
+        (CASE WHEN p.shown THEN 'group' ELSE 'remainder' END,CASE WHEN p.shown THEN p.rank END)
+    ) AS bucket(row_kind,rank)
+    GROUP BY bucket.row_kind,bucket.rank,p.comparison,p.direction
 ), reported AS (
     SELECT e.row_kind,e.key,e.label,e.rank,e.groups,w.comparison,
         jsonb_object_agg(d.direction,jsonb_build_object('recorded_micro_hours',coalesce(a.hours,0)::text,

@@ -1,12 +1,14 @@
 //! Full-observer labor windows authenticate the entire prefix and expose actual performed work.
 use babylon_persistence::identity::CampaignId;
-use babylon_persistence::money_journal::{FlowQuery, LaborFlowPage};
+use babylon_persistence::money_journal::{FlowQuery, LaborFlowPage, LaborFlowRow};
 use babylon_persistence::observer_reader::{ObserverEconomyError, ObserverEconomyReader};
 use babylon_persistence::qualification_audit::trade;
 use babylon_persistence::recorded_labor::RecordedLaborPeriod;
 use postgres::Config;
 use serde::Deserialize;
 use serde_json::Deserializer;
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
 use std::io::BufReader;
 use std::process::{Command, Stdio};
 
@@ -206,26 +208,31 @@ fn compare_sql(
         assert_eq!(directions.net_recorded_micro_hours, "0");
     };
     check(&page.total.current, expected[1]);
-    for group in [FlowGroup::Company, FlowGroup::Counterparty] {
+    let directory = company_directory(config, campaign);
+    let [company, counterparty] = [FlowGroup::Company, FlowGroup::Counterparty].map(|group| {
+        let request = FlowQuery {
+            group,
+            ..query.clone()
+        };
         let grouped = reader
-            .recorded_labor_flows(
-                campaign,
-                &FlowQuery {
-                    group,
-                    ..query.clone()
-                },
-            )
-            .expect("rank recorded work by controlling company");
+            .recorded_labor_flows(campaign, &request)
+            .unwrap_or_else(|error| panic!("rank recorded work by {group:?}: {error}"));
         check(&grouped.total.current, expected[1]);
         check(
             grouped.total.comparison.as_ref().expect("prior period"),
             expected[0],
         );
-        assert!(grouped
-            .groups
-            .iter()
-            .any(|r| r.key.as_deref().is_some_and(|k| k.starts_with("company:"))));
-    }
+        first_company(reader, campaign, request, grouped, &directory)
+    });
+    // Non-company counterparties have their own ranks. The same captured company's
+    // underlying accounts and exact movements belong to it in both rankings.
+    assert_eq!(company.key, counterparty.key);
+    assert_eq!(company.current, counterparty.current);
+    assert_eq!(company.comparison, counterparty.comparison);
+    assert_eq!(
+        company.net_change_recorded_micro_hours,
+        counterparty.net_change_recorded_micro_hours
+    );
     check_county_counterparty(reader, campaign, &query);
     check(
         page.total.comparison.as_ref().expect("prior period"),
@@ -250,6 +257,77 @@ fn compare_sql(
     assert!(reader
         .recorded_labor_flows_for_frame(campaign, &query, &foundation, &"0".repeat(64))
         .is_err());
+}
+
+fn company_directory(config: &Config, campaign: CampaignId) -> BTreeMap<String, String> {
+    let mut client = config.connect(postgres::NoTls).expect("full observer SQL");
+    client
+        .query(
+            "SELECT 'company:' || encode(company_id, 'hex'), label
+         FROM public.v_observer_economic_company_v1 WHERE campaign_id=$1",
+            &[campaign.as_uuid()],
+        )
+        .expect("captured company identities and labels")
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect()
+}
+
+fn first_company(
+    reader: &ObserverEconomyReader,
+    campaign: CampaignId,
+    mut request: FlowQuery,
+    mut page: LaborFlowPage,
+    directory: &BTreeMap<String, String>,
+) -> LaborFlowRow {
+    use babylon_persistence::money_journal::FlowGroup;
+    let groups = page.total.groups;
+    let mut previous = None;
+    loop {
+        assert!(
+            !page.groups.is_empty(),
+            "no captured company in {:?}",
+            request.group
+        );
+        for row in page.groups {
+            request.offset += 1;
+            assert_eq!(row.rank, Some(request.offset));
+            let hours = [
+                &row.current.inbound,
+                &row.current.outbound,
+                &row.current.within,
+            ]
+            .iter()
+            .map(|a| a.recorded_micro_hours.parse::<u128>().expect("exact hours"))
+            .try_fold(0_u128, u128::checked_add)
+            .expect("fixture rank volume fits u128");
+            let order = (Reverse(hours), row.key.is_none(), row.key.clone());
+            assert!(
+                previous.as_ref().is_none_or(|p| p < &order),
+                "descending hours, then key with NULL last"
+            );
+            previous = Some(order);
+            if let Some(key) = &row.key {
+                if let Some(label) = directory.get(key) {
+                    assert_eq!(row.label.as_ref(), Some(label));
+                    return row;
+                }
+                assert!(
+                    request.group == FlowGroup::Counterparty && !key.starts_with("company:"),
+                    "uncaptured company identity {key}"
+                );
+            }
+        }
+        assert!(
+            request.offset < groups,
+            "no captured company in {:?}",
+            request.group
+        );
+        page = reader
+            .recorded_labor_flows(campaign, &request)
+            .expect("next page of recorded labor");
+        assert_eq!(page.total.groups, groups);
+    }
 }
 
 fn check_county_counterparty(
@@ -365,7 +443,7 @@ fn query_labor_cli(config: &Config, campaign: CampaignId) -> LaborFlowPage {
     );
     let response: Response =
         serde_json::from_slice(&output.stdout).expect("versioned ranked labor data");
-    assert_eq!(response.version, 1);
+    assert_eq!(response.version, 2);
     assert_eq!(response.campaign, id);
     assert_eq!(response.unit, "recorded_micro_hours");
     response.page

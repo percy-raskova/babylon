@@ -2,6 +2,8 @@
 
 Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route) to open a national campaign and follow a payment from a county to a company’s books. The [household campaign](#five-and-twenty-years-with-births-aging-and-deaths) covers twenty model years. The [earlier economic run](#five-and-twenty-years-in-the-ordinary-national-economy) provides the fixed-population comparison. The [company comparisons](#repeating-the-company-comparisons-with-the-v9-policy) use two seeds to distinguish investment choices from equipment purchases. The [first-turn measurements](#the-first-turn-of-a-new-national-observer-campaign) record when the observer shows Wayne’s financial figures and how much storage and memory the running game uses.
 
+The [food shortage](#when-food-stopped-reaching-households) shows when deliveries failed and who still had food at home. The [supplier funding experiment](#what-changed-when-owners-funded-essential-suppliers) follows four decisions from the same opening. Four [possible connections](#which-existing-parts-of-the-economy-can-connect-next) use records that the engine already keeps.
+
 ## Evidence against the original plan on November 15
 
 | Delivery | What the local project demonstrates | What remains |
@@ -148,6 +150,94 @@ In year five, US public accounts collected $6.12 billion in taxes and paid $17.5
 Each run recorded 25,740 company decisions. The counts by choice matched in 259 of 260 periods. At tick 157 all 99 companies deferred investment in the demographic run. The fixed-population control recorded 98 deferrals and one modest expansion.
 
 The five-year save reopened with world hash `9ab00c12b584bf84b22907819e1cce1ab1099b3ea76c125236c48f8cfbfbb7b5`. The twenty-year save reopened with `da5bca935a47cbcc3e1285a90d7df207ff06baad9953cded0e25ab2d38f90537`.
+
+### When food stopped reaching households
+
+In the demographic campaign, food deliveries fell before consumption. The table follows US county households. Their orders include food to replenish pantries. Each household's cash and quoted price limit how much it can order. A seller must still have the parcels to deliver. [Household demand and consumption](../rust/crates/babylon-material-circuit/src/recurring/households.rs)
+
+| Period | Food needed | Orders within household budgets | Parcels delivered | Parcels eaten | Unmet need |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 334,941,098 | 334,959,689 | 334,921,317 | 334,941,090 | 8 |
+| 3 | 334,958,076 | 335,003,462 | 252,950,329 | 334,958,068 | 8 |
+| 4 | 334,974,506 | 382,559,952 | 64,132,450 | 254,275,140 | 80,699,366 |
+| 5 | 334,990,324 | 530,105,195 | 21,589,351 | 65,927,240 | 269,063,084 |
+| 13 | 335,097,480 | 585,886,929 | 3,961,564 | 4,025,611 | 331,071,869 |
+
+Domestic pantries supplied a net 82,007,739 parcels in period 3 and 190,142,690 in period 4. By period 13, households ate 1.20% of the food they needed. Unmet need counts the parcels households went without. Births and deaths still follow the scenario's demographic rates.
+
+Wayne's earning households without business ownership show what a shortage signals at different times. In period 3, sellers delivered 589,205 parcels to that group. Its members still ate all 1,196,535 parcels they needed.
+
+In period 4 their budget covered orders for 1,804,207 parcels, but only 23 arrived. They ate 589,036 parcels, leaving 607,574 unmet. Falling deliveries gave an earlier warning than unmet need. The full observer already reports purchases and unmet need. The underlying orders also record how much cash the household reserved and what the retailer failed to deliver.
+
+Domestic suppliers had already missed production in the first period. The 185 US food suppliers listed on procurement orders planned 21,973,080 batches and completed zero. The 186 US business-service providers with accepted sales requested 19,589,344 utility units and obtained zero. Food producers in foreign markets and dependencies completed 1,468,962,526 batches that period. US distributors also received 213,902,408 parcels through local handoffs against new orders.
+
+In period 2 the 203 food suppliers listed on procurement orders across all markets planned 50,368,617 batches between them. They funded all 805,897,872 hours of planned work. Utility providers delivered 50,277,119 units. The food suppliers also placed funded orders for 50,368,617 units of business services. Every unit expired without delivery, and the food suppliers completed zero batches.
+
+All 204 business-service providers with accepted sales requested electricity, totaling 316,278,166 units. Their cash and protected payroll left them unable to order a single unit. The food recipe needs one business-service unit and one utility unit per batch of sixteen parcels. In period 3 the food suppliers again completed zero batches. [National recipes](../content/scenarios/national/defines.toml) · [Three periods of supplier receipts](economic-flows-qualification-2026-11-14-assets/national-food-supplier-receipts-v10.json)
+
+### What changed when owners funded essential suppliers
+
+Four branches started from the same period-1 close. One continued ordinary play. In the others, the experiment authorized a one-time owner contribution before period-2 payroll. Parents paid from their existing cash. The ordinary engine then handled wages, orders, production, freight and sales.
+
+The experiment classifies each funding decision as Designed. The choice of recipients used the orders that failed in the ordinary period 2. This gives the experiment information an owner lacked at the end of period 1. The receipts record what happened after each payment.
+
+Business services · Pacific had $540,219,222 available. Its Kern County subsidiary had $342,306,405, faced a $346,521,600 wage bill and needed to keep $345,273,600 after payroll. The parent paid $356,425,995. The subsidiary paid wages, kept its reserve and spent $6,937,200 on 90,240 units of electricity.
+
+The subsidiary performed 1,443,840 units of business services. Its Kern food customer used 1,279,939, and another site used the remaining 163,901. The food plant produced 20,479,024 extra parcels. There was no increase in US household food consumption in periods 2 or 3. Two household budgets at its retailers bought 4,733 extra parcels in period 4 and ate them in period 5.
+
+Through period 13, the ten household budgets served by those two retailers consumed 11,641,847 more parcels than in ordinary play. All other US household budgets together consumed 5,045,201 fewer. The domestic gain was 6,596,646. These comparisons track receipts and balances. Parcels from different suppliers can share the same stock.
+
+The broader comparison covered all 186 affected US providers with company owners. The providers needed $32.77 billion. Their eleven parents had $11.14 billion available. Each parent paid from its own treasury. Eighteen external providers had no company owner. Their funding stayed as captured.
+
+| Owner decision in period 2 | Capital paid | Change in US food output in period 2 | Change in US food consumed through period 13 | US food need unmet in period 13 |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary | $0 | 0 | 0 | 331,071,869 |
+| Fund the Kern supplier | $356,425,995 | 20,479,024 | +6,596,646 | 330,291,031 |
+| Spread each parent's funds across its affected sites in proportion to their shortfalls | $11,139,977,412 | 0 | −1,102 | 331,071,901 |
+| Fully fund affordable sites in order of food customers' waiting business-service units per dollar required | $10,659,693,539.25 | 147,055,776 | +130,790,184 | 329,273,572 |
+
+The proportional payments reached all 186 suppliers and increased period-2 wages at 37 of them by $109,891,944. None of the recipients had enough free cash to buy electricity after paying wages and protecting its reserve. Ten of the eleven eligible parents made the targeted payments. They fully funded 94 suppliers and left $480,283,872.75 across the eleven treasuries.
+
+At five years, the cumulative gains from Kern alone and from fully funding selected sites persisted. The table compares US households with ordinary play, counting each parcel when a household ate it.
+
+| Period reached | Owner decision | Parcels eaten in that period | Difference in that period | Cumulative difference in parcels eaten |
+| ---: | --- | ---: | ---: | ---: |
+| 65 | Ordinary | 712,999 | 0 | 0 |
+| 65 | Fund Kern | 458,334 | −254,665 | +2,964,062 |
+| 65 | Spread the money | 715,588 | +2,589 | −17,066 |
+| 65 | Fully fund selected sites | 580,634 | −132,365 | +126,752,759 |
+| 260 | Ordinary | 159,400 | 0 | 0 |
+| 260 | Fully fund selected sites | 274,791 | +115,391 | +126,987,216 |
+
+The targeted payment produced extra US food only in period 2 over the twenty-year run. The twenty-year comparison covers ordinary play and the targeted payment. All four branches reopened in fresh processes at periods 13 and 65. Both twenty-year endpoints also reopened. [First-year periods and later annual closes](economic-flows-qualification-2026-11-14-assets/national-food-funding-v10.csv)
+
+![Food deliveries fell in period 3 and consumption in period 4. After the Kern payment, customers of two retailers ate 11.64 million more parcels through period 13. Other US households ate 5.05 million fewer.](economic-flows-qualification-2026-11-14-assets/national-food-shortage-and-funding-v10.png)
+
+### Which existing parts of the economy can connect next
+
+**1. Show where a household’s food order failed.** This is the smallest change. The full observer shows how much food a household needed, bought and ate. The same period already records its retailer, opening stock, quantity requested, quantity affordable, quantity delivered, expired orders and closing stock.
+
+Add these figures to the household receipt and let the observer open it from the retailer’s existing list of customers. That gives the player a way to find a family group that spent nothing. In Wayne, the delivery failure would become visible in period 3 while families still had enough at home. [Order and consumption receipts](../rust/crates/babylon-material-circuit/src/recurring/model.rs) · [Household reader](../rust/crates/babylon-persistence/src/observer_reader/household.rs) · [Retailer’s customer list](../rust/crates/babylon-persistence/src/production_projection/households/projection.rs)
+
+**2. Let the national scenario set which public claim gets paid first.** The government already collects taxes, pays provider operating grants and supports households with reserve workers. The national opening gives providers first claim on the budget.
+
+At the five-year close, 142 of 316 US county accounts paid operating grants while household support went partly or wholly unfunded. Los Angeles County paid providers $135,013,825.80. Households had $105,875,000 in support claims and received zero. [County allocation receipts](economic-flows-qualification-2026-11-14-assets/national-public-allocations-v10.json)
+
+A scenario setting can reverse that order under the same cash limit. Follow provider wages and services alongside the households’ transfers and actual food purchases. A cash transfer buys food only if a retailer can deliver it. [Public claims](../rust/crates/babylon-persistence/src/national_economy/opening/financial.rs) · [Payment order](../rust/crates/babylon-material-circuit/src/financial/validation.rs) · [Budget settlement](../rust/crates/babylon-material-circuit/src/financial/close.rs)
+
+Eligibility raises a separate policy choice. The opening reserve workforce sets each household’s recurring claim. Staffing records later movements into and out of reserve. Basing the next claim on that roster would let a newly unemployed household qualify and reduce support when its members find work. That policy must include households whose opening claim was zero. [Staffing records](../rust/crates/babylon-tick/src/material_replay.rs) · [Opening household support](../rust/crates/babylon-persistence/src/national_economy/opening/financial.rs)
+
+**3. Let a parent consider operating cash for an owned supplier.** The normal company decision can fund replacement or expansion equipment. The same accounts can transfer money to an owned operating site, as the Kern comparison demonstrates.
+
+Give the parent a choice at the next close when a subsidiary had paying customers and lacked cash for a necessary input. It can fund that subsidiary or keep its cash.
+
+This takes more work than changing the public payment order. The company must use orders and prices from the previous close and reserve each dollar once across competing sites. Follow the transfer through payroll, electricity, performed services and the food its customers produce. [Company choices](../rust/crates/babylon-material-circuit/src/portfolio/execution.rs) · [Owner payments](../rust/crates/babylon-material-circuit/src/financial/close.rs)
+
+**4. Compare prices on two existing supply contracts.** Some buyers already have two reachable sellers with different posted quotes, routes and order limits. They reserve cash in the order of the captured contracts.
+
+In period 2 one sub-Saharan African distributor reserved 310,752,377 food parcels from Kern at $287 each. Its remaining cash covered only 753,120,664 of the 932,257,133 it requested locally at $50.40 each. The local seller delivered all 753,120,664 parcels that period. At the twenty-year close, Kern had delivered 41,646 parcels on its order. The buyer still had $89,173,979,797 in escrow on that contract. [The two orders, deliveries and payments](economic-flows-qualification-2026-11-14-assets/national-supplier-quotes-v10.json)
+
+Let the buyer consider the cheaper quote first for new orders. Test both price orders and equal prices, preserve existing freight bookings, and follow the parcels through actual delivery. A seller can quote a low price while holding little stock. [Supplier contracts](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Order and cash reservation](../rust/crates/babylon-material-circuit/src/recurring/firms.rs)
 
 ### One freight closure between Kern County and Canada
 

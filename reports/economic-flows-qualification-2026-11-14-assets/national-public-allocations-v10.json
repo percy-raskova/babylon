@@ -1,0 +1,128 @@
+{
+  "schema": "ordinary-public-budget-witness-v1",
+  "source": {
+    "bundle": "per293-household-lifecycle-v10-seed319",
+    "local_bundle_path": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319",
+    "preset": "national-economy",
+    "seed": 319,
+    "compiler": "national-world-v10",
+    "capture_sha256": "63c79b558afb83a63300eda69363e53c1d65a77944270a42224326781e351bf3",
+    "close_file": "period-065.json",
+    "close_file_sha256": "b626110e9fa3ef0bc94edcfa83120b7a65fd44dc57f24012b8f6893da08b6685",
+    "period": 65,
+    "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+    "prior_world_sha256": "aa53062921b3034806fa08b2a16f4c72b1b38b77e536417c104cb3729c6caa25",
+    "world_sha256": "9ab00c12b584bf84b22907819e1cce1ab1099b3ea76c125236c48f8cfbfbb7b5",
+    "tick_sha256": "93438e968700d0d516b829785094dd0e7c5419211d50b54e4696fabfc995a1aa",
+    "receipts_sha256": "c90758521c87236f58d02a8d3eb2094b58eb03bb096bcbc10779eb85610a332e",
+    "material_register_sha256": "ce1a020e4cbf58f5419a7f5fd31e689917fbb73684cd84c16dfdf56b0c3cf1fa",
+    "account_reading": "circuit.public_accounts",
+    "reader_file": "circuit.rs",
+    "reader_file_sha256": "72001a335b15c518534f600d94c17e4c9e2d510b3fbc43a6a8e38dbd1e6aae76"
+  },
+  "amount_unit": "one millionth of one game currency unit; integer decimal strings",
+  "payer": {
+    "name": "Los Angeles County public account",
+    "location": "county:06037",
+    "public_id": "3998fed20c4b9cb5f926ddb82d3656ae56988ca45323e0374a269d1988561d20",
+    "opening_cash_micros": "135013825800000",
+    "credits_in_period_micros": "135013944600000",
+    "debits_in_period_micros": "135013825800000",
+    "closing_cash_micros": "135013944600000"
+  },
+  "allocations_by_treatment": [
+    {
+      "treatment": "ProviderOperatingGrant",
+      "requested_micros": "703467500000000",
+      "paid_micros": "135013825800000",
+      "unfunded_micros": "568453674200000"
+    },
+    {
+      "treatment": "HouseholdIncomeSupport",
+      "requested_micros": "105875000000000",
+      "paid_micros": "0",
+      "unfunded_micros": "105875000000000"
+    }
+  ],
+  "total_allocations": {
+    "requested_micros": "809342500000000",
+    "paid_micros": "135013825800000",
+    "unfunded_micros": "674328674200000"
+  },
+  "matching_condition": "Count a public account once in a close if operating_grants_paid_micros > 0 AND household_support_unfunded_micros > 0 in its account row. Support may have been partially paid.",
+  "account_denominators": {
+    "county": 316,
+    "dependency": 6,
+    "foreign": 12
+  },
+  "P65_matching_dependency": [
+    {
+      "public_id": "66212b672278df8638c3c92cae7fe6cef36324632296508b59bbe95e58b42be9",
+      "location": "dependency:581",
+      "name": "U.S. Minor Outlying Islands"
+    }
+  ],
+  "scope_of_period_comparison": "The sealed continuous campaign has 260 closes. These are all closes where the original reader persisted individual payer rows. The remaining closes have regional totals only.",
+  "matching_accounts_by_available_close": [
+    {
+      "period": 1,
+      "source_json_sha256": "00e7e1901f986c6ae67c894374631e268bce5f2d72bd79c4acc68c42690e150e",
+      "count_by_region": {
+        "county": 0,
+        "foreign": 0,
+        "dependency": 0
+      },
+      "all_matching_accounts": 0
+    },
+    {
+      "period": 2,
+      "source_json_sha256": "cc30434cd961af4df91cafdaf0bc95047b1f324ef75bba242f3f822f630cc35e",
+      "count_by_region": {
+        "county": 0,
+        "foreign": 0,
+        "dependency": 0
+      },
+      "all_matching_accounts": 0
+    },
+    {
+      "period": 3,
+      "source_json_sha256": "63758ae0b8d44cb3262fafc0506db5ccc5354e81303968dca8091f02e01e6139",
+      "count_by_region": {
+        "county": 0,
+        "foreign": 0,
+        "dependency": 0
+      },
+      "all_matching_accounts": 0
+    },
+    {
+      "period": 65,
+      "source_json_sha256": "b626110e9fa3ef0bc94edcfa83120b7a65fd44dc57f24012b8f6893da08b6685",
+      "count_by_region": {
+        "county": 142,
+        "foreign": 0,
+        "dependency": 1
+      },
+      "all_matching_accounts": 143
+    },
+    {
+      "period": 66,
+      "source_json_sha256": "0490d467e52b864fa779a9047d0b33ec7178672394cc502f24c5fd7a2ff19bfb",
+      "count_by_region": {
+        "county": 142,
+        "foreign": 0,
+        "dependency": 1
+      },
+      "all_matching_accounts": 143
+    },
+    {
+      "period": 260,
+      "source_json_sha256": "1494f64c444d41574bdaaf6d48256d746dd0950381459ff7fbfcdc5b7d57fb7b",
+      "count_by_region": {
+        "county": 256,
+        "foreign": 8,
+        "dependency": 4
+      },
+      "all_matching_accounts": 268
+    }
+  ]
+}

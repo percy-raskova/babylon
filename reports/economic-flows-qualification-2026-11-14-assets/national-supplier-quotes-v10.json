@@ -1,0 +1,163 @@
+{
+  "buyer_location": "foreign:sub_saharan_africa",
+  "buyer_site_id": "8d93e8c38f4a41618be44cea28ad0ff5b43acd38ef6111b1953bf6231ba9d0fb",
+  "currency_unit": "Micros are exact decimal integer strings; 1,000,000 micros = one modeled dollar. Unit prices are supplier quotes per parcel.",
+  "good_id": "b4b68f6711342fe0404992407fdcd85226a9c77678eca0e7607f66cdf6d53d33",
+  "orders": {
+    "kern": {
+      "P2": {
+        "local_transfers": 0,
+        "refund_micros": "0",
+        "reservation_micros": "89185932199000000",
+        "routed_arrivals": 0,
+        "routed_deliveries": 0,
+        "routed_dispatches": [],
+        "routed_realizations": 0,
+        "settlement_micros": "0"
+      },
+      "P260_register": {
+        "delivered": 41646,
+        "lost": 0,
+        "ordered": 310752377,
+        "realized": 41646,
+        "refunded_units": 0,
+        "remaining_escrow_micros": "89173979797000000",
+        "settled_value_micros": "11952402000000",
+        "shipped": 41646,
+        "unshipped_units": 310710731
+      },
+      "P3": {
+        "local_transfers": 0,
+        "refund_micros": "0",
+        "reservation_micros": "0",
+        "routed_arrivals": 0,
+        "routed_deliveries": 0,
+        "routed_dispatches": [
+          {
+            "lot_id": "d1cd3bb615daa247279c06adbc0cc4ba7ff827ffb4d26a03ec10dbd990c86fc8",
+            "quantity": 12192,
+            "route_id": "3a729a825e17400b9ce30618116db826a43ae71caf3b2624ae001aff48297387",
+            "scheduled_final_arrival_period": 4
+          }
+        ],
+        "routed_realizations": 0,
+        "settlement_micros": "0"
+      },
+      "P65_register": {
+        "delivered": 41646,
+        "lost": 0,
+        "ordered": 310752377,
+        "realized": 41646,
+        "refunded_units": 0,
+        "remaining_escrow_micros": "89173979797000000",
+        "settled_value_micros": "11952402000000",
+        "shipped": 41646,
+        "unshipped_units": 310710731
+      },
+      "order_id": "1639f109e1fc18b1d4f65fa5dc9ac6beb193c912e80fb23997b7f1d04f1bb273",
+      "procurement": {
+        "admitted": 310752377,
+        "desired_after_cap": 310752377,
+        "on_hand": 932137855,
+        "outstanding_inbound_before_this_order": 310730769,
+        "target_stock": 2486019020,
+        "unit_price_micros": "287000000"
+      },
+      "supplier_location": "county:06029",
+      "supplier_site_id": "097cfb3a2318e5871ffbbb4beb19f7bedca7c6c1e151d612bdd3a6a34a647126"
+    },
+    "local": {
+      "P2": {
+        "local_transfers": 753120664,
+        "refund_micros": "0",
+        "reservation_micros": "37957281465600000",
+        "routed_arrivals": 0,
+        "routed_deliveries": 0,
+        "routed_dispatches": [],
+        "routed_realizations": 0,
+        "settlement_micros": "37957281465600000"
+      },
+      "P260_register": "Resolved order and escrow absent. Full delivery and payment already appear in the P2 local transfer and settlement.",
+      "P3": {
+        "local_transfers": 0,
+        "refund_micros": "0",
+        "reservation_micros": "0",
+        "routed_arrivals": 0,
+        "routed_deliveries": 0,
+        "routed_dispatches": [],
+        "routed_realizations": 0,
+        "settlement_micros": "0"
+      },
+      "P65_register": "Resolved order and escrow absent. Full delivery and payment already appear in the P2 local transfer and settlement.",
+      "order_id": "dbb051a28562fa38eb058811142c28db92dde795b226ee76d14de792f574f238",
+      "procurement": {
+        "admitted": 753120664,
+        "desired_after_cap": 932257133,
+        "on_hand": 932137855,
+        "outstanding_inbound_before_this_order": 621483146,
+        "target_stock": 2486019020,
+        "unit_price_micros": "50400000"
+      },
+      "supplier_location": "foreign:sub_saharan_africa",
+      "supplier_site_id": "a680a520ea1e9fec9d4afd7a603291dd43eb46682fb65d95e3670e74350b9fab"
+    }
+  },
+  "quantity_unit": "One person-period food parcel; distributor replenishment, not household consumption.",
+  "reproduce": "python3 verify_supplier_quotes.py <per293-household-lifecycle-v10-seed319> <output.json>",
+  "reservation_sequence": "Kern's order was admitted before the local order. The local receipt's outstanding inbound includes the exact Kern admission. Both remain within their captured supplier caps.",
+  "schema": "two-existing-food-supplier-quotes-v1",
+  "scope": "Ordinary unmodified national-economy v10, seed 319. Actual observations. No alternate purchasing policy was run.",
+  "source": {
+    "bundle": "per293-household-lifecycle-v10-seed319",
+    "capture_sha256": "63c79b558afb83a63300eda69363e53c1d65a77944270a42224326781e351bf3",
+    "files_sha256": {
+      "capture.json": "9d36d52222bbd57baf7c0b3f751920bef9b09665b7746b4857e3b91952923e28",
+      "captured-catalog.bin": "63c79b558afb83a63300eda69363e53c1d65a77944270a42224326781e351bf3",
+      "checkpoint-065/material-register.bin": "ce1a020e4cbf58f5419a7f5fd31e689917fbb73684cd84c16dfdf56b0c3cf1fa",
+      "checkpoint-260/material-register.bin": "6495465b92fe1e3ff8888911d19aa997f5c099a6805aba2651a22c2d88e0774b",
+      "corridor-raw/P2-control-receipts.bin": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272",
+      "corridor-raw/P3-control-receipts.bin": "907bf75ad6e22b11d41a8b8479d2e9ffa235df038a8d5f985bee56dcb0951a53",
+      "period-002.json": "cc30434cd961af4df91cafdaf0bc95047b1f324ef75bba242f3f822f630cc35e",
+      "period-003.json": "63758ae0b8d44cb3262fafc0506db5ccc5354e81303968dca8091f02e01e6139",
+      "period-065.json": "b626110e9fa3ef0bc94edcfa83120b7a65fd44dc57f24012b8f6893da08b6685",
+      "period-260.json": "1494f64c444d41574bdaaf6d48256d746dd0950381459ff7fbfcdc5b7d57fb7b"
+    },
+    "period_identities": {
+      "2": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "38e67ebfb14ac32ad8c115d1b82c11fe309bf03ab181e9e45add89a082ce65d6",
+        "prior_world_sha256": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+        "receipts_sha256": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272",
+        "tick_sha256": "f04238e75909adcaa522a4970789699d0b8c70983dd55ea36448db29496a65fa",
+        "world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67"
+      },
+      "3": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "a3b1a46af047518b2bc3168a05af1852349b5d3495e08133e13c0d6762994de6",
+        "prior_world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67",
+        "receipts_sha256": "907bf75ad6e22b11d41a8b8479d2e9ffa235df038a8d5f985bee56dcb0951a53",
+        "tick_sha256": "5c5a61a7d4fc099282f9a592ee24f22e52f0fb938fb875b731b866d14fc7a34e",
+        "world_sha256": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25"
+      },
+      "65": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "ce1a020e4cbf58f5419a7f5fd31e689917fbb73684cd84c16dfdf56b0c3cf1fa",
+        "prior_world_sha256": "aa53062921b3034806fa08b2a16f4c72b1b38b77e536417c104cb3729c6caa25",
+        "receipts_sha256": "c90758521c87236f58d02a8d3eb2094b58eb03bb096bcbc10779eb85610a332e",
+        "tick_sha256": "93438e968700d0d516b829785094dd0e7c5419211d50b54e4696fabfc995a1aa",
+        "world_sha256": "9ab00c12b584bf84b22907819e1cce1ab1099b3ea76c125236c48f8cfbfbb7b5"
+      },
+      "260": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "6495465b92fe1e3ff8888911d19aa997f5c099a6805aba2651a22c2d88e0774b",
+        "prior_world_sha256": "c26e4348d438b7ef5829c149ef8bbb5d662f369afff145490523b6c62e3731e3",
+        "receipts_sha256": "5a6fb2328fc4f6d1abc11bdcab6691a29f146cca563635b8ffb38885220efee3",
+        "tick_sha256": "925f52613dda62d764766231cfa502d98e8d81bad9d95d5edb76131c68b9ed91",
+        "world_sha256": "da5bca935a47cbcc3e1285a90d7df207ff06baad9953cded0e25ab2d38f90537"
+      }
+    }
+  },
+  "stage_meaning": "Desired is the deficit after on-hand and already-ordered inbound, limited by the supplier policy cap. Admission reserves cash at that supplier's quote. A local inter-site handoff can settle at the current close. Dispatch is a departure; the routed delivery and realization counters record completed transfers.",
+  "time_unit": "Four-week period. P2 identifies the period in which the two orders were placed.",
+  "unit_id": "0dd64ea7f022437a50459ef0dc7f39be94ec8d835b85320599f7dad00fa92f24"
+}

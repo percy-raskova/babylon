@@ -20,6 +20,7 @@ use babylon_persistence::money_journal::{
 use bevy::a11y::AccessibilityNode;
 use bevy::prelude::*;
 use bevy::text::LineBreak;
+use std::fmt::Write as _;
 
 pub(super) fn amount(micros: &str) -> String {
     // A period sum may exceed one posting's currency range. Keep its complete decimal then.
@@ -446,12 +447,12 @@ fn ranked_page(
         ObserverFontRole::Exact,
     ));
     let visible = visible as u64;
+    let (singular, plural) = grouping::group_names(scope.group);
     rail.spawn(label(
         format!(
-            "Counterparties {}–{} of {}",
+            "Showing {plural} {}–{} of {total_groups}",
             view.offset + 1,
-            view.offset + visible,
-            total_groups
+            view.offset + visible
         ),
         15.0,
         theme::GRAY,
@@ -468,8 +469,13 @@ fn ranked_page(
     ));
     connection_controls(rail, view, scope, atlas);
     if remaining_groups > 0 {
+        let noun = if remaining_groups == 1 {
+            singular
+        } else {
+            plural
+        };
         rail.spawn(label(
-            format!("Other {remaining_groups} counterparties\n{remainder}"),
+            format!("{remaining_groups} more {noun}\n{remainder}"),
             15.0,
             theme::GRAY,
             ObserverFontRole::Exact,
@@ -585,13 +591,14 @@ fn page_controls(
     visible: u64,
     total_groups: u64,
 ) {
+    let (_, plural) = grouping::group_names(scope.group);
     if view.offset > 0 {
         control(
             rail,
             view,
             scope,
             Action::Page(view.offset.saturating_sub(20)),
-            "Previous counterparties".into(),
+            format!("Previous {plural}"),
         );
     }
     if view.offset + visible < total_groups {
@@ -600,7 +607,7 @@ fn page_controls(
             view,
             scope,
             Action::Page(view.offset + visible),
-            "More counterparties".into(),
+            format!("More {plural}"),
         );
     }
 }
@@ -649,23 +656,25 @@ fn selection_label(view: &MoneyView, atlas: &CountyAtlas) -> String {
                 Direction::Internal => (county.clone(), county),
             };
             let amount = reading(&row.quantity);
-            let mut text = row.key.peer.as_deref().map_or_else(
-                || format!("{from} → {to}\n{amount}"),
-                |key| {
-                    format!(
-                        "{from} → {to}\n{amount}\n{} {key}",
-                        if group == FlowGroup::Location {
-                            "Location code"
-                        } else {
-                            "Group code"
-                        }
-                    )
-                },
-            );
+            let mut text = format!("{from} → {to}\n{amount}");
+            if let Some(key) = row
+                .key
+                .peer
+                .as_deref()
+                .filter(|_| group != FlowGroup::Industry)
+            {
+                let code_label =
+                    if group == FlowGroup::Location || key.parse::<EconomicLocation>().is_ok() {
+                        "Location code"
+                    } else {
+                        "Group code"
+                    };
+                write!(text, "\n{code_label} {key}").expect("String write");
+            }
             if let Some(page) = &view.page {
                 if let Some(net) = compare::group_net(page, &row.key, scope.context.tick) {
-                    text.push_str("\nCounty net with this counterparty\n");
-                    text.push_str(&net);
+                    let (singular, _) = grouping::group_names(group);
+                    write!(text, "\nCounty net with this {singular}\n{net}").expect("String write");
                 }
             }
             text
@@ -716,8 +725,9 @@ pub(super) fn highlight(
             continue;
         }
         let value = if source {
-            if view.industry.expanded && industry::selected(&view).is_some() {
-                view.industry.describe()
+            if view.industry.expanded {
+                industry::selected(&view)
+                    .map_or_else(String::new, |function| view.industry.describe(function))
             } else {
                 String::new()
             }

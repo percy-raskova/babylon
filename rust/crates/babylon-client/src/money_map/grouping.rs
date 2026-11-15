@@ -7,6 +7,17 @@ use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_persistence::money_journal::FlowGroup;
 use bevy::prelude::*;
 
+pub(super) fn group_names(group: FlowGroup) -> (&'static str, &'static str) {
+    match group {
+        FlowGroup::Account => ("account", "accounts"),
+        FlowGroup::Location => ("location", "locations"),
+        FlowGroup::Catchment => ("catchment", "catchments"),
+        FlowGroup::Industry => ("industry", "industries"),
+        FlowGroup::Company => ("company", "companies"),
+        FlowGroup::Counterparty => ("counterparty", "counterparties"),
+    }
+}
+
 pub(super) fn peer_label(
     scope: &Scope,
     key: Option<&str>,
@@ -30,6 +41,11 @@ pub(super) fn peer_label(
     };
     if let Some(name) = label.filter(|&name| name != key) {
         return name.into();
+    }
+    if group == FlowGroup::Industry {
+        if let Some(function) = EconomicFunction::from_source_key(key) {
+            return function.label().into();
+        }
     }
     if let Some((kind, id)) = key.split_once(':') {
         let kind = match kind {

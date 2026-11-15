@@ -798,19 +798,47 @@ fn freight_and_economic_diagrams_have_separate_native_sample_windows() {
 
 #[test]
 fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
+    use super::rail;
+    use babylon_persistence::money_journal::FlowPage;
     let (mut app, select, mut scope, _) = interaction_fixture();
     scope.group = FlowGroup::Industry;
-    let rows = state::connections(&[
+    let mut groups = [
         counterparty(Some("food"), "12", "0", "0"),
         counterparty(None, "9", "0", "0"),
-    ]);
+    ];
+    for group in &mut groups {
+        group
+            .current
+            .net_micros
+            .clone_from(&group.current.inflow_micros);
+    }
+    let rows = state::connections(&groups);
     let food = rows[0].key.clone();
     let unreported = rows[1].key.clone();
     {
         let mut view = app.world_mut().resource_mut::<MoneyView>();
         view.scope = Some(scope.clone());
         view.rows = rows;
+        let mut total = counterparty(None, "21", "0", "0");
+        total.current.net_micros = "21".into();
+        total.groups = 2;
+        let mut remainder = counterparty(None, "0", "0", "0");
+        remainder.groups = 0;
+        view.page = Some(Page::Money(Box::new(FlowPage {
+            groups: groups.into(),
+            total,
+            remainder,
+        })));
     }
+    app.world_mut().spawn((state::MoneyRail, Node::default()));
+    app.add_systems(Update, (rail::paint, rail::highlight).chain());
+    let has_text = |app: &mut App, expected: &str| {
+        let world = app.world_mut();
+        world
+            .query::<&Text>()
+            .iter(world)
+            .any(|text| text.contains(expected))
+    };
     let button = |app: &mut App, action| {
         app.world_mut()
             .spawn(Target {
@@ -837,13 +865,29 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
     app.world_mut().trigger(press(toggle));
     assert!(!app.world().resource::<MoneyView>().industry.expanded);
     app.world_mut().trigger(press(select));
+    app.update();
+    assert!(has_text(&mut app, "Showing industries 1–2 of 2"));
+    assert!(has_text(
+        &mut app,
+        "→ Food\n$0.000012\nCounty net with this industry\nNet received\n-$0.000012"
+    ));
+    assert!(!has_text(&mut app, "code food"));
     app.world_mut().trigger(press(toggle));
+    app.update();
+    assert!(has_text(
+        &mut app,
+        "Industry code food\nReading the captured industry sources…"
+    ));
     assert!(app.world().resource::<MoneyView>().industry.expanded);
     app.world_mut().trigger(press(toggle));
     assert!(!app.world().resource::<MoneyView>().industry.expanded);
+    app.update();
+    assert!(!has_text(&mut app, "code food"));
     app.world_mut().trigger(press(unknown));
     app.world_mut().trigger(press(toggle));
     assert!(!app.world().resource::<MoneyView>().industry.expanded);
+    app.update();
+    assert!(has_text(&mut app, "→ Industry unreported\n$0.000009"));
 }
 
 #[test]

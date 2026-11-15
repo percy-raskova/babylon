@@ -26,9 +26,9 @@ pub(super) fn selected(view: &MoneyView) -> Option<EconomicFunction> {
 }
 
 impl Sources {
-    pub(super) fn describe(&self) -> String {
+    pub(super) fn describe(&self, function: EconomicFunction) -> String {
         use std::fmt::Write as _;
-        match &self.result {
+        let composition = match &self.result {
             None => "Reading the captured industry sources…".into(),
             Some(Ok(None)) => "This campaign has no national QCEW member table.".into(),
             Some(Err(error)) => {
@@ -54,7 +54,8 @@ impl Sources {
                 }
                 text
             }
-        }
+        };
+        format!("Industry code {}\n{composition}", function.source_key())
     }
 
     pub(super) fn toggle(&mut self) {

@@ -10,7 +10,7 @@ Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route
 | Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. The inspector labels all groups outside each page and exposes selected controls through AccessKit. | Repeat the native checks on the final build. |
 | Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | Repeat the two-seed comparisons with the current policy. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
-| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. Three earlier rendered turns after reopening displayed Wayne’s finances in 24.998–29.742 seconds. | A fresh first turn took 37.551 seconds against 30. The running game added 42,385,408 bytes through its first close and reopen against a 40,000,000-byte limit. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
+| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The latest running game stayed within its storage and memory limits through two closes. | Wayne’s first financial figures appeared in 36.565–36.817 seconds against 30. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
 
 The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 
@@ -451,6 +451,10 @@ A third new campaign used the idle publisher to read and authenticate the founda
 
 The writer spent 27.315 seconds on the first publication. This included 4.968 seconds reading the authenticated source and 10.952 seconds publishing recorded labor. The previous full publication took 34.348 seconds. Both runs used the same national opening and the ordinary windowed launcher.
 
+The v9 national campaign `9945464b-5962-4960-85f6-0bac750fbf76` repeated the advance from period 0 on the RTX 3060. The material writer took 8.844 seconds. Financial publication took 27.075 seconds, including 4.817 seconds reading the source and 10.834 seconds publishing labor. Wayne’s three figures matched the independent observer query between 36.565 and 36.817 seconds after the advance. The 30-second target remains open.
+
+Postgres refreshed statistics on the first period’s territory membership before observers read it. Seven Archive county queries completed in 44–76 milliseconds. An earlier run had two five-second timeouts. Reopening the v9 save reproduced the first-period world from the twenty-year material run.
+
 A separate fresh campaign at revision `ce2c266ed` measured storage through the first two closes. Period 1 used 39,337,984 bytes, down from 76,595,200 in the earlier campaign. Period 2 used 13,336,576 bytes. Both fit the 40,000,000-byte limit and reopened with identical committed world and register hashes. The first two financial publications in this run took 25.620 and 13.832 seconds.
 
 The running-game pilot used a fresh database and took its first size reading after founding. Period 1 grew by 41,230,336 bytes. The largest component was the labor-node directory at 11,673,600 bytes of growth. The semantic Archive had verified period 0 at that reading. The pilot reached the title screen during its first reopen and timed out waiting for Saved Games. It produced no period-2 or terminal measurement.
@@ -458,6 +462,10 @@ The running-game pilot used a fresh database and took its first size reading aft
 The next pilot held the physical menu click across two rendered updates. It reopened both periods with their original world hashes. The first close added 40,927,232 bytes before reopening and 42,385,408 bytes including reopening. The second close and its reopen added 16,162,816 bytes. After the Archive verified period 2, that period’s total charge was 18,817,024 bytes. The first close exceeded the limit by 2,385,408 bytes.
 
 Across founding and both closes, 159 samples covered the runtime, client, publisher and database. The largest combined resident-memory reading was 4,491,423,744 bytes. The longest gap between samples was 2.676 seconds against the five-second limit. The 10 GB memory limit held in this two-period run.
+
+The v9 campaign used a smaller Postgres index for the nodes that identify the endpoints of labor movements. The first close added 37,871,616 bytes and reached 39,034,880 bytes after reopening. The second period added 17,760,256 bytes through reopening and Archive publication. Both periods met the 40,000,000-byte limit and reopened with their original world hashes.
+
+Across 156 samples, combined resident memory peaked at 4,592,676,864 bytes against the 10 GB limit. The longest gap was 2.658 seconds.
 
 ### Organizer action during financial publication
 

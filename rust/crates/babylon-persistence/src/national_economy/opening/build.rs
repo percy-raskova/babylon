@@ -8,6 +8,9 @@ use babylon_material_circuit::AccountId;
 use super::{actors, aid, external, financial, household_time, markets, routes, templates};
 
 use super::super::{GameCommodity, NationalGamePolicy};
+use crate::national_economy::companies::{
+    self, CompanyCapture, CompanyCaptureError, CompanyFinances, TreasuryError,
+};
 
 use crate::economic_catalog::{
     CatalogAccounting, CatalogCapacity, CatalogLogistics, CatalogOpeningOrders, CatalogPolicies,
@@ -53,6 +56,8 @@ use std::fmt::Formatter;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NationalOpeningError {
     SourceScope,
+    Companies(CompanyCaptureError),
+    Treasury(TreasuryError),
     Grain(NationalGrainError),
     MissingObservation,
     Policy,
@@ -225,6 +230,18 @@ impl<'a> Builder<'a> {
             &membership,
         )
         .map_err(NationalOpeningError::Grain)?;
+        let companies = policy
+            .companies
+            .map(|targets| {
+                let base =
+                    companies::from_workplaces(&roster.workplaces.workplaces, targets.employment)?;
+                match targets.experiment {
+                    Some(population) => companies::partition(base, population),
+                    None => Ok(base),
+                }
+            })
+            .transpose()
+            .map_err(NationalOpeningError::Companies)?;
         builder.endowments = roster.workplace_endowments;
         builder.financial_domains = roster.financial_domains;
         actors::domestic(
@@ -247,7 +264,23 @@ impl<'a> Builder<'a> {
             .aid_mandates
             .clone_from(&builder.aid.mandates);
         let detail = super::detail::partition(&builder, &builder.aid)?;
+        let finances = companies
+            .as_ref()
+            .zip(policy.companies)
+            .map(|(roster, terms)| {
+                builder.opening.policies.company_portfolios = Some(terms.portfolio);
+                companies::fund(
+                    &mut builder.opening,
+                    roster,
+                    terms.treasury_bps,
+                    policy.financial.private_distribution_bps,
+                )
+            })
+            .transpose()
+            .map_err(NationalOpeningError::Treasury)?;
         Ok(NationalOpening {
+            finances,
+            companies,
             opening: builder.opening,
             aid: builder.aid,
             detail,
@@ -324,6 +357,8 @@ impl<'a> Builder<'a> {
                 equipment_position: EquipmentPosition::default(),
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
+                    company_portfolios: None,
+                    company_payouts: vec![],
                     aid_mandates: Vec::new(),
                     household_time: HouseholdTimeAccounting::NotModeled,
                     household_time_policy: Vec::new(),
@@ -440,6 +475,8 @@ pub(in crate::national_economy) fn sum_amount(left: Currency, right: Currency) -
 /// One current complete national capture; aid metadata must be installed by admission.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalOpening {
+    pub companies: Option<CompanyCapture>,
+    pub finances: Option<CompanyFinances>,
     pub representation: NationalGenerationWitness,
     pub opening: EconomicOpening,
     pub aid: NationalAidCapture,

@@ -5,7 +5,7 @@ use crate::economic_content::EconomicContentAdmission;
 use crate::identity::CampaignId;
 use crate::observer_reader::{
     CommittedMaterialReceipts, ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor,
-    ObserverVisibility,
+    ObserverVisibility, ReceiptPurpose,
 };
 use crate::recorded_labor::{RecordedLaborError, RecordedLaborLedger, RecordedLaborPeriod};
 use babylon_tick::material_replay::IdentifiedMaterialTick;
@@ -102,6 +102,7 @@ pub(crate) fn through<T>(
     target: u64,
     cursor: &mut Option<ObserverMaterialCursor>,
     carry: Option<LaborCarry>,
+    purpose: ReceiptPurpose,
     finish: impl Fn(
         &ObserverMaterialCursor,
         &EconomicContentAdmission,
@@ -125,8 +126,12 @@ pub(crate) fn through<T>(
         let tick = prior_tick + 1;
         let restored_period = opening.restored_period();
         let seed = matches!(opening, Opening::Checkpoint(_));
-        let result =
-            reader.with_committed_receipts(campaign, tick, cursor, |at, foundation, source| {
+        let result = reader.with_receipt_source(
+            campaign,
+            tick,
+            cursor,
+            purpose,
+            |at, foundation, source| {
                 let world = source.identity.result_world_hash();
                 let digest = source.identity.foundation_digest();
                 let mut ledger = opening.ledger(at, foundation, &source.identity)?;
@@ -146,7 +151,8 @@ pub(crate) fn through<T>(
                     },
                     value,
                 ))
-            });
+            },
+        );
         match result {
             Ok((carried, Some(value))) => return Ok((carried, value)),
             Ok((carried, None)) => opening = Opening::Prior(carried),

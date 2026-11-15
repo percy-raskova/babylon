@@ -1,7 +1,7 @@
 //! Foundation-bound geography of operating and financial principals.
 use super::model::FlowResult;
 use super::{CountyInternalPoint, EconomicFlowError, FlowAccount};
-use crate::economic_catalog::{CapturedEconomicCatalog, EconomicSourceView};
+use crate::economic_catalog::{CapturedEconomicCatalog, EconomicOpening, EconomicSourceView};
 use crate::michigan_economy;
 use crate::national_economy::grain::{
     CatchmentId, ContributionDestination, FinancialDomainId, NationalGenerationWitness,
@@ -26,43 +26,34 @@ pub(crate) fn geographies(
 ) -> FlowResult<Vec<FlowAccount>> {
     let view = catalog.view();
     let opening = view.opening;
-    let mut locations = BTreeMap::new();
-    let rows = opening
-        .sites
-        .iter()
-        .map(|site| (AccountId::Site(site.site_id), site.location))
-        .chain(opening.households.iter().map(|household| {
-            (
-                AccountId::Household(household.principal_id),
-                household.location,
-            )
-        }))
-        .chain(
-            opening
-                .orders
-                .principals
-                .iter()
-                .map(|row| (AccountId::Household(row.id), row.location)),
-        )
-        .chain(
-            opening
-                .institutions
-                .locations
-                .iter()
-                .map(|row| (row.account, row.location)),
-        );
-    for (account, location) in rows {
-        if locations
-            .insert(account, location)
-            .is_some_and(|previous| previous != location)
-        {
-            return Err(EconomicFlowError::AccountGeographyMismatch);
-        }
-    }
+    let locations = account_locations(opening)?;
     let functions: BTreeMap<AccountId, EconomicFunction> = opening
         .sites
         .iter()
         .map(|row| (AccountId::Site(row.site_id), row.function))
+        .chain(
+            catalog
+                .national_companies()
+                .into_iter()
+                .flat_map(|c| &c.companies)
+                .map(|r| (AccountId::Company(r.key.id()), r.key.function)),
+        )
+        .collect();
+    let companies: BTreeMap<_, _> = catalog
+        .national_companies()
+        .into_iter()
+        .flat_map(|roster| {
+            roster
+                .members
+                .iter()
+                .map(|r| (AccountId::Site(r.site), r.company))
+                .chain(
+                    roster
+                        .companies
+                        .iter()
+                        .map(|r| (AccountId::Company(r.key.id()), r.key)),
+                )
+        })
         .collect();
     let membership = catalog
         .national_generation()
@@ -101,6 +92,7 @@ pub(crate) fn geographies(
                 _ => None,
             };
             Ok(FlowAccount {
+                company: companies.get(&account).copied(),
                 account: account.into(),
                 location: location.map(|key| key.to_string()),
                 industry,
@@ -109,6 +101,45 @@ pub(crate) fn geographies(
             })
         })
         .collect()
+}
+
+fn account_locations(
+    opening: &EconomicOpening,
+) -> FlowResult<BTreeMap<AccountId, EconomicLocation>> {
+    let mut locations = BTreeMap::new();
+    let rows = opening
+        .sites
+        .iter()
+        .map(|site| (AccountId::Site(site.site_id), site.location))
+        .chain(opening.households.iter().map(|household| {
+            (
+                AccountId::Household(household.principal_id),
+                household.location,
+            )
+        }))
+        .chain(
+            opening
+                .orders
+                .principals
+                .iter()
+                .map(|row| (AccountId::Household(row.id), row.location)),
+        )
+        .chain(
+            opening
+                .institutions
+                .locations
+                .iter()
+                .map(|row| (row.account, row.location)),
+        );
+    for (account, location) in rows {
+        if locations
+            .insert(account, location)
+            .is_some_and(|previous| previous != location)
+        {
+            return Err(EconomicFlowError::AccountGeographyMismatch);
+        }
+    }
+    Ok(locations)
 }
 
 /// Resolve representative memberships through their captured destination identities.

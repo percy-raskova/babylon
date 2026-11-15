@@ -422,7 +422,7 @@ pub(crate) fn member(
     .map_err(|_| AllocationError::PopulationControl)?;
     let subject = StableElementKey::Node {
         scenario: crate::national_economy::NATIONAL_SCENARIO_ID.into(),
-        local_name: format!("member-{}", base32(&identity)),
+        local_name: format!("member-{}", content_digest::base32(&identity)),
     };
     subject
         .canonical_bytes()
@@ -436,27 +436,6 @@ pub(crate) fn member(
         },
         mode,
     })
-}
-
-pub(crate) fn base32(bytes: &[u8; 32]) -> String {
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let mut result = String::with_capacity(52);
-    let mut bits = 0_u16;
-    let mut count = 0;
-    for byte in bytes {
-        bits = (bits << 8) | u16::from(*byte);
-        count += 8;
-        while count >= 5 {
-            count -= 5;
-            result.push(char::from(ALPHABET[usize::from((bits >> count) & 31)]));
-        }
-    }
-    if count > 0 {
-        result.push(char::from(
-            ALPHABET[usize::from((bits << (5 - count)) & 31)],
-        ));
-    }
-    result
 }
 
 pub(crate) fn apportion(total: u64, weights: &[u64]) -> Result<Vec<u64>> {
@@ -601,8 +580,14 @@ mod tests {
         let zero = [0; 32];
         let mut last = zero;
         last[31] = 1;
-        assert_eq!(base32(&zero), "a".repeat(52));
-        assert_eq!(base32(&last), format!("{}aq", "a".repeat(50)));
-        assert_eq!(format!("member-{}", base32(&last)).len(), 59);
+        assert_eq!(content_digest::base32(&zero), "a".repeat(52));
+        assert_eq!(
+            content_digest::base32(&last),
+            format!("{}aq", "a".repeat(50))
+        );
+        assert_eq!(
+            format!("member-{}", content_digest::base32(&last)).len(),
+            59
+        );
     }
 }

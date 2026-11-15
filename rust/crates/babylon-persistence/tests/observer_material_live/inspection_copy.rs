@@ -2,7 +2,10 @@
 use super::{
     CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls, Uuid,
 };
+use babylon_material_circuit::SiteId;
 use babylon_persistence::inspection_copy::{self, InspectionCopyError};
+use babylon_persistence::money_journal::{JournalError, MoneyJournalWriter};
+use babylon_persistence::observer_reader::{self, ObserverEconomyReader, ObserverVisibility};
 use babylon_persistence::CurrentSchemaError;
 use postgres::Client;
 
@@ -14,7 +17,7 @@ fn markers(client: &mut Client, id: CampaignId) -> Vec<Vec<u8>> {
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_database() {
     let from = DisposableTarget::create();
-    let to = DisposableTarget::create();
+    let mut to = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x29355));
     let extra = CampaignId::from_uuid(Uuid::from_u128(0x29356));
     let input = || {
@@ -26,14 +29,22 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
         DurableMaterialRuntime::create(&from.writer, campaign, input()).expect("fund the source");
     super::advance_material_period(&mut run);
     super::advance_material_period(&mut run);
+    let site = run
+        .session()
+        .material()
+        .state()
+        .inventory
+        .first()
+        .expect("physical control closing stock")
+        .site_id;
     drop(run);
     DurableMaterialRuntime::create(&from.writer, extra, input()).expect("unrelated campaign");
     let mut source = from.writer.connect(NoTls).expect("disposable source");
     let raw = markers(&mut source, campaign);
     assert_eq!(raw.len(), 2);
-    // Remove only the new derived relations from this freshly created disposable fixture.
-    // The inspector still independently checks every actual predecessor catalog object.
-    source.batch_execute("DROP TABLE babylon_state.labor_position_v1,babylon_state.labor_movement_v1,babylon_state.labor_node_v1,babylon_state.labor_checkpoint_v1,babylon_state.labor_period_v1,babylon_state.site_stock_balance_v1,babylon_state.site_statement_v1,babylon_state.economic_payment_v1,babylon_state.economic_flow_account_v1,babylon_state.economic_flow_location_v1,babylon_state.money_movement_total_v1,babylon_state.money_movement_v1,babylon_state.money_journal_period_v1 CASCADE; UPDATE babylon_meta.current_schema SET schema_sha256=decode('f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071','hex')").expect("exact predecessor fixture");
+    source
+        .batch_execute(include_str!("predecessor_2824cf38e.sql"))
+        .expect("restore exact predecessor in the disposable clone");
     assert!(matches!(
         babylon_persistence::preflight_current_schema(&from.writer),
         Err(CurrentSchemaError::CurrentCensusMismatch)
@@ -49,6 +60,8 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
         .expect("one campaign")
         .get(0);
     assert_eq!(count, 1);
+    inspect_copied_history(&mut to, campaign, site);
+    assert_eq!(markers(&mut source, campaign), raw);
     assert_eq!(
         inspection_copy::copy_campaign(&from.writer, &to.writer, campaign)
             .expect_err("an occupied target refuses another import"),
@@ -62,4 +75,35 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
             .expect_err("the source schema differs from the recorded predecessor"),
         InspectionCopyError::SourceSchema
     );
+}
+
+fn inspect_copied_history(to: &mut DisposableTarget, campaign: CampaignId, site: SiteId) {
+    observer_reader::provision_observer_role(&to.writer)
+        .expect("grant full observer on the destination");
+    let reader = ObserverEconomyReader::connect(
+        &to.login("babylon_observer", "inspection"),
+        ObserverVisibility::FullObserver,
+    )
+    .expect("copied campaign observer");
+    let journal = MoneyJournalWriter::connect(&to.writer).expect("destination publisher");
+    for tick in 1..=2 {
+        let admitted = reader
+            .committed_material_receipts(campaign, tick)
+            .expect("original material period");
+        journal
+            .publish(&reader, campaign, tick)
+            .expect("derive journal on destination");
+        let site = reader
+            .published_site_period(campaign, tick, site)
+            .expect("original stock owner");
+        assert_eq!(
+            &site.tick_content_hash,
+            admitted.identity.tick_content_hash().as_bytes()
+        );
+        assert!(site.statement.is_none());
+        assert_eq!(
+            reader.published_company_period_statements(campaign, tick),
+            Err(JournalError::CompanyBooksNotCaptured)
+        );
+    }
 }

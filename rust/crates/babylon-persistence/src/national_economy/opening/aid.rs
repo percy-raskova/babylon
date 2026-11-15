@@ -314,33 +314,13 @@ fn retarget(
     .map_err(|_| Error::Workforce(AllocationError::PopulationControl))?;
     moved.seed.employed = child.employed;
     moved.seed.reserve = 0;
-    moved.seed.subject = subject(&format!("member-{}", base32(&id)));
+    moved.seed.subject = subject(&format!("member-{}", content_digest::base32(&id)));
     child.class_subject = moved.seed.subject.clone();
     workplace.members.push(moved);
     workplace
         .members
         .sort_unstable_by_key(|m| m.seed.member.member_id());
     Ok(())
-}
-fn base32(bytes: &[u8; 32]) -> String {
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let mut result = String::with_capacity(52);
-    let mut bits = 0_u16;
-    let mut count = 0;
-    for byte in bytes {
-        bits = (bits << 8) | u16::from(*byte);
-        count += 8;
-        while count >= 5 {
-            count -= 5;
-            result.push(char::from(ALPHABET[usize::from((bits >> count) & 31)]));
-        }
-    }
-    if count > 0 {
-        result.push(char::from(
-            ALPHABET[usize::from((bits << (5 - count)) & 31)],
-        ));
-    }
-    result
 }
 pub(super) fn households(
     builder: &mut Builder<'_>,

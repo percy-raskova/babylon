@@ -200,6 +200,12 @@ pub(crate) struct ObservationCache {
 }
 
 impl ObservationCache {
+    /// Share the source admission already authenticated for the observer frame.
+    /// Each supplemental reader rechecks its database role, campaign and foundation.
+    pub(crate) fn full_reader(&self) -> Option<ObserverEconomyReader> {
+        self.full_reader.clone()
+    }
+
     pub(super) fn reconcile(&mut self, key: ObservationCacheKey) {
         if self.key.as_ref() != Some(&key) {
             *self = Self {

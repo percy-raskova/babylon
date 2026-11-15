@@ -67,6 +67,8 @@ use babylon_material_circuit::UnitId;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 
 include!("support/equipment_fixture.rs");
+#[path = "support/company_portfolio.rs"]
+mod company_portfolio;
 
 #[test]
 fn arrived_equipment_and_materials_wait_for_actual_work_before_next_period_capacity() {

@@ -18,6 +18,9 @@ const RETRY: Duration = Duration::from_secs(5);
 #[derive(Clone, Copy)]
 enum Command {
     Sweep(CampaignId),
+    CompanyOpening(CampaignId),
+    CompanyPeriod(CampaignId, u64),
+    PublishedCompanyPeriod(CampaignId, u64),
     LaborTrace {
         campaign: CampaignId,
         first: u64,
@@ -73,11 +76,25 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
         [watch, pipe] if watch == "watch-database" && pipe == "--session-stdin" => {
             Ok(Command::WatchSession)
         }
+        [command, flag, id, at, value, flags @ ..]
+            if command == "company-period" && flag == "--campaign" && at == "--period" =>
+        {
+            let period = value.parse().map_err(|_| "period_refused")?;
+            if period == 0 {return Err("positive_period_required");}
+            match flags {
+                [] => Ok(Command::CompanyPeriod(campaign(id)?, period)),
+                [stored] if stored == "--published" => Ok(Command::PublishedCompanyPeriod(campaign(id)?,period)),
+                _ => Err("company_statement_flag_refused"),
+            }
+        }
+        [company, flag, value] if company == "company-opening" && flag == "--campaign" => {
+            Ok(Command::CompanyOpening(campaign(value)?))
+        }
         [sweep, flag, value] if sweep == "sweep" && flag == "--campaign" => {
             Ok(Command::Sweep(campaign(value)?))
         }
         [trace, options @ ..] if trace == "labor-trace" => labor_arguments(options),
-        _ => Err("use watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
+        _ => Err("use company-opening --campaign <uuid>, company-period --campaign <uuid> --period <n> [--published], watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
 
     }
 }
@@ -166,6 +183,15 @@ fn emit_labor_trace(
         .map_err(|error| error.to_string())
 }
 
+fn write_report(report: &impl serde::Serialize) -> Result<(), String> {
+    let mut output = BufWriter::new(io::stdout().lock());
+    serde_json::to_writer(&mut output, report).map_err(|e| e.to_string())?;
+    output
+        .write_all(b"\n")
+        .and_then(|()| output.flush())
+        .map_err(|e| e.to_string())
+}
+
 fn run(command: Command) -> Result<(), String> {
     let observer = ObserverEconomyReader::from_observer_env().map_err(|e| e.to_string())?;
     if let Command::LaborTrace {
@@ -175,6 +201,30 @@ fn run(command: Command) -> Result<(), String> {
     } = command
     {
         return emit_labor_trace(&observer, campaign, first, last);
+    }
+    match command {
+        Command::CompanyOpening(campaign) => {
+            return write_report(
+                &observer
+                    .company_opening_statements(campaign)
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+        Command::PublishedCompanyPeriod(campaign, period) => {
+            return write_report(
+                &observer
+                    .published_company_period_statements(campaign, period)
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+        Command::CompanyPeriod(campaign, period) => {
+            return write_report(
+                &observer
+                    .company_period_statements(campaign, period)
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+        _ => {}
     }
     let config = std::env::var("BABYLON_RUNTIME_DSN")
         .map_err(|_| "writer_credential_absent")?

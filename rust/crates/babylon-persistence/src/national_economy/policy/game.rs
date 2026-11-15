@@ -1,4 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use crate::national_economy::companies::CompanyPolicy;
 use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::NationalGrainPolicy;
 
@@ -22,7 +23,10 @@ use std::fmt::Result as FmtResult;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NationalGamePolicy {
     pub grain: NationalGrainPolicy,
+    pub companies: Option<CompanyPolicy>,
     pub source_digest: [u8; 32],
+    /// Retained geographic identity basis, independent of new company policy parameters.
+    pub grain_identity_policy_digest: [u8; 32],
     pub period_days: u64,
     pub work_hours_per_person: u64,
     pub default_wage: Currency,

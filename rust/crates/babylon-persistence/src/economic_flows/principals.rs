@@ -10,17 +10,17 @@ use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Parties {
-    pub(super) payer: AccountId,
-    pub(super) recipient: AccountId,
+pub(crate) struct Parties {
+    pub(crate) payer: AccountId,
+    pub(crate) recipient: AccountId,
     /// Per unit for a purchase, entire funded obligation for a shift.
-    pub(super) price: Currency,
+    pub(crate) price: Currency,
 }
 
 #[derive(Default)]
-pub(super) struct Principals {
-    pub(super) purchases: BTreeMap<OutboundOrderId, Parties>,
-    pub(super) shifts: BTreeMap<ShiftId, Parties>,
+pub(crate) struct Principals {
+    pub(crate) purchases: BTreeMap<OutboundOrderId, Parties>,
+    pub(crate) shifts: BTreeMap<ShiftId, Parties>,
 }
 
 fn bind<K: Ord>(
@@ -51,6 +51,15 @@ impl Principals {
         receipts: &MaterialTickReceipts,
         agency: impl IntoIterator<Item = &'a AgencyObservationFundingReceipt>,
     ) -> FlowResult<Self> {
+        let mut result = Self::purchases_for_period(before, after, receipts)?;
+        result.payroll(before, after, receipts, agency)?;
+        Ok(result)
+    }
+    pub(crate) fn purchases_for_period(
+        before: &MonetaryBook,
+        after: &MonetaryBook,
+        receipts: &MaterialTickReceipts,
+    ) -> FlowResult<Self> {
         let mut result = Self::default();
         for row in before.purchases().chain(after.purchases()) {
             bind(
@@ -62,7 +71,6 @@ impl Principals {
             )?;
         }
         result.retired_purchases(receipts)?;
-        result.payroll(before, after, receipts, agency)?;
         Ok(result)
     }
 

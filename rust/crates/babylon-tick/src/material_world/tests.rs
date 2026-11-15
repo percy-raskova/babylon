@@ -1,6 +1,7 @@
 use crate::material_world;
 use crate::material_world::monetary_receipt;
 use crate::material_world::workforce_receipt;
+use crate::material_world::MaterialReceiptFormat;
 use crate::material_world::MaterialWorldError;
 use crate::material_world::MAX_MATERIAL_TICK_RECEIPT_BYTES;
 use crate::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
@@ -324,7 +325,13 @@ fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
         material_world::bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),
         Err(MaterialWorldError::ByteLimit)
     );
-    assert_eq!(MAX_MATERIAL_TICK_RECEIPT_BYTES, 925_434_745);
+    let site = MaterialReceiptFormat::Site;
+    let company = MaterialReceiptFormat::Company;
+    assert_eq!(site.maximum_bytes(), 925_434_745);
+    assert_eq!(company.maximum_bytes(), 947_585_922);
+    assert_eq!(company.maximum_bytes(), MAX_MATERIAL_TICK_RECEIPT_BYTES);
+    assert_eq!(&company.widths()[site.widths().len()..], &[169, 308]);
+    assert_eq!(material_world::receipt_row_limit(38), 1_769_472);
     assert_eq!(
         material_world::bounded_bytes(
             MAX_MATERIAL_TICK_RECEIPT_BYTES + 1,
@@ -360,6 +367,8 @@ fn admission_control() -> (MaterialCatalog, MaterialCircuitState) {
         route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],

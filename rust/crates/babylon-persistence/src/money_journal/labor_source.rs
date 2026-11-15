@@ -1,7 +1,9 @@
 //! Recover prior carry from a marker-bound checkpoint, or replay canonical periods on a cache miss.
+use super::company_books::CompanyPublication;
 use super::labor_facts::LaborFacts;
 use super::{labor_replay, storage, JournalError, JournalPeriodSource};
 use crate::identity::CampaignId;
+use crate::observer_reader::ReceiptPurpose;
 use crate::observer_reader::{
     ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
 };
@@ -10,6 +12,7 @@ use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::Row;
 
 pub(super) struct LaborPublication {
+    pub company: Option<CompanyPublication>,
     pub facts: LaborFacts,
     pub checkpoint: RecordedLaborCheckpoint,
 }
@@ -92,15 +95,28 @@ pub(super) fn period(
         target,
         cursor,
         None,
+        ReceiptPurpose::Publication,
         |at, foundation, source, report, ledger| {
             let facts = LaborFacts::from_report(foundation, &report)
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?;
             let checkpoint = ledger
                 .checkpoint()
                 .map_err(ObserverEconomyError::RecordedLabor)?;
+            let company = CompanyPublication::derive(observer, at, foundation, &source).map_err(
+                |e| match e {
+                    JournalError::Observer(e) => e,
+                    JournalError::Authority => ObserverEconomyError::Authority,
+                    JournalError::Database => ObserverEconomyError::Database,
+                    _ => ObserverEconomyError::InvalidProjection,
+                },
+            )?;
             Ok((
                 at.journal_period(foundation, source)?,
-                LaborPublication { facts, checkpoint },
+                LaborPublication {
+                    company,
+                    facts,
+                    checkpoint,
+                },
             ))
         },
     )

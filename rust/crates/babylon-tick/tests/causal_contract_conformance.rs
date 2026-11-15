@@ -21,6 +21,7 @@ use babylon_bsl::reader;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_tick::company_graph;
 use babylon_tick::material_staffing::STAFFING_COMPOSITION_ID;
 use babylon_tick::ContentRuleSource;
 use babylon_tick::TickReport;
@@ -464,6 +465,7 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
         michigan.join("material-cycle.bsl"),
         michigan.join("organizer-cycle.bsl"),
         national.join("state-opponent-cycle.bsl"),
+        national.join("company-portfolio.bsl"),
     ]));
 
     let mut parsed_rule_count = 0_usize;
@@ -519,6 +521,10 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
     assert!(
         production_ids.insert(STAFFING_COMPOSITION_ID.to_owned()),
         "native staffing composition duplicates a production BSL rule ID"
+    );
+    assert!(
+        production_ids.insert(company_graph::EVIDENCE_RULE.to_owned()),
+        "native company evidence duplicates a production BSL rule ID"
     );
     assert_eq!(production_ids, governed_ids);
     let mut governed_effect_sets = governed_restricted_effects();

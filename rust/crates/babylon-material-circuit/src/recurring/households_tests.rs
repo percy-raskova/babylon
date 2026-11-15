@@ -223,6 +223,8 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
                 unit_id: u(),
                 hours_per_unit: 1,
             }],
+            company_portfolios: None,
+            company_payouts: vec![],
             maintenance_binding: None,
             aid_mandates: Vec::new(),
             household_time_policy: Vec::new(),

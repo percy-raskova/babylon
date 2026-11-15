@@ -1,5 +1,6 @@
 //! Financial reporting identities bound to a material campaign foundation.
 use crate::money_journal::MoneyEndpoint;
+use crate::national_economy::companies::CompanyKey;
 use crate::observer_reader::CommittedMaterialReceipts;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,6 +26,8 @@ pub struct CountyInternalPoint {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FlowAccount {
+    /// Controlling company of an admitted whole site or its own treasury.
+    pub company: Option<CompanyKey>,
     pub account: MoneyEndpoint,
     /// The operating county, foreign counterpart or dependency, including a representative hub.
     pub location: Option<String>,

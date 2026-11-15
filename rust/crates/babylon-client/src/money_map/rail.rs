@@ -1,20 +1,24 @@
 //! The selected county's bilateral connections share the inspector's focus group and scroll area.
 use super::compare::{self, Periods};
+use super::freight::{Command as FreightCommand, PageKey as FreightPageKey};
 use super::state::{
     self, Action, Connection, Diagram, Direction, Measure, MoneyRail, MoneyView, Observation, Page,
     Quantity, Scope, Status, Target,
 };
+use super::{company, freight_rail, grouping, industry};
 use crate::atlas::CountyAtlas;
 use crate::observer_focus::ObserverFocusTarget;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
 use crate::ui::{self, Interaction};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_material_circuit::CompanyId;
 use babylon_persistence::money_journal::{
-    FlowAmounts, FlowRow, LaborAmount, LaborDirections, LaborFlowRow,
+    FlowAmounts, FlowGroup, FlowRow, LaborAmount, LaborDirections, LaborFlowRow,
 };
 use bevy::a11y::AccessibilityNode;
 use bevy::prelude::*;
+use bevy::text::LineBreak;
 
 pub(super) fn amount(micros: &str) -> String {
     // A period sum may exceed one posting's currency range. Keep its complete decimal then.
@@ -89,7 +93,7 @@ fn labor_reading(labor: &LaborAmount) -> String {
         return known;
     }
     format!(
-        "{known} · unknown prior labor in {} of {} movements",
+        "{known}, unknown prior labor in {} of {} movements",
         labor.unknown_basis_movements, labor.movement_count
     )
 }
@@ -110,8 +114,8 @@ fn labor_figures(group: &LaborDirections) -> String {
     )
 }
 
-fn caption(row: &Connection, atlas: &CountyAtlas) -> String {
-    let peer = location(row.key.peer.as_deref(), atlas);
+fn caption(row: &Connection, group: FlowGroup, atlas: &CountyAtlas) -> String {
+    let peer = grouping::peer_label(group, row.key.peer.as_deref(), row.label.as_deref(), atlas);
     let amount = reading(&row.quantity);
     match row.key.direction {
         Direction::PaidTo if matches!(row.quantity, Quantity::Labor(_)) => {
@@ -119,6 +123,9 @@ fn caption(row: &Connection, atlas: &CountyAtlas) -> String {
         }
         Direction::PaidTo => format!("Paid to {peer}\n{amount}"),
         Direction::ReceivedFrom => format!("Received from {peer}\n{amount}"),
+        Direction::Internal if group != FlowGroup::Location => {
+            format!("Within county · from {peer}\n{amount}")
+        }
         Direction::Internal => format!("Within county\n{amount}"),
     }
 }
@@ -159,7 +166,10 @@ pub(super) fn control(
 ) {
     let mut focus = ObserverFocusTarget::action(Some(scope.context.clone()));
     focus.available = true;
-    let paired_control = matches!(action, Action::Diagram(_) | Action::Measure(_));
+    let paired_control = matches!(
+        action,
+        Action::Diagram(_) | Action::Measure(_) | Action::Group(_)
+    );
     let mut button = parent.spawn((
         ui::pressable(),
         focus,
@@ -201,6 +211,8 @@ pub(super) struct RailKey {
     offset: u64,
     status: Status,
     books: (Option<u64>, bool),
+    company: (Option<CompanyId>, bool, bool),
+    freight: Option<FreightPageKey>,
     active: bool,
 }
 
@@ -228,6 +240,8 @@ pub(super) fn paint(
         offset: view.offset,
         status: view.status,
         books: view.books.key(),
+        company: view.company.key(),
+        freight: view.freight.page_key(),
         active,
     };
     if previous.as_ref() == Some(&key) {
@@ -248,6 +262,19 @@ pub(super) fn paint(
 }
 
 fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, obs: &Observation) {
+    if view.freight.enabled {
+        if let Some(scope) = &view.scope {
+            freight_rail::panel(rail, view, scope, &obs.atlas);
+        }
+        return;
+    }
+    if view
+        .scope
+        .as_ref()
+        .is_some_and(|scope| company::panel(rail, view, scope))
+    {
+        return;
+    }
     rail.spawn(label(
         match view.scope.as_ref().map(|scope| scope.measure) {
             Some(Measure::Labor) => "Recorded labor flows",
@@ -266,51 +293,38 @@ fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, obs: &Observation
         ));
         return;
     };
-    rail.spawn(Node {
-        width: percent(100),
-        flex_direction: FlexDirection::Row,
-        ..default()
-    })
-    .with_children(|choices| {
-        control(
-            choices,
-            view,
-            scope,
-            Action::Measure(Measure::Money),
-            "Money".into(),
-        );
-        control(
-            choices,
-            view,
-            scope,
-            Action::Measure(Measure::Labor),
-            "Labor hours".into(),
-        );
-    });
-    rail.spawn(Node {
-        width: percent(100),
-        flex_direction: FlexDirection::Row,
-        ..default()
-    })
-    .with_children(|choices| {
-        control(
-            choices,
-            view,
-            scope,
-            Action::Diagram(Diagram::Map),
-            "Map".into(),
-        );
-        control(
-            choices,
-            view,
-            scope,
-            Action::Diagram(Diagram::Sankey),
-            "Sankey".into(),
-        );
-    });
+    for pair in [
+        [
+            (Action::Measure(Measure::Money), "Money"),
+            (Action::Measure(Measure::Labor), "Labor hours"),
+        ],
+        [
+            (Action::Diagram(Diagram::Map), "Map"),
+            (Action::Diagram(Diagram::Sankey), "Sankey"),
+        ],
+    ] {
+        rail.spawn(Node {
+            width: percent(100),
+            flex_direction: FlexDirection::Row,
+            ..default()
+        })
+        .with_children(|choices| {
+            for (action, name) in pair {
+                control(choices, view, scope, action, name.to_owned());
+            }
+        });
+    }
+    control(
+        rail,
+        view,
+        scope,
+        Action::Freight(FreightCommand::Open),
+        "Freight access".into(),
+    );
     if super::books::panel(rail, view, obs, scope) {
         return;
     }
+    grouping::controls(rail, view, scope);
     comparison_control(rail, view, scope);
     let notice = match view.status {
         Status::Opening => Some(
@@ -472,6 +486,12 @@ fn connection_controls(
     rail.spawn((
         label("", 15.0, theme::YELLOW, ObserverFontRole::Body),
         SelectionLabel,
+        TextLayout::linebreak(LineBreak::WordOrCharacter),
+        Node {
+            width: percent(100),
+            min_width: px(0),
+            ..default()
+        },
     ));
     control(
         rail,
@@ -480,17 +500,56 @@ fn connection_controls(
         Action::Follow,
         "Open counterparty county".into(),
     );
-    if view.rows.iter().any(|row| {
-        row.quantity.micros() != "0"
-            && (row.key.direction == Direction::Internal
-                || row
-                    .key
-                    .peer
-                    .as_deref()
-                    .and_then(|key| key.strip_prefix("county:"))
-                    .and_then(|peer| atlas.index_of_fips(peer))
-                    .is_some())
-    }) {
+    if scope.group == FlowGroup::Industry {
+        control(
+            rail,
+            view,
+            scope,
+            Action::IndustrySources,
+            "Show or hide industry sources".into(),
+        );
+        rail.spawn((
+            label("", 15.0, theme::PAPER, ObserverFontRole::Body),
+            SelectionLabel,
+            SourceLabel,
+            Node {
+                width: percent(100),
+                min_width: px(0),
+                ..default()
+            },
+        ));
+    }
+    if matches!(scope.group, FlowGroup::Company | FlowGroup::Counterparty) {
+        control(
+            rail,
+            view,
+            scope,
+            Action::CompanyAccounts(true),
+            "Company accounts".into(),
+        );
+    }
+    if scope.group != FlowGroup::Location {
+        for (delta, name) in [
+            (-1, "Previous locations"),
+            (1, "More locations"),
+            (0, "Retry location detail"),
+        ] {
+            control(rail, view, scope, Action::Geography(delta), name.into());
+        }
+    }
+    if scope.group != FlowGroup::Location
+        || view.rows.iter().any(|row| {
+            row.quantity.micros() != "0"
+                && (row.key.direction == Direction::Internal
+                    || row
+                        .key
+                        .peer
+                        .as_deref()
+                        .and_then(|key| key.strip_prefix("county:"))
+                        .and_then(|peer| atlas.index_of_fips(peer))
+                        .is_some())
+        })
+    {
         control(
             rail,
             view,
@@ -505,7 +564,7 @@ fn connection_controls(
             view,
             scope,
             Action::Select(row.key.clone()),
-            caption(row, atlas),
+            caption(row, scope.group, atlas),
         );
     }
 }
@@ -540,6 +599,9 @@ fn page_controls(
 #[derive(Component)]
 pub(super) struct SelectionLabel;
 
+#[derive(Component)]
+pub(super) struct SourceLabel;
+
 type MoneyControl = (
     &'static Target,
     Ref<'static, Interaction>,
@@ -547,54 +609,85 @@ type MoneyControl = (
     &'static mut BackgroundColor,
     &'static mut Node,
     &'static mut ObserverFocusTarget,
+    Option<&'static mut AccessibilityNode>,
 );
 
-pub(super) fn highlight(
-    view: Res<MoneyView>,
-    obs: Observation,
-    mut labels: Query<&mut Text, With<SelectionLabel>>,
-    mut targets: Query<MoneyControl>,
-) {
-    for mut text in &mut labels {
-        if !view.is_changed() && !text.is_added() {
-            continue;
-        }
-        let value = view.selected_row().map_or_else(String::new, |row| {
-            let peer = location(row.key.peer.as_deref(), &obs.atlas);
-            let county = view.scope.as_ref().map_or_else(String::new, |s| {
-                location(Some(&format!("county:{}", s.county)), &obs.atlas)
-            });
-            let (from, to) = match row.key.direction {
-                Direction::PaidTo => (county, peer),
-                Direction::ReceivedFrom => (peer, county),
-                Direction::Internal => (county.clone(), county),
-            };
-            let amount = reading(&row.quantity);
-            let mut text = row.key.peer.as_deref().map_or_else(
-                || format!("{from} → {to}\n{amount}"),
-                |key| format!("{from} → {to}\n{amount}\nLocation code {key}"),
-            );
-            if let (Some(scope), Some(page)) = (&view.scope, &view.page) {
-                if let Some(net) = compare::group_net(page, &row.key, scope.context.tick) {
-                    text.push_str("\nCounty net with this counterparty\n");
-                    text.push_str(&net);
-                }
-            }
-            text
-        });
-        text.set_if_neq(Text::new(value));
-    }
-    for (target, interaction, mut border, mut background, mut node, mut focus) in &mut targets {
-        if !view.is_changed()
-            && !interaction.is_changed()
-            && !node.is_added()
-            && !obs.ui.is_changed()
+fn selection_label(view: &MoneyView, atlas: &CountyAtlas) -> String {
+    let empty = || {
+        if view.diagram == Diagram::Map
+            && view
+                .scope
+                .as_ref()
+                .is_some_and(|s| s.group != FlowGroup::Location)
         {
-            continue;
+            "Select a connection to map its reported locations.".to_owned()
+        } else {
+            String::new()
         }
-        if target.action == Action::Follow {
-            let available = view
-                .selected_row()
+    };
+    view.selected_row().map_or_else(empty, |row| {
+        let group = view.scope.as_ref().map_or(FlowGroup::Location, |s| s.group);
+        let peer =
+            grouping::peer_label(group, row.key.peer.as_deref(), row.label.as_deref(), atlas);
+        let county = view.scope.as_ref().map_or_else(String::new, |s| {
+            location(Some(&format!("county:{}", s.county)), atlas)
+        });
+        let (from, to) = match row.key.direction {
+            Direction::PaidTo => (county, peer),
+            Direction::ReceivedFrom => (peer, county),
+            Direction::Internal if group != FlowGroup::Location => {
+                (format!("{peer} in {county}"), county)
+            }
+            Direction::Internal => (county.clone(), county),
+        };
+        let amount = reading(&row.quantity);
+        let mut text = row.key.peer.as_deref().map_or_else(
+            || format!("{from} → {to}\n{amount}"),
+            |key| {
+                format!(
+                    "{from} → {to}\n{amount}\n{} {key}",
+                    if group == FlowGroup::Location {
+                        "Location code"
+                    } else {
+                        "Group code"
+                    }
+                )
+            },
+        );
+        if let (Some(scope), Some(page)) = (&view.scope, &view.page) {
+            if let Some(net) = compare::group_net(page, &row.key, scope.context.tick) {
+                text.push_str("\nCounty net with this counterparty\n");
+                text.push_str(&net);
+            }
+        }
+        if group != FlowGroup::Location && view.diagram == Diagram::Map {
+            text.push('\n');
+            text.push_str(&view.geography.describe(atlas));
+        }
+        text
+    })
+}
+
+fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) -> Option<bool> {
+    match target.action {
+        Action::IndustrySources => Some(industry::selected(view).is_some()),
+        Action::CompanyAccounts(true) => Some(company::selected(view).is_some()),
+        Action::Geography(delta) => {
+            Some(view.diagram == Diagram::Map && view.geography.can_navigate(delta))
+        }
+        Action::Frame if target.scope.group != FlowGroup::Location => {
+            Some(view.geography.rows().iter().any(|r| {
+                r.quantity.micros() != "0"
+                    && (r.key.direction == Direction::Internal
+                        || r.key
+                            .peer
+                            .as_deref()
+                            .and_then(|k| k.strip_prefix("county:"))
+                            .is_some_and(|k| obs.atlas.index_of_fips(k).is_some()))
+            }))
+        }
+        Action::Follow => Some(
+            view.selected_row()
                 .and_then(|row| row.key.peer.as_deref())
                 .and_then(|key| key.strip_prefix("county:"))
                 .is_some_and(|geoid| {
@@ -603,7 +696,59 @@ pub(super) fn highlight(
                             .atlas
                             .index_of_fips(geoid)
                             .is_some_and(|idx| obs.counties.contains(idx))
-                });
+                }),
+        ),
+        _ => None,
+    }
+}
+
+fn control_selected(target: &Target, view: &MoneyView) -> bool {
+    (target.action == Action::IndustrySources && view.industry.expanded)
+        || matches!(&target.action,Action::Freight(command) if view.freight.chosen(command))
+        || matches!(&target.action,Action::Select(row) if view.selected_row().is_some_and(|active| &active.key == row))
+        || matches!(target.action,Action::Diagram(diagram) if diagram==view.diagram)
+        || matches!(target.action,Action::Group(group) if group==target.scope.group)
+        || matches!(target.action,Action::Measure(measure) if measure==target.scope.measure)
+}
+
+pub(super) fn highlight(
+    view: Res<MoneyView>,
+    obs: Observation,
+    mut labels: Query<(&mut Text, Has<SourceLabel>), With<SelectionLabel>>,
+    mut targets: Query<MoneyControl>,
+) {
+    for (mut text, source) in &mut labels {
+        if !view.is_changed() && !text.is_added() {
+            continue;
+        }
+        let value = if source {
+            if view.industry.expanded && industry::selected(&view).is_some() {
+                view.industry.describe()
+            } else {
+                String::new()
+            }
+        } else {
+            selection_label(&view, &obs.atlas)
+        };
+        text.set_if_neq(Text::new(value));
+    }
+    for (target, interaction, mut border, mut background, mut node, mut focus, accessibility) in
+        &mut targets
+    {
+        if !view.is_changed()
+            && !interaction.is_changed()
+            && !node.is_added()
+            && !obs.ui.is_changed()
+        {
+            continue;
+        }
+        if let (Action::IndustrySources, Some(mut node)) = (&target.action, accessibility) {
+            if node.is_expanded() != Some(view.industry.expanded) {
+                node.set_expanded(view.industry.expanded);
+            }
+        }
+        let conditional = control_availability(target, &view, &obs);
+        if let Some(available) = conditional {
             let enabled = available && obs.interactive();
             if focus.available != enabled {
                 focus.available = enabled;
@@ -617,14 +762,16 @@ pub(super) fn highlight(
                 node.display = display;
             }
         }
-        if target.action != Action::Follow && focus.available != obs.interactive() {
+        if conditional.is_none() && focus.available != obs.interactive() {
             focus.available = obs.interactive();
         }
-        let active = matches!(&target.action,Action::Select(row) if view.selected_row().is_some_and(|active| &active.key == row))
-            || matches!(target.action,Action::Diagram(diagram) if diagram==view.diagram)
-            || matches!(target.action,Action::Measure(measure) if measure==target.scope.measure);
+        let active = control_selected(target, &view);
         border.set_if_neq(BorderColor::all(if active {
             theme::YELLOW
+        } else if let (Action::Select(key), FlowGroup::Industry) =
+            (&target.action, target.scope.group)
+        {
+            grouping::industry_color(key.peer.as_deref())
         } else {
             theme::GRAY
         }));

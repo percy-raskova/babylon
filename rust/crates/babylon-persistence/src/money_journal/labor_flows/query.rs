@@ -130,6 +130,10 @@ impl Ranking<'_> {
                     &movements,
                     &operation,
                     &tick,
+                    &self.request.focus_group.unwrap_or(self.request.group).key(),
+                    &self.request.peer.as_ref().map(|p| p.group.key()),
+                    &self.request.peer.as_ref().and_then(|p| p.key.as_deref()),
+                    &self.request.peer.as_ref().map(|p| p.direction.key()),
                 ],
             )
             .map_err(|_| JournalError::Database)?;

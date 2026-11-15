@@ -6,10 +6,24 @@ mod tests;
 
 #[path = "money_map/books.rs"]
 mod books;
+#[path = "money_map/company.rs"]
+mod company;
 #[path = "money_map/compare.rs"]
 mod compare;
+#[path = "money_map/freight.rs"]
+mod freight;
+#[path = "money_map/freight_plot.rs"]
+mod freight_plot;
+#[path = "money_map/freight_rail.rs"]
+mod freight_rail;
+#[path = "money_map/geographic_legs.rs"]
+mod geographic_legs;
 #[path = "money_map/geometry.rs"]
 mod geometry;
+#[path = "money_map/grouping.rs"]
+mod grouping;
+#[path = "money_map/industry.rs"]
+mod industry;
 #[path = "money_map/rail.rs"]
 mod rail;
 
@@ -23,5 +37,5 @@ mod sankey_layout;
 #[path = "money_map/state.rs"]
 mod state;
 
-pub(crate) use state::MoneyRail;
-pub(super) use state::{install, MoneyView};
+pub(super) use state::install;
+pub(crate) use state::{MoneyRail, MoneyView};

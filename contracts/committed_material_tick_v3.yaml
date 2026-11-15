@@ -1,6 +1,6 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267, ADR268, ADR271, ADR272]
+authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267, ADR268, ADR271, ADR272, ADR297]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
 event_storage:
   physical_rows: Private campaign lookups, parent and closed typed field arrays, and one period manifest.
@@ -29,8 +29,12 @@ envelope:
     - {tag: 4, name: choice_receipt, codec: existing_choice_receipt_rows_v1}
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
-    - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v7_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v20_bytes}
+    - tag: 7
+      name: complete_material_register
+      count: 1
+      key: empty
+      payload: captured_material_world_register_v7_or_v8_bytes
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: captured_material_tick_receipts_v20_or_v21_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
@@ -43,8 +47,8 @@ envelope:
     graph_full_checkpoint: 67108864
     archive_dirty_receipt: 67108864
   graph_maximum_basis: Designed_headroom_for_measured_national_graph_batch_85346543_bytes
-  maximum_complete_bytes: 2395196976
-  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_925434745_plus_framing_183
+  maximum_complete_bytes: 2417348153
+  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_bounded_receipts_947585922_plus_framing_183
 receipts:
   version: 20
   domain: "babylon.material-tick-receipts.v20\0"
@@ -581,13 +585,27 @@ receipts:
     opening does not promise that every possible close fits this or the complete-byte ceiling.
   maximum_complete_bytes: 925434745
   maximum_complete_basis: closed_37_family_row_limits_times_codec_widths_plus_framing_380
+company_receipts:
+  version: 21
+  activation: The captured material catalog has company payout policies.
+  domain: "babylon.material-tick-receipts.v21\0"
+  family_count: 39
+  layout: Site format tags 1 through 37 precede the two mandatory company families.
+  company_account_tag: 5
+  families:
+    - {tag: 38, name: company_distributions, width: 169, maximum_rows: 131072}
+    - {tag: 39, name: company_basis_movements, width: 308, maximum_rows: 1769472}
+  maximum_complete_bytes: 947585922
+  maximum_complete_basis: V20 capacity plus the payout count times 169 and nine framing bytes.
+    Both company families share this aggregate budget. Each retains its independent row limit.
+  maximum_stored_bytes: 947588276
 persistence:
   material_rows: babylon_state.material_tick_v3
   register_storage: Compiled section layouts, typed lookup references, exact columns and opening-relative XOR.
     Variable seller offers retain ordinal pricing tags, literal numeric bytes and typed Site/Good/Unit references;
     normalization reuses the existing lookup prefix, falling back to literal storage for absent identities.
     The normalized candidate is retained only when its compressed frame is smaller than the literal frame.
-  receipt_storage: All thirty-seven families, exact columns and checked redundant numeric factors.
+  receipt_storage: All families from the captured receipt version, exact columns and checked redundant numeric factors.
   lookup_storage: One current period table shares the immutable opening seed and exact ordered recipe-or-literal
     state/receipt additions in the same transaction.
   lookup_descriptors: Authenticate bounded descriptor bytes separately; reconstruct exact logical typed additions from
@@ -602,6 +620,7 @@ persistence:
     state: "babylon.state-storage.v4\0"
     period_lookup: "BabylonPeriodLookupV3\0"
     receipt: "BabylonReceiptStorageV3\0"
+    company_receipt: "BabylonReceiptStorageV4\0"
   canonical_reconstruction: Shared runtime and full-observer decoder verifies original bytes before envelope checks.
   checkpoint_storage:
     relation: babylon_state.checkpoint_section_v1

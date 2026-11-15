@@ -45,6 +45,8 @@ fn receipts(period: u64) -> MaterialTickReceipts {
         public_budgets: vec![],
         taxes: vec![],
         distributions: vec![],
+        company_basis: vec![],
+        company_distributions: vec![],
         contributions: vec![],
         service_performance: vec![],
         household_services: vec![],

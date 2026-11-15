@@ -10,6 +10,10 @@ pub enum FlowGroup {
     Location,
     Catchment,
     Industry,
+    /// Whole-site company or treasury. An unrepresented principal has a missing company.
+    Company,
+    /// Represented company when captured, otherwise the actual typed account.
+    Counterparty,
 }
 impl FlowGroup {
     #[must_use]
@@ -19,6 +23,8 @@ impl FlowGroup {
             Self::Location => "location",
             Self::Catchment => "catchment",
             Self::Industry => "industry",
+            Self::Company => "company",
+            Self::Counterparty => "counterparty",
         }
     }
 }
@@ -63,12 +69,41 @@ impl FlowViewport {
     }
 }
 
+/// Transfer direction as seen by the ranked counterparty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowDirection {
+    Inbound,
+    Outbound,
+    Within,
+}
+impl FlowDirection {
+    pub(super) const fn key(self) -> &'static str {
+        match self {
+            Self::Inbound => "inbound",
+            Self::Outbound => "outbound",
+            Self::Within => "within",
+        }
+    }
+}
+/// Restrict rankings to one side of one aggregate connection; a missing peer is a real group.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FlowPeer {
+    pub group: FlowGroup,
+    pub key: Option<String>,
+    pub direction: FlowDirection,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FlowQuery {
     pub window: PeriodWindow,
     pub comparison: Option<PeriodWindow>,
     pub group: FlowGroup,
-    /// When present, display counterparties of this grouping key.
+    pub peer: Option<FlowPeer>,
+    /// Dimension of the selected endpoint. None selects the ranked dimension.
+    pub focus_group: Option<FlowGroup>,
+    /// When present, rank counterparties of this key. Transfers within the focus count
+    /// once as internal, under their payer or source when peer keys differ.
     pub focus: Option<String>,
     /// Zero-based rank of the first group on this page of twenty.
     pub offset: u64,

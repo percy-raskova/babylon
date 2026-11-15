@@ -10,6 +10,7 @@ use super::material_world;
 use super::phase_order;
 use super::replay_session;
 use super::world_hash;
+use crate::material_replay::MaterialBaseError;
 use babylon_practice_contract::OrganizerChoice;
 use babylon_practice_contract::OrganizerOutcome;
 
@@ -2150,12 +2151,11 @@ where
                 enums: &prepared.enums,
                 resolver,
             };
-            let (candidate, effects) =
-                inputs
-                    .prepare(&mut working_graph, context, tick)
-                    .map_err(|error| {
-                        TickTransactionError::Replay(ReplayTickError::MaterialBase(error))
-                    })?;
+            let close = inputs
+                .prepare(&mut working_graph, context, tick)
+                .map_err(|error| {
+                    TickTransactionError::Replay(ReplayTickError::MaterialBase(error))
+                })?;
             audit_receipts.push(AuditReceipt {
                 rule_id: id.clone(),
                 role: loaded.contract.role,
@@ -2163,17 +2163,17 @@ where
                 ordinal: 0,
                 effect: babylon_bsl::causal_contract::EffectSignature::MaterialCycle,
             });
-            if let Some(effects) = effects {
-                working_sink.events.extend(
-                    effects
-                        .committed_events()
-                        .iter()
-                        .map(CommittedEvent::sink_record),
-                );
-                audit_receipts.extend_from_slice(effects.audit_receipts());
-                committed_events.extend_from_slice(effects.committed_events());
-            }
-            material = Some(candidate);
+            working_sink.events.extend(
+                close
+                    .staffing
+                    .committed_events()
+                    .iter()
+                    .map(CommittedEvent::sink_record),
+            );
+            audit_receipts.extend_from_slice(close.staffing.audit_receipts());
+            committed_events.extend_from_slice(close.staffing.committed_events());
+            audit_receipts.extend(close.company_writes);
+            material = Some(close.world);
             per_rule_considered.push((id.clone(), 1));
             per_rule_fired.push((id.clone(), 1));
             continue;
@@ -2615,6 +2615,23 @@ where
         audit_receipts.append(&mut rule_receipts);
         per_rule_considered.push((id.clone(), outcome.considered));
         per_rule_fired.push((id.clone(), outcome.fired));
+    }
+    if let Some(register) = material
+        .as_ref()
+        .and_then(|candidate| candidate.register().company_portfolios())
+    {
+        let context = material_staffing::StaffingEffectContext {
+            types: &prepared.types,
+            enums: &prepared.enums,
+            resolver: identity.stable_resolver(),
+        };
+        crate::material_replay::portfolios::selections(&working_graph, context, register).map_err(
+            |error| {
+                TickTransactionError::Replay(ReplayTickError::MaterialBase(
+                    MaterialBaseError::Company(error),
+                ))
+            },
+        )?;
     }
     if organizer_opening.is_some() && !organizer_completed {
         return Err(transaction_error(

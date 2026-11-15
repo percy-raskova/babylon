@@ -10,19 +10,39 @@ use crate::storage_compression;
 use babylon_kernel::content_digest;
 use babylon_tick::material_world;
 use babylon_tick::material_world::MaterialWorldRegister;
+#[cfg(test)]
+use babylon_tick::material_world::RECEIPT_ROW_BYTES;
 use babylon_tick::material_world::{
-    MaterialTickReceipts, MAX_MATERIAL_TICK_RECEIPT_BYTES, RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
+    MaterialReceiptFormat, MaterialTickReceipts, MAX_MATERIAL_TICK_RECEIPT_BYTES,
 };
 #[cfg(test)]
 use std::cell::Cell;
 use std::result::Result as StdResult;
 
 pub(crate) const DOMAIN: &[u8] = b"BabylonReceiptStorageV3\0";
+const COMPANY_DOMAIN: &[u8] = b"BabylonReceiptStorageV4\0";
+fn storage_domain(format: MaterialReceiptFormat) -> &'static [u8] {
+    match format {
+        MaterialReceiptFormat::Site => DOMAIN,
+        MaterialReceiptFormat::Company => COMPANY_DOMAIN,
+    }
+}
 
+#[cfg(test)]
 pub(crate) const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v20\0";
 
-pub(crate) const MAX_RECEIPT_STORAGE_BYTES: usize =
-    MAX_MATERIAL_TICK_RECEIPT_BYTES + DOMAIN.len() + 88 + RECEIPT_FAMILY_COUNT * 59;
+// PostgreSQL bounds the entire retained package, even when a company close
+// uses both extra families. The canonical aggregate already counts their headers.
+pub(crate) const MAX_RECEIPT_STORAGE_BYTES: usize = 947_588_276;
+
+const fn storage_budget(format: MaterialReceiptFormat) -> usize {
+    match format {
+        MaterialReceiptFormat::Site => {
+            format.maximum_bytes() + DOMAIN.len() + 88 + format.widths().len() * 59
+        }
+        MaterialReceiptFormat::Company => MAX_RECEIPT_STORAGE_BYTES,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -157,7 +177,11 @@ pub(crate) fn unpack_row(
     prefix: usize,
 ) -> Result<Vec<u8>> {
     let fields = layout::fields(tag)?;
-    let mut out = buffer(RECEIPT_ROW_BYTES[usize::from(tag) - 1])?;
+    let width = *MaterialReceiptFormat::Company
+        .widths()
+        .get(usize::from(tag).checked_sub(1).ok_or(Error::Family)?)
+        .ok_or(Error::Family)?;
+    let mut out = buffer(width)?;
     let mut pos = 0;
     let mut cursor = Cursor { bytes, pos: 0 };
     for f in fields {
@@ -177,7 +201,7 @@ pub(crate) fn unpack_row(
     }
     out.extend_from_slice(cursor.take(bytes.len() - cursor.pos)?);
     cursor.done()?;
-    if out.len() != RECEIPT_ROW_BYTES[usize::from(tag) - 1] {
+    if out.len() != width {
         return Err(Error::Width);
     }
     Ok(out)
@@ -318,10 +342,9 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
         bytes: canonical,
         pos: 0,
     };
-    if cursor.take(CANONICAL_DOMAIN.len())? != CANONICAL_DOMAIN {
-        return Err(Error::Domain);
-    }
-    if cursor.take(4)? != 20_u32.to_be_bytes() {
+    let format = MaterialReceiptFormat::identify(canonical).ok_or(Error::Domain)?;
+    cursor.take(format.domain().len())?;
+    if cursor.take(4)? != format.version().to_be_bytes() {
         return Err(Error::Domain);
     }
     let tick = cursor.u64()?;
@@ -333,13 +356,13 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
     entries.extend_from_slice(lookup.entries());
     let mut staged = TypedLookup::from_entries(entries).map_err(Error::Lookup)?;
     let mut out = buffer(canonical.len().min(1_048_576))?;
-    out.extend_from_slice(DOMAIN);
+    out.extend_from_slice(storage_domain(format));
     out.extend_from_slice(&(canonical.len() as u64).to_be_bytes());
     out.extend_from_slice(&content_digest::sha256_of(canonical));
     out.extend_from_slice(&tick.to_be_bytes());
     let prefix_offset = out.len();
     out.extend_from_slice(&[0; 40]);
-    for (index, &canonical_width) in RECEIPT_ROW_BYTES.iter().enumerate() {
+    for (index, &canonical_width) in format.widths().iter().enumerate() {
         let tag = u8::try_from(index + 1).map_err(|_| Error::Family)?;
         if cursor.byte()? != tag {
             return Err(Error::Family);
@@ -387,11 +410,15 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
         .map_err(|_| Error::LookupPrefix)?;
     out[prefix_offset..prefix_offset + 8].copy_from_slice(&(count as u64).to_be_bytes());
     out[prefix_offset + 8..prefix_offset + 40].copy_from_slice(&digest);
+    if out.len() > storage_budget(format) {
+        return Err(Error::Count);
+    }
     *lookup = staged;
     Ok(out)
 }
 
 pub(crate) struct Header {
+    format: MaterialReceiptFormat,
     length: usize,
     expected: [u8; 32],
     tick: u64,
@@ -399,19 +426,16 @@ pub(crate) struct Header {
 }
 
 pub(crate) fn decode_header(cursor: &mut Cursor<'_>, lookup: &TypedLookup) -> Result<Header> {
-    let overhead = DOMAIN.len() + 88 + RECEIPT_FAMILY_COUNT * 59;
-    if cursor.bytes.len()
-        > MAX_MATERIAL_TICK_RECEIPT_BYTES
-            .checked_add(overhead)
-            .ok_or(Error::Arithmetic)?
-    {
-        return Err(Error::Count);
-    }
-    if cursor.take(DOMAIN.len())? != DOMAIN {
+    let domain = cursor.take(DOMAIN.len())?;
+    let format = if domain == DOMAIN {
+        MaterialReceiptFormat::Site
+    } else if domain == COMPANY_DOMAIN {
+        MaterialReceiptFormat::Company
+    } else {
         return Err(Error::Domain);
-    }
+    };
     let length = usize::try_from(cursor.u64()?).map_err(|_| Error::Count)?;
-    if length > MAX_MATERIAL_TICK_RECEIPT_BYTES {
+    if cursor.bytes.len() > storage_budget(format) || length > format.maximum_bytes() {
         return Err(Error::Count);
     }
     let expected: [u8; 32] = cursor.take(32)?.try_into().map_err(|_| Error::Truncated)?;
@@ -429,6 +453,7 @@ pub(crate) fn decode_header(cursor: &mut Cursor<'_>, lookup: &TypedLookup) -> Re
         return Err(Error::LookupPrefix);
     }
     Ok(Header {
+        format,
         length,
         expected,
         tick,
@@ -464,16 +489,17 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
         pos: 0,
     };
     let Header {
+        format,
         length,
         expected,
         tick,
         prefix,
     } = decode_header(&mut cursor, lookup)?;
     let mut out = buffer(length)?;
-    out.extend_from_slice(CANONICAL_DOMAIN);
-    out.extend_from_slice(&20_u32.to_be_bytes());
+    out.extend_from_slice(format.domain());
+    out.extend_from_slice(&format.version().to_be_bytes());
     out.extend_from_slice(&tick.to_be_bytes());
-    for (index, &canonical_width) in RECEIPT_ROW_BYTES.iter().enumerate() {
+    for (index, &canonical_width) in format.widths().iter().enumerate() {
         let tag = u8::try_from(index + 1).map_err(|_| Error::Family)?;
         if cursor.byte()? != tag {
             return Err(Error::Family);
@@ -503,7 +529,7 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
         let n = family_length(tag, mode, width, amount_count, count, packed_width)?;
         let digest: [u8; 32] = cursor.take(32)?.try_into().map_err(|_| Error::Truncated)?;
         let payload_len = usize::try_from(cursor.u64()?).map_err(|_| Error::Count)?;
-        if payload_len > MAX_MATERIAL_TICK_RECEIPT_BYTES {
+        if payload_len > format.maximum_bytes() {
             return Err(Error::Count);
         }
         let payload = cursor.take(payload_len)?;
@@ -514,13 +540,8 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
                 }
                 payload.to_vec()
             }
-            1 => storage_compression::decompress_exact(
-                payload,
-                n,
-                digest,
-                MAX_MATERIAL_TICK_RECEIPT_BYTES,
-            )
-            .map_err(Error::Compression)?,
+            1 => storage_compression::decompress_exact(payload, n, digest, format.maximum_bytes())
+                .map_err(Error::Compression)?,
             _ => return Err(Error::Mode),
         };
         let (row_mode, row_width, rows) = if mode == 2 {
@@ -559,6 +580,42 @@ mod tests {
         Ok(decode_admitted(encoded, lookup)?.0)
     }
 
+    #[test]
+    fn company_receipts_round_trip_the_wide_weight_and_refuse_altered_payments() {
+        let format = MaterialReceiptFormat::Company;
+        let mut bytes = format.domain().to_vec();
+        bytes.extend_from_slice(&format.version().to_be_bytes());
+        bytes.extend_from_slice(&1_u64.to_be_bytes());
+        for tag in 1..=37 {
+            bytes.push(tag);
+            bytes.extend_from_slice(&0_u64.to_be_bytes());
+        }
+        bytes.push(38);
+        bytes.extend_from_slice(&1_u64.to_be_bytes());
+        bytes.extend_from_slice(&1_u64.to_be_bytes());
+        bytes.extend_from_slice(&[5; 32]);
+        bytes.push(2);
+        bytes.extend_from_slice(&[5; 32]);
+        let weight = u128::from(u64::MAX) + 17;
+        bytes.extend_from_slice(&weight.to_be_bytes());
+        bytes.extend_from_slice(&weight.to_be_bytes());
+        bytes.extend_from_slice(&[0; 64]);
+        let paid_last = bytes.len() - 1;
+        bytes.push(39);
+        bytes.extend_from_slice(&0_u64.to_be_bytes());
+        let mut lookup = TypedLookup::default();
+        let stored = encode_raw(&bytes, &mut lookup).expect("valid company receipt");
+        assert!(stored.starts_with(COMPANY_DOMAIN));
+        let (restored, receipts) = decode_admitted(&stored, &lookup).expect("reopen typed version");
+        assert_eq!(restored, bytes);
+        assert_eq!(receipts.company_distributions[0].weight, weight);
+        assert!(lookup
+            .entries()
+            .iter()
+            .any(|r| r.kind == IdentityKind::CompanyAccount));
+        bytes[paid_last] = 1;
+        assert!(encode_raw(&bytes, &mut lookup).is_err());
+    }
     fn empty_receipts() -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
         bytes.extend_from_slice(&20_u32.to_be_bytes());

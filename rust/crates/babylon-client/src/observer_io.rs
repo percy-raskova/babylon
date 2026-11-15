@@ -14,11 +14,12 @@ mod read_owner_tests;
 mod runtime;
 
 use runtime::PreparedObservation;
-pub(crate) use runtime::{campaign_preset, RuntimePipe, RuntimeSendError, LAUNCHER_REQUIRED};
+pub(crate) use runtime::{
+    campaign_preset, ObservationCache, RuntimePipe, RuntimeSendError, LAUNCHER_REQUIRED,
+};
 #[cfg(test)]
 use runtime::{
-    ObservationCache, ObservationCacheKey, ObservationRead, PendingObservation, PlaybackClock,
-    ShutdownProgress,
+    ObservationCacheKey, ObservationRead, PendingObservation, PlaybackClock, ShutdownProgress,
 };
 pub use runtime::{ObserverIoPlugin, ObserverSet};
 

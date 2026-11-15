@@ -11,7 +11,7 @@ pub use history::{ProductionHistoryTarget, ProductionOutputPoint};
 #[path = "observer_reader/observer.rs"]
 mod observer;
 
-pub(crate) use observer::{confine_authority, MATERIAL_READ_TRANSACTION_OPTIONS};
+pub(crate) use observer::{confine_authority, ReceiptPurpose, MATERIAL_READ_TRANSACTION_OPTIONS};
 pub use observer::{
     provision_observer_role, CampaignSummary, CommittedMaterialObservation,
     CommittedMaterialReceipts, ObserverCountyEconomy, ObserverEconomyError, ObserverEconomyReader,

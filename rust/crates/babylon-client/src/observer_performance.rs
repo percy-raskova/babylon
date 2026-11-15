@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::observer::{ObserverSession, Perspective, SessionPhase};
+use crate::observer_map3d::money_map::MoneyView;
 use crate::observer_ui::{ObserverUiState, ObserverViewport};
 use crate::organizer::OrganizerClient;
 use crate::organizer::OrganizerInspector;
@@ -15,8 +16,17 @@ const SAMPLE_COUNT: usize = 300;
 const SETTLE_SECONDS: f64 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RenderMode {
+pub(crate) enum RenderMode {
     Map3d,
+    MoneyMap,
+    MoneySankey,
+    LaborMap,
+    LaborSankey,
+    FreightMap,
+    FreightNetwork,
+    CountyAccounts,
+    CompanyParent,
+    CompanyConsolidated,
     Production3d,
     Production2d,
     OrganizerDecision,
@@ -33,6 +43,15 @@ impl RenderMode {
     fn label(self) -> &'static str {
         match self {
             Self::Map3d => "map3d",
+            Self::MoneyMap => "money-map",
+            Self::MoneySankey => "money-sankey",
+            Self::LaborMap => "labor-map",
+            Self::LaborSankey => "labor-sankey",
+            Self::FreightMap => "freight-map",
+            Self::FreightNetwork => "freight-network",
+            Self::CountyAccounts => "county-accounts",
+            Self::CompanyParent => "company-parent",
+            Self::CompanyConsolidated => "company-consolidated",
             Self::Production3d => "production3d",
             Self::Production2d => "production2d",
             Self::OrganizerDecision => "organizer-decision",
@@ -165,6 +184,7 @@ impl FrameSampler {
 fn sample_frames(
     time: Res<Time<Real>>,
     view: Res<PrimaryView>,
+    money: Option<Res<MoneyView>>,
     navigation: Res<ProductionNavigation>,
     organizer: Option<Res<OrganizerClient>>,
     session: Res<ObserverSession>,
@@ -201,7 +221,9 @@ fn sample_frames(
                     OrganizerInspector::Practices => RenderMode::OrganizerPractices,
                     OrganizerInspector::Notes => RenderMode::OrganizerNotes,
                 },
-                (PrimaryView::Map, _) => RenderMode::Map3d,
+                (PrimaryView::Map, _) => money
+                    .as_deref()
+                    .map_or(RenderMode::Map3d, MoneyView::render_mode),
                 (PrimaryView::Production, false) => RenderMode::Production3d,
                 (PrimaryView::Production, true) => RenderMode::Production2d,
             },

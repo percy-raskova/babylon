@@ -38,6 +38,8 @@ fn competition() -> (MaterialCatalog, MaterialCircuitState) {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
+                company_portfolios: None,
+                company_payouts: vec![],
                 maintenance_binding: None,
                 site_logistics_nodes: Vec::new(),
                 process_outputs: Vec::new(),

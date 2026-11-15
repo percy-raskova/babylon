@@ -28,6 +28,7 @@ pub enum IdentityKind {
     LogisticsNode,
     Corridor,
     AidMandate = 20,
+    CompanyAccount = 21,
 }
 impl IdentityKind {
     /// Decode the closed storage identity tag.
@@ -55,6 +56,7 @@ impl IdentityKind {
             18 => Ok(Self::LogisticsNode),
             19 => Ok(Self::Corridor),
             20 => Ok(Self::AidMandate),
+            21 => Ok(Self::CompanyAccount),
             _ => Err(StorageError::IdentityKind),
         }
     }

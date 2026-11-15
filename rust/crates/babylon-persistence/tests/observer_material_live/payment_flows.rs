@@ -1,9 +1,11 @@
 //! Real full-observer settlement, geographic scope and rank reconciliation.
+use babylon_material_circuit::CompanyId;
+use babylon_persistence::company_statements::CompanyPeriodReport;
 use babylon_persistence::economic_flows::EconomicPaymentPeriod;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
-    FlowAmounts, FlowGroup, FlowPage, FlowQuery, FlowViewport, JournalError, MoneyMovement,
-    MoneyPurpose, PeriodWindow,
+    FlowAmounts, FlowDirection, FlowGroup, FlowPage, FlowPeer, FlowQuery, FlowViewport,
+    JournalError, MoneyMovement, MoneyPurpose, PeriodWindow,
 };
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use babylon_persistence::qualification_audit::trade;
@@ -15,6 +17,8 @@ pub(super) fn query(group: FlowGroup) -> FlowQuery {
         group,
         window: PeriodWindow { first: 1, last: 1 },
         comparison: None,
+        peer: None,
+        focus_group: None,
         focus: None,
         offset: 0,
         viewport_4269: None,
@@ -22,6 +26,10 @@ pub(super) fn query(group: FlowGroup) -> FlowQuery {
 }
 
 pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId) {
+    assert_eq!(
+        observer.published_company_period_statements(campaign, 1),
+        Err(JournalError::Authority)
+    );
     assert_eq!(
         observer.economic_payment_flows(campaign, &query(FlowGroup::Location)),
         Err(JournalError::Authority)
@@ -264,6 +272,28 @@ pub(super) fn national(
         micros(&page.total.current.inflow_micros) + micros(&page.total.current.internal_micros)
     );
     reconcile(&page);
+    for group in [FlowGroup::Company, FlowGroup::Counterparty] {
+        let grouped = observer
+            .economic_payment_flows(campaign, &query(group))
+            .expect("company-aware cash endpoints");
+        reconcile(&grouped);
+        assert_eq!(
+            gross,
+            micros(&grouped.total.current.inflow_micros)
+                + micros(&grouped.total.current.internal_micros)
+        );
+    }
+    check_company_dimensions(&source, &mut sql, campaign);
+    let stored = observer
+        .published_company_period_statements(campaign, 1)
+        .expect("durable parent and consolidated books");
+    let replayed = observer
+        .company_period_statements(campaign, 1)
+        .expect("independent authenticated replay");
+    assert_eq!(stored, replayed);
+    assert_eq!(stored.companies.len(), 99);
+    check_selected_company(observer, &mut sql, campaign, &stored);
+    check_county_counterparties(&source, moves, observer, campaign);
     q.offset = 20;
     let next = observer
         .economic_payment_flows(campaign, &q)
@@ -284,6 +314,42 @@ pub(super) fn national(
     assert_eq!(
         observer.economic_payment_flows(campaign, &missing),
         Err(JournalError::CoverageAbsent)
+    );
+}
+
+fn check_selected_company(
+    observer: &ObserverEconomyReader,
+    sql: &mut Client,
+    campaign: CampaignId,
+    stored: &CompanyPeriodReport,
+) {
+    let first = &stored.companies[0];
+    let company_bytes: Vec<u8> = sql
+        .query_one("SELECT decode($1,'hex')", &[&first.company])
+        .expect("actual company identity")
+        .get(0);
+    let company = CompanyId::from_bytes(company_bytes.try_into().expect("company identifier"));
+    let books = observer
+        .company_accounts_for_frame(
+            campaign,
+            1,
+            company,
+            &stored.foundation_sha256,
+            &stored.tick_content_hash,
+        )
+        .expect("selected parent and consolidated books");
+    assert_eq!(books.parent, first.parent);
+    assert_eq!(books.consolidated, first.consolidated);
+    assert_eq!(books.eliminations, first.eliminations);
+    assert_eq!(
+        observer.company_accounts_for_frame(
+            campaign,
+            1,
+            company,
+            &stored.foundation_sha256,
+            &"0".repeat(64)
+        ),
+        Err(JournalError::SourceChanged)
     );
 }
 
@@ -355,4 +421,213 @@ pub(super) fn comparison(observer: &ObserverEconomyReader, campaign: CampaignId)
         previous - current
     );
     reconcile(&report);
+}
+
+fn check_company_dimensions(
+    source: &EconomicPaymentPeriod,
+    sql: &mut Client,
+    campaign: CampaignId,
+) {
+    let mut expected = BTreeMap::new();
+    for account in &source.accounts {
+        let company = account
+            .company
+            .map(|key| (key.id().as_bytes().to_vec(), key.label()));
+        expected.insert(
+            (
+                account.account.kind.as_str().to_owned(),
+                account.account.id.to_vec(),
+            ),
+            company,
+        );
+    }
+    for row in sql.query("SELECT account_kind,account_id,company_id,company_label FROM public.v_observer_economic_flow_account_v2 WHERE campaign_id=$1",&[campaign.as_uuid()]).expect("authenticated account dimensions"){
+        let key=(row.get::<_,String>(0),row.get::<_,Vec<u8>>(1));
+        let group=row.get::<_,Option<Vec<u8>>>(2).zip(row.get::<_,Option<String>>(3));
+        if key.0=="household_cash"||key.0=="public_cash"||key.0=="organization_cash"{assert!(group.is_none());}
+        assert_eq!(expected.remove(&key),Some(group));
+    }
+    assert!(expected.is_empty());
+    let checks=sql.query_one("WITH c AS (SELECT * FROM public.v_observer_economic_company_v1 WHERE campaign_id=$1),
+        m AS (SELECT company_id,count(*) AS sites,sum(opening_employed) AS employed,sum(swept_micros) AS swept,
+            sum(original_capital_micros) AS capital FROM public.v_observer_economic_company_member_v1 WHERE campaign_id=$1 GROUP BY company_id),
+        claims AS (SELECT * FROM public.v_observer_economic_company_claim_v1 WHERE campaign_id=$1),
+        sources AS (SELECT s.company_id,s.beneficiary_kind,s.beneficiary_id,
+            sum(s.capital_micros*s.original_shares*div(c.common_denominator,s.site_total_shares)) AS weight
+            FROM public.v_observer_economic_company_claim_source_v1 s JOIN c USING(company_id)
+            WHERE s.campaign_id=$1 GROUP BY s.company_id,s.beneficiary_kind,s.beneficiary_id)
+        SELECT (SELECT count(*) FROM c),
+            NOT EXISTS(SELECT FROM c LEFT JOIN m USING(company_id)
+            WHERE (c.sites,c.employed,c.opening_cash_micros,c.original_capital_micros)
+                IS DISTINCT FROM (m.sites,m.employed,m.swept,m.capital)),
+            NOT EXISTS(SELECT FROM sources s FULL JOIN claims b USING(company_id,beneficiary_kind,beneficiary_id)
+            WHERE s.weight IS DISTINCT FROM b.weight),
+            NOT EXISTS(SELECT FROM c WHERE c.total_weight IS DISTINCT FROM
+                (SELECT sum(claims.weight) FROM claims WHERE claims.company_id=c.company_id))",
+        &[campaign.as_uuid()]).expect("source claims recombine with exact integer arithmetic");
+    assert_eq!(checks.get::<_, i64>(0), 99);
+    assert!(checks.get::<_, bool>(1) && checks.get::<_, bool>(2) && checks.get::<_, bool>(3));
+}
+
+fn directional_micros(amounts: &FlowAmounts) -> [i128; 3] {
+    [
+        micros(&amounts.inflow_micros),
+        micros(&amounts.outflow_micros),
+        micros(&amounts.internal_micros),
+    ]
+}
+
+fn check_county_counterparties(
+    source: &EconomicPaymentPeriod,
+    moves: &[MoneyMovement],
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+) {
+    let accounts: BTreeMap<_, _> = source
+        .accounts
+        .iter()
+        .map(|a| ((a.account.kind.as_str(), a.account.id), a))
+        .collect();
+    let mut expected = BTreeMap::<String, [i128; 3]>::new();
+    let mut places = BTreeMap::new();
+    let home = Some("county:26163");
+    for s in &source.settlements {
+        let payer = accounts[&(s.payer.kind.as_str(), s.payer.id)];
+        let recipient = accounts[&(s.recipient.kind.as_str(), s.recipient.id)];
+        let (peer, dir) = match (
+            payer.location.as_deref() == home,
+            recipient.location.as_deref() == home,
+        ) {
+            (true, true) => (payer, 2),
+            (true, false) => (recipient, 0),
+            (false, true) => (payer, 1),
+            (false, false) => continue,
+        };
+        let key = peer.company.map_or_else(
+            || {
+                format!(
+                    "{}:{}",
+                    peer.account.kind.as_str(),
+                    trade::hex(&peer.account.id)
+                )
+            },
+            |c| format!("company:{}", trade::hex(&c.identity())),
+        );
+        let n = micros(&moves[usize::try_from(s.ordinal).expect("ordinal")].amount_micros);
+        *places
+            .entry((key.clone(), dir, peer.location.clone()))
+            .or_insert(0_i128) += n;
+        expected.entry(key).or_default()[dir] += n;
+    }
+    let scoped = FlowQuery {
+        focus: home.map(str::to_owned),
+        focus_group: Some(FlowGroup::Location),
+        ..query(FlowGroup::Counterparty)
+    };
+    let page = observer
+        .economic_payment_flows(campaign, &scoped)
+        .expect("rank counterparties of Wayne");
+    let total = expected
+        .values()
+        .fold([0; 3], |[i, o, t], v| [i + v[0], o + v[1], t + v[2]]);
+    assert_eq!(directional_micros(&page.total.current), total);
+    assert!(total[2] > 0);
+    assert!(expected.keys().any(|k| k.starts_with("company:")));
+    assert!(expected.keys().any(|k| k.starts_with("household_cash:")));
+    assert_eq!(page.total.groups, expected.len() as u64);
+    for row in &page.groups {
+        assert_eq!(
+            directional_micros(&row.current),
+            expected[row.key.as_ref().expect("actual peer")]
+        );
+    }
+    let selected = page
+        .groups
+        .iter()
+        .find(|r| r.key.as_deref().is_some_and(|k| k.starts_with("company:")))
+        .expect("company counterparty");
+    for (index, direction) in [
+        FlowDirection::Inbound,
+        FlowDirection::Outbound,
+        FlowDirection::Within,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let constrained = FlowQuery {
+            group: FlowGroup::Location,
+            peer: Some(FlowPeer {
+                group: FlowGroup::Counterparty,
+                key: selected.key.clone(),
+                direction,
+            }),
+            ..scoped.clone()
+        };
+        let legs = observer
+            .economic_payment_flows(campaign, &constrained)
+            .expect("actual geographic legs");
+        let exact = directional_micros(&selected.current)[index];
+        let mut wanted = [0; 3];
+        wanted[index] = exact;
+        assert_eq!(directional_micros(&legs.total.current), wanted);
+        let key = selected.key.as_ref().expect("captured company");
+        for location in &legs.groups {
+            wanted[index] = places[&(key.clone(), index, location.key.clone())];
+            assert_eq!(directional_micros(&location.current), wanted);
+        }
+    }
+    reconcile(&page);
+}
+
+use babylon_persistence::money_journal::MoneyJournalWriter;
+
+pub(super) fn check_company_rebuild(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+) {
+    let expected = observer
+        .published_company_period_statements(campaign, 2)
+        .expect("prior committed company statements");
+    let original:Vec<u8>=owner.query_one("SELECT checkpoint_bytes FROM babylon_state.company_accounting_checkpoint_v1 WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid()]).expect("prior basis seed").get(0);
+    owner.execute("UPDATE babylon_state.company_accounting_checkpoint_v1 SET checkpoint_bytes=checkpoint_bytes||decode('ff','hex') WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid()]).expect("damage only the disposable derived seed");
+    let company:Vec<u8>=owner.query_one("SELECT company_id FROM babylon_state.company_elimination_v1 WHERE campaign_id=$1 AND resolve_tick=2 ORDER BY company_id LIMIT 1",&[campaign.as_uuid()]).expect("one group").get(0);
+    let id = CompanyId::from_bytes(company.as_slice().try_into().expect("captured company id"));
+    let selected = || {
+        observer.company_accounts_for_frame(
+            campaign,
+            2,
+            id,
+            &expected.foundation_sha256,
+            &expected.tick_content_hash,
+        )
+    };
+    let original_selected = selected().expect("verified selected company before corruption");
+    assert_eq!(owner.execute(
+        "UPDATE babylon_state.company_statement_income_v1 SET sales_micros=sales_micros+1,cost_of_goods_sold_micros=cost_of_goods_sold_micros+1
+          WHERE campaign_id=$1 AND resolve_tick=2 AND company_id=$2 AND scope='parent'",
+        &[campaign.as_uuid(), &company],
+    ).expect("balanced income-line corruption in disposable projection"),1);
+    assert_eq!(selected(), Err(JournalError::Projection));
+    assert_eq!(owner.execute("UPDATE babylon_state.company_statement_balance_v1 SET cash_micros=cash_micros+1,assets_micros=assets_micros+1,equity_micros=equity_micros+1
+        WHERE campaign_id=$1 AND resolve_tick=2 AND company_id=$2 AND scope='consolidated' AND boundary='closing'",&[campaign.as_uuid(),&company]).expect("tamper one disposable derived balance"),1);
+    assert_eq!(
+        observer.published_company_period_statements(campaign, 2),
+        Err(JournalError::Projection)
+    );
+    writer
+        .rebuild(observer, campaign, 2)
+        .expect("replay past the rejected prior seed and replace derived rows");
+    assert_eq!(
+        observer
+            .published_company_period_statements(campaign, 2)
+            .expect("reread repaired facts"),
+        expected
+    );
+    assert_eq!(
+        selected().expect("repaired selected company"),
+        original_selected
+    );
+    owner.execute("UPDATE babylon_state.company_accounting_checkpoint_v1 SET checkpoint_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid(),&original]).expect("restore the original fixture seed");
 }

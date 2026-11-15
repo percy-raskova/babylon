@@ -35,7 +35,10 @@ impl Bounds {
         let (first, last) = request.window.bounds()?;
         let comparison = request.comparison.map(PeriodWindow::bounds).transpose()?;
         let offset = i64::try_from(request.offset).map_err(|_| JournalError::Range)?;
-        if offset > i64::MAX - 20 {
+        if offset > i64::MAX - 20
+            || ((request.focus_group.is_some() || request.peer.is_some())
+                && request.focus.is_none())
+        {
             return Err(JournalError::Range);
         }
         let viewport = request
@@ -193,6 +196,10 @@ impl Ranking<'_> {
                     &self.request.focus,
                     &accumulated,
                     &op,
+                    &self.request.focus_group.unwrap_or(self.request.group).key(),
+                    &self.request.peer.as_ref().map(|p| p.group.key()),
+                    &self.request.peer.as_ref().and_then(|p| p.key.as_deref()),
+                    &self.request.peer.as_ref().map(|p| p.direction.key()),
                 ],
             )
             .map_err(|_| JournalError::Database)?;

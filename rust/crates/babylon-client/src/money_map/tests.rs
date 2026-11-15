@@ -1,5 +1,5 @@
 use super::state::{self, Direction, Quantity};
-use babylon_persistence::money_journal::{FlowAmounts, FlowRow};
+use babylon_persistence::money_journal::{FlowAmounts, FlowDirection, FlowGroup, FlowRow};
 
 fn counterparty(key: Option<&str>, incoming: &str, outgoing: &str, internal: &str) -> FlowRow {
     FlowRow {
@@ -90,6 +90,7 @@ fn interaction_fixture() -> (App, Entity, Scope, Connection) {
     session.foundation_digest = Some("foundation".into());
     session.content_hash = Some("committed tick".into());
     let scope = Scope {
+        group: FlowGroup::Location,
         periods: super::compare::Periods::Current,
         measure: state::Measure::Money,
         context: session.context(),
@@ -372,11 +373,11 @@ fn labor_mode_rejects_old_targets_and_leaves_unknown_basis_out_of_ribbon_width()
     compared.net_change_recorded_micro_hours = Some("1750000".into());
     let summary = super::compare::labor_net(&compared, 2);
     for reading in [
-        "Net recorded hours  +1.25 recorded h",
-        "Period 1 net  +3 recorded h",
-        "Change in recorded net  -1.75 recorded h",
-        "Period 2 unknown prior labor in movements · received 1, sent 3",
-        "Period 1 unknown prior labor in movements · received 1, sent 2",
+        "Net recorded hours\n+1.25 recorded h",
+        "Period 1 net\n+3 recorded h",
+        "Change in recorded net\n-1.75 recorded h",
+        "Period 2 unknown prior labor in movements, received 1, sent 3",
+        "Period 1 unknown prior labor in movements, received 1, sent 2",
     ] {
         assert!(summary.contains(reading), "{summary}");
     }
@@ -477,8 +478,14 @@ fn prior_period_change_uses_the_countys_sign_and_prior_only_rows_have_no_width()
     prior_only.comparison = Some(prior);
     prior_only.net_change_micros = Some("-8000000".into());
     let summary = compare::money_net(&prior_only, 3);
-    assert!(summary.contains("Period 2 net  -$8.00"));
-    assert!(summary.contains("Change in net  +$8.00"));
+    assert!(summary.contains("Period 2 net\n-$8.00"));
+    assert!(summary.contains("Change in net\n+$8.00"));
+    let mut wayne = counterparty(Some("county:26163"), "0", "0", "0");
+    wayne.current.net_micros = "267567952828417".into();
+    assert_eq!(
+        compare::money_net(&wayne, 2),
+        "Net received\n-$267,567,952.828417"
+    );
     let rows = state::connections(&[prior_only]);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].key.direction, Direction::PaidTo);
@@ -525,4 +532,311 @@ fn stale_comparison_buttons_cannot_replace_a_new_period_query() {
         app.world().resource::<MoneyView>().scope.as_ref(),
         Some(&compared)
     );
+}
+
+#[test]
+fn grouping_ranks_the_same_county_and_draws_only_the_selected_groups_actual_locations() {
+    let (mut app, _, original, _) = interaction_fixture();
+    let change = app
+        .world_mut()
+        .spawn(Target {
+            scope: original.clone(),
+            offset: 0,
+            action: Action::Group(FlowGroup::Company),
+        })
+        .observe(state::keyboard)
+        .id();
+    app.world_mut().trigger(ObserverKeyboardActivate {
+        entity: change,
+        context: Some(original.context.clone()),
+    });
+    let view = app.world().resource::<MoneyView>();
+    let scope = view.scope.as_ref().expect("same geographic workspace");
+    assert_eq!(scope.group, FlowGroup::Company);
+    assert_eq!(scope.county, original.county);
+    assert_eq!(scope.context, original.context);
+    assert_eq!(scope.periods, original.periods);
+    let query = state::flow_query(scope, 0);
+    assert_eq!(query.focus_group, Some(FlowGroup::Location));
+    assert_eq!(query.focus.as_deref(), Some("county:26163"));
+    assert_eq!(query.group, FlowGroup::Company);
+    let mut group = counterparty(Some("company:0011"), "111", "0", "0");
+    group.label = Some("Fuel · National 1".into());
+    let grouped = state::connections(&[group]);
+    let key = grouped[0].key.clone();
+    let query = super::geographic_legs::request(scope, &key, 0);
+    assert_eq!(query.group, FlowGroup::Location);
+    let peer = query.peer.expect("exact peer constraint");
+    assert_eq!(peer.group, FlowGroup::Company);
+    assert_eq!(peer.key, key.peer);
+    assert_eq!(peer.direction, FlowDirection::Inbound);
+    assert_eq!(
+        super::grouping::peer_label(
+            scope.group,
+            key.peer.as_deref(),
+            grouped[0].label.as_deref(),
+            app.world().resource::<CountyAtlas>()
+        ),
+        "Fuel · National 1"
+    );
+}
+
+#[test]
+fn company_statements_require_a_selected_represented_company_and_a_current_full_observer() {
+    let (mut app, select, mut scope, _) = interaction_fixture();
+    scope.group = FlowGroup::Company;
+    let company = format!("company:{}", "34".repeat(32));
+    let rows = state::connections(&[counterparty(Some(&company), "12", "0", "0")]);
+    let key = rows[0].key.clone();
+    {
+        let mut view = app.world_mut().resource_mut::<MoneyView>();
+        view.scope = Some(scope.clone());
+        view.rows = rows;
+    }
+    *app.world_mut()
+        .get_mut::<Target>(select)
+        .expect("connection") = Target {
+        scope: scope.clone(),
+        offset: 0,
+        action: Action::Select(key),
+    };
+    let open = app
+        .world_mut()
+        .spawn(Target {
+            scope: scope.clone(),
+            offset: 0,
+            action: Action::CompanyAccounts(true),
+        })
+        .observe(state::keyboard)
+        .id();
+    let press = |entity| ObserverKeyboardActivate {
+        entity,
+        context: Some(scope.context.clone()),
+    };
+    app.world_mut().trigger(press(open));
+    assert!(!app.world().resource::<MoneyView>().company.is_open());
+    app.world_mut().trigger(press(select));
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .perspective = Perspective::PlayerKnowledge;
+    app.world_mut().trigger(press(open));
+    assert!(!app.world().resource::<MoneyView>().company.is_open());
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .perspective = Perspective::FullObserver;
+    app.world_mut().trigger(press(open));
+    assert!(app.world().resource::<MoneyView>().company.is_open());
+}
+
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
+use babylon_persistence::freight_access::{
+    Access, AccessDirection, AccessError, AccessRow, Reference,
+};
+use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use babylon_persistence::production_observation::{ProductionPhysicalEdge, ProductionRoadSource};
+
+fn check_captured_road_fallback(
+    mut frame: ObserverEconomySnapshot,
+    reference: &Reference,
+    origin: CountyGeoid,
+    canada: EconomicLocation,
+    outgoing: &[AccessRow],
+) {
+    use std::path::Path;
+
+    let refused = Reference::load(Some(Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/Cargo.toml"
+    ))))
+    .expect("independent captured corridor source");
+    assert_eq!(refused.supplement_error, Some(AccessError::Digest));
+    assert_eq!(
+        refused
+            .connections(&frame, origin, AccessDirection::Outbound)
+            .expect("captured connections survive an invalid road matrix")
+            .as_slice(),
+        outgoing
+    );
+    let campaign = frame
+        .production
+        .as_mut()
+        .expect("captured production frame");
+    campaign.road_source = Some(ProductionRoadSource {
+        graph_sha256: "different captured graph".into(),
+        pbf_sha256: String::new(),
+        pbf_bytes: 0,
+        pbf_url: String::new(),
+        replication_timestamp: String::new(),
+        footprint_sha256: String::new(),
+        buffer_degrees_e7: 0,
+        extraction_version: String::new(),
+        distance_version: String::new(),
+        routing_profile_version: String::new(),
+    });
+    campaign.physical_routes[0].physical_edge_ids = vec!["actual-captured-corridor".to_owned()];
+    campaign.physical_routes[0].distance_mm = Some(1000);
+    campaign.physical_edges.push(ProductionPhysicalEdge {
+        id: "actual-captured-corridor".into(),
+        shape_e7: vec![[-830_400_000, 423_000_000], [-830_400_100, 423_000_000]],
+        distance_mm: 1000,
+    });
+    assert!(!reference.graph_matches(campaign));
+    let preserved = reference
+        .connections(&frame, origin, AccessDirection::Outbound)
+        .expect("alternative capture");
+    assert_eq!(
+        preserved
+            .iter()
+            .find(|r| r.peer == canada)
+            .expect("captured foreign endpoint")
+            .corridors[0]
+            .distance_mm,
+        Some(1000)
+    );
+    assert!(preserved
+        .iter()
+        .filter(|r| r.peer != canada)
+        .all(|r| r.access == Access::Unqualified));
+    let incoming = reference
+        .connections(&frame, origin, AccessDirection::Inbound)
+        .expect("inbound freight access");
+    assert!(incoming.iter().all(|r| r.peer != canada));
+    frame.visibility = ObserverVisibility::KnownPreview;
+    assert!(reference
+        .connections(&frame, origin, AccessDirection::Outbound)
+        .is_err());
+}
+
+#[test]
+fn freight_map_and_network_share_typed_foreign_corridor_without_an_invented_road_path() {
+    use super::freight::Command;
+    use super::state::Diagram;
+    let (mut app, _, scope, _) = interaction_fixture();
+    let mut snapshot = crate::production::tests::snapshot();
+    let wayne = "county:26163".parse().expect("Wayne location");
+    let canada = "foreign:canada".parse().expect("Canada location");
+    snapshot.sites[0].location = wayne;
+    snapshot.sites[1].location = canada;
+    let mut frame = app
+        .world()
+        .resource::<ObserverFrame>()
+        .0
+        .clone()
+        .expect("fixture observer frame");
+    frame.production = Some(snapshot);
+    let reference = Reference::load(None).expect("bundled regional baseline");
+    let origin = "26163".parse().expect("Wayne county");
+    let outgoing = reference
+        .connections(&frame, origin, AccessDirection::Outbound)
+        .expect("outbound freight access");
+    assert_eq!(outgoing.len(), 84);
+    let foreign = outgoing
+        .iter()
+        .find(|r| r.peer == canada)
+        .expect("Canada endpoint");
+    assert_eq!(foreign.access, Access::OutsideCoverage);
+    assert_eq!(foreign.corridors[0].route_id, "a-b");
+    assert_eq!(foreign.corridors[0].distance_mm, None);
+    assert!(outgoing
+        .iter()
+        .filter(|r| r.peer != canada)
+        .all(|r| r.access == Access::Unqualified));
+    check_captured_road_fallback(frame, &reference, origin, canada, &outgoing);
+
+    let run = |world: &mut World, action: Action| {
+        let entity = world
+            .spawn(Target {
+                scope: scope.clone(),
+                offset: 0,
+                action,
+            })
+            .observe(state::keyboard)
+            .id();
+        world.trigger(ObserverKeyboardActivate {
+            entity,
+            context: Some(scope.context.clone()),
+        });
+    };
+    let world = app.world_mut();
+    run(world, Action::Freight(Command::Open));
+    assert_eq!(world.resource::<MoneyView>().freight.origin, Some(origin));
+    world.resource_mut::<MoneyView>().freight.rows = Some(Ok(outgoing));
+    let pick = world.resource::<MoneyView>().freight.selection(canada);
+    run(world, Action::Freight(pick));
+    for diagram in [Diagram::Sankey, Diagram::Map] {
+        run(world, Action::Diagram(diagram));
+        let view = world.resource::<MoneyView>();
+        assert_eq!(view.diagram, diagram);
+        assert_eq!(view.freight.selected, Some(canada));
+        assert_eq!(view.freight.origin, Some(origin));
+    }
+}
+
+#[test]
+fn freight_and_economic_diagrams_have_separate_native_sample_windows() {
+    use crate::observer_performance::RenderMode;
+    let (mut app, _, _, _) = interaction_fixture();
+    let mut view = app.world_mut().resource_mut::<MoneyView>();
+    assert_eq!(view.render_mode(), RenderMode::MoneyMap);
+    view.measure = state::Measure::Labor;
+    assert_eq!(view.render_mode(), RenderMode::LaborMap);
+    view.diagram = state::Diagram::Sankey;
+    assert_eq!(view.render_mode(), RenderMode::LaborSankey);
+    view.freight.enabled = true;
+    assert_eq!(view.render_mode(), RenderMode::FreightNetwork);
+    view.diagram = state::Diagram::Map;
+    assert_eq!(view.render_mode(), RenderMode::FreightMap);
+    view.scope = None;
+    assert_eq!(view.render_mode(), RenderMode::Map3d);
+}
+
+#[test]
+fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
+    let (mut app, select, mut scope, _) = interaction_fixture();
+    scope.group = FlowGroup::Industry;
+    let rows = state::connections(&[
+        counterparty(Some("food"), "12", "0", "0"),
+        counterparty(None, "9", "0", "0"),
+    ]);
+    let food = rows[0].key.clone();
+    let unreported = rows[1].key.clone();
+    {
+        let mut view = app.world_mut().resource_mut::<MoneyView>();
+        view.scope = Some(scope.clone());
+        view.rows = rows;
+    }
+    let button = |app: &mut App, action| {
+        app.world_mut()
+            .spawn(Target {
+                scope: scope.clone(),
+                offset: 0,
+                action,
+            })
+            .observe(state::keyboard)
+            .id()
+    };
+    let toggle = button(&mut app, Action::IndustrySources);
+    let unknown = button(&mut app, Action::Select(unreported));
+    let press = |entity| ObserverKeyboardActivate {
+        entity,
+        context: Some(scope.context.clone()),
+    };
+    *app.world_mut()
+        .get_mut::<Target>(select)
+        .expect("connection") = Target {
+        scope: scope.clone(),
+        offset: 0,
+        action: Action::Select(food),
+    };
+    app.world_mut().trigger(press(toggle));
+    assert!(!app.world().resource::<MoneyView>().industry.expanded);
+    app.world_mut().trigger(press(select));
+    app.world_mut().trigger(press(toggle));
+    assert!(app.world().resource::<MoneyView>().industry.expanded);
+    app.world_mut().trigger(press(toggle));
+    assert!(!app.world().resource::<MoneyView>().industry.expanded);
+    app.world_mut().trigger(press(unknown));
+    app.world_mut().trigger(press(toggle));
+    assert!(!app.world().resource::<MoneyView>().industry.expanded);
 }

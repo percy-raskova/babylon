@@ -1,6 +1,8 @@
 -- $1 campaign, $2/$3 current window, $4/$5 comparison, $6 grouping, $7 focus,
 -- $8 page offset, $9 viewport, $10 previously grouped history, $11/$12 one
 -- authenticated historical period's nodes and movements, $13 operation, $14 historical tick.
+-- $15 specifies the focus dimension independently of the rank dimension.
+-- $16/$17/$18 select a particular peer dimension, key and direction for geographic detail.
 WITH windows(first_tick,last_tick,comparison) AS (
     SELECT $2::bigint,$3::bigint,false
     UNION ALL SELECT $4::bigint,$5::bigint,true WHERE $4 IS NOT NULL
@@ -32,22 +34,39 @@ WITH windows(first_tick,last_tick,comparison) AS (
     SELECT $14::bigint,m.source_node,m.destination_node,m.recorded_micro_hours,m.unknown_opening
     FROM jsonb_to_recordset($12::text::jsonb) AS m(source_node bigint,destination_node bigint,
         recorded_micro_hours numeric,unknown_opening boolean)
-), dimensions AS (
-    SELECT resolve_tick,node_ordinal,
-        CASE $6::text WHEN 'account' THEN scope_kind||':'||encode(scope_id,'hex')
-            WHEN 'location' THEN n.location_key WHEN 'catchment' THEN catchment_key
-            WHEN 'industry' THEN industry_key END AS key,
-        CASE WHEN $6='industry' THEN industry_label END AS label,
+), scopes AS (
+    SELECT n.resolve_tick,n.node_ordinal,n.scope_kind||':'||encode(n.scope_id,'hex') AS principal,
+        'company:'||encode(a.company_id,'hex') AS company,a.company_label,
+        n.location_key,n.catchment_key,n.industry_key,n.industry_label,
         ($9 IS NULL OR v.location_key IS NOT NULL OR
          (n.longitude IS NOT NULL AND n.latitude IS NOT NULL AND EXISTS (SELECT FROM envelopes e WHERE
           public.ST_Covers(e.area,public.ST_SetSRID(public.ST_MakePoint(n.longitude::double precision,n.latitude::double precision),4269))))) AS in_view
     FROM nodes n LEFT JOIN visible v ON n.location_key=v.location_key
+    LEFT JOIN public.v_observer_economic_flow_account_v2 a
+        ON a.campaign_id=$1 AND (a.account_kind,a.account_id)=(n.scope_kind,n.scope_id)
+), dimensions AS (
+    SELECT s.resolve_tick,s.node_ordinal,s.in_view,
+        CASE $6::text WHEN 'account' THEN s.principal
+      WHEN 'location' THEN s.location_key WHEN 'catchment' THEN s.catchment_key
+      WHEN 'industry' THEN s.industry_key WHEN 'company' THEN s.company
+      WHEN 'counterparty' THEN coalesce(s.company,s.principal) END AS key,
+        CASE $15::text WHEN 'account' THEN s.principal
+      WHEN 'location' THEN s.location_key WHEN 'catchment' THEN s.catchment_key
+      WHEN 'industry' THEN s.industry_key WHEN 'company' THEN s.company
+      WHEN 'counterparty' THEN coalesce(s.company,s.principal) END AS focus_key,
+    CASE $16::text WHEN 'account' THEN s.principal
+      WHEN 'location' THEN s.location_key WHEN 'catchment' THEN s.catchment_key
+      WHEN 'industry' THEN s.industry_key WHEN 'company' THEN s.company
+      WHEN 'counterparty' THEN coalesce(s.company,s.principal) END AS peer_key,
+        CASE $6::text WHEN 'industry' THEN s.industry_label
+      WHEN 'company' THEN s.company_label WHEN 'counterparty' THEN s.company_label END AS label
+    FROM scopes s
 ), endpoints AS (
     SELECT w.comparison,m.recorded_micro_hours,m.unknown_opening,
-        l.key AS source_key,r.key AS destination_key,l.label AS source_label,r.label AS destination_label,
-        l.in_view AND ($7::text IS NULL OR r.key=$7) AS show_source,
-        r.in_view AND ($7::text IS NULL OR l.key=$7) AS show_destination,
-        (m.source_node=m.destination_node OR (l.key IS NOT NULL AND l.key=r.key) IS TRUE) AS shared_group,
+        l.key AS source_key,r.key AS destination_key,l.label AS source_label,r.label AS destination_label,l.peer_key AS source_peer,r.peer_key AS destination_peer,
+        l.in_view AND ($7::text IS NULL OR r.focus_key IS NOT DISTINCT FROM $7) AS show_source,
+        r.in_view AND ($7::text IS NULL OR l.focus_key IS NOT DISTINCT FROM $7) AS show_destination,
+        ($7 IS NOT NULL OR m.source_node=m.destination_node OR (l.key IS NOT NULL AND l.key=r.key) IS TRUE) AS shared_group,
         (l.node_ordinal IS NOT NULL AND r.node_ordinal IS NOT NULL) AS resolved
     FROM moves m JOIN windows w ON m.resolve_tick BETWEEN w.first_tick AND w.last_tick
     LEFT JOIN dimensions l ON (l.resolve_tick,l.node_ordinal)=(m.resolve_tick,m.source_node)
@@ -57,9 +76,12 @@ WITH windows(first_tick,last_tick,comparison) AS (
         CASE WHEN shared_group AND show_destination THEN 'within' ELSE 'outbound' END AS direction,
         recorded_micro_hours AS hours,unknown_opening::integer AS additional
     FROM endpoints WHERE show_source
+        AND ($16::text IS NULL OR (source_peer IS NOT DISTINCT FROM $17::text
+            AND (CASE WHEN shared_group AND show_destination THEN 'within' ELSE 'outbound' END)=$18::text))
     UNION ALL
     SELECT comparison,destination_key,destination_label,'inbound',recorded_micro_hours,unknown_opening::integer
     FROM endpoints WHERE show_destination AND NOT (shared_group AND show_source)
+        AND ($16 IS NULL OR (destination_peer IS NOT DISTINCT FROM $17 AND $18='inbound'))
 ), grouped AS (
     SELECT comparison,key,max(label) AS label,direction,sum(hours) AS hours,
         sum(additional) AS unknown,count(*)::numeric AS movements FROM postings GROUP BY comparison,key,direction

@@ -8,6 +8,8 @@ use postgres::{Config, IsolationLevel, NoTls};
 
 use serde::{Deserialize, Serialize};
 
+use crate::company_statements::{self, CompanyOpeningReport, CompanyStatementsError};
+use crate::economic_catalog::{EconomicProjectionView, EconomicSiteSource, EconomicSourceView};
 use crate::economic_content;
 use crate::economic_content::{
     EconomicAdmissionOwner, EconomicContentAdmission, EconomicContentHandle,
@@ -17,6 +19,7 @@ use crate::identity::CampaignId;
 use crate::michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS};
 use crate::michigan_economy;
 use crate::michigan_economy::MichiganCountyEconomy;
+use crate::national_cohorts::IndustrySourceComposition;
 use crate::observer_material::MaterialHeader;
 use crate::postgres_catalog;
 use crate::production_observation::ProductionSnapshot;
@@ -25,6 +28,7 @@ use crate::site_financial_statements::{SiteFinancialStatements, SiteStatementsEr
 use crate::CampaignFoundation;
 use crate::ProductionEvidenceDigest;
 use babylon_kernel::content_digest;
+use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{HouseholdContributionReceipt, SiteId};
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 use babylon_tick::material_world::MaterialReceiptHandle;
@@ -134,6 +138,12 @@ pub struct CommittedMaterialObservation {
     pub production_evidence: ProductionEvidenceDigest,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ReceiptPurpose {
+    Observation,
+    Publication,
+}
+
 /// A capability whose visibility is fixed when its separate credential is admitted.
 #[derive(Clone)]
 pub struct ObserverEconomyReader {
@@ -188,6 +198,122 @@ impl ObserverEconomyReader {
         expected_tick: u64,
         site: SiteId,
     ) -> Result<SiteFinancialStatements, SiteStatementsError> {
+        self.with_statement_source(campaign, expected_tick, |tx, expected| {
+            let result = crate::observer_material::site_financial_statements(
+                tx,
+                campaign,
+                expected_tick,
+                expected,
+                site,
+            )?;
+            let hash = result.tick_content_hash;
+            Ok((result, hash))
+        })
+    }
+
+    /// Read the immutable national QCEW source table for one selected function.
+    /// Michigan controls have no equivalent national source table.
+    /// # Errors
+    /// Refuses restricted readers, a changed foundation, or an invalid captured source.
+    pub fn industry_source_composition(
+        &self,
+        campaign: CampaignId,
+        foundation_hex: &str,
+        function: EconomicFunction,
+    ) -> Result<Option<IndustrySourceComposition>, ObserverEconomyError> {
+        self.with_captured_view(campaign, foundation_hex, |view| match view.sources {
+            EconomicSourceView::National { cohorts, .. } => cohorts
+                .industry_composition(function)
+                .map(Some)
+                .map_err(|_| ObserverEconomyError::Reference),
+            EconomicSourceView::MichiganControl { .. } => Ok(None),
+        })
+    }
+
+    /// Read the NAICS members of the selected operating site's own captured cohort.
+    /// # Errors
+    /// Refuses restricted roles, changed foundations, and sites without direct QCEW evidence.
+    pub fn site_source_member_codes(
+        &self,
+        campaign: CampaignId,
+        foundation_hex: &str,
+        site: SiteId,
+    ) -> Result<Vec<String>, ObserverEconomyError> {
+        self.with_captured_view(campaign, foundation_hex, |view| {
+            let EconomicSourceView::National { cohorts, .. } = view.sources else {
+                return Err(ObserverEconomyError::Reference);
+            };
+            let source = view
+                .opening
+                .sites
+                .iter()
+                .find(|row| row.site_id == site)
+                .ok_or(ObserverEconomyError::InvalidProjection)?;
+            let EconomicSiteSource::Qcew(key) = source.source else {
+                return Err(ObserverEconomyError::Reference);
+            };
+            let group = cohorts
+                .group(key)
+                .filter(|row| row.is_admitted())
+                .ok_or(ObserverEconomyError::Reference)?;
+            Ok(group
+                .members()
+                .iter()
+                .map(|row| row.naics_code.clone())
+                .collect())
+        })
+    }
+
+    fn with_captured_view<T>(
+        &self,
+        campaign: CampaignId,
+        foundation_hex: &str,
+        project: impl FnOnce(EconomicProjectionView<'_>) -> Result<T, ObserverEconomyError>,
+    ) -> Result<T, ObserverEconomyError> {
+        self.with_statement_source(campaign, 0, |_, admitted| {
+            if michigan_economy::digest_hex(&admitted.digest()) != foundation_hex {
+                return Err(ObserverEconomyError::ScenarioMismatch);
+            }
+            Ok((project(admitted.view())?, None))
+        })
+    }
+
+    /// Read all captured parents and subsidiaries at their common founding boundary.
+    /// # Errors
+    /// Refuses restricted readers, uncaptured membership and unbalanced legal or group books.
+    pub fn company_opening_statements(
+        &self,
+        campaign: CampaignId,
+    ) -> Result<CompanyOpeningReport, CompanyStatementsError> {
+        self.with_statement_source(campaign, 0, |_, expected| {
+            let catalog = expected
+                .foundation()
+                .graph_foundation()
+                .content_bundle()
+                .economic_catalog()
+                .ok_or(ObserverEconomyError::ScenarioMismatch)?;
+            let companies =
+                company_statements::project_opening(catalog, expected.initial_register().state())?;
+            Ok((
+                CompanyOpeningReport {
+                    campaign,
+                    foundation: expected.digest(),
+                    companies,
+                },
+                None,
+            ))
+        })
+    }
+
+    fn with_statement_source<T, E: From<ObserverEconomyError>>(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+        project: impl FnOnce(
+            &mut Transaction<'_>,
+            &EconomicContentAdmission,
+        ) -> Result<(T, Option<[u8; 32]>), E>,
+    ) -> Result<T, E> {
         if self.visibility != ObserverVisibility::FullObserver {
             return Err(ObserverEconomyError::Authority.into());
         }
@@ -226,21 +352,9 @@ impl ObserverEconomyReader {
             .and_then(|h| h.admission.as_ref())
             .ok_or(ObserverEconomyError::ScenarioMismatch)?;
         let (content, _) = read_commit_identity(&mut transaction, campaign, tick, true)?;
-        let result = crate::observer_material::site_financial_statements(
-            &mut transaction,
-            campaign,
-            expected_tick,
-            expected,
-            site,
-        )?;
-        if content
-            != result
-                .tick_content_hash
-                .map(|hash| michigan_economy::digest_hex(&hash))
-        {
-            return Err(SiteStatementsError::Read(
-                ObserverEconomyError::InvalidProjection,
-            ));
+        let (result, hash) = project(&mut transaction, expected)?;
+        if content != hash.map(|hash| michigan_economy::digest_hex(&hash)) {
+            return Err(ObserverEconomyError::InvalidProjection.into());
         }
         transaction
             .commit()
@@ -304,6 +418,27 @@ impl ObserverEconomyReader {
             CommittedMaterialReceipts,
         ) -> Result<T, ObserverEconomyError>,
     ) -> Result<T, ObserverEconomyError> {
+        self.with_receipt_source(
+            campaign,
+            expected_tick,
+            cursor,
+            ReceiptPurpose::Observation,
+            project,
+        )
+    }
+
+    pub(crate) fn with_receipt_source<T>(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+        cursor: &mut Option<ObserverMaterialCursor>,
+        purpose: ReceiptPurpose,
+        project: impl FnOnce(
+            &ObserverMaterialCursor,
+            &EconomicContentAdmission,
+            CommittedMaterialReceipts,
+        ) -> Result<T, ObserverEconomyError>,
+    ) -> Result<T, ObserverEconomyError> {
         if self.visibility != ObserverVisibility::FullObserver {
             return Err(ObserverEconomyError::Authority);
         }
@@ -352,6 +487,10 @@ impl ObserverEconomyReader {
             expected_tick,
             expected,
             &mut cursor_candidate,
+            match purpose {
+                ReceiptPurpose::Publication => Some(&config),
+                ReceiptPurpose::Observation => None,
+            },
         )?;
         if content.as_deref()
             != Some(
@@ -943,7 +1082,7 @@ pub(crate) fn project_county(
 
 pub(crate) const AUTHORITY_SQL: &str = "SELECT role.rolsuper, role.rolcreatedb, role.rolcreaterole, role.rolreplication, role.rolbypassrls, pg_catalog.pg_has_role(current_user, $1, 'MEMBER'), pg_catalog.pg_has_role(current_user, 'babylon_observer', 'MEMBER') FROM pg_catalog.pg_roles role WHERE role.rolname = current_user";
 
-pub(crate) const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1','v_observer_money_journal_period_v1','v_observer_money_movement_v1','v_observer_money_movement_total_v1','v_observer_economic_flow_location_v1','v_observer_economic_flow_account_v1','v_observer_economic_payment_v1','v_observer_site_statement_v1','v_observer_site_stock_balance_v1','v_observer_labor_period_v1','v_observer_labor_checkpoint_v1','v_observer_labor_node_v1','v_observer_labor_movement_v1','v_observer_labor_position_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
+pub(crate) const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1','v_observer_money_journal_period_v1','v_observer_money_movement_v1','v_observer_money_movement_total_v1','v_observer_economic_flow_location_v1','v_observer_economic_flow_account_v1','v_observer_economic_company_v1','v_observer_economic_company_member_v1','v_observer_economic_company_claim_v1','v_observer_economic_company_claim_source_v1','v_observer_economic_flow_account_v2','v_observer_economic_payment_v1','v_observer_site_statement_v1','v_observer_site_stock_balance_v1','v_observer_company_accounting_period_v1','v_observer_company_accounting_checkpoint_v1','v_observer_company_statement_balance_v1','v_observer_company_statement_income_v1','v_observer_company_statement_cash_flow_v1','v_observer_company_elimination_v1','v_observer_company_realization_entry_v1','v_observer_labor_period_v1','v_observer_labor_checkpoint_v1','v_observer_labor_node_v1','v_observer_labor_movement_v1','v_observer_labor_position_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
 
 pub(crate) fn confine_authority(
     client: &mut Client,

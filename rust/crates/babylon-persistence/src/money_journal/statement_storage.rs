@@ -3,6 +3,7 @@ use super::payment_storage::Admission;
 use super::statement_integrity::SiteEvidence;
 use super::statement_lines::Lines;
 use super::JournalError;
+use crate::economic_content::EconomicContentHandle;
 use crate::economic_flows::EconomicPaymentPeriod;
 use crate::identity::CampaignId;
 use crate::qualification_audit::trade;
@@ -13,6 +14,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 pub(crate) struct JournalPeriodSource {
+    pub foundation: EconomicContentHandle,
     pub payments: EconomicPaymentPeriod,
     pub accounting: SiteAccountingPeriod,
     /// All admitted sites, including physical-control sites without stock at either boundary.
@@ -50,7 +52,7 @@ struct StockRow<'a> {
     closing_carrying_cost_micros: Option<String>,
 }
 
-fn bytea(id: &[u8; 32]) -> String {
+pub(super) fn bytea(id: &[u8; 32]) -> String {
     format!("\\x{}", trade::hex(id))
 }
 
@@ -75,6 +77,17 @@ impl<'a> StockRow<'a> {
 
 #[derive(Clone, Copy)]
 pub(super) enum Table {
+    CompanyBalance,
+    CompanyIncome,
+    CompanyCash,
+    CompanyElimination,
+    CompanyEntry,
+
+    Company,
+    CompanyMember,
+    CompanyClaim,
+    CompanyClaimSource,
+
     LaborNode,
     LaborMovement,
     LaborPosition,
@@ -82,8 +95,46 @@ pub(super) enum Table {
     Stock,
 }
 impl Table {
-    fn sql(self, admission: Admission) -> String {
-        let (table, keys) = match self {
+    pub(super) fn relation(self) -> (&'static str, &'static str) {
+        match self {
+            Self::CompanyBalance => (
+                "babylon_state.company_statement_balance_v1",
+                "campaign_id,resolve_tick,company_id,scope,boundary",
+            ),
+            Self::CompanyIncome => (
+                "babylon_state.company_statement_income_v1",
+                "campaign_id,resolve_tick,company_id,scope",
+            ),
+            Self::CompanyCash => (
+                "babylon_state.company_statement_cash_flow_v1",
+                "campaign_id,resolve_tick,company_id,scope",
+            ),
+            Self::CompanyElimination => (
+                "babylon_state.company_elimination_v1",
+                "campaign_id,resolve_tick,company_id",
+            ),
+            Self::CompanyEntry => (
+                "babylon_state.company_realization_entry_v1",
+                "campaign_id,resolve_tick,company_id,family,ordinal",
+            ),
+
+            Self::Company => (
+                "babylon_state.economic_company_v1",
+                "campaign_id,company_id",
+            ),
+            Self::CompanyMember => (
+                "babylon_state.economic_company_member_v1",
+                "campaign_id,site_id",
+            ),
+            Self::CompanyClaim => (
+                "babylon_state.economic_company_claim_v1",
+                "campaign_id,company_id,beneficiary_kind,beneficiary_id",
+            ),
+            Self::CompanyClaimSource => (
+                "babylon_state.economic_company_claim_source_v1",
+                "campaign_id,site_id,beneficiary_kind,beneficiary_id",
+            ),
+
             Self::LaborNode => (
                 "babylon_state.labor_node_v1",
                 "campaign_id,resolve_tick,node_ordinal",
@@ -104,7 +155,11 @@ impl Table {
                 "babylon_state.site_stock_balance_v1",
                 "campaign_id,resolve_tick,site_id,good_id,unit_id",
             ),
-        };
+        }
+    }
+
+    fn sql(self, admission: Admission) -> String {
+        let (table, keys) = self.relation();
         let input = format!("jsonb_populate_recordset(NULL::{table},$1::text::jsonb)");
         if admission == Admission::Verify {
             // Each expected composite gets one scalar lookup by the full primary key.

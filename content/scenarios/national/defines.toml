@@ -1,7 +1,7 @@
 # Designed first national/world campaign policy. These are gameplay units,
 # not source-derived production, subsistence thresholds or a forecast.
 # Every price is millionths of one common currency unit; no exchange rates.
-schema_version = 2
+schema_version = 3
 evidence_class = "Designed"
 period_days = 28
 work_hours_per_person = 160
@@ -415,3 +415,15 @@ protected_counties = ["17031", "26163"]
 hub_selection = "largest_observed_population_then_geoid"
 access_capacity = "captured_hub_lane"
 capacity_refinement = "essential_food_lower_bound_first_fit"
+
+[companies]
+# Designed opening employment shares. Whole sites can overshoot these targets.
+opening_employment_bps = [3500, 3500, 3000]
+# Designed share of each subsidiary's spendable cash above its captured operating floor.
+opening_treasury_bps = 1000
+portfolio_weights = [[70, 30, 0, 0], [10, 70, 15, 5], [60, 25, 15, 0], [10, 10, 60, 20]]
+high_utilization_bps = 8000
+history_periods = 3
+modest_expansion_bps = 5000
+# Existing national-world-v7 physical geography namespace. Company policy retains its own full source digest.
+inherited_grain_policy_sha256 = [0xa4, 0x33, 0x05, 0xed, 0x1d, 0x0e, 0x95, 0xf9, 0xd7, 0xdf, 0x6b, 0x8a, 0xac, 0xe5, 0xa8, 0xf9, 0x79, 0x08, 0x26, 0xf8, 0xc4, 0xc0, 0xb3, 0xb0, 0x6d, 0x1d, 0x54, 0x67, 0x51, 0xdc, 0x4f, 0x03]

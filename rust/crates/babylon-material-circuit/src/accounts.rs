@@ -16,6 +16,7 @@ use std::fmt::Result as FmtResult;
 
 crate::model::identity_type!(OrganizationAccountId);
 crate::model::identity_type!(PublicAccountId);
+crate::model::identity_type!(CompanyId);
 crate::model::identity_type!(ShiftId);
 
 /// Owner namespaces stay distinct even when their underlying bytes coincide.
@@ -25,6 +26,31 @@ pub enum AccountId {
     Household(FinalDemandPrincipalId),
     Organization(OrganizationAccountId),
     Public(PublicAccountId),
+    Company(CompanyId),
+}
+impl AccountId {
+    /// Stable account namespace shared by material state, settlement and order identities.
+    #[must_use]
+    pub const fn wire_parts(self) -> (u8, [u8; 32]) {
+        match self {
+            Self::Site(id) => (1, id.as_bytes()),
+            Self::Household(id) => (2, id.as_bytes()),
+            Self::Organization(id) => (3, id.as_bytes()),
+            Self::Public(id) => (4, id.as_bytes()),
+            Self::Company(id) => (5, id.as_bytes()),
+        }
+    }
+    #[must_use]
+    pub const fn from_wire_parts(tag: u8, bytes: [u8; 32]) -> Option<Self> {
+        match tag {
+            1 => Some(Self::Site(SiteId::from_bytes(bytes))),
+            2 => Some(Self::Household(FinalDemandPrincipalId::from_bytes(bytes))),
+            3 => Some(Self::Organization(OrganizationAccountId::from_bytes(bytes))),
+            4 => Some(Self::Public(PublicAccountId::from_bytes(bytes))),
+            5 => Some(Self::Company(CompanyId::from_bytes(bytes))),
+            _ => None,
+        }
+    }
 }
 
 /// Nonnegative spendable cash; reserves belong only to their separate principal.

@@ -224,6 +224,8 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: Vec::new(),
         household_time_policy: Vec::new(),

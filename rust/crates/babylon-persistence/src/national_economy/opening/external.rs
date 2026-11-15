@@ -152,7 +152,7 @@ fn staffing(
         // A full base32 identity preserves every digest bit within the graph's name bound.
         let subject = StableElementKey::Node {
             scenario: crate::national_economy::NATIONAL_SCENARIO_ID.into(),
-            local_name: format!("member-{}", base32(&identity)),
+            local_name: format!("member-{}", content_digest::base32(&identity)),
         };
         builder.opening.employment.push(EmploymentTerms {
             member_id: member.member_id(),
@@ -208,28 +208,4 @@ fn partition(persons: u64, weights: &[u16; 10]) -> Result<[u64; 10]> {
             .ok_or(NationalOpeningError::Arithmetic)?;
     }
     Ok(allocated)
-}
-
-fn base32(bytes: &[u8; 32]) -> String {
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let mut result = String::with_capacity(52);
-    let mut accumulator = 0_u16;
-    let mut bits = 0_u8;
-    for byte in bytes {
-        accumulator = (accumulator << 8) | u16::from(*byte);
-        bits += 8;
-        while bits >= 5 {
-            bits -= 5;
-            result.push(char::from(
-                ALPHABET[usize::from((accumulator >> bits) & 31)],
-            ));
-        }
-        accumulator &= (1_u16 << bits) - 1;
-    }
-    if bits > 0 {
-        result.push(char::from(
-            ALPHABET[usize::from((accumulator << (5 - bits)) & 31)],
-        ));
-    }
-    result
 }

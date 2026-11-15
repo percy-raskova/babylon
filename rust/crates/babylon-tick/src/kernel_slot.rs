@@ -27,13 +27,20 @@ pub struct KernelSlotReservationRef<'a> {
 /// The built-in ledger compiled into the canonical runtime preparation path.
 /// Rows are never removed or reordered; genuinely new kernels append here and
 /// in `content/content-sets.toml` together.
-pub const BUNDLED_KERNEL_SLOT_RESERVATIONS: &[KernelSlotReservationRef<'static>] =
-    &[KernelSlotReservationRef {
+pub const BUNDLED_KERNEL_SLOT_RESERVATIONS: &[KernelSlotReservationRef<'static>] = &[
+    KernelSlotReservationRef {
         ordinal: 0,
         rule: "struggle/spark-mechanic",
         sample: "struggle/spark",
         slot: 0,
-    }];
+    },
+    KernelSlotReservationRef {
+        ordinal: 1,
+        rule: "company/portfolio-investment",
+        sample: "company/investment-portfolio",
+        slot: 0,
+    },
+];
 
 /// Structural or live-kernel refusal from the permanent ledger.
 #[derive(Debug, Clone, PartialEq, Eq)]

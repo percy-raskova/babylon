@@ -676,7 +676,14 @@ impl DurableMaterialRuntime {
         tx.batch_execute("SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on")
             .map_err(MaterialRuntimeError::from)
             .map_err(|error| classify(&error))?;
-        tx.query_one("SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1 FOR UPDATE", &[self.campaign_id().as_uuid()]).map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))?;
+        // Serialize commands against each other and advances while allowing financial foreign keys.
+        tx.query_one(
+            "SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3
+             WHERE campaign_id=$1 FOR NO KEY UPDATE",
+            &[self.campaign_id().as_uuid()],
+        )
+        .map_err(MaterialRuntimeError::from)
+        .map_err(|error| classify(&error))?;
         if let Some(row) = tx.query_opt("SELECT commitment_bytes,command_bytes,nonce,resolves_period,commitment_sha256 FROM babylon_state.organizer_command_v1 WHERE campaign_id=$1 AND nonce=$2", &[self.campaign_id().as_uuid(), &&command.nonce[..]]).map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))? {
             if row.get::<_,Vec<u8>>("command_bytes") != command_bytes { return Err(RuntimeSessionErrorCode::OrganizerNonceConflict); }
             return stored_commitment(&row, self.campaign_id()).map_err(|error| classify(&error));

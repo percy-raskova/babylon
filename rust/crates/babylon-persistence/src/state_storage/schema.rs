@@ -211,8 +211,11 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
         return Err(StorageError::Bounds);
     }
     let mut register = Cursor::new(bytes);
-    register.expect(REGISTER_DOMAIN)?;
-    if register.number(4)? != 7 {
+    let domain = register.take(REGISTER_DOMAIN.len())?;
+    let version = register.number(4)?;
+    if !((domain == REGISTER_DOMAIN && version == 7)
+        || (domain == b"babylon.material-world-register.v8\0" && version == 8))
+    {
         return Err(StorageError::Version);
     }
     let tick = register.number(8)?;
@@ -268,6 +271,15 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     let frame = register.take(size)?;
     if !matches!(frame.first(), Some(0 | 1)) || (frame[0] == 0 && frame.len() != 1) {
         return Err(StorageError::Framing);
+    }
+    if version == 8 {
+        let size = register.number(8)?;
+        if !register
+            .take(size)?
+            .starts_with(babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN)
+        {
+            return Err(StorageError::Framing);
+        }
     }
     register.done()?;
     parser.sections.push(Section {

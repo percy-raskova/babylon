@@ -94,8 +94,8 @@ From the repository root, open or continue a campaign:
 mise run play
 ```
 
-The launcher builds `babylon-runtime` and `babylon-client` with native Cargo
-from `rust/`. It reuses a reachable local database. If the default
+The launcher builds `babylon-runtime`, `babylon-economic-projections` and
+`babylon-client` with native Cargo from `rust/`. It reuses a reachable local database. If the default
 database is
 unavailable, it starts the repository database with `db:up` and checks again.
 By default, the launcher connects to `babylon_test` on `127.0.0.1:5433`.
@@ -308,7 +308,7 @@ cargo run -p babylon-persistence --bin babylon-money-journal -- flows \
   --compare-first 1 --compare-last 4 --group location
 ```
 
-Choose `location`, `catchment`, `industry`, or `account` for `--group`.
+Choose `location`, `catchment`, `industry`, `account`, `company` or `counterparty` for `--group`.
 With `--group location --focus county:26163`, each row identifies a location
 that exchanged payments with Wayne County, Michigan. Its inflow is money Wayne
 paid that location. Its outflow is money the location paid Wayne.
@@ -327,6 +327,40 @@ NAD83 longitude and latitude. A county uses its captured TIGER internal point.
 Other locations with no captured point stay outside the selected area. A site’s
 operating county and the catchment it serves have distinct grouping keys.
 Missing classifications appear as a null key when viewing all locations.
+
+### Inspect a company or freight route
+
+Start a local company-enabled national campaign with the full observer.
+
+```bash
+mise run play -- --new --preset national-world
+```
+
+After the first period closes, select a county and choose **By Company**.
+Select a named company in the ranked list and open **Company accounts**.
+The legal parent shows the treasury, claims and payments on its own books.
+Choose **Show consolidated company** to include its operating sites and see
+the adjustments for internal sales, contributions, dividends and margins.
+A campaign captured before companies existed retains its original owners.
+
+To inspect an industry, choose **By Industry**, select a row, then choose
+**Show or hide industry sources**. The national source table groups captured
+QCEW records by NAICS code. It lists reported jobs and counts suppressed
+records. The diagram shows flows for the selected county and period.
+
+From `rust/`, read the published company statements for a completed period.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- company-period \
+  --campaign "$CAMPAIGN_ID" --period 2 --published
+```
+
+Choose **Freight access** to inspect Wayne’s captured corridors. Switch between
+**Outbound from origin** and **Inbound to origin** to inspect each direction.
+Select an endpoint, then choose **Geographic map** or **Terminal network**.
+For shortest road distances, set `BABYLON_MICHIGAN_ROAD_MATRIX` to the
+verified Michigan matrix before starting the client. Without the matrix the
+view reports captured corridors and marks missing reference distances.
 
 ### Follow recorded labor
 

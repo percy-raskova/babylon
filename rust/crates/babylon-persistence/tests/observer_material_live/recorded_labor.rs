@@ -1,6 +1,6 @@
 //! Full-observer labor windows authenticate the entire prefix and expose actual performed work.
 use babylon_persistence::identity::CampaignId;
-use babylon_persistence::money_journal::LaborFlowPage;
+use babylon_persistence::money_journal::{FlowQuery, LaborFlowPage};
 use babylon_persistence::observer_reader::{ObserverEconomyError, ObserverEconomyReader};
 use babylon_persistence::qualification_audit::trade;
 use babylon_persistence::recorded_labor::RecordedLaborPeriod;
@@ -162,12 +162,14 @@ fn compare_sql(
     expected: &[(u128, u128, u128)],
 ) {
     use babylon_persistence::money_journal::{
-        FlowGroup, FlowQuery, LaborAmount, LaborDirections, PeriodWindow,
+        FlowGroup, LaborAmount, LaborDirections, PeriodWindow,
     };
     let query = FlowQuery {
         window: PeriodWindow { first: 2, last: 2 },
         comparison: Some(PeriodWindow { first: 1, last: 1 }),
         group: FlowGroup::Location,
+        peer: None,
+        focus_group: None,
         focus: None,
         offset: 0,
         viewport_4269: None,
@@ -204,6 +206,27 @@ fn compare_sql(
         assert_eq!(directions.net_recorded_micro_hours, "0");
     };
     check(&page.total.current, expected[1]);
+    for group in [FlowGroup::Company, FlowGroup::Counterparty] {
+        let grouped = reader
+            .recorded_labor_flows(
+                campaign,
+                &FlowQuery {
+                    group,
+                    ..query.clone()
+                },
+            )
+            .expect("rank recorded work by controlling company");
+        check(&grouped.total.current, expected[1]);
+        check(
+            grouped.total.comparison.as_ref().expect("prior period"),
+            expected[0],
+        );
+        assert!(grouped
+            .groups
+            .iter()
+            .any(|r| r.key.as_deref().is_some_and(|k| k.starts_with("company:"))));
+    }
+    check_county_counterparty(reader, campaign, &query);
     check(
         page.total.comparison.as_ref().expect("prior period"),
         expected[0],
@@ -229,15 +252,67 @@ fn compare_sql(
         .is_err());
 }
 
+fn check_county_counterparty(
+    reader: &ObserverEconomyReader,
+    campaign: CampaignId,
+    query: &FlowQuery,
+) {
+    use babylon_persistence::money_journal::{FlowDirection, FlowGroup, FlowPeer};
+    let local = FlowQuery {
+        focus: Some("county:26163".to_owned()),
+        ..query.clone()
+    };
+    let home = reader
+        .recorded_labor_flows(campaign, &local)
+        .expect("home county labor");
+    let peers = reader
+        .recorded_labor_flows(
+            campaign,
+            &FlowQuery {
+                group: FlowGroup::Counterparty,
+                focus_group: Some(FlowGroup::Location),
+                ..local.clone()
+            },
+        )
+        .expect("home county labor by actual counterparty");
+    assert_eq!(home.total.current, peers.total.current);
+    assert_eq!(home.total.comparison, peers.total.comparison);
+    let chosen = peers
+        .groups
+        .iter()
+        .find(|r| r.current.inbound.movement_count != "0")
+        .expect("observed incoming labor counterpart");
+    let detail = FlowQuery {
+        peer: Some(FlowPeer {
+            group: FlowGroup::Counterparty,
+            key: chosen.key.clone(),
+            direction: FlowDirection::Inbound,
+        }),
+        ..local
+    };
+    let legs = reader
+        .recorded_labor_flows(campaign, &detail)
+        .expect("scoped actual labor geography");
+    assert_eq!(legs.total.current.inbound, chosen.current.inbound);
+    assert_eq!(legs.total.current.outbound.movement_count, "0");
+    assert_eq!(legs.total.current.within.movement_count, "0");
+    assert_eq!(
+        legs.total.comparison.as_ref().expect("prior").inbound,
+        chosen.comparison.as_ref().expect("prior").inbound
+    );
+}
+
 pub(super) fn first_period_flows(
     reader: &ObserverEconomyReader,
     campaign: CampaignId,
 ) -> LaborFlowPage {
-    use babylon_persistence::money_journal::{FlowGroup, FlowQuery, PeriodWindow};
+    use babylon_persistence::money_journal::{FlowGroup, PeriodWindow};
     let request = FlowQuery {
         window: PeriodWindow { first: 1, last: 1 },
         comparison: None,
         group: FlowGroup::Location,
+        peer: None,
+        focus_group: None,
         focus: None,
         offset: 0,
         viewport_4269: None,

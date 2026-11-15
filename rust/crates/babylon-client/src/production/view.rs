@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::accounting::AccountsView;
+use super::source_codes::{self, Codes};
 use super::{accounting, navigation};
 
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
@@ -1786,6 +1787,7 @@ pub(crate) fn paint_readings(
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
     accounts: Option<Res<AccountsView>>,
+    codes: Option<Res<Codes>>,
     mut details: Query<ReadingText, ReadingMarkers>,
     mut reading_targets: ReadingFocusTargets,
     mut last_context: Local<Option<ObservationContext>>,
@@ -1796,6 +1798,7 @@ pub(crate) fn paint_readings(
         || frame.is_changed()
         || last_context.as_ref() != Some(&context)
         || accounts.as_ref().is_some_and(DetectChanges::is_changed)
+        || codes.as_ref().is_some_and(DetectChanges::is_changed)
     {
         *last_context = Some(context.clone());
         for mut target in &mut reading_targets {
@@ -1828,7 +1831,16 @@ pub(crate) fn paint_readings(
             }
             text.0 = match (snapshot, site, brief.is_some()) {
                 (Some(snapshot), Some(site), true) => production_brief::describe_brief(site, snapshot),
-                (Some(snapshot), Some(site), false) if navigation.details_open => readings::describe(site, snapshot, navigation.reading_section, accounts.as_deref()),
+                (Some(snapshot), Some(site), false) if navigation.details_open => {
+                    let mut reading = readings::describe(site, snapshot, navigation.reading_section, accounts.as_deref());
+                    if navigation.reading_section == ProductionReadingSection::Sources {
+                        if let Some(source) = codes.as_deref().and_then(Codes::text) {
+                            reading.push('\n');
+                            reading.push_str(source);
+                        }
+                    }
+                    reading
+                },
                 (Some(snapshot), None, true) if navigation.county_open => format!("COUNTY {}\nChoose a commodity cohort to follow its circuit.\n{}", navigation.county_geoid.as_deref().unwrap_or("unavailable"), snapshot.scenario_label),
                 (Some(snapshot), None, true) => production_brief::describe_overview(snapshot),
                 (None, _, true) => "No production relationships are disclosed at this period and perspective. Open World to explore the information available to you.".into(),
@@ -1845,6 +1857,7 @@ impl Plugin for ProductionPlugin {
         app.init_resource::<PrimaryView>()
             .init_resource::<ProductionNavigation>()
             .init_resource::<AccountsView>()
+            .init_resource::<Codes>()
             .init_resource::<ProductionOrbit>()
             .init_resource::<ObserverFeedback>()
             .add_message::<ProductionCommand>()
@@ -1877,6 +1890,7 @@ impl Plugin for ProductionPlugin {
                     paint_scene,
                     paint_labels,
                     accounting::update,
+                    source_codes::update,
                     paint_readings,
                     paint_disclosure,
                     paint_buttons,

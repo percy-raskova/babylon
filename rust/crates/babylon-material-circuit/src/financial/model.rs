@@ -1,9 +1,29 @@
 //! Captured claims and budgets; identity does not infer class or jurisdiction.
-use crate::{AccountId, PublicAccountId, SiteId};
+use crate::{AccountId, CompanyId, PublicAccountId, SiteId};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 
 crate::model::identity_type!(ContributionId);
+/// Source-derived, immutable shareholder capital weights and captured payout rate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanyPayoutPolicy {
+    pub company: CompanyId,
+    pub earnings_bps: u16,
+    pub claims: Vec<(AccountId, u128)>,
+}
+/// One ultimate owner allocation from a single frozen company payout basis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanyDistributionReceipt {
+    pub period: u64,
+    pub company: CompanyId,
+    pub beneficiary: AccountId,
+    pub weight: u128,
+    pub total_weight: u128,
+    pub eligible_earnings: Currency,
+    pub protected_contributions: Currency,
+    pub declared: Currency,
+    pub paid: Currency,
+}
 
 /// Only non-workplace institutions use this table. Site and household locations
 /// retain their existing physical/residence authority.

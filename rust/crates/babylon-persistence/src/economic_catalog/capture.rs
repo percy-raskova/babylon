@@ -1,4 +1,5 @@
 //! Source-only durable capture and deterministic importer selection.
+use super::preset::NationalGraph;
 use crate::national_economy::grain::NationalGenerationWitness;
 
 use super::national::NationalSources;
@@ -14,7 +15,9 @@ use babylon_kernel::clock::CampaignDuration;
 use super::control::MichiganSources;
 use crate::identity::CampaignId;
 use crate::michigan_material::MichiganMaterialCatalog;
+use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
 use crate::national_economy::NationalAidCapture;
+use crate::national_economy::NationalGamePolicy;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use babylon_kernel::content_digest;
@@ -38,6 +41,7 @@ pub(super) enum CapturedSources {
 /// One durable source table and current compiler pin. The opening is regenerated
 /// in memory; no derived per-site or global state is encoded inside the catalog.
 pub struct CapturedEconomicCatalog {
+    compiler: &'static str,
     pub(super) input: EconomicCatalogInput,
     pub(super) sources: CapturedSources,
     pub(super) opening: EconomicOpening,
@@ -80,6 +84,10 @@ impl CapturedEconomicCatalog {
         }
         validate_text_sources(&input)?;
         let compiler = compiler_for(&input)?;
+        let graph = NationalGraph::from_compiler(compiler);
+        if graph == NationalGraph::Companies {
+            super::preset::capture_company_graph(&mut input);
+        }
         // Check framing and byte bounds before source expansion or generation.
         // Check and release request framing before expansion; finalize after admission.
         drop(codec::encode(&input, compiler)?);
@@ -88,7 +96,7 @@ impl CapturedEconomicCatalog {
         let (sources, mut opening) = match input.geography {
             CatalogGeography::NationalCounties
             | CatalogGeography::NationalCountiesWithMichiganDetail => {
-                let (sources, opening) = NationalSources::admit(&input)?;
+                let (sources, opening) = NationalSources::admit(&input, graph)?;
                 (CapturedSources::National(Box::new(sources)), opening)
             }
             CatalogGeography::MichiganControl => {
@@ -107,7 +115,7 @@ impl CapturedEconomicCatalog {
                 .ok_or(EconomicCatalogError::Source(SourceArtifactKind::Rules))?;
             *rules = SourceArtifact::capture(
                 SourceArtifactKind::Rules,
-                super::preset::national_organizer_rules(),
+                super::preset::national_organizer_rules(graph),
             );
             let source_basis = content_digest::sha256_of(&codec::encode(&source_only, compiler)?);
             let expected_config = crate::national_economy::organizer::assemble(
@@ -144,6 +152,7 @@ impl CapturedEconomicCatalog {
         let bytes = codec::encode(&input, compiler)?;
         let digest = content_digest::sha256_of(&bytes);
         Ok(Self {
+            compiler,
             input,
             sources,
             opening,
@@ -179,6 +188,7 @@ impl CapturedEconomicCatalog {
         let CapturedSources::National(national) = &catalog.sources else {
             return Err(EconomicCatalogError::Identity);
         };
+        let graph = NationalGraph::from_compiler(catalog.compiler);
         let index = catalog
             .input
             .sources
@@ -187,12 +197,10 @@ impl CapturedEconomicCatalog {
             .ok_or(EconomicCatalogError::Source(SourceArtifactKind::Rules))?;
         catalog.input.sources[index] = SourceArtifact::capture(
             SourceArtifactKind::Rules,
-            super::preset::national_organizer_rules(),
+            super::preset::national_organizer_rules(graph),
         );
-        let source_basis = content_digest::sha256_of(&codec::encode(
-            &catalog.input,
-            compiler_for(&catalog.input)?,
-        )?);
+        let source_basis =
+            content_digest::sha256_of(&codec::encode(&catalog.input, catalog.compiler)?);
         let config = crate::national_economy::organizer::assemble(
             *campaign.canonical_bytes(),
             crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
@@ -212,10 +220,10 @@ impl CapturedEconomicCatalog {
             catalog.input.city_pd = Some(city_pd);
             catalog.input.sources[index] = SourceArtifact::capture(
                 SourceArtifactKind::Rules,
-                super::preset::national_city_pd_rules(),
+                super::preset::national_city_pd_rules(graph),
             );
         }
-        catalog.bytes = codec::encode(&catalog.input, compiler_for(&catalog.input)?)?;
+        catalog.bytes = codec::encode(&catalog.input, catalog.compiler)?;
         catalog.digest = content_digest::sha256_of(&catalog.bytes);
         Ok(catalog)
     }
@@ -284,10 +292,23 @@ impl CapturedEconomicCatalog {
         self.digest
     }
     #[must_use]
-    pub fn compiler_version(&self) -> &'static str {
-        match self.input.geography {
-            CatalogGeography::MichiganControl => "michigan-control-v2",
-            _ => "national-world-v7",
+    pub const fn compiler_version(&self) -> &'static str {
+        self.compiler
+    }
+    /// Whole-site company membership fixed by a company-enabled national foundation.
+    #[must_use]
+    pub fn national_companies(&self) -> Option<&CompanyCapture> {
+        match &self.sources {
+            CapturedSources::National(sources) => sources.companies.as_ref(),
+            CapturedSources::Michigan(_) => None,
+        }
+    }
+    /// Immutable treasury transfers and ultimate claims rebuilt from authenticated opening sources.
+    #[must_use]
+    pub fn national_company_finances(&self) -> Option<&CompanyFinances> {
+        match &self.sources {
+            CapturedSources::National(sources) => sources.finances.as_ref(),
+            CapturedSources::Michigan(_) => None,
         }
     }
     #[must_use]
@@ -332,10 +353,27 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
         CatalogGeography::NationalCounties
         | CatalogGeography::NationalCountiesWithMichiganDetail
             if input.scenario_id == crate::national_economy::NATIONAL_SCENARIO_ID
-                && input.preset_id == "national-world"
                 && input.duration == CampaignDuration::Continuous =>
         {
-            Ok("national-world-v7")
+            let kind = SourceArtifactKind::NationalGamePolicy;
+            let policy = NationalGamePolicy::from_captured_bytes(source(input, kind)?)
+                .map_err(|_| EconomicCatalogError::Source(kind))?;
+            let experiment = policy.companies.and_then(|terms| terms.experiment);
+            match (input.preset_id.as_str(), experiment) {
+                ("national-world", None) => Ok(if policy.companies.is_some() {
+                    "national-world-v8"
+                } else {
+                    "national-world-v7"
+                }),
+                ("national-company-scale-experiment", Some(_))
+                    if input.geography == CatalogGeography::NationalCounties
+                        && input.organizer.is_none()
+                        && input.city_pd.is_none() =>
+                {
+                    Ok("national-company-scale-v1")
+                }
+                _ => Err(EconomicCatalogError::Identity),
+            }
         }
         CatalogGeography::MichiganControl
             if input.scenario_id == crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO =>

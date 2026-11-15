@@ -15,10 +15,9 @@ mod tests;
 mod composition;
 
 use composition::exact_real;
-#[cfg(test)]
-use composition::read_stock;
 pub use composition::{
     apply_material_staffing, validate_opening_labor, MaterialStaffingError, StaffingEffectContext,
     StaffingEffects, EMPLOYED_POPULATION, MAX_EXACT_STAFFING_INTEGER, PREVIOUS_UNRETAINED_HOURS,
     RESERVE_POPULATION, STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
 };
+pub(crate) use composition::{read_stock, resolve_node, typed_write};

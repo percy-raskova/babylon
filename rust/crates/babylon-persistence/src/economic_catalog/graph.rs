@@ -2,6 +2,7 @@
 
 use super::{EconomicCatalogError, EconomicOpening};
 use crate::national_counties::NationalCountyReference;
+use crate::national_economy::companies::CompanyCapture;
 use crate::national_economy::NationalAidCapture;
 use babylon_bsl::scenario_seed::{
     EdgeSeed, GraphSeed, HyperedgeSeed, NodeSeed, SeedAttribute, SeedValue,
@@ -9,6 +10,7 @@ use babylon_bsl::scenario_seed::{
 use babylon_graph::stable_element::StableElementKey;
 use babylon_practice_contract::CityPdConfig;
 use babylon_practice_contract::OrganizerConfig;
+use babylon_tick::company_graph;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
 
@@ -44,15 +46,38 @@ fn node(
         attributes,
     })
 }
+fn company_nodes(scope: &str, companies: Option<&CompanyCapture>) -> Result<Vec<NodeSeed>> {
+    let Some(companies) = companies else {
+        return Ok(Vec::new());
+    };
+    let fields = company_graph::FIELDS
+        .iter()
+        .map(|field| attribute(field, 0))
+        .collect::<Result<Vec<_>>>()?;
+    companies
+        .companies
+        .iter()
+        .map(|company| {
+            node(
+                scope,
+                &company_graph::company_key(scope, company.key.id()),
+                "COMPANY",
+                fields.clone(),
+            )
+        })
+        .collect()
+}
+
 pub(super) fn national_seed(
     scope: &str,
     opening: &EconomicOpening,
     counties: &NationalCountyReference,
     aid: &NationalAidCapture,
+    companies: Option<&CompanyCapture>,
     organizer: Option<&OrganizerConfig>,
     city_pd: Option<&CityPdConfig>,
 ) -> Result<GraphSeed> {
-    let mut nodes = Vec::new();
+    let mut nodes = company_nodes(scope, companies)?;
     for county in counties.counties() {
         let geoid = county.geoid();
         nodes.push(NodeSeed {

@@ -571,7 +571,7 @@ pub fn capture_membership(
                 zone,
                 capacity,
                 reason,
-                policy.source_digest,
+                policy.grain_identity_policy_digest,
                 (labor, output, mass),
             )?);
         } else {
@@ -596,7 +596,7 @@ pub fn capture_membership(
                 zone,
                 Some(capacity),
                 reason,
-                policy.source_digest,
+                policy.grain_identity_policy_digest,
                 (labor, output, mass),
             )?);
         }

@@ -116,10 +116,8 @@ pub(crate) fn opening_accounting(
         }],
     }))
 }
-pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (book, costs) = opening_assets();
-    let (capacity_policy, equipment) = opening_capacity();
-    let schedules: Vec<_> = [0, 2, 1, 2, 1, 0, 0, 0]
+fn opening_labor() -> Vec<LaborCapacityRow> {
+    [0, 2, 1, 2, 1, 0, 0, 0]
         .into_iter()
         .enumerate()
         .map(|(n, available)| LaborCapacityRow {
@@ -128,7 +126,13 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             period: u64::try_from(n + 1).expect("the fixture value fits the target range"),
             available,
         })
-        .collect();
+        .collect()
+}
+
+pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
+    let (book, costs) = opening_assets();
+    let (capacity_policy, equipment) = opening_capacity();
+    let schedules = opening_labor();
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy,
         site_logistics_nodes: vec![SiteLogisticsNode {
@@ -164,6 +168,8 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],

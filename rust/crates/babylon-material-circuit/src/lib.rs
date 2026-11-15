@@ -35,10 +35,10 @@ mod valuation;
 mod wire;
 
 pub use accounts::{
-    AccountId, CashAccount, CashTransferPurpose, FundedShift, MonetaryBook, MonetaryBookSnapshot,
-    MonetaryError, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
-    OrganizationAccountId, PublicAccountId, PurchaseEscrow, PurchaseMovementReceipt, ShiftId,
-    ShiftState, WageAccrualReceipt,
+    AccountId, CashAccount, CashTransferPurpose, CompanyId, FundedShift, MonetaryBook,
+    MonetaryBookSnapshot, MonetaryError, MoneyLocation, MoneyPosting, MoneyTransferPurpose,
+    MoneyTransferReceipt, OrganizationAccountId, PublicAccountId, PurchaseEscrow,
+    PurchaseMovementReceipt, ShiftId, ShiftState, WageAccrualReceipt,
 };
 pub use catalog::{MaterialCatalog, MaterialCatalogDefinition};
 pub use equipment::{
@@ -49,11 +49,13 @@ pub use equipment::{
     InstalledEquipmentCohort, InvestmentPolicy, InvestmentReceipt, PendingInstallation,
     ProductiveEquipment, RollingProcessSupply,
 };
+mod portfolio;
 pub use financial::{
-    validate_distribution_receipts, CapitalContributionOrder, CapitalContributionReceipt,
-    ContributionId, DistributionPolicy, DistributionReceipt, FinancialInstitutions,
-    InstitutionLocation, OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt,
-    PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt,
+    validate_company_distributions, validate_distribution_receipts, CapitalContributionOrder,
+    CapitalContributionReceipt, CompanyDistributionReceipt, CompanyPayoutPolicy, ContributionId,
+    DistributionPolicy, DistributionReceipt, FinancialInstitutions, InstitutionLocation,
+    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicTransferTreatment,
+    TaxBasis, TaxPolicy, TaxReceipt,
 };
 pub use household_time::{
     consume_household_contributions, HouseholdContributionReceipt, HouseholdContributionUse,
@@ -65,6 +67,11 @@ pub use payments::{
     admit_material_purchase, member_shift_id, CircuitAccounting, EmploymentTerms,
     LaborCompensation, LaborUseReceipt, MaterialPurchase, MemberLaborUseReceipt, MonetaryCircuit,
     MAX_MONEY_TRANSFERS_PER_PERIOD,
+};
+pub use portfolio::{
+    CompanyCondition, CompanyPortfolio, CompanyPortfolioEvidence, CompanyPortfolioPolicy,
+    CompanyPortfolioRegister, CompanyPortfolioSelection, CompanyProcessEvidence,
+    CompanyProcessPlan, COMPANY_PORTFOLIO_DOMAIN,
 };
 pub use recurring::*;
 pub use services::{
@@ -81,14 +88,15 @@ pub use staffing::{
     MAX_STAFFING_MEMBERS,
 };
 pub use valuation::{
-    CapitalAccount, EquityCarryingValue, FreightCarryingValue, HistoricalCostBook,
-    HistoricalCostSnapshot, IncomeReceipt, IncomeStatement, StockCarryingValue,
-    MAX_CARRYING_STOCKS,
+    CapitalAccount, CompanyBasisAsset, CompanyBasisMovement, CompanySale, EquityCarryingValue,
+    FreightCarryingValue, HistoricalCostBook, HistoricalCostSnapshot, IncomeReceipt,
+    IncomeStatement, StockCarryingValue, MAX_CARRYING_STOCKS, MAX_COMPANY_BASIS_MOVEMENTS,
 };
 
 pub use transition::{
     advance_material_circuit, advance_material_circuit_with_aid, close_material_period,
-    close_material_period_with_aid, close_material_period_with_support, ClosedMaterialPeriod,
+    close_material_period_with_aid, close_material_period_with_portfolios,
+    close_material_period_with_support, ClosedMaterialPeriod,
 };
 pub use wire::{
     decode_material_circuit_state, decode_material_circuit_state_for_encoding,

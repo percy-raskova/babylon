@@ -41,6 +41,7 @@ fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'stat
                     | "--group"
                     | "--compare-first"
                     | "--compare-last"
+                    | "--focus-group"
                     | "--focus"
                     | "--offset"
                     | "--bbox-4269"
@@ -116,6 +117,17 @@ fn parse_site(text: &str) -> Result<SiteId, &'static str> {
     }
     Ok(SiteId::from_bytes(bytes))
 }
+fn flow_group(key: &str) -> Result<FlowGroup, &'static str> {
+    Ok(match key {
+        "location" => FlowGroup::Location,
+        "account" => FlowGroup::Account,
+        "catchment" => FlowGroup::Catchment,
+        "industry" => FlowGroup::Industry,
+        "company" => FlowGroup::Company,
+        "counterparty" => FlowGroup::Counterparty,
+        _ => return Err("group_refused"),
+    })
+}
 fn flow_options(
     flags: &BTreeMap<String, String>,
     window: PeriodWindow,
@@ -129,13 +141,14 @@ fn flow_options(
         }),
         _ => return Err("comparison_refused"),
     };
-    let group = match flags.get("--group").map_or("location", String::as_str) {
-        "location" => FlowGroup::Location,
-        "account" => FlowGroup::Account,
-        "catchment" => FlowGroup::Catchment,
-        "industry" => FlowGroup::Industry,
-        _ => return Err("group_refused"),
-    };
+    let group = flow_group(flags.get("--group").map_or("location", String::as_str))?;
+    let focus_group = flags
+        .get("--focus-group")
+        .map(|key| flow_group(key))
+        .transpose()?;
+    if focus_group.is_some() && !flags.contains_key("--focus") {
+        return Err("focus_absent");
+    }
     let viewport_4269 = flags
         .get("--bbox-4269")
         .map(|text| {
@@ -165,6 +178,8 @@ fn flow_options(
         window,
         comparison,
         group,
+        peer: None,
+        focus_group,
         focus: flags.get("--focus").cloned(),
         offset,
         viewport_4269,
@@ -217,7 +232,7 @@ fn run(args: &Arguments) -> Result<Value, String> {
             };
             let page = page.map_err(|e| e.to_string())?;
             Ok(
-                json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"unit":unit,"request":query,"page":page}),
+                json!({"version":2,"campaign":args.campaign.as_uuid().to_string(),"unit":unit,"request":query,"page":page}),
             )
         }
         "site-history" => {

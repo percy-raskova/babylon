@@ -1,6 +1,7 @@
 //! The single private production reducer shared by current material transitions.
 
 use crate::valuation::CostClose;
+use crate::CompanyBasisAsset;
 use babylon_kernel::currency::Currency;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -551,7 +552,12 @@ fn consume_production_inputs(
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;
         let available = inventory.get(&(site, good, unit)).copied().unwrap_or(0);
-        let withdrawn = costs.input((AccountId::Site(site), good, unit), available, quantity)?;
+        let withdrawn = costs.input(
+            (AccountId::Site(site), good, unit),
+            available,
+            quantity,
+            CompanyBasisAsset::Process(site, process),
+        )?;
         input_cost = input_cost
             .checked_add(withdrawn)
             .map_err(|_| MaterialCircuitError::Arithmetic)?;

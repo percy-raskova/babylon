@@ -236,6 +236,8 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             unit_id: units(),
             hours_per_unit: 1,
         }],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],

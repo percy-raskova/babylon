@@ -138,6 +138,8 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
+                company_portfolios: None,
+                company_payouts: vec![],
                 maintenance_binding: None,
                 site_logistics_nodes: vec![
                     SiteLogisticsNode {
@@ -417,6 +419,8 @@ fn production_debits_all_inputs_before_crediting_any_output() {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
+                company_portfolios: None,
+                company_payouts: vec![],
                 maintenance_binding: None,
                 site_logistics_nodes: vec![],
                 commodities: vec![
@@ -585,6 +589,8 @@ fn numeric_boundary_catalog(
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         site_logistics_nodes: vec![],
         commodities: vec![
@@ -671,6 +677,8 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
+                company_portfolios: None,
+                company_payouts: vec![],
                 maintenance_binding: None,
                 site_logistics_nodes: vec![],
                 commodities: vec![

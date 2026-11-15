@@ -45,6 +45,29 @@ pub fn sha256_of(bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(bytes).into()
 }
 
+/// Encode all 256 digest bits as 52 unpadded lowercase RFC 4648 base32 symbols.
+#[must_use]
+pub fn base32(bytes: &[u8; 32]) -> String {
+    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let mut result = String::with_capacity(52);
+    let mut bits = 0_u16;
+    let mut count = 0;
+    for byte in bytes {
+        bits = (bits << 8) | u16::from(*byte);
+        count += 8;
+        while count >= 5 {
+            count -= 5;
+            result.push(char::from(ALPHABET[usize::from((bits >> count) & 31)]));
+        }
+    }
+    if count > 0 {
+        result.push(char::from(
+            ALPHABET[usize::from((bits << (5 - count)) & 31)],
+        ));
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::ContentDigest;

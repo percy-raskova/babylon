@@ -8,7 +8,6 @@ use postgres::types::ToSql;
 use postgres::Transaction;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::fmt::Write as _;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Admission {
@@ -48,18 +47,87 @@ impl<'a> AccountRow<'a> {
         })
     }
 }
-const ACCOUNT_SOURCE: &str = "WITH raw AS (SELECT * FROM jsonb_to_recordset($3::text::jsonb) AS x(\
-    kind text,id text,location text,catchment text,industry text,label text,lon numeric,lat numeric)), \
-    a AS (SELECT kind, decode(id,'hex') AS id, location,catchment,industry,label FROM raw), \
-    g AS (SELECT DISTINCT location,lon,lat FROM raw WHERE lon IS NOT NULL) ";
+
+const ACCOUNT_SOURCE: &str = "
+    WITH raw AS (
+        SELECT * FROM jsonb_to_recordset($3::text::jsonb) AS x(
+            kind text, id text, location text, catchment text,
+            industry text, label text, lon numeric, lat numeric
+        )
+    ),
+    a AS (
+        SELECT kind, decode(id, 'hex') AS id, location, catchment, industry, label FROM raw
+    ),
+    g AS (
+        SELECT DISTINCT location, lon, lat FROM raw WHERE lon IS NOT NULL
+    )";
+
+// A missing primary key yields NULL. IS NOT TRUE rejects absence along with
+// mismatched foundation, nullable account attributes, or county coordinates.
+const VERIFY_ACCOUNTS: &str = "
+    SELECT NOT EXISTS (
+        SELECT FROM a WHERE (
+            SELECT d.foundation_sha256 = $2
+                AND (d.location_key, d.catchment_key, d.industry_key, d.industry_label)
+                    IS NOT DISTINCT FROM (a.location, a.catchment, a.industry, a.label)
+            FROM babylon_state.economic_flow_account_v1 d
+            WHERE d.campaign_id = $1 AND d.account_kind = a.kind AND d.account_id = a.id
+        ) IS NOT TRUE
+    ) AND NOT EXISTS (
+        SELECT FROM g WHERE (
+            SELECT l.foundation_sha256 = $2
+                AND (l.longitude, l.latitude) IS NOT DISTINCT FROM (g.lon, g.lat)
+            FROM babylon_state.economic_flow_location_v1 l
+            WHERE l.campaign_id = $1 AND l.location_key = g.location
+        ) IS NOT TRUE
+    )";
+
+fn accounts_upsert(mode: Admission) -> Option<String> {
+    let (point_conflict, account_conflict) = match mode {
+        Admission::Verify => return None,
+        Admission::Insert => ("DO NOTHING", "DO NOTHING"),
+        Admission::Rebuild => (
+            "DO UPDATE SET longitude = EXCLUDED.longitude, latitude = EXCLUDED.latitude
+             WHERE (l.longitude, l.latitude) IS DISTINCT FROM (EXCLUDED.longitude, EXCLUDED.latitude)",
+            "DO UPDATE SET location_key = EXCLUDED.location_key, catchment_key = EXCLUDED.catchment_key,
+                 industry_key = EXCLUDED.industry_key, industry_label = EXCLUDED.industry_label
+             WHERE (d.location_key, d.catchment_key, d.industry_key, d.industry_label)
+                 IS DISTINCT FROM (EXCLUDED.location_key, EXCLUDED.catchment_key,
+                                   EXCLUDED.industry_key, EXCLUDED.industry_label)",
+        ),
+    };
+    Some(format!(
+        "{ACCOUNT_SOURCE}, points AS (
+             INSERT INTO babylon_state.economic_flow_location_v1 AS l
+                 (campaign_id, foundation_sha256, location_key, longitude, latitude)
+             SELECT $1, $2, location, lon, lat FROM g
+             ON CONFLICT (campaign_id, location_key) {point_conflict}
+         )
+         INSERT INTO babylon_state.economic_flow_account_v1 AS d
+             (campaign_id, foundation_sha256, account_kind, account_id,
+              location_key, catchment_key, industry_key, industry_label)
+         SELECT $1, $2, kind, id, location, catchment, industry, label FROM a
+         ON CONFLICT (campaign_id, account_kind, account_id) {account_conflict}"
+    ))
+}
 
 pub(super) fn accounts(
     tx: &mut Transaction<'_>,
     period: &EconomicPaymentPeriod,
     mode: Admission,
 ) -> Result<(), JournalError> {
+    if period.accounts.is_empty() {
+        return Ok(());
+    }
     let campaign = period.source.campaign_id;
     let digest = period.source.identity.foundation_digest();
+    let upsert = accounts_upsert(mode)
+        .map(|sql| tx.prepare(&sql))
+        .transpose()
+        .map_err(|_| JournalError::Database)?;
+    let verify = tx
+        .prepare(&format!("{ACCOUNT_SOURCE} {VERIFY_ACCOUNTS}"))
+        .map_err(|_| JournalError::Database)?;
     for chunk in period.accounts.chunks(1024) {
         let accounts: Vec<_> = chunk
             .iter()
@@ -67,32 +135,12 @@ pub(super) fn accounts(
             .collect::<Result<_, _>>()?;
         let data = serde_json::to_string(&accounts).map_err(|_| JournalError::Projection)?;
         let params: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &digest.as_slice(), &data];
-        if mode != Admission::Verify {
-            let (geo, acc) = if mode == Admission::Rebuild {
-                ("DO UPDATE SET longitude=EXCLUDED.longitude,latitude=EXCLUDED.latitude WHERE (l.longitude,l.latitude) IS DISTINCT FROM (EXCLUDED.longitude,EXCLUDED.latitude)",
-                 "DO UPDATE SET location_key=EXCLUDED.location_key,catchment_key=EXCLUDED.catchment_key,industry_key=EXCLUDED.industry_key,industry_label=EXCLUDED.industry_label WHERE (d.location_key,d.catchment_key,d.industry_key,d.industry_label) IS DISTINCT FROM (EXCLUDED.location_key,EXCLUDED.catchment_key,EXCLUDED.industry_key,EXCLUDED.industry_label)")
-            } else {
-                ("DO NOTHING", "DO NOTHING")
-            };
-            let mut sql = String::from(ACCOUNT_SOURCE);
-            write!(&mut sql,", points AS (INSERT INTO babylon_state.economic_flow_location_v1 AS l \
-              (campaign_id,foundation_sha256,location_key,longitude,latitude) SELECT $1,$2,location,lon,lat FROM g \
-              ON CONFLICT(campaign_id,location_key) {geo}) \
-              INSERT INTO babylon_state.economic_flow_account_v1 AS d \
-              (campaign_id,foundation_sha256,account_kind,account_id,location_key,catchment_key,industry_key,industry_label) \
-              SELECT $1,$2,kind,id,location,catchment,industry,label FROM a \
-              ON CONFLICT(campaign_id,account_kind,account_id) {acc}").map_err(|_| JournalError::Projection)?;
-            tx.execute(&sql, params)
+        if let Some(statement) = &upsert {
+            tx.execute(statement, params)
                 .map_err(|_| JournalError::Database)?;
         }
-        let sql = format!("{ACCOUNT_SOURCE} SELECT NOT EXISTS (SELECT * FROM a EXCEPT \
-            SELECT d.account_kind,d.account_id,d.location_key,d.catchment_key,d.industry_key,d.industry_label \
-            FROM babylon_state.economic_flow_account_v1 d JOIN a ON d.account_kind=a.kind AND d.account_id=a.id \
-            WHERE d.campaign_id=$1 AND d.foundation_sha256=$2) AND NOT EXISTS (SELECT * FROM g EXCEPT \
-            SELECT l.location_key,l.longitude,l.latitude FROM babylon_state.economic_flow_location_v1 l JOIN g \
-            ON g.location=l.location_key WHERE l.campaign_id=$1 AND l.foundation_sha256=$2)");
         let valid: bool = tx
-            .query_one(&sql, params)
+            .query_one(&verify, params)
             .map_err(|_| JournalError::Database)?
             .try_get(0)
             .map_err(|_| JournalError::Projection)?;

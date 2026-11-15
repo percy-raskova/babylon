@@ -43,6 +43,7 @@ fn account(id: AccountId) -> Value {
         AccountId::Household(id) => ("household", id.as_bytes()),
         AccountId::Organization(id) => ("organization", id.as_bytes()),
         AccountId::Public(id) => ("public", id.as_bytes()),
+        AccountId::Company(id) => ("company", id.as_bytes()),
     };
     serde_json::json!({"kind": kind, "id": hex(bytes)})
 }

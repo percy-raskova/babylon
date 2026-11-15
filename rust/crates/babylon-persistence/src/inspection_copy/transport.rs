@@ -92,7 +92,7 @@ fn verify_copy(
     for tick in 1..=tip {
         let period = u64::try_from(tick).map_err(|_| InspectionCopyError::Markers)?;
         let source =
-            observer_material::committed_receipts(tx, campaign, period, &handle, &mut cursor)
+            observer_material::committed_receipts(tx, campaign, period, &handle, &mut cursor, None)
                 .map_err(|_| InspectionCopyError::Components(tick))?;
         last = Some(crate::qualification_audit::trade::hex(
             source.identity.tick_content_hash().as_bytes(),

@@ -1,5 +1,7 @@
 //! Atomic owner publication and full-observer SQL access.
+use super::labor_source::LaborPublication;
 use super::payment_storage::Admission;
+use super::statement_storage::{JournalPeriodSource, SiteBinding};
 use super::{
     labor_source, labor_storage, model, payment_storage, statement_storage, JournalError,
     MoneyEndpoint, MoneyLocationKind, MoneyMovement, MoneyPurpose, MoneyReference,
@@ -9,8 +11,10 @@ use crate::identity::CampaignId;
 use crate::observer_reader::{
     CommittedMaterialReceipts, ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
 };
+use crate::production_projection::diagnostics::{Stage, Timing};
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 use sha2::{Digest, Sha256};
+use std::ops::RangeInclusive;
 
 const JOURNAL_LOCK_KEY: i64 = 0xbab1_4d01;
 
@@ -19,15 +23,27 @@ pub struct MoneyJournalWriter {
     config: Config,
 }
 
-pub(crate) const VIEWS: [&str; 13] = [
+pub(crate) const VIEWS: [&str; 25] = [
     "public.v_observer_money_journal_period_v1",
     "public.v_observer_money_movement_v1",
     "public.v_observer_money_movement_total_v1",
     "public.v_observer_economic_flow_location_v1",
     "public.v_observer_economic_flow_account_v1",
+    "public.v_observer_economic_company_v1",
+    "public.v_observer_economic_company_member_v1",
+    "public.v_observer_economic_company_claim_v1",
+    "public.v_observer_economic_company_claim_source_v1",
+    "public.v_observer_economic_flow_account_v2",
     "public.v_observer_economic_payment_v1",
     "public.v_observer_site_statement_v1",
     "public.v_observer_site_stock_balance_v1",
+    "public.v_observer_company_accounting_period_v1",
+    "public.v_observer_company_accounting_checkpoint_v1",
+    "public.v_observer_company_statement_balance_v1",
+    "public.v_observer_company_statement_income_v1",
+    "public.v_observer_company_statement_cash_flow_v1",
+    "public.v_observer_company_elimination_v1",
+    "public.v_observer_company_realization_entry_v1",
     "public.v_observer_labor_period_v1",
     "public.v_observer_labor_checkpoint_v1",
     "public.v_observer_labor_node_v1",
@@ -37,16 +53,36 @@ pub(crate) const VIEWS: [&str; 13] = [
 const COLUMNS: &str = "ordinal, purpose, reference_kind, reference_id, debit_kind, debit_id, credit_kind, credit_id, amount_micros::text";
 const KEEP_PERIODS: i64 = 13;
 
-/// Owner-only detail pruning shared with bounded SQL retention controls.
-/// Parameters are campaign UUID and the inclusive expired-period cutoff.
-/// Publication derives that cutoff from the latest committed source period minus thirteen.
-/// Permanent coverage and purpose totals survive this statement.
-pub const MONEY_DETAIL_RETENTION_SQL: &str = "WITH discarded_labor AS (\
-    DELETE FROM babylon_state.labor_node_v1 WHERE campaign_id=$1 AND resolve_tick<=$2), discarded_checkpoints AS (\
-    DELETE FROM babylon_state.labor_checkpoint_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 AND resolve_tick%13<>0), removed AS (\
-    DELETE FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick<=$2) \
-    UPDATE babylon_state.money_journal_period_v1 SET detail_retained=false \
-    WHERE campaign_id=$1 AND resolve_tick<=$2 AND detail_retained";
+/// Remove expired labor and custody detail from an owner transaction, keeping
+/// permanent coverage, statement history and every thirteenth checkpoint.
+/// Publication derives the inclusive cutoff from the last committed period.
+/// # Errors
+/// Returns a database error if any scoped deletion or coverage update fails.
+pub fn prune_money_journal_detail(
+    tx: &mut Transaction<'_>,
+    campaign: CampaignId,
+    cutoff: i64,
+) -> Result<(), JournalError> {
+    if cutoff <= 0 {
+        return Ok(());
+    }
+    remove_detail(tx, campaign, 1..=cutoff)?;
+    for table in ["company_accounting_checkpoint_v1", "labor_checkpoint_v1"] {
+        let sql = format!(
+            "DELETE FROM babylon_state.{table}
+             WHERE campaign_id=$1 AND resolve_tick <= $2 AND resolve_tick % 13 <> 0"
+        );
+        tx.execute(&sql, &[campaign.as_uuid(), &cutoff])
+            .map_err(|_| JournalError::Database)?;
+    }
+    tx.execute(
+        "UPDATE babylon_state.money_journal_period_v1 SET detail_retained=false
+         WHERE campaign_id=$1 AND resolve_tick <= $2 AND detail_retained",
+        &[campaign.as_uuid(), &cutoff],
+    )
+    .map_err(|_| JournalError::Database)?;
+    Ok(())
+}
 
 fn digest(rows: &[MoneyMovement]) -> [u8; 32] {
     let mut hash = Sha256::new();
@@ -292,7 +328,9 @@ impl MoneyJournalWriter {
         operation: Publication,
         cursor: &mut Option<ObserverMaterialCursor>,
     ) -> Result<PublishReport, JournalError> {
+        let _publication = Timing::start(Stage::JournalPublication, period);
         self.require_target(observer)?;
+        let source_timing = Timing::start(Stage::JournalSource, period);
         let mut candidate = cursor.clone();
         let (period_source, labor) =
             labor_source::period(observer, campaign, period, &mut candidate)?;
@@ -305,26 +343,20 @@ impl MoneyJournalWriter {
         let tick = i64::try_from(period).map_err(|_| JournalError::Range)?;
         let count = i64::try_from(movements.len()).map_err(|_| JournalError::Range)?;
         let digest = digest(&movements);
+        drop(source_timing);
         let mut client = crate::current_schema::bounded_config(&self.config)
             .connect(NoTls)
             .map_err(|_| JournalError::Database)?;
         let mut tx = begin_publication(&mut client)?;
         let existing = tx.query_opt("SELECT movement_sha256,movement_count,payment_count,payment_sha256,detail_retained FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=$2", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
-        let changed = existing.is_none() || operation == Publication::Rebuild;
-        let mode = if operation == Publication::Rebuild {
-            Admission::Rebuild
-        } else if changed {
-            Admission::Insert
-        } else {
-            Admission::Verify
-        };
-        let retained = existing
-            .as_ref()
-            .map(|row| row.try_get::<_, bool>("detail_retained"))
-            .transpose()
-            .map_err(|_| JournalError::Projection)?
-            .unwrap_or(true);
-        payment_storage::accounts(&mut tx, economic, mode)?;
+        let (mode, retained) = publication_admission(operation, existing.as_ref())?;
+        let changed = mode != Admission::Verify;
+        {
+            let _accounts = Timing::start(Stage::JournalAccounts, period);
+            super::company_dimensions::publish(&mut tx, &period_source, mode)?;
+            payment_storage::accounts(&mut tx, economic, mode)?;
+        }
+        let payments_timing = Timing::start(Stage::JournalPayments, period);
         if let Some(existing) = existing {
             if operation == Publication::Publish {
                 let retained: bool = existing
@@ -355,7 +387,7 @@ impl MoneyJournalWriter {
                 }
                 verify_totals(&mut tx, campaign, tick, &movements)?;
             } else {
-                tx.execute("DELETE FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=$2", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
+                remove_period(&mut tx, campaign, tick)?;
             }
         }
         if changed {
@@ -365,8 +397,9 @@ impl MoneyJournalWriter {
             tx.execute("INSERT INTO babylon_state.money_movement_total_v1 SELECT campaign_id,resolve_tick,purpose,count(*),sum(amount_micros) \
                 FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2 GROUP BY campaign_id,resolve_tick,purpose", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         }
-        let site = statement_storage::publish(&mut tx, &period_source, mode)?;
-        labor_storage::publish(&mut tx, source, &labor, mode, retained)?;
+        drop(payments_timing);
+        let site = publish_statements_and_labor(&mut tx, &period_source, &labor, mode, retained)?;
+        let commit_timing = Timing::start(Stage::JournalCommit, period);
         let binding = pin_after_pruning(&mut tx, source, tick)?;
         if changed {
             tx.execute("INSERT INTO babylon_state.money_journal_period_v1 (campaign_id,resolve_tick,journal_version,tick_content_hash,envelope_digest,schema_sha256,foundation_sha256,content_sha256,source_identity_bytes,receipt_sha256,movement_sha256,movement_count,detail_retained,payment_sha256,payment_count,site_accounting_sha256,site_monetary_books,site_count,site_stock_count,site_accounting_directory) \
@@ -379,6 +412,7 @@ impl MoneyJournalWriter {
             verify_period(&mut tx, source, &digest, count)?;
         }
         tx.commit().map_err(|_| JournalError::Database)?;
+        drop(commit_timing);
         *cursor = candidate;
         Ok(PublishReport {
             period,
@@ -386,6 +420,89 @@ impl MoneyJournalWriter {
             changed,
         })
     }
+}
+
+fn remove_detail(
+    tx: &mut Transaction<'_>,
+    campaign: CampaignId,
+    periods: RangeInclusive<i64>,
+) -> Result<(), JournalError> {
+    // Each statement finishes before deleting the referenced rows. FK cascades
+    // therefore find no live period edges, positions, or settlements to remove.
+    for table in [
+        "labor_movement_v1",
+        "labor_position_v1",
+        "labor_node_v1",
+        "economic_payment_v1",
+        "money_movement_v1",
+    ] {
+        let sql = format!(
+            "DELETE FROM babylon_state.{table} WHERE campaign_id=$1 AND resolve_tick BETWEEN $2 AND $3"
+        );
+        tx.execute(&sql, &[campaign.as_uuid(), periods.start(), periods.end()])
+            .map_err(|_| JournalError::Database)?;
+    }
+    Ok(())
+}
+
+fn remove_period(
+    tx: &mut Transaction<'_>,
+    campaign: CampaignId,
+    tick: i64,
+) -> Result<(), JournalError> {
+    remove_detail(tx, campaign, tick..=tick)?;
+    for table in [
+        "site_stock_balance_v1",
+        "site_statement_v1",
+        "money_journal_period_v1",
+    ] {
+        let sql =
+            format!("DELETE FROM babylon_state.{table} WHERE campaign_id=$1 AND resolve_tick=$2");
+        tx.execute(&sql, &[campaign.as_uuid(), &tick])
+            .map_err(|_| JournalError::Database)?;
+    }
+    Ok(())
+}
+
+fn publication_admission(
+    operation: Publication,
+    existing: Option<&Row>,
+) -> Result<(Admission, bool), JournalError> {
+    let mode = match (operation, existing) {
+        (Publication::Rebuild, _) => Admission::Rebuild,
+        (Publication::Publish, None) => Admission::Insert,
+        (Publication::Publish, Some(_)) => Admission::Verify,
+    };
+    let retained = existing
+        .map(|row| row.try_get::<_, bool>("detail_retained"))
+        .transpose()
+        .map_err(|_| JournalError::Projection)?
+        .unwrap_or(true);
+    Ok((mode, retained))
+}
+
+fn publish_statements_and_labor(
+    tx: &mut Transaction<'_>,
+    period_source: &JournalPeriodSource,
+    labor: &LaborPublication,
+    mode: Admission,
+    retained: bool,
+) -> Result<SiteBinding, JournalError> {
+    let source = &period_source.payments.source;
+    let period = source.identity.resolve_tick();
+    let site = {
+        let _timing = Timing::start(Stage::JournalSiteStatements, period);
+        statement_storage::publish(tx, period_source, mode)?
+    };
+    {
+        let _timing = Timing::start(Stage::JournalCompanyStatements, period);
+        super::company_books::publish(tx, source, labor.company.as_ref(), mode, retained)?;
+    }
+    {
+        let _timing = Timing::start(Stage::JournalLabor, period);
+        labor_storage::publish(tx, source, labor, mode, retained)?;
+    }
+    Ok(site)
 }
 
 fn begin_publication(client: &mut Client) -> Result<Transaction<'_>, JournalError> {
@@ -424,8 +541,7 @@ fn pin_after_pruning(
     let campaign = source.campaign_id;
     let mut cutoff = retention_cutoff(tx, campaign)?;
     loop {
-        tx.execute(MONEY_DETAIL_RETENTION_SQL, &[campaign.as_uuid(), &cutoff])
-            .map_err(|_| JournalError::Database)?;
+        prune_money_journal_detail(tx, campaign, cutoff)?;
         // The runtime locks the foundation to publish a tick. Pin its row only after
         // bulk writes and pruning. A savepoint releases these locks if the tail moved.
         let mut pin = tx.transaction().map_err(|_| JournalError::Database)?;

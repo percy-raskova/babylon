@@ -60,7 +60,7 @@ pub(super) fn domestic(
                 source_ownership: Some(target.ownership),
                 key: format!(
                     "representative-{}",
-                    national_economy::identity::base32(&target.site_id.as_bytes())
+                    content_digest::base32(&target.site_id.as_bytes())
                 ),
             },
             ResidentWorkplaceSource::HouseholdEnterprise => EconomicSiteSource::Designed {

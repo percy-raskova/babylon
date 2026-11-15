@@ -45,6 +45,7 @@ impl CapturedEconomicCatalog {
                     &self.opening,
                     &sources.counties,
                     &sources.aid,
+                    sources.companies.as_ref(),
                     self.input.organizer.as_ref(),
                     self.input.city_pd.as_ref(),
                 )?;
@@ -85,6 +86,7 @@ impl CapturedEconomicCatalog {
                     &self.opening,
                     &sources.counties,
                     &sources.aid,
+                    sources.companies.as_ref(),
                     self.input.organizer.as_ref(),
                     self.input.city_pd.as_ref(),
                 )?;

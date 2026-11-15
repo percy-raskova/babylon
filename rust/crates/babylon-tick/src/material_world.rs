@@ -13,6 +13,7 @@ mod collection_receipt;
 
 mod equipment_receipt;
 
+mod basis_receipt;
 mod financial_receipt;
 
 mod household_time_receipt;
@@ -44,7 +45,8 @@ mod workforce_receipt;
 #[cfg(test)]
 mod tests;
 
-#[path = "material_world/register.rs"]
+mod receipt_format;
+pub use receipt_format::MaterialReceiptFormat;
 mod register;
 
 pub use agency_paid_receipt::{validate_committed_nonpaid, AgencyPaidReceipt};

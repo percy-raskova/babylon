@@ -1,6 +1,7 @@
 //! Versioned, full-observer labor history from the captured foundation and committed receipts.
 use crate::identity::CampaignId;
 use crate::money_journal::{self, JournalError, LaborCarry, LaborFacts};
+use crate::observer_reader::ReceiptPurpose;
 use crate::observer_reader::{
     ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
 };
@@ -92,6 +93,7 @@ impl RecordedLaborWindow<'_> {
             tick,
             &mut self.cursor,
             self.carry.take(),
+            ReceiptPurpose::Observation,
             |_, _, source, labor, _| {
                 let identity = &source.identity;
                 Ok(CommittedLaborPeriod {

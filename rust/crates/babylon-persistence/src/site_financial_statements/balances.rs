@@ -60,21 +60,31 @@ pub(super) fn collect(
     money: &MonetaryBookSnapshot,
     costs: &HistoricalCostSnapshot,
     only: Option<SiteId>,
-    mut stock_basis: impl FnMut(SiteId, &StockCarryingValue) -> Result<(), SiteStatementsError>,
+    stock_basis: impl FnMut(SiteId, &StockCarryingValue) -> Result<(), SiteStatementsError>,
 ) -> Result<Balances, SiteStatementsError> {
     let selected = |account: AccountId| match account {
         AccountId::Site(site) if only.is_none_or(|id| id == site) => Some(site),
         _ => None,
     };
+    if only.is_some() && !money.accounts.iter().any(|row| selected(row.id).is_some()) {
+        return Err(SiteStatementsError::SiteAbsent);
+    }
+    collect_selected(money, costs, selected, stock_basis)
+}
+
+/// Read the same legal balance-sheet lines for selected native account principals.
+pub(crate) fn collect_selected<K: Copy + Ord>(
+    money: &MonetaryBookSnapshot,
+    costs: &HistoricalCostSnapshot,
+    selected: impl Fn(AccountId) -> Option<K>,
+    mut stock_basis: impl FnMut(K, &StockCarryingValue) -> Result<(), SiteStatementsError>,
+) -> Result<BTreeMap<K, SiteBalanceSheet>, SiteStatementsError> {
     let mut cash: BTreeMap<_, _> = money
         .accounts
         .iter()
-        .filter_map(|row| selected(row.id).map(|site| (site, row.cash)))
+        .filter_map(|row| selected(row.id).map(|key| (key, row.cash)))
         .collect();
-    if only.is_some() && cash.is_empty() {
-        return Err(SiteStatementsError::SiteAbsent);
-    }
-    let mut balances = Balances::new();
+    let mut balances = BTreeMap::new();
     for capital in &costs.accounts {
         if let Some(site) = selected(capital.account) {
             let amount = cash
@@ -91,7 +101,7 @@ pub(super) fn collect(
     }
     for purchase in &money.purchases {
         if let Some(site) = selected(purchase.buyer) {
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             let amount = purchase
                 .reserved_amount()
                 .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?;
@@ -100,7 +110,7 @@ pub(super) fn collect(
     }
     for shift in &money.shifts {
         if let Some(site) = selected(shift.employer) {
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             let reserve = shift
                 .reserved_amount()
                 .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?;
@@ -111,7 +121,7 @@ pub(super) fn collect(
             balance.wage_payables = projection::add(balance.wage_payables, owed)?;
         }
         if let Some(site) = selected(shift.payee) {
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             let owed = shift
                 .outstanding_wages()
                 .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?;
@@ -121,25 +131,25 @@ pub(super) fn collect(
     for row in &costs.stocks {
         if let Some(site) = selected(row.owner) {
             stock_basis(site, row)?;
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             balance.inventory = projection::add(balance.inventory, row.amount)?;
         }
     }
     for row in &costs.freight {
         if let Some(site) = selected(row.owner) {
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             balance.freight = projection::add(balance.freight, row.amount)?;
         }
     }
     for row in &costs.equity {
         if let Some(site) = selected(row.owner) {
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             balance.equity_investments = projection::add(balance.equity_investments, row.amount)?;
         }
     }
     for row in &costs.equipment {
         if let Some(site) = selected(AccountId::Site(row.owner)) {
-            let balance = entry(&mut balances, site)?;
+            let balance = entry(&mut balances, &site)?;
             balance.equipment = projection::add(balance.equipment, row.amount)?;
         }
     }
@@ -149,11 +159,11 @@ pub(super) fn collect(
     Ok(balances)
 }
 
-fn entry(
-    balances: &mut Balances,
-    site: SiteId,
-) -> Result<&mut SiteBalanceSheet, SiteStatementsError> {
+fn entry<'a, K: Ord>(
+    balances: &'a mut BTreeMap<K, SiteBalanceSheet>,
+    site: &K,
+) -> Result<&'a mut SiteBalanceSheet, SiteStatementsError> {
     balances
-        .get_mut(&site)
+        .get_mut(site)
         .ok_or(SiteStatementsError::BalanceSheetMismatch)
 }

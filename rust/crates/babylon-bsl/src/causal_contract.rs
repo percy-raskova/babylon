@@ -297,6 +297,22 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("community/c09-cost-modifier-reset", RuleRole::Mechanic),
     governed_attribution("community/c10-cost-modifier-accumulate", RuleRole::Mechanic),
     governed_attribution("community/c11-state-decay", RuleRole::Mechanic),
+    GovernedRuleAttribution {
+        rule_id: "company/portfolio-evidence",
+        role: RuleRole::Mechanic,
+        evidence: EvidenceClass::Derived,
+        owner: "Director",
+        date: "2026-11-14",
+        adr: "ADR297",
+    },
+    GovernedRuleAttribution {
+        rule_id: "company/portfolio-investment",
+        role: RuleRole::Mechanic,
+        evidence: EvidenceClass::Designed,
+        owner: "Director",
+        date: "2026-11-14",
+        adr: "ADR297",
+    },
     governed_attribution("consciousness/p0-position", RuleRole::Mechanic),
     governed_attribution("consciousness/p1-inbox-reset", RuleRole::Mechanic),
     governed_attribution("consciousness/p2-org-solidarity-push", RuleRole::Mechanic),
@@ -1759,13 +1775,13 @@ mod tests {
 
     #[test]
     fn governed_attribution_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 72);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 74);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
-            67
+            69
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
@@ -1780,6 +1796,8 @@ mod tests {
         for row in GOVERNED_RULE_ATTRIBUTIONS {
             assert_eq!(row.owner, "Director");
             let (evidence, date, adr) = match row.rule_id {
+                "company/portfolio-evidence" => (EvidenceClass::Derived, "2026-11-14", "ADR297"),
+                "company/portfolio-investment" => (EvidenceClass::Designed, "2026-11-14", "ADR297"),
                 "g4-workforce-staffing" => (EvidenceClass::Designed, "2026-09-05", "ADR255"),
                 "material/period" => (EvidenceClass::Designed, "2026-09-12", "ADR261"),
                 "organizer/organizer-practice" | "organizer/organizer-products" => {

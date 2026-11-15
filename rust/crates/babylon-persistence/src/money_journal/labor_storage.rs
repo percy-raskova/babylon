@@ -1,6 +1,7 @@
 //! Atomically stage compact labor facts and coverage under the journal's shared publish marker.
 use super::labor_facts::LaborFacts;
 use super::labor_source::LaborPublication;
+use super::labor_verification;
 use super::payment_storage::Admission;
 use super::statement_storage::{Batch, Table};
 use super::JournalError;
@@ -160,8 +161,14 @@ pub(super) fn publish(
             .map_err(|_| JournalError::Database)?;
         tx.execute("INSERT INTO babylon_state.labor_checkpoint_v1(campaign_id,resolve_tick,sha256,checkpoint_bytes) VALUES($1,$2,$3,$4)",&[campaign,&tick,&data.checkpoint.sha256.as_slice(),&data.checkpoint.bytes]).map_err(|_|JournalError::Database)?;
     }
-    if admission != Admission::Verify || retain_detail {
-        stage(tx, facts, &campaign.to_string(), tick, admission)?;
+    match admission {
+        Admission::Verify if retain_detail => {
+            labor_verification::period(tx, campaign, tick, facts)?;
+        }
+        Admission::Verify => {}
+        Admission::Insert | Admission::Rebuild => {
+            stage(tx, facts, &campaign.to_string(), tick, admission)?;
+        }
     }
     Ok(())
 }

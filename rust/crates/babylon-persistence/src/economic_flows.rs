@@ -12,3 +12,5 @@ pub use model::{
 pub(crate) use payments::project;
 
 pub(crate) use accounts::geographies;
+
+pub(crate) use principals::Principals;

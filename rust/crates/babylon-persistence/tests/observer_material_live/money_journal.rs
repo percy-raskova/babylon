@@ -1,4 +1,7 @@
 //! Permanent coverage, exact rebuild and capability confinement in a disposable database.
+#[path = "journal_snapshot.rs"]
+mod journal_snapshot;
+
 use super::{
     CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls,
     ObserverEconomyReader, ObserverVisibility, Uuid,
@@ -48,7 +51,11 @@ fn journal_cli(
     );
     let result: Value =
         serde_json::from_slice(&output.stdout).expect("journal CLI emits one JSON response");
-    assert_eq!(result["version"], 1, "CLI journal protocol version");
+    let expected_version = if operation == "flows" { 2 } else { 1 };
+    assert_eq!(
+        result["version"], expected_version,
+        "CLI {operation} protocol version"
+    );
     assert_eq!(
         result["campaign"],
         campaign.as_uuid().to_string(),
@@ -92,6 +99,10 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
     super::payment_flows::restricted(&preview, campaign);
     super::recorded_labor::restricted(&preview, campaign);
     let mut cursor = publish_fourteen_periods(&mut runtime, &writer, &observer, campaign);
+    assert_eq!(
+        observer.published_company_period_statements(campaign, 14),
+        Err(JournalError::CompanyBooksNotCaptured)
+    );
     let site = super::site_accounting_sql::stocks(&runtime, &observer, campaign, 14);
     super::site_accounting_sql::restricted(&preview, campaign, site);
     let physical = observer
@@ -351,6 +362,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     );
     super::projection_recovery::interrupt_and_retry(&mut owner, &writer, &observer, campaign);
     super::payment_flows::comparison(&observer, campaign);
+    super::payment_flows::check_company_rebuild(&mut owner, &observer, &writer, campaign);
     super::site_accounting_sql::stocks(&runtime, &observer, campaign, 1);
     super::site_accounting_sql::national(
         &observer,
@@ -489,12 +501,12 @@ fn assert_nonzero_history(
     let warm = observer
         .economic_payment_flows(campaign, &grouping)
         .expect("retained ranked payment facts");
-    owner
-        .execute(
-            babylon_persistence::money_journal::MONEY_DETAIL_RETENTION_SQL,
-            &[campaign.as_uuid(), &1_i64],
-        )
-        .expect("controlled expired-period pruning uses production SQL");
+    let mut pruning = owner
+        .transaction()
+        .expect("open owner retention transaction");
+    babylon_persistence::money_journal::prune_money_journal_detail(&mut pruning, campaign, 1)
+        .expect("controlled expired-period pruning uses production deletions");
+    pruning.commit().expect("publish retained period coverage");
     let retained_rows: i64 = owner.query_one("SELECT count(*) FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=1",
         &[campaign.as_uuid()]).expect("expired detail count").get(0);
     assert_eq!(

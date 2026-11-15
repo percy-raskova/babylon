@@ -80,6 +80,19 @@ impl Currency {
             })
     }
 
+    /// Integer micro-units allocated to a holder of a nonnegative exact share.
+    /// The 256-bit intermediate covers every admitted currency and weight.
+    #[must_use]
+    pub fn floor_weighted_share(self, weight: u128, total: u128) -> Option<Self> {
+        if self.0 < 0 || total == 0 || weight > total {
+            return None;
+        }
+        let weight = I256::try_from(weight).ok()?;
+        let total = I256::try_from(total).ok()?;
+        let result = (widen(self.0) * weight) / total;
+        i128::try_from(result).ok().map(Self)
+    }
+
     /// `Currency × Coefficient → Currency`, rounded half-even to
     /// micro-units.
     ///

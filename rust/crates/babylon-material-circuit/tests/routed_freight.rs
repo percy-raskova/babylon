@@ -115,6 +115,8 @@ fn base_catalog() -> MaterialCatalog {
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         commodities: vec![CommodityDefinition {
             good_id: good(GOODS),

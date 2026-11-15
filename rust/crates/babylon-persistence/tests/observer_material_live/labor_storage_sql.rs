@@ -1,8 +1,6 @@
 //! Exercise durable physical labor within the existing fourteen-period control.
 use babylon_persistence::identity::CampaignId;
-use babylon_persistence::money_journal::{
-    JournalError, MoneyJournalWriter, MONEY_DETAIL_RETENTION_SQL,
-};
+use babylon_persistence::money_journal::{self, JournalError, MoneyJournalWriter};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use postgres::Client;
 
@@ -13,6 +11,7 @@ pub(super) fn retention_and_repair(
     campaign: CampaignId,
 ) {
     cold_window(owner, observer, writer, campaign);
+    compare_retained_rows(owner, observer, writer, campaign);
     let id = campaign.as_uuid();
     let source = observer
         .recorded_labor_window(campaign, 1, 1)
@@ -75,8 +74,7 @@ pub(super) fn retention_and_repair(
     let mut pruning = owner
         .transaction()
         .expect("exercise expired sparse checkpoint");
-    pruning
-        .execute(MONEY_DETAIL_RETENTION_SQL, &[id, &14_i64])
+    money_journal::prune_money_journal_detail(&mut pruning, campaign, 14)
         .expect("old detail cutoff");
     let kept:Vec<i64>=pruning.query("SELECT resolve_tick FROM public.v_observer_labor_checkpoint_v1 WHERE campaign_id=$1 ORDER BY resolve_tick",&[id]).expect("sparse checkpoints").iter().map(|row|row.get(0)).collect();
     assert_eq!(kept, [13]);
@@ -134,4 +132,76 @@ fn cold_window(
     writer
         .rebuild(observer, campaign, 3)
         .expect("restore disposable cache from unchanged source");
+}
+
+fn compare_retained_rows(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+) {
+    let id = campaign.as_uuid();
+    let row = owner
+        .query_one(
+            "WITH target AS (
+             SELECT node_ordinal, location_key FROM babylon_state.labor_node_v1
+             WHERE campaign_id=$1 AND resolve_tick=2 ORDER BY node_ordinal DESC LIMIT 1
+         )
+         UPDATE babylon_state.labor_node_v1 d SET location_key =
+             CASE WHEN t.location_key IS NULL THEN 'changed' ELSE NULL END
+         FROM target t WHERE d.campaign_id=$1 AND d.resolve_tick=2 AND d.node_ordinal=t.node_ordinal
+         RETURNING t.node_ordinal, t.location_key",
+            &[id],
+        )
+        .expect("change one nullable attribute without changing the node count");
+    assert_eq!(
+        writer.publish(observer, campaign, 2),
+        Err(JournalError::Projection)
+    );
+    let ordinal: i64 = row.get(0);
+    let location: Option<String> = row.get(1);
+    assert_eq!(
+        owner
+            .execute(
+                "UPDATE babylon_state.labor_node_v1 SET location_key=$3
+         WHERE campaign_id=$1 AND resolve_tick=2 AND node_ordinal=$2",
+                &[id, &ordinal, &location],
+            )
+            .expect("restore exact captured location"),
+        1
+    );
+
+    let last: i64 = owner
+        .query_one(
+            "SELECT max(ordinal) FROM babylon_state.labor_movement_v1
+         WHERE campaign_id=$1 AND resolve_tick=2",
+            &[id],
+        )
+        .expect("retained work movements")
+        .get(0);
+    let shift = "UPDATE babylon_state.labor_movement_v1 SET ordinal=$3
+                 WHERE campaign_id=$1 AND resolve_tick=2 AND ordinal=$2";
+    let extra = last.checked_add(1).expect("fixture ordinal fits");
+    assert_eq!(
+        owner
+            .execute(shift, &[id, &last, &extra])
+            .expect("replace a required movement with an extra key"),
+        1
+    );
+    assert_eq!(
+        writer.publish(observer, campaign, 2),
+        Err(JournalError::Projection)
+    );
+    assert_eq!(
+        owner
+            .execute(shift, &[id, &extra, &last])
+            .expect("restore original movement"),
+        1
+    );
+    assert!(
+        !writer
+            .publish(observer, campaign, 2)
+            .expect("admit restored facts")
+            .changed
+    );
 }

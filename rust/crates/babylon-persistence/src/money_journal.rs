@@ -1,6 +1,9 @@
 //! Versioned PostgreSQL money movement facts from authenticated committed receipts.
 //! The database owner publishes; the full observer can only read. This journal never
 //! participates in adjudication. All micros and SQL sums are exact decimal strings.
+mod company_books;
+mod company_dimensions;
+
 mod county_accounts;
 mod flow_model;
 mod flow_query;
@@ -11,6 +14,7 @@ mod labor_flows;
 mod labor_replay;
 mod labor_source;
 mod labor_storage;
+mod labor_verification;
 mod model;
 mod payment_storage;
 mod queue;
@@ -22,9 +26,11 @@ mod storage;
 #[cfg(test)]
 mod tests;
 
+pub use company_books::SelectedCompanyAccounts;
 pub use county_accounts::{CountySiteAccounts, CountySitePage};
 pub use flow_model::{
-    FlowAmounts, FlowGroup, FlowPage, FlowQuery, FlowRow, FlowViewport, PeriodWindow,
+    FlowAmounts, FlowDirection, FlowGroup, FlowPage, FlowPeer, FlowQuery, FlowRow, FlowViewport,
+    PeriodWindow,
 };
 pub(crate) use labor_facts::LaborFacts;
 pub use labor_flows::{LaborAmount, LaborDirections, LaborFlowPage, LaborFlowRow};
@@ -37,4 +43,4 @@ pub use queue::{JournalQueue, JournalQueueError};
 pub use statement_read::PublishedSitePeriod;
 pub(crate) use statement_storage::JournalPeriodSource;
 pub(crate) use storage::VIEWS;
-pub use storage::{MoneyJournalWriter, MONEY_DETAIL_RETENTION_SQL};
+pub use storage::{prune_money_journal_detail, MoneyJournalWriter};

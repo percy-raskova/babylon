@@ -26,6 +26,7 @@ mod current_schema;
 pub mod economic_catalog;
 pub mod economic_content;
 mod foundation;
+pub mod freight_access;
 mod glossary_concepts;
 pub mod h3_reference_cohort;
 mod h3_reference_installer;
@@ -59,6 +60,7 @@ pub mod event_storage;
 pub mod graph_storage;
 pub mod material_storage;
 
+pub mod company_statements;
 pub mod economic_flows;
 pub mod money_journal;
 mod organizer_content;

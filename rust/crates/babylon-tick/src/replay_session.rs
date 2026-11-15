@@ -897,12 +897,33 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         Ok(())
     }
 
-    /// Admit the immutable prepared rules for native staffing ownership once.
+    /// Admit graph field ownership and require one governed decision after the material close.
     /// The normal effect scanner includes every possible guarded/loop write.
-    pub(crate) fn validate_staffing_ownership(&self) -> Result<(), ReplayTickError> {
+    pub(crate) fn validate_material_field_ownership(
+        &self,
+        companies: bool,
+    ) -> Result<(), ReplayTickError> {
+        use crate::company_graph::{FIELDS, SELECTED_PORTFOLIO, SELECTION_PERIOD};
+        use crate::material_replay::portfolios::DECISION_RULE;
         use crate::material_replay::MaterialBaseError;
         use crate::material_staffing::STAFFING_FIELDS;
         use babylon_bsl::causal_contract::EffectSignature;
+        let draw = self
+            .prepared
+            .rules
+            .iter()
+            .position(|(id, _)| id == DECISION_RULE);
+        let close = self.prepared.rules.iter().position(|(_, r)| {
+            r.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle
+        });
+        if draw.is_some() != companies || draw.is_some_and(|index| close.is_none_or(|j| j >= index))
+        {
+            return Err(ReplayTickError::Execution {
+                message:
+                    "company portfolio policy requires its governed draw after the material period"
+                        .to_owned(),
+            });
+        }
 
         for (rule_id, loaded) in &self.prepared.rules {
             let effects = causal_contract::effect_footprint(&loaded.rule).map_err(|error| {
@@ -913,6 +934,18 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             })?;
             for effect in effects {
                 if let EffectSignature::NodeField(field) = effect {
+                    if companies
+                        && FIELDS.contains(&field.as_str())
+                        && !(rule_id == DECISION_RULE
+                            && matches!(field.as_str(), SELECTED_PORTFOLIO | SELECTION_PERIOD))
+                    {
+                        return Err(ReplayTickError::MaterialBase(
+                            MaterialBaseError::CompanyFieldOwner {
+                                rule_id: rule_id.clone(),
+                                field,
+                            },
+                        ));
+                    }
                     if STAFFING_FIELDS.contains(&field.as_str()) {
                         return Err(ReplayTickError::MaterialBase(
                             MaterialBaseError::StaffingFieldOwner {

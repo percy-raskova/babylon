@@ -74,8 +74,7 @@ pub(super) fn layout(county: &str, rows: &[Connection]) -> DiagramLayout {
     for (i, row, n) in values {
         let (from, to) = match row.key.direction {
             Direction::PaidTo => (&home, &row.key.peer),
-            Direction::ReceivedFrom => (&row.key.peer, &home),
-            Direction::Internal => (&home, &home),
+            Direction::ReceivedFrom | Direction::Internal => (&row.key.peer, &home),
         };
         let thickness = BAND_SPACE * (n / total);
         let payer = add(&mut diagram.payers, from.as_deref(), thickness);

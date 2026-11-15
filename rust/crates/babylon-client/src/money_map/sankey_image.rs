@@ -1,7 +1,9 @@
 //! Rasterize exact relative band widths with fractional coverage at subpixel boundaries.
+use super::grouping;
 use super::sankey_layout::{Band, DiagramLayout};
 use super::state::{Direction, MoneyView};
 use crate::observer_theme as theme;
+use babylon_persistence::money_journal::FlowGroup;
 use bevy::asset::RenderAssetUsages;
 use bevy::color::ColorToPacked;
 use bevy::prelude::*;
@@ -19,10 +21,18 @@ pub(super) fn paint(layout: &DiagramLayout, view: &MoneyView) -> Image {
             highlighted = Some(band);
             continue;
         }
-        let color = match row.key.direction {
-            Direction::PaidTo => theme::YELLOW,
-            Direction::ReceivedFrom => theme::BLUE,
-            Direction::Internal => theme::GRAY,
+        let color = if view
+            .scope
+            .as_ref()
+            .is_some_and(|s| s.group == FlowGroup::Industry)
+        {
+            grouping::industry_color(row.key.peer.as_deref())
+        } else {
+            match row.key.direction {
+                Direction::PaidTo => theme::YELLOW,
+                Direction::ReceivedFrom => theme::BLUE,
+                Direction::Internal => theme::GRAY,
+            }
         };
         stripe(&mut data, layout.height, band, color);
     }

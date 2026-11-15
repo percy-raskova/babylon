@@ -1,6 +1,8 @@
 -- $1 campaign; $2/$3 and $4/$5 inclusive current/comparison intervals; $6 dimension;
 -- $7 offset; $8 optional NAD83 viewport; $9 one authenticated period; $10 optional focus.
 -- $11 compact grouped history; $12 stage ('fold' accumulates history; 'page' ranks with retained facts).
+-- $13 specifies the focus dimension independently of the rank dimension.
+-- $14/$15/$16 select a particular peer dimension, key and direction for geographic detail.
 WITH windows(first_tick,last_tick,is_compare) AS (
   SELECT $2::bigint,$3::bigint,false
   UNION ALL SELECT $4::bigint,$5::bigint,true WHERE $4 IS NOT NULL
@@ -23,32 +25,50 @@ WITH windows(first_tick,last_tick,is_compare) AS (
 ), visible_locations AS (
   SELECT DISTINCT l.location_key FROM rectangles b JOIN public.v_observer_economic_flow_location_v1 l
     ON l.campaign_id=$1 AND public.ST_Covers(b.box,l.county_internal_point)
-), dimensions AS (
-  SELECT a.account_kind,a.account_id,
-    CASE $6::text WHEN 'account' THEN a.account_kind||':'||encode(a.account_id,'hex')
-      WHEN 'location' THEN a.location_key WHEN 'industry' THEN a.industry_key ELSE a.catchment_key END AS key,
-    CASE $6::text WHEN 'industry' THEN a.industry_label END AS label,
-    ($8 IS NULL OR v.location_key IS NOT NULL) AS in_view
-  FROM public.v_observer_economic_flow_account_v1 a LEFT JOIN visible_locations v USING(location_key)
+), accounts AS (
+  SELECT a.account_kind,a.account_id,a.account_kind||':'||encode(a.account_id,'hex') AS principal,
+    'company:'||encode(a.company_id,'hex') AS company,a.company_label,
+    a.location_key,a.catchment_key,a.industry_key,a.industry_label,($8 IS NULL OR v.location_key IS NOT NULL) AS in_view
+  FROM public.v_observer_economic_flow_account_v2 a LEFT JOIN visible_locations v USING(location_key)
   WHERE a.campaign_id=$1
+), dimensions AS (
+  SELECT a.account_kind,a.account_id,a.in_view,
+    CASE $6::text WHEN 'account' THEN a.principal
+      WHEN 'location' THEN a.location_key WHEN 'catchment' THEN a.catchment_key
+      WHEN 'industry' THEN a.industry_key WHEN 'company' THEN a.company
+      WHEN 'counterparty' THEN coalesce(a.company,a.principal) END AS key,
+    CASE $13::text WHEN 'account' THEN a.principal
+      WHEN 'location' THEN a.location_key WHEN 'catchment' THEN a.catchment_key
+      WHEN 'industry' THEN a.industry_key WHEN 'company' THEN a.company
+      WHEN 'counterparty' THEN coalesce(a.company,a.principal) END AS focus_key,
+    CASE $14::text WHEN 'account' THEN a.principal
+      WHEN 'location' THEN a.location_key WHEN 'catchment' THEN a.catchment_key
+      WHEN 'industry' THEN a.industry_key WHEN 'company' THEN a.company
+      WHEN 'counterparty' THEN coalesce(a.company,a.principal) END AS peer_key,
+    CASE $6::text WHEN 'industry' THEN a.industry_label
+      WHEN 'company' THEN a.company_label WHEN 'counterparty' THEN a.company_label END AS label
+  FROM accounts a
 ), edges AS (
-  SELECT w.is_compare, s.amount_micros, p.key AS pk, r.key AS rk, p.label AS pl,r.label AS rl,
-    p.in_view AND ($10::text IS NULL OR r.key=$10) AS show_payer,
-    r.in_view AND ($10::text IS NULL OR p.key=$10) AS show_recipient,
+  SELECT w.is_compare, s.amount_micros, p.key AS pk, r.key AS rk, p.label AS pl,r.label AS rl,p.peer_key AS source_peer,r.peer_key AS recipient_peer,
+    p.in_view AND ($10::text IS NULL OR r.focus_key IS NOT DISTINCT FROM $10) AS show_payer,
+    r.in_view AND ($10::text IS NULL OR p.focus_key IS NOT DISTINCT FROM $10) AS show_recipient,
     (s.payer_kind,s.payer_id)=(s.recipient_kind,s.recipient_id) AS same_account,
     p.account_id IS NOT NULL AND r.account_id IS NOT NULL AS classified
   FROM payments s JOIN windows w ON s.resolve_tick BETWEEN w.first_tick AND w.last_tick
   LEFT JOIN dimensions p ON (p.account_kind,p.account_id)=(s.payer_kind,s.payer_id)
   LEFT JOIN dimensions r ON (r.account_kind,r.account_id)=(s.recipient_kind,s.recipient_id)
 ), classified_edges AS (
-  SELECT *, show_payer AND show_recipient AND (same_account OR (pk IS NOT NULL AND pk=rk) IS TRUE) AS internal FROM edges
+  SELECT *, show_payer AND show_recipient AND ($10 IS NOT NULL OR same_account OR (pk IS NOT NULL AND pk=rk) IS TRUE) AS internal FROM edges
 ), postings AS (
   SELECT pk AS key,pl AS label,is_compare,0::numeric AS incoming,
       CASE WHEN internal THEN 0 ELSE amount_micros END AS outgoing,
       CASE WHEN internal THEN amount_micros ELSE 0 END AS inside
   FROM classified_edges WHERE show_payer
+    AND ($14::text IS NULL OR (source_peer IS NOT DISTINCT FROM $15::text
+        AND (CASE WHEN internal THEN 'within' ELSE 'outbound' END)=$16::text))
   UNION ALL
   SELECT rk,rl,is_compare,amount_micros,0,0 FROM classified_edges WHERE show_recipient AND NOT internal
+    AND ($14 IS NULL OR (recipient_peer IS NOT DISTINCT FROM $15 AND $16='inbound'))
 ), this_period AS (
   SELECT key,max(label) AS label,
     coalesce(sum(incoming) FILTER(WHERE NOT is_compare),0) AS i,

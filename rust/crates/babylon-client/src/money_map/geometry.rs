@@ -2,12 +2,14 @@
 use super::super::relationships;
 use super::super::relationships::CountyAnchors;
 use super::super::{MapOrbit, MAP_LAYER};
+use super::geographic_legs;
 use super::state::{
     self, Action, Connection, Diagram, Direction, MoneyView, Observation, Scope, Target,
 };
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverViewport;
+use babylon_persistence::money_journal::FlowGroup;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
@@ -44,9 +46,6 @@ pub(super) fn render(
     let Some(scope) = &view.scope else {
         return;
     };
-    let Some(home) = anchors.county_position(&scope.county) else {
-        return;
-    };
     let colors = palette.get_or_insert_with(|| {
         [theme::YELLOW, theme::BLUE, theme::GRAY, theme::PAPER].map(|base_color| {
             materials.add(StandardMaterial {
@@ -57,8 +56,14 @@ pub(super) fn render(
             })
         })
     });
-    let values: Vec<_> = view
-        .rows
+    if view.freight.enabled {
+        super::freight_plot::geography(&mut commands, &mut meshes, &view, scope, &anchors, colors);
+        return;
+    }
+    let Some(home) = anchors.county_position(&scope.county) else {
+        return;
+    };
+    let values: Vec<_> = geographic_legs::rows(&view)
         .iter()
         .filter_map(|row| {
             let n = row.quantity.micros().parse::<f64>().ok()?;
@@ -82,9 +87,14 @@ pub(super) fn render(
         let Some(mesh) = relationships::payment_ribbon(from, to, width(n, maximum)) else {
             continue;
         };
-        let selected = view
+        let aggregate = view
             .selected_row()
-            .is_some_and(|active| active.key == row.key);
+            .filter(|_| scope.group != FlowGroup::Location);
+        let selected = aggregate.is_some()
+            || view
+                .selected_row()
+                .is_some_and(|active| active.key == row.key);
+        let target = aggregate.map_or(&row.key, |r| &r.key);
         commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
@@ -95,7 +105,7 @@ pub(super) fn render(
                 Target {
                     scope: scope.clone(),
                     offset: view.offset,
-                    action: Action::Select(row.key.clone()),
+                    action: Action::Select(target.clone()),
                 },
                 DeclaredSurface::new(SurfaceId::ObserverProduction),
             ))
@@ -142,7 +152,10 @@ pub(super) fn frame_connections(
     mut orbit: ResMut<MapOrbit>,
 ) {
     if !obs.interactive()
-        || obs.scope(event.scope.measure, event.scope.periods).as_ref() != Some(&event.scope)
+        || obs
+            .scope(event.scope.measure, event.scope.periods, event.scope.group)
+            .as_ref()
+            != Some(&event.scope)
         || view.scope.as_ref() != Some(&event.scope)
         || view.offset != event.offset
     {
@@ -156,11 +169,12 @@ pub(super) fn frame_connections(
     };
     let selected = view
         .selected_row()
+        .filter(|_| event.scope.group == FlowGroup::Location)
         .and_then(|row| endpoint(row, home, &anchors));
     let bounds = if let Some(peer) = selected {
         Some((home.min(peer), home.max(peer)))
     } else {
-        view.rows
+        geographic_legs::rows(&view)
             .iter()
             .filter_map(|row| endpoint(row, home, &anchors))
             .map(|point| (home.min(point), home.max(point)))

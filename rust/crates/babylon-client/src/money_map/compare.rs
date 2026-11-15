@@ -45,7 +45,7 @@ fn county_net(value: &str, units: fn(&str) -> String) -> String {
 
 pub(super) fn money_net(row: &FlowRow, tick: u64) -> String {
     let mut result = format!(
-        "Net received  {}",
+        "Net received\n{}",
         county_net(&row.current.net_micros, rail::amount)
     );
     if let (Some(previous), Some(delta), Some(prior)) =
@@ -53,7 +53,7 @@ pub(super) fn money_net(row: &FlowRow, tick: u64) -> String {
     {
         write!(
             result,
-            "\nPeriod {prior} net  {}\nChange in net  {}",
+            "\nPeriod {prior} net\n{}\nChange in net\n{}",
             county_net(&previous.net_micros, rail::amount),
             county_net(delta, rail::amount)
         )
@@ -70,7 +70,7 @@ fn unknown(d: &LaborDirections) -> Option<String> {
     ];
     counts.into_iter().any(|n| n != "0").then(|| {
         format!(
-            "unknown prior labor in movements · received {}, sent {}, within {}",
+            "unknown prior labor in movements, received {}, sent {}, within {}",
             counts[0], counts[1], counts[2]
         )
     })
@@ -78,7 +78,7 @@ fn unknown(d: &LaborDirections) -> Option<String> {
 
 pub(super) fn labor_net(row: &LaborFlowRow, tick: u64) -> String {
     let mut result = format!(
-        "Net recorded hours  {}",
+        "Net recorded hours\n{}",
         county_net(&row.current.net_recorded_micro_hours, rail::labor_hours)
     );
     if let (Some(previous), Some(delta), Some(prior)) = (
@@ -88,7 +88,7 @@ pub(super) fn labor_net(row: &LaborFlowRow, tick: u64) -> String {
     ) {
         write!(
             result,
-            "\nPeriod {prior} net  {}\nChange in recorded net  {}",
+            "\nPeriod {prior} net\n{}\nChange in recorded net\n{}",
             county_net(&previous.net_recorded_micro_hours, rail::labor_hours),
             county_net(delta, rail::labor_hours)
         )

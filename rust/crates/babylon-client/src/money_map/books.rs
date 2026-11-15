@@ -208,7 +208,7 @@ pub(super) fn panel(
         return true;
     }
     rail.spawn(rail::label(format!(
-        "{} operating sites\nChange in spendable cash  {}\nPeriod profit or loss  {}\nClosing retained earnings  {}",
+        "{} operating sites\nChange in spendable cash\n{}\nPeriod profit or loss\n{}\nClosing retained earnings\n{}",
         page.site_count,rail::amount(&page.cash_change_micros),rail::amount(&page.period_profit_micros),rail::amount(&page.closing_retained_earnings_micros)
     ),17.0,theme::PAPER,ObserverFontRole::Exact));
     site_links(rail, view, obs, scope, page, offset);

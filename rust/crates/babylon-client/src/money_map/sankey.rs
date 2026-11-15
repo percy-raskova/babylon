@@ -1,4 +1,5 @@
 //! A static, scrollable two-stage flow diagram occupies the same region as the county map.
+use super::grouping;
 use super::sankey_layout::{Band, DiagramLayout, Place};
 use super::state::{Action, Measure, MoneyView, Observation, Scope, Status, Target};
 use super::{rail, sankey_image, sankey_layout, state};
@@ -45,7 +46,7 @@ pub(super) fn paint(
     {
         return;
     }
-    let active = obs.interactive() && view.shows_sankey();
+    let active = obs.interactive() && view.shows_sankey() && !view.freight.enabled;
     let key = view.scope.as_ref().filter(|_| active).map(|scope| PageKey {
         scope: scope.clone(),
         offset: view.offset,
@@ -161,8 +162,8 @@ fn spawn_diagram(
                 ..default()
             })
             .with_children(|graph| {
-                column(graph, &layout.payers, obs, 0.0);
-                column(graph, &layout.recipients, obs, 75.0);
+                column(graph, &layout.payers, obs, view, 0.0);
+                column(graph, &layout.recipients, obs, view, 75.0);
                 graph
                     .spawn((
                         ImageNode::new(image.clone()).with_mode(NodeImageMode::Stretch),
@@ -197,9 +198,23 @@ fn logical(p: f64) -> f32 {
     p as f32
 }
 
-fn column(parent: &mut ChildSpawnerCommands, nodes: &[Place], obs: &Observation, left: f32) {
+fn column(
+    parent: &mut ChildSpawnerCommands,
+    nodes: &[Place],
+    obs: &Observation,
+    view: &MoneyView,
+    left: f32,
+) {
     for place in nodes {
-        let text = rail::location(place.key.as_deref(), &obs.atlas);
+        let Some(scope) = &view.scope else {
+            return;
+        };
+        let captured = view
+            .rows
+            .iter()
+            .find(|r| r.key.peer == place.key)
+            .and_then(|r| r.label.as_deref());
+        let text = grouping::peer_label(scope.group, place.key.as_deref(), captured, &obs.atlas);
         parent
             .spawn((
                 Node {

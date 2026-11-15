@@ -100,7 +100,7 @@ pub(super) fn activity(
     })
 }
 
-pub(super) fn equity_change(
+pub(crate) fn equity_change(
     opening: &SiteBalanceSheet,
     closing: &SiteBalanceSheet,
     income: &IncomeReceipt,
@@ -199,7 +199,7 @@ impl SiteCashFlowTotals {
         } else {
             return Err(SiteStatementsError::InvalidTransfer);
         };
-        let category = category(transfer, site, delta, investments)?;
+        let category = category(transfer, AccountId::Site(site), delta, investments)?;
         let target = match category {
             CashFlowCategory::Operating => &mut self.operating,
             CashFlowCategory::Investing => &mut self.investing,
@@ -224,19 +224,23 @@ impl SiteCashFlowTotals {
     }
 }
 
-fn category(
+pub(crate) fn category(
     transfer: &MoneyTransferReceipt,
-    site: SiteId,
+    principal: AccountId,
     delta: Currency,
     investments: &BTreeMap<(SiteId, OutboundOrderId), Currency>,
 ) -> Result<CashFlowCategory> {
-    let cash = MoneyLocation::Cash(AccountId::Site(site));
+    let cash = MoneyLocation::Cash(principal);
     let result = match transfer.purpose {
         MoneyTransferPurpose::PurchaseReservation(id)
             if transfer.debit.location == cash
                 && transfer.credit.location == MoneyLocation::PurchaseReserve(id) =>
         {
-            if let Some(amount) = investments.get(&(site, id)) {
+            let investment = match principal {
+                AccountId::Site(site) => investments.get(&(site, id)),
+                _ => None,
+            };
+            if let Some(amount) = investment {
                 if *amount != transfer.credit.delta {
                     return Err(SiteStatementsError::InvestmentReceiptMismatch);
                 }
@@ -300,7 +304,7 @@ fn category(
     Ok(result)
 }
 
-pub(super) fn investment_reservations(
+pub(crate) fn investment_reservations(
     site: Option<SiteId>,
     receipts: &MaterialTickReceipts,
 ) -> Result<BTreeMap<(SiteId, OutboundOrderId), Currency>> {

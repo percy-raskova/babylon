@@ -4,6 +4,10 @@
 mod book;
 
 mod close;
+mod company_basis;
+pub use company_basis::{
+    CompanyBasisAsset, CompanyBasisMovement, CompanySale, MAX_COMPANY_BASIS_MOVEMENTS,
+};
 
 mod equipment;
 

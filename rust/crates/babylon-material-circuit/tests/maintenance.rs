@@ -185,6 +185,8 @@ fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuit
                 route_stages: vec![],
                 merchants: vec![],
                 handling_coefficients: vec![],
+                company_portfolios: None,
+                company_payouts: vec![],
                 maintenance_binding: Some(MaintenanceBinding {
                     provider_site_id: site(2),
                     consumer_process_id: process(),

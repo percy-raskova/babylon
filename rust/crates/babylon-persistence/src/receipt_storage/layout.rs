@@ -8,6 +8,10 @@ pub(super) enum Kind {
     Purpose,
     Location(usize),
     AidTransport(K),
+    Present(usize, K),
+    BasisAsset(usize),
+    StockUnit(usize),
+    OptionalAccount(usize),
 }
 #[derive(Clone, Copy)]
 pub(super) struct Field {
@@ -161,6 +165,39 @@ const FIELDS_36: &[Field] = &[
     f(208, K::Unit),
 ];
 
+// Both encoded asset descriptors precede sale order and actual buyer. Missing fields have canonical zero padding.
+const FIELDS_39: &[Field] = &[
+    f(1, K::Site),
+    Field {
+        offset: 33,
+        kind: Kind::BasisAsset(0),
+    },
+    Field {
+        offset: 65,
+        kind: Kind::StockUnit(0),
+    },
+    Field {
+        offset: 98,
+        kind: Kind::Present(97, K::Site),
+    },
+    Field {
+        offset: 130,
+        kind: Kind::BasisAsset(97),
+    },
+    Field {
+        offset: 162,
+        kind: Kind::StockUnit(97),
+    },
+    Field {
+        offset: 195,
+        kind: Kind::Present(194, K::Order),
+    },
+    Field {
+        offset: 228,
+        kind: Kind::OptionalAccount(227),
+    },
+];
+const FIELDS_38: &[Field] = &[f(8, K::CompanyAccount), a(41, 40)];
 const FIELDS_37: &[Field] = &[
     f(32, K::Shift),
     f(64, K::OrganizationAccount),
@@ -202,6 +239,8 @@ pub(super) fn fields(tag: u8) -> Result<&'static [Field]> {
         35 => FIELDS_35,
         36 => FIELDS_36,
         37 => FIELDS_37,
+        38 => FIELDS_38,
+        39 => FIELDS_39,
         _ => return Err(Error::Family),
     })
 }
@@ -212,12 +251,40 @@ fn account(tag: u8) -> Result<K> {
         2 => K::FinalDemandPrincipal,
         3 => K::OrganizationAccount,
         4 => K::PublicAccount,
+        5 => K::CompanyAccount,
         _ => return Err(Error::IdentityTag),
     })
 }
 pub(super) fn resolve_kind(kind: Kind, row: &[u8]) -> Result<Option<K>> {
     Ok(Some(match kind {
         Kind::Fixed(k) => k,
+        Kind::Present(offset, k) => {
+            if *row.get(offset).ok_or(Error::Truncated)? == 0 {
+                return Ok(None);
+            }
+            k
+        }
+        Kind::BasisAsset(offset) => match row.get(offset).copied().ok_or(Error::Truncated)? {
+            0 => return Ok(None),
+            1 => K::Good,
+            2 => K::FreightLot,
+            3 => K::Process,
+            4 => K::Installation,
+            5 => K::EquipmentCohort,
+            6..=8 => K::Order,
+            _ => return Err(Error::IdentityTag),
+        },
+        Kind::StockUnit(offset) => {
+            if *row.get(offset).ok_or(Error::Truncated)? == 1 {
+                K::Unit
+            } else {
+                return Ok(None);
+            }
+        }
+        Kind::OptionalAccount(offset) => match *row.get(offset).ok_or(Error::Truncated)? {
+            0 => return Ok(None),
+            tag => account(tag)?,
+        },
         Kind::AidTransport(k) => match *row.get(80).ok_or(Error::Truncated)? {
             1 => return Ok(None),
             2 => k,

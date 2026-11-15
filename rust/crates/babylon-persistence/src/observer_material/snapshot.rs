@@ -10,7 +10,7 @@ use babylon_tick::material_world::{
     MaterialReceiptHandle, MaterialTickReceipts, MaterialWorldRegister,
 };
 
-use postgres::GenericClient;
+use postgres::{Config, GenericClient};
 
 use std::ops::Deref;
 use std::sync::Arc;
@@ -246,7 +246,11 @@ impl ObserverMaterialCursor {
             .map(|site| site.site_id)
             .collect();
         sites.sort_unstable();
+        let admitted = self
+            .admission(source.campaign_id)
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
         Ok(JournalPeriodSource {
+            foundation: admitted,
             payments: self.economic_payments(foundation, source)?,
             accounting,
             sites,
@@ -898,6 +902,7 @@ pub(crate) fn authenticated_history_endpoints<'w>(
     campaign: CampaignId,
     expected: &'w EconomicContentAdmission,
     history: &'w MaterialHistory,
+    journal_connection: Option<&Config>,
 ) -> Result<(StoredMaterialTick<'w>, Option<StoredMaterialTick<'w>>), ObserverEconomyError> {
     let tick = history.register.completed_tick();
     let register = history.register(expected);
@@ -920,9 +925,9 @@ pub(crate) fn authenticated_history_endpoints<'w>(
             previous_chain: history.previous_lookup_chain,
             registers: [Some(register), history.opening(expected)],
             receipt: history.receipt_witness.as_ref(),
+            journal_connection,
         },
-    )
-    .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+    )?;
     if current.register.as_ref() != register
         || Some(current.identity.result_world_hash()) != result_world
         || Some(current.identity.receipt_digest()) != period_receipt.map(|(_, digest)| *digest)
@@ -949,9 +954,18 @@ pub(crate) fn committed_receipts(
     tick: u64,
     expected: &EconomicContentHandle,
     cursor: &mut Option<ObserverMaterialCursor>,
+    journal_connection: Option<&Config>,
 ) -> Result<CommittedMaterialReceipts, ObserverEconomyError> {
-    let history = history_for_read(transaction, campaign, tick, expected, cursor)?;
-    let (current, _) = authenticated_history_endpoints(transaction, campaign, expected, &history)?;
+    let history = Timing::measure(Stage::HistoryLoad, tick, || {
+        history_for_read(transaction, campaign, tick, expected, cursor)
+    })?;
+    let (current, _) = authenticated_history_endpoints(
+        transaction,
+        campaign,
+        expected,
+        &history,
+        journal_connection,
+    )?;
     let identity = current.identity;
     drop(current);
     let result = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
@@ -1014,7 +1028,7 @@ pub(crate) fn committed_observation(
     drop(history_timing);
     let staffing_timing = Timing::start(Stage::Staffing, tick);
     let (current, previous) =
-        authenticated_history_endpoints(transaction, campaign, expected, &history)?;
+        authenticated_history_endpoints(transaction, campaign, expected, &history, None)?;
     let identity = current.identity;
     let staffing = project_authenticated_staffing(expected, &history, &current, previous.as_ref())?;
     drop(previous);
@@ -1074,7 +1088,7 @@ pub(crate) fn authenticated_staffing(
         });
     }
     let (current, previous) =
-        authenticated_history_endpoints(transaction, campaign, expected, history)?;
+        authenticated_history_endpoints(transaction, campaign, expected, history, None)?;
     project_authenticated_staffing(expected, history, &current, previous.as_ref())
 }
 
@@ -1142,7 +1156,7 @@ pub(crate) fn site_financial_statements(
         None
     } else {
         let (current, _) =
-            authenticated_history_endpoints(transaction, campaign, expected, &history)?;
+            authenticated_history_endpoints(transaction, campaign, expected, &history, None)?;
         read_committed_receipts(campaign, tick, expected, &history, &current.identity)?;
         Some(current.identity)
     };

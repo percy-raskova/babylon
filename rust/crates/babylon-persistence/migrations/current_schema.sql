@@ -1075,7 +1075,7 @@ CREATE TABLE babylon_state.material_tick_v3 (
     resolve_tick bigint NOT NULL CHECK (resolve_tick > 0),
     identity_bytes bytea NOT NULL CHECK (octet_length(identity_bytes) <= 1024),
     register_storage_bytes bytea NOT NULL CHECK (octet_length(register_storage_bytes) <= 1003922634),
-    receipt_storage_bytes bytea NOT NULL CHECK (octet_length(receipt_storage_bytes) <= 925437040),
+    receipt_storage_bytes bytea NOT NULL CHECK (octet_length(receipt_storage_bytes) <= 947588276),
     lookup_delta_bytes bytea NOT NULL CHECK (octet_length(lookup_delta_bytes) <= 1003907274),
     PRIMARY KEY (campaign_id, resolve_tick)
 );
@@ -1726,10 +1726,10 @@ CREATE TABLE babylon_state.money_movement_v1 (
         'household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')),
     reference_kind text CHECK (reference_kind IN ('delivery','local_final_demand','service','shift')),
     reference_id bytea CHECK (octet_length(reference_id) = 32),
-    debit_kind text NOT NULL CHECK (debit_kind IN ('site_cash','household_cash','organization_cash','public_cash',
+    debit_kind text NOT NULL CHECK (debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash',
         'delivery_reserve','local_final_demand_reserve','service_reserve','payroll_reserve')),
     debit_id bytea NOT NULL CHECK (octet_length(debit_id) = 32),
-    credit_kind text NOT NULL CHECK (credit_kind IN ('site_cash','household_cash','organization_cash','public_cash',
+    credit_kind text NOT NULL CHECK (credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash',
         'delivery_reserve','local_final_demand_reserve','service_reserve','payroll_reserve')),
     credit_id bytea NOT NULL CHECK (octet_length(credit_id) = 32),
     amount_micros numeric NOT NULL CHECK (scale(amount_micros) = 0 AND amount_micros > 0
@@ -1745,17 +1745,17 @@ CREATE TABLE babylon_state.money_movement_v1 (
         OR (purpose IN ('tax','public_transfer','household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')
             AND reference_kind IS NULL AND reference_id IS NULL)),
     CONSTRAINT money_movement_postings_v1 CHECK (
-        (purpose = 'purchase_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+        (purpose = 'purchase_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
             AND credit_kind = reference_kind || '_reserve' AND credit_id = reference_id)
         OR (purpose IN ('delivery_settlement','purchase_refund') AND debit_kind = reference_kind || '_reserve'
-            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash'))
-        OR (purpose = 'shift_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash'))
+        OR (purpose = 'shift_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
             AND credit_kind = 'payroll_reserve' AND credit_id = reference_id)
         OR (purpose IN ('wage_payment','shift_cancellation') AND debit_kind = 'payroll_reserve'
-            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash'))
+            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash'))
         OR (purpose IN ('tax','public_transfer','household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')
-            AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
-            AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+            AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
+            AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')
             AND (debit_kind, debit_id) <> (credit_kind, credit_id)))
 );
 -- NUMERIC aggregates intentionally exceed i128: individual transfers remain bounded.
@@ -1792,12 +1792,93 @@ CREATE INDEX economic_flow_location_point_v1 ON babylon_state.economic_flow_loca
     USING gist (county_internal_point);
 REVOKE ALL ON babylon_state.economic_flow_location_v1 FROM PUBLIC;
 
+-- Captured opening membership and exact beneficial ownership, shared by all journal periods.
+CREATE TABLE babylon_state.economic_company_v1 (
+    campaign_id uuid NOT NULL,
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    company_id bytea NOT NULL CHECK (octet_length(company_id) = 32),
+    industry_key text NOT NULL CHECK (industry_key <> ''),
+    label text NOT NULL CHECK (label <> ''),
+    band text NOT NULL CHECK (band IN ('first_national','second_national','regional')),
+    division smallint CHECK (division BETWEEN 1 AND 9),
+    employed numeric(20,0) NOT NULL CHECK (employed BETWEEN 1 AND 18446744073709551615),
+    sites numeric(20,0) NOT NULL CHECK (sites BETWEEN 1 AND 18446744073709551615),
+    opening_cash_micros numeric(39,0) NOT NULL CHECK (opening_cash_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    subsidiary_capital_micros numeric(39,0) NOT NULL CHECK (subsidiary_capital_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    original_capital_micros numeric(39,0) NOT NULL CHECK (original_capital_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    common_denominator numeric(39,0) NOT NULL CHECK (common_denominator BETWEEN 1 AND 340282366920938463463374607431768211455),
+    total_weight numeric(39,0) NOT NULL CHECK (total_weight BETWEEN 1 AND 340282366920938463463374607431768211455),
+    CHECK ((band='regional') = (division IS NOT NULL)),
+    CHECK (original_capital_micros = opening_cash_micros + subsidiary_capital_micros),
+    CHECK (total_weight = original_capital_micros * common_denominator),
+    PRIMARY KEY (campaign_id,company_id),
+    UNIQUE (campaign_id,foundation_sha256,company_id),
+    FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
+);
+REVOKE ALL ON babylon_state.economic_company_v1 FROM PUBLIC;
+
+CREATE TABLE babylon_state.economic_company_member_v1 (
+    campaign_id uuid NOT NULL,
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    company_id bytea NOT NULL CHECK (octet_length(company_id) = 32),
+    site_id bytea NOT NULL CHECK (octet_length(site_id) = 32),
+    county_geoid text NOT NULL CHECK (county_geoid ~ '^[0-9]{5}$'),
+    opening_employed numeric(20,0) NOT NULL CHECK (opening_employed BETWEEN 0 AND 18446744073709551615),
+    original_cash_micros numeric(39,0) NOT NULL CHECK (original_cash_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    cash_floor_micros numeric(39,0) NOT NULL CHECK (cash_floor_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    swept_micros numeric(39,0) NOT NULL CHECK (swept_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    remaining_cash_micros numeric(39,0) NOT NULL CHECK (remaining_cash_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    original_capital_micros numeric(39,0) NOT NULL CHECK (original_capital_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    remaining_capital_micros numeric(39,0) NOT NULL CHECK (remaining_capital_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    CHECK (original_cash_micros = remaining_cash_micros + swept_micros),
+    CHECK (original_capital_micros = remaining_capital_micros + swept_micros),
+    CHECK (swept_micros=0 OR remaining_cash_micros >= cash_floor_micros),
+    PRIMARY KEY (campaign_id,site_id),
+    UNIQUE (campaign_id,foundation_sha256,company_id,site_id),
+    FOREIGN KEY (campaign_id,foundation_sha256,company_id)
+        REFERENCES babylon_state.economic_company_v1(campaign_id,foundation_sha256,company_id) ON DELETE CASCADE
+);
+REVOKE ALL ON babylon_state.economic_company_member_v1 FROM PUBLIC;
+
+CREATE TABLE babylon_state.economic_company_claim_v1 (
+    campaign_id uuid NOT NULL,
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    company_id bytea NOT NULL CHECK (octet_length(company_id) = 32),
+    beneficiary_kind text NOT NULL CHECK (beneficiary_kind IN ('site_cash','household_cash','public_cash','organization_cash')),
+    beneficiary_id bytea NOT NULL CHECK (octet_length(beneficiary_id) = 32),
+    weight numeric(39,0) NOT NULL CHECK (weight BETWEEN 0 AND 340282366920938463463374607431768211455),
+    PRIMARY KEY (campaign_id,company_id,beneficiary_kind,beneficiary_id),
+    FOREIGN KEY (campaign_id,foundation_sha256,company_id)
+        REFERENCES babylon_state.economic_company_v1(campaign_id,foundation_sha256,company_id) ON DELETE CASCADE
+);
+REVOKE ALL ON babylon_state.economic_company_claim_v1 FROM PUBLIC;
+
+CREATE TABLE babylon_state.economic_company_claim_source_v1 (
+    campaign_id uuid NOT NULL,
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    company_id bytea NOT NULL CHECK (octet_length(company_id) = 32),
+    site_id bytea NOT NULL CHECK (octet_length(site_id) = 32),
+    beneficiary_kind text NOT NULL CHECK (beneficiary_kind IN ('site_cash','household_cash','public_cash','organization_cash')),
+    beneficiary_id bytea NOT NULL CHECK (octet_length(beneficiary_id) = 32),
+    original_shares numeric(20,0) NOT NULL CHECK (original_shares BETWEEN 1 AND 18446744073709551615),
+    site_total_shares numeric(20,0) NOT NULL CHECK (site_total_shares BETWEEN 1 AND 18446744073709551615),
+    capital_micros numeric(39,0) NOT NULL CHECK (capital_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    original_carrying_micros numeric(39,0) NOT NULL CHECK (original_carrying_micros BETWEEN 0 AND 170141183460469231731687303715884105727),
+    CHECK (original_shares <= site_total_shares),
+    PRIMARY KEY (campaign_id,site_id,beneficiary_kind,beneficiary_id),
+    FOREIGN KEY (campaign_id,company_id,beneficiary_kind,beneficiary_id)
+        REFERENCES babylon_state.economic_company_claim_v1(campaign_id,company_id,beneficiary_kind,beneficiary_id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id,foundation_sha256,company_id,site_id)
+        REFERENCES babylon_state.economic_company_member_v1(campaign_id,foundation_sha256,company_id,site_id) ON DELETE CASCADE
+);
+REVOKE ALL ON babylon_state.economic_company_claim_source_v1 FROM PUBLIC;
+
 -- Account geography and operating function come from the captured foundation.
 -- A missing classification is distinct from a zero balance or zero payments.
 CREATE TABLE babylon_state.economic_flow_account_v1 (
     campaign_id uuid NOT NULL,
     foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
-    account_kind text NOT NULL CHECK (account_kind IN ('site_cash','household_cash','organization_cash','public_cash')),
+    account_kind text NOT NULL CHECK (account_kind IN ('site_cash','household_cash','organization_cash','public_cash','company_cash')),
     account_id bytea NOT NULL CHECK (octet_length(account_id) = 32),
     location_key text CHECK (length(location_key) > 0),
     catchment_key text CHECK (length(catchment_key) > 0),
@@ -2018,5 +2099,117 @@ CREATE TABLE babylon_state.labor_position_v1 (
 CREATE INDEX labor_movement_source_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,source_node);
 CREATE INDEX labor_movement_destination_v1 ON babylon_state.labor_movement_v1(campaign_id,resolve_tick,destination_node);
 CREATE INDEX labor_position_node_v1 ON babylon_state.labor_position_v1(campaign_id,resolve_tick,node_ordinal);
-CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_v1(campaign_id,resolve_tick,location_key,node_ordinal);
+-- Geographic probes have a known location. The partial predicate keeps bare
+-- node references on their complete primary key while a period is being loaded.
+CREATE INDEX labor_node_scope_v1 ON babylon_state.labor_node_v1(campaign_id,resolve_tick,location_key,node_ordinal)
+    WHERE location_key IS NOT NULL;
 REVOKE ALL ON babylon_state.labor_period_v1,babylon_state.labor_checkpoint_v1,babylon_state.labor_node_v1,babylon_state.labor_movement_v1,babylon_state.labor_position_v1 FROM PUBLIC;
+
+-- Retained company legal and consolidated books, authenticated by the completed journal marker.
+CREATE TABLE babylon_state.company_accounting_period_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    fact_sha256 bytea NOT NULL CHECK(octet_length(fact_sha256)=32),
+    checkpoint_sha256 bytea NOT NULL CHECK(octet_length(checkpoint_sha256)=32),
+    result_world_hash bytea NOT NULL CHECK(octet_length(result_world_hash)=32),
+    company_count bigint NOT NULL CHECK(company_count>0),
+    entry_count bigint NOT NULL CHECK(entry_count>=0),
+    PRIMARY KEY(campaign_id,resolve_tick),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.money_journal_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.company_accounting_checkpoint_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    checkpoint_bytes bytea NOT NULL,
+    PRIMARY KEY(campaign_id,resolve_tick),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.company_accounting_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.company_statement_balance_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    company_id bytea NOT NULL CHECK(octet_length(company_id)=32),
+    scope text NOT NULL CHECK(scope IN ('parent','subsidiaries','consolidated')),
+    boundary text NOT NULL CHECK(boundary IN ('opening','closing')),
+    cash_micros numeric(39,0) NOT NULL,
+    reserves_micros numeric(39,0) NOT NULL,
+    receivables_micros numeric(39,0) NOT NULL,
+    inventory_micros numeric(39,0) NOT NULL,
+    freight_micros numeric(39,0) NOT NULL,
+    equipment_micros numeric(39,0) NOT NULL,
+    investments_micros numeric(39,0) NOT NULL,
+    assets_micros numeric(39,0) NOT NULL,
+    liabilities_micros numeric(39,0) NOT NULL,
+    equity_micros numeric(39,0) NOT NULL,
+    retained_earnings_micros numeric(39,0) NOT NULL,
+    CHECK(assets_micros=liabilities_micros+equity_micros),
+    PRIMARY KEY(campaign_id,resolve_tick,company_id,scope,boundary),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.company_accounting_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.company_statement_income_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    company_id bytea NOT NULL CHECK(octet_length(company_id)=32),
+    scope text NOT NULL CHECK(scope IN ('parent','subsidiaries','consolidated')),
+    sales_micros numeric(39,0) NOT NULL,
+    cost_of_goods_sold_micros numeric(39,0) NOT NULL,
+    operating_expenses_micros numeric(39,0) NOT NULL,
+    taxes_micros numeric(39,0) NOT NULL,
+    other_income_micros numeric(39,0) NOT NULL,
+    other_expenses_micros numeric(39,0) NOT NULL,
+    profit_micros numeric(39,0) NOT NULL,
+    distributions_micros numeric(39,0) NOT NULL,
+    contributions_micros numeric(39,0) NOT NULL,
+    CHECK(profit_micros=sales_micros-cost_of_goods_sold_micros-operating_expenses_micros-taxes_micros+other_income_micros-other_expenses_micros),
+    PRIMARY KEY(campaign_id,resolve_tick,company_id,scope),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.company_accounting_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.company_statement_cash_flow_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    company_id bytea NOT NULL CHECK(octet_length(company_id)=32),
+    scope text NOT NULL CHECK(scope IN ('parent','subsidiaries','consolidated')),
+    operating_micros numeric(39,0) NOT NULL,
+    investing_micros numeric(39,0) NOT NULL,
+    financing_micros numeric(39,0) NOT NULL,
+    reserve_reclassification_micros numeric(39,0) NOT NULL,
+    PRIMARY KEY(campaign_id,resolve_tick,company_id,scope),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.company_accounting_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.company_elimination_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    company_id bytea NOT NULL CHECK(octet_length(company_id)=32),
+    opening_investments_micros numeric(39,0) NOT NULL,
+    closing_investments_micros numeric(39,0) NOT NULL,
+    opening_intercompany_claims_micros numeric(39,0) NOT NULL,
+    closing_intercompany_claims_micros numeric(39,0) NOT NULL,
+    distributions_micros numeric(39,0) NOT NULL,
+    contributions_micros numeric(39,0) NOT NULL,
+    sales_micros numeric(39,0) NOT NULL,
+    seller_cost_micros numeric(39,0) NOT NULL,
+    margin_created_micros numeric(39,0) NOT NULL,
+    margin_realized_micros numeric(39,0) NOT NULL,
+    opening_unrealized_margin_micros numeric(39,0) NOT NULL,
+    closing_unrealized_margin_micros numeric(39,0) NOT NULL,
+    CHECK(closing_unrealized_margin_micros=opening_unrealized_margin_micros+margin_created_micros-margin_realized_micros),
+    CHECK(closing_investments_micros=opening_investments_micros+contributions_micros),
+    PRIMARY KEY(campaign_id,resolve_tick,company_id),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.company_accounting_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.company_realization_entry_v1 (
+    campaign_id uuid NOT NULL, resolve_tick bigint NOT NULL CHECK(resolve_tick>0),
+    company_id bytea NOT NULL CHECK(octet_length(company_id)=32),
+    family smallint NOT NULL CHECK(family IN(26,27,38,39)), ordinal bigint NOT NULL CHECK(ordinal>=0),
+    kind text NOT NULL CHECK(kind IN ('internal_sale','external_sale','expense','contribution','dividend')),
+    from_kind text NOT NULL, from_id bytea NOT NULL CHECK(octet_length(from_id)=32),
+    to_kind text, to_id bytea CHECK(octet_length(to_id)=32),
+    CHECK((to_kind IS NULL)=(to_id IS NULL)),
+    amount_micros numeric(39,0) NOT NULL,
+    legal_cost_micros numeric(39,0) NOT NULL,
+    group_cost_micros numeric(39,0) NOT NULL,
+    margin_created_micros numeric(39,0) NOT NULL,
+    margin_realized_micros numeric(39,0) NOT NULL,
+    PRIMARY KEY(campaign_id,resolve_tick,company_id,family,ordinal),
+    FOREIGN KEY(campaign_id,resolve_tick) REFERENCES babylon_state.company_accounting_period_v1 ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+REVOKE ALL ON babylon_state.company_accounting_period_v1,
+    babylon_state.company_accounting_checkpoint_v1,
+    babylon_state.company_statement_balance_v1,
+    babylon_state.company_statement_income_v1,
+    babylon_state.company_statement_cash_flow_v1,
+    babylon_state.company_elimination_v1,
+    babylon_state.company_realization_entry_v1 FROM PUBLIC;

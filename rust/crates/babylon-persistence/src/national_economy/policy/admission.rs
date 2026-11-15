@@ -11,9 +11,13 @@ use crate::national_transport::CargoClass;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
+use babylon_material_circuit::CompanyPortfolioPolicy;
 
 use super::GameAidPolicy;
 use super::GameOrganizerPolicy;
+use crate::national_economy::companies::{
+    CompanyCaptureError, CompanyPolicy, ExperimentalPopulation,
+};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, ServiceStage, UnitId};
 use serde::Deserialize;
@@ -24,6 +28,7 @@ type Error = NationalGamePolicyError;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPolicy {
+    companies: Option<RawCompanies>,
     grain: RawGrain,
     schema_version: u16,
     evidence_class: String,
@@ -50,6 +55,18 @@ struct RawPolicy {
     household_needs: Vec<RawNeed>,
     counterpart: BTreeMap<String, RawProfile>,
     dependency: RawDependency,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCompanies {
+    experiment_controller_count: Option<u16>,
+    inherited_grain_policy_sha256: [u8; 32],
+    opening_employment_bps: [u16; 3],
+    opening_treasury_bps: u16,
+    portfolio_weights: [[u16; 4]; 4],
+    high_utilization_bps: u16,
+    history_periods: u8,
+    modest_expansion_bps: u16,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -178,9 +195,42 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     )?;
     let markets = markets(&raw.markets)?;
     let equipment = equipment(raw.equipment, &commodities)?;
+    let source_digest = content_digest::sha256_of(source.as_bytes());
+    let grain_identity_policy_digest = raw
+        .companies
+        .as_ref()
+        .map_or(source_digest, |c| c.inherited_grain_policy_sha256);
+    if grain_identity_policy_digest == [0; 32] {
+        return Err(Error::Shape);
+    }
+    let companies = raw
+        .companies
+        .map(|c| {
+            let mut terms = CompanyPolicy::try_new(
+                c.opening_employment_bps,
+                c.opening_treasury_bps,
+                CompanyPortfolioPolicy {
+                    rows: c.portfolio_weights,
+                    high_utilization_bps: c.high_utilization_bps,
+                    history_periods: c.history_periods,
+                    modest_expansion_bps: c.modest_expansion_bps,
+                },
+            )?;
+            terms.experiment = c
+                .experiment_controller_count
+                .map(|n| {
+                    ExperimentalPopulation::from_count(n).ok_or(CompanyCaptureError::InvalidTargets)
+                })
+                .transpose()?;
+            Ok::<_, CompanyCaptureError>(terms)
+        })
+        .transpose()
+        .map_err(|_| Error::Shape)?;
     Ok(NationalGamePolicy {
+        companies,
         grain,
-        source_digest: content_digest::sha256_of(source.as_bytes()),
+        source_digest,
+        grain_identity_policy_digest,
         period_days: raw.period_days,
         work_hours_per_person: raw.work_hours_per_person,
         default_wage: Currency::from_micro_units(raw.default_wage_micros_per_hour),
@@ -378,8 +428,10 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
     if raw.evidence_class != "Designed" {
         return Err(Error::Evidence);
     }
-    if raw.schema_version != 2
-        || raw.period_days != 28
+    if !matches!(
+        (raw.schema_version, raw.companies.is_some()),
+        (2, false) | (3, true)
+    ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0
         || raw

@@ -159,7 +159,14 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);
-    out.extend_from_slice(&CATALOG_SCHEMA_VERSION.to_be_bytes());
+    let version = if catalog.company_portfolios.is_some() {
+        4
+    } else if catalog.company_payouts.is_empty() {
+        CATALOG_SCHEMA_VERSION
+    } else {
+        3
+    };
+    out.extend_from_slice(&version.to_be_bytes());
     append_policy(&mut out, &catalog.capacity_policy)?;
     super::state::append_site_nodes(&mut out, &catalog.site_logistics_nodes)?;
     super::state::append_process_outputs(&mut out, &catalog.process_outputs)?;
@@ -175,5 +182,31 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     append_time_policies(&mut out, &catalog.household_time_policy)?;
     append_service_inputs(&mut out, &catalog.service_inputs)?;
     append_needs(&mut out, &catalog.household_needs)?;
+    if !catalog.company_payouts.is_empty() {
+        let count = u32::try_from(catalog.company_payouts.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?;
+        out.extend_from_slice(&count.to_be_bytes());
+        for company in &catalog.company_payouts {
+            out.extend_from_slice(&company.company.as_bytes());
+            out.extend_from_slice(&company.earnings_bps.to_be_bytes());
+            let count =
+                u32::try_from(company.claims.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
+            out.extend_from_slice(&count.to_be_bytes());
+            for &(owner, weight) in &company.claims {
+                super::accounting::append_account(&mut out, owner);
+                out.extend_from_slice(&weight.to_be_bytes());
+            }
+        }
+    }
+    if let Some(policy) = &catalog.company_portfolios {
+        for row in policy.rows {
+            for weight in row {
+                out.extend_from_slice(&weight.to_be_bytes());
+            }
+        }
+        out.extend_from_slice(&policy.high_utilization_bps.to_be_bytes());
+        out.push(policy.history_periods);
+        out.extend_from_slice(&policy.modest_expansion_bps.to_be_bytes());
+    }
     Ok(out)
 }

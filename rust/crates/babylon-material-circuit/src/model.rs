@@ -1,5 +1,6 @@
 //! Current production, inventory, freight and order state.
 
+use crate::CompanyBasisMovement;
 use babylon_kernel::economic_location::EconomicLocation;
 
 /// Designed serialization and validation ceiling, not material abundance.
@@ -67,7 +68,6 @@ use crate::AidReceipt;
 use crate::CapitalContributionReceipt;
 use crate::CircuitAccounting;
 use crate::CollectionReceipt;
-use crate::DistributionReceipt;
 use crate::EquipmentPosition;
 use crate::EquipmentWearReceipt;
 use crate::HouseholdConsumptionReceipt;
@@ -97,6 +97,7 @@ use crate::StaffingMemberReceipt;
 use crate::StaffingState;
 use crate::TaxReceipt;
 use crate::WageAccrualReceipt;
+use crate::{CompanyDistributionReceipt, DistributionReceipt};
 pub(crate) use identity_type;
 use std::collections::BTreeMap;
 
@@ -608,6 +609,8 @@ impl MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    CompanyPortfolioEvidence = 35,
+    CompanyPortfolioSelection = 36,
     HouseholdTimeInvariant = 31,
     AidInvariant = 32,
     AidAuthority = 33,
@@ -685,6 +688,8 @@ impl TryFrom<u16> for MaterialCircuitError {
             32 => Ok(Self::AidInvariant),
             33 => Ok(Self::AidAuthority),
             34 => Ok(Self::CollectionInvariant),
+            35 => Ok(Self::CompanyPortfolioEvidence),
+            36 => Ok(Self::CompanyPortfolioSelection),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -720,6 +725,8 @@ pub struct MaterialCircuitTransition {
     pub public_budgets: Vec<PublicBudgetReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
+    pub company_basis: Vec<CompanyBasisMovement>,
+    pub company_distributions: Vec<CompanyDistributionReceipt>,
     pub contributions: Vec<CapitalContributionReceipt>,
     pub staffing_members: Vec<StaffingMemberReceipt>,
     pub member_labor_use: Vec<MemberLaborUseReceipt>,

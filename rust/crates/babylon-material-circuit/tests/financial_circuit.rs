@@ -1,6 +1,5 @@
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
-use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
 use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
@@ -30,6 +29,7 @@ use babylon_material_circuit::PublicBudget;
 use babylon_material_circuit::PublicTransferTreatment;
 use babylon_material_circuit::SiteId;
 use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::{AccountId, CapitalAccount, CompanyId, CompanyPayoutPolicy};
 
 fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
@@ -129,6 +129,8 @@ fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
         route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],
@@ -595,4 +597,94 @@ fn appropriation_state_wire_rejects_unknown_treatment_and_missing_account() {
         babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::MonetaryInvariant)
     );
+}
+
+#[test]
+fn parent_payout_uses_prior_earnings_protects_funding_and_survives_restart() {
+    let (base, mut state) = opening([7, 0, 0, 0, 0]);
+    let id = CompanyId::from_bytes([90; 32]);
+    let parent = AccountId::Company(id);
+    let catalog = resealed(base, |d| {
+        d.company_payouts = vec![CompanyPayoutPolicy {
+            company: id,
+            earnings_bps: 10_000,
+            claims: vec![(owner(2), 37), (owner(3), 59)],
+        }];
+    });
+    let e = economy_mut(&mut state);
+    let mut book = e.book.snapshot();
+    book.accounts.push(CashAccount {
+        id: parent,
+        cash: money(3),
+    });
+    e.book = MonetaryBook::from_snapshot(book).expect("cash book with company treasury");
+    let mut costs = e.costs.snapshot();
+    for c in &mut costs.accounts {
+        if c.account == AccountId::Site(site()) {
+            c.opening_capital = money(0);
+            c.retained_earnings = money(7);
+        }
+    }
+    costs.accounts.push(CapitalAccount {
+        account: parent,
+        opening_capital: money(3),
+        retained_earnings: money(0),
+        contributed_capital: money(0),
+    });
+    costs.equity = vec![EquityCarryingValue {
+        owner: parent,
+        issuer_site_id: site(),
+        amount: money(0),
+    }];
+    e.costs = HistoricalCostBook::from_snapshot(costs).expect("authored parent opening basis");
+    e.financial.ownership = vec![OwnershipClaim {
+        issuer_site_id: site(),
+        beneficiary: parent,
+        shares: 1,
+    }];
+    e.financial.distributions = vec![DistributionPolicy {
+        issuer_site_id: site(),
+        earnings_fraction_bps: 10_000,
+        period_cap: money(7),
+        cash_floor: money(0),
+    }];
+    e.financial.contributions = vec![CapitalContributionOrder {
+        id: ContributionId::from_bytes([7; 32]),
+        contributor: parent,
+        issuer_site_id: site(),
+        amount: money(6),
+        due_period: 3,
+    }];
+    let first =
+        babylon_material_circuit::advance_material_circuit(&catalog, &state).expect("first close");
+    assert_eq!(
+        economy(&first.state)
+            .book
+            .cash(parent)
+            .expect("parent treasury"),
+        money(10)
+    );
+    assert!(first
+        .company_distributions
+        .iter()
+        .all(|r| r.paid == money(0)));
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
+        .expect("saved first close");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+        .expect("restore same capital and claims");
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
+        .expect("pay prior earnings");
+    assert_eq!(
+        next,
+        babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+            .expect("uninterrupted close")
+    );
+    let e = economy(&next.state);
+    assert_eq!(e.book.cash(parent).expect("parent treasury"), money(6));
+    assert_eq!(e.book.cash(owner(2)).expect("first owner cash"), money(2));
+    assert_eq!(e.book.cash(owner(3)).expect("second owner cash"), money(2));
+    let third = babylon_material_circuit::advance_material_circuit(&catalog, &next.state)
+        .expect("capital contribution");
+    assert_eq!(third.contributions[0].paid, money(6));
+    assert_eq!(third.contributions[0].unfunded, money(0));
 }

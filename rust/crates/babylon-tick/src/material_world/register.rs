@@ -22,6 +22,7 @@ use super::AgencyPaidReceipt;
 use crate::public_venue::AdmittedPublicVenueSource;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_material_circuit::AgencyObservationFundingReceipt;
+use babylon_material_circuit::CompanyBasisMovement;
 use babylon_practice_contract::CityPdCaseSource;
 use babylon_practice_contract::OrganizerPartnerFacts;
 use babylon_practice_contract::PublicVenueHistory;
@@ -70,11 +71,11 @@ use babylon_material_circuit::{
     MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
 };
 
+use super::MaterialReceiptFormat;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::AidReceipt;
 use babylon_material_circuit::CapitalContributionReceipt;
 use babylon_material_circuit::CollectionReceipt;
-use babylon_material_circuit::DistributionReceipt;
 use babylon_material_circuit::EquipmentWearReceipt;
 use babylon_material_circuit::HouseholdConsumptionReceipt;
 use babylon_material_circuit::HouseholdDemandReceipt;
@@ -98,6 +99,7 @@ use babylon_material_circuit::ServicePerformanceReceipt;
 use babylon_material_circuit::StaffingMemberReceipt;
 use babylon_material_circuit::TaxReceipt;
 use babylon_material_circuit::WageAccrualReceipt;
+use babylon_material_circuit::{CompanyDistributionReceipt, DistributionReceipt};
 use babylon_practice_contract::OrganizerAidSupport;
 use babylon_practice_contract::OrganizerCollectionFact;
 use babylon_practice_contract::OrganizerCommitment;
@@ -112,6 +114,37 @@ use std::fmt::Result as FmtResult;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use babylon_material_circuit::CompanyPortfolioRegister;
+const COMPANY_REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v8\0";
+fn register_version(bytes: &[u8]) -> Result<u32, MaterialWorldError> {
+    for (domain, version) in [(REGISTER_DOMAIN, 7_u32), (COMPANY_REGISTER_DOMAIN, 8_u32)] {
+        if bytes
+            .strip_prefix(domain)
+            .is_some_and(|rest| rest.starts_with(&version.to_be_bytes()))
+        {
+            return Ok(version);
+        }
+    }
+    Err(MaterialWorldError::Wire)
+}
+fn take_company_frame<'a>(
+    version: u32,
+    sections: &mut &'a [u8],
+) -> Result<Option<&'a [u8]>, MaterialWorldError> {
+    let frame = if version == 8 {
+        let bytes = take_organizer_section(sections)?;
+        if !bytes.starts_with(babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN) {
+            return Err(MaterialWorldError::Wire);
+        }
+        Some(bytes)
+    } else {
+        None
+    };
+    if !sections.is_empty() {
+        return Err(MaterialWorldError::Wire);
+    }
+    Ok(frame)
+}
 pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v7\0";
 
 pub(crate) const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
@@ -122,9 +155,11 @@ pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v20\0"
 /// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 1_000_000_000;
 
-/// Derived complete receipt bound from the closed family row limits and codecs.
-/// Independent collection limits still reject excessive rows before allocation.
-pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = maximum_material_receipt_bytes();
+/// Complete V21 transport budget. Both company families share the headroom added
+/// for the captured payout roster. Each family also has an independent row limit.
+pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = maximum_material_receipt_bytes()
+    + 9
+    + financial_receipt::COMPANY_BYTES * babylon_material_circuit::MAX_OWNERSHIP_CLAIMS;
 
 /// Number of ordered families in the current canonical receipt schema.
 pub const RECEIPT_FAMILY_COUNT: usize = 37;
@@ -229,6 +264,7 @@ impl SharedCanonicalBytes {
 pub struct MaterialWorldRegister {
     completed_tick: u64,
     state: MaterialCircuitState,
+    company_portfolios: Option<CompanyPortfolioRegister>,
     organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
     public_venue: Option<PublicVenueHistory>,
     city_pd: Option<CityPdRegister>,
@@ -281,6 +317,14 @@ impl From<CityPdRegisterError> for MaterialWorldError {
     }
 }
 
+#[derive(Default)]
+struct RegisterSections {
+    company_portfolios: Option<CompanyPortfolioRegister>,
+    organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
+    public_venue: Option<PublicVenueHistory>,
+    city_pd: Option<CityPdRegister>,
+}
+
 #[derive(Clone, Copy)]
 struct AssemblyEvidence<'a> {
     resolver: Option<&'a StableElementResolver>,
@@ -301,7 +345,13 @@ impl MaterialWorldRegister {
         completed_tick: u64,
         state: MaterialCircuitState,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(catalog, completed_tick, state, None, None, None, None)
+        Self::build(
+            catalog,
+            completed_tick,
+            state,
+            RegisterSections::default(),
+            None,
+        )
     }
 
     /// Admit one engine-produced canonical successor without a second decode pass.
@@ -313,9 +363,17 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses a zero period, an invalid circuit state under the catalog, or the
     /// aggregate register byte bound.
+    #[cfg(test)]
     pub(super) fn from_validated_candidate(
         catalog: &MaterialCatalog,
         state: MaterialCircuitState,
+    ) -> Result<Self, MaterialWorldError> {
+        Self::from_candidate(catalog, state, None)
+    }
+    fn from_candidate(
+        catalog: &MaterialCatalog,
+        state: MaterialCircuitState,
+        company_portfolios: Option<CompanyPortfolioRegister>,
     ) -> Result<Self, MaterialWorldError> {
         let completed_tick = state
             .period
@@ -326,9 +384,10 @@ impl MaterialWorldRegister {
             catalog,
             completed_tick,
             state,
-            None,
-            None,
-            None,
+            RegisterSections {
+                company_portfolios,
+                ..RegisterSections::default()
+            },
             AssemblyEvidence {
                 resolver: None,
                 state_bytes: &state_bytes,
@@ -340,9 +399,7 @@ impl MaterialWorldRegister {
         catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
-        organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
-        public_venue: Option<PublicVenueHistory>,
-        city_pd: Option<CityPdRegister>,
+        sections: RegisterSections,
         resolver: Option<&StableElementResolver>,
     ) -> Result<Self, MaterialWorldError> {
         if completed_tick
@@ -359,9 +416,7 @@ impl MaterialWorldRegister {
             catalog,
             completed_tick,
             state,
-            organizer,
-            public_venue,
-            city_pd,
+            sections,
             AssemblyEvidence {
                 resolver,
                 state_bytes: &state_bytes,
@@ -373,15 +428,19 @@ impl MaterialWorldRegister {
         catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
-        organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
-        public_venue: Option<PublicVenueHistory>,
-        city_pd: Option<CityPdRegister>,
+        sections: RegisterSections,
         evidence: AssemblyEvidence<'_>,
     ) -> Result<Self, MaterialWorldError> {
         let AssemblyEvidence {
             resolver,
             state_bytes,
         } = evidence;
+        let RegisterSections {
+            company_portfolios,
+            organizer,
+            public_venue,
+            city_pd,
+        } = sections;
         validate_city_pd_venue(city_pd.as_ref(), public_venue.as_ref())?;
         let organizer_bytes = encode_bound_organizer(
             catalog,
@@ -392,16 +451,34 @@ impl MaterialWorldRegister {
         )?;
         let city_pd_bytes =
             city_pd::encode(city_pd.as_ref(), catalog, &state, completed_tick, resolver)?;
+        if (catalog.company_portfolios.is_some() && completed_tick > 0)
+            != company_portfolios.is_some()
+        {
+            return Err(MaterialWorldError::Wire);
+        }
+        let company_bytes = company_portfolios
+            .as_ref()
+            .map(|r| r.canonical_bytes(catalog, &state, completed_tick))
+            .transpose()?;
+        let extra = company_bytes.as_ref().map_or(Ok(0), |b| {
+            b.len().checked_add(8).ok_or(MaterialWorldError::Arithmetic)
+        })?;
         let length = REGISTER_DOMAIN
             .len()
             .checked_add(36)
+            .and_then(|n| n.checked_add(extra))
             .and_then(|count| count.checked_add(state_bytes.len()))
             .and_then(|count| count.checked_add(organizer_bytes.len()))
             .and_then(|count| count.checked_add(city_pd_bytes.len()))
             .ok_or(MaterialWorldError::Arithmetic)?;
         let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
-        bytes.extend_from_slice(REGISTER_DOMAIN);
-        bytes.extend_from_slice(&7_u32.to_be_bytes());
+        let (domain, version) = if company_bytes.is_some() {
+            (COMPANY_REGISTER_DOMAIN, 8_u32)
+        } else {
+            (REGISTER_DOMAIN, 7)
+        };
+        bytes.extend_from_slice(domain);
+        bytes.extend_from_slice(&version.to_be_bytes());
         bytes.extend_from_slice(&completed_tick.to_be_bytes());
         bytes.extend_from_slice(
             &u64::try_from(state_bytes.len())
@@ -421,10 +498,19 @@ impl MaterialWorldRegister {
                 .to_be_bytes(),
         );
         bytes.extend_from_slice(&city_pd_bytes);
+        if let Some(frame) = company_bytes {
+            bytes.extend_from_slice(
+                &u64::try_from(frame.len())
+                    .map_err(|_| MaterialWorldError::Arithmetic)?
+                    .to_be_bytes(),
+            );
+            bytes.extend_from_slice(&frame);
+        }
         let digest = content_digest::sha256_of(&bytes);
         Ok(Self {
             completed_tick,
             state,
+            company_portfolios,
             organizer,
             public_venue,
             city_pd,
@@ -444,9 +530,12 @@ impl MaterialWorldRegister {
                 catalog,
                 self.completed_tick,
                 self.state,
-                self.organizer,
-                self.public_venue,
-                self.city_pd,
+                RegisterSections {
+                    company_portfolios: self.company_portfolios,
+                    organizer: self.organizer,
+                    public_venue: self.public_venue,
+                    city_pd: self.city_pd,
+                },
                 resolver,
             );
         }
@@ -470,9 +559,12 @@ impl MaterialWorldRegister {
             catalog,
             self.completed_tick,
             self.state,
-            self.organizer,
-            self.public_venue,
-            self.city_pd,
+            RegisterSections {
+                company_portfolios: self.company_portfolios,
+                organizer: self.organizer,
+                public_venue: self.public_venue,
+                city_pd: self.city_pd,
+            },
             AssemblyEvidence {
                 resolver,
                 state_bytes,
@@ -548,14 +640,14 @@ impl MaterialWorldRegister {
         let _state = take_organizer_section(&mut sections)?;
         let _organizer = take_organizer_section(&mut sections)?;
         let city_pd_bytes = take_organizer_section(&mut sections)?;
-        if !sections.is_empty()
-            || city_pd::encode(
-                self.city_pd.as_ref(),
-                catalog,
-                &self.state,
-                self.completed_tick,
-                Some(resolver),
-            )? != city_pd_bytes
+        take_company_frame(register_version(self.canonical_bytes())?, &mut sections)?;
+        if city_pd::encode(
+            self.city_pd.as_ref(),
+            catalog,
+            &self.state,
+            self.completed_tick,
+            Some(resolver),
+        )? != city_pd_bytes
         {
             return Err(MaterialWorldError::Wire);
         }
@@ -580,6 +672,10 @@ impl MaterialWorldRegister {
     #[must_use]
     pub const fn completed_tick(&self) -> u64 {
         self.completed_tick
+    }
+    #[must_use]
+    pub fn company_portfolios(&self) -> Option<&CompanyPortfolioRegister> {
+        self.company_portfolios.as_ref()
     }
     #[must_use]
     pub fn state(&self) -> &MaterialCircuitState {
@@ -636,16 +732,11 @@ impl MaterialWorldRegister {
         resolver: Option<&StableElementResolver>,
     ) -> Result<Self, MaterialWorldError> {
         let header = REGISTER_DOMAIN.len() + 12;
-        if bytes.len() < header
-            || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
-            || !bytes.starts_with(REGISTER_DOMAIN)
-        {
+        if bytes.len() < header || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES {
             return Err(MaterialWorldError::Wire);
         }
         let start = REGISTER_DOMAIN.len();
-        if bytes[start..start + 4] != 7_u32.to_be_bytes() {
-            return Err(MaterialWorldError::Wire);
-        }
+        let version = register_version(&bytes)?;
         let tick = u64::from_be_bytes(
             bytes[start + 4..start + 12]
                 .try_into()
@@ -655,7 +746,8 @@ impl MaterialWorldRegister {
         let state_bytes = take_organizer_section(&mut sections)?;
         let organizer_wire = take_organizer_section(&mut sections)?;
         let city_pd_wire = take_organizer_section(&mut sections)?;
-        if !sections.is_empty() {
+        let company_wire = take_company_frame(version, &mut sections)?;
+        if (catalog.company_portfolios.is_some() && tick > 0) != company_wire.is_some() {
             return Err(MaterialWorldError::Wire);
         }
         let (organizer, public_venue) = decode_organizer_frame(organizer_wire)?;
@@ -669,6 +761,9 @@ impl MaterialWorldRegister {
         // Serialize the same admitted circuit before validating its bound organizer,
         // without repeating circuit admission or assembling a second outer register.
         let (state, canonical_state) = decoded.into_state_and_canonical_bytes()?;
+        let company_portfolios = company_wire
+            .map(|frame| CompanyPortfolioRegister::decode(catalog, &state, tick, frame))
+            .transpose()?;
         let canonical_organizer = encode_bound_organizer(
             catalog,
             tick,
@@ -681,6 +776,7 @@ impl MaterialWorldRegister {
         let canonical_city_pd = city_pd::encode(city_pd.as_ref(), catalog, &state, tick, resolver)?;
         let canonical_length = header
             .checked_add(24)
+            .and_then(|n| n.checked_add(company_wire.map_or(0, |r| r.len().saturating_add(8))))
             .and_then(|count| count.checked_add(canonical_state.len()))
             .and_then(|count| count.checked_add(canonical_organizer.len()))
             .and_then(|count| count.checked_add(canonical_city_pd.len()))
@@ -704,6 +800,7 @@ impl MaterialWorldRegister {
         Ok(Self {
             completed_tick: tick,
             state,
+            company_portfolios,
             organizer,
             public_venue,
             city_pd,
@@ -780,7 +877,19 @@ impl MaterialWorldRegister {
             )?,
             None => Vec::new(),
         };
-        let register = Self::from_validated_candidate(catalog, transition.state)?;
+        let portfolios = catalog
+            .company_portfolios
+            .as_ref()
+            .map(|_| {
+                CompanyPortfolioRegister::observe(
+                    catalog,
+                    &self.state,
+                    &transition,
+                    self.company_portfolios.as_ref(),
+                )
+            })
+            .transpose()?;
+        let register = Self::from_candidate(catalog, transition.state, portfolios)?;
         Ok(PreparedMaterialWorld {
             prior_digest: self.digest,
             register,
@@ -932,12 +1041,16 @@ impl PreparedMaterialWorld {
             catalog,
             self.register.completed_tick,
             state,
-            Some((config, organizer, journal)),
-            self.register
-                .public_venue
-                .clone()
-                .or_else(|| self.public_venue_opening.clone()),
-            self.register.city_pd.clone(),
+            RegisterSections {
+                company_portfolios: self.register.company_portfolios.clone(),
+                organizer: Some((config, organizer, journal)),
+                public_venue: self
+                    .register
+                    .public_venue
+                    .clone()
+                    .or_else(|| self.public_venue_opening.clone()),
+                city_pd: self.register.city_pd.clone(),
+            },
             Some(resolver),
         )?;
         Ok(())
@@ -959,12 +1072,16 @@ impl PreparedMaterialWorld {
             catalog,
             self.register.completed_tick,
             self.register.state.clone(),
-            Some((config, state, journal)),
-            self.register
-                .public_venue
-                .clone()
-                .or_else(|| self.public_venue_opening.clone()),
-            self.register.city_pd.clone(),
+            RegisterSections {
+                company_portfolios: self.register.company_portfolios.clone(),
+                organizer: Some((config, state, journal)),
+                public_venue: self
+                    .register
+                    .public_venue
+                    .clone()
+                    .or_else(|| self.public_venue_opening.clone()),
+                city_pd: self.register.city_pd.clone(),
+            },
             Some(resolver),
         )?;
         Ok(())
@@ -982,9 +1099,12 @@ impl PreparedMaterialWorld {
             catalog,
             self.register.completed_tick,
             self.register.state.clone(),
-            self.register.organizer.clone(),
-            Some(venue),
-            self.register.city_pd.clone(),
+            RegisterSections {
+                company_portfolios: self.register.company_portfolios.clone(),
+                organizer: self.register.organizer.clone(),
+                public_venue: Some(venue),
+                city_pd: self.register.city_pd.clone(),
+            },
             Some(resolver),
         )?;
         Ok(())
@@ -1008,9 +1128,12 @@ impl PreparedMaterialWorld {
             catalog,
             self.register.completed_tick,
             self.register.state.clone(),
-            self.register.organizer.clone(),
-            self.register.public_venue.clone(),
-            Some(city_pd),
+            RegisterSections {
+                company_portfolios: self.register.company_portfolios.clone(),
+                organizer: self.register.organizer.clone(),
+                public_venue: self.register.public_venue.clone(),
+                city_pd: Some(city_pd),
+            },
             Some(resolver),
         )?;
         Ok(())
@@ -1156,16 +1279,11 @@ pub fn decode_material_organizer_evidence(
     bytes: &[u8],
 ) -> Result<DecodedMaterialOrganizerEvidence, MaterialWorldError> {
     let header = REGISTER_DOMAIN.len() + 12;
-    if bytes.len() < header
-        || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
-        || !bytes.starts_with(REGISTER_DOMAIN)
-    {
+    if bytes.len() < header || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES {
         return Err(MaterialWorldError::Wire);
     }
     let start = REGISTER_DOMAIN.len();
-    if bytes[start..start + 4] != 7_u32.to_be_bytes() {
-        return Err(MaterialWorldError::Wire);
-    }
+    let version = register_version(bytes)?;
     let tick = u64::from_be_bytes(
         bytes[start + 4..header]
             .try_into()
@@ -1175,7 +1293,8 @@ pub fn decode_material_organizer_evidence(
     let state_wire = take_organizer_section(&mut sections)?;
     let organizer_wire = take_organizer_section(&mut sections)?;
     let private_wire = take_organizer_section(&mut sections)?;
-    if !sections.is_empty()
+    let company_frame = take_company_frame(version, &mut sections)?;
+    if (catalog.company_portfolios.is_some() && tick > 0) != company_frame.is_some()
         || !matches!(private_wire.first(), Some(0 | 1))
         || (private_wire.first() == Some(&0) && private_wire.len() != 1)
     {
@@ -1195,6 +1314,9 @@ pub fn decode_material_organizer_evidence(
         }
         material
     };
+    if let Some(frame) = company_frame {
+        CompanyPortfolioRegister::decode(catalog, &material, tick, frame)?;
+    }
     if encode_bound_organizer(
         catalog,
         tick,
@@ -1223,20 +1345,14 @@ pub fn decode_city_pd_attempt_evidence(
     bytes: &[u8],
 ) -> Result<Option<DecodedCityPdAttemptEvidence>, MaterialWorldError> {
     let header = REGISTER_DOMAIN.len() + 12;
-    if bytes.len() < header
-        || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
-        || !bytes.starts_with(REGISTER_DOMAIN)
-        || bytes[REGISTER_DOMAIN.len()..REGISTER_DOMAIN.len() + 4] != 7_u32.to_be_bytes()
-    {
+    if bytes.len() < header || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES {
         return Err(MaterialWorldError::Wire);
     }
     let mut sections = bytes.get(header..).ok_or(MaterialWorldError::Wire)?;
     let _state = take_organizer_section(&mut sections)?;
     let _organizer = take_organizer_section(&mut sections)?;
     let city_pd = take_organizer_section(&mut sections)?;
-    if !sections.is_empty() {
-        return Err(MaterialWorldError::Wire);
-    }
+    take_company_frame(register_version(bytes)?, &mut sections)?;
     Ok(city_pd::decode_attempt_evidence(city_pd)?)
 }
 
@@ -1384,8 +1500,9 @@ pub const fn receipt_row_limit(index: usize) -> usize {
         11 | 27 | 28 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
         15 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
         18 | 24 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
-        25 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
+        25 | 37 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
         34 => babylon_material_circuit::MAX_AID_RECEIPTS_PER_PERIOD,
+        38 => babylon_material_circuit::MAX_COMPANY_BASIS_MOVEMENTS,
         35 => 1,
         36 => babylon_material_circuit::MAX_AGENCY_ATTENDANCE_PER_PERIOD,
         _ => babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS,
@@ -1419,7 +1536,7 @@ pub(crate) fn encode_handling_receipts(
 }
 
 macro_rules! encode_receipt_family_rows {
-    ($tag:expr, $source:expr, $tick:expr, $bytes:expr) => {
+    ($tag:expr, $source:expr, $agency_paid:expr, $tick:expr, $bytes:expr) => {
         match $tag {
             0 => {
                 for row in &$source.production {
@@ -1575,35 +1692,56 @@ macro_rules! encode_receipt_family_rows {
             33 => household_time_receipt::encode(&$source.household_time, $tick, &mut $bytes)?,
             34 => aid_receipt::encode(&$source.aid, $tick, &mut $bytes)?,
             35 => collection_receipt::encode(&$source.collections, $tick, &mut $bytes)?,
-            _ => unreachable!("the thirty-five material receipt families are closed"),
+            36 => agency_paid_receipt::encode($agency_paid, &mut $bytes),
+            37 => financial_receipt::encode_companies(
+                &$source.company_distributions,
+                $tick,
+                &mut $bytes,
+            )?,
+            38 => super::basis_receipt::encode(&$source.company_basis, &mut $bytes)?,
+            _ => unreachable!("the material receipt family tags are closed"),
         }
     };
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "one match arm per closed receipt family keeps each family's encoder beside the shared cursor"
-)]
-/// Encode a complete material transition as canonical receipt evidence.
-///
-/// # Errors
-/// Refuses invalid, inconsistent, or over-bound receipt families.
-pub fn encode_material_receipts(
+fn company_receipt_format(
     catalog: &MaterialCatalog,
-    tick: u64,
     transition: &MaterialCircuitTransition,
-) -> Result<Vec<u8>, MaterialWorldError> {
-    if tick == 0 {
+) -> Result<MaterialReceiptFormat, MaterialWorldError> {
+    let format = if catalog.company_payouts.is_empty() {
+        MaterialReceiptFormat::Site
+    } else {
+        MaterialReceiptFormat::Company
+    };
+    let expected_claims = catalog.company_payouts.iter().flat_map(|c| {
+        c.claims
+            .iter()
+            .map(move |&(owner, weight)| (c.company, owner, weight))
+    });
+    if !expected_claims.eq(transition
+        .company_distributions
+        .iter()
+        .map(|r| (r.company, r.beneficiary, r.weight)))
+    {
         return Err(MaterialWorldError::Wire);
     }
-    agency_paid_receipt::validate_nonpaid(
-        &transition.agency_attendance,
-        &transition.wage_accruals,
-        &transition.money_transfers,
-        &transition.household_time,
-        tick,
-    )?;
-    let agency_paid = agency_paid_receipt::from_funding(&transition.agency_attendance)?;
+    if format == MaterialReceiptFormat::Company {
+        super::basis_receipt::validate(
+            &transition.company_basis,
+            &transition.income,
+            &transition.money_transfers,
+        )?;
+    } else if !transition.company_basis.is_empty() {
+        return Err(MaterialWorldError::Wire);
+    }
+    Ok(format)
+}
+
+fn receipt_families(
+    transition: &MaterialCircuitTransition,
+    agency_paid_count: usize,
+    format: MaterialReceiptFormat,
+) -> Result<Vec<(usize, usize)>, MaterialWorldError> {
     let counts: [usize; RECEIPT_FAMILY_COUNT] = [
         transition.production.len(),
         transition.dispatches.len(),
@@ -1641,10 +1779,16 @@ pub fn encode_material_receipts(
         transition.household_time.len(),
         transition.aid.len(),
         transition.collections.len(),
-        agency_paid.len(),
+        agency_paid_count,
     ];
-    let families: [(usize, usize); RECEIPT_FAMILY_COUNT] =
-        std::array::from_fn(|index| (counts[index], RECEIPT_ROW_BYTES[index]));
+    let families: Vec<_> = counts
+        .into_iter()
+        .chain([
+            transition.company_distributions.len(),
+            transition.company_basis.len(),
+        ])
+        .zip(format.widths().iter().copied())
+        .collect();
     if families
         .iter()
         .enumerate()
@@ -1652,6 +1796,67 @@ pub fn encode_material_receipts(
     {
         return Err(MaterialWorldError::ByteLimit);
     }
+    Ok(families)
+}
+
+fn encode_receipt_families(
+    transition: &MaterialCircuitTransition,
+    agency_paid: &[AgencyPaidReceipt],
+    format: MaterialReceiptFormat,
+    families: &[(usize, usize)],
+    tick: u64,
+) -> Result<Vec<u8>, MaterialWorldError> {
+    let length = families.iter().try_fold(
+        RECEIPT_DOMAIN.len() + 12 + families.len() * 9,
+        |total, (count, width)| {
+            total
+                .checked_add(
+                    count
+                        .checked_mul(*width)
+                        .ok_or(MaterialWorldError::Arithmetic)?,
+                )
+                .ok_or(MaterialWorldError::Arithmetic)
+        },
+    )?;
+    let mut bytes = bounded_bytes(length, format.maximum_bytes())?;
+    bytes.extend_from_slice(format.domain());
+    bytes.extend_from_slice(&format.version().to_be_bytes());
+    bytes.extend_from_slice(&tick.to_be_bytes());
+    for (tag, (count, _)) in families.iter().enumerate() {
+        bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
+        bytes.extend_from_slice(
+            &u64::try_from(*count)
+                .map_err(|_| MaterialWorldError::Arithmetic)?
+                .to_be_bytes(),
+        );
+        encode_receipt_family_rows!(tag, transition, agency_paid, tick, &mut bytes);
+    }
+    debug_assert_eq!(bytes.len(), length);
+    Ok(bytes)
+}
+
+/// Encode a complete material transition as canonical receipt evidence.
+///
+/// # Errors
+/// Refuses invalid, inconsistent, or over-bound receipt families.
+pub fn encode_material_receipts(
+    catalog: &MaterialCatalog,
+    tick: u64,
+    transition: &MaterialCircuitTransition,
+) -> Result<Vec<u8>, MaterialWorldError> {
+    if tick == 0 {
+        return Err(MaterialWorldError::Wire);
+    }
+    agency_paid_receipt::validate_nonpaid(
+        &transition.agency_attendance,
+        &transition.wage_accruals,
+        &transition.money_transfers,
+        &transition.household_time,
+        tick,
+    )?;
+    let agency_paid = agency_paid_receipt::from_funding(&transition.agency_attendance)?;
+    let format = company_receipt_format(catalog, transition)?;
+    let families = receipt_families(transition, agency_paid.len(), format)?;
     monetary_receipt::validate_order(&transition.wage_accruals, &transition.labor_use)?;
     agency_paid_receipt::validate_cancellations(&transition.money_transfers)?;
     workforce_receipt::validate_join(
@@ -1702,6 +1907,7 @@ pub fn encode_material_receipts(
         &transition.taxes,
         &transition.distributions,
         &transition.contributions,
+        &transition.company_distributions,
         &transition.money_transfers,
     )?;
     service_receipt::validate_order(
@@ -1724,37 +1930,7 @@ pub fn encode_material_receipts(
         tick,
     )?;
     household_time_receipt::validate_state(&transition.state, &transition.household_time)?;
-    let length = families.iter().try_fold(
-        RECEIPT_DOMAIN.len() + 12 + families.len() * 9,
-        |total, (count, width)| {
-            total
-                .checked_add(
-                    count
-                        .checked_mul(*width)
-                        .ok_or(MaterialWorldError::Arithmetic)?,
-                )
-                .ok_or(MaterialWorldError::Arithmetic)
-        },
-    )?;
-    let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
-    bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&20_u32.to_be_bytes());
-    bytes.extend_from_slice(&tick.to_be_bytes());
-    for (tag, (count, _)) in families.iter().enumerate() {
-        bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
-        bytes.extend_from_slice(
-            &u64::try_from(*count)
-                .map_err(|_| MaterialWorldError::Arithmetic)?
-                .to_be_bytes(),
-        );
-        if tag == 36 {
-            agency_paid_receipt::encode(&agency_paid, &mut bytes);
-        } else {
-            encode_receipt_family_rows!(tag, transition, tick, &mut bytes);
-        }
-    }
-    debug_assert_eq!(bytes.len(), length);
-    Ok(bytes)
+    encode_receipt_families(transition, &agency_paid, format, &families, tick)
 }
 
 /// Typed material evidence decoded only from an exact committed V20 receipt family.
@@ -1773,6 +1949,8 @@ pub struct MaterialTickReceipts {
     pub public_budgets: Vec<PublicBudgetReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
+    pub company_basis: Vec<CompanyBasisMovement>,
+    pub company_distributions: Vec<CompanyDistributionReceipt>,
     pub contributions: Vec<CapitalContributionReceipt>,
 
     pub service_performance: Vec<ServicePerformanceReceipt>,
@@ -1849,14 +2027,15 @@ impl AsRef<MaterialTickReceipts> for MaterialReceiptHandle {
     reason = "one match arm per closed receipt family keeps each family's decoder beside the shared cursor"
 )]
 pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, MaterialWorldError> {
-    if bytes.len() > MAX_MATERIAL_TICK_RECEIPT_BYTES || !bytes.starts_with(RECEIPT_DOMAIN) {
+    let format = MaterialReceiptFormat::identify(bytes).ok_or(MaterialWorldError::Wire)?;
+    if bytes.len() > format.maximum_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let mut cursor = ReceiptCursor {
         bytes,
-        position: RECEIPT_DOMAIN.len(),
+        position: format.domain().len(),
     };
-    if cursor.take::<4>()? != 20_u32.to_be_bytes() {
+    if cursor.take::<4>()? != format.version().to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -1877,6 +2056,8 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         public_budgets: vec![],
         taxes: vec![],
         distributions: vec![],
+        company_basis: vec![],
+        company_distributions: vec![],
         contributions: vec![],
 
         service_performance: vec![],
@@ -1904,7 +2085,8 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         local_transfers: Vec::new(),
         maintenance: None,
     };
-    for tag in 1..=37 {
+    for (index, &width) in format.widths().iter().enumerate() {
+        let tag = u8::try_from(index + 1).map_err(|_| MaterialWorldError::Arithmetic)?;
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
@@ -1915,45 +2097,6 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         if tag == 10 && count > 1 {
             return Err(MaterialWorldError::Wire);
         }
-        let width = [
-            80_usize,
-            112,
-            106,
-            40,
-            40,
-            40,
-            97,
-            168,
-            168,
-            maintenance_receipt::ROW_BYTES,
-            monetary_receipt::TRANSFER_BYTES,
-            monetary_receipt::ACCRUAL_BYTES,
-            monetary_receipt::LABOR_BYTES,
-            recurring_receipt::DEMAND_BYTES,
-            recurring_receipt::CONSUMPTION_BYTES,
-            recurring_receipt::PROCUREMENT_BYTES,
-            recurring_receipt::PLAN_BYTES,
-            recurring_receipt::PRICE_BYTES,
-            income_receipt::ROW_BYTES,
-            service_receipt::PERFORMANCE_BYTES,
-            service_receipt::HOUSEHOLD_BYTES,
-            service_receipt::MARKET_BYTES,
-            service_receipt::OUTPUT_BYTES,
-            financial_receipt::PUBLIC_BUDGETS_BYTES,
-            financial_receipt::TAXES_BYTES,
-            financial_receipt::DISTRIBUTIONS_BYTES,
-            financial_receipt::CONTRIBUTIONS_BYTES,
-            workforce_receipt::STAFFING_BYTES,
-            workforce_receipt::ATTENDANCE_BYTES,
-            equipment_receipt::INSTALLATION_BYTES,
-            equipment_receipt::WEAR_BYTES,
-            equipment_receipt::INVESTMENT_BYTES,
-            installation_decision::ROW_BYTES,
-            household_time_receipt::ROW_BYTES,
-            aid_receipt::ROW_BYTES,
-            collection_receipt::ROW_BYTES,
-            agency_paid_receipt::ROW_BYTES,
-        ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
             .is_none_or(|length| length > bytes.len() - cursor.position)
@@ -1998,12 +2141,23 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             35 => result.aid.try_reserve_exact(count),
             36 => result.collections.try_reserve_exact(count),
             37 => result.agency_paid.try_reserve_exact(count),
+            39 => result.company_basis.try_reserve_exact(count),
+            38 if count > 0 => result.company_distributions.try_reserve_exact(count),
 
             _ => return Err(MaterialWorldError::Wire),
         }
         .map_err(|_| MaterialWorldError::Allocation)?;
         for _ in 0..count {
             match tag {
+                39 => result
+                    .company_basis
+                    .push(super::basis_receipt::decode(&mut cursor)?),
+                38 => result
+                    .company_distributions
+                    .push(financial_receipt::decode_company(
+                        &mut cursor,
+                        resolve_tick,
+                    )?),
                 37 => result
                     .agency_paid
                     .push(agency_paid_receipt::decode(&mut cursor)?),
@@ -2290,6 +2444,13 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     equipment_receipt::validate_investment(&result.investment, &result.money_transfers)?;
     installation_decision::validate(&result.installation_decisions, &result.installation)?;
     income_receipt::validate_order(&result.income)?;
+    if format == MaterialReceiptFormat::Company {
+        super::basis_receipt::validate(
+            &result.company_basis,
+            &result.income,
+            &result.money_transfers,
+        )?;
+    }
     aid_receipt::validate(&result.aid, resolve_tick)?;
     collection_receipt::validate(
         &result.collections,
@@ -2304,6 +2465,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         &result.taxes,
         &result.distributions,
         &result.contributions,
+        &result.company_distributions,
         &result.money_transfers,
     )?;
     service_receipt::validate_order(

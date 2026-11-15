@@ -172,6 +172,9 @@ pub(crate) fn validate(
     state: &MaterialCircuitState,
 ) -> Result<(), MaterialCircuitError> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        if !catalog.company_payouts.is_empty() {
+            return Err(MaterialCircuitError::FinancialInvariant);
+        }
         return Ok(());
     };
     if economy.employment.len() > crate::MAX_STAFFING_MEMBERS
@@ -263,6 +266,7 @@ pub(crate) fn validate(
     }
     validate_service_purchases(state, &economy.book)?;
     economy.book.total_cash_and_reserves()?;
+    crate::financial::validate_company_accounts(catalog, economy)?;
     crate::financial::validate(state)?;
     crate::recurring::validate(catalog, state)?;
     Ok(())

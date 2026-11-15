@@ -1,13 +1,18 @@
 //! Period-bound money and labor queries with native connection selection.
 use super::books::{self, Books, Worker as BooksWorker};
+use super::company::{self, Accounts, Worker as CompanyWorker};
 use super::compare::Periods;
-use super::{geometry, rail, sankey};
+use super::freight::{Command as FreightCommand, Freight, Source as FreightSource};
+use super::geographic_legs::{self, Locations, Worker as LocationWorker};
+use super::industry::{self, Sources as IndustrySources, Worker as IndustryWorker};
+use super::{freight, freight_plot, freight_rail, geometry, rail, sankey};
 use crate::atlas::CountyAtlas;
 use crate::map::{CountyMapScope, MapScopeSet, SelectedCounty};
 use crate::map_economy_lens::MapLens;
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
 use crate::observer_focus::ObserverKeyboardActivate;
 use crate::observer_io::ObserverSet;
+use crate::observer_performance::RenderMode;
 use crate::observer_ui::{ObserverFrame, ObserverUiState};
 use crate::production::PrimaryView;
 use crate::ui::Interaction;
@@ -44,6 +49,7 @@ pub(super) struct ConnectionKey {
 pub(super) struct Connection {
     pub(super) key: ConnectionKey,
     pub(super) quantity: Quantity,
+    pub(super) label: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +73,7 @@ pub(super) struct Selection {
     campaign: CampaignId,
     foundation: String,
     home: String,
+    group: FlowGroup,
     measure: Measure,
     key: ConnectionKey,
 }
@@ -76,6 +83,7 @@ impl Selection {
             campaign: scope.context.campaign,
             foundation: scope.foundation.clone(),
             home: scope.county.clone(),
+            group: scope.group,
             measure: scope.measure,
             key: key.clone(),
         }
@@ -120,6 +128,7 @@ pub(super) fn connections(groups: &[FlowRow]) -> Vec<Connection> {
                         peer: peer.key.clone(),
                         direction,
                     },
+                    label: peer.label.clone(),
                     quantity: Quantity::Money(micros.clone()),
                 });
             }
@@ -157,6 +166,7 @@ pub(super) fn labor_connections(groups: &[LaborFlowRow]) -> Vec<Connection> {
                         peer: peer.key.clone(),
                         direction,
                     },
+                    label: peer.label.clone(),
                     quantity: Quantity::Labor(amount.clone()),
                 });
             }
@@ -185,7 +195,7 @@ impl Page {
         }
     }
 
-    fn connections(&self) -> Vec<Connection> {
+    pub(super) fn connections(&self) -> Vec<Connection> {
         match self {
             Self::Money(p) => connections(&p.groups),
             Self::Labor(p) => labor_connections(&p.groups),
@@ -196,6 +206,7 @@ impl Page {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Scope {
     pub(super) periods: Periods,
+    pub(super) group: FlowGroup,
     pub(super) measure: Measure,
     pub(super) context: ObservationContext,
     pub(super) county: String,
@@ -232,13 +243,19 @@ impl Observation<'_> {
             && !self.ui.history_open
     }
 
-    pub(super) fn scope(&self, measure: Measure, periods: Periods) -> Option<Scope> {
+    pub(super) fn scope(
+        &self,
+        measure: Measure,
+        periods: Periods,
+        group: FlowGroup,
+    ) -> Option<Scope> {
         if !self.active() {
             return None;
         }
         let frame = self.frame.for_session(&self.session)?;
         let selected = self.atlas.county(self.selected.0?)?;
         Some(Scope {
+            group,
             periods: periods.available(self.session.viewed_tick),
             measure,
             context: self.session.context(),
@@ -268,8 +285,12 @@ pub(super) enum Diagram {
 }
 
 #[derive(Resource, Default)]
-pub(in crate::observer_map3d) struct MoneyView {
+pub(crate) struct MoneyView {
+    pub(super) industry: IndustrySources,
+    pub(super) freight: Freight,
     pub(super) books: Books,
+    pub(super) company: Accounts,
+    pub(super) geography: Locations,
     pub(super) diagram: Diagram,
     pub(super) measure: Measure,
     pub(super) scope: Option<Scope>,
@@ -281,6 +302,45 @@ pub(in crate::observer_map3d) struct MoneyView {
 }
 
 impl MoneyView {
+    fn selected_county_peer(&self, observed: &Observation) -> Option<usize> {
+        self.selected_row()
+            .and_then(|row| row.key.peer.as_deref())
+            .and_then(|peer| peer.strip_prefix("county:"))
+            .and_then(|geoid| observed.atlas.index_of_fips(geoid))
+            .filter(|index| {
+                observed.counties.contains(*index) && Some(*index) != observed.selected.0
+            })
+    }
+
+    pub(crate) fn render_mode(&self) -> RenderMode {
+        if self.scope.is_none() {
+            return RenderMode::Map3d;
+        }
+        if self.freight.enabled {
+            return if self.diagram == Diagram::Map {
+                RenderMode::FreightMap
+            } else {
+                RenderMode::FreightNetwork
+            };
+        }
+        if self.company.is_open() {
+            return if self.company.key().1 {
+                RenderMode::CompanyConsolidated
+            } else {
+                RenderMode::CompanyParent
+            };
+        }
+        if self.books.offset.is_some() {
+            return RenderMode::CountyAccounts;
+        }
+        match (self.measure, self.diagram) {
+            (Measure::Money, Diagram::Map) => RenderMode::MoneyMap,
+            (Measure::Money, Diagram::Sankey) => RenderMode::MoneySankey,
+            (Measure::Labor, Diagram::Map) => RenderMode::LaborMap,
+            (Measure::Labor, Diagram::Sankey) => RenderMode::LaborSankey,
+        }
+    }
+
     pub(in crate::observer_map3d) fn shows_sankey(&self) -> bool {
         self.diagram == Diagram::Sankey && self.scope.is_some()
     }
@@ -288,7 +348,8 @@ impl MoneyView {
     pub(super) fn selected_row(&self) -> Option<&Connection> {
         let selected = self.selected.as_ref()?;
         let scope = self.scope.as_ref()?;
-        if scope.measure != selected.measure
+        if scope.group != selected.group
+            || scope.measure != selected.measure
             || scope.county != selected.home
             || scope.foundation != selected.foundation
             || scope.context.campaign != selected.campaign
@@ -312,14 +373,11 @@ struct Loader {
     delay: f64,
 }
 
-fn read_page(scope: &Scope, offset: u64) -> Result<Page, JournalError> {
-    let tick_hash = scope
-        .tick_hash
-        .as_deref()
-        .ok_or(JournalError::SourceChanged)?;
-    let reader = ObserverEconomyReader::from_observer_env().map_err(JournalError::Observer)?;
-    let query = FlowQuery {
-        group: FlowGroup::Location,
+pub(super) fn flow_query(scope: &Scope, offset: u64) -> FlowQuery {
+    FlowQuery {
+        group: scope.group,
+        peer: None,
+        focus_group: Some(FlowGroup::Location),
         focus: Some(format!("county:{}", scope.county)),
         window: PeriodWindow {
             first: scope.context.tick,
@@ -328,12 +386,19 @@ fn read_page(scope: &Scope, offset: u64) -> Result<Page, JournalError> {
         comparison: scope.periods.window(scope.context.tick),
         offset,
         viewport_4269: None,
-    };
+    }
+}
+pub(super) fn read_page(scope: &Scope, query: &FlowQuery) -> Result<Page, JournalError> {
+    let tick_hash = scope
+        .tick_hash
+        .as_deref()
+        .ok_or(JournalError::SourceChanged)?;
+    let reader = ObserverEconomyReader::from_observer_env().map_err(JournalError::Observer)?;
     match scope.measure {
         Measure::Money => reader
             .economic_payment_flows_for_frame(
                 scope.context.campaign,
-                &query,
+                query,
                 &scope.foundation,
                 tick_hash,
             )
@@ -341,11 +406,57 @@ fn read_page(scope: &Scope, offset: u64) -> Result<Page, JournalError> {
         Measure::Labor => reader
             .recorded_labor_flows_for_frame(
                 scope.context.campaign,
-                &query,
+                query,
                 &scope.foundation,
                 tick_hash,
             )
             .map(|page| Page::Labor(Box::new(page))),
+    }
+}
+
+fn refresh_scope(observation: &Observation, view: &mut MoneyView, loader: &mut Loader) {
+    let mode = view
+        .scope
+        .as_ref()
+        .map_or(Periods::Current, |scope| scope.periods);
+    let group = view.scope.as_ref().map_or(FlowGroup::Location, |s| s.group);
+    let scope = observation.scope(view.measure, mode, group);
+    let selection_refused = view
+        .selected
+        .as_ref()
+        .is_some_and(|selected| !selected.admitted(observation));
+    if view.scope != scope || selection_refused {
+        let selected = view.selected.take().filter(|s| s.admitted(observation));
+        let diagram = if observation.active() {
+            view.diagram
+        } else {
+            Diagram::Map
+        };
+        let freight = if observation.active()
+            && scope
+                .as_ref()
+                .zip(view.scope.as_ref())
+                .is_some_and(|(a, b)| {
+                    a.foundation == b.foundation && a.context.campaign == b.context.campaign
+                }) {
+            view.freight.next_frame()
+        } else {
+            Freight::default()
+        };
+        *view = MoneyView {
+            freight,
+            diagram,
+            measure: if observation.active() {
+                view.measure
+            } else {
+                Measure::Money
+            },
+            scope,
+            selected,
+            ..default()
+        };
+        loader.retry_at = 0.0;
+        loader.delay = 1.0;
     }
 }
 
@@ -361,36 +472,7 @@ fn update(
         || observation.primary.is_changed()
         || observation.ui.is_changed()
     {
-        let mode = view
-            .scope
-            .as_ref()
-            .map_or(Periods::Current, |scope| scope.periods);
-        let scope = observation.scope(view.measure, mode);
-        let selection_refused = view
-            .selected
-            .as_ref()
-            .is_some_and(|selected| !selected.admitted(&observation));
-        if view.scope != scope || selection_refused {
-            let selected = view.selected.take().filter(|s| s.admitted(&observation));
-            let diagram = if observation.active() {
-                view.diagram
-            } else {
-                Diagram::Map
-            };
-            *view = MoneyView {
-                diagram,
-                measure: if observation.active() {
-                    view.measure
-                } else {
-                    Measure::Money
-                },
-                scope,
-                selected,
-                ..default()
-            };
-            loader.retry_at = 0.0;
-            loader.delay = 1.0;
-        }
+        refresh_scope(&observation, &mut view, &mut loader);
     }
     if let Some(pending) = &mut loader.pending {
         // PostgreSQL reads block within a worker. Drain an obsolete read before launching its successor.
@@ -420,6 +502,9 @@ fn update(
     let Some(scope) = &view.scope else {
         return;
     };
+    if view.freight.enabled {
+        return;
+    }
     if scope.context.tick == 0 {
         if view.status != Status::Opening {
             view.status = Status::Opening;
@@ -437,7 +522,8 @@ fn update(
     loader.pending = Some(PendingPage {
         scope,
         offset,
-        task: AsyncComputeTaskPool::get().spawn(async move { read_page(&requested, offset) }),
+        task: AsyncComputeTaskPool::get()
+            .spawn(async move { read_page(&requested, &flow_query(&requested, offset)) }),
     });
     if view.status != Status::Publishing {
         view.status = Status::Loading;
@@ -446,6 +532,12 @@ fn update(
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Action {
+    IndustrySources,
+    CompanyAccounts(bool),
+    CompanyConsolidated(bool),
+    Freight(FreightCommand),
+    Group(FlowGroup),
+    Geography(i8),
     Diagram(Diagram),
     Measure(Measure),
     Select(ConnectionKey),
@@ -464,23 +556,40 @@ pub(super) struct Target {
     pub(super) action: Action,
 }
 
+impl Target {
+    fn admitted(&self, observed: &Observation, view: &MoneyView) -> bool {
+        observed.interactive()
+            && view.offset == self.offset
+            && view.scope.as_ref() == Some(&self.scope)
+            && observed
+                .scope(self.scope.measure, self.scope.periods, self.scope.group)
+                .as_ref()
+                == Some(&self.scope)
+    }
+}
+
 pub(super) fn activate(
     target: &Target,
     observed: &Observation,
     view: &mut MoneyView,
     commands: &mut Commands,
 ) -> bool {
-    if !observed.interactive()
-        || observed
-            .scope(target.scope.measure, target.scope.periods)
-            .as_ref()
-            != Some(&target.scope)
-        || view.scope.as_ref() != Some(&target.scope)
-        || view.offset != target.offset
-    {
+    if !target.admitted(observed, view) {
+        return false;
+    }
+    if let Action::Freight(command) = &target.action {
+        return view.freight.apply(command, &target.scope);
+    }
+    if view.freight.enabled && !matches!(target.action, Action::Diagram(_)) {
         return false;
     }
     match &target.action {
+        Action::IndustrySources if industry::selected(view).is_some() => view.industry.toggle(),
+        Action::CompanyAccounts(open) => {
+            let id = company::selected(view);
+            return view.company.set_open(id, *open);
+        }
+        Action::CompanyConsolidated(next) => return view.company.show_consolidated(*next),
         Action::Books { from, to } if target.scope.measure == Measure::Money => {
             return view.books.navigate(*from, *to)
         }
@@ -503,6 +612,17 @@ pub(super) fn activate(
                 ..default()
             };
         }
+        Action::Group(group) if *group != target.scope.group => {
+            let mut scope = target.scope.clone();
+            scope.group = *group;
+            *view = MoneyView {
+                scope: Some(scope),
+                diagram: view.diagram,
+                measure: view.measure,
+                ..default()
+            };
+        }
+        Action::Geography(delta) => return view.geography.navigate(*delta),
         Action::Diagram(diagram) => view.diagram = *diagram,
         Action::Measure(measure) if *measure != target.scope.measure => {
             let mut scope = target.scope.clone();
@@ -515,7 +635,13 @@ pub(super) fn activate(
             };
         }
         Action::Select(key) if view.rows.iter().any(|row| &row.key == key) => {
-            view.selected = Some(Selection::for_scope(&target.scope, key));
+            let next = Selection::for_scope(&target.scope, key);
+            if view.selected.as_ref() != Some(&next) {
+                view.industry = IndustrySources::default();
+                view.company = Accounts::default();
+                view.geography = Locations::default();
+            }
+            view.selected = Some(next);
         }
         Action::Page(offset)
             if view
@@ -523,7 +649,10 @@ pub(super) fn activate(
                 .as_ref()
                 .is_some_and(|p| *offset < p.total_groups()) =>
         {
+            view.industry = IndustrySources::default();
+            view.company = Accounts::default();
             view.offset = *offset;
+            view.geography = Locations::default();
             view.page = None;
             view.rows.clear();
             view.status = Status::Waiting;
@@ -535,19 +664,10 @@ pub(super) fn activate(
             });
         }
         Action::Follow => {
-            if let Some(index) = view
-                .selected_row()
-                .and_then(|row| row.key.peer.as_deref())
-                .and_then(|peer| peer.strip_prefix("county:"))
-                .and_then(|geoid| observed.atlas.index_of_fips(geoid))
-                .filter(|index| {
-                    observed.counties.contains(*index) && Some(*index) != observed.selected.0
-                })
-            {
-                commands.insert_resource(SelectedCounty(Some(index)));
-            } else {
+            let Some(index) = view.selected_county_peer(observed) else {
                 return false;
-            }
+            };
+            commands.insert_resource(SelectedCounty(Some(index)));
         }
         Action::Retry if matches!(view.status, Status::Failed(_)) => view.status = Status::Waiting,
         _ => return false,
@@ -605,8 +725,32 @@ pub(super) fn keyboard(
 
 pub(in crate::observer_map3d) fn install(app: &mut App) {
     app.init_resource::<MoneyView>()
+        .init_resource::<FreightSource>()
+        .add_systems(
+            Update,
+            freight::update.after(update).before(ObserverSet::Paint),
+        )
+        .add_systems(Update, freight_plot::paint.in_set(ObserverSet::Paint))
+        .add_systems(Update, freight_rail::detail.after(rail::paint))
         .init_resource::<Loader>()
+        .init_resource::<IndustryWorker>()
+        .add_systems(
+            Update,
+            industry::update.after(update).before(ObserverSet::Paint),
+        )
         .init_resource::<BooksWorker>()
+        .init_resource::<LocationWorker>()
+        .init_resource::<CompanyWorker>()
+        .add_systems(
+            Update,
+            company::update.after(update).before(ObserverSet::Paint),
+        )
+        .add_systems(
+            Update,
+            geographic_legs::update
+                .after(update)
+                .before(ObserverSet::Paint),
+        )
         .add_observer(geometry::frame_connections)
         .add_systems(
             Update,

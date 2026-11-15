@@ -205,6 +205,8 @@ pub(crate) fn opening() -> Materials {
         route_stages: Vec::new(),
         merchants: Vec::new(),
         handling_coefficients: Vec::new(),
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: Vec::new(),
         household_time_policy: Vec::new(),

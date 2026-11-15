@@ -8,6 +8,7 @@ mod projection;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use balances::collect_selected;
 pub use model::{
     CashFlowCategory, CashFlowStatement, CashFlowTransfer, PlanningControl, SiteAccountingPeriod,
     SiteBalanceSheet, SiteBookStatements, SiteCashFlowTotals, SiteFinancialStatements,
@@ -15,4 +16,4 @@ pub use model::{
     SiteStockPosition,
 };
 pub use period::project_period;
-pub(crate) use projection::project;
+pub(crate) use projection::{category, equity_change, investment_reservations, project};

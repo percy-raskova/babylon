@@ -5,6 +5,7 @@
 pub(crate) mod tests;
 
 mod accounting;
+mod source_codes;
 
 pub(crate) mod maintenance;
 

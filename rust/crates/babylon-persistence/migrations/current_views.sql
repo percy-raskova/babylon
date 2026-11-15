@@ -380,6 +380,31 @@ CREATE VIEW public.v_observer_economic_flow_account_v1 AS
 SELECT a.* FROM babylon_state.economic_flow_account_v1 a
 JOIN babylon_state.material_campaign_foundation_v3 f ON f.campaign_id=a.campaign_id
     AND f.foundation_sha256=a.foundation_sha256;
+CREATE VIEW public.v_observer_economic_company_v1 AS
+SELECT c.* FROM babylon_state.economic_company_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_company_member_v1 AS
+SELECT c.* FROM babylon_state.economic_company_member_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_member_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_company_claim_v1 AS
+SELECT c.* FROM babylon_state.economic_company_claim_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_claim_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_company_claim_source_v1 AS
+SELECT c.* FROM babylon_state.economic_company_claim_source_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_claim_source_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_flow_account_v2 AS
+SELECT a.*,c.company_id,c.label AS company_label
+FROM public.v_observer_economic_flow_account_v1 a
+LEFT JOIN public.v_observer_economic_company_member_v1 m
+    ON a.account_kind='site_cash' AND (m.campaign_id,m.foundation_sha256,m.site_id)=(a.campaign_id,a.foundation_sha256,a.account_id)
+LEFT JOIN public.v_observer_economic_company_v1 c
+    ON (c.campaign_id,c.foundation_sha256)=(a.campaign_id,a.foundation_sha256)
+    AND c.company_id=CASE WHEN a.account_kind='company_cash' THEN a.account_id ELSE m.company_id END;
+REVOKE ALL ON public.v_observer_economic_flow_account_v2 FROM PUBLIC;
 CREATE VIEW public.v_observer_economic_payment_v1 AS
 SELECT m.campaign_id, m.resolve_tick, m.ordinal, m.purpose, m.reference_kind, m.reference_id,
     p.payer_kind, p.payer_id, m.credit_kind AS recipient_kind, m.credit_id AS recipient_id, m.amount_micros
@@ -412,3 +437,33 @@ CREATE VIEW public.v_observer_labor_position_v1 AS
 SELECT b.* FROM babylon_state.labor_position_v1 b JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
 REVOKE ALL ON public.v_observer_labor_period_v1,public.v_observer_labor_checkpoint_v1,public.v_observer_labor_node_v1,
 public.v_observer_labor_movement_v1,public.v_observer_labor_position_v1 FROM PUBLIC;
+
+-- Full observer company statements, attached to the same source-validating period marker.
+CREATE VIEW public.v_observer_company_accounting_period_v1 AS
+SELECT b.*, p.foundation_sha256, p.tick_content_hash, p.receipt_sha256, p.source_identity_bytes
+FROM babylon_state.company_accounting_period_v1 b JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_accounting_checkpoint_v1 AS
+SELECT b.*,p.checkpoint_sha256,p.result_world_hash,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256,p.source_identity_bytes
+FROM babylon_state.company_accounting_checkpoint_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_statement_balance_v1 AS
+SELECT b.*
+FROM babylon_state.company_statement_balance_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_statement_income_v1 AS
+SELECT b.*
+FROM babylon_state.company_statement_income_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_statement_cash_flow_v1 AS
+SELECT b.*
+FROM babylon_state.company_statement_cash_flow_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_elimination_v1 AS
+SELECT b.*
+FROM babylon_state.company_elimination_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_realization_entry_v1 AS
+SELECT b.*
+FROM babylon_state.company_realization_entry_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+REVOKE ALL ON public.v_observer_company_accounting_period_v1,
+    public.v_observer_company_accounting_checkpoint_v1,
+    public.v_observer_company_statement_balance_v1,
+    public.v_observer_company_statement_income_v1,
+    public.v_observer_company_statement_cash_flow_v1,
+    public.v_observer_company_elimination_v1,
+    public.v_observer_company_realization_entry_v1 FROM PUBLIC;

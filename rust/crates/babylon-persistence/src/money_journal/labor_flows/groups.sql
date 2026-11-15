@@ -76,7 +76,7 @@ WITH windows(first_tick,last_tick,comparison) AS (
       WHEN 'company' THEN s.company_label WHEN 'counterparty' THEN s.company_label END AS label
     FROM scopes s
 ), endpoints AS (
-    SELECT w.comparison,m.recorded_micro_hours,m.unknown_opening,
+    SELECT m.resolve_tick,w.comparison,m.recorded_micro_hours,m.unknown_opening,
         l.key AS source_key,recipient.key AS destination_key,l.label AS source_label,r.label AS destination_label,
         l.peer_key AS source_peer,recipient.peer_key AS destination_peer,
         l.in_view AND ($7::text IS NULL OR recipient.focus_key IS NOT DISTINCT FROM $7) AS show_source,
@@ -166,8 +166,24 @@ WITH windows(first_tick,last_tick,comparison) AS (
 ), rendered AS (
     SELECT row_kind,rank,jsonb_build_object('key',key,'label',coalesce(label,key),'rank',rank,'groups',groups,
         'current',periods->'false','comparison',periods->'true','net_change_recorded_micro_hours',change) AS data FROM changes
+), node_counts AS (
+    -- These are full authenticated dimensions, before any focus, viewport or peer selection.
+    SELECT resolve_tick,count(*) AS actual FROM dimensions GROUP BY resolve_tick
+), movement_counts AS (
+    -- An overlapping window represents a movement once in each comparison role.
+    SELECT resolve_tick,comparison,count(*) AS actual,bool_and(resolved) AS resolved
+    FROM endpoints GROUP BY resolve_tick,comparison
 )
-SELECT NOT EXISTS(SELECT FROM endpoints WHERE NOT resolved) AS valid,
+SELECT CASE WHEN $13='fold' THEN NOT EXISTS(SELECT FROM endpoints WHERE NOT resolved)
+    ELSE NOT EXISTS(
+        SELECT FROM public.v_observer_labor_period_v1 p
+        JOIN windows w ON p.resolve_tick BETWEEN w.first_tick AND w.last_tick
+        LEFT JOIN node_counts n ON n.resolve_tick=p.resolve_tick
+        LEFT JOIN movement_counts m ON m.resolve_tick=p.resolve_tick AND m.comparison=w.comparison
+        WHERE p.campaign_id=$1 AND p.detail_retained AND
+              (p.node_count<>coalesce(n.actual,0) OR p.movement_count<>coalesce(m.actual,0)
+               OR m.resolved IS FALSE)
+    ) END AS valid,
     CASE WHEN $13='fold' THEN (SELECT coalesce(jsonb_agg(to_jsonb(f)),'[]') FROM folded f)
          ELSE (SELECT jsonb_build_object('groups',coalesce(jsonb_agg(data ORDER BY rank) FILTER (WHERE row_kind='group'),'[]'),
               'remainder',(jsonb_agg(data) FILTER (WHERE row_kind='remainder'))->0,

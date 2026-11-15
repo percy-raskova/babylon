@@ -11,8 +11,7 @@ use std::collections::BTreeMap;
 const GROUPS_SQL: &str = include_str!("groups.sql");
 const COVERAGE_SQL: &str = "SELECT p.resolve_tick, p.detail_retained, p.movement_count, p.node_count,
     p.fact_sha256, encode(p.foundation_sha256,'hex'), encode(p.tick_content_hash,'hex'), encode(p.receipt_sha256,'hex'),
-    (SELECT count(*) FROM public.v_observer_labor_movement_v1 m WHERE m.campaign_id=$1 AND m.resolve_tick=p.resolve_tick),
-    (SELECT count(*) FROM public.v_observer_labor_node_v1 n WHERE n.campaign_id=$1 AND n.resolve_tick=p.resolve_tick), p.position_count
+    p.position_count
     FROM public.v_observer_labor_period_v1 p WHERE p.campaign_id=$1 AND
     (p.resolve_tick BETWEEN $2 AND $3 OR p.resolve_tick BETWEEN $4 AND $5) ORDER BY p.resolve_tick";
 
@@ -80,14 +79,8 @@ impl Ranking<'_> {
                 foundation: row.try_get(5).map_err(get)?,
                 content: row.try_get(6).map_err(get)?,
                 receipts: row.try_get(7).map_err(get)?,
-                positions: row.try_get(10).map_err(get)?,
+                positions: row.try_get(8).map_err(get)?,
             };
-            if period.retained
-                && (period.movements != row.try_get::<_, i64>(8).map_err(get)?
-                    || period.nodes != row.try_get::<_, i64>(9).map_err(get)?)
-            {
-                return Err(JournalError::Projection);
-            }
             let key = u64::try_from(tick).map_err(|_| JournalError::Range)?;
             result.insert(key, period);
         }

@@ -412,9 +412,54 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
         .expect("permanent site accounts");
     super::site_accounting_sql::cli(&observer_config, &compact, 2);
     super::recorded_labor::national(&observer, &observer_config, campaign);
+    reject_incomplete_county_labor(&mut owner, &observer, campaign);
     super::site_statements::native_cli(&observer_config, campaign, &site_opening);
     account_directory::check(&mut owner, &target.writer, &observer, &writer, campaign);
     assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
+}
+
+fn reject_incomplete_county_labor(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+) {
+    let row = owner
+        .query_one(
+            "WITH nodes AS MATERIALIZED (
+                 SELECT node_ordinal,location_key FROM public.v_observer_labor_node_v1
+                 WHERE campaign_id=$1 AND resolve_tick=1
+             ), outside AS (
+                 SELECT m.ordinal/128 AS block FROM public.v_observer_labor_movement_v1 m
+                 JOIN nodes l ON l.node_ordinal=m.source_node
+                 JOIN nodes r ON r.node_ordinal=m.destination_node
+                 WHERE m.campaign_id=$1 AND m.resolve_tick=1 GROUP BY m.ordinal/128
+                 HAVING bool_and(l.location_key IS DISTINCT FROM 'county:26163'
+                             AND r.location_key IS DISTINCT FROM 'county:26163')
+                 ORDER BY block LIMIT 1
+             ), removed AS (
+                 DELETE FROM babylon_state.labor_movement_block_v1 b USING outside
+                 WHERE b.campaign_id=$1 AND b.resolve_tick=1 AND b.block_ordinal=outside.block
+                 RETURNING b.*
+             ) SELECT to_jsonb(removed)::text FROM removed",
+            &[campaign.as_uuid()],
+        )
+        .expect("remove one published block containing only off-Wayne movements");
+    let original: String = row.get(0);
+    let request = journal::FlowQuery {
+        focus_group: Some(FlowGroup::Location),
+        focus: Some("county:26163".to_owned()),
+        ..super::payment_flows::query(FlowGroup::Counterparty)
+    };
+    let incomplete = observer.recorded_labor_flows(campaign, &request);
+    assert_eq!(
+        owner.execute(
+            "INSERT INTO babylon_state.labor_movement_block_v1
+             SELECT * FROM jsonb_populate_record(NULL::babylon_state.labor_movement_block_v1,$1::text::jsonb)",
+            &[&original],
+        ).expect("restore the exact published movement block"),
+        1
+    );
+    assert_eq!(incomplete, Err(JournalError::Projection));
 }
 
 fn assert_published_source(

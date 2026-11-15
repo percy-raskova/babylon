@@ -33,6 +33,17 @@ pub(super) struct DiagramLayout {
     pub(super) height: u32,
 }
 
+/// Stock bars use their own common scale. Party-to-party ribbons only represent movements.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "bounded screen percentages only; displayed microhours retain all digits"
+)]
+pub(super) fn stock_widths(opening: u128, closing: u128) -> [f32; 2] {
+    let maximum = opening.max(closing).max(1) as f64;
+    [opening, closing].map(|hours| (100.0 * (hours as f64 / maximum)) as f32)
+}
+
 fn add(column: &mut Vec<Place>, key: Option<&str>, amount: f64) -> usize {
     if let Some(index) = column.iter().position(|node| node.key.as_deref() == key) {
         column[index].thickness += amount;

@@ -911,24 +911,35 @@ fn labor_sankey_keeps_both_boundary_balances_visible_without_current_transfers()
     .add_systems(Update, super::sankey::paint);
     app.update();
     let world = app.world_mut();
+    // A county can have opening and closing stock without a single transfer on this page.
     let mut children = world.query::<&Children>();
-    let readings = children
+    let mut bars = children
         .iter(world)
-        .find_map(|siblings| {
-            let text: Vec<_> = siblings
-                .iter()
-                .filter_map(|id| world.get::<Text>(id))
-                .map(|t| t.0.as_str())
-                .collect();
-            text.iter()
-                .any(|t| t.starts_with("Opening carry"))
-                .then_some(text)
+        .filter_map(|siblings| {
+            let mut ids = siblings.iter();
+            let text = world.get::<Text>(ids.next()?)?;
+            let node = world.get::<Node>(ids.next()?)?;
+            (text.0.starts_with("Opening carry") || text.0.starts_with("Closing carry"))
+                .then_some((text.0.as_str(), node.width))
         })
-        .expect("labor Sankey with chronological boundary stages");
-    assert_eq!(&readings[1..], &[
-        "Opening carry · 0 recorded h across 2 located positions · unknown prior labor in 2 positions",
-        "Transfers during period 1",
-        "No recorded labor movements on this page.",
-        "Closing carry · 1.000001 recorded h across 3 located positions",
-    ]);
+        .collect::<Vec<_>>();
+    bars.sort_by_key(|(label, _)| label.starts_with("Closing"));
+    assert_eq!(
+        bars,
+        [
+            (
+                "Opening carry · 0 recorded h across 2 located positions · unknown prior labor in 2 positions",
+                percent(0)
+            ),
+            (
+                "Closing carry · 1.000001 recorded h across 3 located positions",
+                percent(100)
+            ),
+        ]
+    );
+    let mut labels = world.query::<&Text>();
+    assert!(labels
+        .iter(world)
+        .any(|t| t.0 == "No recorded labor movements on this page."));
+    assert!(world.query::<&ImageNode>().iter(world).next().is_none());
 }

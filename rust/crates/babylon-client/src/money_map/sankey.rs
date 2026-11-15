@@ -85,7 +85,7 @@ fn heading(scope: &Scope, obs: &Observation) -> String {
     }
 }
 
-fn boundary(panel: &mut ChildSpawnerCommands, title: &str, amount: &LaborCarryAmount) {
+fn boundary(panel: &mut ChildSpawnerCommands, title: &str, amount: &LaborCarryAmount, width: f32) {
     let hours = rail::labor_hours(&amount.recorded_micro_hours.to_string());
     let plural = |count| if count == 1 { "position" } else { "positions" };
     let mut text = format!(
@@ -103,12 +103,36 @@ fn boundary(panel: &mut ChildSpawnerCommands, title: &str, amount: &LaborCarryAm
         )
         .expect("writing to a String cannot fail");
     }
-    panel.spawn(rail::label(
-        text,
-        16.0,
-        theme::PAPER,
-        ObserverFontRole::Body,
-    ));
+    panel
+        .spawn((
+            Node {
+                width: percent(100),
+                flex_direction: FlexDirection::Column,
+                flex_shrink: 0.0,
+                padding: UiRect::axes(px(10), px(5)),
+                row_gap: px(3),
+                ..default()
+            },
+            BackgroundColor(theme::PANEL),
+            Pickable::IGNORE,
+        ))
+        .with_children(|stock| {
+            stock.spawn(rail::label(
+                text,
+                16.0,
+                theme::PAPER,
+                ObserverFontRole::Body,
+            ));
+            stock.spawn((
+                Node {
+                    width: percent(width),
+                    height: px(5),
+                    ..default()
+                },
+                BackgroundColor(theme::BLUE),
+                Pickable::IGNORE,
+            ));
+        });
 }
 
 fn spawn_diagram(
@@ -146,8 +170,15 @@ fn spawn_diagram(
             Some(Page::Labor(page)) => page.county_carry.as_ref(),
             _ => None,
         };
-        if let Some(carry) = balances {
-            boundary(panel, "Opening carry", &carry.opening);
+        let boundaries = balances.map(|carry| {
+            let widths = sankey_layout::stock_widths(
+                carry.opening.recorded_micro_hours,
+                carry.closing.recorded_micro_hours,
+            );
+            (carry, widths)
+        });
+        if let Some((carry, widths)) = boundaries {
+            boundary(panel, "Opening carry", &carry.opening, widths[0]);
             panel.spawn(rail::label(
                 format!("Transfers during period {}", key.scope.context.tick),
                 17.0,
@@ -156,8 +187,8 @@ fn spawn_diagram(
             ));
         }
         movements(panel, &key, view, obs, layout, handle.as_ref());
-        if let Some(carry) = balances {
-            boundary(panel, "Closing carry", &carry.closing);
+        if let Some((carry, widths)) = boundaries {
+            boundary(panel, "Closing carry", &carry.closing, widths[1]);
         }
     });
     Canvas {

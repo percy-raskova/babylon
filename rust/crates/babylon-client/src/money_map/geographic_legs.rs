@@ -311,12 +311,19 @@ mod tests {
         }
     }
 
-    fn leg_scene(diagram: Diagram, measure: Measure) -> (App, Scope) {
+    fn leg_scene(diagram: Diagram, measure: Measure, group: FlowGroup) -> (App, Scope) {
         let (mut app, entity, mut scope, mut aggregate) =
             super::super::tests::interaction_fixture();
-        scope.group = FlowGroup::Company;
+        scope.group = group;
         scope.measure = measure;
-        aggregate.key.peer = Some("company:0011".into());
+        aggregate.key.peer = Some(
+            if group == FlowGroup::Industry {
+                "food"
+            } else {
+                "company:0011"
+            }
+            .into(),
+        );
         let mut leg = aggregate.clone();
         leg.key.peer = Some("county:26099".into());
         if measure == Measure::Labor {
@@ -394,8 +401,46 @@ mod tests {
     }
 
     #[test]
+    fn selected_industry_geographic_arrows_and_sankey_keep_the_same_hue() {
+        use super::super::{grouping, sankey_image, sankey_layout};
+        use bevy::color::ColorToPacked;
+        let (mut app, scope) = leg_scene(Diagram::Map, Measure::Money, FlowGroup::Industry);
+        let atlas = app.world().resource::<CountyAtlas>();
+        let counties = ["26163", "26099"].map(|id| atlas.index_of_fips(id).expect("county"));
+        let anchors = CountyAnchors::from_atlas(atlas, &counties, Vec2::ZERO);
+        app.insert_resource(anchors);
+        app.update();
+        let world = app.world_mut();
+        let hue = grouping::industry_color(Some("food"));
+        let mut arrows = world.query::<(&Target, &MeshMaterial3d<StandardMaterial>)>();
+        let arrow = arrows.iter(world).find_map(|(target, handle)| {
+            matches!(&target.action, Action::FollowLeg { leg, .. } if leg.peer.as_deref() == Some("county:26099"))
+                .then_some(handle)
+        }).expect("selectable industry leg to Macomb");
+        assert_eq!(
+            world
+                .resource::<Assets<StandardMaterial>>()
+                .get(&arrow.0)
+                .expect("arrow material")
+                .base_color,
+            hue
+        );
+        let view = world.resource::<MoneyView>();
+        let diagram = sankey_layout::layout(&scope.county, &view.rows);
+        let image = sankey_image::paint(&diagram, view);
+        let pixels = image.data.as_deref().expect("CPU diagram");
+        for color in [hue, crate::observer_theme::PAPER] {
+            let rgb = color.to_srgba().to_u8_array();
+            assert!(
+                pixels.as_chunks::<4>().0.contains(&rgb),
+                "selected industry fill and outline"
+            );
+        }
+    }
+
+    #[test]
     fn a_retried_location_page_replaces_its_error_and_changed_recorded_hours() {
-        let (mut app, _) = leg_scene(Diagram::Sankey, Measure::Labor);
+        let (mut app, _) = leg_scene(Diagram::Sankey, Measure::Labor, FlowGroup::Company);
         assert!(visible_text(
             &mut app,
             "unknown prior labor in 1 of 1 movements"
@@ -444,7 +489,7 @@ mod tests {
             (Diagram::Map, Measure::Money),
             (Diagram::Sankey, Measure::Labor),
         ] {
-            let (mut app, scope) = leg_scene(diagram, measure);
+            let (mut app, scope) = leg_scene(diagram, measure, FlowGroup::Company);
             let world = app.world_mut();
             let mut buttons = world.query::<(Entity, &Children, &ObserverFocusTarget)>();
             let endpoints: Vec<_> = buttons

@@ -2,10 +2,10 @@
 use super::super::relationships;
 use super::super::relationships::CountyAnchors;
 use super::super::{MapOrbit, MAP_LAYER};
-use super::geographic_legs;
 use super::state::{
     self, Action, Connection, Diagram, Direction, MoneyView, Observation, Scope, Target,
 };
+use super::{geographic_legs, grouping};
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverViewport;
@@ -31,7 +31,7 @@ pub(super) fn render(
     old: Query<(Entity, &Mesh3d), With<Ribbon>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut palette: Local<Option<[Handle<StandardMaterial>; 4]>>,
+    mut palette: Local<Vec<(Color, Handle<StandardMaterial>)>>,
 ) {
     if !view.is_changed() && !anchors.is_changed() {
         return;
@@ -46,18 +46,23 @@ pub(super) fn render(
     let Some(scope) = &view.scope else {
         return;
     };
-    let colors = palette.get_or_insert_with(|| {
-        [theme::YELLOW, theme::BLUE, theme::GRAY, theme::PAPER].map(|base_color| {
-            materials.add(StandardMaterial {
-                base_color,
-                unlit: true,
-                cull_mode: None,
-                ..default()
-            })
-        })
-    });
+    // One unlit material per authored hue, retained across selections and layout switches.
+    let mut material = |color: Color| {
+        if let Some((_, handle)) = palette.iter().find(|(cached, _)| *cached == color) {
+            return handle.clone();
+        }
+        let handle = materials.add(StandardMaterial {
+            base_color: color,
+            unlit: true,
+            cull_mode: None,
+            ..default()
+        });
+        palette.push((color, handle.clone()));
+        handle
+    };
     if view.freight.enabled {
-        super::freight_plot::geography(&mut commands, &mut meshes, &view, scope, &anchors, colors);
+        let colors = [theme::YELLOW, theme::BLUE, theme::GRAY, theme::PAPER].map(material);
+        super::freight_plot::geography(&mut commands, &mut meshes, &view, scope, &anchors, &colors);
         return;
     }
     let Some(home) = anchors.county_position(&scope.county) else {
@@ -71,6 +76,12 @@ pub(super) fn render(
         })
         .collect();
     let maximum = values.iter().map(|(_, n)| *n).fold(0.0_f64, f64::max);
+    let aggregate = view
+        .selected_row()
+        .filter(|_| scope.group != FlowGroup::Location);
+    let industry = aggregate
+        .filter(|_| scope.group == FlowGroup::Industry)
+        .map(|parent| grouping::industry_color(parent.key.peer.as_deref()));
     for (row, n) in values {
         let peer = row
             .key
@@ -79,17 +90,14 @@ pub(super) fn render(
             .and_then(|id| id.strip_prefix("county:"))
             .and_then(|id| anchors.county_position(id));
         let (from, to, color) = match (row.key.direction, peer) {
-            (Direction::PaidTo, Some(peer)) => (home, peer, 0),
-            (Direction::ReceivedFrom, Some(peer)) => (peer, home, 1),
-            (Direction::Internal, _) => (home, home, 2),
+            (Direction::PaidTo, Some(peer)) => (home, peer, theme::YELLOW),
+            (Direction::ReceivedFrom, Some(peer)) => (peer, home, theme::BLUE),
+            (Direction::Internal, _) => (home, home, theme::GRAY),
             _ => continue,
         };
         let Some(mesh) = relationships::payment_ribbon(from, to, width(n, maximum)) else {
             continue;
         };
-        let aggregate = view
-            .selected_row()
-            .filter(|_| scope.group != FlowGroup::Location);
         let selected = aggregate.is_some()
             || view
                 .selected_row()
@@ -107,7 +115,11 @@ pub(super) fn render(
         commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(colors[if selected { 3 } else { color }].clone()),
+                MeshMaterial3d(material(industry.unwrap_or(if selected {
+                    theme::PAPER
+                } else {
+                    color
+                }))),
                 Transform::default(),
                 RenderLayers::layer(MAP_LAYER),
                 Ribbon,

@@ -16,6 +16,14 @@ use std::io::Read;
 use std::path::Path;
 
 const MATRIX_LIMIT: u64 = 512 * 1024 * 1024;
+// The continuous scenario rebound the defines pin in the physical capture. The qualified
+// matrix still carries the defines from its original production at e9d3918d1.
+const REBOUND_PHYSICAL_SHA256: &str =
+    "095f177b8240f9e9f929673f872abe4b291c5f39e0911d6add9bab903acda1ff";
+const ORIGINAL_MATRIX_SHA256: &str =
+    "66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4";
+const ORIGINAL_MATRIX_DEFINES_SHA256: &str =
+    "bc6a0c80eb1e7781eb36d2e3f14fc7643794e6a0721212d129c18ebd04af3037";
 const MANIFEST: &[u8] =
     include_bytes!("../../../../../content/scenarios/michigan/statewide-sources.json");
 const PHYSICAL: &[u8] =
@@ -180,6 +188,13 @@ impl Reference {
         {
             return Err(AccessError::Source);
         }
+        let mut pins = physical.terminal_source_pins;
+        if manifest.physical_network_sha256 == REBOUND_PHYSICAL_SHA256
+            && qualification.paths_sha256 == ORIGINAL_MATRIX_SHA256
+        {
+            let defines = pins.get_mut("defines_sha256").ok_or(AccessError::Source)?;
+            ORIGINAL_MATRIX_DEFINES_SHA256.clone_into(defines);
+        }
         let mut reference = Self {
             graph_sha256: physical.source.graph_sha256,
             matrix_sha256: qualification.paths_sha256,
@@ -188,7 +203,7 @@ impl Reference {
             supplement_error: None,
             airports: airports()?,
             terminals: roster(physical.terminals)?,
-            pins: physical.terminal_source_pins,
+            pins,
             policy: physical.terminal_policy,
             paths: None,
         };
@@ -290,5 +305,32 @@ impl Reference {
             policy: matrix.policy,
             paths: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Reference;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn bundled_capture_expects_the_original_qualified_matrix_source() {
+        let reference = Reference::load(None).expect("load bundled Michigan capture");
+        // Extracted from the original statewide capture at e9d3918d152c3b3047a764c18929a0d012bcc7bd.
+        let original: BTreeMap<String, String> = serde_json::from_str(
+            r#"{
+                "atlas_pin_sha256": "50f6c52b7f0f036f54923479f7c7ee96ec38658d7f9727a1ba4310a62f534bc7",
+                "atlas_sha256": "0039951dbcc15c928e40fa38295117133e95f0a054bf98874652bb6960841854",
+                "defines_sha256": "bc6a0c80eb1e7781eb36d2e3f14fc7643794e6a0721212d129c18ebd04af3037",
+                "graph_sha256": "d6ec26e347bfabcd3c86c3f9e784c7d9fbb4d32e8a7cb76ae724e53fdc745550"
+            }"#,
+        )
+        .expect("original matrix source pins");
+        assert_eq!(
+            reference.matrix_sha256,
+            "66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4"
+        );
+        assert_eq!(reference.pins, original);
+        assert!(!reference.qualified());
     }
 }

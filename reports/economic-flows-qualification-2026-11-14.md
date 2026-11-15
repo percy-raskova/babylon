@@ -295,6 +295,21 @@ All three turns fit the 40,000,000-byte limit and reproduced the earlier world h
 
 Warm labor queries with `--group counterparty` took 0.854 seconds for Wayne and 1.051 seconds nationwide. The national company ranking took 0.860 seconds. The [native measurements](economic-flows-qualification-2026-11-14-assets/national-compact-native-turns.csv) identify each of the three database layouts and saved inputs.
 
+### A fresh national campaign through 52 periods
+
+Campaign `3461d4d4-0531-440d-9589-d6ed4d890f6a` used the national company opening at revision `2b206fc33`. The runtime committed 52 periods, published the financial and labor records after every close, then reopened the game each time. All 52 world hashes and material register digests survived restart. The 95th-percentile canonical advance took 7.020 seconds. The longest cold reopen took 12.455 seconds. The full run took 30 minutes 43 seconds without rendering a game window.
+
+Period 1 used 76,595,200 bytes against the 40,000,000-byte limit. The labor node directory used 20,774,912 bytes and cash movements used 15,523,840. Labor movements added 10,133,504 bytes and node links with holdings added 6,627,328. Every later period met the growth limit.
+
+| Periods | Median charged growth (bytes) | Largest close (bytes) |
+| --- | ---: | ---: |
+| 2–13 | 26,976,256 | 33,734,656 |
+| 14–26 | 10,813,440 | 24,707,072 |
+| 27–39 | 10,510,336 | 10,584,064 |
+| 40–52 | 10,436,608 | 15,982,592 |
+
+The database peaked at 863,852,211 bytes. The policy charged 931,993,267 bytes including the opening and growth during recovery. It counts positive allocations at both boundaries even if another table shrinks. The first close failed the 52-period storage test. The long-save test requires 325 observed periods. The [per-period measurements](economic-flows-qualification-2026-11-14-assets/national-storage-52.csv) include the charge, restart result and financial publication time for each close.
+
 ### Organizer action during financial publication
 
 An ordinary organizer submitted remote aid while the financial writer was running. The second confirmation timed out. In a two-connection replay, an uncommitted financial row held a foreign-key lock on the campaign foundation. Postgres refused the organizer’s original update lock with SQLSTATE `55P03`.

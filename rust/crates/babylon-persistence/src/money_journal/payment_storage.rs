@@ -7,6 +7,7 @@ use postgres::types::ToSql;
 use postgres::Transaction;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Admission {
@@ -77,7 +78,7 @@ const VERIFY_ACCOUNTS: &str = "
     ) AND NOT EXISTS (
         SELECT FROM g WHERE (
             SELECT l.foundation_sha256 = $2
-                AND (l.longitude, l.latitude) IS NOT DISTINCT FROM (g.lon, g.lat)
+                AND record_send(ROW(l.longitude,l.latitude)) = record_send(ROW(g.lon,g.lat))
             FROM babylon_state.economic_flow_location_v1 l
             WHERE l.campaign_id = $1 AND l.location_key = g.location
         ) IS NOT TRUE
@@ -88,8 +89,10 @@ fn accounts_upsert(mode: Admission) -> Option<String> {
         Admission::Verify => return None,
         Admission::Insert => ("DO NOTHING", "DO NOTHING"),
         Admission::Rebuild => (
-            "DO UPDATE SET longitude = EXCLUDED.longitude, latitude = EXCLUDED.latitude
-             WHERE (l.longitude, l.latitude) IS DISTINCT FROM (EXCLUDED.longitude, EXCLUDED.latitude)",
+            "DO UPDATE SET foundation_sha256 = EXCLUDED.foundation_sha256,
+                 longitude = EXCLUDED.longitude, latitude = EXCLUDED.latitude
+             WHERE l.foundation_sha256 <> EXCLUDED.foundation_sha256 OR
+                 record_send(ROW(l.longitude,l.latitude)) <> record_send(ROW(EXCLUDED.longitude,EXCLUDED.latitude))",
             "DO UPDATE SET account_kind=EXCLUDED.account_kind, account_id=EXCLUDED.account_id,
                  foundation_sha256=EXCLUDED.foundation_sha256, location_key = EXCLUDED.location_key, catchment_key = EXCLUDED.catchment_key,
                  industry_key = EXCLUDED.industry_key, industry_label = EXCLUDED.industry_label
@@ -113,32 +116,66 @@ fn accounts_upsert(mode: Admission) -> Option<String> {
     ))
 }
 
+// Return whether the selected campaign already owns any account rows. The
+// occupied flag only chooses which statement to attempt first. Row admission
+// still checks the full source ordinal, identity, attributes and numeric point.
+fn admit_directory_extent(
+    tx: &mut Transaction<'_>,
+    period: &EconomicPaymentPeriod,
+    mode: Admission,
+) -> Result<bool, JournalError> {
+    let campaign = period.source.campaign_id.as_uuid();
+    let count = i32::try_from(period.accounts.len()).map_err(|_| JournalError::Range)?;
+    let mut locations = BTreeSet::new();
+    for account in &period.accounts {
+        if account.county_internal_point.is_some() {
+            locations.insert(
+                account
+                    .location
+                    .as_deref()
+                    .ok_or(JournalError::Projection)?,
+            );
+        }
+    }
+    let locations: Vec<_> = locations.into_iter().collect();
+    let extent = tx
+        .query_one(
+            "SELECT (SELECT max(account_key) FROM babylon_state.economic_flow_account_v1 WHERE campaign_id=$1),
+                    ARRAY(SELECT location_key FROM babylon_state.economic_flow_location_v1 WHERE campaign_id=$1
+                          EXCEPT SELECT unnest($2::text[]))",
+            &[campaign, &locations],
+        )
+        .map_err(|_| JournalError::Database)?;
+    let last_key: Option<i32> = extent.try_get(0).map_err(|_| JournalError::Projection)?;
+    let extra_points: Vec<String> = extent.try_get(1).map_err(|_| JournalError::Projection)?;
+    let extra_accounts = last_key.is_some_and(|key| key >= count);
+    if mode != Admission::Rebuild && (extra_accounts || !extra_points.is_empty()) {
+        return Err(JournalError::Projection);
+    }
+    if extra_accounts {
+        tx.execute(
+            "DELETE FROM babylon_state.economic_flow_account_v1 WHERE campaign_id=$1 AND account_key >= $2",
+            &[campaign, &count],
+        )
+        .map_err(|_| JournalError::Database)?;
+    }
+    if !extra_points.is_empty() {
+        tx.execute(
+            "DELETE FROM babylon_state.economic_flow_location_v1 WHERE campaign_id=$1 AND location_key=ANY($2)",
+            &[campaign, &extra_points],
+        )
+        .map_err(|_| JournalError::Database)?;
+    }
+    Ok(last_key.is_some())
+}
+
 pub(super) fn accounts(
     tx: &mut Transaction<'_>,
     period: &EconomicPaymentPeriod,
     mode: Admission,
 ) -> Result<(), JournalError> {
     let campaign = period.source.campaign_id;
-    let count = i32::try_from(period.accounts.len()).map_err(|_| JournalError::Range)?;
-    let extra: bool = tx
-        .query_one(
-            "SELECT EXISTS (SELECT FROM babylon_state.economic_flow_account_v1
-                        WHERE campaign_id=$1 AND account_key >= $2)",
-            &[campaign.as_uuid(), &count],
-        )
-        .map_err(|_| JournalError::Database)?
-        .get(0);
-    if extra {
-        if mode != Admission::Rebuild {
-            return Err(JournalError::Projection);
-        }
-        tx.execute(
-            "DELETE FROM babylon_state.economic_flow_account_v1
-                    WHERE campaign_id=$1 AND account_key >= $2",
-            &[campaign.as_uuid(), &count],
-        )
-        .map_err(|_| JournalError::Database)?;
-    }
+    let occupied = admit_directory_extent(tx, period, mode)?;
     if period.accounts.is_empty() {
         return Ok(());
     }
@@ -160,16 +197,22 @@ pub(super) fn accounts(
         account_index += chunk.len();
         let data = serde_json::to_string(&accounts).map_err(|_| JournalError::Projection)?;
         let params: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &digest.as_slice(), &data];
+        let matches = |tx: &mut Transaction<'_>| {
+            tx.query_one(&verify, params)
+                .map_err(|_| JournalError::Database)?
+                .try_get::<_, bool>(0)
+                .map_err(|_| JournalError::Projection)
+        };
         if let Some(statement) = &upsert {
+            // Later periods usually share every opening account and county point.
+            // A missing or different value must follow the original write and recheck.
+            if mode == Admission::Insert && occupied && matches(tx)? {
+                continue;
+            }
             tx.execute(statement, params)
                 .map_err(|_| JournalError::Database)?;
         }
-        let valid: bool = tx
-            .query_one(&verify, params)
-            .map_err(|_| JournalError::Database)?
-            .try_get(0)
-            .map_err(|_| JournalError::Projection)?;
-        if !valid {
+        if !matches(tx)? {
             return Err(JournalError::Projection);
         }
     }

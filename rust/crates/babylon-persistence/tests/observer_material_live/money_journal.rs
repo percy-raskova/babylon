@@ -1,7 +1,10 @@
 //! Permanent coverage, exact rebuild and capability confinement in a disposable database.
+#[path = "account_directory.rs"]
+mod account_directory;
 #[path = "journal_snapshot.rs"]
 mod journal_snapshot;
 
+use self::account_directory::PointScale;
 use super::{
     CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls,
     ObserverEconomyReader, ObserverVisibility, Uuid,
@@ -405,6 +408,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     super::site_accounting_sql::cli(&observer_config, &compact, 2);
     super::recorded_labor::national(&observer, &observer_config, campaign);
     super::site_statements::native_cli(&observer_config, campaign, &site_opening);
+    account_directory::check(&mut owner, &target.writer, &observer, &writer, campaign);
     assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
 }
 
@@ -648,6 +652,7 @@ fn assert_nonzero_history(
             .expect("independent source movements"),
         "every expired nonzero posting reconstructs from its independently authenticated source"
     );
+    let point = PointScale::check_rejection(owner, observer, writer, campaign);
     assert_eq!(
         owner.execute("UPDATE babylon_state.money_movement_total_v1 SET amount_micros=amount_micros+1 WHERE campaign_id=$1 AND resolve_tick=1 AND purpose=$2",
             &[campaign.as_uuid(), &MoneyPurpose::DeliverySettlement.as_str()]).expect("confined permanent summary drift"),
@@ -669,9 +674,11 @@ fn assert_nonzero_history(
         )
         .expect("sample the actually empty parent relations");
     assert_eq!(labor_parent_row_estimates(owner), [0, 0]);
+    point.set(owner, campaign, true);
     writer
         .rebuild(observer, campaign, 1)
         .expect("explicit authenticated rebuild restores current-window detail");
+    point.require_original(owner, campaign);
     assert!(
         owner
             .query_one(population, &[])

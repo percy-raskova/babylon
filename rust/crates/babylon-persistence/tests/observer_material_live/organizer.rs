@@ -89,6 +89,32 @@ fn counts(config: &Config, campaign: CampaignId) -> Vec<i64> {
     );
     counts
 }
+fn with_finance_foreign_key<T>(
+    config: &Config,
+    campaign: CampaignId,
+    operation: impl FnOnce() -> T,
+) -> T {
+    let mut finance = config.connect(NoTls).expect("finance writer connects");
+    let mut pending = finance.transaction().expect("finance transaction starts");
+    pending
+        .batch_execute("SET CONSTRAINTS ALL IMMEDIATE")
+        .expect("the finance foreign key is checked on insertion");
+    pending
+        .execute(
+            "INSERT INTO babylon_state.economic_flow_location_v1 (
+                 campaign_id,foundation_sha256,location_key,longitude,latitude
+             ) SELECT campaign_id,foundation_sha256,'county:99999',0,0
+                 FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
+            &[campaign.as_uuid()],
+        )
+        .expect("unfinished financial detail takes the real foundation foreign-key lock");
+    let value = operation();
+    pending
+        .rollback()
+        .expect("discard uncommitted finance detail");
+    value
+}
+
 fn qualify_durable_admission(
     runtime: &DurableMaterialRuntime,
     config: &Config,
@@ -106,26 +132,11 @@ fn qualify_durable_admission(
         (16, 12, 8)
     );
     let hold = command(runtime, OrganizerChoice::Hold, 1);
-    let mut finance = config.connect(NoTls).expect("finance writer connects");
-    let mut pending = finance.transaction().expect("finance transaction starts");
-    pending
-        .batch_execute("SET CONSTRAINTS ALL IMMEDIATE")
-        .expect("the finance foreign key is checked on insertion");
-    pending
-        .execute(
-            "INSERT INTO babylon_state.economic_flow_location_v1 (
-                 campaign_id,foundation_sha256,location_key,longitude,latitude
-             ) SELECT campaign_id,foundation_sha256,'county:99999',0,0
-                 FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
-            &[campaign.as_uuid()],
-        )
-        .expect("unfinished financial detail takes the real foundation foreign-key lock");
-    let accepted = runtime
-        .submit_organizer_command(&hold)
-        .expect("financial foreign-key validation permits an ordinary organizer commitment");
-    pending
-        .rollback()
-        .expect("discard uncommitted finance detail");
+    let accepted = with_finance_foreign_key(config, campaign, || {
+        runtime
+            .submit_organizer_command(&hold)
+            .expect("financial foreign-key validation permits an ordinary organizer commitment")
+    });
     assert_eq!(runtime.session().completed_tick(), 0);
     assert_eq!(
         runtime
@@ -640,7 +651,9 @@ fn organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery() 
             .pending,
         Some(accepted)
     );
-    support::advance_material_period(&mut runtime);
+    with_finance_foreign_key(&target.writer, campaign, || {
+        support::advance_material_period(&mut runtime);
+    });
     support::advance_material_period(&mut runtime);
     let held_scope = support::current_archive_scope(&reader, campaign);
     let inquiry = qualify_failed_inquiry(&mut runtime, &target.writer);

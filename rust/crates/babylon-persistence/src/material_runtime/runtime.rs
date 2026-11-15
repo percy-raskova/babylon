@@ -883,7 +883,12 @@ impl DurableMaterialRuntime {
         tx.batch_execute(
             "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
         )?;
-        let locked=tx.query_opt("SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1::uuid FOR UPDATE",&[self.campaign.as_uuid()])?;
+        // Serialize period installation and organizer admission without blocking financial foreign keys.
+        let locked = tx.query_opt(
+            "SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3
+             WHERE campaign_id=$1::uuid FOR NO KEY UPDATE",
+            &[self.campaign.as_uuid()],
+        )?;
         if locked.is_none() {
             return Err(MaterialRuntimeError::MissingCampaign);
         }

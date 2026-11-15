@@ -1853,7 +1853,9 @@ CREATE TABLE babylon_state.economic_flow_location_v1 (
     latitude numeric NOT NULL CHECK (latitude BETWEEN -90 AND 90),
     county_internal_point public.geometry(Point,4269) GENERATED ALWAYS AS
         (public.ST_SetSRID(public.ST_MakePoint(longitude::double precision, latitude::double precision),4269)) STORED,
+    labor_point_revision integer NOT NULL DEFAULT 1 CHECK (labor_point_revision > 0),
     PRIMARY KEY (campaign_id, location_key),
+    UNIQUE (campaign_id, location_key, labor_point_revision),
     FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
         DEFERRABLE INITIALLY DEFERRED
 );
@@ -1898,8 +1900,10 @@ CREATE TABLE babylon_state.economic_flow_account_v1 (
     catchment_key text CHECK (length(catchment_key) > 0),
     industry_key text CHECK (length(industry_key) > 0),
     industry_label text CHECK (length(industry_label) > 0),
+    labor_scope_revision integer NOT NULL DEFAULT 1 CHECK (labor_scope_revision > 0),
     CHECK ((industry_key IS NULL) = (industry_label IS NULL)),
     PRIMARY KEY (campaign_id, account_key),
+    UNIQUE (campaign_id, account_key, labor_scope_revision),
     UNIQUE (campaign_id, account_kind, account_id) DEFERRABLE INITIALLY DEFERRED,
     FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
         DEFERRABLE INITIALLY DEFERRED
@@ -2282,13 +2286,6 @@ CREATE TABLE babylon_state.labor_checkpoint_v1 (
 );
 -- Period ordinal references share complete typed labor identities. A mutable
 -- source directory cannot alter an identity already referenced by a period.
-ALTER TABLE babylon_state.economic_flow_account_v1
-    ADD COLUMN labor_scope_revision integer NOT NULL DEFAULT 1 CHECK(labor_scope_revision>0),
-    ADD UNIQUE(campaign_id,account_key,labor_scope_revision);
-ALTER TABLE babylon_state.economic_flow_location_v1
-    ADD COLUMN labor_point_revision integer NOT NULL DEFAULT 1 CHECK(labor_point_revision>0),
-    ADD UNIQUE(campaign_id,location_key,labor_point_revision);
-
 CREATE FUNCTION babylon_state.revise_labor_account_scope_v1() RETURNS trigger
 LANGUAGE plpgsql SET search_path TO pg_catalog AS $$
 BEGIN

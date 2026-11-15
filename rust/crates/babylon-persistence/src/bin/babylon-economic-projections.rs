@@ -3,7 +3,7 @@ use babylon_material_circuit::CompanyId;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{JournalQueue, JournalQueueError, MoneyJournalWriter};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
-use babylon_persistence::qualification_audit::policy::canonical_digest;
+use babylon_persistence::qualification_audit::policy;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::{self, BufWriter, Read as _, Write as _};
@@ -87,7 +87,7 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
             if tick == 0 || i64::try_from(tick).is_err() {
                 return Err("positive_period_required");
             }
-            let company = canonical_digest(company).map_err(|_| "company_refused")?;
+            let company = policy::canonical_digest(company).map_err(|_| "company_refused")?;
             Ok(Command::CompanyDecision(
                 campaign(id)?, tick, CompanyId::from_bytes(company),
             ))

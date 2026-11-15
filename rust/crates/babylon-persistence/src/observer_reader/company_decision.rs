@@ -1,10 +1,11 @@
 //! One company's material evidence and actual BSL draw from one committed observer snapshot.
-use super::{ObserverEconomyError, ObserverEconomyReader};
+use super::{ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor};
 use crate::identity::CampaignId;
-use crate::michigan_economy::digest_hex;
+use crate::michigan_economy;
 use babylon_bsl::probability::MASS_NANOUNITS_PER_UNIT;
 use babylon_material_circuit::{CompanyCondition, CompanyId, CompanyPortfolioEvidence};
-use babylon_tick::company_graph::company_key;
+use babylon_tick::company_graph;
+use babylon_tick::material_world::MaterialWorldRegister;
 use serde::{Serialize, Serializer};
 use serde_json::json;
 
@@ -50,14 +51,14 @@ impl ObserverEconomyReader {
             )?;
             let evidence = cursor
                 .as_ref()
-                .and_then(super::ObserverMaterialCursor::current_register)
-                .and_then(babylon_tick::material_world::MaterialWorldRegister::company_portfolios)
+                .and_then(ObserverMaterialCursor::current_register)
+                .and_then(MaterialWorldRegister::company_portfolios)
                 .ok_or(ObserverEconomyError::InvalidProjection)?
                 .companies
                 .iter()
                 .find(|row| row.company == company)
                 .ok_or(ObserverEconomyError::CompanyDecisionAbsent)?;
-            let carrier = company_key(expected.foundation_graph().scenario_scope(), company)
+            let carrier = company_graph::company_key(expected.foundation_graph().scenario_scope(), company)
                 .canonical_bytes()
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?;
             let sql_tick = i64::try_from(tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
@@ -123,8 +124,8 @@ impl Serialize for CompanyDecisionReport {
             .iter()
             .map(|process| {
                 json!({
-                    "site": digest_hex(&process.site.as_bytes()),
-                    "process": digest_hex(&process.process.as_bytes()),
+                    "site": michigan_economy::digest_hex(&process.site.as_bytes()),
+                    "process": michigan_economy::digest_hex(&process.process.as_bytes()),
                     "produced_batches": process.produced_batches,
                     "capacity_batches": process.capacity_batches,
                     "unmet_accepted_units": process.unmet_accepted_units,
@@ -145,8 +146,8 @@ impl Serialize for CompanyDecisionReport {
                     .iter()
                     .map(|limit| {
                         json!({
-                            "site": digest_hex(&limit.site.as_bytes()),
-                            "process": digest_hex(&limit.process.as_bytes()),
+                            "site": michigan_economy::digest_hex(&limit.site.as_bytes()),
+                            "process": michigan_economy::digest_hex(&limit.process.as_bytes()),
                             "replacement_units": limit.replacement,
                             "expansion_units": limit.expansion,
                             "treasury_funding_micros": limit.funding.micro_units().to_string(),
@@ -171,9 +172,9 @@ impl Serialize for CompanyDecisionReport {
             "version": 1,
             "campaign": self.campaign.as_uuid().to_string(),
             "resolve_tick": evidence.period,
-            "foundation_sha256": digest_hex(&self.foundation_sha256),
-            "tick_content_hash": digest_hex(&self.tick_content_hash),
-            "company": digest_hex(&evidence.company.as_bytes()),
+            "foundation_sha256": michigan_economy::digest_hex(&self.foundation_sha256),
+            "tick_content_hash": michigan_economy::digest_hex(&self.tick_content_hash),
+            "company": michigan_economy::digest_hex(&evidence.company.as_bytes()),
             "encounter_ordinal": self.encounter_ordinal,
             "draw_ticket": self.draw_ticket.to_string(),
             "selected_outcome": self.selected_outcome,

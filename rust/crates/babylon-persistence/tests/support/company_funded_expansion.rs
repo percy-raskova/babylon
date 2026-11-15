@@ -141,7 +141,8 @@ fn high_demand_company_funds_an_admitted_equipment_purchase() {
         .expect("reopen controlled inputs");
     let mut live = params
         .create_foundation(
-            ReplaySessionId::try_from("company-scale/qualification").unwrap(),
+            ReplaySessionId::try_from("company-scale/qualification")
+                .expect("stable replay session"),
             ReplaySeed::new(2),
         )
         .expect("new national foundation")
@@ -181,10 +182,10 @@ fn high_demand_company_funds_an_admitted_equipment_purchase() {
                 site_financial_statements::project_period(opening, closed.state(), &receipts)
                     .expect("site accounts reconcile")
                     .statements
-                    .unwrap()
+                    .expect("monetary site statements")
                     .into_iter()
                     .find(|r| r.site_id == site.site_id)
-                    .unwrap();
+                    .expect("funded site's statement");
             let paid = settlement(&receipts, company, plan, &report);
             assert_eq!(summary.income.contributions_received.micro_units(), paid);
             println!(
@@ -224,7 +225,7 @@ fn decision(
         .companies
         .iter()
         .find(|r| r.company == company)
-        .unwrap();
+        .expect("regional manufacturer's portfolio evidence");
     let use_batches: u64 = row.processes.iter().map(|p| p.produced_batches).sum();
     let capacity: u64 = row.processes.iter().map(|p| p.capacity_batches).sum();
     let unmet: u64 = row.processes.iter().map(|p| p.unmet_accepted_units).sum();
@@ -253,7 +254,7 @@ fn decision(
         .processes
         .iter()
         .find(|p| p.site == plan.site && p.process == plan.process)
-        .unwrap();
+        .expect("selected process has recorded need");
     assert_eq!(plan.replacement, 0);
     assert!(plan.expansion > 0 && plan.funding.micro_units() > 0);
     let cost = i128::from(plan.expansion) * need.unit_price.micro_units();

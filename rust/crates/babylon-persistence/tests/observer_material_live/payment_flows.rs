@@ -10,10 +10,14 @@ use babylon_persistence::money_journal::{
     FlowAmounts, FlowDirection, FlowGroup, FlowPage, FlowPeer, FlowQuery, FlowViewport,
     JournalError, MoneyMovement, MoneyPurpose, PeriodWindow,
 };
-use babylon_persistence::observer_reader::{ObserverEconomyReader, ObserverMaterialCursor};
+use babylon_persistence::observer_reader::{
+    ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor,
+};
 use babylon_persistence::qualification_audit::trade;
 use postgres::{Client, Config, NoTls};
+use serde_json::Value;
 use std::collections::BTreeMap;
+use std::process::Command;
 
 pub(super) fn query(group: FlowGroup) -> FlowQuery {
     FlowQuery {
@@ -31,7 +35,7 @@ pub(super) fn query(group: FlowGroup) -> FlowQuery {
 pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId) {
     assert!(matches!(
         observer.company_decision_receipt(campaign, 1, CompanyId::from_bytes([0; 32])),
-        Err(babylon_persistence::observer_reader::ObserverEconomyError::Authority)
+        Err(ObserverEconomyError::Authority)
     ));
     assert_eq!(
         observer.published_company_period_statements(campaign, 1),
@@ -346,7 +350,7 @@ fn check_company_decision(
         .find(|c| !c.processes.is_empty())
         .expect("company with production evidence");
     let company = trade::hex(&evidence.company.as_bytes());
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_babylon-economic-projections"))
+    let output = Command::new(env!("CARGO_BIN_EXE_babylon-economic-projections"))
         .env_clear()
         .env(
             "BABYLON_OBSERVER_DSN",
@@ -368,8 +372,7 @@ fn check_company_decision(
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let decision: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("one decision report");
+    let decision: Value = serde_json::from_slice(&output.stdout).expect("one decision report");
     assert_eq!(decision["version"], 1);
     assert_eq!(decision["campaign"], campaign.as_uuid().to_string());
     assert_eq!(decision["tick_content_hash"], trade::hex(content_hash));

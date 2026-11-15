@@ -94,7 +94,16 @@ pub(super) fn render(
             || view
                 .selected_row()
                 .is_some_and(|active| active.key == row.key);
-        let target = aggregate.map_or(&row.key, |r| &r.key);
+        let action = match aggregate {
+            Some(parent) if row.key.direction != Direction::Internal && peer.is_some() => {
+                Action::FollowLeg {
+                    aggregate: parent.key.clone(),
+                    leg: row.key.clone(),
+                }
+            }
+            Some(parent) => Action::Select(parent.key.clone()),
+            None => Action::Select(row.key.clone()),
+        };
         commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
@@ -105,7 +114,7 @@ pub(super) fn render(
                 Target {
                     scope: scope.clone(),
                     offset: view.offset,
-                    action: Action::Select(target.clone()),
+                    action,
                 },
                 DeclaredSurface::new(SurfaceId::ObserverProduction),
             ))

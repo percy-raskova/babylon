@@ -1,6 +1,7 @@
 //! The selected county's bilateral connections share the inspector's focus group and scroll area.
 use super::compare::{self, Periods};
 use super::freight::{Command as FreightCommand, PageKey as FreightPageKey};
+use super::geographic_legs::LocationList;
 use super::state::{
     self, Action, Connection, Diagram, Direction, Measure, MoneyRail, MoneyView, Observation, Page,
     Quantity, Scope, Status, Target,
@@ -529,6 +530,14 @@ fn connection_controls(
         );
     }
     if scope.group != FlowGroup::Location {
+        rail.spawn((
+            LocationList::default(),
+            Node {
+                width: percent(100),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+        ));
         for (delta, name) in [
             (-1, "Previous locations"),
             (1, "More locations"),
@@ -614,13 +623,12 @@ type MoneyControl = (
 
 fn selection_label(view: &MoneyView, atlas: &CountyAtlas) -> String {
     let empty = || {
-        if view.diagram == Diagram::Map
-            && view
-                .scope
-                .as_ref()
-                .is_some_and(|s| s.group != FlowGroup::Location)
+        if view
+            .scope
+            .as_ref()
+            .is_some_and(|s| s.group != FlowGroup::Location)
         {
-            "Select a connection to map its reported locations.".to_owned()
+            "Select a connection to inspect its reported locations.".to_owned()
         } else {
             String::new()
         }
@@ -660,10 +668,6 @@ fn selection_label(view: &MoneyView, atlas: &CountyAtlas) -> String {
                     text.push_str(&net);
                 }
             }
-            if group != FlowGroup::Location && view.diagram == Diagram::Map {
-                text.push('\n');
-                text.push_str(&view.geography.describe(atlas));
-            }
             text
         })
 }
@@ -672,9 +676,8 @@ fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) ->
     match target.action {
         Action::IndustrySources => Some(industry::selected(view).is_some()),
         Action::CompanyAccounts(true) => Some(company::selected(view).is_some()),
-        Action::Geography(delta) => {
-            Some(view.diagram == Diagram::Map && view.geography.can_navigate(delta))
-        }
+        Action::Geography(delta) => Some(view.geography.can_navigate(delta)),
+        Action::Frame if view.diagram != Diagram::Map => Some(false),
         Action::Frame if target.scope.group != FlowGroup::Location => {
             Some(view.geography.rows().iter().any(|r| {
                 r.quantity.micros() != "0"
@@ -686,18 +689,9 @@ fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) ->
                             .is_some_and(|k| obs.atlas.index_of_fips(k).is_some()))
             }))
         }
-        Action::Follow => Some(
-            view.selected_row()
-                .and_then(|row| row.key.peer.as_deref())
-                .and_then(|key| key.strip_prefix("county:"))
-                .is_some_and(|geoid| {
-                    geoid != target.scope.county
-                        && obs
-                            .atlas
-                            .index_of_fips(geoid)
-                            .is_some_and(|idx| obs.counties.contains(idx))
-                }),
-        ),
+        Action::Follow | Action::FollowLeg { .. } => {
+            Some(target.destination_county(obs, view).is_some())
+        }
         _ => None,
     }
 }

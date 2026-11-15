@@ -1,5 +1,6 @@
 //! Native observer shell. All economic readings come from one installed frame.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use babylon_persistence::observer_reader::ObserverEconomySnapshot;
@@ -1856,18 +1857,23 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
     if snapshot.resolve_tick == 0 {
         return "Opening period. No completed production period yet.".into();
     }
+    let county_sites: BTreeSet<_> = production
+        .sites
+        .iter()
+        .filter(|site| site.is_in_county(county))
+        .map(|site| site.id.as_str())
+        .collect();
     let developments: Vec<_> = production
         .events
         .iter()
         .filter(|event| {
             event.period == snapshot.resolve_tick
-                && event.subject_site_ids.iter().any(|id| {
-                    production
-                        .sites
-                        .iter()
-                        .any(|site| site.id == *id && site.is_in_county(county))
-                })
+                && event
+                    .subject_site_ids
+                    .iter()
+                    .any(|id| county_sites.contains(id.as_str()))
         })
+        .take(5)
         .map(|event| event.description.as_str())
         .collect();
     if developments.is_empty() {
@@ -2489,6 +2495,10 @@ pub(crate) mod tests {
             (3, "a", "older material event"),
             (4, "hidden", "undisclosed workplace"),
             (5, "a", "future material event"),
+            (4, "a", "second development"),
+            (4, "a", "third development"),
+            (4, "a", "fourth development"),
+            (4, "a", "fifth development"),
         ]
         .into_iter()
         .enumerate()
@@ -2518,7 +2528,11 @@ pub(crate) mod tests {
             text.contains("Cohort a: 7 of 8 planned batches; 70 kg steel produced."),
             "{text}"
         );
+        assert!(text.ends_with(
+            "\n• second development\n• third development\n• fourth development\nMore reported developments are available in History."
+        ));
         for absent in [
+            "fifth development",
             "older material",
             "undisclosed workplace",
             "future material",

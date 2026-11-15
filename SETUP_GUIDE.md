@@ -348,6 +348,12 @@ To inspect an industry, choose **By Industry**, select a row, then choose
 QCEW records by NAICS code. It lists reported jobs and counts suppressed
 records. The diagram shows flows for the selected county and period.
 
+To follow a payment or recorded labor movement, select a ranked company,
+industry or counterparty. The locations below the selection show the counties
+that contributed to that connection and the amount for each. Choose **Open**
+beside a county to inspect its flows. You can also focus the county with Tab
+and press Enter. Switching between the map and Sankey keeps the selection.
+
 From `rust/`, read the published company statements for a completed period.
 
 ```bash

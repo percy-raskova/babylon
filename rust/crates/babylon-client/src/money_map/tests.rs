@@ -1,7 +1,12 @@
 use super::state::{self, Direction, Quantity};
 use babylon_persistence::money_journal::{FlowAmounts, FlowDirection, FlowGroup, FlowRow};
 
-fn counterparty(key: Option<&str>, incoming: &str, outgoing: &str, internal: &str) -> FlowRow {
+pub(super) fn counterparty(
+    key: Option<&str>,
+    incoming: &str,
+    outgoing: &str,
+    internal: &str,
+) -> FlowRow {
     FlowRow {
         key: key.map(str::to_owned),
         label: None,
@@ -76,7 +81,7 @@ use bevy::prelude::*;
 use std::time::Duration;
 use uuid::Uuid;
 
-fn interaction_fixture() -> (App, Entity, Scope, Connection) {
+pub(super) fn interaction_fixture() -> (App, Entity, Scope, Connection) {
     let mut app = App::new();
     let atlas = CountyAtlas::parse(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),

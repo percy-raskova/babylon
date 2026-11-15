@@ -246,6 +246,12 @@ impl Observation<'_> {
             && !self.ui.history_open
     }
 
+    pub(super) fn followable_county(&self, key: &ConnectionKey) -> Option<usize> {
+        let county = key.peer.as_deref()?.strip_prefix("county:")?;
+        let index = self.atlas.index_of_fips(county)?;
+        (self.counties.contains(index) && self.selected.0 != Some(index)).then_some(index)
+    }
+
     pub(super) fn scope(
         &self,
         measure: Measure,
@@ -305,16 +311,6 @@ pub(crate) struct MoneyView {
 }
 
 impl MoneyView {
-    fn selected_county_peer(&self, observed: &Observation) -> Option<usize> {
-        self.selected_row()
-            .and_then(|row| row.key.peer.as_deref())
-            .and_then(|peer| peer.strip_prefix("county:"))
-            .and_then(|geoid| observed.atlas.index_of_fips(geoid))
-            .filter(|index| {
-                observed.counties.contains(*index) && Some(*index) != observed.selected.0
-            })
-    }
-
     pub(crate) fn render_mode(&self) -> RenderMode {
         if self.scope.is_none() {
             return RenderMode::Map3d;
@@ -571,11 +567,21 @@ pub(super) enum Action {
     Diagram(Diagram),
     Measure(Measure),
     Select(ConnectionKey),
-    Books { from: Option<u64>, to: Option<u64> },
-    Site { offset: u64, site: SiteId },
+    Books {
+        from: Option<u64>,
+        to: Option<u64>,
+    },
+    Site {
+        offset: u64,
+        site: SiteId,
+    },
     Page(u64),
     Compare(Periods),
     Follow,
+    FollowLeg {
+        aggregate: ConnectionKey,
+        leg: ConnectionKey,
+    },
     Frame,
     Retry,
 }
@@ -595,6 +601,25 @@ impl Target {
                 .scope(self.scope.measure, self.scope.periods, self.scope.group)
                 .as_ref()
                 == Some(&self.scope)
+    }
+
+    pub(super) fn destination_county(
+        &self,
+        observed: &Observation,
+        view: &MoneyView,
+    ) -> Option<usize> {
+        let selected = &view.selected_row()?.key;
+        let endpoint = match &self.action {
+            Action::Follow => selected,
+            Action::FollowLeg { aggregate, leg }
+                if aggregate == selected
+                    && view.geography.rows().iter().any(|row| &row.key == leg) =>
+            {
+                leg
+            }
+            _ => return None,
+        };
+        observed.followable_county(endpoint)
     }
 }
 
@@ -693,8 +718,8 @@ pub(super) fn activate(
                 offset: target.offset,
             });
         }
-        Action::Follow => {
-            let Some(index) = view.selected_county_peer(observed) else {
+        Action::Follow | Action::FollowLeg { .. } => {
+            let Some(index) = target.destination_county(observed, view) else {
                 return false;
             };
             commands.insert_resource(SelectedCounty(Some(index)));
@@ -791,6 +816,12 @@ pub(in crate::observer_map3d) fn install(app: &mut App) {
         .add_systems(
             Update,
             (rail::paint, geometry::render, sankey::paint).in_set(ObserverSet::Paint),
+        )
+        .add_systems(
+            Update,
+            geographic_legs::draw_locations
+                .after(rail::paint)
+                .before(rail::highlight),
         )
         .add_systems(Update, rail::highlight.after(rail::paint));
 }

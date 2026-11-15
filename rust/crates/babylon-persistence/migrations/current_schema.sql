@@ -2019,8 +2019,6 @@ CREATE TABLE babylon_state.site_stock_balance_v1 (
     CHECK ((opening_quantity IS NOT NULL OR opening_carrying_cost_micros IS NULL)
         AND (closing_quantity IS NOT NULL OR closing_carrying_cost_micros IS NULL))
 );
-CREATE INDEX site_statement_history_v1 ON babylon_state.site_statement_v1(campaign_id,site_id,resolve_tick);
-CREATE INDEX site_stock_history_v1 ON babylon_state.site_stock_balance_v1(campaign_id,site_id,resolve_tick,good_id,unit_id);
 REVOKE ALL ON babylon_state.site_statement_v1, babylon_state.site_stock_balance_v1 FROM PUBLIC;
 
 -- Versioned, rebuildable recorded-labor coverage and physically indexed carrying checkpoints.

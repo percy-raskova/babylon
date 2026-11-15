@@ -71,17 +71,26 @@ const STATEMENTS: &str = "
               FROM jsonb_each_text(to_jsonb(s)) x(k, v)
              WHERE right(k, 7) = '_micros' AND v IS NOT NULL) AS lines
       FROM public.v_observer_money_journal_period_v1 p
-      LEFT JOIN public.v_observer_site_statement_v1 s
-        ON (s.campaign_id, s.resolve_tick) = (p.campaign_id, p.resolve_tick) AND s.site_id = $4
+      LEFT JOIN LATERAL (
+          SELECT * FROM public.v_observer_site_statement_v1
+           WHERE campaign_id = p.campaign_id AND resolve_tick = p.resolve_tick AND site_id = $4
+           LIMIT 1
+      ) s ON true
      WHERE p.campaign_id = $1 AND p.resolve_tick BETWEEN $2 AND $3
      ORDER BY p.resolve_tick";
 
 const STOCKS: &str = "
-    SELECT resolve_tick, good_id, unit_id, opening_quantity::text, closing_quantity::text,
-           opening_carrying_cost_micros::text, closing_carrying_cost_micros::text
-      FROM public.v_observer_site_stock_balance_v1
-     WHERE campaign_id = $1 AND resolve_tick BETWEEN $2 AND $3 AND site_id = $4
-     ORDER BY resolve_tick, good_id, unit_id";
+    SELECT requested.resolve_tick, s.good_id, s.unit_id, s.opening_quantity::text,
+           s.closing_quantity::text, s.opening_carrying_cost_micros::text,
+           s.closing_carrying_cost_micros::text
+      FROM generate_series($2::bigint, $3::bigint) AS requested(resolve_tick)
+      CROSS JOIN LATERAL (
+          SELECT * FROM public.v_observer_site_stock_balance_v1
+           WHERE campaign_id = $1 AND resolve_tick = requested.resolve_tick AND site_id = $4
+           -- Keep each stock lookup on one covered period and site.
+           OFFSET 0
+      ) s
+     ORDER BY requested.resolve_tick, s.good_id, s.unit_id";
 
 fn bytes(row: &Row, column: &str) -> Result<[u8; 32], JournalError> {
     row.try_get::<_, &[u8]>(column)

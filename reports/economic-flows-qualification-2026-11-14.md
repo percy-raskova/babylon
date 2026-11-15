@@ -201,7 +201,16 @@ A separate storage experiment restored the period-2 archive and loaded its two p
 
 Between periods 1 and 2, the five families and their indexes grew by 46,194,688 bytes. The alternative layout grew by 23,347,200 bytes. The 22,847,488-byte saving applies to these temporary tables. The experiment excluded other relations, durable writes and concurrent queries.
 
-The largest measured close exceeded the cap by 25,388,544 bytes. Two secondary indexes on site history grew by 11,182,080 bytes over the three closes. A selected-site query can also use the primary key. A full close and a 325-period history query will show the storage cost and read time of that change.
+The largest measured close exceeded the cap by 25,388,544 bytes. Two secondary indexes on site history grew by 11,182,080 bytes over the three closes. In a copy of the period-2 database, removing those indexes freed 4,694,016 bytes. The selected-site history reader now uses the primary keys for each covered period.
+
+The restricted observer returned the same rows for a site with stock, a site without stock and an absent site. A query fixture repeated the stock and statement data for 128 actual sites over 325 periods. It contained 41,600 statements and 57,200 stock rows. The following median times cover three warm SQL runs for one selected site.
+
+| 325-period site history | Rows returned | With secondary indexes (ms) | With primary keys (ms) |
+| --- | ---: | ---: | ---: |
+| Statements | 325 | 66.691 | 70.188 |
+| Stock balances | 975 | 0.629 | 2.234 |
+
+Both queries returned the same full rows, including the signed statement lines and stock basis. The 325-period fixture measures query behavior. The full campaign still needs separate measurements of storage growth and usable turns at that age.
 
 ### Organizer action during financial publication
 

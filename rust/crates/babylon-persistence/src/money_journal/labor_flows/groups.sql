@@ -27,12 +27,12 @@ WITH windows(first_tick,last_tick,comparison) AS (
     FROM jsonb_to_recordset($11::text::jsonb) AS n(node_ordinal bigint,kind text,entity_id bytea,purpose text,
         scope_kind text,scope_id bytea,location_key text,catchment_key text,industry_key text,industry_label text,longitude numeric,latitude numeric)
 ), moves AS (
-    SELECT resolve_tick,source_node,destination_node,recorded_micro_hours,unknown_opening
+    SELECT resolve_tick,source_node,destination_node,receipt_family,recorded_micro_hours,unknown_opening
     FROM public.v_observer_labor_movement_v1 m WHERE $13='page' AND m.campaign_id=$1 AND
         EXISTS (SELECT FROM windows w WHERE m.resolve_tick BETWEEN w.first_tick AND w.last_tick)
     UNION ALL
-    SELECT $14::bigint,m.source_node,m.destination_node,m.recorded_micro_hours,m.unknown_opening
-    FROM jsonb_to_recordset($12::text::jsonb) AS m(source_node bigint,destination_node bigint,
+    SELECT $14::bigint,m.source_node,m.destination_node,m.receipt_family,m.recorded_micro_hours,m.unknown_opening
+    FROM jsonb_to_recordset($12::text::jsonb) AS m(source_node bigint,destination_node bigint,receipt_family text,
         recorded_micro_hours numeric,unknown_opening boolean)
 ), company_accounts AS MATERIALIZED (
     -- One captured company per account key. Build the small ownership lookup once for
@@ -44,7 +44,7 @@ WITH windows(first_tick,last_tick,comparison) AS (
         AND ($6::text IN ('company','counterparty') OR ($7::text IS NOT NULL AND $15::text IN ('company','counterparty'))
             OR $16::text IN ('company','counterparty'))
 ), scopes AS (
-    SELECT n.resolve_tick,n.node_ordinal,n.scope_kind||':'||encode(n.scope_id,'hex') AS principal,
+    SELECT n.resolve_tick,n.node_ordinal,n.kind,n.purpose,n.scope_kind||':'||encode(n.scope_id,'hex') AS principal,
         owner.company->>0 AS company,owner.company->>1 AS company_label,
         n.location_key,n.catchment_key,n.industry_key,n.industry_label,
         ($9 IS NULL OR v.location_key IS NOT NULL OR
@@ -54,7 +54,7 @@ WITH windows(first_tick,last_tick,comparison) AS (
     CROSS JOIN company_accounts a
     CROSS JOIN LATERAL (SELECT a.by_principal -> (n.scope_kind||':'||encode(n.scope_id,'hex')) AS company) owner
 ), dimensions AS (
-    SELECT s.resolve_tick,s.node_ordinal,s.in_view,
+    SELECT s.resolve_tick,s.node_ordinal,s.kind,s.purpose,s.in_view,
         CASE $6::text WHEN 'account' THEN s.principal
       WHEN 'location' THEN s.location_key WHEN 'catchment' THEN s.catchment_key
       WHEN 'industry' THEN s.industry_key WHEN 'company' THEN s.company
@@ -72,14 +72,35 @@ WITH windows(first_tick,last_tick,comparison) AS (
     FROM scopes s
 ), endpoints AS (
     SELECT w.comparison,m.recorded_micro_hours,m.unknown_opening,
-        l.key AS source_key,r.key AS destination_key,l.label AS source_label,r.label AS destination_label,l.peer_key AS source_peer,r.peer_key AS destination_peer,
-        l.in_view AND ($7::text IS NULL OR r.focus_key IS NOT DISTINCT FROM $7) AS show_source,
-        r.in_view AND ($7::text IS NULL OR l.focus_key IS NOT DISTINCT FROM $7) AS show_destination,
-        ($7 IS NOT NULL OR m.source_node=m.destination_node OR (l.key IS NOT NULL AND l.key=r.key) IS TRUE) AS shared_group,
+        l.key AS source_key,recipient.key AS destination_key,l.label AS source_label,r.label AS destination_label,
+        l.peer_key AS source_peer,recipient.peer_key AS destination_peer,
+        l.in_view AND ($7::text IS NULL OR recipient.focus_key IS NOT DISTINCT FROM $7) AS show_source,
+        recipient.in_view AND ($7::text IS NULL OR l.focus_key IS NOT DISTINCT FROM $7) AS show_destination,
+        ($7 IS NOT NULL OR m.source_node=m.destination_node OR (l.key IS NOT NULL AND l.key=recipient.key) IS TRUE) AS shared_group,
         (l.node_ordinal IS NOT NULL AND r.node_ordinal IS NOT NULL) AS resolved
     FROM moves m JOIN windows w ON m.resolve_tick BETWEEN w.first_tick AND w.last_tick
     LEFT JOIN dimensions l ON (l.resolve_tick,l.node_ordinal)=(m.resolve_tick,m.source_node)
     LEFT JOIN dimensions r ON (r.resolve_tick,r.node_ordinal)=(m.resolve_tick,m.destination_node)
+    -- These releases occurred at the household, site, or consumer process in the
+    -- physical receipt. Transport losses and untracked final-demand deliveries
+    -- do not identify the destination from the source principal.
+    CROSS JOIN LATERAL (SELECT r.kind='sink' AND (r.purpose,l.kind,m.receipt_family) IN (
+        ('household_consumption','household_stock','household_consumption'),
+        ('household_service_use','household_stock','household_services'),
+        ('household_service_use','household_stock','service_performance'),
+        ('unallocated_service_expiry','site_stock','service_outputs'),
+        ('unused_service_expiry','household_stock','service_performance'),
+        ('unused_service_expiry','site_stock','service_performance'),
+        ('maintenance_expiry','maintenance','maintenance')
+    ) AS at_source) local_use
+    -- Place only the geographic endpoint. The sink still has its recorded node
+    -- identity and purpose, with no invented account, industry or catchment.
+    CROSS JOIN LATERAL (SELECT
+        CASE WHEN $6='location' AND local_use.at_source THEN l.key ELSE r.key END AS key,
+        CASE WHEN $15='location' AND local_use.at_source THEN l.focus_key ELSE r.focus_key END AS focus_key,
+        CASE WHEN $16='location' AND local_use.at_source THEN l.peer_key ELSE r.peer_key END AS peer_key,
+        CASE WHEN local_use.at_source THEN l.in_view ELSE r.in_view END AS in_view
+    ) recipient
 ), postings AS (
     SELECT comparison,source_key AS key,source_label AS label,
         CASE WHEN shared_group AND show_destination THEN 'within' ELSE 'outbound' END AS direction,

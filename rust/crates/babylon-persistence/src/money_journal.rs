@@ -33,7 +33,9 @@ pub use flow_model::{
     PeriodWindow,
 };
 pub(crate) use labor_facts::LaborFacts;
-pub use labor_flows::{LaborAmount, LaborDirections, LaborFlowPage, LaborFlowRow};
+pub use labor_flows::{
+    CountyLaborCarry, LaborAmount, LaborCarryAmount, LaborDirections, LaborFlowPage, LaborFlowRow,
+};
 pub(crate) use labor_replay::{through as read_labor_through, LaborCarry};
 pub use model::{
     derive_movements, JournalError, MoneyEndpoint, MoneyLocationKind, MoneyMovement, MoneyPurpose,

@@ -212,8 +212,9 @@ fn run(args: &Arguments) -> Result<Value, String> {
         }
         "flows" => {
             let query = args.query.as_ref().ok_or("flow_request_absent")?;
-            let (unit, page) = match args.measure {
+            let (version, unit, page) = match args.measure {
                 Measure::Money => (
+                    2,
                     "currency_micros",
                     serde_json::to_value(
                         observer
@@ -222,6 +223,7 @@ fn run(args: &Arguments) -> Result<Value, String> {
                     ),
                 ),
                 Measure::Labor => (
+                    3,
                     "recorded_micro_hours",
                     serde_json::to_value(
                         observer
@@ -232,7 +234,7 @@ fn run(args: &Arguments) -> Result<Value, String> {
             };
             let page = page.map_err(|e| e.to_string())?;
             Ok(
-                json!({"version":2,"campaign":args.campaign.as_uuid().to_string(),"unit":unit,"request":query,"page":page}),
+                json!({"version":version,"campaign":args.campaign.as_uuid().to_string(),"unit":unit,"request":query,"page":page}),
             )
         }
         "site-history" => {

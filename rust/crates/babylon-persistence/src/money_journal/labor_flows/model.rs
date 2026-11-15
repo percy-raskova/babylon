@@ -31,8 +31,26 @@ pub struct LaborFlowRow {
     pub net_change_recorded_micro_hours: Option<String>,
 }
 
+/// Recorded labor held at a single period boundary. Earlier unmeasured labor is never assigned hours.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LaborCarryAmount {
+    pub recorded_micro_hours: u128,
+    pub positions: u64,
+    pub unknown_positions: u64,
+}
+
+/// Distinct boundary balances across all holdings with this captured county location.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CountyLaborCarry {
+    pub opening: LaborCarryAmount,
+    pub closing: LaborCarryAmount,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LaborFlowPage {
+    /// Available with a single-period, county-focused observer frame, independently of its ranked movements.
+    #[serde(skip)]
+    pub county_carry: Option<CountyLaborCarry>,
     pub groups: Vec<LaborFlowRow>,
     pub remainder: LaborFlowRow,
     pub total: LaborFlowRow,

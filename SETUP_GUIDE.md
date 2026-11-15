@@ -365,8 +365,14 @@ view reports captured corridors and marks missing reference distances.
 ### Follow recorded labor
 
 Select a county in the full observer. In the **Settled payments** panel, choose
-**Labor hours**. The panel shows hours that entered or left the county and hours
-that moved between local accounts. Choose **Map** or **Sankey** to follow the same connection.
+**Labor hours**. The panel shows transfers to and from accounts in the county,
+including connections to entries with no known location. Choose **Map** or
+**Sankey** to follow the same connection.
+
+The Sankey shows the hours held in the
+county at the opening and close of the period. Each balance includes a count of
+positions with unknown earlier labor. The arrows between the balances show
+transfers during the period. One recorded hour can move more than once.
 
 The list includes movements with unknown earlier labor. The diagram sizes
 each connection by its recorded hours. A movement with zero recorded hours
@@ -381,8 +387,12 @@ cargo run -p babylon-persistence --bin babylon-money-journal -- flows \
 ```
 
 Each direction reports millionths of an hour, the number of movements, and the
-number with unknown earlier labor. The same hours can appear in production, freight and
-consumption. To see how many hours
+number with unknown earlier labor. Labor flow version 3 counts consumption and
+service use at the household, service expiry at the holder, and maintenance
+expiry at its consumer process. The receipt identifies where each use occurred.
+A freight loss has no recorded point along its route. `Unlocated ledger endpoint`
+identifies an entry with no known place. The same hours can appear in production,
+freight and consumption. To see how many hours
 people added and how much remained at each boundary, read the period ledger.
 
 ```bash

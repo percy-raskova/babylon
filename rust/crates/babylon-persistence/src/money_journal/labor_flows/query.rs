@@ -1,5 +1,6 @@
 //! Rank immediate recorded-labor movements. Count unresolved opening prehistory separately.
-use super::model::LaborFlowPage;
+use super::carry;
+use super::model::{CountyLaborCarry, LaborFlowPage};
 use crate::identity::CampaignId;
 use crate::money_journal::flow_query::{self, Bounds};
 use crate::money_journal::{storage, FlowQuery, JournalError};
@@ -11,7 +12,7 @@ const GROUPS_SQL: &str = include_str!("groups.sql");
 const COVERAGE_SQL: &str = "SELECT p.resolve_tick, p.detail_retained, p.movement_count, p.node_count,
     p.fact_sha256, encode(p.foundation_sha256,'hex'), encode(p.tick_content_hash,'hex'), encode(p.receipt_sha256,'hex'),
     (SELECT count(*) FROM public.v_observer_labor_movement_v1 m WHERE m.campaign_id=$1 AND m.resolve_tick=p.resolve_tick),
-    (SELECT count(*) FROM public.v_observer_labor_node_v1 n WHERE n.campaign_id=$1 AND n.resolve_tick=p.resolve_tick)
+    (SELECT count(*) FROM public.v_observer_labor_node_v1 n WHERE n.campaign_id=$1 AND n.resolve_tick=p.resolve_tick), p.position_count
     FROM public.v_observer_labor_period_v1 p WHERE p.campaign_id=$1 AND
     (p.resolve_tick BETWEEN $2 AND $3 OR p.resolve_tick BETWEEN $4 AND $5) ORDER BY p.resolve_tick";
 
@@ -23,6 +24,7 @@ struct Period {
     receipts: String,
     nodes: i64,
     movements: i64,
+    positions: i64,
     retained: bool,
 }
 
@@ -30,6 +32,7 @@ struct Ranking<'a> {
     campaign: CampaignId,
     request: &'a FlowQuery,
     bounds: Bounds,
+    county: Option<&'a str>,
 }
 
 #[derive(Clone, Copy)]
@@ -77,6 +80,7 @@ impl Ranking<'_> {
                 foundation: row.try_get(5).map_err(get)?,
                 content: row.try_get(6).map_err(get)?,
                 receipts: row.try_get(7).map_err(get)?,
+                positions: row.try_get(10).map_err(get)?,
             };
             if period.retained
                 && (period.movements != row.try_get::<_, i64>(8).map_err(get)?
@@ -151,19 +155,20 @@ impl Ranking<'_> {
         reader: &ObserverEconomyReader,
         client: &mut Client,
         periods: &BTreeMap<u64, Period>,
-    ) -> Result<String, JournalError> {
+    ) -> Result<(String, Option<CountyLaborCarry>), JournalError> {
         let mut expired = periods
             .iter()
             .filter(|(_, p)| !p.retained)
             .map(|(&tick, _)| tick);
         let Some(first) = expired.next() else {
-            return Ok("[]".into());
+            return Ok(("[]".into(), None));
         };
         let last = expired.next_back().unwrap_or(first);
         let mut window = reader
             .recorded_labor_window(self.campaign, first, last)
             .map_err(JournalError::Observer)?;
         let mut prior = String::from("[]");
+        let mut county_carry = None;
         while let Some(result) = window.next() {
             let report = result.map_err(JournalError::Observer)?;
             let Some(p) = periods.get(&report.tick).filter(|p| !p.retained) else {
@@ -175,10 +180,18 @@ impl Ranking<'_> {
                 || p.receipts != report.receipt_sha256
                 || facts.fingerprint()?.as_slice() != p.digest
                 || i64::try_from(facts.nodes.len()).map_err(|_| JournalError::Range)? != p.nodes
+                || i64::try_from(facts.positions.len()).map_err(|_| JournalError::Range)?
+                    != p.positions
                 || i64::try_from(facts.movements.len()).map_err(|_| JournalError::Range)?
                     != p.movements
             {
                 return Err(JournalError::SourceChanged);
+            }
+            if let Some(location) = self
+                .county
+                .filter(|_| report.tick == self.request.window.last)
+            {
+                county_carry = Some(carry::reconstructed(&facts, location)?);
             }
             let nodes =
                 serde_json::to_string(&facts.nodes).map_err(|_| JournalError::Projection)?;
@@ -197,12 +210,24 @@ impl Ranking<'_> {
             )?;
             tx.commit().map_err(|_| JournalError::Database)?;
         }
-        Ok(prior)
+        Ok((prior, county_carry))
     }
 
-    fn page(&self, tx: &mut Transaction<'_>, history: &str) -> Result<LaborFlowPage, JournalError> {
-        serde_json::from_str(&self.run(tx, Stage::Page, history)?)
-            .map_err(|_| JournalError::Projection)
+    fn page(
+        &self,
+        tx: &mut Transaction<'_>,
+        history: &str,
+        reconstructed: Option<CountyLaborCarry>,
+    ) -> Result<LaborFlowPage, JournalError> {
+        let mut page: LaborFlowPage = serde_json::from_str(&self.run(tx, Stage::Page, history)?)
+            .map_err(|_| JournalError::Projection)?;
+        if let Some(location) = self.county {
+            page.county_carry = Some(match reconstructed {
+                Some(carry) => carry,
+                None => carry::retained(tx, self.campaign, self.bounds.last, location)?,
+            });
+        }
+        Ok(page)
     }
 }
 
@@ -219,6 +244,7 @@ impl ObserverEconomyReader {
         self.bound_labor_flows(campaign, request, None)
     }
     /// Pin the last period to the native observer frame before showing its labor movements.
+    /// A single-period county focus also includes its opening and closing holdings, independent of peer grouping.
     /// # Errors
     /// Refuses a mismatched frame and all failures of the ordinary scoped flow query.
     pub fn recorded_labor_flows_for_frame(
@@ -241,6 +267,7 @@ impl ObserverEconomyReader {
             campaign,
             request,
             bounds: Bounds::new(request)?,
+            county: expected.and_then(|_| carry::county_focus(request)),
         };
         let mut client = storage::open_observer(self)?;
         for _ in 0..2 {
@@ -255,15 +282,15 @@ impl ObserverEconomyReader {
                 }
             }
             if periods.values().all(|p| p.retained) {
-                let page = rank.page(&mut tx, "[]")?;
+                let page = rank.page(&mut tx, "[]", None)?;
                 tx.commit().map_err(|_| JournalError::Database)?;
                 return Ok(page);
             }
             tx.commit().map_err(|_| JournalError::Database)?;
-            let accumulated = rank.history(self, &mut client, &periods)?;
+            let (accumulated, county_carry) = rank.history(self, &mut client, &periods)?;
             let mut tx = flow_query::snapshot(&mut client)?;
             if rank.coverage(&mut tx)? == periods {
-                let page = rank.page(&mut tx, &accumulated)?;
+                let page = rank.page(&mut tx, &accumulated, county_carry)?;
                 tx.commit().map_err(|_| JournalError::Database)?;
                 return Ok(page);
             }

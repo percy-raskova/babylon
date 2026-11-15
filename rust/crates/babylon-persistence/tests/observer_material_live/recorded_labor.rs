@@ -4,7 +4,7 @@ use babylon_persistence::money_journal::{FlowQuery, LaborFlowPage, LaborFlowRow}
 use babylon_persistence::observer_reader::{ObserverEconomyError, ObserverEconomyReader};
 use babylon_persistence::qualification_audit::trade;
 use babylon_persistence::recorded_labor::RecordedLaborPeriod;
-use postgres::Config;
+use postgres::{Config, IsolationLevel};
 use serde::Deserialize;
 use serde_json::Deserializer;
 use std::cmp::Reverse;
@@ -233,7 +233,8 @@ fn compare_sql(
         company.net_change_recorded_micro_hours,
         counterparty.net_change_recorded_micro_hours
     );
-    check_county_counterparty(reader, campaign, &query);
+    check_county_counterparty(reader, config, campaign, &query);
+    check_county_carry(reader, config, campaign, &query);
     check(
         page.total.comparison.as_ref().expect("prior period"),
         expected[0],
@@ -330,8 +331,48 @@ fn first_company(
     }
 }
 
+/// Compare published geographic totals to the native counterpart recorded at each use.
+fn local_terminal_uses(
+    config: &Config,
+    campaign: CampaignId,
+    county: &str,
+    actual: &babylon_persistence::money_journal::LaborAmount,
+) {
+    let sql = "
+        WITH nodes AS MATERIALIZED (
+            SELECT node_ordinal, location_key, kind, purpose
+            FROM public.v_observer_labor_node_v1 WHERE campaign_id=$1 AND resolve_tick=2
+        ), local_uses AS (
+            SELECT m.recorded_micro_hours, m.unknown_opening,
+                   destination.location_key=$2 AS shares_location,
+                   destination.kind='sink' AND destination.location_key IS NULL AND
+                       destination.purpose IN ('household_consumption', 'household_service_use',
+                           'maintenance_expiry', 'unallocated_service_expiry', 'unused_service_expiry') AS local_use
+            FROM public.v_observer_labor_movement_v1 m
+            JOIN nodes origin ON origin.node_ordinal=m.source_node
+            JOIN nodes destination ON destination.node_ordinal=m.destination_node
+            WHERE m.campaign_id=$1 AND m.resolve_tick=2 AND origin.location_key=$2
+        )
+        SELECT count(*) FILTER (WHERE local_use), sum(recorded_micro_hours)::text,
+               count(*) FILTER (WHERE unknown_opening)::text, count(*)::text
+        FROM local_uses WHERE shares_location OR local_use";
+    let row = config
+        .connect(postgres::NoTls)
+        .expect("full observer SQL")
+        .query_one(sql, &[campaign.as_uuid(), &county])
+        .expect("check location of terminal uses on their unchanged native sink edges");
+    assert!(
+        row.get::<_, i64>(0) > 0,
+        "national case must exercise local terminal use"
+    );
+    assert_eq!(actual.recorded_micro_hours, row.get::<_, String>(1));
+    assert_eq!(actual.unknown_basis_movements, row.get::<_, String>(2));
+    assert_eq!(actual.movement_count, row.get::<_, String>(3));
+}
+
 fn check_county_counterparty(
     reader: &ObserverEconomyReader,
+    config: &Config,
     campaign: CampaignId,
     query: &FlowQuery,
 ) {
@@ -343,47 +384,144 @@ fn check_county_counterparty(
     let home = reader
         .recorded_labor_flows(campaign, &local)
         .expect("home county labor");
-    let peers = reader
-        .recorded_labor_flows(
-            campaign,
-            &FlowQuery {
-                group: FlowGroup::Counterparty,
-                focus_group: Some(FlowGroup::Location),
-                ..local.clone()
-            },
-        )
+    local_terminal_uses(config, campaign, "county:26163", &home.total.current.within);
+    let mut request = FlowQuery {
+        group: FlowGroup::Counterparty,
+        focus_group: Some(FlowGroup::Location),
+        ..local.clone()
+    };
+    let mut peers = reader
+        .recorded_labor_flows(campaign, &request)
         .expect("home county labor by actual counterparty");
     assert_eq!(home.total.current, peers.total.current);
     assert_eq!(home.total.comparison, peers.total.comparison);
-    let chosen = peers
-        .groups
-        .iter()
-        .find(|r| r.current.inbound.movement_count != "0")
-        .expect("observed incoming labor counterpart");
+    let chosen = loop {
+        let count = u64::try_from(peers.groups.len()).expect("bounded page count");
+        if let Some(row) = peers
+            .groups
+            .into_iter()
+            .find(|row| row.current.outbound.movement_count != "0")
+        {
+            break row;
+        }
+        request.offset += count;
+        assert!(
+            count > 0 && request.offset < peers.total.groups,
+            "national case must record a flow into the county"
+        );
+        peers = reader
+            .recorded_labor_flows(campaign, &request)
+            .expect("next ranked counterparty page");
+    };
     let detail = FlowQuery {
         peer: Some(FlowPeer {
             group: FlowGroup::Counterparty,
             key: chosen.key.clone(),
-            direction: FlowDirection::Inbound,
+            direction: FlowDirection::Outbound,
         }),
         ..local
     };
     let legs = reader
         .recorded_labor_flows(campaign, &detail)
         .expect("scoped actual labor geography");
-    assert_eq!(legs.total.current.inbound, chosen.current.inbound);
-    assert_eq!(legs.total.current.outbound.movement_count, "0");
+    assert_eq!(legs.total.current.outbound, chosen.current.outbound);
+    assert_eq!(legs.total.current.inbound.movement_count, "0");
     assert_eq!(legs.total.current.within.movement_count, "0");
     assert_eq!(
-        legs.total.comparison.as_ref().expect("prior").inbound,
-        chosen.comparison.as_ref().expect("prior").inbound
+        legs.total.comparison.as_ref().expect("prior").outbound,
+        chosen.comparison.as_ref().expect("prior").outbound
     );
+}
+
+fn county_frame_page(
+    reader: &ObserverEconomyReader,
+    campaign: CampaignId,
+    query: &FlowQuery,
+) -> LaborFlowPage {
+    use babylon_persistence::money_journal::FlowGroup;
+    let tick = query.window.last;
+    let frame = reader
+        .recorded_labor_window(campaign, tick, tick)
+        .expect("observer authority")
+        .next()
+        .expect("closed frame")
+        .expect("authenticated receipt");
+    let query = FlowQuery {
+        group: FlowGroup::Counterparty,
+        focus_group: Some(FlowGroup::Location),
+        focus: Some("county:26163".to_owned()),
+        ..query.clone()
+    };
+    reader
+        .recorded_labor_flows_for_frame(
+            campaign,
+            &query,
+            &frame.foundation_sha256,
+            &frame.tick_content_hash,
+        )
+        .expect("county's period balances and current movements")
+}
+
+fn check_county_carry(
+    reader: &ObserverEconomyReader,
+    config: &Config,
+    campaign: CampaignId,
+    query: &FlowQuery,
+) {
+    let page = county_frame_page(reader, campaign, query);
+    let balances = page
+        .county_carry
+        .expect("selected county's two boundary balances");
+    let mut conn = config
+        .connect(postgres::NoTls)
+        .expect("restricted observer SQL");
+    let tick = i64::try_from(query.window.last).expect("fixture tick");
+    let mut snapshot = conn
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .expect("read only county position evidence");
+    let nodes: Vec<i64> = snapshot
+        .query(
+            "SELECT node_ordinal FROM public.v_observer_labor_node_v1
+        WHERE campaign_id=$1 AND resolve_tick=$2 AND location_key='county:26163'",
+            &[campaign.as_uuid(), &tick],
+        )
+        .expect("published Wayne holding identities")
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    for (side, reading) in [("opening", balances.opening), ("closing", balances.closing)] {
+        let row=snapshot.query_one("SELECT coalesce(sum(recorded_micro_hours),0)::text,count(*),count(*) FILTER(WHERE unknown_opening)
+            FROM public.v_observer_labor_position_v1 WHERE campaign_id=$1 AND resolve_tick=$2 AND side=$3
+            AND node_ordinal=ANY($4::bigint[])",&[campaign.as_uuid(),&tick,&side,&nodes]).expect("independent published county holdings");
+        assert_eq!(
+            reading.recorded_micro_hours.to_string(),
+            row.get::<_, String>(0)
+        );
+        assert_eq!(
+            reading.positions,
+            u64::try_from(row.get::<_, i64>(1)).expect("position count")
+        );
+        assert_eq!(
+            reading.unknown_positions,
+            u64::try_from(row.get::<_, i64>(2)).expect("unknown position count")
+        );
+        assert!(
+            reading.positions > 0,
+            "populated Wayne county position fixture"
+        );
+    }
+    snapshot
+        .commit()
+        .expect("complete county position evidence");
 }
 
 pub(super) fn first_period_flows(
     reader: &ObserverEconomyReader,
     campaign: CampaignId,
-) -> LaborFlowPage {
+) -> (LaborFlowPage, LaborFlowPage) {
     use babylon_persistence::money_journal::{FlowGroup, PeriodWindow};
     let request = FlowQuery {
         window: PeriodWindow { first: 1, last: 1 },
@@ -403,7 +541,7 @@ pub(super) fn first_period_flows(
             || page.total.current.outbound.movement_count != "0",
         "real physical movements exist in the control"
     );
-    page
+    (page, county_frame_page(reader, campaign, &request))
 }
 
 fn query_labor_cli(config: &Config, campaign: CampaignId) -> LaborFlowPage {
@@ -443,7 +581,7 @@ fn query_labor_cli(config: &Config, campaign: CampaignId) -> LaborFlowPage {
     );
     let response: Response =
         serde_json::from_slice(&output.stdout).expect("versioned ranked labor data");
-    assert_eq!(response.version, 2);
+    assert_eq!(response.version, 3);
     assert_eq!(response.campaign, id);
     assert_eq!(response.unit, "recorded_micro_hours");
     response.page

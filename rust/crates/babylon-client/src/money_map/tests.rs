@@ -60,7 +60,7 @@ fn payment_locations_name_foreign_and_dependency_markets() {
     assert_eq!(rail::location(None, atlas), "Location unreported");
 }
 
-use super::state::{Action, Connection, MoneyView, Scope, Status, Target};
+use super::state::{Action, Connection, MoneyView, Page, Scope, Status, Target};
 use crate::atlas::CountyAtlas;
 use crate::map::{CountyMapScope, SelectedCounty};
 use crate::map_economy_lens::MapLens;
@@ -572,7 +572,7 @@ fn grouping_ranks_the_same_county_and_draws_only_the_selected_groups_actual_loca
     assert_eq!(peer.direction, FlowDirection::Inbound);
     assert_eq!(
         super::grouping::peer_label(
-            scope.group,
+            scope,
             key.peer.as_deref(),
             grouped[0].label.as_deref(),
             app.world().resource::<CountyAtlas>()
@@ -839,4 +839,91 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
     app.world_mut().trigger(press(unknown));
     app.world_mut().trigger(press(toggle));
     assert!(!app.world().resource::<MoneyView>().industry.expanded);
+}
+
+#[test]
+fn labor_sankey_keeps_both_boundary_balances_visible_without_current_transfers() {
+    use babylon_persistence::money_journal::{
+        CountyLaborCarry, LaborAmount, LaborCarryAmount, LaborDirections, LaborFlowPage,
+        LaborFlowRow,
+    };
+    let (mut app, _, mut scope, _) = interaction_fixture();
+    scope.measure = state::Measure::Labor;
+    let empty = LaborAmount {
+        recorded_micro_hours: "0".into(),
+        unknown_basis_movements: "0".into(),
+        movement_count: "0".into(),
+    };
+    let row = LaborFlowRow {
+        key: None,
+        label: None,
+        rank: None,
+        groups: 0,
+        current: LaborDirections {
+            inbound: empty.clone(),
+            outbound: empty.clone(),
+            within: empty,
+            net_recorded_micro_hours: "0".into(),
+        },
+        comparison: None,
+        net_change_recorded_micro_hours: None,
+    };
+    let page = LaborFlowPage {
+        groups: Vec::new(),
+        remainder: row.clone(),
+        total: row,
+        county_carry: Some(CountyLaborCarry {
+            opening: LaborCarryAmount {
+                recorded_micro_hours: 0,
+                positions: 2,
+                unknown_positions: 2,
+            },
+            closing: LaborCarryAmount {
+                recorded_micro_hours: 1_000_001,
+                positions: 3,
+                unknown_positions: 0,
+            },
+        }),
+    };
+    assert_eq!(
+        super::grouping::peer_label(&scope, None, None, app.world().resource::<CountyAtlas>()),
+        "Unlocated ledger endpoint"
+    );
+    scope.group = FlowGroup::Company;
+    assert_eq!(
+        super::grouping::peer_label(&scope, None, None, app.world().resource::<CountyAtlas>()),
+        "No represented company"
+    );
+    app.insert_resource(MoneyView {
+        scope: Some(scope),
+        diagram: state::Diagram::Sankey,
+        measure: state::Measure::Labor,
+        page: Some(Page::Labor(Box::new(page))),
+        status: Status::Ready,
+        ..default()
+    })
+    .init_resource::<Assets<Image>>()
+    .add_systems(Update, super::sankey::paint);
+    app.update();
+    let world = app.world_mut();
+    let mut children = world.query::<&Children>();
+    let readings = children
+        .iter(world)
+        .find_map(|siblings| {
+            let text: Vec<_> = siblings
+                .iter()
+                .filter_map(|id| world.get::<Text>(id))
+                .map(|t| t.0.as_str())
+                .collect();
+            text.iter()
+                .any(|t| t.starts_with("Opening carry"))
+                .then_some(text)
+        })
+        .expect("labor Sankey with chronological boundary stages");
+    assert_eq!(&readings[1..], &[
+        "Opening carry · 0 recorded h across 2 located positions · unknown prior labor in 2 positions",
+        "Transfers during period 1",
+        "No recorded labor movements on this page.",
+        "Closing carry · 1.000001 recorded h across 3 located positions",
+    ]);
 }

@@ -1,12 +1,13 @@
 //! A static, scrollable two-stage flow diagram occupies the same region as the county map.
 use super::grouping;
 use super::sankey_layout::{Band, DiagramLayout, Place};
-use super::state::{Action, Measure, MoneyView, Observation, Scope, Status, Target};
+use super::state::{Action, Measure, MoneyView, Observation, Page, Scope, Status, Target};
 use super::{rail, sankey_image, sankey_layout, state};
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_layout::ObserverRegion;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
+use babylon_persistence::money_journal::LaborCarryAmount;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -84,6 +85,32 @@ fn heading(scope: &Scope, obs: &Observation) -> String {
     }
 }
 
+fn boundary(panel: &mut ChildSpawnerCommands, title: &str, amount: &LaborCarryAmount) {
+    let hours = rail::labor_hours(&amount.recorded_micro_hours.to_string());
+    let plural = |count| if count == 1 { "position" } else { "positions" };
+    let mut text = format!(
+        "{title} · {hours} across {} located {}",
+        amount.positions,
+        plural(amount.positions)
+    );
+    if amount.unknown_positions > 0 {
+        use std::fmt::Write;
+        write!(
+            text,
+            " · unknown prior labor in {} {}",
+            amount.unknown_positions,
+            plural(amount.unknown_positions)
+        )
+        .expect("writing to a String cannot fail");
+    }
+    panel.spawn(rail::label(
+        text,
+        16.0,
+        theme::PAPER,
+        ObserverFontRole::Body,
+    ));
+}
+
 fn spawn_diagram(
     commands: &mut Commands,
     key: PageKey,
@@ -115,79 +142,106 @@ fn spawn_diagram(
             theme::PAPER,
             ObserverFontRole::Display,
         ));
-        let Some(image) = handle.as_ref() else {
-            panel.spawn(rail::label(
-                match (key.status, key.scope.measure, view.rows.is_empty()) {
-                    (Status::Ready, Measure::Labor, false) => {
-                        "Movements are listed with no current recorded hours to draw."
-                    }
-                    (Status::Ready, Measure::Labor, true) => {
-                        "No recorded labor movements on this page."
-                    }
-                    (Status::Ready, Measure::Money, _) => "No settled connections on this page.",
-                    _ => "Waiting for the period’s flow report.",
-                },
-                15.0,
-                theme::GRAY,
-                ObserverFontRole::Body,
-            ));
-            return;
+        let balances = match &view.page {
+            Some(Page::Labor(page)) => page.county_carry.as_ref(),
+            _ => None,
         };
-        panel
-            .spawn(Node {
-                width: percent(100),
-                flex_shrink: 0.0,
-                justify_content: JustifyContent::SpaceBetween,
-                ..default()
-            })
-            .with_children(|header| {
-                let from = match key.scope.measure {
-                    Measure::Money => "Payer",
-                    Measure::Labor => "Origin",
-                };
-                for text in [from, "Recipient"] {
-                    header.spawn(rail::label(
-                        text,
-                        17.0,
-                        theme::PAPER,
-                        ObserverFontRole::Display,
-                    ));
-                }
-            });
-        panel
-            .spawn(Node {
-                width: percent(100),
-                height: px(logical(f64::from(layout.height))),
-                flex_shrink: 0.0,
-                ..default()
-            })
-            .with_children(|graph| {
-                column(graph, &layout.payers, obs, view, 0.0);
-                column(graph, &layout.recipients, obs, view, 75.0);
-                graph
-                    .spawn((
-                        ImageNode::new(image.clone()).with_mode(NodeImageMode::Stretch),
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: percent(25),
-                            width: percent(50),
-                            height: percent(100),
-                            ..default()
-                        },
-                        Plot {
-                            scope: key.scope.clone(),
-                            offset: key.offset,
-                            layout,
-                        },
-                    ))
-                    .observe(select);
-            });
+        if let Some(carry) = balances {
+            boundary(panel, "Opening carry", &carry.opening);
+            panel.spawn(rail::label(
+                format!("Transfers during period {}", key.scope.context.tick),
+                17.0,
+                theme::PAPER,
+                ObserverFontRole::Display,
+            ));
+        }
+        movements(panel, &key, view, obs, layout, handle.as_ref());
+        if let Some(carry) = balances {
+            boundary(panel, "Closing carry", &carry.closing);
+        }
     });
     Canvas {
         key,
         entity: canvas.id(),
         image: handle,
     }
+}
+
+fn movements(
+    panel: &mut ChildSpawnerCommands,
+    key: &PageKey,
+    view: &MoneyView,
+    obs: &Observation,
+    layout: DiagramLayout,
+    handle: Option<&Handle<Image>>,
+) {
+    let Some(image) = handle else {
+        panel.spawn(rail::label(
+            match (key.status, key.scope.measure, view.rows.is_empty()) {
+                (Status::Ready, Measure::Labor, false) => {
+                    "Movements are listed with no current recorded hours to draw."
+                }
+                (Status::Ready, Measure::Labor, true) => {
+                    "No recorded labor movements on this page."
+                }
+                (Status::Ready, Measure::Money, _) => "No settled connections on this page.",
+                _ => "Waiting for the period’s flow report.",
+            },
+            15.0,
+            theme::GRAY,
+            ObserverFontRole::Body,
+        ));
+        return;
+    };
+    panel
+        .spawn(Node {
+            width: percent(100),
+            flex_shrink: 0.0,
+            justify_content: JustifyContent::SpaceBetween,
+            ..default()
+        })
+        .with_children(|header| {
+            let from = match key.scope.measure {
+                Measure::Money => "Payer",
+                Measure::Labor => "Origin",
+            };
+            for text in [from, "Recipient"] {
+                header.spawn(rail::label(
+                    text,
+                    17.0,
+                    theme::PAPER,
+                    ObserverFontRole::Display,
+                ));
+            }
+        });
+    panel
+        .spawn(Node {
+            width: percent(100),
+            height: px(logical(f64::from(layout.height))),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .with_children(|graph| {
+            column(graph, &layout.payers, obs, view, 0.0);
+            column(graph, &layout.recipients, obs, view, 75.0);
+            graph
+                .spawn((
+                    ImageNode::new(image.clone()).with_mode(NodeImageMode::Stretch),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: percent(25),
+                        width: percent(50),
+                        height: percent(100),
+                        ..default()
+                    },
+                    Plot {
+                        scope: key.scope.clone(),
+                        offset: key.offset,
+                        layout,
+                    },
+                ))
+                .observe(select);
+        });
 }
 
 #[allow(
@@ -214,7 +268,7 @@ fn column(
             .iter()
             .find(|r| r.key.peer == place.key)
             .and_then(|r| r.label.as_deref());
-        let text = grouping::peer_label(scope.group, place.key.as_deref(), captured, &obs.atlas);
+        let text = grouping::peer_label(scope, place.key.as_deref(), captured, &obs.atlas);
         parent
             .spawn((
                 Node {

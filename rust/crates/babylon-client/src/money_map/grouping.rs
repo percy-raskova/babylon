@@ -1,6 +1,6 @@
 //! Labels come from the captured company and industry dimensions; counties use the atlas.
 use super::rail;
-use super::state::{Action, MoneyView, Scope};
+use super::state::{Action, Measure, MoneyView, Scope};
 use crate::atlas::CountyAtlas;
 use crate::observer_theme as theme;
 use babylon_kernel::economic_identity::EconomicFunction;
@@ -8,11 +8,15 @@ use babylon_persistence::money_journal::FlowGroup;
 use bevy::prelude::*;
 
 pub(super) fn peer_label(
-    group: FlowGroup,
+    scope: &Scope,
     key: Option<&str>,
     label: Option<&str>,
     atlas: &CountyAtlas,
 ) -> String {
+    let group = scope.group;
+    if scope.measure == Measure::Labor && group == FlowGroup::Location && key.is_none() {
+        return "Unlocated ledger endpoint".into();
+    }
     if group == FlowGroup::Location || key.is_some_and(|k| k.starts_with("county:")) {
         return rail::location(key, atlas);
     }

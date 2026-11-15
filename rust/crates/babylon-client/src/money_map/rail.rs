@@ -107,15 +107,15 @@ pub(super) fn reading(quantity: &Quantity) -> String {
 
 fn labor_figures(group: &LaborDirections) -> String {
     format!(
-        "Received {}\nSent {}\nWithin county {}",
+        "Received from other or unlocated endpoints {}\nSent to other or unlocated endpoints {}\nWithin county {}",
         labor_reading(&group.outbound),
         labor_reading(&group.inbound),
         labor_reading(&group.within)
     )
 }
 
-fn caption(row: &Connection, group: FlowGroup, atlas: &CountyAtlas) -> String {
-    let peer = grouping::peer_label(group, row.key.peer.as_deref(), row.label.as_deref(), atlas);
+fn caption(row: &Connection, scope: &Scope, atlas: &CountyAtlas) -> String {
+    let peer = grouping::peer_label(scope, row.key.peer.as_deref(), row.label.as_deref(), atlas);
     let amount = reading(&row.quantity);
     match row.key.direction {
         Direction::PaidTo if matches!(row.quantity, Quantity::Labor(_)) => {
@@ -123,7 +123,7 @@ fn caption(row: &Connection, group: FlowGroup, atlas: &CountyAtlas) -> String {
         }
         Direction::PaidTo => format!("Paid to {peer}\n{amount}"),
         Direction::ReceivedFrom => format!("Received from {peer}\n{amount}"),
-        Direction::Internal if group != FlowGroup::Location => {
+        Direction::Internal if scope.group != FlowGroup::Location => {
             format!("Within county · from {peer}\n{amount}")
         }
         Direction::Internal => format!("Within county\n{amount}"),
@@ -564,7 +564,7 @@ fn connection_controls(
             view,
             scope,
             Action::Select(row.key.clone()),
-            caption(row, scope.group, atlas),
+            caption(row, scope, atlas),
         );
     }
 }
@@ -625,47 +625,47 @@ fn selection_label(view: &MoneyView, atlas: &CountyAtlas) -> String {
             String::new()
         }
     };
-    view.selected_row().map_or_else(empty, |row| {
-        let group = view.scope.as_ref().map_or(FlowGroup::Location, |s| s.group);
-        let peer =
-            grouping::peer_label(group, row.key.peer.as_deref(), row.label.as_deref(), atlas);
-        let county = view.scope.as_ref().map_or_else(String::new, |s| {
-            location(Some(&format!("county:{}", s.county)), atlas)
-        });
-        let (from, to) = match row.key.direction {
-            Direction::PaidTo => (county, peer),
-            Direction::ReceivedFrom => (peer, county),
-            Direction::Internal if group != FlowGroup::Location => {
-                (format!("{peer} in {county}"), county)
+    view.selected_row()
+        .zip(view.scope.as_ref())
+        .map_or_else(empty, |(row, scope)| {
+            let group = scope.group;
+            let peer =
+                grouping::peer_label(scope, row.key.peer.as_deref(), row.label.as_deref(), atlas);
+            let county = location(Some(&format!("county:{}", scope.county)), atlas);
+            let (from, to) = match row.key.direction {
+                Direction::PaidTo => (county, peer),
+                Direction::ReceivedFrom => (peer, county),
+                Direction::Internal if group != FlowGroup::Location => {
+                    (format!("{peer} in {county}"), county)
+                }
+                Direction::Internal => (county.clone(), county),
+            };
+            let amount = reading(&row.quantity);
+            let mut text = row.key.peer.as_deref().map_or_else(
+                || format!("{from} → {to}\n{amount}"),
+                |key| {
+                    format!(
+                        "{from} → {to}\n{amount}\n{} {key}",
+                        if group == FlowGroup::Location {
+                            "Location code"
+                        } else {
+                            "Group code"
+                        }
+                    )
+                },
+            );
+            if let Some(page) = &view.page {
+                if let Some(net) = compare::group_net(page, &row.key, scope.context.tick) {
+                    text.push_str("\nCounty net with this counterparty\n");
+                    text.push_str(&net);
+                }
             }
-            Direction::Internal => (county.clone(), county),
-        };
-        let amount = reading(&row.quantity);
-        let mut text = row.key.peer.as_deref().map_or_else(
-            || format!("{from} → {to}\n{amount}"),
-            |key| {
-                format!(
-                    "{from} → {to}\n{amount}\n{} {key}",
-                    if group == FlowGroup::Location {
-                        "Location code"
-                    } else {
-                        "Group code"
-                    }
-                )
-            },
-        );
-        if let (Some(scope), Some(page)) = (&view.scope, &view.page) {
-            if let Some(net) = compare::group_net(page, &row.key, scope.context.tick) {
-                text.push_str("\nCounty net with this counterparty\n");
-                text.push_str(&net);
+            if group != FlowGroup::Location && view.diagram == Diagram::Map {
+                text.push('\n');
+                text.push_str(&view.geography.describe(atlas));
             }
-        }
-        if group != FlowGroup::Location && view.diagram == Diagram::Map {
-            text.push('\n');
-            text.push_str(&view.geography.describe(atlas));
-        }
-        text
-    })
+            text
+        })
 }
 
 fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) -> Option<bool> {

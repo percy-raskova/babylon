@@ -1,0 +1,305 @@
+{
+  "source_directory": "/media/user/data/babylon-recovery/per293-ordinary-v9-household-circuit/readings",
+  "reference_capture_directory": "/media/user/data/babylon-recovery/per293-ordinary-v9-seed319-t260",
+  "compiler": "national-world-v9",
+  "seed": 319,
+  "session": "national-world",
+  "capture_sha256": "5fdcd14557d1d285ead065c623c957f91940e6f2063dada0a3d5e080a9d20dc4",
+  "definitions": [
+    "Each period is one 28-day close. P66 follows restoration at P65. The four observed flows do not describe the intervening years.",
+    "Household fulfilled orders count food purchased and delivered during that close. Consumed units may come from opening stocks. US counties, foreign counterparts and US dependencies are disjoint.",
+    "US county public accounts exclude US dependencies and foreign public accounts. Operating grants, household income support and agency appropriations are distinct allocation purposes. Taxes are measured at the receiving public account.",
+    "Trade directions follow the goods. Each matched recurring order requires delivery, realization and buyer-escrow payment at the original unit price to the supplier. Dependencies are outside this trade boundary. Counts are orders settled in that close.",
+    "A zero settlement or budget flow has no matching positive posting. A missing receipt group or measurement is null (unobserved). Currency fields ending in _micros are integer strings, with 1,000,000 per dollar."
+  ],
+  "periods": [
+    {
+      "period": 1,
+      "raw_file": "period-001.json",
+      "raw_sha256": "3458e3235c8b612b4a3de02d78acfda1876d63b7ad27e6fa30f8958e964b211b",
+      "hashes": {
+        "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+        "material_register_sha256": "260b1af47fc42f94c21cfd50f697f8570dc076590b275c79b61f6abe1f096f15",
+        "prior_world_sha256": "9cbd3cab5291ce2acade9095235aa5f16c06eb3be4f799a82abf1934babd768b",
+        "receipts_sha256": "bb51e9a3c35cf56b1bbf8fb817c9c46e14bc75b1e0fe167fbaafb0e30a70604e",
+        "tick_sha256": "3b3ea395192228a4920eb22f3e9b9d03498d78ae0077946933b01de006eac2c0",
+        "world_sha256": "a151241e45e38869de8806d51555881de45d4a7dfc26c0ee8159b36fe92ae999"
+      },
+      "food_unit": "person-period food parcel",
+      "food": {
+        "US_counties": {
+          "required_units": 334922499,
+          "fulfilled_order_units": 334922483,
+          "consumed_units": 334922491,
+          "unmet_units": 8,
+          "settled_purchase_micros": "101816434832000000"
+        },
+        "foreign_counterparts": {
+          "required_units": 7812960076,
+          "fulfilled_order_units": 7812960076,
+          "consumed_units": 7812960076,
+          "unmet_units": 0,
+          "settled_purchase_micros": "957322250422600000"
+        },
+        "dependencies": {
+          "required_units": 3585979,
+          "fulfilled_order_units": 3585979,
+          "consumed_units": 3585979,
+          "unmet_units": 0,
+          "settled_purchase_micros": "1090137616000000"
+        }
+      },
+      "US_county_public_accounts": {
+        "closing_cash_micros": "152986490631400000",
+        "opening_cash_micros": "77131469400000000",
+        "assessed_tax_micros": "113495163889200000",
+        "collected_tax_micros": "113495163889200000",
+        "uncollected_tax_micros": "0",
+        "all_cash_credits_micros": "114420755931400000",
+        "all_cash_debits_micros": "38565734700000000",
+        "operating_grants": {
+          "requested_micros": "36073072500000000",
+          "paid_micros": "36073072500000000",
+          "unfunded_micros": "0"
+        },
+        "household_support": {
+          "requested_micros": "2492662200000000",
+          "paid_micros": "2492662200000000",
+          "unfunded_micros": "0"
+        },
+        "agency_appropriations": {
+          "requested_micros": "0",
+          "paid_micros": "0",
+          "unfunded_micros": "0"
+        }
+      },
+      "county_foreign_trade": {
+        "imports": {
+          "settled_orders": 0,
+          "settled_micros": "0"
+        },
+        "exports": {
+          "settled_orders": 0,
+          "settled_micros": "0"
+        },
+        "other_crossborder_settled_orders_excluded": 0
+      }
+    },
+    {
+      "period": 2,
+      "raw_file": "period-002.json",
+      "raw_sha256": "1cfa0e6687c09ffcce9d54502b6935adaf534aaaa63e49a208aea527d26a6cdf",
+      "hashes": {
+        "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+        "material_register_sha256": "c01bab37c7b72cee93a859caeb9eb9d82b2efdaa70f2feaacf1e10f90e77f0dd",
+        "prior_world_sha256": "a151241e45e38869de8806d51555881de45d4a7dfc26c0ee8159b36fe92ae999",
+        "receipts_sha256": "4517450f65785c95eb22416ace5b14f4276eb10533ab4495b47dabd599d143c6",
+        "tick_sha256": "21fda1a8bfec240f19426d937612b28cdcef56134c6d2e4f087129fad5ff809f",
+        "world_sha256": "49b38c737c1cfa82490d3746e0b4211e61fd98ac11b6e9e4bafd2a8c291ab7bf"
+      },
+      "food_unit": "person-period food parcel",
+      "food": {
+        "US_counties": {
+          "required_units": 334922499,
+          "fulfilled_order_units": 334922479,
+          "consumed_units": 334922491,
+          "unmet_units": 8,
+          "settled_purchase_micros": "101816433616000000"
+        },
+        "foreign_counterparts": {
+          "required_units": 7812960076,
+          "fulfilled_order_units": 7812960076,
+          "consumed_units": 7812960076,
+          "unmet_units": 0,
+          "settled_purchase_micros": "957322250422600000"
+        },
+        "dependencies": {
+          "required_units": 3585979,
+          "fulfilled_order_units": 3585979,
+          "consumed_units": 3585979,
+          "unmet_units": 0,
+          "settled_purchase_micros": "1090137616000000"
+        }
+      },
+      "US_county_public_accounts": {
+        "closing_cash_micros": "202643856521391161",
+        "opening_cash_micros": "152986490631400000",
+        "assessed_tax_micros": "59395370427765655",
+        "collected_tax_micros": "59395370427765655",
+        "uncollected_tax_micros": "0",
+        "all_cash_credits_micros": "88223100589991161",
+        "all_cash_debits_micros": "38565734700000000",
+        "operating_grants": {
+          "requested_micros": "36073072500000000",
+          "paid_micros": "36073072500000000",
+          "unfunded_micros": "0"
+        },
+        "household_support": {
+          "requested_micros": "2492662200000000",
+          "paid_micros": "2492662200000000",
+          "unfunded_micros": "0"
+        },
+        "agency_appropriations": {
+          "requested_micros": "0",
+          "paid_micros": "0",
+          "unfunded_micros": "0"
+        }
+      },
+      "county_foreign_trade": {
+        "imports": {
+          "settled_orders": 1604,
+          "settled_micros": "615904322800000"
+        },
+        "exports": {
+          "settled_orders": 108,
+          "settled_micros": "411848160000000"
+        },
+        "other_crossborder_settled_orders_excluded": 0
+      }
+    },
+    {
+      "period": 3,
+      "raw_file": "period-003.json",
+      "raw_sha256": "a3b76db0169cb605868c776c57904a341a221b413412d2e6e7a69c69dc5ec30d",
+      "hashes": {
+        "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+        "material_register_sha256": "5b03d004886ab74458c008b5cb064b9f5e3cc6f4dc227517a33bb9e94a5ebb7e",
+        "prior_world_sha256": "49b38c737c1cfa82490d3746e0b4211e61fd98ac11b6e9e4bafd2a8c291ab7bf",
+        "receipts_sha256": "d03385ef6fa922296dc646267171c737f78129a40d94d454bcaee72419a0d042",
+        "tick_sha256": "db6dfbc3e45293899403da070d9346db6f4c43d081898876fd78477f9ca72566",
+        "world_sha256": "88c13c1bd07dbca083ef2ed7813b72fab25ef73dad11e540df59ed97e6c50cc2"
+      },
+      "food_unit": "person-period food parcel",
+      "food": {
+        "US_counties": {
+          "required_units": 334922499,
+          "fulfilled_order_units": 252944789,
+          "consumed_units": 334922491,
+          "unmet_units": 8,
+          "settled_purchase_micros": "76937600625000000"
+        },
+        "foreign_counterparts": {
+          "required_units": 7812960076,
+          "fulfilled_order_units": 7812960076,
+          "consumed_units": 7812960076,
+          "unmet_units": 0,
+          "settled_purchase_micros": "978444054165640000"
+        },
+        "dependencies": {
+          "required_units": 3585979,
+          "fulfilled_order_units": 3585979,
+          "consumed_units": 3585979,
+          "unmet_units": 0,
+          "settled_purchase_micros": "1090137616000000"
+        }
+      },
+      "US_county_public_accounts": {
+        "closing_cash_micros": "226487165302927475",
+        "opening_cash_micros": "202643856521391161",
+        "assessed_tax_micros": "33334443758039017",
+        "collected_tax_micros": "33334423034939017",
+        "uncollected_tax_micros": "20723100000",
+        "all_cash_credits_micros": "62409043481536314",
+        "all_cash_debits_micros": "38565734700000000",
+        "operating_grants": {
+          "requested_micros": "36073072500000000",
+          "paid_micros": "36073072500000000",
+          "unfunded_micros": "0"
+        },
+        "household_support": {
+          "requested_micros": "2492662200000000",
+          "paid_micros": "2492662200000000",
+          "unfunded_micros": "0"
+        },
+        "agency_appropriations": {
+          "requested_micros": "0",
+          "paid_micros": "0",
+          "unfunded_micros": "0"
+        }
+      },
+      "county_foreign_trade": {
+        "imports": {
+          "settled_orders": 2463,
+          "settled_micros": "1199165987600000"
+        },
+        "exports": {
+          "settled_orders": 115,
+          "settled_micros": "618554840000000"
+        },
+        "other_crossborder_settled_orders_excluded": 0
+      }
+    },
+    {
+      "period": 66,
+      "raw_file": "period-066.json",
+      "raw_sha256": "1f3de96c6026639be446ae6cda5d512598bf5e7ba4d7365f357cff2d0506a86a",
+      "hashes": {
+        "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+        "material_register_sha256": "5e253a5d89238de5ac68b27044e0ba61580579fce31a13c6e7665219ce30d12d",
+        "prior_world_sha256": "65b3b67a1db77e645c85a41b4c8810575ff46b323b7ed87392a66b12348f2701",
+        "receipts_sha256": "a4d22db0ba032f47c25e4ba7451d3856a87626154ae771e402087542893d861d",
+        "tick_sha256": "0f5e8c5bf591c22746a92b8fafefb38d0d44da0bc7e3090316dbb95a7e4a96f0",
+        "world_sha256": "d5a5b5bab6ec7f012718b6e9652374a54d437086258e89fc5259a0f5e5e2673c"
+      },
+      "food_unit": "person-period food parcel",
+      "food": {
+        "US_counties": {
+          "required_units": 334922499,
+          "fulfilled_order_units": 495286,
+          "consumed_units": 510293,
+          "unmet_units": 334412206,
+          "settled_purchase_micros": "330408445000000"
+        },
+        "foreign_counterparts": {
+          "required_units": 7812960076,
+          "fulfilled_order_units": 0,
+          "consumed_units": 0,
+          "unmet_units": 7812960076,
+          "settled_purchase_micros": "0"
+        },
+        "dependencies": {
+          "required_units": 3585979,
+          "fulfilled_order_units": 0,
+          "consumed_units": 0,
+          "unmet_units": 3585979,
+          "settled_purchase_micros": "0"
+        }
+      },
+      "US_county_public_accounts": {
+        "closing_cash_micros": "184958221946255383",
+        "opening_cash_micros": "186068198682031119",
+        "assessed_tax_micros": "408716780282254",
+        "collected_tax_micros": "408481250434754",
+        "uncollected_tax_micros": "235529847500",
+        "all_cash_credits_micros": "25597332521334210",
+        "all_cash_debits_micros": "26707309257109946",
+        "operating_grants": {
+          "requested_micros": "36073072500000000",
+          "paid_micros": "25467558925509946",
+          "unfunded_micros": "10605513574490054"
+        },
+        "household_support": {
+          "requested_micros": "2492662200000000",
+          "paid_micros": "1239750331600000",
+          "unfunded_micros": "1252911868400000"
+        },
+        "agency_appropriations": {
+          "requested_micros": "0",
+          "paid_micros": "0",
+          "unfunded_micros": "0"
+        }
+      },
+      "county_foreign_trade": {
+        "imports": {
+          "settled_orders": 804,
+          "settled_micros": "214651975490000"
+        },
+        "exports": {
+          "settled_orders": 0,
+          "settled_micros": "0"
+        },
+        "other_crossborder_settled_orders_excluded": 0
+      }
+    }
+  ]
+}

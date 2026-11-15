@@ -1,0 +1,39 @@
+{
+  "scope": "ordinary full-observer turns",
+  "timing_limit_ns": 30000000000,
+  "pixel_periods": {
+    "1": {
+      "database_marker_timeline": {
+        "unit": "monotonic nanoseconds; true transition in (lower, upper]",
+        "committed_tick_after_step": [
+          8982585966,
+          9386985491
+        ],
+        "journal_publication_after_step": [
+          35450879586,
+          35854249584
+        ],
+        "journal_after_committed_tick": [
+          26063894095,
+          26871663618
+        ]
+      },
+      "last_incomplete_ns": 36110699896,
+      "first_complete_ns": 36362389512,
+      "within_30s": false,
+      "usd": {
+        "received": "0.00",
+        "paid": "348926580.00",
+        "internal": "5766096168.20"
+      },
+      "financial_query_completed_upper_ns": 35657058664
+    }
+  },
+  "campaign": "18307cb9-5ea9-4b75-92bf-694679b7633b",
+  "foundation": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+  "periods": 1,
+  "reopens_verified": 1,
+  "gpu": "2026-11-15T22:19:54.250919Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce RTX 3060\", vendor: 4318, device: 9475, device_type: DiscreteGpu, device_pci_bus_id: \"0000:09:00.0\", driver: \"NVIDIA\", driver_info: \"550.163.01\", backend: Vulkan, subgroup_min_size: 32, subgroup_max_size: 32, transient_saves_memory: Some(false), limit_bucket: None }",
+  "requested_mode": "ordinary",
+  "terminal_source_hash": "9260a59fe2a9e322da54baecfbd7bf0a46f2938c6987fc3f5ff4bd7860c8a985"
+}

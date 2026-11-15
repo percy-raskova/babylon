@@ -1,16 +1,18 @@
 # Economic flows and company accounting on the local national campaign
 
-Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route) to open a national campaign and follow a payment from a county to a company’s books. The first measurements below use the earlier national opening. The company results begin with [the v8 opening](#the-first-company-enabled-national-opening). The [latest three rendered turns](#opening-a-restored-campaign-and-measuring-three-turns) measure how long the observer takes to show Wayne’s financial figures. The [52-period campaign](#a-fresh-national-campaign-through-52-periods) records storage and recovery on an earlier build.
+Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route) to open a national campaign and follow a payment from a county to a company’s books. The [household campaign](#five-and-twenty-years-with-births-aging-and-deaths) covers twenty model years. The [earlier economic run](#five-and-twenty-years-in-the-ordinary-national-economy) provides the fixed-population comparison. The [company comparisons](#repeating-the-company-comparisons-with-the-v9-policy) use two seeds to distinguish investment choices from equipment purchases. The [first-turn measurements](#the-first-turn-of-a-new-national-observer-campaign) record when the observer shows Wayne’s financial figures and how much storage and memory the running game uses.
 
 ## Evidence against the original plan on November 15
 
 | Delivery | What the local project demonstrates | What remains |
 | --- | --- | --- |
-| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | Repeat the live tests on the final build. |
+| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | The demographic build also reconstructed older journal periods and reopened the Wayne household. The separate database reference checks last ran on v9. |
 | Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. The inspector labels all groups outside each page and exposes selected controls through AccessKit. | Repeat the native checks on the final build. |
-| Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | Repeat the two-seed comparisons with the current policy. |
+| Companies and investment | The current policy completed the two-seed comparisons with 99, 300 and 600 companies on the same 7,463 sites. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | The ordinary twenty-year run used seed 319. Its companies made no capital contributions to members. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
-| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The latest running game stayed within its storage and memory limits through two closes. | Wayne’s first financial figures appeared in 36.565–36.817 seconds against 30. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
+| Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
+| International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
+| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The latest running game stayed within its storage and memory limits through two closes. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
 
 The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 
@@ -18,7 +20,7 @@ At eight of ten batches used, the v9 material test recorded the spare-capacity w
 
 The company measures profitability from member operating income across up to three closes. [Weight selection](../rust/crates/babylon-material-circuit/src/portfolio/strategy.rs) · [Restored company accounts](#a-parent-finances-equipment-in-oklahoma-county)
 
-The original 83 period records include 12,488 loss decisions and 149 replacement decisions. Another 1,644 used spare capacity and 254 used the fallback. None of the 14,535 decisions reached the high-demand row or authorized parent funding. The manufacturing example used its own Designed opening. [Original company comparisons](#controller-count-and-investment)
+Across 83 closes, the scale and economic-condition tests recorded 12,488 decisions under the loss rule and 149 under the replacement rule. Another 1,644 used spare capacity and 254 used the fallback. None of the 14,535 decisions reached the high-demand row or authorized parent funding. The v9 replay reproduced these counts. The manufacturing example used its own Designed opening. [Company comparisons](#controller-count-and-investment)
 
 The [ordinary national campaign](#five-and-twenty-years-in-the-ordinary-national-economy) ran through period 65 and continued through period 260. A game year has thirteen four-week periods. The national launcher measures the time from the first advance to Wayne’s three figures on screen. The save and running game each have a 10 GB limit. The earlier 52-period measurements came from a separate campaign. [Game clock](../rust/crates/babylon-kernel/src/clock/tick_clock.rs) · [Fresh and restored turn times](#the-first-turn-of-a-new-national-observer-campaign) · [Storage policy](../contracts/national_storage_qualification_v6.json)
 
@@ -60,6 +62,109 @@ Of the 379 sites that planned production, 364 funded zero hours of attendance an
 | Latin America and Caribbean food | 7,866,051 | $232.92 billion | $880,997,712 | Paid the full wage bill and received all required utility. Its provider accepted all 7,866,051 units of business services. The entire order expired without delivery. |
 
 These receipts identify the constraints at this close. Explaining how sites ran down their cash and how providers lost the ability to fill orders requires tracing earlier periods. The [site and provider receipts](economic-flows-qualification-2026-11-14-assets/national-production-constraints-period-66.json) include cash at payroll and quantities requested, admitted and performed. The full 382-site replay is on the media drive in `babylon-recovery/per293-ordinary-v9-seed319-p66-production`. [Production and payroll order](../rust/crates/babylon-material-circuit/src/transition/state.rs)
+
+The first-year replay locates an earlier break. For both seeds, business-service providers accepted 12,954,991,610 units and performed 4,929,170,752 at the first close. At tick 2 they accepted 3,114,594,519 units and performed zero. Across ticks 2–13, more than 15.87 billion admitted units expired for each seed.
+
+At tick 2, all 204 providers with accepted orders had planned work, capacity, materials and enough labor hours for a batch. All 204 received zero utility units. Each business-service batch needs one unit of utility. The full receipts cover 1,075 providers each period. [Two-seed service receipts](economic-flows-qualification-2026-11-14-assets/business-services-first-year.csv)
+
+The 204 business-service providers requested 316,278,166 utility units in period 2. Their spendable cash funded zero units after the payroll reserve. Utility producers still made 12,895,621,600 units. They delivered 8,149,100,241 to households and 4,746,506,908 to other sites. The remaining 14,451 units expired.
+
+One Los Angeles provider accepted 1,805,346 units of business-service orders. It requested 174,264 utility units at $73.125 each. Its payroll cash floor was $3,338,860,800. Its spendable balance fell short of one utility unit. Its own utility supplier delivered 13,259,501 units to other buyers. [Two-period utility, customer orders and payment capacity](economic-flows-qualification-2026-11-14-assets/business-services-utility-p1-p2.json) · [Cash available to buy a service](../rust/crates/babylon-material-circuit/src/services/admission.rs)
+
+### Household reproduction, public budgets and trade
+
+Households in the ordinary national economy buy food, materials and four services. A paid food handoff can add to the pantry. Actual consumption draws down that stock. A shortfall adds provisioning time and reduces the time available for voluntary activity.
+
+Workplace attendance has first claim on the household time budget. The next period's staffing uses the graph's employed and reserve counts. The national policy captures household purchasing ceilings and recurring support from opening counts. [National needs and prices](../content/scenarios/national/defines.toml) · [Household and retail policies](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Household time](../ai/decisions/ADR270_household_time_and_material_organizer.yaml)
+
+Wages and positive site operating income can generate tax receipts at the Designed national rate of 15%. Each public account can spend its opening cash within its appropriation and cash floor. It pays authorized requests in priority order. Taxes collected later in the period can finance allocations at the next close.
+
+A provider grant can fund actual attendance and service delivery. The recurring requests for provider grants and reserve-household food support use opening conditions. The ordinary economic replay used fiscal accounts without the playable scenario's optional Wayne police appropriation. [Public funding at close](../rust/crates/babylon-material-circuit/src/financial/close.rs) · [Opening allocation policy](../rust/crates/babylon-persistence/src/national_economy/opening/financial.rs)
+
+Domestic and foreign producers can trade through accepted orders, funded reserves, finite freight, delivery and settlement. The scenario captures twelve foreign economic counterparts. Six US dependencies have a separate geographic identity. The ordinary campaign has no executable war event. The design also distinguishes geopolitical actors from economic markets. Iran and Israel have separate political roles in the design and share the West Asia and North Africa market in the economic opening. [National markets](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Trade receipt audit](../rust/crates/babylon-persistence/src/qualification_audit/trade.rs) · [International design decisions](../docs/gameplay/research/15-international-trade-and-unequal-exchange-plan.md)
+
+The replay matched six saved identities at each of four closes. US county households required 334,922,499 food parcels each period. A pantry withdrawal can make consumption exceed purchases. Imports and exports below include all settled procurement goods between US counties and foreign markets. [Four closes with exact quantities, payments and hashes](economic-flows-qualification-2026-11-14-assets/ordinary-household-trade-four-closes.json)
+
+| Tick | US food parcels purchased and delivered | US food parcels consumed | US county public support paid to households | Settled import orders | Settled export orders |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 334,922,483 | 334,922,491 | $2.493 billion | 0 | 0 |
+| 2 | 334,922,479 | 334,922,491 | $2.493 billion | 1,604 | 108 |
+| 3 | 252,944,789 | 334,922,491 | $2.493 billion | 2,463 | 115 |
+| 66 | 495,286 | 510,293 | $1.240 billion | 804 | 0 |
+
+At tick 66 US county public accounts collected $408.48 million and closed with $184.96 billion in cash. They paid $25.47 billion in operating grants. The 804 import orders settled for $214.65 million. Foreign and dependency households consumed zero food parcels in this close. The preserved four-period evidence and its twelve file checksums are on the media drive in `babylon-recovery/per293-ordinary-v9-household-circuit`.
+
+### What D–P–D′ adds to the national campaign
+
+The Director wants births, aging and deaths alongside household reproduction. Babylon's D–P–D′ lifecycle follows people from early dependence through the productive phase into later dependence. Its companion P–D–P′ circuit follows today’s workers raising the next generation. Paid work, unpaid care and public support also sustain older dependents. Employment, unemployment and caregiving can vary within a lifecycle phase. [Lifecycle design](../docs/concepts/dpd-lifecycle-circuit.rst) · [Original specification](../specs/030-dpd-lifecycle-circuit/spec.md)
+
+The local engine executed the existing lifecycle rule over four fixture counties in one tick. The resulting world hash was `639971de651f439c703d00a7bd52eaca2a089da409fe8b01284ab9cf92873a3a`. The national capture loads a separate economic rule pack. The 65- and 260-period runs give the economic baseline before demographic change.
+
+The earlier fixture stores fractional people and applies its coefficients once per tick. The national campaign now tracks whole residents. Each tick closes four weeks of births, deaths, aging, purchases and time use. [Executable lifecycle](../rust/crates/babylon-tick/content/rules/lifecycle.bsl) · [County fixture](../rust/crates/babylon-tick/content/scenarios/lifecycle-conformance.bscn) · [National capture](../rust/crates/babylon-persistence/src/economic_catalog/preset.rs)
+
+The 2020–2024 ACS county source reconciles 334,922,499 residents across the 3,144 domestic counties. Of these, 64,740,863 were under 16 and 8,776,971 were 16–17. Another 203,771,037 were 18–64 and 57,633,628 were 65 or older. The 16–17 split uses the independent age-16-plus control. The source builder checks it against each county’s published age-15–17 group. [Age sources and field definitions](../tools/national_age_reference_2024_sources.json) · [Rebuilt opening totals](../src/babylon/data/reference/economy/national_age_reference_2024.metadata.json)
+
+Wayne closed two periods with its organizer and City PD active. The national scenario spreads the initial residents across the remaining birthdays in each age band. Each survivor keeps the date of later age crossings.
+
+At the first close, its households with earnings and no business ownership recorded 1,016 births and 936 deaths. Their next food need rose by exactly 80 parcels. The second close delivered 35 fewer parcels than residents consumed. Their pantry supplied the difference. [Playable campaign check](../rust/crates/babylon-persistence/tests/national_household_lifecycle.rs)
+
+| Four-week period | Residents at opening | Births | Deaths | Residents at close | Food bought | Food consumed |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1,196,378 | 1,016 | 936 | 1,196,458 | 1,196,378 | 1,196,378 |
+| 2 | 1,196,458 | 1,017 | 940 | 1,196,535 | 1,196,423 | 1,196,458 |
+
+The full observer opened the same Wayne account in a saved national economy. In period 2, the account received $1,220,643,888 in wages and $10,874,360 in public income support for its 456,528 households. Those households paid $429,446,288 for goods and $738,620,503.35 for services. Independent settlement queries matched all three totals in each period.
+
+The period-2 receipt showed 34 units of unmet public provision and 1,196,458 units of unmet household services. The households allocated 29,217,792 hours to unpaid provisioning. A new client and runtime opened the committed period on a GeForce RTX 3060. The full observer read all thirteen groups on the household screen. Postgres denied the restricted reader access to the account. [Period-2 receipt](economic-flows-qualification-2026-11-14-assets/wayne-household-period-2-v10.json) · [Native household screen](economic-flows-qualification-2026-11-14-assets/wayne-household-period-2-v10.png)
+
+The local recovery directory `babylon-recovery/per293-wayne-household-v10-5efafb84` holds the account reports, screen captures and the 57,451,949-byte database backup. The native session reopened the original committed database. A separate `pg_restore` pass decoded the backup. Its SHA-256 is `ee971181081a97902022f53d7e74801d2682fec771f1617663d9d86cf99a143a`.
+
+Five tests passed on a fresh local Postgres 17.11 instance with the demographic build. Three tests checked a shared read snapshot, historical reconstruction beyond thirteen periods, and national accounts with funded household receipts. Two more checked an inspection copy and an organizer command during a financial write. The Python suite passed 4,180 tests and skipped 18.
+
+The national scenario uses Designed birth and death rates. It uses Designed ages for foreign markets and US dependencies. Surviving residents born during play reach ages 16, 18 and 65 after 208, 234 and 845 four-week intervals. An eligible resident can contribute time. Employers still need a funded position to pay wages.
+
+Births add residents to an existing household budget. The scenario has no rule for a new household to form or migrate. Shortages increase unpaid provisioning hours. Public support reaches households through actual transfers. The national model has no pension-specific payment or link from unmet food to mortality. [National scenario values](../content/scenarios/national/defines.toml) · [Material household transition](../rust/crates/babylon-material-circuit/src/household_lifecycle/advance.rs)
+
+In the ordinary national replay, the Wayne aid donor had eight residents through tick 119. One resident aged 65 or older died in tick 120. At tick 121 the donor needed seven food parcels and received none. The donor's unpaid provisioning fell from 416 to 396 hours. Its time available for contributions fell from 1,248 to 1,044 hours. The donor contributed zero hours in both periods.
+
+Wayne’s organizer can read the time that a consenting participant discloses. The ordinary economic replay exercises the donor’s material account. It contains no player inquiry or aid command. [Authorized time and provisioning reports](../rust/crates/babylon-tick/src/material_world/organizer_reports.rs) · [Organizer's available resources](../rust/crates/babylon-client/src/organizer/workspace.rs)
+
+### Five and twenty years with births, aging and deaths
+
+The ordinary national campaign used seed 319 and 1,601 household budgets. Each close used the previous population to calculate food needs. Ages, births, deaths and transfers reconciled independently for US counties, dependencies and foreign counterparts in all 260 periods. New processes reopened both the five-year and twenty-year saves. The v9 and v10 captures differ in their national policy and the new county age data.
+
+| Model year | US residents at year-end | US residents aged 65+ | US food parcels consumed during year | Share of US food need met | Recipe batches completed across all markets | Batches with fixed population |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 335,108,503 | 59,489,267 | 1,394,204,719 | 32.01% | 13,642,406,653 | 13,647,847,887 |
+| 5 | 334,995,027 | 65,990,151 | 8,818,711 | 0.202% | 521,850,186 | 528,137,118 |
+| 20 | 325,442,483 | 80,425,089 | 1,875,088 | 0.044% | 54,893,672 | 54,764,353 |
+
+![US county residents by age and share of annual food needs met over twenty model years](economic-flows-qualification-2026-11-14-assets/national-household-years-v10.png)
+
+US counties recorded 68,091,542 births and 77,571,558 deaths in twenty years. Of the 274,329 babies born in the first tick, 272,182 reached 16 in tick 209. Then 271,716 reached 18 in tick 235. These residents enter the working-age group. A new reserve member, job or wage needs its own labor decision.
+
+In year five, US public accounts collected $6.12 billion in taxes and paid $17.58 billion in household income support. In year twenty, they collected $614.23 million and paid $4.83 billion. The annual table includes wages, grants, taxes, trade payments, food, equipment and production. [Twenty annual balances](economic-flows-qualification-2026-11-14-assets/national-household-years-v10.csv)
+
+Each run recorded 25,740 company decisions. The counts by choice matched in 259 of 260 periods. At tick 157 all 99 companies deferred investment in the demographic run. The fixed-population control recorded 98 deferrals and one modest expansion.
+
+The five-year save reopened with world hash `9ab00c12b584bf84b22907819e1cce1ab1099b3ea76c125236c48f8cfbfbb7b5`. The twenty-year save reopened with `da5bca935a47cbcc3e1285a90d7df207ff06baad9953cded0e25ab2d38f90537`.
+
+### One freight closure between Kern County and Canada
+
+Two campaigns resumed from the same tick 1 checkpoint. Both contained a funded order from a Canadian food distributor to a Kern County supplier. In one campaign, the border lane had zero grams available for new reservations during tick 2. Its ordinary four-week capacity was 500 billion grams. Both branches kept their previous bookings and the same capacity for later periods.
+
+| Order and buyer outcomes | Ordinary crossing | One-period closure |
+| --- | ---: | ---: |
+| Tick 2 delivery already in transit | 939,977 parcels | 939,977 parcels |
+| Tick 2 payment to the supplier | $263,193,560 | $263,193,560 |
+| Tick 2 new shipment | 897,418 parcels | 0 |
+| Tick 3 payment to the supplier | $251,277,040 | $0 |
+| Tick 3 total food inventory at the Canadian distributor | 51,490,692 parcels | 50,593,274 parcels |
+| Tick 3 dispatch after the lane reopened | 2,959 parcels | 3,286 parcels |
+
+The buyer kept the unpaid amount in escrow. Neither branch refunded the order. This distributor sold 39,762,666 parcels to Canadian households in tick 3 in both runs. Existing inventory covered those purchases. The comparison changed only available freight capacity. The ordinary campaign still needs a governed political decision to start a war or close a border. [Both branches, dated payments and inventories](economic-flows-qualification-2026-11-14-assets/national-household-canada-crossing-v10.json)
+
+The existing blockade design requires participants with the means to obstruct a particular route, shipment class or access point. It ends when the obstruction clears. The economic replay can already show what a blocked route costs each party. Carrying out a blockade in play needs an actor, a target and a recorded decision. [Blockade design](../docs/superpowers/specs/2026-08-25-neel-integration-program-design.md) · [Practice targets](../rust/crates/babylon-practice-contract/src/intent.rs)
 
 ## Money and recorded labor in the v7 campaign
 
@@ -453,6 +558,10 @@ The writer spent 27.315 seconds on the first publication. This included 4.968 se
 
 The v9 national campaign `9945464b-5962-4960-85f6-0bac750fbf76` repeated the advance from period 0 on the RTX 3060. The material writer took 8.844 seconds. Financial publication took 27.075 seconds, including 4.817 seconds reading the source and 10.834 seconds publishing labor. Wayne’s three figures matched the independent observer query between 36.565 and 36.817 seconds after the advance. The 30-second target remains open.
 
+The demographic campaign `18307cb9-5ea9-4b75-92bf-694679b7633b` used the same GPU for its first turn. Its first close committed in 8.983–9.387 seconds. The journal appeared in 35.451–35.854 seconds. The native observer displayed the three Wayne figures in 36.111–36.362 seconds. An independent query matched all three amounts, and the reopened save matched the committed world. [First-turn measurements](economic-flows-qualification-2026-11-14-assets/national-household-first-turn-v10.json)
+
+The timed run and the two-period memory run used the [qualification database settings](../docker/postgres/postgresql.ci.conf), including 512 MB of shared buffers. The normal local launcher starts the database with [the local Compose settings](../docker/postgres/postgresql.conf), which specify 4 GB of shared buffers.
+
 Postgres refreshed statistics on the first period’s territory membership before observers read it. Seven Archive county queries completed in 44–76 milliseconds. An earlier run had two five-second timeouts. Reopening the v9 save reproduced the first-period world from the twenty-year material run.
 
 A separate fresh campaign at revision `ce2c266ed` measured storage through the first two closes. Period 1 used 39,337,984 bytes, down from 76,595,200 in the earlier campaign. Period 2 used 13,336,576 bytes. Both fit the 40,000,000-byte limit and reopened with identical committed world and register hashes. The first two financial publications in this run took 25.620 and 13.832 seconds.
@@ -493,6 +602,8 @@ The retained Michigan road capture contains 7,085 selected edges and 83 terminal
 
 The capture also records SHA-256 `66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4` for the compressed file `michigan-county-paths-v6.json.gz`. Compare the compressed bytes of a recovered copy with that digest.
 
+The matrix carries the scenario digest from its original capture. A later maintenance change updated that digest in the physical network file. Both captures have the same graph, transport settings, atlas and 83 terminals. The freight reader now checks a recovered copy of this specific matrix against its original source identities. Its full 83 × 83 distance table remains unavailable. [Maintenance capture record](maintenance-qualification-2026-09-13.md) · [Freight reference reader](../rust/crates/babylon-persistence/src/freight_access/reference.rs)
+
 An executable directed-road case exercised access restrictions, asymmetric distance and selection with a missing matrix. Captured corridors remain inspectable when reference distances are unavailable. Airports appear as facility locations. Complete Great Lakes reachability and observed air services remain unqualified. The [source manifest](../tools/michigan_road_network_source_manifest.json) identifies the exact extract for a future rebuild.
 
 ## Controller count and investment
@@ -527,6 +638,22 @@ The protected-cash stress raised the existing operating floor for each member in
 At period 2 both seeds recorded demand for 2,843 equipment units. Each seed had 63 member processes without enough spendable cash for one unit. All companies deferred across the first four closes for both seeds. The following closes admitted zero units. With the ordinary operating floors in the matched control, the same seeds bought 15 and 0 units.
 
 The [period records](economic-flows-qualification-2026-11-14-assets/national-company-experiments.jsonl) show the capture identities, world hashes, observed conditions and timing samples. The [portfolio decision table](economic-flows-qualification-2026-11-14-assets/national-company-portfolio-decisions.csv) shows how many companies qualified for each choice, gave it positive weight and selected it. It also records purchases under each preceding choice.
+
+### Repeating the company comparisons with the v9 policy
+
+The v9 tests repeated 93 closes under seeds 37 and 319. Eighty-three closes covered company count and economic conditions. Ten covered protected operating cash. The tests counted 15,525 company decisions across runs, including one three-period control that both tests used.
+
+For every matched close, the four portfolio counts, equipment units authorized and units bought under the preceding decision matched v8. The two versions produced different world hashes at all 93 closes. All nine reports pairing companies across seeds also reproduced the earlier counts and the first named example of a different choice. The [comparison by period](economic-flows-qualification-2026-11-14-assets/national-company-comparisons-v9.csv) gives both world hashes and all six quantities.
+
+| Companies | Median time to prepare one tick | Median time to recompute the investment policy | Different choices under the two seeds / pairs with the same evidence and alternatives |
+| ---: | ---: | ---: | ---: |
+| 99 | 1.961 s | 1.377 ms | 5 / 14 |
+| 300 | 2.022 s | 1.145 ms | 4 / 14 |
+| 600 | 2.060 s | 1.190 ms | 4 / 14 |
+
+The timing rows use three ordinary closes at each seed. In the five-period shortage case, member sites bought 15 equipment units under seed 37 and zero under seed 319. With exhausted equipment they bought 98,371 and 100,651 units. The protected-cash case admitted zero units under both seeds.
+
+Across the nine seed comparisons, companies chose different portfolios in 57 of 145 pairs with the same operating evidence and more than one positive-weight option. The media drive holds the native logs, frozen v8 inputs and a verifier in `babylon-recovery/per293-national-company-comparison-v9`. The verifier reproduced the comparison CSV byte for byte.
 
 ### A parent finances equipment in Oklahoma County
 

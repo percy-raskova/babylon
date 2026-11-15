@@ -1,0 +1,115 @@
+{
+  "campaign": "5efafb84-10df-41ea-9451-51b8c7e2020d",
+  "cash": {
+    "goods_purchases_settled_micros": "429446288000000",
+    "service_purchases_settled_micros": "738620503350000",
+    "wages_accrued_micros": "1220643888000000",
+    "wages_paid_micros": "1220643888000000"
+  },
+  "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+  "goods": [
+    {
+      "consumed": 456528,
+      "good": "materials",
+      "purchased": 456484,
+      "required": 456528,
+      "unit": "supplies bundle",
+      "unmet": 0
+    },
+    {
+      "consumed": 1196458,
+      "good": "food",
+      "purchased": 1196423,
+      "required": 1196458,
+      "unit": "person-period food parcel",
+      "unmet": 0
+    }
+  ],
+  "household": "3e2788448c4676d1468036aec970c2eb5aa5ecaebaa0cba1f7905f1153d1c867",
+  "income_support": [
+    {
+      "paid_micros": "10874360000000",
+      "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+      "requested_micros": "10874360000000",
+      "unfunded_micros": "0"
+    }
+  ],
+  "period": 2,
+  "population": {
+    "births": 1017,
+    "closing": {
+      "age_16_17": 33446,
+      "age_18_64": 752773,
+      "age_65_plus": 209643,
+      "under_16": 200673
+    },
+    "closing_households": 456528,
+    "deaths": {
+      "age_16_17": 1,
+      "age_18_64": 256,
+      "age_65_plus": 680,
+      "under_16": 3
+    },
+    "opening": {
+      "age_16_17": 33796,
+      "age_18_64": 752946,
+      "age_65_plus": 209092,
+      "under_16": 200624
+    },
+    "opening_households": 456528,
+    "reached_16": 965,
+    "reached_18": 1314,
+    "reached_65": 1231
+  },
+  "receipts_sha256": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272",
+  "residence": "county:26163",
+  "services": [
+    {
+      "delivered": 1196458,
+      "good": "utility",
+      "required": 1196458,
+      "satisfied": 1196458,
+      "unit": "utility service unit",
+      "unmet": 0
+    },
+    {
+      "delivered": 1196424,
+      "good": "public_provision",
+      "required": 1196458,
+      "satisfied": 1196424,
+      "unit": "person-period provision",
+      "unmet": 34
+    },
+    {
+      "delivered": 456528,
+      "good": "housing",
+      "required": 456528,
+      "satisfied": 456528,
+      "unit": "household-period housing",
+      "unmet": 0
+    },
+    {
+      "delivered": 0,
+      "good": "household_services",
+      "required": 1196458,
+      "satisfied": 0,
+      "unit": "person-period service",
+      "unmet": 1196458
+    }
+  ],
+  "tick_content_sha256": "f04238e75909adcaa522a4970789699d0b8c70983dd55ea36448db29496a65fa",
+  "time": {
+    "attended": 50860162,
+    "available_at_open": 223066816,
+    "available_for_contribution": 128379966,
+    "contribution_used": 0,
+    "protected": 14608896,
+    "protected_unresolved": 0,
+    "unpaid_allocated": 29217792,
+    "unpaid_requested": 29217792,
+    "unpaid_unresolved": 0
+  },
+  "version": 1,
+  "workforce_attrition": [],
+  "world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67"
+}

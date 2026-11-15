@@ -1,0 +1,191 @@
+{
+  "branches": [
+    {
+      "P1_buyer_escrow_funded_micros": "2781969960000000",
+      "P1_quantity_admitted": 9935607,
+      "actual_governed_register_sha_differs": false,
+      "opening_available_grams": 500000000000,
+      "opening_freight_lots": 2767,
+      "opening_target_order_in_transit": 939977,
+      "opening_world": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+      "periods": [
+        {
+          "admitted_procurement": null,
+          "buyer_food_use": {
+            "local_household_sales": 39746936,
+            "local_site_sales": 0,
+            "recipe_input_quantity": 0,
+            "routed_shipments": 0
+          },
+          "closing_buyer_cash_micros": "32567679338000000",
+          "closing_buyer_stock": 60549117,
+          "closing_order": {
+            "delivered": 939977,
+            "ordered": 9935607,
+            "shipped": 1837395
+          },
+          "closing_seller_cash_micros": "2933540116000000",
+          "next_opening_available_grams": 500000000000,
+          "next_opening_period": 3,
+          "opening_buyer_stock": 69549253,
+          "period": 2,
+          "receipt": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272",
+          "requested_procurement": null,
+          "target_buyer_funded_reserve_micros": "0",
+          "target_buyer_refund_micros": "0",
+          "target_closing_unspent_escrow_micros": "2518776400000000",
+          "target_order_delivered": 939977,
+          "target_order_dispatched": 897418,
+          "target_order_realized": 939977,
+          "target_order_settled_micros": "263193560000000",
+          "world": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67",
+          "world_dispatch_rows": 2000,
+          "world_realized_recipe_batches": 928422620
+        },
+        {
+          "admitted_procurement": null,
+          "buyer_food_use": {
+            "local_household_sales": 39762666,
+            "local_site_sales": 0,
+            "recipe_input_quantity": 0,
+            "routed_shipments": 0
+          },
+          "closing_buyer_cash_micros": "32628117235745495",
+          "closing_buyer_stock": 51490692,
+          "closing_order": {
+            "delivered": 1837395,
+            "ordered": 9935607,
+            "shipped": 1840354
+          },
+          "closing_seller_cash_micros": "3433390906000000",
+          "next_opening_available_grams": 500000000000,
+          "next_opening_period": 4,
+          "opening_buyer_stock": 60549117,
+          "period": 3,
+          "receipt": "907bf75ad6e22b11d41a8b8479d2e9ffa235df038a8d5f985bee56dcb0951a53",
+          "requested_procurement": null,
+          "target_buyer_funded_reserve_micros": "0",
+          "target_buyer_refund_micros": "0",
+          "target_closing_unspent_escrow_micros": "2267499360000000",
+          "target_order_delivered": 897418,
+          "target_order_dispatched": 2959,
+          "target_order_realized": 897418,
+          "target_order_settled_micros": "251277040000000",
+          "world": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25",
+          "world_dispatch_rows": 2415,
+          "world_realized_recipe_batches": 907957297
+        }
+      ],
+      "placed_period": 1,
+      "prior_bookings": 0,
+      "reduced": false
+    },
+    {
+      "P1_buyer_escrow_funded_micros": "2781969960000000",
+      "P1_quantity_admitted": 9935607,
+      "actual_governed_register_sha_differs": true,
+      "opening_available_grams": 0,
+      "opening_freight_lots": 2767,
+      "opening_target_order_in_transit": 939977,
+      "opening_world": "1c1fafa226906ed7dc481bd57f5ea97d9179f26c51f174345939dda4b0bb4b0c",
+      "periods": [
+        {
+          "admitted_procurement": null,
+          "buyer_food_use": {
+            "local_household_sales": 39746936,
+            "local_site_sales": 0,
+            "recipe_input_quantity": 0,
+            "routed_shipments": 0
+          },
+          "closing_buyer_cash_micros": "32567679338000000",
+          "closing_buyer_stock": 60549117,
+          "closing_order": {
+            "delivered": 939977,
+            "ordered": 9935607,
+            "shipped": 939977
+          },
+          "closing_seller_cash_micros": "2933540116000000",
+          "next_opening_available_grams": 500000000000,
+          "next_opening_period": 3,
+          "opening_buyer_stock": 69549253,
+          "period": 2,
+          "receipt": "110d8dcce33574cb74384f7a32a55343a185d3dbe1631ff91f2c4f7050fe4949",
+          "requested_procurement": null,
+          "target_buyer_funded_reserve_micros": "0",
+          "target_buyer_refund_micros": "0",
+          "target_closing_unspent_escrow_micros": "2518776400000000",
+          "target_order_delivered": 939977,
+          "target_order_dispatched": 0,
+          "target_order_realized": 939977,
+          "target_order_settled_micros": "263193560000000",
+          "world": "6c42ad216c218354c580f70fa411dd21dbc699052f79bf4cf350bc529e32ee2e",
+          "world_dispatch_rows": 1960,
+          "world_realized_recipe_batches": 928422620
+        },
+        {
+          "admitted_procurement": null,
+          "buyer_food_use": {
+            "local_household_sales": 39762666,
+            "local_site_sales": 0,
+            "recipe_input_quantity": 0,
+            "routed_shipments": 0
+          },
+          "closing_buyer_cash_micros": "32628117675078378",
+          "closing_buyer_stock": 50593274,
+          "closing_order": {
+            "delivered": 939977,
+            "ordered": 9935607,
+            "shipped": 943263
+          },
+          "closing_seller_cash_micros": "3182113866000000",
+          "next_opening_available_grams": 500000000000,
+          "next_opening_period": 4,
+          "opening_buyer_stock": 60549117,
+          "period": 3,
+          "receipt": "ea7b8cfc7287735c619b4c286e16fb03265e57fec0c433d41ab931d4675cc7f5",
+          "requested_procurement": null,
+          "target_buyer_funded_reserve_micros": "0",
+          "target_buyer_refund_micros": "0",
+          "target_closing_unspent_escrow_micros": "2518776400000000",
+          "target_order_delivered": 0,
+          "target_order_dispatched": 3286,
+          "target_order_realized": 0,
+          "target_order_settled_micros": "0",
+          "world": "7fd3b2ec8e5fe64201f9a7ebd08812ae0c79d5803f8118498074fef80f05b75f",
+          "world_dispatch_rows": 2412,
+          "world_realized_recipe_batches": 907957231
+        }
+      ],
+      "placed_period": 1,
+      "prior_bookings": 0,
+      "reduced": true
+    }
+  ],
+  "buyer_label": "canada: distribution_transport",
+  "capture_sha256": "63c79b558afb83a63300eda69363e53c1d65a77944270a42224326781e351bf3",
+  "corridor": "14a7f3421cdf08b1c6501a3d8cec47b20252a68477ec9c4fb92926daca2cf9d3",
+  "experiment": "One-period reduction to zero of one corridor’s unreserved P2 room in an experimental state admitted from the verified P1 close; the ordinary capture has no player action for this intervention.",
+  "gross_grams_per_period": 500000000000,
+  "historical_v9_order_id": "7431cc9ca3a24aa147a1c6d4323d34c9d35e880a8172460aa3823e2aac6c3b3c",
+  "pool_source_id": "lane|border:3004|foreign:canada|border",
+  "route_id": "f0ef41ad4024aa088916dd9b1ec81f067f6e496cfa46f24b4679673d77a09282",
+  "scenario": "plain NationalEconomy seed 319",
+  "seller_label": "representative food — Kern County/AboveCellReserveRate",
+  "target_v10_baseline_settlement": {
+    "buyer_location": "foreign:canada",
+    "buyer_site": "d026c99074a46e70baacef4bae53290de797c342482197f8ae6d723fc0c7cb08",
+    "delivered_and_realized_units": 897418,
+    "direction": "exports",
+    "good": "food",
+    "order": "7431cc9ca3a24aa147a1c6d4323d34c9d35e880a8172460aa3823e2aac6c3b3c",
+    "paid_micros": "251277040000000",
+    "placed_period": 1,
+    "settlement_ordinals": [
+      1172
+    ],
+    "supplier_location": "county:06029",
+    "supplier_site": "097cfb3a2318e5871ffbbb4beb19f7bedca7c6c1e151d612bdd3a6a34a647126",
+    "unit": "person-period food parcel",
+    "unit_price_micros": "280000000"
+  }
+}

@@ -1,6 +1,7 @@
 //! A company-enabled capture overlays the same generated economic workplaces and workforce.
 use babylon_graph::stable_element::StableElementKey;
 use babylon_graph::substrate::GraphSubstrate;
+use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{AccountId, CircuitAccounting, MaterialCircuitState, SiteId};
@@ -71,6 +72,7 @@ struct OriginalSites {
     staffing: Vec<ResidentStaffingPoolSeed>,
     claims: BTreeMap<(SiteId, AccountId), u64>,
     capital: BTreeMap<SiteId, i128>,
+    floors: BTreeMap<SiteId, Currency>,
 }
 
 fn original_sites(input: EconomicCatalogInput) -> OriginalSites {
@@ -106,6 +108,12 @@ fn original_sites(input: EconomicCatalogInput) -> OriginalSites {
         staffing: opening.staffing.clone(),
         claims: source_claims,
         capital: source_capital,
+        floors: opening
+            .institutions
+            .distributions
+            .iter()
+            .map(|policy| (policy.issuer_site_id, policy.cash_floor))
+            .collect(),
     }
 }
 
@@ -119,6 +127,7 @@ fn check_member_cash_and_claims(
         staffing,
         claims: prior_claims,
         capital: prior_capital,
+        floors,
     } = original;
     assert_eq!(finances.sweep_bps, 1000);
     assert_eq!(finances.treasuries.len(), 99);
@@ -130,8 +139,11 @@ fn check_member_cash_and_claims(
     for site in &mut sites {
         if let Some(entry) = auditors.get(&site.site_id) {
             assert_eq!(entry.original_cash, site.opening_cash);
-            let excess =
-                (entry.original_cash.micro_units() - entry.cash_floor.micro_units()).max(0);
+            let floor = floors
+                .get(&site.site_id)
+                .expect("source distribution policy");
+            assert_eq!(entry.cash_floor, *floor);
+            let excess = (site.opening_cash.micro_units() - floor.micro_units()).max(0);
             assert_eq!(entry.swept.micro_units(), excess / 10);
             assert_eq!(
                 entry.remaining_cash.micro_units(),

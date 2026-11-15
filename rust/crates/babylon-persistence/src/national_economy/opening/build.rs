@@ -263,7 +263,6 @@ impl<'a> Builder<'a> {
             .policies
             .aid_mandates
             .clone_from(&builder.aid.mandates);
-        let detail = super::detail::partition(&builder, &builder.aid)?;
         let finances = companies
             .as_ref()
             .zip(policy.companies)
@@ -278,6 +277,8 @@ impl<'a> Builder<'a> {
             })
             .transpose()
             .map_err(NationalOpeningError::Treasury)?;
+        // The background workplace rows report each site's cash after its opening transfer.
+        let detail = super::detail::partition(&builder, &builder.aid)?;
         Ok(NationalOpening {
             finances,
             companies,

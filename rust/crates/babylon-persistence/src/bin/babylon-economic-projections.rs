@@ -1,5 +1,5 @@
 //! Independent local observer-session publisher for committed economic projections.
-use babylon_material_circuit::CompanyId;
+use babylon_material_circuit::{CompanyId, FinalDemandPrincipalId};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{JournalQueue, JournalQueueError, MoneyJournalWriter};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
@@ -21,6 +21,7 @@ const RETRY: Duration = Duration::from_secs(5);
 enum Command {
     Sweep(CampaignId),
     CompanyOpening(CampaignId),
+    HouseholdPeriod(CampaignId, u64, FinalDemandPrincipalId),
     CompanyDecision(CampaignId, u64, CompanyId),
     CompanyPeriod(CampaignId, u64),
     PublishedCompanyPeriod(CampaignId, u64),
@@ -79,6 +80,15 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
         [watch, pipe] if watch == "watch-database" && pipe == "--session-stdin" => {
             Ok(Command::WatchSession)
         }
+        [command, campaign_flag, id, period_flag, period, household_flag, household]
+            if command == "household-period" && campaign_flag == "--campaign"
+                && period_flag == "--period" && household_flag == "--household" =>
+        {
+            let tick: u64 = period.parse().map_err(|_| "period_refused")?;
+            if tick == 0 || i64::try_from(tick).is_err() { return Err("positive_period_required"); }
+            let household = policy::canonical_digest(household).map_err(|_| "household_refused")?;
+            Ok(Command::HouseholdPeriod(campaign(id)?, tick, FinalDemandPrincipalId::from_bytes(household)))
+        }
         [command, campaign_flag, id, period_flag, period, company_flag, company]
             if command == "company-decision" && campaign_flag == "--campaign"
                 && period_flag == "--period" && company_flag == "--company" =>
@@ -110,7 +120,7 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
             Ok(Command::Sweep(campaign(value)?))
         }
         [trace, options @ ..] if trace == "labor-trace" => labor_arguments(options),
-        _ => Err("use company-decision --campaign <uuid> --period <n> --company <hex>, company-opening --campaign <uuid>, company-period --campaign <uuid> --period <n> [--published], watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
+        _ => Err("use household-period --campaign <uuid> --period <n> --household <hex>, company-decision --campaign <uuid> --period <n> --company <hex>, company-opening --campaign <uuid>, company-period --campaign <uuid> --period <n> [--published], watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
 
     }
 }
@@ -238,6 +248,13 @@ fn run(command: Command) -> Result<(), String> {
         return emit_labor_trace(&observer, campaign, first, last);
     }
     match command {
+        Command::HouseholdPeriod(campaign, period, household) => {
+            return write_report(
+                &observer
+                    .household_period(campaign, period, household)
+                    .map_err(|error| error.to_string())?,
+            )
+        }
         Command::CompanyDecision(campaign, period, company) => {
             return write_report(
                 &observer

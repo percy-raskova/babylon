@@ -16,6 +16,7 @@ use crate::economic_catalog::{
     CatalogAccounting, CatalogCapacity, CatalogLogistics, CatalogOpeningOrders, CatalogPolicies,
     EconomicOpening, EconomicSiteSeed,
 };
+use crate::national_ages::NationalAgeReference;
 use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
 use crate::national_household_allocation::{HouseholdAllocationError, HouseholdBudgetKey};
@@ -134,6 +135,7 @@ pub(in crate::national_economy) struct Builder<'a> {
 #[derive(Clone, Copy)]
 pub struct NationalOpeningPolicy<'a> {
     pub policy: &'a NationalGamePolicy,
+    pub ages: Option<&'a NationalAgeReference>,
     pub source_hash: [u8; 32],
 }
 
@@ -154,6 +156,7 @@ pub fn build_national_opening(
     let NationalOpeningPolicy {
         policy,
         source_hash: policy_source_hash,
+        ages,
     } = captured_policy;
     if u64::from(transport.period_days()) != policy.period_days {
         return Err(NationalOpeningError::Policy);
@@ -191,13 +194,24 @@ pub fn build_national_opening(
         &mut allocation,
         policy_source_hash,
     )?;
-    builder.finish(
+    let mut opening = builder.finish(
         counties,
         world,
         allocation,
         &household_budgets,
         &time_controls,
-    )
+    )?;
+    match (&policy.household_lifecycle, ages) {
+        (Some(terms), Some(reference)) => super::lifecycle::wire(
+            &mut opening,
+            reference,
+            terms,
+            policy.retailer_buffer_periods,
+        )?,
+        (None, None) => {}
+        _ => return Err(NationalOpeningError::SourceScope),
+    }
+    Ok(opening)
 }
 
 impl<'a> Builder<'a> {

@@ -1,6 +1,8 @@
 //! Current production, inventory, freight and order state.
 
 use crate::CompanyBasisMovement;
+use crate::HouseholdLifecycleReceipt;
+use crate::ResidentWorkforceAttrition;
 use babylon_kernel::economic_location::EconomicLocation;
 
 /// Designed serialization and validation ceiling, not material abundance.
@@ -611,6 +613,7 @@ impl MaterialCircuitState {
 pub enum MaterialCircuitError {
     CompanyPortfolioEvidence = 35,
     CompanyPortfolioSelection = 36,
+    HouseholdLifecycleInvariant = 37,
     HouseholdTimeInvariant = 31,
     AidInvariant = 32,
     AidAuthority = 33,
@@ -689,6 +692,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             33 => Ok(Self::AidAuthority),
             34 => Ok(Self::CollectionInvariant),
             35 => Ok(Self::CompanyPortfolioEvidence),
+            37 => Ok(Self::HouseholdLifecycleInvariant),
             36 => Ok(Self::CompanyPortfolioSelection),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
@@ -713,6 +717,8 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub household_lifecycle: Vec<HouseholdLifecycleReceipt>,
+    pub resident_workforce_attrition: Vec<ResidentWorkforceAttrition>,
     pub agency_attendance: Vec<AgencyObservationFundingReceipt>,
     pub aid: Vec<AidReceipt>,
     pub collections: Vec<CollectionReceipt>,

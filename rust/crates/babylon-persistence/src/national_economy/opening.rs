@@ -12,6 +12,7 @@ mod external;
 mod financial;
 
 mod household_time;
+mod lifecycle;
 
 mod markets;
 

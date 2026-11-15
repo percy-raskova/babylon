@@ -49,6 +49,10 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
         world,
         transport,
         babylon_persistence::national_economy::NationalOpeningPolicy {
+            ages: Some(
+                babylon_persistence::national_ages::national_age_reference()
+                    .expect("county age margins"),
+            ),
             policy: &policy,
             source_hash: babylon_kernel::content_digest::sha256_of(include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -59,11 +63,18 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
     let representation = opening.representation;
     let aid = opening.aid;
+    let finances = opening.finances.expect("national company finances");
     let opening = opening.opening;
     assert_eq!(opening.policies.aid_mandates, aid.mandates);
     eprintln!("native opening generation: {:?}", start.elapsed());
     household_controls::assert_people(&opening, &policy, &aid, &representation);
-    household_controls::assert_endowments_and_ownership(&opening, &policy, &aid, &representation);
+    household_controls::assert_endowments_and_ownership(
+        &opening,
+        &policy,
+        &aid,
+        &representation,
+        &finances,
+    );
     assert_markets(&opening, &policy);
     assert_routes(&opening);
     assert_unique_principals(&opening, &policy);

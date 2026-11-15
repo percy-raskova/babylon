@@ -13,8 +13,10 @@ impl NationalGraph {
             compiler,
             "national-world-v8"
                 | "national-world-v9"
+                | "national-world-v10"
                 | "national-company-scale-v1"
                 | "national-company-scale-v2"
+                | "national-company-scale-v3"
         ) {
             Self::Companies
         } else {
@@ -34,6 +36,7 @@ pub fn national_catalog_input() -> EconomicCatalogInput {
         (Kind::NationalCounties, include_bytes!("../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz")),
         (Kind::NationalCohorts, include_bytes!("../../../../../src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz")),
         (Kind::ResidentWorkforce, include_bytes!("../../../../../src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz")),
+        (Kind::NationalAges, crate::national_ages::ARTIFACT),
         (Kind::NationalHouseholds, include_bytes!("../../../../../src/babylon/data/reference/economy/national_household_reference_2024.csv.gz")),
         (Kind::NationalTransport, include_bytes!("../../../../../src/babylon/data/reference/transport/national_transport_reference_2024.json.gz")),
         (Kind::InternationalTrade, include_bytes!("../../../../../src/babylon/data/reference/economy/international_counterpart_reference_2024.csv.gz")),

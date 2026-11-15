@@ -8,6 +8,7 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_material_circuit::LaborUseReceipt;
+use babylon_material_circuit::ResidentWorkforceAttrition;
 use babylon_material_circuit::WageAccrualReceipt;
 use babylon_material_circuit::{
     FinalDemandPrincipalId, LaborCompensation, MemberLaborUseReceipt, SiteId,
@@ -55,6 +56,7 @@ pub(in crate::material_world) fn encode_staffing(
 }
 
 pub(in crate::material_world) fn decode_staffing(
+    living: bool,
     cursor: &mut ReceiptCursor<'_>,
     period: u64,
 ) -> Result<StaffingMemberReceipt, MaterialWorldError> {
@@ -66,8 +68,13 @@ pub(in crate::material_world) fn decode_staffing(
     let residence = EconomicLocation::from_canonical_bytes(cursor.take()?)
         .map_err(|_| MaterialWorldError::Wire)?;
     let row_period = cursor.u64()?;
-    let member = StaffingMemberBinding::try_new(member_id, household_id, residence, cursor.u64()?)
-        .map_err(|_| MaterialWorldError::Wire)?;
+    let force = cursor.u64()?;
+    let member = if living {
+        StaffingMemberBinding::from_living_force(member_id, household_id, residence, force)
+    } else {
+        StaffingMemberBinding::try_new(member_id, household_id, residence, force)
+            .map_err(|_| MaterialWorldError::Wire)?
+    };
     let row = StaffingMemberReceipt {
         period: row_period,
         pool_id,
@@ -197,6 +204,7 @@ pub(in crate::material_world) fn currency(
 }
 
 pub(in crate::material_world) fn validate_join(
+    attrition: &[ResidentWorkforceAttrition],
     staffing: &[StaffingMemberReceipt],
     members: &[MemberLaborUseReceipt],
     labor: &[LaborUseReceipt],
@@ -214,6 +222,10 @@ pub(in crate::material_world) fn validate_join(
     {
         return Err(MaterialWorldError::Wire);
     }
+    let removed: BTreeMap<_, _> = attrition
+        .iter()
+        .map(|r| (r.member_id, r.employed_removed))
+        .collect();
     let staff: BTreeMap<_, _> = staffing.iter().map(|r| (r.member.member_id(), r)).collect();
     let mut actual: BTreeMap<_, _> = wages.iter().map(|r| (r.shift, r)).collect();
     if staff.len() != staffing.len()
@@ -233,7 +245,10 @@ pub(in crate::material_world) fn validate_join(
             let claim = staff.get(&row.member_id).ok_or(MaterialWorldError::Wire)?;
             if (claim.site_id, claim.unit_id, claim.member.household_id())
                 != (row.site_id, row.unit_id, row.payee)
-                || claim.opening_employed.checked_mul(claim.hours_per_person)
+                || claim
+                    .opening_employed
+                    .checked_add(removed.get(&row.member_id).copied().unwrap_or(0))
+                    .and_then(|n| n.checked_mul(claim.hours_per_person))
                     != Some(row.available_hours)
             {
                 return Err(MaterialWorldError::Wire);

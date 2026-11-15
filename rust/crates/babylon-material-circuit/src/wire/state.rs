@@ -35,6 +35,15 @@ pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
 
 /// Published schema version of one canonical material-circuit state frame.
 pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 22;
+/// The enabled lifecycle adds an authenticated resident-time extension.
+pub const MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION: u16 = 24;
+fn state_version(state: &MaterialCircuitState) -> u16 {
+    if state.household_lifecycle().is_some() {
+        MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION
+    } else {
+        SCHEMA_VERSION
+    }
+}
 
 pub(crate) const SCHEMA_VERSION: u16 = MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 
@@ -523,7 +532,7 @@ fn encode_canonical_state(
     let mut output = Vec::new();
     output.extend_from_slice(MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES);
     output.push(0);
-    output.extend_from_slice(&SCHEMA_VERSION.to_be_bytes());
+    output.extend_from_slice(&state_version(canonical).to_be_bytes());
     output.extend_from_slice(&catalog_digest);
     output.extend_from_slice(&canonical.period.to_be_bytes());
     services::append_connections(&mut output, &canonical.service_connections)?;
@@ -613,7 +622,11 @@ pub fn decode_material_circuit_state_for_encoding(
     {
         return Err(MaterialCircuitError::WireDomain);
     }
-    if cursor.u16()? != SCHEMA_VERSION {
+    let version = cursor.u16()?;
+    if !matches!(
+        version,
+        SCHEMA_VERSION | MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION
+    ) {
         return Err(MaterialCircuitError::WireVersion);
     }
     if cursor.array::<32>()? != catalog.catalog_digest() {
@@ -638,6 +651,9 @@ pub fn decode_material_circuit_state_for_encoding(
         accounting: accounting::decode(&mut cursor)?,
     };
     cursor.finish()?;
+    if state_version(&state) != version {
+        return Err(MaterialCircuitError::WireVersion);
+    }
     let canonical = transition::canonical_state(catalog, &state)?;
     if canonical != state {
         return Err(MaterialCircuitError::WireNoncanonical);

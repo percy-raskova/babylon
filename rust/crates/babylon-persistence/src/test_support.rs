@@ -20,6 +20,8 @@ pub(crate) fn material_receipts(period: u64) -> MaterialTickReceipts {
     MaterialTickReceipts {
         agency_paid: vec![],
         household_time: vec![],
+        household_lifecycle: vec![],
+        resident_workforce_attrition: vec![],
         aid: vec![],
         collections: vec![],
         installation: vec![],

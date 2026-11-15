@@ -227,6 +227,7 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
         crate::world_reference::world_reference().expect("world"),
         crate::national_transport::national_transport_reference().expect("transport"),
         super::super::NationalOpeningPolicy {
+            ages: Some(crate::national_ages::national_age_reference().expect("county age margins")),
             policy: &policy,
             source_hash: policy.source_digest,
         },

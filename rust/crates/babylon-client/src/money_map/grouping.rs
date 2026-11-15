@@ -90,6 +90,15 @@ pub(super) fn controls(rail: &mut ChildSpawnerCommands, view: &MoneyView, scope:
             }
         });
     }
+    if scope.measure == Measure::Money {
+        rail::control(
+            rail,
+            view,
+            scope,
+            Action::Group(FlowGroup::Account),
+            "By Account".into(),
+        );
+    }
 }
 
 pub(super) fn industry_color(key: Option<&str>) -> Color {

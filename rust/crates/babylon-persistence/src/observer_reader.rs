@@ -1,6 +1,8 @@
 //! Separate read-only economic observer and per-signal granted preview capabilities.
 
 mod company_decision;
+mod household;
+pub use household::HouseholdPeriodReport;
 mod counties;
 
 pub use company_decision::CompanyDecisionReport;

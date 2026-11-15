@@ -1,9 +1,9 @@
 //! Household service needs remain visible without inventing a pantry stock.
-use super::ProductionHouseholdKind;
 use super::{
     lifecycle, EconomicLocation, GoodId, MaterialCircuitState, MaterialTickReceipts,
     ProductionProjectionError, Result, UnitId,
 };
+use super::{HouseholdNeedChange, ProductionHouseholdKind};
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::MaterialCatalog;
@@ -29,6 +29,8 @@ pub struct ProductionHouseholdServiceAccount {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompletedHouseholdService {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub population_basis: Option<HouseholdNeedChange>,
     pub period: u64,
     pub required: u64,
     pub requested: u64,
@@ -97,7 +99,12 @@ pub(crate) fn project_with_labels(
         purchases
             .3
             .insert(super::digest_hex(&policy.retailer_site_id.as_bytes()));
+        let population_basis = receipt
+            .map(|r| HouseholdNeedChange::for_receipt(r, need))
+            .transpose()?
+            .flatten();
         let done = completed.get(&key).map(|r| CompletedHouseholdService {
+            population_basis,
             period: r.period,
             required: r.required_quantity,
             requested: purchases.0,

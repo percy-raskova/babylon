@@ -17,6 +17,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Recover the exact pre-company source to compare physical workplace, claim and employment identities.
 fn pre_company_input(mut input: EconomicCatalogInput) -> EconomicCatalogInput {
+    input
+        .sources
+        .retain(|source| source.kind() != SourceArtifactKind::NationalAges);
     for source in &mut input.sources {
         let bytes = match source.kind() {
             SourceArtifactKind::NationalGamePolicy => {
@@ -25,7 +28,7 @@ fn pre_company_input(mut input: EconomicCatalogInput) -> EconomicCatalogInput {
                     .split_once("\n[companies]")
                     .expect("captured company table");
                 previous
-                    .replacen("schema_version = 4", "schema_version = 2", 1)
+                    .replacen("schema_version = 5", "schema_version = 2", 1)
                     .into_bytes()
             }
             SourceArtifactKind::Rules => {
@@ -47,7 +50,7 @@ fn captured_99_company_roster_preserves_sites_and_employment_and_reopens() {
     let original = original_sites(input.clone());
     let capture =
         CapturedEconomicCatalog::capture(input, None).expect("company-enabled national opening");
-    assert_eq!(capture.compiler_version(), "national-world-v9");
+    assert_eq!(capture.compiler_version(), "national-world-v10");
     let finances = capture
         .national_company_finances()
         .expect("source-bound treasury");

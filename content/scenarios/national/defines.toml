@@ -1,7 +1,7 @@
 # Designed first national/world campaign policy. These are gameplay units,
 # not source-derived production, subsistence thresholds or a forecast.
 # Every price is millionths of one common currency unit; no exchange rates.
-schema_version = 4
+schema_version = 5
 evidence_class = "Designed"
 period_days = 28
 work_hours_per_person = 160
@@ -427,3 +427,16 @@ history_periods = 3
 modest_expansion_bps = 5000
 # Existing national-world-v7 physical geography namespace. Company policy retains its own full source digest.
 inherited_grain_policy_sha256 = [0xa4, 0x33, 0x05, 0xed, 0x1d, 0x0e, 0x95, 0xf9, 0xd7, 0xdf, 0x6b, 0x8a, 0xac, 0xe5, 0xa8, 0xf9, 0x79, 0x08, 0x26, 0xf8, 0xc4, 0xc0, 0xb3, 0xb0, 0x6d, 0x1d, 0x54, 0x67, 0x51, 0xdc, 0x4f, 0x03]
+
+[household_lifecycle]
+# Designed initial birthdays fill the remaining four-week periods of each age band.
+# Survivors finish the band within its full width. Subsequent entrants keep their due period.
+initial_age_distribution = "uniform_remaining_birthdays"
+# Designed common four-week gameplay rates, per million residents in the specified
+# opening band. Birth exposure is residents age 18–64. Death exposures follow
+# under 16, 16–17, 18–64 and 65+. These terms are shared across all markets.
+births_per_million_working_age_per_period = 1350
+deaths_per_million_per_period = [15, 20, 340, 3250]
+# Designed foreign/dependency mix within the pre-existing 16+ control, in the
+# order 16–17, 18–64 and 65+. Domestic county ages use the captured ACS margins.
+external_eligible_age_bps = [400, 8000, 1600]

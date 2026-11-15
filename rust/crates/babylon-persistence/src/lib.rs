@@ -37,6 +37,7 @@ pub mod material_runtime;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod michigan_economy;
+pub mod national_ages;
 pub mod national_cohorts;
 pub mod national_counties;
 pub mod national_household_allocation;

@@ -138,8 +138,11 @@ impl StateParser<'_> {
         }
         Ok(())
     }
-    fn accounting(&mut self) -> Result<(), StorageError> {
+    fn accounting(&mut self, lifecycle: bool) -> Result<(), StorageError> {
         if !self.branch(23)? {
+            if lifecycle {
+                return Err(StorageError::Framing);
+            }
             return Ok(());
         }
         for id in 24..=28 {
@@ -149,9 +152,17 @@ impl StateParser<'_> {
         for id in 39..=50 {
             self.rows(id)?;
         }
-        if self.branch(51)? {
+        let start = self.cursor.pos;
+        let time = self.cursor.tag(if lifecycle { &[2] } else { &[0, 1] })?;
+        self.record(51, start, None);
+        if time > 0 {
             self.rows(53)?;
             self.rows(54)?;
+        }
+        if time == 2 {
+            let start = self.cursor.pos;
+            lifecycle_section(&mut self.cursor)?;
+            self.record(74, start, None);
         }
         self.rows(71)?;
         Ok(())
@@ -161,7 +172,12 @@ impl StateParser<'_> {
         self.cursor.expect(STATE_DOMAIN)?;
         // The domain is NUL-terminated and followed by the published version.
         self.cursor.expect(&[0])?;
-        if self.cursor.number(2)? != usize::from(STATE_VERSION) {
+        let version = self.cursor.number(2)?;
+        let lifecycle = version
+            == usize::from(
+                babylon_material_circuit::MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION,
+            );
+        if !lifecycle && version != usize::from(STATE_VERSION) {
             return Err(StorageError::Version);
         }
         // The admitting catalog digest authenticates the definitions this frame
@@ -191,10 +207,36 @@ impl StateParser<'_> {
         self.rows(60)?;
         self.rows(61)?;
         self.rows(65)?;
-        self.accounting()?;
+        self.accounting(lifecycle)?;
         self.cursor.done()
     }
 }
+/// The complete v24 lifecycle extension owns its declared byte length. A truncated row
+/// cannot borrow the following state section's count or identity bytes.
+fn lifecycle_section(outer: &mut Cursor<'_>) -> Result<(), StorageError> {
+    let size = outer.number(4)?;
+    let mut body = Cursor::new(outer.take(size)?);
+    body.take(5 * 4)?; // Birth and four death rates
+    if body.tag(&[0, 1])? == 1 {
+        body.take(8)?;
+    }
+    let count = body.number(4)?;
+    if count == 0 || count > babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS {
+        return Err(StorageError::Count);
+    }
+    for _ in 0..count {
+        // Principal, current and prior ages, prior households, five rate carries,
+        // and the three original age-band populations.
+        body.take(32 + 2 * 32 + 8 + 5 * 4 + 3 * 8)?;
+        let cohorts = body.number(2)?;
+        if cohorts > 65 * 13 {
+            return Err(StorageError::Count);
+        }
+        body.take(cohorts * 16)?; // Each deadline has a u64 date and u64 living count.
+    }
+    body.done()
+}
+
 fn offer(c: &mut Cursor<'_>) -> Result<(), StorageError> {
     c.take(112)?;
     let tag = c.tag(&[1, 2, 3])?;
@@ -289,4 +331,47 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
         count: None,
     });
     Ok(parser.sections)
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::{Cursor, StateParser, StorageError, STATE_DOMAIN};
+
+    #[test]
+    fn lifecycle_storage_requires_the_whole_dated_cohort_frame() {
+        let mut body = vec![0; 5 * 4];
+        body.push(1);
+        body.extend_from_slice(&2_u64.to_be_bytes());
+        body.extend_from_slice(&1_u32.to_be_bytes());
+        body.extend_from_slice(&[0; 32 + 2 * 32 + 8 + 5 * 4 + 3 * 8]);
+        let group_offset = body.len();
+        body.extend_from_slice(&1_u16.to_be_bytes());
+        body.extend_from_slice(&846_u64.to_be_bytes());
+        body.extend_from_slice(&67_u64.to_be_bytes());
+        let size = u32::try_from(body.len()).expect("one small household");
+        let frame =
+            |declared: u32, b: &[u8]| [declared.to_be_bytes().as_slice(), b, &[0xaa; 8]].concat();
+        let valid = frame(size, &body);
+        let mut cursor = Cursor::new(&valid);
+        super::lifecycle_section(&mut cursor).expect("one full household, one dated cohort");
+        assert_eq!(cursor.take(8).expect("next section"), &[0xaa; 8]);
+        for bad in [frame(size - 1, &body), frame(size + 1, &body)] {
+            assert!(super::lifecycle_section(&mut Cursor::new(&bad)).is_err());
+        }
+        body[group_offset..group_offset + 2].copy_from_slice(&846_u16.to_be_bytes());
+        assert!(matches!(
+            super::lifecycle_section(&mut Cursor::new(&frame(size, &body))),
+            Err(StorageError::Count)
+        ));
+    }
+
+    #[test]
+    fn provisional_mixed_age_state_is_not_a_dated_cohort_save() {
+        let state = [STATE_DOMAIN, &[0], &23_u16.to_be_bytes()].concat();
+        let mut parser = StateParser {
+            cursor: Cursor::new(&state),
+            sections: Vec::new(),
+        };
+        assert!(matches!(parser.state(0), Err(StorageError::Version)));
+    }
 }

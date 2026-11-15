@@ -15,6 +15,7 @@ use crate::portfolio::CompanyInvestment;
 use crate::CompanyBasisMovement;
 use crate::CompanyPortfolioRegister;
 use crate::CompanyPortfolioSelection;
+use crate::HouseholdLifecycleReceipt;
 
 use crate::agency_attendance::PendingAgency;
 use crate::valuation::CostClose;
@@ -604,6 +605,12 @@ pub struct ClosedMaterialPeriod {
 }
 
 impl ClosedMaterialPeriod {
+    /// Whole-person transitions after current work, available to the next staffing close.
+    #[must_use]
+    pub fn household_lifecycle(&self) -> &[HouseholdLifecycleReceipt] {
+        &self.transition.household_lifecycle
+    }
+
     /// The interval whose arrivals, production and dispatch have completed.
     #[must_use]
     pub const fn closing_period(&self) -> u64 {
@@ -1543,9 +1550,12 @@ pub fn close_material_period_with_portfolios(
         &mut close.outbound,
         &mut close.dispatches,
     )?;
+    let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            household_lifecycle,
+            resident_workforce_attrition: Vec::new(),
             agency_attendance: close.households.agency.into_iter().collect(),
             collections: close.collections,
             aid: close.aid_receipts,

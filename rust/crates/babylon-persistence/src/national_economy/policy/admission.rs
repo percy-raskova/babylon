@@ -1,8 +1,8 @@
 use super::{
     GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
-    GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
-    NationalGamePolicyError,
+    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming,
+    GameMarketPolicy, GameNeed, GamePrice, GameProfile, GameRecipe, GameServiceReach,
+    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError,
 };
 use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::NationalGrainGeneration;
@@ -46,6 +46,7 @@ struct RawPolicy {
     financial: RawFinancial,
     households: RawHouseholds,
     household_time: RawHouseholdTime,
+    household_lifecycle: Option<RawHouseholdLifecycle>,
     aid: GameAidPolicy,
     organizer: GameOrganizerPolicy,
     markets: RawMarkets,
@@ -56,6 +57,45 @@ struct RawPolicy {
     counterpart: BTreeMap<String, RawProfile>,
     dependency: RawDependency,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawHouseholdLifecycle {
+    initial_age_distribution: InitialAgeDistribution,
+    births_per_million_working_age_per_period: u32,
+    deaths_per_million_per_period: [u32; 4],
+    external_eligible_age_bps: [u16; 3],
+}
+
+impl RawHouseholdLifecycle {
+    fn admit(self) -> Result<GameHouseholdLifecyclePolicy, Error> {
+        if self
+            .external_eligible_age_bps
+            .into_iter()
+            .map(u32::from)
+            .sum::<u32>()
+            != 10_000
+            || self.births_per_million_working_age_per_period > 1_000_000
+            || self
+                .deaths_per_million_per_period
+                .iter()
+                .any(|rate| *rate > 1_000_000)
+        {
+            return Err(Error::Profile(
+                "household lifecycle rates or external age mix".into(),
+            ));
+        }
+        Ok(GameHouseholdLifecyclePolicy {
+            initial_age_distribution: self.initial_age_distribution,
+            rates: babylon_material_circuit::HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: self
+                    .births_per_million_working_age_per_period,
+                deaths_per_million_per_period: self.deaths_per_million_per_period,
+            },
+            external_eligible_age_bps: self.external_eligible_age_bps,
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawCompanies {
@@ -252,6 +292,10 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         financial,
         households,
         household_time,
+        household_lifecycle: raw
+            .household_lifecycle
+            .map(RawHouseholdLifecycle::admit)
+            .transpose()?,
         markets,
         equipment,
         commodities,
@@ -434,8 +478,12 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
         return Err(Error::Evidence);
     }
     if !matches!(
-        (raw.schema_version, raw.companies.is_some()),
-        (2, false) | (3 | 4, true)
+        (
+            raw.schema_version,
+            raw.companies.is_some(),
+            raw.household_lifecycle.is_some()
+        ),
+        (2, false, false) | (3 | 4, true, false) | (5, true, true)
     ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0

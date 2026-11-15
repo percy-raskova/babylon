@@ -4,6 +4,7 @@ use super::{
     EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSourceView,
     SourceArtifactKind as Kind,
 };
+use crate::national_ages::NationalAgeReference;
 use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
 use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
@@ -32,6 +33,7 @@ pub(super) struct NationalSources {
     cohorts: NationalCohortReference,
     residents: NationalResidentWorkforceReference,
     households: NationalHouseholdReference,
+    ages: Option<NationalAgeReference>,
     world: WorldReference,
     transport: NationalTransportReference,
 }
@@ -40,8 +42,10 @@ impl NationalSources {
         input: &EconomicCatalogInput,
         graph: NationalGraph,
     ) -> Result<(Self, EconomicOpening)> {
-        validate_graph_sources(input, graph)?;
         let b = |kind| super::capture::source(input, kind);
+        let policy = NationalGamePolicy::from_captured_bytes(b(Kind::NationalGamePolicy)?)
+            .map_err(|_| EconomicCatalogError::Source(Kind::NationalGamePolicy))?;
+        validate_graph_sources(input, graph, &policy)?;
         let counties = NationalCountyReference::decode_pinned(b(Kind::NationalCounties)?)
             .map_err(|_| EconomicCatalogError::Source(Kind::NationalCounties))?;
         let cohorts = NationalCohortReference::decode_captured(
@@ -72,8 +76,15 @@ impl NationalSources {
             &counties,
         )
         .map_err(|_| EconomicCatalogError::Source(Kind::NationalTransport))?;
-        let policy = NationalGamePolicy::from_captured_bytes(b(Kind::NationalGamePolicy)?)
-            .map_err(|_| EconomicCatalogError::Source(Kind::NationalGamePolicy))?;
+
+        let ages = if policy.household_lifecycle.is_some() {
+            Some(
+                NationalAgeReference::decode_captured(b(Kind::NationalAges)?, &counties)
+                    .map_err(|_| EconomicCatalogError::Source(Kind::NationalAges))?,
+            )
+        } else {
+            None
+        };
         let opening = crate::national_economy::build_national_opening(
             &counties,
             &cohorts,
@@ -83,6 +94,7 @@ impl NationalSources {
             &transport,
             crate::national_economy::NationalOpeningPolicy {
                 policy: &policy,
+                ages: ages.as_ref(),
                 source_hash: babylon_kernel::content_digest::sha256_of(b(
                     Kind::NationalGamePolicy,
                 )?),
@@ -100,6 +112,7 @@ impl NationalSources {
                 cohorts,
                 residents,
                 households,
+                ages,
                 world,
                 transport,
             },
@@ -112,14 +125,19 @@ impl NationalSources {
             cohorts: &self.cohorts,
             residents: &self.residents,
             households: &self.households,
+            ages: self.ages.as_ref(),
             world: &self.world,
             transport: &self.transport,
         }
     }
 }
 
-fn validate_graph_sources(input: &EconomicCatalogInput, graph: NationalGraph) -> Result<()> {
-    let required = [
+fn validate_graph_sources(
+    input: &EconomicCatalogInput,
+    graph: NationalGraph,
+    policy: &NationalGamePolicy,
+) -> Result<()> {
+    let mut required = vec![
         Kind::GraphDeclarations,
         Kind::Rules,
         Kind::NationalGamePolicy,
@@ -136,6 +154,9 @@ fn validate_graph_sources(input: &EconomicCatalogInput, graph: NationalGraph) ->
         Kind::TransportPolicy,
         Kind::TransportSourceManifest,
     ];
+    if policy.household_lifecycle.is_some() {
+        required.push(Kind::NationalAges);
+    }
     super::capture::source_coverage(
         input,
         &required,

@@ -497,6 +497,9 @@ mod tests {
             crate::national_transport::national_transport_reference()
                 .expect("the transport reference fixture loads"),
             crate::national_economy::NationalOpeningPolicy {
+                ages: Some(
+                    crate::national_ages::national_age_reference().expect("county age margins"),
+                ),
                 policy: &policy,
                 source_hash: content_digest::sha256_of(bytes),
             },

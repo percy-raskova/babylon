@@ -561,13 +561,15 @@ def test_collector_v3_refuses_old_wrapper_and_malformed_descriptor_claims(fault)
         (3, "receipt_storage_bytes", 925_437_040),
         (4, "canonical_receipt_bytes", 947_585_922),
         (4, "receipt_storage_bytes", 947_588_276),
+        (5, "canonical_receipt_bytes", 947_585_922),
+        (5, "receipt_storage_bytes", 947_588_276),
     ],
 )
 def test_current_receipt_cap_boundary(version, field, maximum):
     item = snapshot(1)
     claim = item["actual_rust_storage_package_claims"][0]
     claim["receipt_storage_version"] = version
-    claim["receipt_storage_bytes"] = 2413
+    claim["receipt_storage_bytes"] = 2531
     claim[field] = maximum
     claim["total_storage_package_bytes"] = claim["receipt_storage_bytes"] + 200 + 190
     PackageClaim.model_validate(claim)
@@ -585,12 +587,15 @@ def test_committed_storage_requires_projections_to_have_reached_the_same_period(
         Snapshot.model_validate(item)
 
 
-def test_collector_company_receipt_requires_complete_39_family_framing():
+@pytest.mark.parametrize(("version", "families"), [(4, 39), (5, 41)])
+def test_collector_extended_receipt_requires_complete_family_framing(version, families):
     state, receipt, lookup = current_headers()
-    receipt = receipt.replace(b"BabylonReceiptStorageV3", b"BabylonReceiptStorageV4")
-    minimum = len(b"BabylonReceiptStorageV4\0") + 88 + 39 * 59
+    receipt = receipt.replace(
+        b"BabylonReceiptStorageV3", f"BabylonReceiptStorageV{version}".encode()
+    )
+    minimum = len(b"BabylonReceiptStorageV4\0") + 88 + families * 59
     claim = package_claim_from_headers(1, state, receipt, lookup, 200, minimum, len(lookup) + 7)
-    assert claim.receipt_storage_version == 4
+    assert claim.receipt_storage_version == version
     with pytest.raises(ValueError, match="shorter"):
         package_claim_from_headers(1, state, receipt, lookup, 200, minimum - 1, len(lookup) + 7)
 
@@ -2043,7 +2048,7 @@ def test_shared_roster_is_checked_against_each_actual_storage_snapshot():
         )
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 6])
 def test_collector_current_receipt_storage_domain_refuses_obsolete_versions(version):
     state, receipt, lookup = current_headers()
     receipt = (
@@ -4416,7 +4421,8 @@ def test_retained_ordinary_snapshot_requires_the_same_stage_campaign_and_frame_h
             )
 
 
-def test_current_economic_coverage_requires_observer_schema_and_content_bindings():
+@pytest.mark.parametrize("version", [4, 5])
+def test_current_economic_coverage_requires_observer_schema_and_content_bindings(version):
     import sqlite3
     from contextlib import closing
 
@@ -4455,7 +4461,7 @@ def test_current_economic_coverage_requires_observer_schema_and_content_bindings
           INSERT INTO company_accounting_period_v1 VALUES('campaign',1,'world');
         """)
         db.execute(local(body))
-        kind = b"BabylonReceiptStorageV4\0"
+        kind = f"BabylonReceiptStorageV{version}\0".encode()
         digest = b"b" * 32
         db.execute(
             "INSERT INTO material_tick_v3 VALUES('campaign',1,'id',?)", (kind + bytes(8) + digest,)
@@ -4466,13 +4472,18 @@ def test_current_economic_coverage_requires_observer_schema_and_content_bindings
         )
 
         def coverage():
-            return db.execute(local(ECONOMIC_COVERAGE_SQL), ("campaign", kind)).fetchone()
+            return db.execute(
+                local(ECONOMIC_COVERAGE_SQL),
+                ("campaign", b"BabylonReceiptStorageV4\0", b"BabylonReceiptStorageV5\0"),
+            ).fetchone()
 
         assert coverage() == (1, 1)
         for field, valid in (("content_sha256", "content"), ("schema_sha256", "schema")):
             db.execute(f"UPDATE money_journal_period_v1 SET {field}='different'")
             assert coverage() == (0, 0)
             db.execute(f"UPDATE money_journal_period_v1 SET {field}=?", (valid,))
+        db.execute("DELETE FROM company_accounting_period_v1")
+        assert coverage() == (0, 0)
 
 
 def test_live_archive_index_page_is_charged_once_to_the_same_relation_and_diagnostic():

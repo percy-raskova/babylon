@@ -17,6 +17,7 @@ mod basis_receipt;
 mod financial_receipt;
 
 mod household_time_receipt;
+mod lifecycle_receipt;
 
 #[cfg(test)]
 mod household_time_tests;

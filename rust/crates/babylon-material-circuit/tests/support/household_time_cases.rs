@@ -1,5 +1,4 @@
 //! Independent finite-hour witnesses through the real recurring material close.
-use babylon_material_circuit::decode_material_circuit_state;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::FundedShift;
@@ -151,7 +150,7 @@ fn shared_household_aliases_cannot_duplicate_contribution_time() {
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&catalog, &bytes)
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
             .expect("the canonical material bytes decode"),
         state
     );
@@ -529,5 +528,134 @@ fn inactive_recurring_modes_refuse_authored_needs() {
             babylon_material_circuit::close_material_period(&catalog, state).err(),
             Some(MaterialCircuitError::PurchaseInvariant)
         );
+    }
+}
+
+#[test]
+fn lifecycle_changes_only_next_opening_needs_and_restarts_without_a_new_job() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    let (catalog, mut opening) = time_opening(4);
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary")
+    };
+    let recurring = e.recurring.as_mut().expect("recurring household economy");
+    let purchase = &mut recurring.household_purchases[0];
+    purchase.enabled = true;
+    purchase.maximum_purchase = 4;
+    purchase.target_closing_stock = 4;
+    let c = &recurring.households[0];
+    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+        panic!("time")
+    };
+    time.lifecycle = Some(
+        HouseholdLifecycleBook::new(
+            HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: 1_000_000,
+                deaths_per_million_per_period: [0; 4],
+            },
+            vec![(
+                c.principal_id,
+                ResidentAges {
+                    under_16: c.persons - 4,
+                    age_18_64: 4,
+                    ..ResidentAges::default()
+                },
+            )],
+        )
+        .expect("valid captured age exposure"),
+    );
+    time.lifecycle
+        .as_mut()
+        .expect("modeled household lifecycle")
+        .purchase_buffer_periods = Some(1);
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("valid recurring economic close");
+    let row = &first.household_lifecycle[0];
+    assert_eq!(row.births, 4);
+    assert_eq!(
+        row.opening.persons().expect("resident count fits") + 4,
+        row.closing.persons().expect("resident count fits")
+    );
+    assert_eq!(first.household_time[0].endowment_hours, 32);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
+        .expect("canonical state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+        .expect("canonical state restores");
+    assert_eq!(restored, first.state);
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
+        .expect("valid recurring economic close");
+    assert_eq!(next.household_lifecycle[0].opening, row.closing);
+    assert_eq!(next.household_time[0].endowment_hours, 32);
+    let demand1 = &first.household_consumption[0];
+    let demand2 = &next.household_consumption[0];
+    assert_eq!(
+        demand1.required_quantity,
+        row.opening.persons().expect("resident count fits")
+    );
+    assert_eq!(
+        demand2.required_quantity,
+        row.closing.persons().expect("resident count fits")
+    );
+    let first_order = &first.household_demand[0];
+    let second_order = &next.household_demand[0];
+    assert_eq!(first_order.requested_quantity, 4);
+    assert_eq!(second_order.requested_quantity, 8);
+    assert!(second_order.admitted_quantity <= second_order.requested_quantity);
+    assert!(second_order.fulfilled_quantity <= second_order.admitted_quantity);
+}
+
+#[test]
+fn surviving_opening_children_keep_their_dated_birthdays_across_canonical_restart() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    let (catalog, mut opening) = time_opening(4);
+    let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
+        panic!("the worked control has monetary accounts");
+    };
+    let recurring = economy
+        .recurring
+        .as_mut()
+        .expect("recurring household economy");
+    let cohort = &mut recurring.households[0];
+    cohort.persons = 212;
+    let HouseholdTimeAccounting::Modeled(time) = &mut economy.household_time else {
+        panic!("the worked control models time");
+    };
+    time.lifecycle = Some(
+        HouseholdLifecycleBook::new(
+            HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: 0,
+                deaths_per_million_per_period: [250_000, 0, 0, 0],
+            },
+            vec![(
+                cohort.principal_id,
+                ResidentAges {
+                    under_16: 208,
+                    age_18_64: 4,
+                    ..ResidentAges::default()
+                },
+            )],
+        )
+        .expect("age exposure matches 212 residents and four eligible residents"),
+    );
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("close one period of opening-child mortality and aging");
+    let row = &first.household_lifecycle[0];
+    assert_eq!(
+        (row.deaths.under_16, row.reached_16, row.closing.under_16),
+        (52, 1, 155)
+    );
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
+        .expect("the surviving first birthday has a canonical position");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+        .expect("restore the dated age-16 entrant and the original child exposure");
+    assert_eq!(restored, first.state);
+    let mut world = restored;
+    for period in 2..=27 {
+        let next = babylon_material_circuit::advance_material_circuit(&catalog, &world)
+            .expect("survivors cross their next fixed birthdays without a new opening");
+        let result = &next.household_lifecycle[0];
+        assert_eq!(result.reached_18, u64::from(period == 27));
+        assert_eq!(result.births, 0);
+        world = next.state;
     }
 }

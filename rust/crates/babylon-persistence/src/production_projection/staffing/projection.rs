@@ -86,6 +86,7 @@ pub(crate) fn project_staffing_accounts(
         if labor.remove(&(pool.site_id(), pool.unit_id())) != Some(next_hours) {
             return Err(ProductionProjectionError::State);
         }
+        let members = witnesses.project_members(binding, &current_graph, prior_graph.as_ref())?;
         let completed = if opening.is_some() {
             let key = binding
                 .subject()
@@ -103,11 +104,11 @@ pub(crate) fn project_staffing_accounts(
                 closing,
                 next_hours,
                 values,
+                member_attrition(&members)?,
             )?)
         } else {
             None
         };
-        let members = witnesses.project_members(binding, &current_graph, prior_graph.as_ref())?;
         reconcile_member_changes(completed.as_ref(), &members)?;
         accounts.push(ProductionStaffingAccount {
             pool_id: michigan_economy::digest_hex(&pool.pool_id().as_bytes()),
@@ -118,7 +119,10 @@ pub(crate) fn project_staffing_accounts(
                 local_name: local_name.clone(),
             },
             hours_per_person: pool.policy().hours_per_person(),
-            labor_force: pool.labor_force(),
+            labor_force: closing
+                .employed
+                .checked_add(closing.reserve)
+                .ok_or(ProductionProjectionError::Arithmetic)?,
             employed: closing.employed,
             reserve: closing.reserve,
             previous_unretained_hours: closing.previous,
@@ -183,6 +187,25 @@ pub(in crate::production_projection) fn current_labor(
         }
     }
     Ok(labor)
+}
+
+fn member_attrition(members: &[ProductionStaffingMemberAccount]) -> Result<(u64, u64)> {
+    members
+        .iter()
+        .try_fold((0_u64, 0_u64), |(employed, reserve), member| {
+            let row = member
+                .completed
+                .as_ref()
+                .ok_or(ProductionProjectionError::History)?;
+            Ok((
+                employed
+                    .checked_add(row.employed_removed)
+                    .ok_or(ProductionProjectionError::Arithmetic)?,
+                reserve
+                    .checked_add(row.reserve_removed)
+                    .ok_or(ProductionProjectionError::Arithmetic)?,
+            ))
+        })
 }
 
 pub(in crate::production_projection) fn reconcile_member_changes(
@@ -252,12 +275,13 @@ pub(in crate::production_projection) fn completed_account(
     closing: Stocks,
     next_hours: u64,
     values: [u64; 12],
+    (employed_removed, reserve_removed): (u64, u64),
 ) -> Result<CompletedProductionStaffing> {
     let [period, opening_employed, opening_reserve, previous_unretained_hours, current_unretained_hours, retained_hours, target_employed, hires, separations, closing_employed, closing_reserve, next_opening_hours] =
         values;
     if period != tick
-        || opening_employed != opening.employed
-        || opening_reserve != opening.reserve
+        || opening.employed.checked_sub(employed_removed) != Some(opening_employed)
+        || opening.reserve.checked_sub(reserve_removed) != Some(opening_reserve)
         || previous_unretained_hours != opening.previous
         || current_unretained_hours != closing.previous
         || closing_employed != closing.employed
@@ -265,15 +289,13 @@ pub(in crate::production_projection) fn completed_account(
         || target_employed != closing.employed
         || next_opening_hours != next_hours
         || (hires > 0 && separations > 0)
-        || hires > opening.reserve
-        || separations > opening.employed
-        || opening
-            .employed
+        || hires > opening_reserve
+        || separations > opening_employed
+        || opening_employed
             .checked_add(hires)
             .and_then(|n| n.checked_sub(separations))
             != Some(closing.employed)
-        || opening
-            .reserve
+        || opening_reserve
             .checked_add(separations)
             .and_then(|n| n.checked_sub(hires))
             != Some(closing.reserve)
@@ -282,8 +304,10 @@ pub(in crate::production_projection) fn completed_account(
     }
     Ok(CompletedProductionStaffing {
         period,
-        opening_employed,
-        opening_reserve,
+        opening_employed: opening.employed,
+        opening_reserve: opening.reserve,
+        employed_removed,
+        reserve_removed,
         previous_unretained_hours,
         current_unretained_hours,
         retained_hours,

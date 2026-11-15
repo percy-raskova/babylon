@@ -21,7 +21,8 @@ pub use identity::{
 };
 pub use policy::{
     GameAidPolicy, GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
-    GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
-    NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
+    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming,
+    GameMarketPolicy, GameNeed, GamePrice, GameProfile, GameRecipe, GameServiceReach,
+    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts,
+    VenueLogReader,
 };

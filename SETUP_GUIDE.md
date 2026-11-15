@@ -356,6 +356,19 @@ Choose **Show consolidated company** to include its operating sites and see
 the adjustments for internal sales, contributions, dividends and margins.
 A campaign captured before companies existed retains its original owners.
 
+To follow a household, choose **By Account**, select its household cash
+account and open **Household period receipt**. The receipt gives the opening
+and closing population, wages earned and paid, food consumed, services
+delivered, public support received and unpaid provisioning hours. Compare
+two periods to see how a birth or death changes food needs.
+
+From `rust/`, use the household account's 64-character ID to read that close.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- household-period \
+  --campaign "$CAMPAIGN_ID" --period 2 --household "$HOUSEHOLD_ID"
+```
+
 To inspect an industry, choose **By Industry**, select a row, then choose
 **Show or hide industry sources**. The national source table groups captured
 QCEW records by NAICS code. It lists reported jobs and counts suppressed

@@ -67,6 +67,9 @@ fn archived_capture() -> CapturedEconomicCatalog {
 
 fn manufacturing_capture(old: &str, new: &str) -> CapturedEconomicCatalog {
     let mut input = economic_catalog::national_catalog_input();
+    input
+        .sources
+        .retain(|source| source.kind() != SourceArtifactKind::NationalAges);
     let source = input
         .sources
         .iter_mut()
@@ -74,7 +77,10 @@ fn manufacturing_capture(old: &str, new: &str) -> CapturedEconomicCatalog {
         .expect("national policy");
     let mut text = std::str::from_utf8(source.bytes())
         .expect("policy text")
-        .to_owned();
+        .split_once("\n[household_lifecycle]")
+        .expect("separate the later lifecycle policy from this recorded company experiment")
+        .0
+        .replacen("schema_version = 5", "schema_version = 4", 1);
     replace(&mut text, old, new);
     // Scarce supplies made from costly feedstock sustain funded orders for the manufacturer.
     replace(

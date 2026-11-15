@@ -38,6 +38,32 @@ impl StaffingMemberBinding {
             labor_force,
         })
     }
+    /// Bind current authenticated membership, including a fully emptied household.
+    #[must_use]
+    pub const fn from_living_force(
+        member_id: StaffingMemberId,
+        household_id: FinalDemandPrincipalId,
+        residence: EconomicLocation,
+        labor_force: u64,
+    ) -> Self {
+        Self {
+            member_id,
+            household_id,
+            residence,
+            labor_force,
+        }
+    }
+    /// # Errors
+    /// A demographic change cannot add to a captured labor force.
+    pub fn with_living_force(&self, force: u64) -> Result<Self, StaffingError> {
+        if force > self.labor_force {
+            return Err(StaffingError::PopulationInvariant);
+        }
+        Ok(Self {
+            labor_force: force,
+            ..self.clone()
+        })
+    }
     #[must_use]
     pub const fn member_id(&self) -> StaffingMemberId {
         self.member_id

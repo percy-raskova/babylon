@@ -9,7 +9,8 @@ mod projection;
 use projection::Result;
 pub(super) use projection::{completed_balances, project_with_labels};
 pub use projection::{
-    CompletedHouseholdBalance, ProductionHouseholdAccount, ProductionHouseholdKind,
+    CompletedHouseholdBalance, HouseholdNeedChange, ProductionHouseholdAccount,
+    ProductionHouseholdKind,
 };
 
 use super::{lifecycle, ProductionProjectionError};

@@ -1,5 +1,5 @@
 //! Independent source totals and cash/stock/share conservation through native generation.
-use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_material_circuit::CommodityKind;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{AccountId, HouseholdKind, HouseholdNeedBasis};
@@ -7,6 +7,7 @@ use babylon_persistence::economic_catalog::EconomicHouseholdSeed;
 use babylon_persistence::economic_catalog::EconomicOpening;
 use babylon_persistence::national_counties;
 use babylon_persistence::national_economy;
+use babylon_persistence::national_economy::companies::CompanyFinances;
 use babylon_persistence::national_economy::grain::NationalGenerationWitness;
 use babylon_persistence::national_economy::NationalAidCapture;
 use babylon_persistence::national_economy::NationalGamePolicy;
@@ -166,6 +167,7 @@ pub(super) fn assert_endowments_and_ownership(
     policy: &NationalGamePolicy,
     aid: &NationalAidCapture,
     representation: &NationalGenerationWitness,
+    finances: &CompanyFinances,
 ) {
     let mut totals = BTreeMap::<EconomicLocation, (u64, u64, i128)>::new();
     let mut stock = BTreeMap::<(EconomicLocation, _, _), (u64, i128)>::new();
@@ -258,11 +260,43 @@ pub(super) fn assert_endowments_and_ownership(
             period_cost * i128::from(policy.working_capital_periods)
         );
     }
-    assert_ownership(opening, &domestic_owners);
+    assert_ownership(opening, &domestic_owners, finances);
     assert_retail_aggregation(opening, policy);
 }
 
-fn assert_ownership(opening: &EconomicOpening, domestic_owners: &BTreeSet<FinalDemandPrincipalId>) {
+fn assert_ownership(
+    opening: &EconomicOpening,
+    domestic_owners: &BTreeSet<FinalDemandPrincipalId>,
+    finances: &CompanyFinances,
+) {
+    let mut parents: BTreeMap<_, _> = finances
+        .members
+        .iter()
+        .map(|member| (member.site, AccountId::Company(member.company)))
+        .collect();
+    let direct = &opening.institutions.ownership;
+    for claim in direct
+        .iter()
+        .filter(|r| matches!(r.beneficiary, AccountId::Company(_)))
+    {
+        assert_eq!(
+            parents.remove(&claim.issuer_site_id),
+            Some(claim.beneficiary)
+        );
+        assert_eq!(claim.shares, 1, "parent holds the entire subsidiary");
+    }
+    assert!(
+        parents.is_empty(),
+        "every captured member has a parent claim"
+    );
+    let independent = direct
+        .iter()
+        .filter(|r| !matches!(r.beneficiary, AccountId::Company(_)))
+        .map(|r| (r.issuer_site_id, r.beneficiary, r.shares));
+    let transferred = finances.sources.iter().map(|r| {
+        assert_eq!(r.site_total_shares, 10_000);
+        (r.site, r.beneficiary, r.original_shares)
+    });
     let locations: BTreeMap<_, _> = opening
         .households
         .iter()
@@ -271,19 +305,20 @@ fn assert_ownership(opening: &EconomicOpening, domestic_owners: &BTreeSet<FinalD
     let mut issuer_shares = BTreeMap::<_, u64>::new();
     let mut cross_border = false;
     let sites: BTreeMap<_, _> = opening.sites.iter().map(|s| (s.site_id, s)).collect();
-    for claim in &opening.institutions.ownership {
-        *issuer_shares.entry(claim.issuer_site_id).or_default() += claim.shares;
-        if let AccountId::Household(principal) = claim.beneficiary {
+    for (issuer, beneficiary, shares) in independent.chain(transferred) {
+        *issuer_shares.entry(issuer).or_default() += shares;
+        if let AccountId::Household(principal) = beneficiary {
             if matches!(locations[&principal], EconomicLocation::County(_)) {
                 assert!(domestic_owners.contains(&principal));
-                cross_border |= matches!(
-                    sites[&claim.issuer_site_id].location,
-                    EconomicLocation::Foreign(_)
-                );
+                cross_border |= sites[&issuer].location
+                    == EconomicLocation::Foreign(ForeignCounterpart::Canada);
             }
         }
     }
-    assert_eq!(issuer_shares.len(), opening.sites.len());
+    assert!(
+        issuer_shares.keys().eq(sites.keys()),
+        "every site has claims"
+    );
     assert!(issuer_shares.values().all(|shares| *shares == 10_000));
     assert!(
         cross_border,

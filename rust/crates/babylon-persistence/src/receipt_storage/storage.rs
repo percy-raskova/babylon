@@ -21,10 +21,12 @@ use std::result::Result as StdResult;
 
 pub(crate) const DOMAIN: &[u8] = b"BabylonReceiptStorageV3\0";
 const COMPANY_DOMAIN: &[u8] = b"BabylonReceiptStorageV4\0";
+const HOUSEHOLD_DOMAIN: &[u8] = b"BabylonReceiptStorageV5\0";
 fn storage_domain(format: MaterialReceiptFormat) -> &'static [u8] {
     match format {
         MaterialReceiptFormat::Site => DOMAIN,
         MaterialReceiptFormat::Company => COMPANY_DOMAIN,
+        MaterialReceiptFormat::HouseholdLifecycle => HOUSEHOLD_DOMAIN,
     }
 }
 
@@ -40,7 +42,9 @@ const fn storage_budget(format: MaterialReceiptFormat) -> usize {
         MaterialReceiptFormat::Site => {
             format.maximum_bytes() + DOMAIN.len() + 88 + format.widths().len() * 59
         }
-        MaterialReceiptFormat::Company => MAX_RECEIPT_STORAGE_BYTES,
+        MaterialReceiptFormat::Company | MaterialReceiptFormat::HouseholdLifecycle => {
+            MAX_RECEIPT_STORAGE_BYTES
+        }
     }
 }
 
@@ -177,7 +181,7 @@ pub(crate) fn unpack_row(
     prefix: usize,
 ) -> Result<Vec<u8>> {
     let fields = layout::fields(tag)?;
-    let width = *MaterialReceiptFormat::Company
+    let width = *MaterialReceiptFormat::HouseholdLifecycle
         .widths()
         .get(usize::from(tag).checked_sub(1).ok_or(Error::Family)?)
         .ok_or(Error::Family)?;
@@ -431,6 +435,8 @@ pub(crate) fn decode_header(cursor: &mut Cursor<'_>, lookup: &TypedLookup) -> Re
         MaterialReceiptFormat::Site
     } else if domain == COMPANY_DOMAIN {
         MaterialReceiptFormat::Company
+    } else if domain == HOUSEHOLD_DOMAIN {
+        MaterialReceiptFormat::HouseholdLifecycle
     } else {
         return Err(Error::Domain);
     };

@@ -21,7 +21,12 @@ mod capacity;
 mod catalog;
 mod equipment;
 mod financial;
+mod household_lifecycle;
 mod household_time;
+pub use household_lifecycle::{
+    reconcile_resident_workforce, HouseholdLifecycleBook, HouseholdLifecyclePosition,
+    HouseholdLifecycleRates, HouseholdLifecycleReceipt, ResidentAges, ResidentWorkforceAttrition,
+};
 mod inventory;
 mod maintenance;
 mod model;
@@ -101,6 +106,6 @@ pub use transition::{
 pub use wire::{
     decode_material_circuit_state, decode_material_circuit_state_for_encoding,
     encode_material_circuit_state, material_circuit_state_digest, DecodedMaterialCircuitState,
-    MATERIAL_CIRCUIT_SOURCE_SHA256, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
-    MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
+    MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
 };

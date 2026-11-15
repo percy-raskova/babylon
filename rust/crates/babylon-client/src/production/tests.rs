@@ -476,6 +476,8 @@ fn staffing_account(
             period: 5,
             opening_employed: 4,
             opening_reserve: 0,
+            employed_removed: 0,
+            reserve_removed: 0,
             previous_unretained_hours: 80,
             current_unretained_hours: 40,
             retained_hours: 80,
@@ -582,6 +584,8 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         babylon_persistence::production_observation::CompletedProductionStaffing {
             opening_employed: 2,
             opening_reserve: 2,
+            employed_removed: 0,
+            reserve_removed: 0,
             hires: 0,
             separations: 0,
             ..completed

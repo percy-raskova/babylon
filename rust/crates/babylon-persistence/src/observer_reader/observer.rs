@@ -107,6 +107,7 @@ pub enum ObserverEconomyError {
     InvalidSiteAccounting,
     CompanyPortfoliosNotCaptured,
     CompanyDecisionAbsent,
+    HouseholdAbsent,
     RecordedLabor(RecordedLaborError),
     ProductionHistoryUnavailable,
     Reference,

@@ -107,6 +107,17 @@ impl StaffingPoolBinding {
             work_sources,
         })
     }
+    /// # Errors
+    /// Refuses expansion beyond an enrolled workforce.
+    pub fn with_living_force(&self, force: u64) -> Result<Self, StaffingError> {
+        if force > self.labor_force {
+            return Err(StaffingError::PopulationInvariant);
+        }
+        Ok(Self {
+            labor_force: force,
+            ..self.clone()
+        })
+    }
     #[must_use]
     pub const fn pool_id(&self) -> StaffingPoolId {
         self.pool_id

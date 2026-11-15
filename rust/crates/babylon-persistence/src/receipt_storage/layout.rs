@@ -197,6 +197,12 @@ const FIELDS_39: &[Field] = &[
         kind: Kind::OptionalAccount(227),
     },
 ];
+const FIELDS_40: &[Field] = &[f(0, K::FinalDemandPrincipal)];
+const FIELDS_41: &[Field] = &[
+    f(0, K::FinalDemandPrincipal),
+    f(32, K::StaffingPool),
+    f(64, K::StaffingMember),
+];
 const FIELDS_38: &[Field] = &[f(8, K::CompanyAccount), a(41, 40)];
 const FIELDS_37: &[Field] = &[
     f(32, K::Shift),
@@ -241,6 +247,8 @@ pub(super) fn fields(tag: u8) -> Result<&'static [Field]> {
         37 => FIELDS_37,
         38 => FIELDS_38,
         39 => FIELDS_39,
+        40 => FIELDS_40,
+        41 => FIELDS_41,
         _ => return Err(Error::Family),
     })
 }

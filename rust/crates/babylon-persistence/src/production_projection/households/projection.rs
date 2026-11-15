@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::michigan_economy;
 use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::RecurringEconomy;
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
@@ -49,6 +50,90 @@ impl ProductionHouseholdKind {
     }
 }
 
+/// Dated basis for a household requirement when population changes, including an empty cohort.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HouseholdNeedChange {
+    opening_persons: u64,
+    opening_households: u64,
+    units: HouseholdNeedUnits,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HouseholdNeedUnits {
+    PerPerson(u64),
+    PerHousehold(u64),
+}
+
+impl HouseholdNeedChange {
+    pub(super) fn for_receipt(
+        receipts: &MaterialTickReceipts,
+        need: &HouseholdNeed,
+    ) -> Result<Option<Self>> {
+        use babylon_material_circuit::HouseholdNeedBasis;
+        let Ok(index) = receipts
+            .household_lifecycle
+            .binary_search_by_key(&need.principal_id, |r| r.principal_id)
+        else {
+            return Ok(None);
+        };
+        let row = &receipts.household_lifecycle[index];
+        let opening_persons = row
+            .opening
+            .persons()
+            .map_err(|_| ProductionProjectionError::Arithmetic)?;
+        let closing_persons = row
+            .closing
+            .persons()
+            .map_err(|_| ProductionProjectionError::Arithmetic)?;
+        if closing_persons != 0
+            && opening_persons == closing_persons
+            && row.opening_households == row.closing_households
+        {
+            return Ok(None);
+        }
+        let units = match need.basis {
+            HouseholdNeedBasis::Persons => HouseholdNeedUnits::PerPerson(need.units_per_basis),
+            HouseholdNeedBasis::Households => {
+                HouseholdNeedUnits::PerHousehold(need.units_per_basis)
+            }
+        };
+        Ok(Some(Self {
+            opening_persons,
+            opening_households: row.opening_households,
+            units,
+        }))
+    }
+    pub(crate) fn validates(
+        &self,
+        kind: ProductionHouseholdKind,
+        persons: u64,
+        households: u64,
+        required: u64,
+        next: u64,
+    ) -> bool {
+        let counts = |p, h| (p == 0 && h == 0) || kind.admits_counts(p, h);
+        if !counts(self.opening_persons, self.opening_households)
+            || !counts(persons, households)
+            || (persons != 0
+                && (persons, households) == (self.opening_persons, self.opening_households))
+        {
+            return false;
+        }
+        let (opening, closing, per_unit) = match self.units {
+            HouseholdNeedUnits::PerPerson(q) => (self.opening_persons, persons, q),
+            HouseholdNeedUnits::PerHousehold(q) if kind == ProductionHouseholdKind::Ordinary => {
+                (self.opening_households, households, q)
+            }
+            HouseholdNeedUnits::PerHousehold(_) => return false,
+        };
+        per_unit > 0
+            && opening.checked_mul(per_unit) == Some(required)
+            && closing.checked_mul(per_unit) == Some(next)
+    }
+}
+
 /// One resident cohort and native good. People and households have separate units.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -73,6 +158,8 @@ pub struct ProductionHouseholdAccount {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompletedHouseholdBalance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub population_basis: Option<HouseholdNeedChange>,
     pub period: u64,
     pub opening_stock: u64,
     /// Ordinary retail fulfillment only; support is accounted separately.
@@ -171,14 +258,7 @@ pub(in crate::production_projection) fn completed_balances(
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<BTreeMap<Key, CompletedHouseholdBalance>> {
-    if prior.period.checked_add(1) != Some(current.period) || receipt.resolve_tick != prior.period {
-        return Err(ProductionProjectionError::History);
-    }
-    let before = lifecycle::recurring(prior).ok_or(ProductionProjectionError::State)?;
-    let after = lifecycle::recurring(current).ok_or(ProductionProjectionError::State)?;
-    if before.households != after.households {
-        return Err(ProductionProjectionError::State);
-    }
+    let (before, after) = population_history(prior, current, receipt)?;
     let households: BTreeMap<_, _> = before
         .households
         .iter()
@@ -246,6 +326,10 @@ pub(in crate::production_projection) fn completed_balances(
         result.insert(
             key,
             CompletedHouseholdBalance {
+                population_basis: HouseholdNeedChange::for_receipt(
+                    receipt,
+                    needs.get(&key).ok_or(ProductionProjectionError::State)?,
+                )?,
                 period: prior.period,
                 opening_stock: stock,
                 received,
@@ -267,6 +351,64 @@ pub(in crate::production_projection) fn completed_balances(
         return Err(ProductionProjectionError::State);
     }
     Ok(result)
+}
+
+fn population_history<'a>(
+    prior: &'a MaterialCircuitState,
+    current: &'a MaterialCircuitState,
+    receipt: &MaterialTickReceipts,
+) -> Result<(&'a RecurringEconomy, &'a RecurringEconomy)> {
+    if prior.period.checked_add(1) != Some(current.period) || receipt.resolve_tick != prior.period {
+        return Err(ProductionProjectionError::History);
+    }
+    let before = lifecycle::recurring(prior).ok_or(ProductionProjectionError::State)?;
+    let after = lifecycle::recurring(current).ok_or(ProductionProjectionError::State)?;
+    validate_population(
+        prior,
+        current,
+        &before.households,
+        &after.households,
+        receipt,
+    )?;
+    Ok((before, after))
+}
+
+fn validate_population(
+    prior: &MaterialCircuitState,
+    current: &MaterialCircuitState,
+    before: &[HouseholdCohort],
+    after: &[HouseholdCohort],
+    receipt: &MaterialTickReceipts,
+) -> Result<()> {
+    if before.len() != after.len() {
+        return Err(ProductionProjectionError::State);
+    }
+    let mut flows = receipt.household_lifecycle.iter().peekable();
+    for (opening, closing) in before.iter().zip(after) {
+        let id = opening.principal_id;
+        let flow = flows.next_if(|r| r.principal_id == id);
+        let old = prior.household_lifecycle().and_then(|b| b.position(id));
+        let new = current.household_lifecycle().and_then(|b| b.position(id));
+        match (old, new, flow) {
+            (None, None, None) if opening == closing => {}
+            (Some(old), Some(new), Some(r))
+                if r.period == receipt.resolve_tick
+                    && r.validate().is_ok()
+                    && closing.principal_id == id
+                    && opening.kind == closing.kind
+                    && r.opening == old.ages
+                    && r.closing == new.ages
+                    && r.opening.persons().ok() == Some(opening.persons)
+                    && r.closing.persons().ok() == Some(closing.persons)
+                    && r.opening_households == opening.households
+                    && r.closing_households == closing.households => {}
+            _ => return Err(ProductionProjectionError::State),
+        }
+    }
+    if flows.next().is_some() {
+        return Err(ProductionProjectionError::State);
+    }
+    Ok(())
 }
 
 pub(in crate::production_projection) fn required_quantity(

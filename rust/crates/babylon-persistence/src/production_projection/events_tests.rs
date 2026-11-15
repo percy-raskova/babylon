@@ -48,6 +48,8 @@ fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
         collections: vec![],
         aid: vec![],
         household_time: vec![],
+        household_lifecycle: vec![],
+        resident_workforce_attrition: vec![],
         staffing_members: vec![],
         member_labor_use: vec![],
         installation: vec![],

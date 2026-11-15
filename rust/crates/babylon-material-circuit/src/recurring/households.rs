@@ -27,6 +27,16 @@ pub fn recurring_household_order_id(
     OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
+fn desired(required: u64, buffer: u64, stock: u64) -> Result<u64> {
+    if required == 0 {
+        return Ok(0);
+    }
+    required
+        .checked_add(buffer)
+        .map(|target| target.saturating_sub(stock))
+        .ok_or(MaterialCircuitError::Arithmetic)
+}
+
 fn requirements(
     catalog: &MaterialCatalog,
     rows: &RecurringEconomy,
@@ -98,24 +108,22 @@ pub(crate) fn admit_household_orders(
     let mut movements = vec![];
     let mut receipts = vec![];
     for policy in policies {
-        if !stock.contains_key(&(policy.principal_id, policy.good_id, policy.unit_id)) {
-            continue;
-        }
         let key = (policy.principal_id, policy.good_id, policy.unit_id);
+        let Some(&opening_stock) = stock.get(&key) else {
+            continue;
+        };
         let id = recurring_household_order_id(state.period, key);
         if existing.contains(&id) {
             return Err(MaterialCircuitError::DuplicateRow);
         }
-        let opening_stock = *stock
-            .get(&key)
-            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let required_quantity = *required
             .get(&key)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        let target = required_quantity
-            .checked_add(policy.target_closing_stock)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
-        let desired_quantity = target.saturating_sub(opening_stock);
+        let desired_quantity = desired(
+            required_quantity,
+            policy.target_closing_stock,
+            opening_stock,
+        )?;
         let requested_quantity = if policy.enabled {
             desired_quantity.min(policy.maximum_purchase)
         } else {
@@ -232,10 +240,11 @@ fn validate_demand_receipts(
         let opening_stock = *stocks
             .get(&key)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        let desired_quantity = required_quantity
-            .checked_add(policy.target_closing_stock)
-            .ok_or(MaterialCircuitError::Arithmetic)?
-            .saturating_sub(opening_stock);
+        let desired_quantity = desired(
+            required_quantity,
+            policy.target_closing_stock,
+            opening_stock,
+        )?;
         let requested_quantity = if policy.enabled {
             desired_quantity.min(policy.maximum_purchase)
         } else {

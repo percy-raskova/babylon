@@ -23,6 +23,8 @@ use crate::public_venue::AdmittedPublicVenueSource;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_material_circuit::AgencyObservationFundingReceipt;
 use babylon_material_circuit::CompanyBasisMovement;
+use babylon_material_circuit::HouseholdLifecycleReceipt;
+use babylon_material_circuit::ResidentWorkforceAttrition;
 use babylon_practice_contract::CityPdCaseSource;
 use babylon_practice_contract::OrganizerPartnerFacts;
 use babylon_practice_contract::PublicVenueHistory;
@@ -1497,7 +1499,7 @@ pub const fn receipt_row_limit(index: usize) -> usize {
         6 => babylon_material_circuit::MAX_HANDLING_RECEIPTS_PER_PERIOD,
         10 => babylon_material_circuit::MAX_MONEY_TRANSFERS_PER_PERIOD,
         19 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
-        11 | 27 | 28 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
+        11 | 27 | 28 | 40 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
         15 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
         18 | 24 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
         25 | 37 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
@@ -1699,6 +1701,13 @@ macro_rules! encode_receipt_family_rows {
                 &mut $bytes,
             )?,
             38 => super::basis_receipt::encode(&$source.company_basis, &mut $bytes)?,
+            39 => {
+                super::lifecycle_receipt::encode(&$source.household_lifecycle, $tick, &mut $bytes)?
+            }
+            40 => super::lifecycle_receipt::encode_attrition(
+                &$source.resident_workforce_attrition,
+                &mut $bytes,
+            ),
             _ => unreachable!("the material receipt family tags are closed"),
         }
     };
@@ -1708,7 +1717,12 @@ fn company_receipt_format(
     catalog: &MaterialCatalog,
     transition: &MaterialCircuitTransition,
 ) -> Result<MaterialReceiptFormat, MaterialWorldError> {
-    let format = if catalog.company_payouts.is_empty() {
+    let format = if super::lifecycle_receipt::validate_close(
+        &transition.state,
+        &transition.household_lifecycle,
+    )? {
+        MaterialReceiptFormat::HouseholdLifecycle
+    } else if catalog.company_payouts.is_empty() {
         MaterialReceiptFormat::Site
     } else {
         MaterialReceiptFormat::Company
@@ -1725,7 +1739,7 @@ fn company_receipt_format(
     {
         return Err(MaterialWorldError::Wire);
     }
-    if format == MaterialReceiptFormat::Company {
+    if format != MaterialReceiptFormat::Site {
         super::basis_receipt::validate(
             &transition.company_basis,
             &transition.income,
@@ -1786,6 +1800,8 @@ fn receipt_families(
         .chain([
             transition.company_distributions.len(),
             transition.company_basis.len(),
+            transition.household_lifecycle.len(),
+            transition.resident_workforce_attrition.len(),
         ])
         .zip(format.widths().iter().copied())
         .collect();
@@ -1859,7 +1875,13 @@ pub fn encode_material_receipts(
     let families = receipt_families(transition, agency_paid.len(), format)?;
     monetary_receipt::validate_order(&transition.wage_accruals, &transition.labor_use)?;
     agency_paid_receipt::validate_cancellations(&transition.money_transfers)?;
+    super::lifecycle_receipt::validate_workforce(
+        &transition.household_lifecycle,
+        &transition.staffing_members,
+        &transition.resident_workforce_attrition,
+    )?;
     workforce_receipt::validate_join(
+        &transition.resident_workforce_attrition,
         &transition.staffing_members,
         &transition.member_labor_use,
         &transition.labor_use,
@@ -1916,9 +1938,15 @@ pub fn encode_material_receipts(
         &transition.service_markets,
         &transition.service_outputs,
     )?;
+    super::lifecycle_receipt::validate_time_scope(
+        &transition.household_lifecycle,
+        &transition.household_time,
+    )?;
     recurring_receipt::validate_order(
+        &transition.household_lifecycle,
         &transition.household_demand,
         &transition.household_consumption,
+        &transition.household_services,
         &transition.procurement,
         &transition.production_plans,
         &transition.prices,
@@ -1938,6 +1966,8 @@ pub fn encode_material_receipts(
 pub struct MaterialTickReceipts {
     pub agency_paid: Vec<AgencyPaidReceipt>,
     pub household_time: Vec<HouseholdTimeReceipt>,
+    pub household_lifecycle: Vec<HouseholdLifecycleReceipt>,
+    pub resident_workforce_attrition: Vec<ResidentWorkforceAttrition>,
     pub aid: Vec<AidReceipt>,
     pub collections: Vec<CollectionReceipt>,
     pub installation: Vec<InstallationReceipt>,
@@ -2045,6 +2075,8 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     let mut result = MaterialTickReceipts {
         agency_paid: Vec::new(),
         household_time: Vec::new(),
+        household_lifecycle: Vec::new(),
+        resident_workforce_attrition: Vec::new(),
         aid: Vec::new(),
         collections: Vec::new(),
         installation: Vec::new(),
@@ -2142,13 +2174,23 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             36 => result.collections.try_reserve_exact(count),
             37 => result.agency_paid.try_reserve_exact(count),
             39 => result.company_basis.try_reserve_exact(count),
-            38 if count > 0 => result.company_distributions.try_reserve_exact(count),
+            38 if count > 0 || format == MaterialReceiptFormat::HouseholdLifecycle => {
+                result.company_distributions.try_reserve_exact(count)
+            }
+            41 => result.resident_workforce_attrition.try_reserve_exact(count),
+            40 if count > 0 => result.household_lifecycle.try_reserve_exact(count),
 
             _ => return Err(MaterialWorldError::Wire),
         }
         .map_err(|_| MaterialWorldError::Allocation)?;
         for _ in 0..count {
             match tag {
+                41 => result
+                    .resident_workforce_attrition
+                    .push(super::lifecycle_receipt::decode_attrition(&mut cursor)?),
+                40 => result
+                    .household_lifecycle
+                    .push(super::lifecycle_receipt::decode(&mut cursor, resolve_tick)?),
                 39 => result
                     .company_basis
                     .push(super::basis_receipt::decode(&mut cursor)?),
@@ -2395,6 +2437,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
                 28 => result
                     .staffing_members
                     .push(workforce_receipt::decode_staffing(
+                        format == MaterialReceiptFormat::HouseholdLifecycle,
                         &mut cursor,
                         resolve_tick,
                     )?),
@@ -2416,7 +2459,13 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     }
     monetary_receipt::validate_order(&result.wage_accruals, &result.labor_use)?;
     agency_paid_receipt::validate_cancellations(&result.money_transfers)?;
+    super::lifecycle_receipt::validate_workforce(
+        &result.household_lifecycle,
+        &result.staffing_members,
+        &result.resident_workforce_attrition,
+    )?;
     workforce_receipt::validate_join(
+        &result.resident_workforce_attrition,
         &result.staffing_members,
         &result.member_labor_use,
         &result.labor_use,
@@ -2444,7 +2493,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     equipment_receipt::validate_investment(&result.investment, &result.money_transfers)?;
     installation_decision::validate(&result.installation_decisions, &result.installation)?;
     income_receipt::validate_order(&result.income)?;
-    if format == MaterialReceiptFormat::Company {
+    if format != MaterialReceiptFormat::Site {
         super::basis_receipt::validate(
             &result.company_basis,
             &result.income,
@@ -2474,9 +2523,15 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         &result.service_markets,
         &result.service_outputs,
     )?;
+    super::lifecycle_receipt::validate_time_scope(
+        &result.household_lifecycle,
+        &result.household_time,
+    )?;
     recurring_receipt::validate_order(
+        &result.household_lifecycle,
         &result.household_demand,
         &result.household_consumption,
+        &result.household_services,
         &result.procurement,
         &result.production_plans,
         &result.prices,
@@ -2531,6 +2586,7 @@ pub fn validate_retained_collection(
     if register.completed_tick() != receipts.resolve_tick {
         return Err(MaterialWorldError::PeriodMismatch);
     }
+    super::lifecycle_receipt::validate_close(register.state(), &receipts.household_lifecycle)?;
     match (
         register.organizer_config(),
         register.organizer_state(),

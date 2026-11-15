@@ -364,6 +364,11 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 ("national-world", Some(terms)) if terms.experiment.is_none() => {
                     Ok(match terms.portfolio.condition_order {
                         CompanyConditionOrder::HighDemandBeforeSpare => "national-world-v8",
+                        CompanyConditionOrder::FirstApplicable
+                            if policy.household_lifecycle.is_some() =>
+                        {
+                            "national-world-v10"
+                        }
                         CompanyConditionOrder::FirstApplicable => "national-world-v9",
                     })
                 }
@@ -375,6 +380,11 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 {
                     Ok(match terms.portfolio.condition_order {
                         CompanyConditionOrder::HighDemandBeforeSpare => "national-company-scale-v1",
+                        CompanyConditionOrder::FirstApplicable
+                            if policy.household_lifecycle.is_some() =>
+                        {
+                            "national-company-scale-v3"
+                        }
                         CompanyConditionOrder::FirstApplicable => "national-company-scale-v2",
                     })
                 }

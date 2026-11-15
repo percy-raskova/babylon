@@ -603,6 +603,15 @@ fn describe_staffing_accounts(
                 grouped(completed.retained_hours),
             )
             .expect("String write");
+            if completed.employed_removed > 0 || completed.reserve_removed > 0 {
+                writeln!(
+                    value,
+                    "Resident losses before staffing · {} employed · {} reserve",
+                    grouped(completed.employed_removed),
+                    grouped(completed.reserve_removed)
+                )
+                .expect("String write");
+            }
         } else {
             value.push_str("Opening workforce; no completed staffing period.\n");
         }
@@ -841,6 +850,7 @@ mod aid_reading_tests {
         let mut snapshot = crate::production_freight::tests::aid_fixture();
         snapshot.household_accounts[0].completed =
             Some(babylon_persistence::CompletedHouseholdBalance {
+                population_basis: None,
                 period: 1,
                 opening_stock: 5,
                 received: 3,

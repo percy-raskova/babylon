@@ -15,7 +15,7 @@ pub(super) fn append(out: &mut Vec<u8>, accounting: &HouseholdTimeAccounting) ->
         out.push(0);
         return Ok(());
     };
-    out.push(1);
+    out.push(if book.lifecycle.is_some() { 2 } else { 1 });
     crate::household_time::validate_structure(book)?;
     super::append_rows(out, &book.receipts, append_receipt)?;
     super::append_rows(out, &book.contributions, |bytes, row| {
@@ -26,6 +26,9 @@ pub(super) fn append(out: &mut Vec<u8>, accounting: &HouseholdTimeAccounting) ->
         bytes.extend_from_slice(&row.contribution.contributor_id.to_be_bytes());
         bytes.extend_from_slice(&row.contribution.hours.to_be_bytes());
     })?;
+    if let Some(life) = &book.lifecycle {
+        super::lifecycle::append(out, life)?;
+    }
     Ok(())
 }
 
@@ -64,9 +67,10 @@ fn decode_receipt(cursor: &mut Cursor<'_>) -> Result<HouseholdTimeReceipt> {
 }
 
 pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HouseholdTimeAccounting> {
-    match cursor.u8()? {
+    let tag = cursor.u8()?;
+    match tag {
         0 => return Ok(HouseholdTimeAccounting::NotModeled),
-        1 => {}
+        1 | 2 => {}
         _ => return Err(MaterialCircuitError::WireEnum),
     }
     let receipts = super::decode_rows(cursor, decode_receipt)?;
@@ -85,6 +89,11 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HouseholdTimeAccounting>
     accounting::ordered_rows(&receipts, |r| r.principal_id)?;
     accounting::ordered_rows(&contributions, |r| r.contribution.use_id)?;
     let book = HouseholdTimeBook {
+        lifecycle: if tag == 2 {
+            Some(super::lifecycle::decode(cursor)?)
+        } else {
+            None
+        },
         receipts,
         contributions,
     };

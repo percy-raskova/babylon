@@ -140,7 +140,8 @@ independent_aid:
   no_support: all_legs_terminal_without_qualifying_support_NoQualifyingSupport
   later_food: no_second_cash_transfer_response_time_charge_or_consumed_action_input
   ordinary_purchasing: cash_from_P_plus_1_can_fund_P_plus_2_no_rerun_or_immediate_time_release
-  current_material: catalog_schema_2_state_schema_22_receipt_v20
+  current_material: >-
+    Capture selects the receipt format. National household reproduction uses state schema 24 and receipt v22.
   receiving: no_inferred_participation_or_report_access
 
 replay_successor:

@@ -664,7 +664,7 @@ pub(crate) fn array32(c: &mut Cursor<'_>) -> Result<[u8; 32], StorageError> {
 
 pub(crate) fn stored_section(c: &mut Cursor<'_>) -> Result<StoredSection, StorageError> {
     let id = u16::try_from(c.number(2)?).map_err(|_| StorageError::Bounds)?;
-    if id > 73 {
+    if id > 74 {
         return Err(StorageError::Layout);
     }
     let mode = c.tag(&[0, 1, 2, 3, 4, 5])?;
@@ -962,7 +962,7 @@ pub(crate) fn restore_sections(
         return Err(StorageError::DigestMismatch);
     }
     let count = cursor.number(2)?;
-    if count > 74 {
+    if count > 75 {
         return Err(StorageError::Count);
     }
     let mut restored_length = 0_usize;

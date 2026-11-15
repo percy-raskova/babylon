@@ -49,6 +49,8 @@ pub enum SourceArtifactKind {
     MichiganSpatialProducts = 34,
     /// Independent captured county household and historical-earnings margins.
     NationalHouseholds = 35,
+    /// Derived ACS age margins reconciled to the captured county foundation.
+    NationalAges = 36,
 }
 
 /// One captured blob, independent of its evidence interpretation. Compressed
@@ -124,6 +126,7 @@ impl TryFrom<u8> for SourceArtifactKind {
             33 => Ok(Self::MichiganControlOverrides),
             34 => Ok(Self::MichiganSpatialProducts),
             35 => Ok(Self::NationalHouseholds),
+            36 => Ok(Self::NationalAges),
             _ => Err(EconomicCatalogError::WireTag),
         }
     }

@@ -1,6 +1,6 @@
 meta:
-  version: 1.94.0
-  updated: '2026-11-14'
+  version: 1.95.0
+  updated: '2026-11-15'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR298_national_household_lifecycle:
+    title: Connect national household reproduction to demographic stocks and the next economic period
+    status: proposed
+    date: '2026-11-15'
+    file: ADR298_national_household_lifecycle.yaml
   ADR297_national_company_accounts_and_investment:
     title: Capture national company ownership, treasury and investment choices
     status: proposed

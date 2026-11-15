@@ -2,6 +2,8 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::ResidentAges;
 use babylon_material_circuit::{CompanyPortfolioRegister, ProcessId, SiteId};
 use babylon_persistence::economic_catalog::{self, CapturedEconomicCatalog};
 use babylon_practice_contract::OrderedPracticeActionBatch;
@@ -23,11 +25,19 @@ fn first_session(capture: &CapturedEconomicCatalog) -> MaterialReplaySession<Hyp
         .expect("typed replay session")
 }
 fn prepare(s: &MaterialReplaySession<HypergraphStore>) -> PreparedMaterialTick<HypergraphStore> {
-    let a = OrderedPracticeActionBatch::empty(
-        s.graph_session().session_identity().clone(),
-        s.completed_tick() + 1,
-    )
-    .expect("no operator actions");
+    let session = s.graph_session().session_identity().clone();
+    let a = if let Some(config) = s.material().organizer_config() {
+        babylon_practice_contract::organizer_action_batch(
+            config,
+            s.material().organizer_state().expect("current organizer"),
+            None,
+            session,
+        )
+        .expect("ordinary organizer period")
+    } else {
+        OrderedPracticeActionBatch::empty(session, s.completed_tick() + 1)
+            .expect("observer-only period")
+    };
     s.prepare_advance(&a).expect("native closed period")
 }
 /// Join the actual choice carrier, independently decoded physical evidence and the authorized whole units.
@@ -70,6 +80,43 @@ fn selected_limits(
     assert!(by_key.is_empty());
     limits
 }
+fn household_close(
+    candidate: &PreparedMaterialTick<HypergraphStore>,
+) -> BTreeMap<FinalDemandPrincipalId, (ResidentAges, u64)> {
+    let source = candidate.material();
+    assert_eq!(
+        material_world::MaterialReceiptFormat::identify(source.receipt_bytes()),
+        Some(material_world::MaterialReceiptFormat::HouseholdLifecycle)
+    );
+    let receipts = material_world::decode_material_receipts(source.receipt_bytes())
+        .expect("national demographic receipt family");
+    material_world::validate_retained_collection(source.register(), &receipts)
+        .expect("life flows belong to the saved register");
+    assert!(receipts.household_lifecycle.iter().any(|r| r.births > 0));
+    assert!(receipts
+        .household_lifecycle
+        .iter()
+        .any(|r| r.deaths.age_65_plus > 0));
+    let book = source
+        .register()
+        .state()
+        .household_lifecycle()
+        .expect("captured national ages");
+    let mut closing = BTreeMap::new();
+    for row in &receipts.household_lifecycle {
+        assert_eq!(row.period, 1);
+        assert_eq!(
+            book.position(row.principal_id)
+                .expect("resident stock")
+                .ages,
+            row.closing
+        );
+        assert!(closing
+            .insert(row.principal_id, (row.closing, row.closing_households))
+            .is_none());
+    }
+    closing
+}
 #[test]
 fn national_99_choices_bound_next_purchases_and_survive_full_checkpoint() {
     let capture =
@@ -84,6 +131,7 @@ fn national_99_choices_bound_next_purchases_and_survive_full_checkpoint() {
         .collect();
     let mut live = first_session(&capture);
     let first = prepare(&live);
+    let first_demography = household_close(&first);
     let register = first
         .material()
         .register()
@@ -109,6 +157,12 @@ fn national_99_choices_bound_next_purchases_and_survive_full_checkpoint() {
         }
     }
     assert!(compared > 0);
+    for row in &receipts.household_lifecycle {
+        assert_eq!(
+            first_demography.get(&row.principal_id),
+            Some(&(row.opening, row.opening_households))
+        );
+    }
     let expected_second = *second.identity();
     let receipt_hash = second.identity().receipt_digest();
     drop(second);

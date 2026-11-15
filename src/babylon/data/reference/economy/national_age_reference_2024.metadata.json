@@ -1,0 +1,31 @@
+{
+  "artifact": {
+    "path": "src/babylon/data/reference/economy/national_age_reference_2024.csv.gz",
+    "sha256": "b57782d890101c059de874d7ca3cbed388847be512d5b6ed856cd6861d883554"
+  },
+  "contract": "NationalAgeReference2024V1",
+  "county_control": {
+    "path": "src/babylon/data/reference/economy/national_county_reference_2024.csv.gz",
+    "sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e"
+  },
+  "coverage": {
+    "domestic_counties": 3144,
+    "excluded_puerto_rico_municipios": 78,
+    "missing_domestic_fips": 0
+  },
+  "derived_age_15": 4415327,
+  "domestic_age_band_totals": {
+    "age_16_17": 8776971,
+    "age_18_64": 203771037,
+    "age_65_plus": 57633628,
+    "under_16": 64740863
+  },
+  "domestic_resident_total": 334922499,
+  "evidence": "Derived from published ACS estimates. The reference contains county margins. Margins of error are retained in the sources. No household cross-tabulation or derived margin of error is asserted.",
+  "source_manifest": {
+    "path": "tools/national_age_reference_2024_sources.json",
+    "sha256": "cdc095a6bb5c646e01aa04f41b8f14805bdabc3bf218c9ff492782ee98fc9d80"
+  },
+  "universe": "Resident population, including group quarters, in the 50 states and DC",
+  "vintage": "ACS 2020\u20132024 five-year estimates"
+}

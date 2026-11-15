@@ -355,6 +355,7 @@ fn household_disclosure(production: &mut ProductionSnapshot) {
             stock_on_hand: 7,
             required_per_period: 4,
             completed: Some(crate::CompletedHouseholdBalance {
+                population_basis: None,
                 period: 1,
                 opening_stock: 8,
                 received: 3,
@@ -474,6 +475,7 @@ fn residence_kinds_bind_goods_and_services_and_refuse_lost_or_invalid_counts() {
             provider_site_ids: vec!["care-provider".into()],
             required_per_period: 4,
             completed: Some(CompletedHouseholdService {
+                population_basis: None,
                 period: 1,
                 required: 4,
                 requested: 4,

@@ -22,6 +22,8 @@ mod geographic_legs;
 mod geometry;
 #[path = "money_map/grouping.rs"]
 mod grouping;
+#[path = "money_map/household.rs"]
+mod household;
 #[path = "money_map/industry.rs"]
 mod industry;
 #[path = "money_map/publication.rs"]

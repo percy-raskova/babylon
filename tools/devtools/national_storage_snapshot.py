@@ -125,12 +125,12 @@ with psycopg.connect(
     assert markers["tick_commit"] == markers["material_tick_v3"], (
         "material rows lack matching acknowledged markers"
     )
-    # A per-period charge includes the committed economic journal. V21 requires
+    # A per-period charge includes the committed economic journal. The company and national lifecycle formats require
     # its company books as well as the money, site and labor marker binding.
     count, maximum = required_row(
         connection.execute(
             ECONOMIC_COVERAGE_SQL,
-            (args.campaign, b"BabylonReceiptStorageV4\0"),
+            (args.campaign, b"BabylonReceiptStorageV4\0", b"BabylonReceiptStorageV5\0"),
         ),
         2,
         "completed economic journal periods",

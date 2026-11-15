@@ -1,10 +1,10 @@
-version: 2
+version: 3
 name: captured_economic_catalog
 purpose: One immutable captured source table regenerates the current economic opening.
 evidence_class: Designed
 encoding:
   domain: "babylon.economic-catalog.v1\0"
-  layout: u16_big_endian_2
+  layout: u16_big_endian_3
   timebase: u64_big_endian_days_per_period_28
   identity:
     - compiler_version
@@ -24,6 +24,7 @@ encoding:
     - u8_closed_presence_tag
     - u32_big_endian_config_byte_length
     - exact_current_canonical_organizer_config_bytes
+  city_pd_footer: A second presence tag and length carry the optional City PD configuration.
   organizer_presence: Absent is tag zero and length zero; present is tag one and positive bounded length.
   maximum_organizer_config_bytes: 33554432
   organizer_source_basis: SHA256 of the exact current source frame with an absent organizer footer.
@@ -68,9 +69,13 @@ source_roles:
   michigan_control_overrides_canonical_json: 33
   michigan_spatial_products: 34
   national_households: 35
+  national_ages: 36
 admission:
-  compilers: [national-world-v5, michigan-control-v2]
-  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v5}
+  compilers: [national-world-v7, national-world-v8, national-world-v9, national-world-v10,
+              national-company-scale-v1, national-company-scale-v2, national-company-scale-v3, michigan-control-v2]
+  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v10}
+  national_age_source: The national lifecycle requires a captured age table and exact resident and age-16-plus
+    county controls. The national company scale experiment with the same lifecycle uses national-company-scale-v3.
   source_coverage: Each importer requires its exact dependency set and refuses extra roles.
   source_semantics: Captured bytes enter their source-specific checked native readers.
   missingness: Suppression, absent observations and incomplete subtotals remain explicit.
@@ -86,7 +91,7 @@ admission:
   organizer_opening: Captured organizer configuration and complete initial state must equal exact source regeneration.
   organizer_campaign: Captured configuration binds the campaign identity; national admission regenerates it from
     captured policy and actual household, workplace and route identities.
-  unsupported_layout: Refuse layout one; preserve old saves as data without a compatibility reader.
+  unsupported_layout: Require layout three before reading any source or optional configuration.
   native_graph_nodes: 262144 maximum; the measured sparse-household opening uses 179772 aggregate nodes.
   native_graph_relationships: 65536 per edge and hyperedge family; node admission does not widen these.
 refusals:

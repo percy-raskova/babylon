@@ -2,13 +2,15 @@
 #[path = "payment_registry.rs"]
 mod payment_registry;
 
-use babylon_material_circuit::CompanyId;
+use babylon_material_circuit::{
+    AccountId, CompanyId, FinalDemandPrincipalId, PublicTransferTreatment,
+};
 use babylon_persistence::company_statements::CompanyPeriodReport;
 use babylon_persistence::economic_flows::EconomicPaymentPeriod;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
     FlowAmounts, FlowDirection, FlowGroup, FlowPage, FlowPeer, FlowQuery, FlowViewport,
-    JournalError, MoneyMovement, MoneyPurpose, PeriodWindow,
+    JournalError, MoneyEndpoint, MoneyMovement, MoneyPurpose, MoneyReferenceKind, PeriodWindow,
 };
 use babylon_persistence::observer_reader::{
     ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor,
@@ -33,6 +35,10 @@ pub(super) fn query(group: FlowGroup) -> FlowQuery {
 }
 
 pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId) {
+    assert!(matches!(
+        observer.household_period(campaign, 1, FinalDemandPrincipalId::from_bytes([0; 32])),
+        Err(ObserverEconomyError::Authority)
+    ));
     assert!(matches!(
         observer.company_decision_receipt(campaign, 1, CompanyId::from_bytes([0; 32])),
         Err(ObserverEconomyError::Authority)
@@ -251,6 +257,7 @@ pub(super) fn national(
         cursor.as_ref().expect("full-observer cursor"),
         source.source.identity.tick_content_hash().as_bytes(),
     );
+    check_household_period(config, &source, moves);
     check_source_rows(&source, &mut sql, campaign, moves);
     unknown_industry(
         &source,
@@ -333,6 +340,152 @@ pub(super) fn national(
         observer.economic_payment_flows(campaign, &missing),
         Err(JournalError::CoverageAbsent)
     );
+}
+
+fn check_household_period(
+    config: &Config,
+    source: &EconomicPaymentPeriod,
+    moves: &[MoneyMovement],
+) {
+    let durable = &source.source;
+    let receipts = &durable.receipts;
+    let (id, paid) = receipts
+        .public_budgets
+        .iter()
+        .find_map(|row| {
+            let AccountId::Household(id) = row.recipient else {
+                return None;
+            };
+            (row.treatment == PublicTransferTreatment::HouseholdIncomeSupport
+                && row.paid.micro_units() > 0
+                && receipts
+                    .household_lifecycle
+                    .iter()
+                    .any(|r| r.principal_id == id))
+            .then_some((id, row))
+        })
+        .expect("one funded resident with a known age position");
+    let age = receipts
+        .household_lifecycle
+        .iter()
+        .find(|r| r.principal_id == id)
+        .expect("funded resident age");
+    let time = receipts
+        .household_time
+        .iter()
+        .find(|r| r.principal_id == id)
+        .expect("funded resident time");
+    let household = trade::hex(&id.as_bytes());
+    let output = Command::new(env!("CARGO_BIN_EXE_babylon-economic-projections"))
+        .env_clear()
+        .env(
+            "BABYLON_OBSERVER_DSN",
+            super::runtime_process::child_dsn(config),
+        )
+        .args([
+            "household-period",
+            "--campaign",
+            &durable.campaign_id.as_uuid().to_string(),
+            "--period",
+            "1",
+            "--household",
+            &household,
+        ])
+        .output()
+        .expect("read household through full observer CLI");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).expect("household period JSON");
+    assert_eq!(report["household"], household);
+    assert_eq!(report["version"], 1);
+    check_household_cash(&report["cash"], source, moves, id);
+    assert_eq!(
+        report["receipts_sha256"],
+        trade::hex(&durable.identity.receipt_digest())
+    );
+    assert_eq!(
+        report["world_sha256"],
+        trade::hex(&durable.identity.result_world_hash())
+    );
+    assert_eq!(report["population"]["births"], age.births);
+    assert_eq!(
+        report["population"]["closing"]["age_65_plus"],
+        age.closing.age_65_plus
+    );
+    assert_eq!(
+        report["time"]["unpaid_allocated"],
+        time.unpaid_allocated_hours
+    );
+    let budgets = report["income_support"].as_array().expect("dated support");
+    assert!(budgets.iter().any(|r| r["public_payer"]
+        == trade::hex(&paid.public_account.as_bytes())
+        && r["paid_micros"] == paid.paid.micro_units().to_string()));
+    assert_eq!(
+        report["services"]
+            .as_array()
+            .expect("delivered services")
+            .len(),
+        receipts
+            .household_services
+            .iter()
+            .filter(|r| r.principal_id == id)
+            .count()
+    );
+    assert_eq!(
+        report["goods"].as_array().expect("consumed goods").len(),
+        receipts
+            .household_consumption
+            .iter()
+            .filter(|r| r.principal_id == id)
+            .count()
+    );
+}
+
+fn check_household_cash(
+    report: &Value,
+    payments: &EconomicPaymentPeriod,
+    moves: &[MoneyMovement],
+    id: FinalDemandPrincipalId,
+) {
+    let account = AccountId::Household(id);
+    let endpoint = MoneyEndpoint::from(account);
+    let accrued: i128 = payments
+        .source
+        .receipts
+        .wage_accruals
+        .iter()
+        .filter(|r| r.payee == account)
+        .map(|r| r.amount.micro_units())
+        .sum();
+    let mut paid = 0;
+    let mut goods = 0;
+    let mut services = 0;
+    for r in &payments.settlements {
+        let m = &moves[usize::try_from(r.ordinal).expect("verified journal ordinal")];
+        if m.purpose == MoneyPurpose::WagePayment && r.recipient == endpoint {
+            paid += micros(&m.amount_micros);
+        }
+        if m.purpose == MoneyPurpose::DeliverySettlement && r.payer == endpoint {
+            if m.reference.as_ref().expect("settled order receipt").kind
+                == MoneyReferenceKind::Service
+            {
+                services += micros(&m.amount_micros);
+            } else {
+                goods += micros(&m.amount_micros);
+            }
+        }
+    }
+    for (key, value) in [
+        ("wages_accrued_micros", accrued),
+        ("wages_paid_micros", paid),
+        ("goods_purchases_settled_micros", goods),
+        ("service_purchases_settled_micros", services),
+    ] {
+        assert_eq!(report[key], value.to_string());
+    }
 }
 
 fn check_company_decision(

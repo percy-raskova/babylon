@@ -86,3 +86,14 @@ fn collection_adds_only_one_bounded_receipt_row_and_its_storage_frame() {
     let raw_package = b"BabylonReceiptStorageV4\0".len() + 88 + families * 59 + largest_body;
     assert!(raw_package <= babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES);
 }
+
+#[test]
+fn active_household_families_fit_the_physical_receipt_budget_without_compression() {
+    let frame = MaterialReceiptFormat::HouseholdLifecycle;
+    assert_eq!(frame.version(), 22);
+    assert_eq!(&frame.widths()[39..], &[176, 128]);
+    let n = frame.widths().len();
+    let payload = frame.maximum_bytes() - (frame.domain().len() + 12 + n * 9);
+    let stored = b"BabylonReceiptStorageV5\0".len() + 88 + n * 59 + payload;
+    assert!(stored <= babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES);
+}

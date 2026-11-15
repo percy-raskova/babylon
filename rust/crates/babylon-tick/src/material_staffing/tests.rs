@@ -28,9 +28,9 @@ use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
 use babylon_material_circuit::{
-    FinalDemandPrincipalId, ProcessId, SiteId, StaffingError, StaffingMemberBinding,
-    StaffingMemberId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingWorkRequest,
-    StaffingWorkSource, UnitId,
+    FinalDemandPrincipalId, HouseholdLifecycleReceipt, ProcessId, ResidentAges, SiteId,
+    StaffingError, StaffingMemberBinding, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
+    StaffingPoolId, StaffingWorkRequest, StaffingWorkSource, UnitId,
 };
 
 struct Fixture {
@@ -102,6 +102,7 @@ impl Fixture {
             composition,
             period,
             requests,
+            &[],
         )
     }
 }
@@ -246,6 +247,81 @@ fn shared_process_work_retains_only_one_period_then_recovers_with_exact_evidence
         .graph
         .node_attribute(a, "social-class/revolutionary")
         .is_err());
+}
+
+#[test]
+fn residents_lost_at_close_leave_membership_and_next_opening_without_staffing_separations() {
+    let mut fixture = Fixture::new(false);
+    let composition = composition();
+    let node = fixture.node("a");
+    let adults = ResidentAges {
+        age_18_64: 4,
+        ..ResidentAges::default()
+    };
+    let mut row = HouseholdLifecycleReceipt {
+        principal_id: FinalDemandPrincipalId::from_bytes([1; 32]),
+        period: 1,
+        opening: adults,
+        closing: ResidentAges::default(),
+        births: 0,
+        deaths: adults,
+        reached_16: 0,
+        reached_18: 0,
+        reached_65: 0,
+        opening_households: 1,
+        closing_households: 0,
+    };
+    for p in 1..=2 {
+        let context = StaffingEffectContext {
+            types: &fixture.types,
+            enums: &fixture.enums,
+            resolver: &fixture.resolver,
+        };
+        let effects = super::apply_material_staffing(
+            &mut fixture.graph,
+            context,
+            &composition,
+            p,
+            &requests(&composition, p, [480, 320]),
+            std::slice::from_ref(&row),
+        )
+        .expect("employment and reserve follow living membership");
+        if p == 1 {
+            assert_eq!(effects.attrition.len(), 1);
+            assert_eq!(
+                (
+                    effects.attrition[0].employed_removed,
+                    effects.attrition[0].reserve_removed
+                ),
+                (3, 1)
+            );
+        } else {
+            assert_eq!(effects.attrition.as_slice(), &[]);
+        }
+        let staffing = &effects.member_receipts()[0];
+        assert_eq!(staffing.member.household_id(), row.principal_id);
+        assert_eq!(
+            (
+                staffing.hires,
+                staffing.separations,
+                staffing.closing_employed,
+                staffing.closing_reserve
+            ),
+            (0, 0, 0, 0)
+        );
+        assert_eq!(effects.next_member_labor()[0].available_hours, 0);
+        assert_eq!(effects.next_labor()[0].available, 0);
+        for field in [EMPLOYED_POPULATION, RESERVE_POPULATION] {
+            assert_eq!(
+                read_stock(&fixture.graph, node, field, &context).expect("exact next opening"),
+                0
+            );
+        }
+        row.period = 2;
+        row.opening = ResidentAges::default();
+        row.deaths = ResidentAges::default();
+        row.opening_households = 0;
+    }
 }
 
 #[test]
@@ -774,6 +850,7 @@ fn dropping_a_successful_detached_candidate_does_not_publish_its_writes() {
         &composition,
         1,
         &requests(&composition, 1, [0, 0]),
+        &[],
     )
     .expect("the fixture applies the authored staffing");
     assert_eq!(effects.writes().len(), 3);

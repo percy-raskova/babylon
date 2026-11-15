@@ -38,7 +38,7 @@ JOIN babylon_state.labor_period_v1 l USING (campaign_id, resolve_tick)
 LEFT JOIN babylon_state.company_accounting_period_v1 c USING (campaign_id, resolve_tick)
 WHERE j.campaign_id = %s::uuid
   AND j.receipt_sha256 = substr(m.receipt_storage_bytes, 33, 32)
-  AND (c.resolve_tick IS NOT NULL) = (substr(m.receipt_storage_bytes, 1, 24) = %s::bytea)
+  AND (c.resolve_tick IS NOT NULL) = (substr(m.receipt_storage_bytes, 1, 24) IN (%s::bytea, %s::bytea))
   AND (c.resolve_tick IS NULL OR c.result_world_hash = l.result_world_hash)
 """
 
@@ -281,7 +281,7 @@ def captured_relation_sizes(
 class PackageClaim(FrozenRecord):
     storage_layout: Literal["period_local_lookup_v3"]
     state_storage_version: Literal[4]
-    receipt_storage_version: Literal[3, 4]
+    receipt_storage_version: Literal[3, 4, 5]
     tick: Nonnegative
     register_storage_bytes: Nonnegative
     receipt_storage_bytes: Nonnegative
@@ -318,7 +318,7 @@ class PackageClaim(FrozenRecord):
     @field_validator("receipt_storage_version", mode="before")
     @classmethod
     def current_receipt_version(cls, value: object) -> object:
-        if type(value) is not int or value not in (3, 4):
+        if type(value) is not int or value not in (3, 4, 5):
             raise ValueError("unsupported receipt storage evidence version")
         return value
 
@@ -350,8 +350,8 @@ class PackageClaim(FrozenRecord):
             raise ValueError("descriptor length disagrees with logical entry count")
         if self.lookup_packed_bytes > 1_000_000_000:
             raise ValueError("lookup packed bytes exceed current Rust bound")
-        company = self.receipt_storage_version == 4
-        family_count = 39 if company else 37
+        company = self.receipt_storage_version >= 4
+        family_count = {3: 37, 4: 39, 5: 41}[self.receipt_storage_version]
         canonical_limit = 947_585_922 if company else 925_434_745
         stored_limit = 947_588_276 if company else 925_437_040
         limits = (
@@ -389,7 +389,13 @@ def package_claim_from_headers(
 ) -> PackageClaim:
     """Read current headers; full body authentication belongs to the Rust reopen."""
     sd = b"babylon.state-storage.v4\0"
-    version: Literal[3, 4] = 4 if receipt_head.startswith(b"BabylonReceiptStorageV4\0") else 3
+    version: Literal[3, 4, 5]
+    if receipt_head.startswith(b"BabylonReceiptStorageV5\0"):
+        version = 5
+    elif receipt_head.startswith(b"BabylonReceiptStorageV4\0"):
+        version = 4
+    else:
+        version = 3
     rd = f"BabylonReceiptStorageV{version}\0".encode("ascii")
     ld = b"BabylonPeriodLookupV3\0"
     for head, domain, fields in (

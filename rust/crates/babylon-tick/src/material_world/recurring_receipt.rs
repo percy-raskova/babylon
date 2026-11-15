@@ -3,6 +3,9 @@
 use std::collections::BTreeSet;
 
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::HouseholdLifecycleReceipt;
+use babylon_material_circuit::HouseholdServiceReceipt;
+use babylon_material_circuit::ResidentAges;
 use babylon_material_circuit::{
     FinalDemandPrincipalId, GoodId, GoodsPriceCostBasis, GoodsPriceCostEvidence,
     HouseholdConsumptionReceipt, HouseholdDemandReceipt, OrderId, PriceDecision, PriceReceipt,
@@ -23,12 +26,37 @@ fn ordered<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> bool {
 }
 
 pub(super) fn validate_order(
+    lifecycle: &[HouseholdLifecycleReceipt],
     demand: &[HouseholdDemandReceipt],
     consumption: &[HouseholdConsumptionReceipt],
+    services: &[HouseholdServiceReceipt],
     procurement: &[ProcurementReceipt],
     plans: &[ProductionPlanReceipt],
     prices: &[PriceReceipt],
 ) -> Result<(), MaterialWorldError> {
+    let vacant = |id| {
+        lifecycle
+            .binary_search_by_key(&id, |r| r.principal_id)
+            .is_ok_and(|i| {
+                lifecycle[i].opening == ResidentAges::default()
+                    && lifecycle[i].opening_households == 0
+            })
+    };
+    if demand
+        .iter()
+        .any(|r| r.required_quantity == 0 && (!vacant(r.principal_id) || r.desired_quantity != 0))
+        || consumption
+            .iter()
+            .any(|r| r.required_quantity == 0 && !vacant(r.principal_id))
+    {
+        return Err(MaterialWorldError::Wire);
+    }
+    if services
+        .iter()
+        .any(|r| r.required_quantity == 0 && !vacant(r.principal_id))
+    {
+        return Err(MaterialWorldError::Wire);
+    }
     let demand_ids: BTreeSet<_> = demand.iter().map(|row| row.order_id).collect();
     let procurement_ids: BTreeSet<_> = procurement.iter().map(|row| row.order_id).collect();
     if !ordered(demand, |row| (row.principal_id, row.good_id, row.unit_id))
@@ -63,7 +91,6 @@ fn funded_price(price: Currency, quantity: u64) -> bool {
 
 fn validate_demand(row: &HouseholdDemandReceipt, period: u64) -> Result<(), MaterialWorldError> {
     if row.period != period
-        || row.required_quantity == 0
         || row.desired_quantity < row.required_quantity.saturating_sub(row.opening_stock)
         || row.requested_quantity > row.desired_quantity
         || row.admitted_quantity > row.requested_quantity
@@ -80,7 +107,6 @@ fn validate_consumption(
     period: u64,
 ) -> Result<(), MaterialWorldError> {
     if row.period != period
-        || row.required_quantity == 0
         || row.consumed_quantity != row.available_quantity.min(row.required_quantity)
         || row.consumed_quantity.checked_add(row.unmet_quantity) != Some(row.required_quantity)
         || row.consumed_quantity.checked_add(row.closing_quantity) != Some(row.available_quantity)

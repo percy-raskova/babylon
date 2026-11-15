@@ -1078,3 +1078,76 @@ fn labor_sankey_keeps_both_boundary_balances_visible_without_current_transfers()
         .any(|t| t.0 == "No recorded labor movements on this page."));
     assert!(world.query::<&ImageNode>().iter(world).next().is_none());
 }
+
+#[test]
+fn household_receipt_is_bound_to_the_selected_account_and_observer_frame() {
+    use super::household;
+    let (mut app, select, mut scope, _) = interaction_fixture();
+    scope.group = FlowGroup::Account;
+    let household = format!("household_cash:{}", "17".repeat(32));
+    let other = format!("site_cash:{}", "17".repeat(32));
+    let rows = state::connections(&[
+        counterparty(Some(&household), "12", "0", "0"),
+        counterparty(Some(&other), "3", "0", "0"),
+    ]);
+    {
+        let mut view = app.world_mut().resource_mut::<MoneyView>();
+        view.scope = Some(scope.clone());
+        view.rows.clone_from(&rows);
+    }
+    let open = app
+        .world_mut()
+        .spawn(Target {
+            scope: scope.clone(),
+            offset: 0,
+            action: Action::HouseholdReceipt(true),
+        })
+        .observe(state::keyboard)
+        .id();
+    let press = |entity| ObserverKeyboardActivate {
+        entity,
+        context: Some(scope.context.clone()),
+    };
+    *app.world_mut()
+        .get_mut::<Target>(select)
+        .expect("household selection control") = Target {
+        scope: scope.clone(),
+        offset: 0,
+        action: Action::Select(rows[0].key.clone()),
+    };
+    app.world_mut().trigger(press(select));
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .perspective = Perspective::PlayerKnowledge;
+    app.world_mut().trigger(press(open));
+    assert!(!app.world().resource::<MoneyView>().household.open);
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .perspective = Perspective::FullObserver;
+    app.world_mut().trigger(press(open));
+    let id = household::selected(app.world().resource::<MoneyView>())
+        .expect("selected household account");
+    let stale = Scope {
+        tick_hash: Some("another close".into()),
+        ..scope.clone()
+    };
+    assert!(!household::accepts(
+        app.world().resource::<MoneyView>(),
+        &stale,
+        id
+    ));
+    assert!(household::accepts(
+        app.world().resource::<MoneyView>(),
+        &scope,
+        id
+    ));
+    app.world_mut()
+        .get_mut::<Target>(select)
+        .expect("household selection control")
+        .action = Action::Select(rows[1].key.clone());
+    app.world_mut().trigger(press(select));
+    let view = app.world().resource::<MoneyView>();
+    assert!(!view.household.open);
+    assert!(!household::accepts(view, &scope, id));
+    assert!(household::selected(view).is_none());
+}

@@ -6,7 +6,7 @@ use super::state::{
     self, Action, Connection, Diagram, Direction, Measure, MoneyRail, MoneyView, Observation, Page,
     Quantity, Scope, Status, Target,
 };
-use super::{company, freight_rail, grouping, industry};
+use super::{company, freight_rail, grouping, household, industry};
 use crate::atlas::CountyAtlas;
 use crate::observer_focus::ObserverFocusTarget;
 use crate::observer_theme as theme;
@@ -213,6 +213,7 @@ pub(super) struct RailKey {
     offset: u64,
     status: Status,
     books: (Option<u64>, bool),
+    household: (bool, bool),
     company: (Option<CompanyId>, bool, bool),
     freight: Option<FreightPageKey>,
     active: bool,
@@ -243,6 +244,7 @@ pub(super) fn paint(
         status: view.status,
         books: view.books.key(),
         company: view.company.key(),
+        household: view.household.key(),
         freight: view.freight.page_key(),
         active,
     };
@@ -270,11 +272,9 @@ fn populate(rail: &mut ChildSpawnerCommands, view: &MoneyView, obs: &Observation
         }
         return;
     }
-    if view
-        .scope
-        .as_ref()
-        .is_some_and(|scope| company::panel(rail, view, scope))
-    {
+    if view.scope.as_ref().is_some_and(|scope| {
+        company::panel(rail, view, scope) || household::panel(rail, view, scope, &obs.atlas)
+    }) {
         return;
     }
     rail.spawn(label(
@@ -484,6 +484,29 @@ fn ranked_page(
     page_controls(rail, view, scope, visible, total_groups);
 }
 
+fn account_controls(rail: &mut ChildSpawnerCommands, view: &MoneyView, scope: &Scope) {
+    if scope.measure == Measure::Money
+        && matches!(scope.group, FlowGroup::Account | FlowGroup::Counterparty)
+    {
+        control(
+            rail,
+            view,
+            scope,
+            Action::HouseholdReceipt(true),
+            "Household period receipt".into(),
+        );
+    }
+    if matches!(scope.group, FlowGroup::Company | FlowGroup::Counterparty) {
+        control(
+            rail,
+            view,
+            scope,
+            Action::CompanyAccounts(true),
+            "Company accounts".into(),
+        );
+    }
+}
+
 fn connection_controls(
     rail: &mut ChildSpawnerCommands,
     view: &MoneyView,
@@ -526,15 +549,7 @@ fn connection_controls(
             },
         ));
     }
-    if matches!(scope.group, FlowGroup::Company | FlowGroup::Counterparty) {
-        control(
-            rail,
-            view,
-            scope,
-            Action::CompanyAccounts(true),
-            "Company accounts".into(),
-        );
-    }
+    account_controls(rail, view, scope);
     if scope.group != FlowGroup::Location {
         rail.spawn((
             LocationList::default(),
@@ -685,6 +700,7 @@ fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) ->
     match target.action {
         Action::IndustrySources => Some(industry::selected(view).is_some()),
         Action::CompanyAccounts(true) => Some(company::selected(view).is_some()),
+        Action::HouseholdReceipt(true) => Some(household::selected(view).is_some()),
         Action::Geography(delta) => Some(view.geography.can_navigate(delta)),
         Action::Frame if view.diagram != Diagram::Map => Some(false),
         Action::Frame if target.scope.group != FlowGroup::Location => {

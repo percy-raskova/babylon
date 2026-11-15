@@ -1,0 +1,25 @@
+{
+  "contract": "NationalAgeReference2024SourcesV1",
+  "county_reference_sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e",
+  "county_table": {
+    "path": "b01001-counties-with-pr.dat",
+    "bytes": 1311452,
+    "sha256": "12064b63ccab8949225d073d44520b5fffe7653a5a7776e7aa70880da264d249",
+    "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b01001.dat",
+    "original_bytes": 200356282,
+    "retained_http_byte_ranges_inclusive": [[0, 1182], [414931, 1725199]],
+    "retrieval": "Concatenate the two HTTP 206 byte-range bodies in the stated order. The first contains the header and the second contains every county record including Puerto Rico."
+  },
+  "age_field_definitions": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/documentation/ACS20245YR_Table_Shells.txt",
+  "source_fields": {
+    "under_15": "B01001_E003..E005 plus E027..E029",
+    "age_15_17": "B01001_E006 plus E030",
+    "age_18_64": "B01001_E007..E019 plus E031..E043",
+    "age_65_plus": "B01001_E020..E025 plus E044..E049",
+    "total": "B01001_E001 and B01003_E001",
+    "age_16_plus": "B23025_E001",
+    "age_16_17": "age_16_plus minus age_18_64 minus age_65_plus",
+    "age_15": "age_15_17 minus age_16_17",
+    "under_16": "under_15 plus age_15, reconciled to total minus age_16_plus"
+  }
+}

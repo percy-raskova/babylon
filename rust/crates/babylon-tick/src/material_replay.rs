@@ -346,6 +346,7 @@ impl MaterialBaseInputs<'_> {
                 composition,
                 closed.closing_period(),
                 &requests,
+                closed.household_lifecycle(),
             )?;
             let mut transition = closed.finish_with_workforce(
                 self.catalog,
@@ -353,6 +354,9 @@ impl MaterialBaseInputs<'_> {
                 effects.next_member_labor().to_vec(),
             )?;
             transition.staffing_members = effects.member_receipts().to_vec();
+            transition
+                .resident_workforce_attrition
+                .clone_from(&effects.attrition);
             let world = self.opening.prepare_transition(
                 self.catalog,
                 transition,

@@ -34,7 +34,8 @@ envelope:
       count: 1
       key: empty
       payload: captured_material_world_register_v7_or_v8_bytes
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: captured_material_tick_receipts_v20_or_v21_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty,
+       payload: captured_material_tick_receipts_v20_v21_or_v22_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
@@ -599,6 +600,19 @@ company_receipts:
   maximum_complete_basis: V20 capacity plus the payout count times 169 and nine framing bytes.
     Both company families share this aggregate budget. Each retains its independent row limit.
   maximum_stored_bytes: 947588276
+household_lifecycle_receipts:
+  version: 22
+  activation: The closing material state carries household lifecycle positions.
+  domain: "babylon.material-tick-receipts.v22\0"
+  family_count: 41
+  layout: The first 39 families follow the company layout, followed by both lifecycle families.
+  families:
+    - {tag: 40, name: household_lifecycle, width: 176, maximum_rows: 65536}
+    - {tag: 41, name: resident_workforce_attrition, width: 128, maximum_rows: 131072}
+  population: Each row reconciles the opening, births, deaths and transfers in four age bands against the closing
+    register. Age 16 establishes household time eligibility. Paid attendance is backed by a workforce member.
+  workforce: Record unavoidable reductions in employed or reserve counts against the same opening member and pool.
+  maximum_complete_bytes: 947585922
 persistence:
   material_rows: babylon_state.material_tick_v3
   register_storage: Compiled section layouts, typed lookup references, exact columns and opening-relative XOR.
@@ -621,6 +635,7 @@ persistence:
     period_lookup: "BabylonPeriodLookupV3\0"
     receipt: "BabylonReceiptStorageV3\0"
     company_receipt: "BabylonReceiptStorageV4\0"
+    household_lifecycle_receipt: "BabylonReceiptStorageV5\0"
   canonical_reconstruction: Shared runtime and full-observer decoder verifies original bytes before envelope checks.
   checkpoint_storage:
     relation: babylon_state.checkpoint_section_v1

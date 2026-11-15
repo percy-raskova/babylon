@@ -10,7 +10,9 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
 
-use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, UnitId};
+use babylon_material_circuit::{
+    CommodityKind, GoodId, HouseholdLifecycleRates, HouseholdNeedBasis, UnitId,
+};
 
 use crate::national_transport::CargoClass;
 use babylon_practice_contract::OrganizerGiftConsent;
@@ -43,6 +45,7 @@ pub struct NationalGamePolicy {
     pub financial: GameFinancialPolicy,
     pub households: GameHouseholdPolicy,
     pub household_time: GameHouseholdTimePolicy,
+    pub household_lifecycle: Option<GameHouseholdLifecyclePolicy>,
     pub markets: GameMarketPolicy,
     pub equipment: GameEquipmentPolicy,
     pub commodities: BTreeMap<String, GameCommodity>,
@@ -50,6 +53,21 @@ pub struct NationalGamePolicy {
     pub household_needs: Vec<GameNeed>,
     pub counterparts: BTreeMap<ForeignCounterpart, GameProfile>,
     pub dependency: GameDependencyProfile,
+}
+
+/// Designed allocation of the initially mixed ages within each published band.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InitialAgeDistribution {
+    UniformRemainingBirthdays,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameHouseholdLifecyclePolicy {
+    pub rates: HouseholdLifecycleRates,
+    pub initial_age_distribution: InitialAgeDistribution,
+    /// Designed within the preexisting 16+ count in foreign and dependency markets.
+    pub external_eligible_age_bps: [u16; 3],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -26,9 +26,11 @@ use babylon_graph::stable_element::{StableElementKey, StableElementResolver, Sta
 
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{
-    LaborCapacityRow, MemberLaborCapacityRow, StaffingError, StaffingMemberReceipt,
-    StaffingMemberState, StaffingPoolState, StaffingReceipt, StaffingState, StaffingWorkRequest,
+    HouseholdLifecycleReceipt, LaborCapacityRow, MemberLaborCapacityRow,
+    ResidentWorkforceAttrition, StaffingError, StaffingMemberReceipt, StaffingMemberState,
+    StaffingPoolState, StaffingReceipt, StaffingState, StaffingWorkRequest,
 };
 
 use crate::committed_event::CommittedEvent;
@@ -130,6 +132,7 @@ pub struct StaffingEffectContext<'a> {
 pub struct StaffingEffects {
     staffing_receipts: Vec<StaffingReceipt>,
     member_receipts: Vec<StaffingMemberReceipt>,
+    pub(crate) attrition: Vec<ResidentWorkforceAttrition>,
     next_member_labor: Vec<MemberLaborCapacityRow>,
     next_labor: Vec<LaborCapacityRow>,
     writes: Vec<WriteRecord>,
@@ -266,6 +269,7 @@ pub(crate) fn read_opening(
     context: StaffingEffectContext<'_>,
     composition: &StaffingComposition,
     period: u64,
+    tracked: impl Fn(FinalDemandPrincipalId) -> bool,
 ) -> Result<OpeningStaffing, MaterialStaffingError> {
     if !composition.bindings().is_empty() {
         validate_fields(context)?;
@@ -281,11 +285,18 @@ pub(crate) fn read_opening(
         let (mut employed, mut reserve) = (0_u64, 0_u64);
         for member in row.members() {
             let node = resolve_node(graph, context, member.subject(), "SOCIAL_CLASS")?;
-            let state = StaffingMemberState::try_new(
-                member.member().clone(),
-                read_stock(graph, node, EMPLOYED_POPULATION, &context)?,
-                read_stock(graph, node, RESERVE_POPULATION, &context)?,
-            )?;
+            let working = read_stock(graph, node, EMPLOYED_POPULATION, &context)?;
+            let waiting = read_stock(graph, node, RESERVE_POPULATION, &context)?;
+            let binding = if period > 1 && tracked(member.member().household_id()) {
+                member.member().with_living_force(
+                    working
+                        .checked_add(waiting)
+                        .ok_or(StaffingError::Arithmetic)?,
+                )?
+            } else {
+                member.member().clone()
+            };
+            let state = StaffingMemberState::try_new(binding, working, waiting)?;
             employed = employed
                 .checked_add(state.employed())
                 .ok_or(StaffingError::Arithmetic)?;
@@ -296,7 +307,20 @@ pub(crate) fn read_opening(
             nodes.push(node);
         }
         pools.push(StaffingPoolState::try_new(
-            row.pool().clone(),
+            if period > 1
+                && row
+                    .members()
+                    .iter()
+                    .any(|member| tracked(member.member().household_id()))
+            {
+                row.pool().with_living_force(
+                    employed
+                        .checked_add(reserve)
+                        .ok_or(StaffingError::Arithmetic)?,
+                )?
+            } else {
+                row.pool().clone()
+            },
             employed,
             reserve,
             read_stock(graph, workplace, PREVIOUS_UNRETAINED_HOURS, &context)?,
@@ -323,7 +347,10 @@ pub fn validate_opening_labor(
     material: &MaterialCircuitState,
 ) -> Result<(), MaterialStaffingError> {
     use babylon_material_circuit::CircuitAccounting;
-    let opening = read_opening(graph, context, composition, material.period)?;
+    let lifecycle = material.household_lifecycle();
+    let opening = read_opening(graph, context, composition, material.period, |id| {
+        lifecycle.is_some_and(|book| book.position(id).is_some())
+    })?;
     let mut expected = BTreeMap::new();
     let mut member_hours = BTreeMap::new();
     let mut member_bindings = BTreeMap::new();
@@ -513,8 +540,14 @@ pub fn apply_material_staffing(
     composition: &StaffingComposition,
     period: u64,
     requests: &[StaffingWorkRequest],
+    lifecycle: &[HouseholdLifecycleReceipt],
 ) -> Result<StaffingEffects, MaterialStaffingError> {
-    let opening = read_opening(graph, context, composition, period)?;
+    let mut opening = read_opening(graph, context, composition, period, |id| {
+        lifecycle
+            .binary_search_by_key(&id, |r| r.principal_id)
+            .is_ok()
+    })?;
+    let attrition = opening.apply_resident_attrition(lifecycle)?;
     let transition = babylon_material_circuit::advance_staffing(&opening.state, requests)?;
     let prepared = prepare_effects(&opening, transition.receipts())?;
     let pending = prepared.writes;
@@ -555,10 +588,80 @@ pub fn apply_material_staffing(
     Ok(StaffingEffects {
         staffing_receipts,
         member_receipts: prepared.members,
+        attrition,
         next_member_labor: prepared.next_member_labor,
         next_labor,
         writes: log.records,
         audit_receipts,
         committed_events,
     })
+}
+
+impl OpeningStaffing {
+    fn apply_resident_attrition(
+        &mut self,
+        lifecycle: &[HouseholdLifecycleReceipt],
+    ) -> Result<Vec<ResidentWorkforceAttrition>, MaterialStaffingError> {
+        if lifecycle.is_empty() {
+            return Ok(Vec::new());
+        }
+        let members: Vec<_> = self
+            .state
+            .pools()
+            .iter()
+            .zip(&self.members)
+            .flat_map(|(pool, members)| {
+                members
+                    .iter()
+                    .map(move |member| (pool.binding().pool_id(), member.clone()))
+            })
+            .collect();
+        let changes = babylon_material_circuit::reconcile_resident_workforce(lifecycle, &members)?;
+        if changes.is_empty() {
+            return Ok(changes);
+        }
+        let by_member: BTreeMap<_, _> = changes.iter().map(|r| (r.member_id, r)).collect();
+        let mut pools = reserved(self.state.pools().len())?;
+        for (pool, members) in self.state.pools().iter().zip(&mut self.members) {
+            let mut employed = pool.employed();
+            let mut reserve = pool.reserve();
+            for member in members {
+                if let Some(row) = by_member.get(&member.binding().member_id()) {
+                    let working = member
+                        .employed()
+                        .checked_sub(row.employed_removed)
+                        .ok_or(StaffingError::PopulationInvariant)?;
+                    let waiting = member
+                        .reserve()
+                        .checked_sub(row.reserve_removed)
+                        .ok_or(StaffingError::PopulationInvariant)?;
+                    let binding = member.binding().with_living_force(
+                        working
+                            .checked_add(waiting)
+                            .ok_or(StaffingError::Arithmetic)?,
+                    )?;
+                    *member = StaffingMemberState::try_new(binding, working, waiting)?;
+                    employed = employed
+                        .checked_sub(row.employed_removed)
+                        .ok_or(StaffingError::PopulationInvariant)?;
+                    reserve = reserve
+                        .checked_sub(row.reserve_removed)
+                        .ok_or(StaffingError::PopulationInvariant)?;
+                }
+            }
+            let binding = pool.binding().with_living_force(
+                employed
+                    .checked_add(reserve)
+                    .ok_or(StaffingError::Arithmetic)?,
+            )?;
+            pools.push(StaffingPoolState::try_new(
+                binding,
+                employed,
+                reserve,
+                pool.previous_unretained_hours(),
+            )?);
+        }
+        self.state = StaffingState::try_new(self.state.period(), pools)?;
+        Ok(changes)
+    }
 }

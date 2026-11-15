@@ -1,4 +1,4 @@
-//! One-way inspection copy of a material campaign from the exact pre-PER-293 schema.
+//! One-way inspection copy of a material campaign from an admitted predecessor schema.
 mod rows;
 mod source;
 mod transport;

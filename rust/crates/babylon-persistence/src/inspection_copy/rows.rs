@@ -1,7 +1,7 @@
 //! Only predecessor-owned base rows cross the connection. All DDL and triggers are the target's.
 use super::InspectionCopyError;
 use crate::identity::CampaignId;
-use postgres::Transaction;
+use postgres::{Error, Transaction};
 use std::collections::BTreeMap;
 use std::io;
 
@@ -70,6 +70,44 @@ const HISTORY: &[&str] = &[
     "babylon_meta.archive_page_revision_v2",
 ];
 
+/// The canonical binary fields must agree across both independently attested PG17 catalogs.
+#[derive(PartialEq, Eq)]
+struct TableColumns {
+    writable: String,
+    signature: String,
+}
+
+fn columns(
+    tx: &mut Transaction<'_>,
+    tables: &[&str],
+) -> Result<BTreeMap<String, TableColumns>, Error> {
+    let sql="SELECT n.nspname||'.'||c.relname,
+        string_agg(quote_ident(a.attname),',' ORDER BY a.attnum)
+            FILTER (WHERE a.attgenerated='' AND a.attname<>'creation_xid'),
+        jsonb_agg(jsonb_build_array(a.attname,format_type(a.atttypid,a.atttypmod),a.attndims,
+            a.attnotnull,a.attgenerated,a.attidentity,cn.nspname,col.collname,
+            pg_get_expr(d.adbin,d.adrelid)) ORDER BY a.attnum)::text
+        FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        LEFT JOIN pg_catalog.pg_collation col ON col.oid=a.attcollation
+        LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=col.collnamespace
+        LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+        WHERE (n.nspname||'.'||c.relname)=ANY($1::text[]) AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+        GROUP BY n.nspname,c.relname";
+    tx.query(sql, &[&tables])?
+        .into_iter()
+        .map(|r| {
+            Ok((
+                r.try_get(0)?,
+                TableColumns {
+                    writable: r.try_get(1)?,
+                    signature: r.try_get(2)?,
+                },
+            ))
+        })
+        .collect()
+}
+
 pub(super) struct Transfer<'a, 's, 't> {
     from: &'a mut Transaction<'s>,
     to: &'a mut Transaction<'t>,
@@ -83,17 +121,26 @@ impl<'a, 's, 't> Transfer<'a, 's, 't> {
         to: &'a mut Transaction<'t>,
         campaign: CampaignId,
     ) -> Result<Self, InspectionCopyError> {
-        // All data types are the same on both admitted schemas. Generated marker columns and
-        // local transaction IDs must be produced by the destination database.
-        let rows=to.query("SELECT n.nspname||'.'||c.relname,string_agg(quote_ident(a.attname),',' ORDER BY a.attnum) FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('babylon_state','babylon_meta') AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped AND a.attgenerated='' AND a.attname<>'creation_xid' GROUP BY n.nspname,c.relname",&[]).map_err(|_|InspectionCopyError::DestinationSchema)?;
+        let tables: Vec<&str> = FOUNDATIONS
+            .iter()
+            .chain(LOOKUPS)
+            .chain([&VECTORS, &FIELDS])
+            .chain(PERIODS)
+            .chain(HISTORY)
+            .copied()
+            .collect();
+        let mut input = columns(from, &tables).map_err(|_| InspectionCopyError::SourceSchema)?;
+        let mut target =
+            columns(to, &tables).map_err(|_| InspectionCopyError::DestinationSchema)?;
         let mut columns = BTreeMap::new();
-        for row in rows {
-            columns.insert(
-                row.try_get(0)
-                    .map_err(|_| InspectionCopyError::DestinationSchema)?,
-                row.try_get(1)
-                    .map_err(|_| InspectionCopyError::DestinationSchema)?,
-            );
+        for table in tables {
+            let expected = target
+                .remove(table)
+                .ok_or(InspectionCopyError::TableColumns(table))?;
+            if input.remove(table).as_ref() != Some(&expected) {
+                return Err(InspectionCopyError::TableColumns(table));
+            }
+            columns.insert(table.to_owned(), expected.writable);
         }
         Ok(Self {
             from,

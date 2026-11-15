@@ -51,6 +51,10 @@ fn predecessor_inspection_copies_only_the_named_campaign_without_adopting_its_da
     ));
     let report = inspection_copy::copy_campaign(&from.writer, &to.writer, campaign)
         .expect("row-only inspection copy");
+    assert_eq!(
+        report.source_schema,
+        "f984e7ee59fa650fc470f884b4663a6fc773c44ed4494254727273e50093d071"
+    );
     assert_eq!(report.committed_periods, 2);
     let mut target = to.writer.connect(NoTls).expect("destination");
     assert_eq!(markers(&mut target, campaign), raw);

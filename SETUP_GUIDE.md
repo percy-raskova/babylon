@@ -239,8 +239,8 @@ also sum `public.v_observer_money_movement_total_v1` or inspect
 
 ### Read a campaign from the earlier schema
 
-For a campaign from the Postgres schema at `2824cf38e`, copy the recorded
-accounts to a second database. Prepare the destination with the new schema,
+For a campaign from the Postgres schema at `2824cf38e` or `dccef45d6`, copy the
+recorded history to a second database. Prepare the destination with the new schema,
 the same reference data and no campaigns. Set `BABYLON_PRE293_SOURCE_DSN`
 to the source owner connection and `BABYLON_INSPECTION_TARGET_DSN` to the
 destination owner connection.
@@ -254,7 +254,7 @@ cargo run -p babylon-persistence --bin babylon-inspection-copy -- \
 
 The command reads the source in a read-only transaction. It checks the copied
 foundation and committed periods before it saves the destination. The report
-identifies the foundation and the latest committed tick. Use the destination
+identifies the source schema, foundation and latest committed tick. Use the destination
 observer and runtime connections to publish the financial history there.
 
 ### Read site accounts and stock history

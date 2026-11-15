@@ -22,6 +22,7 @@ pub enum InspectionCopyError {
     Foundation,
     Markers,
     Table(&'static str),
+    TableColumns(&'static str),
     Components(i64),
     DestinationCommit,
 }
@@ -101,7 +102,7 @@ fn verify_copy(
     Ok(last)
 }
 
-/// Transport exactly one material campaign from commit 2824cf38e's schema to a freshly
+/// Transport exactly one material campaign from a pinned earlier schema to a freshly
 /// initialized current database. Bootstrap the target and provision its own roles separately.
 /// Its existing reference cohort supplies the FK for a Michigan-control campaign.
 ///
@@ -143,7 +144,7 @@ pub fn copy_campaign(
         &[&crate::SCHEMA_ADVISORY_LOCK_KEY],
     )
     .map_err(|_| InspectionCopyError::SourceSchema)?;
-    source::check(&mut from)?;
+    let source_schema = source::check(&mut from)?;
     let (foundation, tip) = capture(&mut from, campaign)?;
     let mut destination_client = current_schema::bounded_config(destination_config)
         .connect(NoTls)
@@ -183,7 +184,7 @@ pub fn copy_campaign(
         .map_err(|_| InspectionCopyError::DestinationCommit)?;
     Ok(InspectionCopy {
         campaign: campaign.as_uuid().to_string(),
-        source_schema: source::SCHEMA,
+        source_schema,
         foundation_sha256: crate::qualification_audit::trade::hex(&foundation),
         committed_periods: u64::try_from(tip).map_err(|_| InspectionCopyError::Markers)?,
         final_tick_content_hash: last,

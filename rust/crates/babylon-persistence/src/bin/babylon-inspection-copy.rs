@@ -1,4 +1,4 @@
-//! Operator-only row transport from the exact pre-PER-293 schema to a fresh current destination.
+//! Operator-only row transport from an admitted predecessor schema to a fresh current destination.
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::inspection_copy;
 use postgres::Config;

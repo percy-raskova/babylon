@@ -42,7 +42,7 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         .windows(compiler.len())
         .position(|s| s == compiler)
         .expect("the fixture sequence holds the addressed position");
-    for incompatible in [b'1', b'8'] {
+    for incompatible in *b"18" {
         obsolete[offset + compiler.len() - 1] = incompatible;
         assert_eq!(
             CapturedEconomicCatalog::decode(&obsolete, content_digest::sha256_of(&obsolete)),

@@ -3,8 +3,9 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
-    AccountId, CashTransferPurpose, CircuitAccounting, CompanyCondition, CompanyId,
-    CompanyProcessPlan, MoneyLocation, MoneyTransferPurpose, OutboundOrderId, SiteId,
+    AccountId, CapitalContributionReceipt, CashTransferPurpose, CircuitAccounting,
+    CompanyCondition, CompanyId, CompanyProcessPlan, MoneyLocation, MoneyTransferPurpose,
+    OutboundOrderId, SiteId,
 };
 use babylon_persistence::company_statements::{CompanyBooks, CompanyEntryKind, CompanyPeriod};
 use babylon_persistence::economic_catalog::{
@@ -54,6 +55,17 @@ fn reprice(text: &mut String, good: &str, multiple: u64) {
 }
 
 fn archived_capture() -> CapturedEconomicCatalog {
+    // This recorded P5 study used the original v8 portfolio condition order.
+    let capture = manufacturing_capture("schema_version = 4", "schema_version = 3");
+    assert_eq!(capture.compiler_version(), "national-world-v8");
+    assert_eq!(
+        babylon_tick::hex(&capture.digest()),
+        "377327f391050d1ab3260a9a54cec2c49278829d38c08094ea5cb3f1dfb0f6b7"
+    );
+    capture
+}
+
+fn manufacturing_capture(old: &str, new: &str) -> CapturedEconomicCatalog {
     let mut input = economic_catalog::national_catalog_input();
     let source = input
         .sources
@@ -63,8 +75,7 @@ fn archived_capture() -> CapturedEconomicCatalog {
     let mut text = std::str::from_utf8(source.bytes())
         .expect("policy text")
         .to_owned();
-    // This recorded P5 study used the original v8 portfolio condition order.
-    replace(&mut text, "schema_version = 4", "schema_version = 3");
+    replace(&mut text, old, new);
     // Scarce supplies made from costly feedstock sustain funded orders for the manufacturer.
     replace(
         &mut text,
@@ -115,11 +126,6 @@ fn archived_capture() -> CapturedEconomicCatalog {
 #[ignore = "five complete national material and financial closes"]
 fn high_demand_company_funds_an_admitted_equipment_purchase() {
     let c = archived_capture();
-    assert_eq!(c.compiler_version(), "national-world-v8");
-    assert_eq!(
-        babylon_tick::hex(&c.digest()),
-        "377327f391050d1ab3260a9a54cec2c49278829d38c08094ea5cb3f1dfb0f6b7"
-    );
     let roster = c.national_companies().expect("company capture");
     assert_eq!(roster.companies.len(), 99);
     let company = roster
@@ -313,12 +319,12 @@ fn decision(
     plan.clone()
 }
 
-fn settlement(
-    receipts: &MaterialTickReceipts,
+fn paid_contribution<'a>(
+    receipts: &'a MaterialTickReceipts,
     company: CompanyId,
     plan: &CompanyProcessPlan,
     report: &CompanyPeriod,
-) -> i128 {
+) -> &'a CapitalContributionReceipt {
     let site = plan.site;
     let mut entries =
         receipts.contributions.iter().enumerate().filter(|(_, r)| {
@@ -356,6 +362,18 @@ fn settlement(
         report.parent.closing.cash.micro_units() + report.subsidiaries.closing.cash.micro_units(),
         report.consolidated.closing.cash.micro_units()
     );
+    contribution
+}
+
+fn settlement(
+    receipts: &MaterialTickReceipts,
+    company: CompanyId,
+    plan: &CompanyProcessPlan,
+    report: &CompanyPeriod,
+) -> i128 {
+    let site = plan.site;
+    let contribution = paid_contribution(receipts, company, plan, report);
+    let paid = contribution.paid.micro_units();
     let purchase = receipts
         .investment
         .iter()
@@ -396,3 +414,6 @@ fn settlement(
     );
     paid
 }
+
+#[path = "company_governed_admission.rs"]
+mod current;

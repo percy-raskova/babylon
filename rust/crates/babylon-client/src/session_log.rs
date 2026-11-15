@@ -74,6 +74,7 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
     match command {
         ObserverCommand::NewOrganizerCampaign => "new_organizer_campaign",
         ObserverCommand::NewNationalCampaign => "new_national_campaign",
+        ObserverCommand::NewNationalEconomyCampaign => "new_national_economy_campaign",
         ObserverCommand::TogglePlay => "toggle_play",
         ObserverCommand::Step => "step",
         ObserverCommand::Speed => "speed",

@@ -82,7 +82,7 @@ options:
   --campaign    open an existing canonical campaign UUID; falls back to BABYLON_CAMPAIGN_ID.
   --new-campaign create an absent campaign with this canonical UUID.
   --preset      new campaign scenario: standard (default), delayed,
-                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne or national-world.
+                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne, national-world or national-economy.
   Open the connected window with `mise run play`.
 ";
 
@@ -476,6 +476,7 @@ fn windowed_target(
             None | Some("standard") => RuntimeSessionPreset::Standard,
             Some("delayed") => RuntimeSessionPreset::Delayed,
             Some("national-world") => RuntimeSessionPreset::NationalWorld,
+            Some("national-economy") => RuntimeSessionPreset::NationalEconomy,
             Some("organize-in-wayne") => RuntimeSessionPreset::OrganizeInWayne,
             Some("statewide-baseline") => RuntimeSessionPreset::StatewideBaseline,
             Some("statewide-freight-constraint") => RuntimeSessionPreset::StatewideFreightConstraint,
@@ -490,7 +491,7 @@ fn windowed_target(
             Some(_) => {
                 return Err(CliError::at(
                     concat!(file!(), ":", line!()),
-                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne or national-world".into(),
+                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne, national-world or national-economy".into(),
                 ))
             }
         };
@@ -1137,32 +1138,24 @@ mod tests {
     }
 
     #[test]
-    fn national_world_is_an_explicit_new_selection_and_never_an_open_override() {
-        let request = parse(os(&[
-            NEW_CAMPAIGN_FLAG,
-            CAMPAIGN,
-            PRESET_FLAG,
-            "national-world",
-        ]))
-        .expect("the captured national economy is an explicit New choice");
-        let CliRequest::Windowed {
-            initial_target,
-            qualification_control: None,
-        } = request
-        else {
-            panic!("national New must retain the connected window path")
-        };
-        assert_eq!(
-            serde_json::to_value(initial_target).expect("the value serializes to JSON")["preset"],
-            "national-world"
-        );
-        assert!(parse(os(&[
-            CAMPAIGN_FLAG,
-            CAMPAIGN,
-            PRESET_FLAG,
-            "national-world"
-        ]))
-        .is_err());
+    fn national_presets_are_explicit_new_selections_and_never_open_overrides() {
+        for preset in ["national-world", "national-economy"] {
+            let request = parse(os(&[NEW_CAMPAIGN_FLAG, CAMPAIGN, PRESET_FLAG, preset]))
+                .expect("the national preset is an explicit New choice");
+            let CliRequest::Windowed {
+                initial_target,
+                qualification_control: None,
+            } = request
+            else {
+                panic!("national New must retain the connected window path")
+            };
+            assert_eq!(
+                serde_json::to_value(initial_target).expect("the target serializes")["preset"],
+                preset
+            );
+            assert!(parse(os(&[CAMPAIGN_FLAG, CAMPAIGN, PRESET_FLAG, preset])).is_err());
+            assert!(render_help(HelpTopic::Root).contains(preset));
+        }
         for invalid in [
             "national",
             "National-world",

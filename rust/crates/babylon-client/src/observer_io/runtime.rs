@@ -1078,6 +1078,7 @@ pub(crate) fn queue_menu_campaign(command: ObserverCommand, context: &mut Comman
 pub(crate) fn campaign_preset(command: ObserverCommand) -> Option<RuntimeSessionPreset> {
     Some(match command {
         ObserverCommand::NewNationalCampaign => RuntimeSessionPreset::NationalWorld,
+        ObserverCommand::NewNationalEconomyCampaign => RuntimeSessionPreset::NationalEconomy,
         ObserverCommand::NewCampaign => RuntimeSessionPreset::Standard,
         ObserverCommand::NewOrganizerCampaign => RuntimeSessionPreset::OrganizeInWayne,
         ObserverCommand::NewStatewideMaintenanceBaselineCampaign => {

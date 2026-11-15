@@ -113,7 +113,7 @@ card. The Liberty start menu follows:
 - **Continue** enters the campaign the launcher prepared or reopened, once ready.
 - **New Game** starts the Wayne organizer campaign and preserves existing saves.
 - **Load Game** lists saved campaigns, with **Open** and **Compare** controls.
-- **Observer Campaigns** offers the regional, statewide, and Wayne maintenance presets.
+- **Observer Campaigns** offers the national economy, regional, statewide, and Wayne maintenance presets.
 - **Settings** controls audio, interface size, and reduced motion.
 - **Quit** closes the game.
 
@@ -330,10 +330,10 @@ Missing classifications appear as a null key when viewing all locations.
 
 ### Inspect a company or freight route
 
-Start a local company-enabled national campaign with the full observer.
+Choose **Observer Campaigns** and **Observe national economy** to start a full-observer game, or launch it locally.
 
 ```bash
-mise run play -- --new --preset national-world
+mise run play -- --new --preset national-economy
 ```
 
 After the first period closes, select a county and choose **By Company**.

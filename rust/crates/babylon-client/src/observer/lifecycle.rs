@@ -2,11 +2,11 @@
 
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::{
-    RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTail,
-    RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
+    RuntimeSessionErrorCode, RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionScope,
+    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
-use super::{ObserverSession, SessionPhase};
+use super::{ObserverSession, Perspective, SessionPhase};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -237,6 +237,15 @@ impl ObserverSession {
         self.generation
             .checked_add(1)
             .ok_or("Observation generation exhausted")?;
+        if matches!(
+            pending.target,
+            RuntimeSessionTarget::New {
+                preset: RuntimeSessionPreset::NationalEconomy,
+                ..
+            }
+        ) {
+            self.perspective = Perspective::FullObserver;
+        }
         self.lifecycle.switching = None;
         self.foundation_digest = Some(foundation_digest);
         self.ready(tail.resolve_tick, tail.tick_content_hash);

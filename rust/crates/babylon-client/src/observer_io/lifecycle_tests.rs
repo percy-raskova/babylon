@@ -709,33 +709,39 @@ fn lifecycle_admission_refusals_explain_the_available_campaign_choice() {
 }
 
 #[test]
-fn national_admission_leaves_the_old_wayne_workspace_and_waits_for_its_own_observation() {
-    let (mut app, requests, responses) = initial();
-    app.insert_resource(PrimaryView::Organizer);
-    {
-        let mut state = app.world_mut().resource_mut::<ObserverSession>();
-        state.perspective = Perspective::PlayerKnowledge;
-        state.organizer_enabled = true;
-        state
-            .queue_campaign(RuntimeSessionTarget::New {
-                campaign_id: campaign(2).as_uuid().to_string(),
-                preset: RuntimeSessionPreset::NationalWorld,
-            })
-            .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
+fn national_economy_admission_leaves_the_old_wayne_workspace_and_waits_for_its_own_observation() {
+    for was_organizer in [false, true] {
+        let (mut app, requests, responses) = initial();
+        app.insert_resource(if was_organizer {
+            PrimaryView::Organizer
+        } else {
+            PrimaryView::Map
+        });
+        {
+            let mut state = app.world_mut().resource_mut::<ObserverSession>();
+            state.perspective = Perspective::PlayerKnowledge;
+            state.organizer_enabled = was_organizer;
+            state
+                .queue_campaign(RuntimeSessionTarget::New {
+                    campaign_id: campaign(2).as_uuid().to_string(),
+                    preset: RuntimeSessionPreset::NationalEconomy,
+                })
+                .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
+        }
+        hello(&mut app, &responses);
+        let switch = take_switch(&requests);
+        switching(&mut app, &responses, &switch);
+        admitted(&mut app, &responses, &switch, 0);
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(state.campaign, campaign(2));
+        assert!(!state.organizer_enabled);
+        assert_eq!(state.perspective, Perspective::FullObserver);
+        assert_eq!(state.phase, SessionPhase::Loading);
+        assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
+        command(&mut app, ObserverCommand::Step);
+        assert!(
+            requests.try_recv().is_err(),
+            "admission is not an installed economic observation"
+        );
     }
-    hello(&mut app, &responses);
-    let switch = take_switch(&requests);
-    switching(&mut app, &responses, &switch);
-    admitted(&mut app, &responses, &switch, 0);
-    let state = app.world().resource::<ObserverSession>();
-    assert_eq!(state.campaign, campaign(2));
-    assert!(!state.organizer_enabled);
-    assert_eq!(state.perspective, Perspective::FullObserver);
-    assert_eq!(state.phase, SessionPhase::Loading);
-    assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
-    command(&mut app, ObserverCommand::Step);
-    assert!(
-        requests.try_recv().is_err(),
-        "admission is not an installed economic observation"
-    );
 }

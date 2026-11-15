@@ -230,6 +230,7 @@ pub enum ObserverCommand {
     NewCampaign,
     NewOrganizerCampaign,
     NewNationalCampaign,
+    NewNationalEconomyCampaign,
     NewDelayedCampaign,
     NewSharedFreightAmpleCampaign,
     NewSharedFreightConstrainedCampaign,
@@ -963,16 +964,18 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
-    panel.spawn(block_label(
-        "Wayne in the national world",
-        14.0,
-        theme::YELLOW,
-    ));
+    panel.spawn(block_label("National campaigns", 14.0, theme::YELLOW));
     preset_grid(
         panel,
-        &[("New national game", ObserverCommand::NewNationalCampaign)],
+        &[
+            ("New national game", ObserverCommand::NewNationalCampaign),
+            (
+                "Observe national economy",
+                ObserverCommand::NewNationalEconomyCampaign,
+            ),
+        ],
     );
-    panel.spawn(block_label("Organize in Wayne within all 3,144 U.S. counties and external markets. Local aid and remote solidarity use actual food, funds and household time.", 12.0, theme::GRAY));
+    panel.spawn(block_label("In a national game, organize in Wayne with food, funds and household time for local aid and remote solidarity. Observe production, payments and company accounts across 3,144 U.S. counties and external markets in the observer campaign.", 12.0, theme::GRAY));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -3794,7 +3797,7 @@ pub(crate) mod tests {
         }
     }
     #[test]
-    fn maintenance_menu_keeps_four_distinct_short_presets_and_existing_families() {
+    fn campaign_menu_offers_the_national_observer_and_distinct_maintenance_presets() {
         let mut world = World::new();
         let mut commands = world.commands();
         commands.spawn(Node::default()).with_children(menu_campaign);
@@ -3816,6 +3819,18 @@ pub(crate) mod tests {
                 "missing {label}: {texts:?}"
             );
         }
+        let observer_button = world
+            .query::<(&Text, &ChildOf)>()
+            .iter(&world)
+            .find_map(|(text, parent)| {
+                (text.0 == "Observe national economy").then_some(parent.parent())
+            })
+            .expect("the campaign menu offers the full national observer");
+        let choice = world
+            .get::<ObserverButton>(observer_button)
+            .expect("actionable preset");
+        assert!(choice.in_menu);
+        assert_eq!(choice.command, ObserverCommand::NewNationalEconomyCampaign);
         let buttons = world
             .query::<&ObserverButton>()
             .iter(&world)

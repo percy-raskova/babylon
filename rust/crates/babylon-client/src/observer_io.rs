@@ -804,6 +804,7 @@ pub(crate) mod tests {
     fn launcher_handoff_without_pipe_keeps_the_window_and_campaign_open() {
         for command in [
             ObserverCommand::NewNationalCampaign,
+            ObserverCommand::NewNationalEconomyCampaign,
             ObserverCommand::NewCampaign,
             ObserverCommand::NewDelayedCampaign,
             ObserverCommand::NewSharedFreightAmpleCampaign,
@@ -836,6 +837,7 @@ pub(crate) mod tests {
     fn campaign_choices_after_admission_failure_request_switch_without_exiting() {
         for command in [
             ObserverCommand::NewNationalCampaign,
+            ObserverCommand::NewNationalEconomyCampaign,
             ObserverCommand::NewCampaign,
             ObserverCommand::NewDelayedCampaign,
             ObserverCommand::NewSharedFreightAmpleCampaign,
@@ -863,6 +865,13 @@ pub(crate) mod tests {
                     ObserverCommand::NewNationalCampaign,
                     RuntimeSessionTarget::New {
                         preset: RuntimeSessionPreset::NationalWorld,
+                        ..
+                    },
+                )
+                | (
+                    ObserverCommand::NewNationalEconomyCampaign,
+                    RuntimeSessionTarget::New {
+                        preset: RuntimeSessionPreset::NationalEconomy,
                         ..
                     },
                 )

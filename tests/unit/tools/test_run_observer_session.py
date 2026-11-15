@@ -1074,6 +1074,7 @@ def _smoke_transcript_children(
         "statewide-maintenance-both",
         "organize-in-wayne",
         "national-world",
+        "national-economy",
     ],
 )
 def test_smoke_request_preserves_selected_preset_through_new_restart_and_readback(
@@ -1195,13 +1196,15 @@ def _national_snapshot_report() -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize("preset", ["national-world", "national-economy"])
 def test_national_smoke_requires_the_authenticated_economic_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    preset: str,
 ) -> None:
     _smoke_transcript_children(monkeypatch, tmp_path)
-    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 0
+    assert launcher.main(["--smoke", "--no-build", "--preset", preset]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["economy_snapshot"] == _national_snapshot_report()
     assert set(report["lifecycle_timings_us"]) == {"opening", "advance_commit_ack", "reopen"}

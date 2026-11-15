@@ -210,6 +210,7 @@ class NewCampaignTarget:
         "statewide-maintenance-both",
         "organize-in-wayne",
         "national-world",
+        "national-economy",
     ]
 
 
@@ -223,6 +224,8 @@ class OpenCampaignTarget:
 def _new_target(campaign: UUID, preset: str | None) -> NewCampaignTarget:
     if preset is None or preset == "standard":
         return NewCampaignTarget(campaign, "standard")
+    if preset == "national-economy":
+        return NewCampaignTarget(campaign, "national-economy")
     if preset == "national-world":
         return NewCampaignTarget(campaign, "national-world")
     if preset == "delayed":
@@ -860,7 +863,7 @@ def check_installation(
         )
     economy_snapshot = (
         _national_economy_status(client, root, reader, campaign, first)
-        if target.preset == "national-world"
+        if target.preset in ("national-world", "national-economy")
         else None
     )
     print(
@@ -1044,6 +1047,7 @@ def main(argv: list[str] | None = None) -> int:
             "statewide-maintenance-both",
             "organize-in-wayne",
             "national-world",
+            "national-economy",
         ),
         help="choose a new world's material preset; requires New rather than Open",
     )

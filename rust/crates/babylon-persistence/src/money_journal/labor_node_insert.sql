@@ -9,8 +9,11 @@ WITH batch AS MATERIALIZED (
         jsonb_build_object('descriptor_sha256',babylon_state.labor_node_fingerprint_v1(body))) AS body
     FROM batch
 ), matched AS MATERIALIZED (
-    SELECT e.body,d.descriptor_key
-    FROM (SELECT DISTINCT body FROM expected) e
+    SELECT e.body,e.first_block,d.descriptor_key
+    FROM (
+        SELECT body,min((link).node_ordinal/256) AS first_block
+        FROM expected GROUP BY body
+    ) e
     LEFT JOIN babylon_state.labor_node_descriptor_v1 d
       ON d.campaign_id=(e.body).campaign_id AND d.descriptor_sha256=(e.body).descriptor_sha256
      AND d IS NOT DISTINCT FROM jsonb_populate_record(e.body,jsonb_build_object('descriptor_key',d.descriptor_key))
@@ -19,7 +22,8 @@ WITH batch AS MATERIALIZED (
         FROM babylon_state.labor_node_identity_v1 d WHERE d.campaign_id=c.campaign_id),0) AS last_key
     FROM (SELECT DISTINCT (body).campaign_id FROM matched WHERE descriptor_key IS NULL) c
 ), allocated AS (
-    SELECT m.body,p.last_key+row_number() OVER (PARTITION BY p.campaign_id ORDER BY (m.body).descriptor_sha256) AS descriptor_key
+    -- Allocate physical keys in the same order across combined source blocks.
+    SELECT m.body,p.last_key+row_number() OVER (PARTITION BY p.campaign_id ORDER BY m.first_block,(m.body).descriptor_sha256) AS descriptor_key
     FROM matched m JOIN prior p ON p.campaign_id=(m.body).campaign_id
     WHERE m.descriptor_key IS NULL
 ), new_definitions AS (

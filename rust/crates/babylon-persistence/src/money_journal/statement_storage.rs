@@ -183,6 +183,11 @@ pub(super) struct Batch<'a, 'b> {
     pub(super) admission: Admission,
 }
 
+// Match the SQL block denominator while bounding the PostgreSQL text parameter.
+const BLOCK_ROWS: usize = 256;
+const MAX_NODE_BLOCKS: usize = 32;
+const MAX_COMBINED_BYTES: usize = 16 * 1024 * 1024;
+
 impl Batch<'_, '_> {
     pub(super) fn stage<T: Serialize>(
         &mut self,
@@ -193,26 +198,42 @@ impl Batch<'_, '_> {
             && !matches!(table, Table::Statement | Table::Stock);
         let sql = table.sql(self.admission);
         let prepared = self.tx.prepare(&sql).map_err(|_| JournalError::Database)?;
+        // A storage block contains 256 contiguous source ordinals. The first
+        // block seeds planner statistics before a node statement combines blocks.
+        let mut rows = rows.peekable();
+        let mut block = Vec::with_capacity(BLOCK_ROWS);
         let mut payload = String::from("[");
+        let mut blocks = 0;
         let mut first_node_batch = !verify && matches!(table, Table::LaborNode);
-        let mut count = 0;
-        for row in rows {
-            let json = serde_json::to_string(&row).map_err(|_| JournalError::Projection)?;
-            if count != 0 {
+        let mut block_limit = 1;
+        while rows.peek().is_some() {
+            block.clear();
+            block.extend(rows.by_ref().take(BLOCK_ROWS));
+            let json = serde_json::to_string(&block).map_err(|_| JournalError::Projection)?;
+            // The Vec serialization always supplies the opening and closing brackets.
+            let body = &json[1..json.len() - 1];
+            // Count the comma and closing bracket. An individually wide block
+            // keeps its existing one-block statement without a new input limit.
+            if blocks > 0 && payload.len() + body.len() + 2 > MAX_COMBINED_BYTES {
+                self.send(&prepared, &mut payload, verify)?;
+                blocks = 0;
+            }
+            if blocks > 0 {
                 payload.push(',');
             }
-            payload.push_str(&json);
-            count += 1;
-            if count == 256 {
+            payload.push_str(body);
+            blocks += 1;
+            if blocks == block_limit {
                 self.send(&prepared, &mut payload, verify)?;
-                if first_node_batch {
+                blocks = 0;
+                if first_node_batch && block.len() == BLOCK_ROWS {
                     super::labor_storage::prepare_descriptor_lookup(self.tx)?;
                     first_node_batch = false;
+                    block_limit = MAX_NODE_BLOCKS;
                 }
-                count = 0;
             }
         }
-        if count != 0 {
+        if blocks > 0 {
             self.send(&prepared, &mut payload, verify)?;
         }
         Ok(())

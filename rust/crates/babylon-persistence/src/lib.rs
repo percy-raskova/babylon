@@ -56,6 +56,7 @@ pub mod event_storage;
 pub mod graph_storage;
 pub mod material_storage;
 
+pub mod economic_flows;
 pub mod money_journal;
 mod organizer_content;
 pub mod organizer_runtime;

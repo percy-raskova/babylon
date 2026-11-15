@@ -1,6 +1,8 @@
 //! Explicit owner publication and confined observer SQL queries for money facts.
 use babylon_persistence::identity::CampaignId;
-use babylon_persistence::money_journal::MoneyJournalWriter;
+use babylon_persistence::money_journal::{
+    FlowGroup, FlowQuery, FlowViewport, MoneyJournalWriter, PeriodWindow,
+};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -12,18 +14,29 @@ struct Arguments {
     campaign: CampaignId,
     first: u64,
     last: u64,
+    query: Option<FlowQuery>,
 }
 fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'static str> {
     let operation = args.next().ok_or("operation_absent")?;
     if !matches!(
         operation.as_str(),
-        "publish" | "rebuild" | "details" | "totals"
+        "publish" | "rebuild" | "details" | "totals" | "flows"
     ) {
         return Err("operation_refused");
     }
     let mut flags = BTreeMap::new();
     while let Some(flag) = args.next() {
-        if !matches!(flag.as_str(), "--campaign" | "--first" | "--last") {
+        let flow_option = operation == "flows"
+            && matches!(
+                flag.as_str(),
+                "--group"
+                    | "--compare-first"
+                    | "--compare-last"
+                    | "--focus"
+                    | "--offset"
+                    | "--bbox-4269"
+            );
+        if !flow_option && !matches!(flag.as_str(), "--campaign" | "--first" | "--last") {
             return Err("arguments_refused");
         }
         let value = args.next().ok_or("arguments_refused")?;
@@ -51,11 +64,71 @@ fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'stat
     if last < first || (operation == "details" && last != first) {
         return Err("period_refused");
     }
+    let query = if operation == "flows" {
+        Some(flow_options(&flags, PeriodWindow { first, last }, parse)?)
+    } else {
+        None
+    };
     Ok(Arguments {
+        query,
         operation,
         campaign: CampaignId::from_uuid(id),
         first,
         last,
+    })
+}
+fn flow_options(
+    flags: &BTreeMap<String, String>,
+    window: PeriodWindow,
+    parse: impl Fn(&str) -> Result<u64, &'static str>,
+) -> Result<FlowQuery, &'static str> {
+    let comparison = match (flags.get("--compare-first"), flags.get("--compare-last")) {
+        (None, None) => None,
+        (Some(first), last) => Some(PeriodWindow {
+            first: parse(first)?,
+            last: parse(last.unwrap_or(first))?,
+        }),
+        _ => return Err("comparison_refused"),
+    };
+    let group = match flags.get("--group").map_or("location", String::as_str) {
+        "location" => FlowGroup::Location,
+        "account" => FlowGroup::Account,
+        "catchment" => FlowGroup::Catchment,
+        "industry" => FlowGroup::Industry,
+        _ => return Err("group_refused"),
+    };
+    let viewport_4269 = flags
+        .get("--bbox-4269")
+        .map(|text| {
+            let parts = text
+                .split(',')
+                .map(str::parse::<f64>)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| "viewport_refused")?;
+            let [west, south, east, north] = parts.as_slice() else {
+                return Err("viewport_refused");
+            };
+            Ok(FlowViewport {
+                west: *west,
+                south: *south,
+                east: *east,
+                north: *north,
+            })
+        })
+        .transpose()?;
+    let offset = flags
+        .get("--offset")
+        .map(|n| n.parse::<u64>())
+        .transpose()
+        .map_err(|_| "offset_refused")?
+        .unwrap_or(0);
+    Ok(FlowQuery {
+        window,
+        comparison,
+        group,
+        focus: flags.get("--focus").cloned(),
+        offset,
+        viewport_4269,
     })
 }
 fn run(args: &Arguments) -> Result<Value, String> {
@@ -81,6 +154,15 @@ fn run(args: &Arguments) -> Result<Value, String> {
             }
             Ok(
                 json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"periods":reports}),
+            )
+        }
+        "flows" => {
+            let query = args.query.as_ref().ok_or("flow_request_absent")?;
+            let page = observer
+                .economic_payment_flows(args.campaign, query)
+                .map_err(|e| e.to_string())?;
+            Ok(
+                json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"unit":"currency_micros","request":query,"page":page}),
             )
         }
         "details" => Ok(

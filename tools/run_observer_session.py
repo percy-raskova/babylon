@@ -436,6 +436,8 @@ def prepare(
                 "babylon-persistence",
                 "--bin",
                 "babylon-runtime",
+                "--bin",
+                "babylon-economic-projections",
                 "-p",
                 "babylon-client",
                 "--bin",
@@ -473,6 +475,53 @@ def _stop(child: subprocess.Popen[bytes]) -> None:
                     "observer child did not exit after bounded shutdown; "
                     "reopen the campaign to reconcile committed progress"
                 ) from error
+
+
+def _start_projections(
+    binary: Path, root: Path, writer: Mapping[str, str], reader: Mapping[str, str]
+) -> subprocess.Popen[bytes] | None:
+    """Give the independent publisher its two database logins and a private lifetime pipe."""
+    try:
+        return subprocess.Popen(
+            [str(binary), "watch-database", "--session-stdin"],
+            cwd=root,
+            env={
+                "BABYLON_RUNTIME_DSN": writer["BABYLON_RUNTIME_DSN"],
+                "BABYLON_OBSERVER_DSN": reader["BABYLON_OBSERVER_DSN"],
+            },
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=None,
+            close_fds=True,
+        )
+    except OSError:
+        print(
+            "Economic projections could not start. A later session can catch up.", file=sys.stderr
+        )
+        return None
+
+
+def _finish_projections(child: subprocess.Popen[bytes]) -> None:
+    """Allow final committed periods to publish, then reap this exact owned child."""
+    try:
+        assert child.stdin is not None
+        try:
+            child.stdin.write(b"Q")
+            child.stdin.flush()
+        except BrokenPipeError:
+            pass
+        finally:
+            try:
+                child.stdin.close()
+            except BrokenPipeError:
+                pass
+        code = child.wait(timeout=15)
+        if code:
+            print(f"Economic projections stopped with code {code}.", file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("Economic projections will resume from committed periods on launch.", file=sys.stderr)
+    finally:
+        _stop(child)
 
 
 def _finish_runtime(child: subprocess.Popen[bytes]) -> int:
@@ -833,6 +882,7 @@ def run_pair(
     *,
     defines_path: Path,
     initial_target: NewCampaignTarget | OpenCampaignTarget,
+    analytics_binary: Path | None = None,
     qualification_control: Path | None = None,
     on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None] | None = None,
     on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
@@ -849,6 +899,7 @@ def run_pair(
     if qualification_control is not None and not qualification_control.is_absolute():
         raise ObserverLaunchError("qualification control socket must be absolute")
     descriptors: list[int] = []
+    publisher: subprocess.Popen[bytes] | None = None
     runtime: subprocess.Popen[bytes] | None = None
     client: subprocess.Popen[bytes] | None = None
     runtime_shutdown_started = False
@@ -894,6 +945,10 @@ def run_pair(
         for descriptor in descriptors:
             os.close(descriptor)
         descriptors.clear()
+        if analytics_binary is not None:
+            publisher = _start_projections(
+                analytics_binary, root, runtime_environment, client_environment
+            )
         if on_started is not None:
             # Bind these actual owned children only after parent pipe ends are
             # closed. A failed observation follows the same exact-child cleanup.
@@ -924,6 +979,8 @@ def run_pair(
                 if runtime is not None and not runtime_shutdown_started:
                     _finish_runtime(runtime)
         finally:
+            if publisher is not None:
+                _finish_projections(publisher)
             if on_stopped is not None and all(
                 child is None or child.poll() is not None for child in (client, runtime)
             ):
@@ -1026,6 +1083,7 @@ def main(argv: list[str] | None = None) -> int:
             reader_environment,
             defines_path=args.defines.expanduser().resolve(),
             initial_target=initial_target,
+            analytics_binary=runtime.with_name("babylon-economic-projections"),
         )
     except (ObserverLaunchError, OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"Observer launch refused: {error}", file=sys.stderr)

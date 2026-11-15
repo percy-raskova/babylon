@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -396,6 +398,59 @@ def test_two_anonymous_pipes_connect_children_without_parent_forwarding(
     for fd in fds:
         with pytest.raises(OSError):
             os.fstat(fd)
+
+
+def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    children = []
+
+    class Child:
+        def __init__(self, args, **kwargs):
+            self.args, self.options = args, kwargs
+            self.returncode = None
+            self.stdin = io.BytesIO() if kwargs["stdin"] == subprocess.PIPE else None
+            children.append(self)
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", Child)
+    writer, reader = launcher.child_environments(
+        {"BABYLON_RUNTIME_DSN": "owner", "PGPASSWORD": "unwanted"},
+        launcher.ReaderCredentials("observer", "known"),
+    )
+    code = launcher.run_pair(
+        tmp_path / "runtime",
+        tmp_path / "client",
+        tmp_path,
+        writer,
+        reader,
+        defines_path=tmp_path / "defines",
+        initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+        analytics_binary=tmp_path / "babylon-economic-projections",
+    )
+    assert code == 0
+    runtime, client, worker = children
+    assert worker.args == [
+        str(tmp_path / "babylon-economic-projections"),
+        "watch-database",
+        "--session-stdin",
+    ]
+    assert worker.options["env"]["BABYLON_RUNTIME_DSN"] == "owner"
+    assert worker.options["env"]["BABYLON_OBSERVER_DSN"] == "observer"
+    assert (
+        not {"PGPASSWORD", "BABYLON_READER_DSN", "BABYLON_SESSION_STDIO"}
+        & worker.options["env"].keys()
+    )
+    assert worker.options["stdout"] == subprocess.DEVNULL and worker.options["close_fds"] is True
+    assert "BABYLON_OBSERVER_DSN" not in runtime.options["env"]
+    assert "BABYLON_RUNTIME_DSN" not in client.options["env"]
+    assert worker.returncode == 0 and worker.stdin.closed
 
 
 def test_windowed_qualification_binds_owned_children_after_closing_parent_pipes(
@@ -852,6 +907,8 @@ def test_prepare_builds_with_native_rustup_from_the_pinned_workspace(
         "babylon-persistence",
         "--bin",
         "babylon-runtime",
+        "--bin",
+        "babylon-economic-projections",
         "-p",
         "babylon-client",
         "--bin",

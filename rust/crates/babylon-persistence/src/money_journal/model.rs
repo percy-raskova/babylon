@@ -133,6 +133,12 @@ pub struct MoneyEndpoint {
     pub id: [u8; 32],
 }
 
+impl From<AccountId> for MoneyEndpoint {
+    fn from(account: AccountId) -> Self {
+        endpoint(MoneyLocation::Cash(account))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MoneyReferenceKind {

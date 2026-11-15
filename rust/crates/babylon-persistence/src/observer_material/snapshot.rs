@@ -19,6 +19,7 @@ use crate::economic_content;
 use crate::economic_content::{
     EconomicContentAdmission, EconomicContentHandle, EconomicContentRef,
 };
+use crate::economic_flows::{self, EconomicPaymentPeriod};
 use crate::identity::CampaignId;
 use crate::material_runtime;
 use crate::material_runtime::StoredMaterialTick;
@@ -191,6 +192,24 @@ pub struct ObserverOpeningFoundations {
 }
 
 impl ObserverMaterialCursor {
+    pub(crate) fn economic_payments(
+        &self,
+        foundation: &EconomicContentAdmission,
+        source: CommittedMaterialReceipts,
+    ) -> Result<EconomicPaymentPeriod, ObserverEconomyError> {
+        let previous = self
+            .history
+            .opening(foundation)
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        economic_flows::project(
+            source,
+            foundation,
+            previous,
+            self.history.register(foundation),
+        )
+        .map_err(ObserverEconomyError::EconomicFlow)
+    }
+
     /// The campaign admission this cursor's evidence belongs to, when still alive.
     #[must_use]
     pub fn admission_handle(&self) -> Option<EconomicContentHandle> {

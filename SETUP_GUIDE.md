@@ -181,6 +181,20 @@ The local file stays outside Git.
 
 ### Query committed money movements
 
+The local observer launcher starts a separate publisher for its selected database.
+It fills missing committed periods at startup, including gaps below the latest
+period, and listens for new commits while the session runs. Campaign switches
+use the same database. Each publication uses the stored campaign identity.
+The worker uses its own connections and the game can advance while it works.
+
+To recover up to eight periods of one campaign, run the following command from
+`rust/` with the writer and full-observer credentials described below.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- sweep \
+  --campaign 28100000-0000-0000-0000-000000000001
+```
+
 The `babylon-money-journal` operator publishes derived facts for an existing
 campaign in a database with the current schema. It does not create campaigns or
 advance periods. Set `BABYLON_OBSERVER_DSN` to a confined login with the
@@ -222,6 +236,38 @@ derived facts from those receipts. Retention still applies.
 Warm detail and total queries use the SQL facts directly. The full observer can
 also sum `public.v_observer_money_movement_total_v1` or inspect
 `public.v_observer_money_movement_v1` with SQL.
+
+### Follow settled payments
+
+From `rust/`, use the full observer login to rank payments in a published
+campaign. The movement journal records each reserve posting. The flow report
+counts the settlement from its economic payer to its credited recipient once.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- flows \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 5 --last 8 \
+  --compare-first 1 --compare-last 4 --group location
+```
+
+Choose `location`, `catchment`, `industry`, or `account` for `--group`.
+With `--group location --focus county:26163`, each row identifies a location
+that exchanged payments with Wayne County, Michigan. Its inflow is money Wayne
+paid that location. Its outflow is money the location paid Wayne.
+
+Each page returns twenty groups ranked by the sum of inflow, outflow, and internal
+payments. Internal payments count once. If two distinct accounts both lack a
+grouping key, the unknown group shows an inflow and an outflow for that payment.
+Its net effect is zero.
+
+Net equals inflow minus outflow. The comparison reports the change in that net amount.
+The `remainder` field sums every group outside the page. Use `--offset 20` for the
+next twenty. The report uses signed decimal strings in currency micros.
+
+An optional `--bbox-4269 WEST,SOUTH,EAST,NORTH` filters visible endpoints with
+NAD83 longitude and latitude. A county uses its captured TIGER internal point.
+Other locations with no captured point stay outside the selected area. A site’s
+operating county and the catchment it serves have distinct grouping keys.
+Missing classifications appear as a null key when viewing all locations.
 
 ### Read a site's financial statements
 

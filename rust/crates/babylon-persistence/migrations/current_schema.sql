@@ -1701,6 +1701,8 @@ CREATE TABLE babylon_state.money_journal_period_v1 (
     receipt_sha256 bytea NOT NULL CHECK (octet_length(receipt_sha256) = 32),
     movement_sha256 bytea NOT NULL CHECK (octet_length(movement_sha256) = 32),
     movement_count bigint NOT NULL CHECK (movement_count >= 0),
+    payment_sha256 bytea NOT NULL CHECK (octet_length(payment_sha256) = 32),
+    payment_count bigint NOT NULL CHECK (payment_count BETWEEN 0 AND movement_count),
     detail_retained boolean NOT NULL,
     PRIMARY KEY (campaign_id, resolve_tick),
     FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id, resolve_tick),
@@ -1763,3 +1765,52 @@ CREATE TABLE babylon_state.money_movement_total_v1 (
 );
 REVOKE ALL ON babylon_state.money_journal_period_v1, babylon_state.money_movement_v1,
     babylon_state.money_movement_total_v1 FROM PUBLIC;
+
+-- Source datum is TIGER NAD83. These internal points locate a county for display.
+CREATE TABLE babylon_state.economic_flow_location_v1 (
+    campaign_id uuid NOT NULL,
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    location_key text NOT NULL CHECK (location_key ~ '^county:[0-9]{5}$'),
+    longitude numeric NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+    latitude numeric NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+    county_internal_point public.geometry(Point,4269) GENERATED ALWAYS AS
+        (public.ST_SetSRID(public.ST_MakePoint(longitude::double precision, latitude::double precision),4269)) STORED,
+    PRIMARY KEY (campaign_id, location_key),
+    FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
+        DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX economic_flow_location_point_v1 ON babylon_state.economic_flow_location_v1
+    USING gist (county_internal_point);
+REVOKE ALL ON babylon_state.economic_flow_location_v1 FROM PUBLIC;
+
+-- Account geography and operating function come from the captured foundation.
+-- A missing classification is distinct from a zero balance or zero payments.
+CREATE TABLE babylon_state.economic_flow_account_v1 (
+    campaign_id uuid NOT NULL,
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    account_kind text NOT NULL CHECK (account_kind IN ('site_cash','household_cash','organization_cash','public_cash')),
+    account_id bytea NOT NULL CHECK (octet_length(account_id) = 32),
+    location_key text CHECK (length(location_key) > 0),
+    catchment_key text CHECK (length(catchment_key) > 0),
+    industry_key text CHECK (length(industry_key) > 0),
+    industry_label text CHECK (length(industry_label) > 0),
+    CHECK ((industry_key IS NULL) = (industry_label IS NULL)),
+    PRIMARY KEY (campaign_id, account_kind, account_id),
+    FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
+        DEFERRABLE INITIALLY DEFERRED
+);
+-- The custody journal already records the credited recipient, amount and purpose.
+-- The additional fact identifies the underlying payer of this particular settlement.
+CREATE TABLE babylon_state.economic_payment_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    ordinal bigint NOT NULL,
+    payer_kind text NOT NULL,
+    payer_id bytea NOT NULL,
+    PRIMARY KEY (campaign_id, resolve_tick, ordinal),
+    FOREIGN KEY (campaign_id, resolve_tick, ordinal)
+        REFERENCES babylon_state.money_movement_v1(campaign_id, resolve_tick, ordinal) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id, payer_kind, payer_id)
+        REFERENCES babylon_state.economic_flow_account_v1(campaign_id, account_kind, account_id)
+);
+REVOKE ALL ON babylon_state.economic_flow_account_v1, babylon_state.economic_payment_v1 FROM PUBLIC;

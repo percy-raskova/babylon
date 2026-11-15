@@ -12,6 +12,7 @@ use crate::economic_content;
 use crate::economic_content::{
     EconomicAdmissionOwner, EconomicContentAdmission, EconomicContentHandle,
 };
+use crate::economic_flows::{EconomicFlowError, EconomicPaymentPeriod};
 use crate::identity::CampaignId;
 use crate::michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS};
 use crate::michigan_economy;
@@ -96,6 +97,7 @@ pub enum ObserverEconomyError {
     ScenarioMismatch,
     TickAbsent,
     InvalidProjection,
+    EconomicFlow(EconomicFlowError),
     ProductionHistoryUnavailable,
     Reference,
 }
@@ -267,6 +269,38 @@ impl ObserverEconomyReader {
         expected_tick: u64,
         cursor: &mut Option<ObserverMaterialCursor>,
     ) -> Result<CommittedMaterialReceipts, ObserverEconomyError> {
+        self.with_committed_receipts(campaign, expected_tick, cursor, |_, _, source| Ok(source))
+    }
+
+    /// Read custody evidence and the economic parties of every settled payment together.
+    /// Advancing the cursor requires successful authentication and principal resolution.
+    /// # Errors
+    /// Refuses restricted roles, unavailable committed periods and unproved counterparties.
+    pub fn committed_economic_payments_with_cursor(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+        cursor: &mut Option<ObserverMaterialCursor>,
+    ) -> Result<EconomicPaymentPeriod, ObserverEconomyError> {
+        self.with_committed_receipts(
+            campaign,
+            expected_tick,
+            cursor,
+            ObserverMaterialCursor::economic_payments,
+        )
+    }
+
+    fn with_committed_receipts<T>(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+        cursor: &mut Option<ObserverMaterialCursor>,
+        project: impl FnOnce(
+            &ObserverMaterialCursor,
+            &EconomicContentAdmission,
+            CommittedMaterialReceipts,
+        ) -> Result<T, ObserverEconomyError>,
+    ) -> Result<T, ObserverEconomyError> {
         if self.visibility != ObserverVisibility::FullObserver {
             return Err(ObserverEconomyError::Authority);
         }
@@ -324,6 +358,13 @@ impl ObserverEconomyReader {
         {
             return Err(ObserverEconomyError::InvalidProjection);
         }
+        let result = project(
+            cursor_candidate
+                .as_ref()
+                .ok_or(ObserverEconomyError::InvalidProjection)?,
+            expected,
+            result,
+        )?;
         transaction
             .commit()
             .map_err(|_| ObserverEconomyError::Database)?;
@@ -899,7 +940,7 @@ pub(crate) fn project_county(
 
 pub(crate) const AUTHORITY_SQL: &str = "SELECT role.rolsuper, role.rolcreatedb, role.rolcreaterole, role.rolreplication, role.rolbypassrls, pg_catalog.pg_has_role(current_user, $1, 'MEMBER'), pg_catalog.pg_has_role(current_user, 'babylon_observer', 'MEMBER') FROM pg_catalog.pg_roles role WHERE role.rolname = current_user";
 
-pub(crate) const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1','v_observer_money_journal_period_v1','v_observer_money_movement_v1','v_observer_money_movement_total_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
+pub(crate) const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1','v_observer_money_journal_period_v1','v_observer_money_movement_v1','v_observer_money_movement_total_v1','v_observer_economic_flow_location_v1','v_observer_economic_flow_account_v1','v_observer_economic_payment_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
 
 pub(crate) fn confine_authority(
     client: &mut Client,

@@ -1,7 +1,8 @@
 //! Atomic owner publication and full-observer SQL access.
+use super::payment_storage::Admission;
 use super::{
-    model, JournalError, MoneyEndpoint, MoneyLocationKind, MoneyMovement, MoneyPurpose,
-    MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
+    model, payment_storage, JournalError, MoneyEndpoint, MoneyLocationKind, MoneyMovement,
+    MoneyPurpose, MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
 };
 use crate::identity::CampaignId;
 use crate::observer_reader::{
@@ -17,10 +18,13 @@ pub struct MoneyJournalWriter {
     config: Config,
 }
 
-pub(crate) const VIEWS: [&str; 3] = [
+pub(crate) const VIEWS: [&str; 6] = [
     "public.v_observer_money_journal_period_v1",
     "public.v_observer_money_movement_v1",
     "public.v_observer_money_movement_total_v1",
+    "public.v_observer_economic_flow_location_v1",
+    "public.v_observer_economic_flow_account_v1",
+    "public.v_observer_economic_payment_v1",
 ];
 const COLUMNS: &str = "ordinal, purpose, reference_kind, reference_id, debit_kind, debit_id, credit_kind, credit_id, amount_micros::text";
 const KEEP_PERIODS: i64 = 13;
@@ -207,6 +211,20 @@ impl MoneyJournalWriter {
             config: config.clone(),
         })
     }
+    pub(super) fn require_target(
+        &self,
+        observer: &ObserverEconomyReader,
+    ) -> Result<(), JournalError> {
+        // A different credential may read, but the source and writer must name the same server/database.
+        if self.config.get_hosts() != observer.config.get_hosts()
+            || self.config.get_ports() != observer.config.get_ports()
+            || self.config.get_dbname() != observer.config.get_dbname()
+        {
+            return Err(JournalError::TargetMismatch);
+        }
+        Ok(())
+    }
+
     /// Publish one freshly authenticated committed period; identical rows are idempotent.
     /// # Errors
     /// Refuses unauthenticated receipts, different targets, non-owner authority or storage drift.
@@ -264,47 +282,44 @@ impl MoneyJournalWriter {
         operation: Publication,
         cursor: &mut Option<ObserverMaterialCursor>,
     ) -> Result<PublishReport, JournalError> {
-        // A different credential may read, but the source and writer must name the same server/database.
-        if self.config.get_hosts() != observer.config.get_hosts()
-            || self.config.get_ports() != observer.config.get_ports()
-            || self.config.get_dbname() != observer.config.get_dbname()
-        {
-            return Err(JournalError::TargetMismatch);
-        }
+        self.require_target(observer)?;
         let mut candidate = cursor.clone();
-        let source = observer
-            .committed_material_receipts_with_cursor(campaign, period, &mut candidate)
+        let economic = observer
+            .committed_economic_payments_with_cursor(campaign, period, &mut candidate)
             .map_err(JournalError::Observer)?;
-        let movements = model::derive_movements(&source)?;
+        let source = &economic.source;
+        let movements = model::derive_movements(source)?;
+        let payment_digest = payment_storage::fingerprint(&economic.settlements, &movements)?;
+        let payment_count =
+            i64::try_from(economic.settlements.len()).map_err(|_| JournalError::Range)?;
         let tick = i64::try_from(period).map_err(|_| JournalError::Range)?;
         let count = i64::try_from(movements.len()).map_err(|_| JournalError::Range)?;
         let digest = digest(&movements);
         let mut client = crate::current_schema::bounded_config(&self.config)
             .connect(NoTls)
             .map_err(|_| JournalError::Database)?;
-        // READ COMMITTED gets a fresh snapshot after the serialization lock, so concurrent identical
-        // publishers observe the first committed marker rather than failing on a stale snapshot.
-        let mut tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::ReadCommitted)
-            .read_only(false)
-            .start()
-            .map_err(|_| JournalError::Database)?;
-        tx.batch_execute("SET LOCAL statement_timeout='120s'; SET LOCAL idle_in_transaction_session_timeout='120s'").map_err(|_| JournalError::Database)?;
-        tx.query_one(
-            "SELECT pg_catalog.pg_advisory_xact_lock($1)",
-            &[&JOURNAL_LOCK_KEY],
-        )
-        .map_err(|_| JournalError::Database)?;
-        crate::current_schema::require_current_schema(&mut tx).map_err(|_| JournalError::Schema)?;
-        let existing = tx.query_opt("SELECT movement_sha256,movement_count,detail_retained FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=$2", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
+        let mut tx = begin_publication(&mut client)?;
+        let existing = tx.query_opt("SELECT movement_sha256,movement_count,payment_count,payment_sha256,detail_retained FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=$2", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         let changed = existing.is_none() || operation == Publication::Rebuild;
+        let mode = if operation == Publication::Rebuild {
+            Admission::Rebuild
+        } else if changed {
+            Admission::Insert
+        } else {
+            Admission::Verify
+        };
+        payment_storage::accounts(&mut tx, &economic, mode)?;
         if let Some(existing) = existing {
             if operation == Publication::Publish {
                 let retained: bool = existing
                     .try_get("detail_retained")
                     .map_err(|_| JournalError::Projection)?;
-                if bytes(&existing, "movement_sha256")? != digest
+                if bytes(&existing, "payment_sha256")? != payment_digest
+                    || existing
+                        .try_get::<_, i64>("payment_count")
+                        .map_err(|_| JournalError::Projection)?
+                        != payment_count
+                    || bytes(&existing, "movement_sha256")? != digest
                     || existing
                         .try_get::<_, i64>("movement_count")
                         .map_err(|_| JournalError::Projection)?
@@ -312,6 +327,15 @@ impl MoneyJournalWriter {
                     || (retained && rows(&mut tx, campaign, tick)? != movements)
                 {
                     return Err(JournalError::Projection);
+                }
+                if retained {
+                    payment_storage::payments(
+                        &mut tx,
+                        campaign,
+                        tick,
+                        &economic.settlements,
+                        mode,
+                    )?;
                 }
                 verify_totals(&mut tx, campaign, tick, &movements)?;
             } else {
@@ -321,18 +345,19 @@ impl MoneyJournalWriter {
         if changed {
             // Deferred FK permits staging all detail and SQL totals before the publication marker.
             insert_rows(&mut tx, campaign, tick, &movements)?;
+            payment_storage::payments(&mut tx, campaign, tick, &economic.settlements, mode)?;
             tx.execute("INSERT INTO babylon_state.money_movement_total_v1 SELECT campaign_id,resolve_tick,purpose,count(*),sum(amount_micros) \
                 FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2 GROUP BY campaign_id,resolve_tick,purpose", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         }
-        let binding = pin_after_pruning(&mut tx, &source, tick)?;
+        let binding = pin_after_pruning(&mut tx, source, tick)?;
         if changed {
-            tx.execute("INSERT INTO babylon_state.money_journal_period_v1 (campaign_id,resolve_tick,journal_version,tick_content_hash,envelope_digest,schema_sha256,foundation_sha256,content_sha256,source_identity_bytes,receipt_sha256,movement_sha256,movement_count,detail_retained) \
-                VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", &[campaign.as_uuid(), &tick,
+            tx.execute("INSERT INTO babylon_state.money_journal_period_v1 (campaign_id,resolve_tick,journal_version,tick_content_hash,envelope_digest,schema_sha256,foundation_sha256,content_sha256,source_identity_bytes,receipt_sha256,movement_sha256,movement_count,detail_retained,payment_sha256,payment_count) \
+                VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)", &[campaign.as_uuid(), &tick,
                     &source.identity.tick_content_hash().as_bytes().as_slice(), &binding.envelope.as_slice(), &crate::current_schema_sha256().as_slice(),
                     &source.identity.foundation_digest().as_slice(), &binding.content.as_slice(), &source.identity.canonical_bytes(),
-                    &source.identity.receipt_digest().as_slice(), &digest.as_slice(), &count, &binding.detail_retained]).map_err(|_| JournalError::Database)?;
+                    &source.identity.receipt_digest().as_slice(), &digest.as_slice(), &count, &binding.detail_retained,&payment_digest.as_slice(),&payment_count]).map_err(|_| JournalError::Database)?;
         } else {
-            verify_period(&mut tx, &source, &digest, count)?;
+            verify_period(&mut tx, source, &digest, count)?;
         }
         tx.commit().map_err(|_| JournalError::Database)?;
         *cursor = candidate;
@@ -342,6 +367,28 @@ impl MoneyJournalWriter {
             changed,
         })
     }
+}
+
+fn begin_publication(client: &mut Client) -> Result<Transaction<'_>, JournalError> {
+    // READ COMMITTED gets a fresh snapshot after the serialization lock, so concurrent identical
+    // publishers observe the first committed marker rather than failing on a stale snapshot.
+    let mut tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::ReadCommitted)
+        .read_only(false)
+        .start()
+        .map_err(|_| JournalError::Database)?;
+    tx.batch_execute(
+        "SET LOCAL statement_timeout='120s'; SET LOCAL idle_in_transaction_session_timeout='120s'",
+    )
+    .map_err(|_| JournalError::Database)?;
+    tx.query_one(
+        "SELECT pg_catalog.pg_advisory_xact_lock($1)",
+        &[&JOURNAL_LOCK_KEY],
+    )
+    .map_err(|_| JournalError::Database)?;
+    crate::current_schema::require_current_schema(&mut tx).map_err(|_| JournalError::Schema)?;
+    Ok(tx)
 }
 
 struct JournalBinding {
@@ -407,7 +454,7 @@ fn retention_cutoff(tx: &mut Transaction<'_>, campaign: CampaignId) -> Result<i6
     Ok((latest - KEEP_PERIODS).max(0))
 }
 
-fn open_observer(observer: &ObserverEconomyReader) -> Result<Client, JournalError> {
+pub(super) fn open_observer(observer: &ObserverEconomyReader) -> Result<Client, JournalError> {
     if observer.visibility != ObserverVisibility::FullObserver {
         return Err(JournalError::Authority);
     }

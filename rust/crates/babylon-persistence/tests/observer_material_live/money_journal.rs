@@ -4,7 +4,8 @@ use super::{
     ObserverEconomyReader, ObserverVisibility, Uuid,
 };
 use babylon_persistence::money_journal::{
-    self as journal, JournalError, MoneyJournalWriter, MoneyMovement, MoneyPurpose, MoneyTotal,
+    self as journal, FlowGroup, JournalError, MoneyJournalWriter, MoneyMovement, MoneyPurpose,
+    MoneyTotal,
 };
 use babylon_persistence::observer_reader::{CommittedMaterialReceipts, ObserverMaterialCursor};
 use postgres::{Client, Config};
@@ -88,8 +89,16 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
         ),
         "preview credentials cannot admit source receipts"
     );
+    super::payment_flows::restricted(&preview, campaign);
     let mut cursor = publish_fourteen_periods(&mut runtime, &writer, &observer, campaign);
     let mut owner = assert_empty_retention(&observer, &preview, &writer, &target.writer, campaign);
+    super::journal_queue::recover_and_follow(
+        &mut runtime,
+        &mut owner,
+        &target.writer,
+        &observer_config,
+        campaign,
+    );
     assert_authority_and_cursor(
         &observer_config,
         &observer,
@@ -300,7 +309,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
         .committed_material_receipts(campaign, 1)
         .expect("source authenticates");
     super::site_statements::period_one(&observer, campaign, &runtime, &source, &site_opening);
-    super::site_statements::native_cli(&observer_config, campaign, &site_opening);
+    let next_without_projection = super::projection_recovery::next_without_projection(&runtime);
     let expected = journal::derive_movements(&source).expect("source transfer projection");
     assert_ne!(expected.len(), 0, "actual monetary period has transfers");
     let writer = MoneyJournalWriter::connect(&target.writer).expect("owner target");
@@ -312,9 +321,21 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
         campaign,
         &expected,
     );
+    super::payment_flows::national(&observer, &observer_config, campaign, &expected);
+    let cli = journal_cli("flows", &observer_config, None, campaign);
+    assert_eq!(cli["request"]["group"], "location");
+    assert_eq!(cli["page"]["total"]["current"]["net_micros"], "0");
     let totals = assert_source_totals(&observer, &observer_config, campaign, &source, &expected);
     let mut owner = target.writer.connect(NoTls).expect("owner connection");
     assert_nonzero_history(&mut owner, &observer, &writer, campaign, &expected, &totals);
+    super::projection_recovery::commit_after_projection(
+        &target.writer,
+        campaign,
+        &next_without_projection,
+    );
+    super::projection_recovery::interrupt_and_retry(&mut owner, &writer, &observer, campaign);
+    super::payment_flows::comparison(&observer, campaign);
+    super::site_statements::native_cli(&observer_config, campaign, &site_opening);
     assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
 }
 
@@ -435,6 +456,10 @@ fn assert_nonzero_history(
     expected: &[MoneyMovement],
     totals: &[MoneyTotal],
 ) {
+    let grouping = super::payment_flows::query(FlowGroup::Industry);
+    let warm = observer
+        .economic_payment_flows(campaign, &grouping)
+        .expect("retained ranked payment facts");
     owner
         .execute(
             babylon_persistence::money_journal::MONEY_DETAIL_RETENTION_SQL,
@@ -453,6 +478,12 @@ fn assert_nonzero_history(
             .expect("permanent expired totals"),
         totals,
         "purpose totals survive nonzero detail expiration exactly"
+    );
+    assert_eq!(
+        observer
+            .economic_payment_flows(campaign, &grouping)
+            .expect("expired canonical payment facts"),
+        warm
     );
     let independently_reauthenticated = observer
         .committed_material_receipts(campaign, 1)

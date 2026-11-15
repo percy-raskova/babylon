@@ -166,7 +166,12 @@ pub(crate) fn availability(
                 _ => Enabled,
             }
         }
-        ObserverCommand::RoadLayer(_) | ObserverCommand::NetworkSector(_) => {
+        ObserverCommand::Money if state.organizer_enabled => {
+            Disabled("Money flows require an Observer campaign")
+        }
+        ObserverCommand::Money
+        | ObserverCommand::RoadLayer(_)
+        | ObserverCommand::NetworkSector(_) => {
             if state.perspective == crate::observer::Perspective::FullObserver {
                 // These commands only repaint the installed committed snapshot.
                 // They neither change observation identity nor request a new read.

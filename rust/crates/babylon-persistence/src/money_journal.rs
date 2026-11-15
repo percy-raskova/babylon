@@ -6,6 +6,10 @@ mod flow_query;
 mod model;
 mod payment_storage;
 mod queue;
+mod statement_integrity;
+mod statement_lines;
+mod statement_read;
+mod statement_storage;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -18,5 +22,7 @@ pub use model::{
     MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
 };
 pub use queue::{JournalQueue, JournalQueueError};
+pub use statement_read::PublishedSitePeriod;
+pub(crate) use statement_storage::JournalPeriodSource;
 pub(crate) use storage::VIEWS;
 pub use storage::{MoneyJournalWriter, MONEY_DETAIL_RETENTION_SQL};

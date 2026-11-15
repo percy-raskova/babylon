@@ -1,0 +1,241 @@
+//! SQL statement and stock parity against the authenticated site reader.
+use babylon_material_circuit::{AccountId, CircuitAccounting, SiteId};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::DurableMaterialRuntime;
+use babylon_persistence::money_journal::{
+    JournalError, MoneyJournalWriter, PeriodWindow, PublishedSitePeriod,
+};
+use babylon_persistence::observer_reader::ObserverEconomyReader;
+use babylon_persistence::qualification_audit::trade;
+use postgres::types::ToSql;
+use postgres::{Client, Config};
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::process::Command;
+
+pub(super) fn national(
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    owner: &mut Client,
+    campaign: CampaignId,
+    site: SiteId,
+) {
+    let source = observer
+        .site_financial_statements(campaign, 1, site)
+        .expect("source site");
+    let saved = observer
+        .published_site_period(campaign, 1, site)
+        .expect("stored site");
+    let summary = saved.statement.as_ref().expect("monetary site");
+    let activity = source.books.activity.as_ref().expect("period activity");
+    assert_eq!(source.books.opening.as_ref(), Some(&summary.opening));
+    assert_eq!(source.books.closing, summary.closing);
+    assert_eq!(activity.income, summary.income);
+    assert_eq!(activity.change_in_equity, summary.change_in_equity);
+    assert_eq!(activity.cash_flow.operating, summary.cash_flow.operating);
+    assert_eq!(activity.cash_flow.investing, summary.cash_flow.investing);
+    assert_eq!(activity.cash_flow.financing, summary.cash_flow.financing);
+    assert_eq!(
+        activity.cash_flow.reserve_reclassification,
+        summary.cash_flow.reserve_reclassification
+    );
+    assert_eq!(Some(saved.receipt_sha256), source.receipt_digest);
+    let history = observer
+        .published_site_history(campaign, PeriodWindow { first: 1, last: 2 }, site)
+        .expect("retained history across expired and warm movement periods");
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0], saved);
+    assert_eq!(history[1].resolve_tick, 2);
+    assert_eq!(
+        history[1]
+            .statement
+            .as_ref()
+            .expect("next monetary site")
+            .opening,
+        summary.closing
+    );
+    assert_eq!(
+        observer.published_site_history(campaign, PeriodWindow { first: 1, last: 3 }, site),
+        Err(JournalError::CoverageAbsent)
+    );
+    assert_eq!(
+        observer.published_site_period(campaign, 1, SiteId::from_bytes([0xff; 32])),
+        Err(JournalError::SiteAbsent)
+    );
+    assert_eq!(owner.execute("UPDATE babylon_state.site_statement_v1 SET income_productive_labor_capitalized_micros=income_productive_labor_capitalized_micros+1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2", &[campaign.as_uuid(), &site.as_bytes().as_slice()]).expect("alter book disclosure"), 1);
+    assert_eq!(
+        observer.published_site_period(campaign, 1, site),
+        Err(JournalError::Projection)
+    );
+    let stock_owner = corrupt_stock(owner, observer, campaign, site);
+    assert_eq!(owner.execute("DELETE FROM babylon_state.site_statement_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2", &[campaign.as_uuid(), &site.as_bytes().as_slice()]).expect("one disposable damaged statement"), 1);
+    assert_eq!(
+        observer.published_site_period(campaign, 1, site),
+        Err(JournalError::Projection)
+    );
+    assert_eq!(
+        writer.publish(observer, campaign, 1),
+        Err(JournalError::Projection)
+    );
+    assert!(
+        writer
+            .rebuild(observer, campaign, 1)
+            .expect("rebuild completes")
+            .changed
+    );
+    assert_eq!(
+        observer
+            .published_site_period(campaign, 1, site)
+            .expect("rebuilt site"),
+        saved
+    );
+    assert_eq!(
+        observer
+            .published_site_period(campaign, 1, stock_owner.site_id)
+            .expect("restored source stock"),
+        stock_owner
+    );
+}
+
+fn corrupt_stock(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    different_site: SiteId,
+) -> PublishedSitePeriod {
+    let row=owner.query_one("SELECT site_id, good_id, unit_id FROM babylon_state.site_stock_balance_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id<>$2 AND closing_quantity < 18446744073709551615 ORDER BY site_id,good_id,unit_id LIMIT 1",&[campaign.as_uuid(),&different_site.as_bytes().as_slice()]).expect("real national stock");
+    let site = row.get::<_, Vec<u8>>("site_id");
+    let good = row.get::<_, Vec<u8>>("good_id");
+    let unit = row.get::<_, Vec<u8>>("unit_id");
+    let id = SiteId::from_bytes(site.as_slice().try_into().expect("stock identity"));
+    let saved = observer
+        .published_site_period(campaign, 1, id)
+        .expect("validated source stock");
+    let params: &[&(dyn ToSql + Sync)] = &[campaign.as_uuid(), &site, &good, &unit];
+    assert_eq!(owner.execute("UPDATE babylon_state.site_stock_balance_v1 SET closing_quantity=closing_quantity+1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2 AND good_id=$3 AND unit_id=$4",params).expect("change one stock quantity"),1);
+    assert_eq!(
+        observer.published_site_period(campaign, 1, id),
+        Err(JournalError::Projection)
+    );
+    assert_eq!(owner.execute("DELETE FROM babylon_state.site_stock_balance_v1 WHERE campaign_id=$1 AND resolve_tick=1 AND site_id=$2 AND good_id=$3 AND unit_id=$4",params).expect("remove one selected stock"),1);
+    assert_eq!(
+        observer.published_site_period(campaign, 1, id),
+        Err(JournalError::Projection)
+    );
+    saved
+}
+
+pub(super) fn stocks(
+    runtime: &DurableMaterialRuntime,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    tick: u64,
+) -> SiteId {
+    let state = runtime.session().material().state();
+    let first = state.inventory.first().expect("actual material stock");
+    let saved = observer
+        .published_site_period(campaign, tick, first.site_id)
+        .expect("covered stock owner");
+    let actual: BTreeMap<_, _> = saved
+        .stocks
+        .iter()
+        .filter_map(|r| r.closing.map(|p| ((r.good_id, r.unit_id), p)))
+        .collect();
+    let costs = match &state.accounting {
+        CircuitAccounting::Monetary(books) => Some(books.costs.snapshot()),
+        CircuitAccounting::PhysicalControl => None,
+    };
+    assert_eq!(saved.statement.is_some(), costs.is_some());
+    let mut count = 0;
+    for row in state
+        .inventory
+        .iter()
+        .filter(|r| r.site_id == first.site_id)
+    {
+        let position = actual
+            .get(&(row.good_id, row.unit_id))
+            .expect("stock principal in native units");
+        assert_eq!(position.quantity, row.quantity);
+        let basis = costs.as_ref().map(|book| {
+            book.stocks
+                .iter()
+                .find(|stock| {
+                    stock.owner == AccountId::Site(row.site_id)
+                        && stock.good_id == row.good_id
+                        && stock.unit_id == row.unit_id
+                })
+                .expect("source carrying value")
+                .amount
+        });
+        assert_eq!(position.carrying_cost, basis);
+        count += 1;
+    }
+    assert_eq!(actual.len(), count);
+    first.site_id
+}
+
+pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId, site: SiteId) {
+    assert_eq!(
+        observer.published_site_period(campaign, 1, site),
+        Err(JournalError::Authority)
+    );
+}
+
+pub(super) fn cli(config: &Config, expected: &PublishedSitePeriod, last: u64) {
+    let campaign = expected.campaign_id.as_uuid().to_string();
+    let site = trade::hex(&expected.site_id.as_bytes());
+    let output = Command::new(env!("CARGO_BIN_EXE_babylon-money-journal"))
+        .args([
+            "site-history",
+            "--campaign",
+            &campaign,
+            "--site",
+            &site,
+            "--first",
+            &expected.resolve_tick.to_string(),
+            "--last",
+            &last.to_string(),
+        ])
+        .env(
+            "BABYLON_OBSERVER_DSN",
+            super::runtime_process::child_dsn(config),
+        )
+        .env_remove("BABYLON_RUNTIME_DSN")
+        .output()
+        .expect("start actual compact history command");
+    assert!(
+        output.status.success(),
+        "site-history refused: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout).expect("versioned journal JSON");
+    assert_eq!(json["campaign"], campaign);
+    assert_eq!(json["unit"], "currency_micros");
+    let periods = json["periods"].as_array().expect("period rows");
+    assert_eq!(
+        u64::try_from(periods.len()).expect("period count fits u64"),
+        last - expected.resolve_tick + 1
+    );
+    assert_eq!(periods[0]["site_id"], site);
+    assert_eq!(
+        periods[0]["receipt_sha256"],
+        trade::hex(&expected.receipt_sha256)
+    );
+    if let Some(summary) = &expected.statement {
+        assert_eq!(
+            periods[0]["statement"]["net_income_micros"],
+            summary.income.net_income.micro_units().to_string()
+        );
+    } else {
+        assert!(periods[0]["statement"].is_null());
+        let stocks = periods[0]["stocks"]
+            .as_array()
+            .expect("physical stock rows");
+        assert!(stocks
+            .iter()
+            .any(|row| row["closing"]["quantity"].is_string()));
+        assert!(stocks
+            .iter()
+            .all(|row| row["closing"]["carrying_cost_micros"].is_null()));
+    }
+}

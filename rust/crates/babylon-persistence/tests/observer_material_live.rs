@@ -15,6 +15,9 @@ mod projection_recovery;
 #[path = "observer_material_live/payment_flows.rs"]
 mod payment_flows;
 
+#[path = "observer_material_live/site_accounting_sql.rs"]
+mod site_accounting_sql;
+
 #[path = "observer_material_live/site_statements.rs"]
 mod site_statements;
 

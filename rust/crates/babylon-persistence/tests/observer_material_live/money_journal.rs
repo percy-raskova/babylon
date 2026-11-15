@@ -91,6 +91,12 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
     );
     super::payment_flows::restricted(&preview, campaign);
     let mut cursor = publish_fourteen_periods(&mut runtime, &writer, &observer, campaign);
+    let site = super::site_accounting_sql::stocks(&runtime, &observer, campaign, 14);
+    super::site_accounting_sql::restricted(&preview, campaign, site);
+    let physical = observer
+        .published_site_period(campaign, 14, site)
+        .expect("physical control site");
+    super::site_accounting_sql::cli(&observer_config, &physical, 14);
     let mut owner = assert_empty_retention(&observer, &preview, &writer, &target.writer, campaign);
     super::journal_queue::recover_and_follow(
         &mut runtime,
@@ -335,6 +341,18 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
     );
     super::projection_recovery::interrupt_and_retry(&mut owner, &writer, &observer, campaign);
     super::payment_flows::comparison(&observer, campaign);
+    super::site_accounting_sql::stocks(&runtime, &observer, campaign, 1);
+    super::site_accounting_sql::national(
+        &observer,
+        &writer,
+        &mut owner,
+        campaign,
+        site_opening.site_id,
+    );
+    let compact = observer
+        .published_site_period(campaign, 1, site_opening.site_id)
+        .expect("permanent site accounts");
+    super::site_accounting_sql::cli(&observer_config, &compact, 2);
     super::site_statements::native_cli(&observer_config, campaign, &site_opening);
     assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
 }

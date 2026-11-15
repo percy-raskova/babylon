@@ -23,6 +23,9 @@ use crate::observer_ui::{grouped, ObserverFrame, ObserverUiState, ObserverViewpo
 use crate::organizer::{OrganizerClient, OrganizerInspector, OrganizerOverlay};
 use crate::production::PrimaryView;
 
+#[path = "money_map.rs"]
+pub(crate) mod money_map;
+
 #[path = "map_relationships.rs"]
 mod relationships;
 #[path = "map_scene.rs"]
@@ -322,7 +325,7 @@ fn update_observation(
             } else {
                 Color::srgb_u8(60, 69, 63)
             }
-        } else if matches!(input.ui.lens, MapLens::Relationships) {
+        } else if matches!(input.ui.lens, MapLens::Money | MapLens::Relationships) {
             theme::LAND
         } else {
             value.map_or(theme::GRAY, |value| {
@@ -350,7 +353,7 @@ fn update_observation(
         }
     }
     for mut text in &mut legend {
-        if matches!(input.ui.lens, MapLens::Relationships) {
+        if matches!(input.ui.lens, MapLens::Money | MapLens::Relationships) {
             text.set_if_neq(Text::new(
                 "County geography | schematic supply relationships",
             ));
@@ -389,7 +392,7 @@ fn place_legend(
         && !ui.splash_visible
         && !ui.comparison_open
         && ui.disclosure.is_none()
-        && !matches!(ui.lens, MapLens::Relationships);
+        && !matches!(ui.lens, MapLens::Money | MapLens::Relationships);
     for (computed, mut node, mut visibility) in &mut legends {
         let placement = viewport
             .0
@@ -790,6 +793,7 @@ impl Plugin for ObserverMap3dPlugin {
             );
         app.add_systems(Update, scene::place_geographic_labels.after(sync_camera));
         relationships::install(app);
+        money_map::install(app);
     }
 }
 

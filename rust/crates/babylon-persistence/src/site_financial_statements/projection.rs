@@ -1,11 +1,12 @@
 //! Selected-account joins over admitted books and complete committed receipts.
+use super::balances;
 use super::{
     CashFlowCategory, CashFlowStatement, CashFlowTransfer, PlanningControl, SiteBalanceSheet,
-    SiteBookStatements, SitePeriodActivity, SiteStatementsError,
+    SiteBookStatements, SiteCashFlowTotals, SitePeriodActivity, SiteStatementsError,
 };
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CashTransferPurpose, CircuitAccounting, HistoricalCostSnapshot,
+    AccountId, CashTransferPurpose, CircuitAccounting, HistoricalCostSnapshot, IncomeReceipt,
     MonetaryBookSnapshot, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
     OutboundOrderId, SiteId,
 };
@@ -16,33 +17,19 @@ use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, SiteStatementsError>;
-fn zero() -> Currency {
+pub(super) fn zero() -> Currency {
     Currency::from_micro_units(0)
 }
-fn add(a: Currency, b: Currency) -> Result<Currency> {
+pub(super) fn add(a: Currency, b: Currency) -> Result<Currency> {
     a.checked_add(b)
         .map_err(|_| SiteStatementsError::Arithmetic)
 }
-fn sub(a: Currency, b: Currency) -> Result<Currency> {
+pub(super) fn sub(a: Currency, b: Currency) -> Result<Currency> {
     a.checked_sub(b)
         .map_err(|_| SiteStatementsError::Arithmetic)
 }
-fn sum(values: impl IntoIterator<Item = Currency>) -> Result<Currency> {
+pub(super) fn sum(values: impl IntoIterator<Item = Currency>) -> Result<Currency> {
     values.into_iter().try_fold(zero(), add)
-}
-
-fn purchase_reserves(account: AccountId, money: &MonetaryBookSnapshot) -> Result<Currency> {
-    let mut total = zero();
-    for row in &money.purchases {
-        if row.buyer == account {
-            total = add(
-                total,
-                row.reserved_amount()
-                    .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?,
-            )?;
-        }
-    }
-    Ok(total)
 }
 
 pub(super) fn balance(
@@ -50,98 +37,9 @@ pub(super) fn balance(
     money: &MonetaryBookSnapshot,
     costs: &HistoricalCostSnapshot,
 ) -> Result<SiteBalanceSheet> {
-    let account = AccountId::Site(site);
-    let cash = money
-        .accounts
-        .iter()
-        .find(|r| r.id == account)
-        .ok_or(SiteStatementsError::SiteAbsent)?
-        .cash;
-    let capital = costs
-        .accounts
-        .iter()
-        .find(|r| r.account == account)
-        .ok_or(SiteStatementsError::BalanceSheetMismatch)?;
-    let purchase_reserves = purchase_reserves(account, money)?;
-    let mut payroll_reserves = zero();
-    let mut wage_receivables = zero();
-    let mut wage_payables = zero();
-    for row in &money.shifts {
-        if row.employer == account {
-            payroll_reserves = add(
-                payroll_reserves,
-                row.reserved_amount()
-                    .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?,
-            )?;
-            wage_payables = add(
-                wage_payables,
-                row.outstanding_wages()
-                    .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?,
-            )?;
-        }
-        if row.payee == account {
-            wage_receivables = add(
-                wage_receivables,
-                row.outstanding_wages()
-                    .map_err(|_| SiteStatementsError::BalanceSheetMismatch)?,
-            )?;
-        }
-    }
-    let inventory = sum(costs
-        .stocks
-        .iter()
-        .filter(|r| r.owner == account)
-        .map(|r| r.amount))?;
-    let freight = sum(costs
-        .freight
-        .iter()
-        .filter(|r| r.owner == account)
-        .map(|r| r.amount))?;
-    let equity_investments = sum(costs
-        .equity
-        .iter()
-        .filter(|r| r.owner == account)
-        .map(|r| r.amount))?;
-    let equipment = sum(costs
-        .equipment
-        .iter()
-        .filter(|r| r.owner == site)
-        .map(|r| r.amount))?;
-    let total_assets = sum([
-        cash,
-        purchase_reserves,
-        payroll_reserves,
-        wage_receivables,
-        inventory,
-        freight,
-        equity_investments,
-        equipment,
-    ])?;
-    let total_equity = sum([
-        capital.opening_capital,
-        capital.contributed_capital,
-        capital.retained_earnings,
-    ])?;
-    if sub(total_assets, wage_payables)? != total_equity {
-        return Err(SiteStatementsError::BalanceSheetMismatch);
-    }
-    Ok(SiteBalanceSheet {
-        cash,
-        purchase_reserves,
-        payroll_reserves,
-        wage_receivables,
-        inventory,
-        freight,
-        equity_investments,
-        equipment,
-        total_assets,
-        wage_payables,
-        total_liabilities: wage_payables,
-        opening_capital: capital.opening_capital,
-        contributed_capital: capital.contributed_capital,
-        retained_earnings: capital.retained_earnings,
-        total_equity,
-    })
+    balances::collect(money, costs, Some(site), |_, _| Ok(()))?
+        .remove(&site)
+        .ok_or(SiteStatementsError::SiteAbsent)
 }
 
 pub(crate) fn project(
@@ -190,8 +88,25 @@ pub(super) fn activity(
     let income = incomes
         .next()
         .ok_or(SiteStatementsError::IncomeReceiptMismatch)?;
-    if incomes.next().is_some()
-        || income.period != receipts.resolve_tick
+    if incomes.next().is_some() {
+        return Err(SiteStatementsError::IncomeReceiptMismatch);
+    }
+    let change_in_equity = equity_change(opening, closing, income, receipts.resolve_tick)?;
+    let cash_flow = cash_flow(site, opening, closing, receipts)?;
+    Ok(SitePeriodActivity {
+        income: income.clone(),
+        change_in_equity,
+        cash_flow,
+    })
+}
+
+pub(super) fn equity_change(
+    opening: &SiteBalanceSheet,
+    closing: &SiteBalanceSheet,
+    income: &IncomeReceipt,
+    period: u64,
+) -> Result<Currency> {
+    if income.period != period
         || income.validate().is_err()
         || income.opening_capital != opening.opening_capital
         || income.opening_capital != closing.opening_capital
@@ -211,12 +126,7 @@ pub(super) fn activity(
     {
         return Err(SiteStatementsError::EquityBridgeMismatch);
     }
-    let cash_flow = cash_flow(site, opening, closing, receipts)?;
-    Ok(SitePeriodActivity {
-        income: income.clone(),
-        change_in_equity,
-        cash_flow,
-    })
+    Ok(change_in_equity)
 }
 
 pub(super) fn cash_flow(
@@ -226,24 +136,55 @@ pub(super) fn cash_flow(
     receipts: &MaterialTickReceipts,
 ) -> Result<CashFlowStatement> {
     let account = AccountId::Site(site);
-    let investments = investment_reservations(site, receipts)?;
-    let mut result = CashFlowStatement {
-        operating: zero(),
-        investing: zero(),
-        financing: zero(),
-        reserve_reclassification: zero(),
-        net_change_in_cash: sub(closing.cash, opening.cash)?,
+    let investments = investment_reservations(Some(site), receipts)?;
+    let mut totals = SiteCashFlowTotals::empty();
+    let mut transfers = Vec::new();
+    let cash = MoneyLocation::Cash(account);
+    for (receipt_index, transfer) in receipts.money_transfers.iter().enumerate() {
+        if transfer.debit.location != cash && transfer.credit.location != cash {
+            continue;
+        }
+        let category = totals.record(site, transfer, &investments)?;
+        transfers.push(CashFlowTransfer {
+            receipt_index,
+            category,
+            transfer: transfer.clone(),
+        });
+    }
+    let net_change_in_cash = sub(closing.cash, opening.cash)?;
+    totals.reconcile(net_change_in_cash)?;
+    Ok(CashFlowStatement {
+        operating: totals.operating,
+        investing: totals.investing,
+        financing: totals.financing,
+        reserve_reclassification: totals.reserve_reclassification,
+        net_change_in_cash,
         opening_cash: opening.cash,
         closing_cash: closing.cash,
         change_in_purchase_reserves: sub(closing.purchase_reserves, opening.purchase_reserves)?,
         change_in_payroll_reserves: sub(closing.payroll_reserves, opening.payroll_reserves)?,
-        transfers: Vec::new(),
-    };
-    for (receipt_index, transfer) in receipts.money_transfers.iter().enumerate() {
-        let cash = MoneyLocation::Cash(account);
-        if transfer.debit.location != cash && transfer.credit.location != cash {
-            continue;
+        transfers,
+    })
+}
+
+impl SiteCashFlowTotals {
+    pub(super) fn empty() -> Self {
+        Self {
+            operating: zero(),
+            investing: zero(),
+            financing: zero(),
+            reserve_reclassification: zero(),
         }
+    }
+
+    /// A cash-to-cash transfer can have a different category for each party.
+    pub(super) fn record(
+        &mut self,
+        site: SiteId,
+        transfer: &MoneyTransferReceipt,
+        investments: &BTreeMap<(SiteId, OutboundOrderId), Currency>,
+    ) -> Result<CashFlowCategory> {
+        let cash = MoneyLocation::Cash(AccountId::Site(site));
         if transfer.debit.delta.micro_units() >= 0
             || transfer.credit.delta.micro_units() <= 0
             || add(transfer.debit.delta, transfer.credit.delta)? != zero()
@@ -253,47 +194,49 @@ pub(super) fn cash_flow(
         }
         let delta = if transfer.debit.location == cash {
             transfer.debit.delta
-        } else {
+        } else if transfer.credit.location == cash {
             transfer.credit.delta
+        } else {
+            return Err(SiteStatementsError::InvalidTransfer);
         };
-        let category = category(transfer, cash, delta, &investments)?;
+        let category = category(transfer, site, delta, investments)?;
         let target = match category {
-            CashFlowCategory::Operating => &mut result.operating,
-            CashFlowCategory::Investing => &mut result.investing,
-            CashFlowCategory::Financing => &mut result.financing,
-            CashFlowCategory::ReserveReclassification => &mut result.reserve_reclassification,
+            CashFlowCategory::Operating => &mut self.operating,
+            CashFlowCategory::Investing => &mut self.investing,
+            CashFlowCategory::Financing => &mut self.financing,
+            CashFlowCategory::ReserveReclassification => &mut self.reserve_reclassification,
         };
         *target = add(*target, delta)?;
-        result.transfers.push(CashFlowTransfer {
-            receipt_index,
-            category,
-            transfer: transfer.clone(),
-        });
+        Ok(category)
     }
-    if sum([
-        result.operating,
-        result.investing,
-        result.financing,
-        result.reserve_reclassification,
-    ])? != result.net_change_in_cash
-    {
-        return Err(SiteStatementsError::CashReconciliationMismatch);
+
+    pub(super) fn reconcile(&self, expected: Currency) -> Result<()> {
+        if sum([
+            self.operating,
+            self.investing,
+            self.financing,
+            self.reserve_reclassification,
+        ])? != expected
+        {
+            return Err(SiteStatementsError::CashReconciliationMismatch);
+        }
+        Ok(())
     }
-    Ok(result)
 }
 
 fn category(
     transfer: &MoneyTransferReceipt,
-    cash: MoneyLocation,
+    site: SiteId,
     delta: Currency,
-    investments: &BTreeMap<OutboundOrderId, Currency>,
+    investments: &BTreeMap<(SiteId, OutboundOrderId), Currency>,
 ) -> Result<CashFlowCategory> {
+    let cash = MoneyLocation::Cash(AccountId::Site(site));
     let result = match transfer.purpose {
         MoneyTransferPurpose::PurchaseReservation(id)
             if transfer.debit.location == cash
                 && transfer.credit.location == MoneyLocation::PurchaseReserve(id) =>
         {
-            if let Some(amount) = investments.get(&id) {
+            if let Some(amount) = investments.get(&(site, id)) {
                 if *amount != transfer.credit.delta {
                     return Err(SiteStatementsError::InvestmentReceiptMismatch);
                 }
@@ -357,15 +300,15 @@ fn category(
     Ok(result)
 }
 
-fn investment_reservations(
-    site: SiteId,
+pub(super) fn investment_reservations(
+    site: Option<SiteId>,
     receipts: &MaterialTickReceipts,
-) -> Result<BTreeMap<OutboundOrderId, Currency>> {
+) -> Result<BTreeMap<(SiteId, OutboundOrderId), Currency>> {
     let mut result = BTreeMap::new();
     for row in receipts
         .investment
         .iter()
-        .filter(|r| r.site_id == site && r.admitted_units > 0)
+        .filter(|r| site.is_none_or(|selected| r.site_id == selected) && r.admitted_units > 0)
     {
         if row.period != receipts.resolve_tick || row.validate().is_err() {
             return Err(SiteStatementsError::InvestmentReceiptMismatch);
@@ -377,7 +320,10 @@ fn investment_reservations(
             .map(Currency::from_micro_units)
             .ok_or(SiteStatementsError::Arithmetic)?;
         if result
-            .insert(OutboundOrderId::Delivery(row.order_id), amount)
+            .insert(
+                (row.site_id, OutboundOrderId::Delivery(row.order_id)),
+                amount,
+            )
             .is_some()
         {
             return Err(SiteStatementsError::InvestmentReceiptMismatch);

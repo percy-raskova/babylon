@@ -388,3 +388,11 @@ JOIN babylon_state.economic_payment_v1 p USING(campaign_id, resolve_tick, ordina
 WHERE m.purpose IN ('delivery_settlement','wage_payment','tax','public_transfer','household_transfer',
     'ownership_distribution','capital_contribution','transport_service','mutual_aid');
 REVOKE ALL ON public.v_observer_economic_flow_account_v1, public.v_observer_economic_payment_v1 FROM PUBLIC;
+
+CREATE VIEW public.v_observer_site_statement_v1 AS
+SELECT s.*, p.site_monetary_books, p.receipt_sha256 FROM babylon_state.site_statement_v1 s
+JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_site_stock_balance_v1 AS
+SELECT s.*, p.site_monetary_books, p.receipt_sha256 FROM babylon_state.site_stock_balance_v1 s
+JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
+REVOKE ALL ON public.v_observer_site_statement_v1, public.v_observer_site_stock_balance_v1 FROM PUBLIC;

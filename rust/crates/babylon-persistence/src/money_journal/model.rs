@@ -19,6 +19,7 @@ pub enum JournalError {
     Range,
     Projection,
     CoverageAbsent,
+    SiteAbsent,
     SourceChanged,
     Observer(ObserverEconomyError),
 }

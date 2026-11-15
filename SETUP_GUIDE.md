@@ -237,7 +237,34 @@ Warm detail and total queries use the SQL facts directly. The full observer can
 also sum `public.v_observer_money_movement_total_v1` or inspect
 `public.v_observer_money_movement_v1` with SQL.
 
+### Read site accounts and stock history
+
+Use the site ID from the native `economy sites` command. With the full observer
+login, read one published period or an inclusive range from `rust/`.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- site-history \
+  --campaign "$CAMPAIGN_ID" --site "$SITE_ID" --first 1 --last 13
+```
+
+Each period includes opening and closing balances, income, signed cash flows and
+stock positions by good and unit. Amounts use decimal strings in currency micros.
+Quantities use decimal strings in the recorded unit.
+
+A physical campaign has a null statement and null stock costs. A null opening or
+closing means that the books had no stock row at that boundary. An unpublished
+period or an unknown site returns an error. Site history stays available after
+the 13-period limit for individual money movements. Use native `economy site`
+to read the source receipts and claims.
+
 ### Follow settled payments
+
+Open a campaign in the full observer and select a county on the map. The
+**Settled payments** panel shows who paid that county and whom it paid in the
+selected period. Select a map arrow or its entry in the list to see both
+endpoints and the amount. Choose `Open counterparty county` to
+follow a payment to another mapped county. The list also includes payments
+with no mapped endpoint.
 
 From `rust/`, use the full observer login to rank payments in a published
 campaign. The movement journal records each reserve posting. The flow report

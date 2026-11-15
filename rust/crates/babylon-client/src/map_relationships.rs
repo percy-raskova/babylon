@@ -182,6 +182,12 @@ impl CountyAnchors {
         )
     }
 
+    pub(super) fn county_position(&self, geoid: &str) -> Option<Vec3> {
+        self.0
+            .get(geoid)
+            .map(|anchor| Vec3::new(anchor.position.x, BASE_HEIGHT + 5.0, anchor.position.z))
+    }
+
     fn selected(&self, index: Option<usize>) -> Option<&str> {
         self.0
             .iter()
@@ -525,6 +531,24 @@ fn connection_points(from: Vec3, to: Vec3) -> [Vec3; 5] {
     ]
 }
 
+pub(super) fn payment_ribbon(from: Vec3, to: Vec3, width: f32) -> Option<Mesh> {
+    let points = connection_points(from, to);
+    let mut pieces = RoadSegments::new();
+    for (i, pair) in (0_i64..).zip(points.windows(2)) {
+        pieces.insert(RoadSegment([[i, 0], [i, 1]]), [pair[0], pair[1]]);
+    }
+    let forward = (points[4] - points[3]).normalize_or_zero();
+    let tip = points[3].lerp(points[4], 0.7);
+    let side = forward.cross(Vec3::Y).normalize_or_zero() * (3.0 + width);
+    for (i, wing) in [(4, side), (5, -side)] {
+        pieces.insert(
+            RoadSegment([[i, 0], [i, 1]]),
+            [tip - forward * (6.0 + 2.0 * width) + wing, tip],
+        );
+    }
+    road_mesh(&pieces, width)
+}
+
 fn segment(
     commands: &mut Commands,
     assets: &RelationshipAssets,
@@ -661,6 +685,7 @@ fn rebuild(
         commands.entity(entity).despawn();
     }
     if *observation.view != PrimaryView::Map
+        || matches!(observation.ui.lens, crate::map_economy_lens::MapLens::Money)
         || observation.ui.road_layer == RoadLayer::EconomyNetwork
     {
         return;

@@ -152,6 +152,22 @@ enum Stage<'a> {
 }
 
 impl Ranking<'_> {
+    fn check_frame(
+        &self,
+        tx: &mut Transaction<'_>,
+        expected: Option<(&str, &str)>,
+    ) -> Result<(), JournalError> {
+        let Some((foundation, tick_hash)) = expected else {
+            return Ok(());
+        };
+        let row = tx.query_opt(
+            "SELECT 1 FROM public.v_observer_money_journal_period_v1 WHERE campaign_id=$1 AND resolve_tick=$2 AND encode(foundation_sha256,'hex')=$3 AND encode(tick_content_hash,'hex')=$4",
+            &[self.campaign.as_uuid(), &self.bounds.last, &foundation, &tick_hash],
+        ).map_err(|_| JournalError::Database)?;
+        row.ok_or(JournalError::SourceChanged)?;
+        Ok(())
+    }
+
     fn run(&self, tx: &mut Transaction<'_>, stage: Stage<'_>) -> Result<String, JournalError> {
         let (period, accumulated, op) = match stage {
             Stage::Fold {
@@ -267,6 +283,33 @@ impl ObserverEconomyReader {
         campaign: CampaignId,
         query: &FlowQuery,
     ) -> Result<FlowPage, JournalError> {
+        self.bound_payment_flows(campaign, query, None)
+    }
+
+    /// Read a page only if its last period matches an installed observer frame.
+    /// The page and its foundation and period hashes share one database snapshot.
+    /// # Errors
+    /// Refuses stale frame identities and all failures of the ordinary flow query.
+    pub fn economic_payment_flows_for_frame(
+        &self,
+        campaign: CampaignId,
+        query: &FlowQuery,
+        foundation_sha256: &str,
+        tick_content_hash: &str,
+    ) -> Result<FlowPage, JournalError> {
+        self.bound_payment_flows(
+            campaign,
+            query,
+            Some((foundation_sha256, tick_content_hash)),
+        )
+    }
+
+    fn bound_payment_flows(
+        &self,
+        campaign: CampaignId,
+        query: &FlowQuery,
+        expected: Option<(&str, &str)>,
+    ) -> Result<FlowPage, JournalError> {
         let ranking = Ranking {
             campaign,
             bounds: Bounds::new(query)?,
@@ -276,6 +319,7 @@ impl ObserverEconomyReader {
         let mut tx = snapshot(&mut client)?;
         let mut expired = coverage(&mut tx, campaign, &ranking.bounds)?;
         if expired.is_empty() {
+            ranking.check_frame(&mut tx, expected)?;
             let report = ranking.page(&mut tx, "[]")?;
             tx.commit().map_err(|_| JournalError::Database)?;
             return Ok(report);
@@ -288,6 +332,7 @@ impl ObserverEconomyReader {
             let mut tx = snapshot(&mut client)?;
             let latest = coverage(&mut tx, campaign, &ranking.bounds)?;
             if latest == expired {
+                ranking.check_frame(&mut tx, expected)?;
                 let report = ranking.page(&mut tx, &history)?;
                 tx.commit().map_err(|_| JournalError::Database)?;
                 return Ok(report);

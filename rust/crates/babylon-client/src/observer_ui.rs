@@ -14,6 +14,7 @@ use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::CountyMapScope;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::map_economy_lens;
+use crate::map_economy_lens::MapLensProjection;
 use crate::map_economy_lens::WorkforceMetric;
 use crate::map_economy_lens::{
     CountyLensReading, EconomyMetric, MapLens, MaterialLensKind, ScopeTransition,
@@ -252,6 +253,7 @@ pub enum ObserverCommand {
     Disclosure(ObserverDisclosure),
     Evidence,
     EconomicDetails,
+    Money,
     Relationships,
     RoadLayer(RoadLayer),
     NetworkSector(NetworkSector),
@@ -571,6 +573,10 @@ fn spawn_inspector(commands: &mut Commands) {
                 ObserverText::County,
             ));
             panel.spawn((
+                context_column(),
+                crate::observer_map3d::money_map::MoneyRail,
+            ));
+            panel.spawn((
                 block_label("", 17.0, theme::PAPER),
                 ObserverText::Production,
                 ObserverFocusTarget::reading(None),
@@ -802,6 +808,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
             "Economy network",
             ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
         );
+        button(bar, "Money flows", ObserverCommand::Money);
         button(bar, "Level geography", ObserverCommand::Relationships);
     });
     spawn_observer_campaign_route(panel);
@@ -1222,7 +1229,8 @@ fn button_visible(
         ObserverCommand::TogglePlay | ObserverCommand::Speed | ObserverCommand::StopOnDelivery => {
             ui.disclosure == Some(ObserverDisclosure::Time)
         }
-        ObserverCommand::Relationships
+        ObserverCommand::Money
+        | ObserverCommand::Relationships
         | ObserverCommand::RoadLayer(_)
         | ObserverCommand::NetworkSector(_)
         | ObserverCommand::Workforce(_)
@@ -1529,7 +1537,8 @@ fn paint_buttons(
             }
         }
         let selected = match (button.command, &ui.lens) {
-            (ObserverCommand::Relationships, MapLens::Relationships) => true,
+            (ObserverCommand::Money, MapLens::Money)
+            | (ObserverCommand::Relationships, MapLens::Relationships) => true,
             (ObserverCommand::RoadLayer(layer), _) => layer == ui.road_layer,
             (ObserverCommand::NetworkSector(sector), _) => sector == ui.network_sector,
             (ObserverCommand::Workforce(metric), MapLens::Workforce(current)) => metric == *current,
@@ -1982,6 +1991,16 @@ fn status_with_organizer_message(
         )
 }
 
+fn lens_source(selected: &MapLens, lens: &MapLensProjection) -> String {
+    match selected {
+                MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
+                MapLens::Money => "Each ribbon joins recorded payer and recipient locations. A county anchor represents the account location or catchment hub.".into(),
+                MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
+                MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
+                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
+            }
+}
+
 fn repaint(
     shell: ShellState,
     mut texts: Query<(&ObserverText, &mut Text)>,
@@ -2049,15 +2068,16 @@ fn repaint(
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
             ObserverText::Status => status_with_organizer_message(&turn.status, organizer.as_deref(), &state),
             ObserverText::Legend => match &ui.lens {
-                MapLens::Relationships => String::new(),
+                MapLens::Money | MapLens::Relationships => String::new(),
                 MapLens::Workforce(_) | MapLens::Qcew(_) => format!("0..{} {}", lens.maximum().map_or_else(|| "-".into(), grouped), lens.unit),
                 MapLens::Material {..} => lens.good_label.as_ref().map_or_else(|| "Material unavailable".into(), |good|format!("{good} ({})", lens.unit)),
             },
             ObserverText::County => county.as_ref().map_or_else(|| "Select a county".into(), |county| county.name.to_owned()),
+            ObserverText::Measures if matches!(ui.lens, MapLens::Money) => "Amounts come from settled payments in the viewed period.".into(),
             ObserverText::Measures if matches!(ui.lens, MapLens::Relationships) => "Choose an economic lens to inspect exact county readings.".into(),
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Hover if *view != PrimaryView::Map => String::new(),
-            ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
+            ObserverText::Hover if matches!(ui.lens, MapLens::Money | MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
@@ -2071,12 +2091,7 @@ fn repaint(
                 }
                 evidence
             }),
-            ObserverText::Source => match &ui.lens {
-                MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
-                MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
-                MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
-                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
-            },
+            ObserverText::Source => lens_source(&ui.lens, &lens),
             ObserverText::Developments => world_developments(installed, county.as_ref().map(|county| county.fips), organizer.as_deref(), &state),
             ObserverText::Production => installed.and_then(|snapshot| snapshot.production.as_ref())
                 .map_or_else(|| "Production relationships are unavailable in this observation.".into(), |production|
@@ -2274,14 +2289,29 @@ fn reconcile_lens(
     frame: Res<ObserverFrame>,
     session: Res<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
-    mut previous_scope: Local<Option<(babylon_persistence::identity::CampaignId, Perspective)>>,
+    mut previous_scope: Local<
+        Option<(babylon_persistence::identity::CampaignId, Perspective, bool)>,
+    >,
 ) {
-    let scope = (session.campaign, session.perspective);
+    let scope = (
+        session.campaign,
+        session.perspective,
+        session.organizer_enabled,
+    );
     let changed = previous_scope.as_ref() != Some(&scope);
     if !(changed || frame.is_changed() || session.is_changed() || ui.is_changed()) {
         return;
     }
-    let mut lens = ui.lens.clone();
+    let mut lens = if changed
+        && session.perspective == Perspective::FullObserver
+        && !session.organizer_enabled
+    {
+        MapLens::Money
+    } else if changed && ui.lens == MapLens::Money {
+        MapLens::Relationships
+    } else {
+        ui.lens.clone()
+    };
     lens.reconcile(
         frame.for_session(&session),
         if changed {

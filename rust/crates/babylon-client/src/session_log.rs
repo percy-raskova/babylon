@@ -125,6 +125,7 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
         ObserverCommand::Disclosure(ObserverDisclosure::Lens) => "lens_controls",
         ObserverCommand::Evidence => "evidence",
         ObserverCommand::EconomicDetails => "economic_details",
+        ObserverCommand::Money => "money_flows",
         ObserverCommand::Relationships => "relationships",
         ObserverCommand::NetworkSector(_) => "network_sector",
         ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork) => "economy_network",

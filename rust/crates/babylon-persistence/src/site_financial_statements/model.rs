@@ -2,7 +2,9 @@
 use crate::identity::CampaignId;
 use crate::observer_reader::ObserverEconomyError;
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::{IncomeReceipt, MoneyTransferReceipt, OwnershipClaim, SiteId};
+use babylon_material_circuit::{
+    GoodId, IncomeReceipt, MoneyTransferReceipt, OwnershipClaim, SiteId, UnitId,
+};
 use std::fmt::Result as FmtResult;
 use std::fmt::{Display, Formatter};
 
@@ -19,6 +21,7 @@ pub enum SiteStatementsError {
     InvalidTransfer,
     CashReconciliationMismatch,
     PeriodMismatch,
+    StockBasisMismatch,
 }
 impl From<ObserverEconomyError> for SiteStatementsError {
     fn from(value: ObserverEconomyError) -> Self {
@@ -121,4 +124,49 @@ pub struct CashFlowTransfer {
     pub receipt_index: usize,
     pub category: CashFlowCategory,
     pub transfer: MoneyTransferReceipt,
+}
+
+/// Compact financial accounts for all sites and physical stocks for both accounting modes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiteAccountingPeriod {
+    pub resolve_tick: u64,
+    /// Physical controls omit money and period income.
+    pub statements: Option<Vec<SiteStatementSummary>>,
+    pub stocks: Vec<SiteStockBalance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiteStatementSummary {
+    pub site_id: SiteId,
+    pub opening: SiteBalanceSheet,
+    pub closing: SiteBalanceSheet,
+    pub income: IncomeReceipt,
+    pub change_in_equity: Currency,
+    pub cash_flow: SiteCashFlowTotals,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SiteCashFlowTotals {
+    pub operating: Currency,
+    pub investing: Currency,
+    pub financing: Currency,
+    pub reserve_reclassification: Currency,
+}
+
+/// A missing endpoint means the stock principal was absent at that boundary.
+/// Captured zero quantity and zero historical basis stay explicit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiteStockBalance {
+    pub site_id: SiteId,
+    pub good_id: GoodId,
+    pub unit_id: UnitId,
+    pub opening: Option<SiteStockPosition>,
+    pub closing: Option<SiteStockPosition>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SiteStockPosition {
+    pub quantity: u64,
+    /// Physical controls track units without a monetary carrying basis.
+    pub carrying_cost: Option<Currency>,
 }

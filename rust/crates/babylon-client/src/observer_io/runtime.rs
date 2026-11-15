@@ -1104,6 +1104,14 @@ pub(crate) fn campaign_preset(command: ObserverCommand) -> Option<RuntimeSession
     })
 }
 
+fn show_road_layer(ui: &mut ObserverUiState, layer: RoadLayer) {
+    ui.road_layer = layer;
+    if ui.lens == MapLens::Money {
+        ui.lens = MapLens::Relationships;
+    }
+    ui.disclosure = None;
+}
+
 pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut CommandContext) {
     let CommandContext {
         state,
@@ -1113,19 +1121,19 @@ pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut
         ..
     } = context;
     match command {
+        ObserverCommand::Money => {
+            ui.lens = MapLens::Money;
+            ui.disclosure = None;
+        }
         ObserverCommand::Relationships => {
             ui.lens = MapLens::Relationships;
             ui.disclosure = None;
         }
         ObserverCommand::NetworkSector(sector) => {
             ui.network_sector = sector;
-            ui.road_layer = RoadLayer::EconomyNetwork;
-            ui.disclosure = None;
+            show_road_layer(ui, RoadLayer::EconomyNetwork);
         }
-        ObserverCommand::RoadLayer(layer) => {
-            ui.road_layer = layer;
-            ui.disclosure = None;
-        }
+        ObserverCommand::RoadLayer(layer) => show_road_layer(ui, layer),
         ObserverCommand::EconomicDetails => ui.economic_details_open = !ui.economic_details_open,
         ObserverCommand::Workforce(metric) => {
             ui.lens = MapLens::Workforce(metric);
@@ -1140,7 +1148,10 @@ pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut
             ui.economic_details_open = true;
             let good = match &ui.lens {
                 MapLens::Material { good, .. } => good.clone(),
-                MapLens::Relationships | MapLens::Qcew(_) | MapLens::Workforce(_) => None,
+                MapLens::Money
+                | MapLens::Relationships
+                | MapLens::Qcew(_)
+                | MapLens::Workforce(_) => None,
             };
             ui.lens = MapLens::Material { kind, good };
             ui.lens

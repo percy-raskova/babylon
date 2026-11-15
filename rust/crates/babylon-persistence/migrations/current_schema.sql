@@ -1703,11 +1703,20 @@ CREATE TABLE babylon_state.money_journal_period_v1 (
     movement_count bigint NOT NULL CHECK (movement_count >= 0),
     payment_sha256 bytea NOT NULL CHECK (octet_length(payment_sha256) = 32),
     payment_count bigint NOT NULL CHECK (payment_count BETWEEN 0 AND movement_count),
+    site_accounting_sha256 bytea NOT NULL CHECK (octet_length(site_accounting_sha256) = 32),
+    site_accounting_directory bytea NOT NULL
+        CHECK (pg_catalog.sha256(site_accounting_directory) = site_accounting_sha256),
+    site_monetary_books boolean NOT NULL,
+    site_count bigint NOT NULL CHECK (site_count BETWEEN 0 AND 16777215
+        AND octet_length(site_accounting_directory)::bigint = 64 * site_count),
+    site_stock_count bigint NOT NULL CHECK (site_stock_count >= 0),
     detail_retained boolean NOT NULL,
     PRIMARY KEY (campaign_id, resolve_tick),
     FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id, resolve_tick),
     FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
 );
+-- Keep large directories uncompressed so the selected-site reader can fetch a single TOAST slice.
+ALTER TABLE babylon_state.money_journal_period_v1 ALTER COLUMN site_accounting_directory SET STORAGE EXTERNAL;
 CREATE TABLE babylon_state.money_movement_v1 (
     campaign_id uuid NOT NULL,
     resolve_tick bigint NOT NULL,
@@ -1814,3 +1823,121 @@ CREATE TABLE babylon_state.economic_payment_v1 (
         REFERENCES babylon_state.economic_flow_account_v1(campaign_id, account_kind, account_id)
 );
 REVOKE ALL ON babylon_state.economic_flow_account_v1, babylon_state.economic_payment_v1 FROM PUBLIC;
+
+-- Compact per-site accounts and physical stock survive movement detail retention.
+CREATE TABLE babylon_state.site_statement_v1 (
+    campaign_id uuid NOT NULL,
+    site_ordinal integer NOT NULL CHECK (site_ordinal BETWEEN 0 AND 16777214),
+    resolve_tick bigint NOT NULL,
+    site_id bytea NOT NULL CHECK (octet_length(site_id) = 32),
+    opening_cash_micros numeric(39,0),
+    opening_purchase_reserves_micros numeric(39,0),
+    opening_payroll_reserves_micros numeric(39,0),
+    opening_wage_receivables_micros numeric(39,0),
+    opening_inventory_micros numeric(39,0),
+    opening_freight_micros numeric(39,0),
+    opening_equity_investments_micros numeric(39,0),
+    opening_equipment_micros numeric(39,0),
+    opening_total_assets_micros numeric(39,0),
+    opening_wage_payables_micros numeric(39,0),
+    opening_total_liabilities_micros numeric(39,0),
+    opening_opening_capital_micros numeric(39,0),
+    opening_contributed_capital_micros numeric(39,0),
+    opening_retained_earnings_micros numeric(39,0),
+    opening_total_equity_micros numeric(39,0),
+    closing_cash_micros numeric(39,0),
+    closing_purchase_reserves_micros numeric(39,0),
+    closing_payroll_reserves_micros numeric(39,0),
+    closing_wage_receivables_micros numeric(39,0),
+    closing_inventory_micros numeric(39,0),
+    closing_freight_micros numeric(39,0),
+    closing_equity_investments_micros numeric(39,0),
+    closing_equipment_micros numeric(39,0),
+    closing_total_assets_micros numeric(39,0),
+    closing_wage_payables_micros numeric(39,0),
+    closing_total_liabilities_micros numeric(39,0),
+    closing_opening_capital_micros numeric(39,0),
+    closing_contributed_capital_micros numeric(39,0),
+    closing_retained_earnings_micros numeric(39,0),
+    closing_total_equity_micros numeric(39,0),
+    income_sales_micros numeric(39,0),
+    income_wage_income_micros numeric(39,0),
+    income_cost_of_goods_sold_micros numeric(39,0),
+    income_productive_labor_capitalized_micros numeric(39,0),
+    income_installation_labor_capitalized_micros numeric(39,0),
+    income_equipment_wear_capitalized_micros numeric(39,0),
+    income_idle_labor_expense_micros numeric(39,0),
+    income_handling_expense_micros numeric(39,0),
+    income_maintenance_labor_expense_micros numeric(39,0),
+    income_maintenance_material_expense_micros numeric(39,0),
+    income_freight_loss_expense_micros numeric(39,0),
+    income_consumption_expense_micros numeric(39,0),
+    income_final_demand_outlay_micros numeric(39,0),
+    income_unused_service_expense_micros numeric(39,0),
+    income_tax_income_micros numeric(39,0),
+    income_tax_expense_micros numeric(39,0),
+    income_public_transfer_income_micros numeric(39,0),
+    income_public_transfer_expense_micros numeric(39,0),
+    income_distribution_income_micros numeric(39,0),
+    income_gift_income_micros numeric(39,0),
+    income_gift_expense_micros numeric(39,0),
+    income_agency_observation_labor_expense_micros numeric(39,0),
+    cash_flow_operating_micros numeric(39,0),
+    cash_flow_investing_micros numeric(39,0),
+    cash_flow_financing_micros numeric(39,0),
+    cash_flow_reserve_reclassification_micros numeric(39,0),
+    net_income_micros numeric(39,0),
+    contributions_received_micros numeric(39,0),
+    distributions_paid_micros numeric(39,0),
+    change_in_equity_micros numeric(39,0),
+    CHECK (pg_catalog.num_nonnulls(
+        opening_cash_micros, opening_purchase_reserves_micros, opening_payroll_reserves_micros,
+        opening_wage_receivables_micros, opening_inventory_micros, opening_freight_micros,
+        opening_equity_investments_micros, opening_equipment_micros, opening_total_assets_micros,
+        opening_wage_payables_micros, opening_total_liabilities_micros, opening_opening_capital_micros,
+        opening_contributed_capital_micros, opening_retained_earnings_micros, opening_total_equity_micros,
+        closing_cash_micros, closing_purchase_reserves_micros, closing_payroll_reserves_micros,
+        closing_wage_receivables_micros, closing_inventory_micros, closing_freight_micros,
+        closing_equity_investments_micros, closing_equipment_micros, closing_total_assets_micros,
+        closing_wage_payables_micros, closing_total_liabilities_micros, closing_opening_capital_micros,
+        closing_contributed_capital_micros, closing_retained_earnings_micros, closing_total_equity_micros,
+        income_sales_micros, income_wage_income_micros, income_cost_of_goods_sold_micros,
+        income_productive_labor_capitalized_micros, income_installation_labor_capitalized_micros, income_equipment_wear_capitalized_micros,
+        income_idle_labor_expense_micros, income_handling_expense_micros, income_maintenance_labor_expense_micros,
+        income_maintenance_material_expense_micros, income_freight_loss_expense_micros, income_consumption_expense_micros,
+        income_final_demand_outlay_micros, income_unused_service_expense_micros, income_tax_income_micros,
+        income_tax_expense_micros, income_public_transfer_income_micros, income_public_transfer_expense_micros,
+        income_distribution_income_micros, income_gift_income_micros, income_gift_expense_micros,
+        income_agency_observation_labor_expense_micros, cash_flow_operating_micros, cash_flow_investing_micros,
+        cash_flow_financing_micros, cash_flow_reserve_reclassification_micros, net_income_micros,
+        contributions_received_micros, distributions_paid_micros, change_in_equity_micros) IN (0,60)),
+    PRIMARY KEY (campaign_id, resolve_tick, site_id),
+    FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.money_journal_period_v1(campaign_id, resolve_tick)
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    CHECK (closing_total_assets_micros = closing_total_liabilities_micros + closing_total_equity_micros
+        AND opening_total_assets_micros = opening_total_liabilities_micros + opening_total_equity_micros
+        AND change_in_equity_micros = closing_total_equity_micros - opening_total_equity_micros
+        AND change_in_equity_micros = net_income_micros + contributions_received_micros - distributions_paid_micros
+        AND closing_cash_micros - opening_cash_micros = cash_flow_operating_micros
+            + cash_flow_investing_micros + cash_flow_financing_micros + cash_flow_reserve_reclassification_micros)
+);
+CREATE TABLE babylon_state.site_stock_balance_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    site_id bytea NOT NULL,
+    good_id bytea NOT NULL CHECK (octet_length(good_id) = 32),
+    unit_id bytea NOT NULL CHECK (octet_length(unit_id) = 32),
+    opening_quantity numeric(20,0) CHECK (opening_quantity BETWEEN 0 AND 18446744073709551615),
+    closing_quantity numeric(20,0) CHECK (closing_quantity BETWEEN 0 AND 18446744073709551615),
+    opening_carrying_cost_micros numeric(39,0) CHECK (opening_carrying_cost_micros >= 0),
+    closing_carrying_cost_micros numeric(39,0) CHECK (closing_carrying_cost_micros >= 0),
+    PRIMARY KEY (campaign_id, resolve_tick, site_id, good_id, unit_id),
+    FOREIGN KEY (campaign_id, resolve_tick, site_id) REFERENCES babylon_state.site_statement_v1(campaign_id, resolve_tick, site_id)
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    CHECK (opening_quantity IS NOT NULL OR closing_quantity IS NOT NULL),
+    CHECK ((opening_quantity IS NOT NULL OR opening_carrying_cost_micros IS NULL)
+        AND (closing_quantity IS NOT NULL OR closing_carrying_cost_micros IS NULL))
+);
+CREATE INDEX site_statement_history_v1 ON babylon_state.site_statement_v1(campaign_id,site_id,resolve_tick);
+CREATE INDEX site_stock_history_v1 ON babylon_state.site_stock_balance_v1(campaign_id,site_id,resolve_tick,good_id,unit_id);
+REVOKE ALL ON babylon_state.site_statement_v1, babylon_state.site_stock_balance_v1 FROM PUBLIC;

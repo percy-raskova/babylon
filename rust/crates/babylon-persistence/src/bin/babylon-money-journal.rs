@@ -1,4 +1,5 @@
 //! Explicit owner publication and confined observer SQL queries for money facts.
+use babylon_material_circuit::SiteId;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
     FlowGroup, FlowQuery, FlowViewport, MoneyJournalWriter, PeriodWindow,
@@ -15,12 +16,13 @@ struct Arguments {
     first: u64,
     last: u64,
     query: Option<FlowQuery>,
+    site: Option<SiteId>,
 }
 fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'static str> {
     let operation = args.next().ok_or("operation_absent")?;
     if !matches!(
         operation.as_str(),
-        "publish" | "rebuild" | "details" | "totals" | "flows"
+        "publish" | "rebuild" | "details" | "totals" | "flows" | "site-history"
     ) {
         return Err("operation_refused");
     }
@@ -36,7 +38,11 @@ fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'stat
                     | "--offset"
                     | "--bbox-4269"
             );
-        if !flow_option && !matches!(flag.as_str(), "--campaign" | "--first" | "--last") {
+        let site_option = operation == "site-history" && flag == "--site";
+        if !flow_option
+            && !site_option
+            && !matches!(flag.as_str(), "--campaign" | "--first" | "--last")
+        {
             return Err("arguments_refused");
         }
         let value = args.next().ok_or("arguments_refused")?;
@@ -69,13 +75,33 @@ fn arguments(mut args: impl Iterator<Item = String>) -> Result<Arguments, &'stat
     } else {
         None
     };
+    let site = if operation == "site-history" {
+        Some(parse_site(flags.get("--site").ok_or("site_absent")?)?)
+    } else {
+        None
+    };
     Ok(Arguments {
         query,
+        site,
         operation,
         campaign: CampaignId::from_uuid(id),
         first,
         last,
     })
+}
+fn parse_site(text: &str) -> Result<SiteId, &'static str> {
+    if text.len() != 64
+        || !text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err("site_refused");
+    }
+    let mut bytes = [0; 32];
+    for (i, value) in bytes.iter_mut().enumerate() {
+        *value = u8::from_str_radix(&text[2 * i..2 * i + 2], 16).map_err(|_| "site_refused")?;
+    }
+    Ok(SiteId::from_bytes(bytes))
 }
 fn flow_options(
     flags: &BTreeMap<String, String>,
@@ -163,6 +189,23 @@ fn run(args: &Arguments) -> Result<Value, String> {
                 .map_err(|e| e.to_string())?;
             Ok(
                 json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"unit":"currency_micros","request":query,"page":page}),
+            )
+        }
+        "site-history" => {
+            let site = args.site.ok_or("site_absent")?;
+            let history = observer
+                .published_site_history(
+                    args.campaign,
+                    PeriodWindow {
+                        first: args.first,
+                        last: args.last,
+                    },
+                    site,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(
+                json!({"version":1,"campaign":args.campaign.as_uuid().to_string(),"first":args.first,
+                "last":args.last,"unit":"currency_micros","periods":history}),
             )
         }
         "details" => Ok(

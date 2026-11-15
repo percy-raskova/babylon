@@ -1,8 +1,8 @@
 //! Atomic owner publication and full-observer SQL access.
 use super::payment_storage::Admission;
 use super::{
-    model, payment_storage, JournalError, MoneyEndpoint, MoneyLocationKind, MoneyMovement,
-    MoneyPurpose, MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
+    model, payment_storage, statement_storage, JournalError, MoneyEndpoint, MoneyLocationKind,
+    MoneyMovement, MoneyPurpose, MoneyReference, MoneyReferenceKind, MoneyTotal, PublishReport,
 };
 use crate::identity::CampaignId;
 use crate::observer_reader::{
@@ -18,13 +18,15 @@ pub struct MoneyJournalWriter {
     config: Config,
 }
 
-pub(crate) const VIEWS: [&str; 6] = [
+pub(crate) const VIEWS: [&str; 8] = [
     "public.v_observer_money_journal_period_v1",
     "public.v_observer_money_movement_v1",
     "public.v_observer_money_movement_total_v1",
     "public.v_observer_economic_flow_location_v1",
     "public.v_observer_economic_flow_account_v1",
     "public.v_observer_economic_payment_v1",
+    "public.v_observer_site_statement_v1",
+    "public.v_observer_site_stock_balance_v1",
 ];
 const COLUMNS: &str = "ordinal, purpose, reference_kind, reference_id, debit_kind, debit_id, credit_kind, credit_id, amount_micros::text";
 const KEEP_PERIODS: i64 = 13;
@@ -284,9 +286,10 @@ impl MoneyJournalWriter {
     ) -> Result<PublishReport, JournalError> {
         self.require_target(observer)?;
         let mut candidate = cursor.clone();
-        let economic = observer
-            .committed_economic_payments_with_cursor(campaign, period, &mut candidate)
+        let period_source = observer
+            .committed_journal_period(campaign, period, &mut candidate)
             .map_err(JournalError::Observer)?;
+        let economic = &period_source.payments;
         let source = &economic.source;
         let movements = model::derive_movements(source)?;
         let payment_digest = payment_storage::fingerprint(&economic.settlements, &movements)?;
@@ -308,7 +311,7 @@ impl MoneyJournalWriter {
         } else {
             Admission::Verify
         };
-        payment_storage::accounts(&mut tx, &economic, mode)?;
+        payment_storage::accounts(&mut tx, economic, mode)?;
         if let Some(existing) = existing {
             if operation == Publication::Publish {
                 let retained: bool = existing
@@ -349,13 +352,15 @@ impl MoneyJournalWriter {
             tx.execute("INSERT INTO babylon_state.money_movement_total_v1 SELECT campaign_id,resolve_tick,purpose,count(*),sum(amount_micros) \
                 FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=$2 GROUP BY campaign_id,resolve_tick,purpose", &[campaign.as_uuid(), &tick]).map_err(|_| JournalError::Database)?;
         }
+        let site = statement_storage::publish(&mut tx, &period_source, mode)?;
         let binding = pin_after_pruning(&mut tx, source, tick)?;
         if changed {
-            tx.execute("INSERT INTO babylon_state.money_journal_period_v1 (campaign_id,resolve_tick,journal_version,tick_content_hash,envelope_digest,schema_sha256,foundation_sha256,content_sha256,source_identity_bytes,receipt_sha256,movement_sha256,movement_count,detail_retained,payment_sha256,payment_count) \
-                VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)", &[campaign.as_uuid(), &tick,
+            tx.execute("INSERT INTO babylon_state.money_journal_period_v1 (campaign_id,resolve_tick,journal_version,tick_content_hash,envelope_digest,schema_sha256,foundation_sha256,content_sha256,source_identity_bytes,receipt_sha256,movement_sha256,movement_count,detail_retained,payment_sha256,payment_count,site_accounting_sha256,site_monetary_books,site_count,site_stock_count,site_accounting_directory) \
+                VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)", &[campaign.as_uuid(), &tick,
                     &source.identity.tick_content_hash().as_bytes().as_slice(), &binding.envelope.as_slice(), &crate::current_schema_sha256().as_slice(),
                     &source.identity.foundation_digest().as_slice(), &binding.content.as_slice(), &source.identity.canonical_bytes(),
-                    &source.identity.receipt_digest().as_slice(), &digest.as_slice(), &count, &binding.detail_retained,&payment_digest.as_slice(),&payment_count]).map_err(|_| JournalError::Database)?;
+                    &source.identity.receipt_digest().as_slice(), &digest.as_slice(), &count, &binding.detail_retained,&payment_digest.as_slice(),&payment_count,
+                    &site.digest.as_slice(),&site.monetary,&site.sites,&site.stocks,&site.directory]).map_err(|_| JournalError::Database)?;
         } else {
             verify_period(&mut tx, source, &digest, count)?;
         }

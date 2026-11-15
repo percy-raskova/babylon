@@ -453,3 +453,122 @@ fn investment_reservation_joins_exact_order_amount_without_counting_settlement_t
         Err(SiteStatementsError::CashReconciliationMismatch)
     );
 }
+
+#[test]
+fn period_summary_connects_every_site_and_preserves_physical_stock_identity() {
+    use babylon_tick::material_world::{self, MaterialWorldRegister};
+    use std::collections::BTreeSet;
+
+    let (catalog, state) = crate::production_projection::recurring_fixture::materials();
+    let opening = MaterialWorldRegister::try_new(&catalog, 0, state).expect("paid opening");
+    let next = opening.prepare_next(&catalog).expect("paid period");
+    let rows = material_world::decode_material_receipts(next.receipt_bytes())
+        .expect("complete period receipts");
+    let before = opening.state();
+    let after = next.register().state();
+    let period = super::project_period(before, after, &rows).expect("complete site period");
+    let statements = period.statements.as_ref().expect("monetary site books");
+    assert_eq!(statements.len(), 3);
+    for row in statements {
+        let selected = projection::project(
+            row.site_id,
+            Some(&before.accounting),
+            &after.accounting,
+            Some(&rows),
+        )
+        .expect("selected site statement");
+        let activity = selected.activity.expect("selected activity");
+        assert_eq!(Some(&row.opening), selected.opening.as_ref());
+        assert_eq!(row.closing, selected.closing);
+        assert_eq!(row.income, activity.income);
+        assert_eq!(row.change_in_equity, activity.change_in_equity);
+        assert_eq!(row.cash_flow.operating, activity.cash_flow.operating);
+        assert_eq!(row.cash_flow.investing, activity.cash_flow.investing);
+        assert_eq!(row.cash_flow.financing, activity.cash_flow.financing);
+        assert_eq!(
+            row.cash_flow.reserve_reclassification,
+            activity.cash_flow.reserve_reclassification
+        );
+    }
+    assert!(period
+        .stocks
+        .iter()
+        .any(|row| row.opening.is_none() && row.closing.is_some()));
+    let expected_keys: BTreeSet<_> = before
+        .inventory
+        .iter()
+        .chain(&after.inventory)
+        .map(|row| (row.site_id, row.good_id, row.unit_id))
+        .collect();
+    assert_eq!(
+        period
+            .stocks
+            .iter()
+            .map(|row| (row.site_id, row.good_id, row.unit_id))
+            .collect::<Vec<_>>(),
+        expected_keys.into_iter().collect::<Vec<_>>()
+    );
+    for stock in &period.stocks {
+        for (state, point) in [(before, &stock.opening), (after, &stock.closing)] {
+            let key = (stock.site_id, stock.good_id, stock.unit_id);
+            let inventory = state
+                .inventory
+                .iter()
+                .find(|r| (r.site_id, r.good_id, r.unit_id) == key);
+            assert_eq!(
+                point.as_ref().map(|p| p.quantity),
+                inventory.map(|r| r.quantity)
+            );
+            let CircuitAccounting::Monetary(economy) = &state.accounting else {
+                panic!("paid fixture")
+            };
+            let cost = economy.costs.snapshot().stocks.into_iter().find(|r| {
+                (r.owner, r.good_id, r.unit_id) == (AccountId::Site(key.0), key.1, key.2)
+            });
+            assert_eq!(
+                point.as_ref().and_then(|p| p.carrying_cost),
+                cost.map(|r| r.amount)
+            );
+        }
+    }
+    let mut corrupted = after.clone();
+    corrupted.inventory.remove(0);
+    assert_eq!(
+        super::project_period(before, &corrupted, &rows),
+        Err(SiteStatementsError::StockBasisMismatch)
+    );
+}
+
+#[test]
+fn physical_control_preserves_absent_and_explicit_zero_positions_without_imputing_cost() {
+    let (_, mut before) = crate::production_projection::recurring_fixture::materials();
+    before.accounting = CircuitAccounting::PhysicalControl;
+    let mut after = before.clone();
+    after.period += 1;
+    let removed = after.inventory.remove(0);
+    after.inventory[0].quantity = 0;
+    let mut evidence = period();
+    evidence.income.clear();
+    evidence.money_transfers.clear();
+    let period =
+        super::project_period(&before, &after, &evidence).expect("physical stock positions");
+    assert!(period.statements.is_none());
+    let stock = period
+        .stocks
+        .iter()
+        .find(|row| row.site_id == removed.site_id)
+        .expect("retired site stock");
+    assert!(stock.closing.is_none());
+    assert_eq!(
+        stock.opening,
+        Some(super::SiteStockPosition {
+            quantity: removed.quantity,
+            carrying_cost: None
+        })
+    );
+    assert!(period.stocks.iter().any(|r| r.closing
+        == Some(super::SiteStockPosition {
+            quantity: 0,
+            carrying_cost: None
+        })));
+}

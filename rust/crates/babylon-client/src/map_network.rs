@@ -290,6 +290,7 @@ fn rebuild_network(
         commands.entity(entity).despawn();
     }
     if *observation.view != PrimaryView::Map
+        || matches!(observation.ui.lens, crate::map_economy_lens::MapLens::Money)
         || observation.ui.road_layer != RoadLayer::EconomyNetwork
     {
         return;

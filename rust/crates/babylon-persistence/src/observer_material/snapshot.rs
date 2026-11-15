@@ -28,6 +28,7 @@ use crate::material_storage::AdmittedReceiptWitness;
 use crate::material_storage::LookupAnchor;
 use crate::material_storage::OpeningRegister;
 use crate::michigan_economy;
+use crate::money_journal::JournalPeriodSource;
 use crate::observer_reader::CommittedMaterialReceipts;
 use crate::observer_reader::{
     ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
@@ -40,7 +41,7 @@ use crate::production_projection::metadata::Metadata;
 use crate::production_projection::sites;
 use crate::production_projection::sites::Quantities;
 use crate::production_projection::staffing;
-use crate::site_financial_statements::{SiteFinancialStatements, SiteStatementsError};
+use crate::site_financial_statements::{self, SiteFinancialStatements, SiteStatementsError};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdTimeAccounting;
@@ -192,6 +193,36 @@ pub struct ObserverOpeningFoundations {
 }
 
 impl ObserverMaterialCursor {
+    pub(crate) fn journal_period(
+        &self,
+        foundation: &EconomicContentAdmission,
+        source: CommittedMaterialReceipts,
+    ) -> Result<JournalPeriodSource, ObserverEconomyError> {
+        let opening = self
+            .history
+            .opening(foundation)
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        let accounting = site_financial_statements::project_period(
+            opening.state(),
+            self.history.register(foundation).state(),
+            &source.receipts,
+        )
+        .map_err(|_| ObserverEconomyError::InvalidSiteAccounting)?;
+        let mut sites: Vec<_> = foundation
+            .view()
+            .opening
+            .sites
+            .iter()
+            .map(|site| site.site_id)
+            .collect();
+        sites.sort_unstable();
+        Ok(JournalPeriodSource {
+            payments: self.economic_payments(foundation, source)?,
+            accounting,
+            sites,
+        })
+    }
+
     pub(crate) fn economic_payments(
         &self,
         foundation: &EconomicContentAdmission,
@@ -1067,7 +1098,6 @@ pub(crate) fn site_financial_statements(
     expected: &EconomicContentAdmission,
     site: SiteId,
 ) -> Result<SiteFinancialStatements, SiteStatementsError> {
-    use crate::site_financial_statements;
     if !expected
         .view()
         .opening

@@ -361,6 +361,20 @@ cargo run -p babylon-persistence --bin babylon-economic-projections -- company-p
   --campaign "$CAMPAIGN_ID" --period 2 --published
 ```
 
+Copy the `company` value from the statements into `COMPANY_ID`. To inspect its
+investment decision at that close, use the full observer login.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- company-decision \
+  --campaign "$CAMPAIGN_ID" --period 2 --company "$COMPANY_ID"
+```
+
+The report lists each portfolio's original weight, weight after checking
+feasibility, and next-period limits. It identifies the selected portfolio
+and the draw ticket. The company measures profitability by adding its member
+sites’ operating income over up to three completed periods. The report gives
+those period totals in currency micros, oldest first.
+
 Choose **Freight access** to inspect Wayne’s captured corridors. Switch between
 **Outbound from origin** and **Inbound to origin** to inspect each direction.
 Select an endpoint, then choose **Geographic map** or **Terminal network**.

@@ -104,6 +104,8 @@ pub enum ObserverEconomyError {
     InvalidProjection,
     EconomicFlow(EconomicFlowError),
     InvalidSiteAccounting,
+    CompanyPortfoliosNotCaptured,
+    CompanyDecisionAbsent,
     RecordedLabor(RecordedLaborError),
     ProductionHistoryUnavailable,
     Reference,
@@ -305,13 +307,13 @@ impl ObserverEconomyReader {
         })
     }
 
-    fn with_statement_source<T, E: From<ObserverEconomyError>>(
+    pub(super) fn with_statement_source<T, E: From<ObserverEconomyError>>(
         &self,
         campaign: CampaignId,
         expected_tick: u64,
         project: impl FnOnce(
             &mut Transaction<'_>,
-            &EconomicContentAdmission,
+            &EconomicContentHandle,
         ) -> Result<(T, Option<[u8; 32]>), E>,
     ) -> Result<T, E> {
         if self.visibility != ObserverVisibility::FullObserver {

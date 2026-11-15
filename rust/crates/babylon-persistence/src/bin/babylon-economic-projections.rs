@@ -1,7 +1,9 @@
 //! Independent local observer-session publisher for committed economic projections.
+use babylon_material_circuit::CompanyId;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{JournalQueue, JournalQueueError, MoneyJournalWriter};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
+use babylon_persistence::qualification_audit::policy::canonical_digest;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::{self, BufWriter, Read as _, Write as _};
@@ -19,6 +21,7 @@ const RETRY: Duration = Duration::from_secs(5);
 enum Command {
     Sweep(CampaignId),
     CompanyOpening(CampaignId),
+    CompanyDecision(CampaignId, u64, CompanyId),
     CompanyPeriod(CampaignId, u64),
     PublishedCompanyPeriod(CampaignId, u64),
     LaborTrace {
@@ -76,6 +79,19 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
         [watch, pipe] if watch == "watch-database" && pipe == "--session-stdin" => {
             Ok(Command::WatchSession)
         }
+        [command, campaign_flag, id, period_flag, period, company_flag, company]
+            if command == "company-decision" && campaign_flag == "--campaign"
+                && period_flag == "--period" && company_flag == "--company" =>
+        {
+            let tick: u64 = period.parse().map_err(|_| "period_refused")?;
+            if tick == 0 || i64::try_from(tick).is_err() {
+                return Err("positive_period_required");
+            }
+            let company = canonical_digest(company).map_err(|_| "company_refused")?;
+            Ok(Command::CompanyDecision(
+                campaign(id)?, tick, CompanyId::from_bytes(company),
+            ))
+        }
         [command, flag, id, at, value, flags @ ..]
             if command == "company-period" && flag == "--campaign" && at == "--period" =>
         {
@@ -94,7 +110,7 @@ fn arguments(args: &[String]) -> Result<Command, &'static str> {
             Ok(Command::Sweep(campaign(value)?))
         }
         [trace, options @ ..] if trace == "labor-trace" => labor_arguments(options),
-        _ => Err("use company-opening --campaign <uuid>, company-period --campaign <uuid> --period <n> [--published], watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
+        _ => Err("use company-decision --campaign <uuid> --period <n> --company <hex>, company-opening --campaign <uuid>, company-period --campaign <uuid> --period <n> [--published], watch-database, sweep --campaign <uuid>, or labor-trace --campaign <uuid> --first <period> [--last <period>]"),
 
     }
 }
@@ -214,6 +230,13 @@ fn run(command: Command) -> Result<(), String> {
         return emit_labor_trace(&observer, campaign, first, last);
     }
     match command {
+        Command::CompanyDecision(campaign, period, company) => {
+            return write_report(
+                &observer
+                    .company_decision_receipt(campaign, period, company)
+                    .map_err(|error| error.to_string())?,
+            )
+        }
         Command::CompanyOpening(campaign) => {
             return write_report(
                 &observer

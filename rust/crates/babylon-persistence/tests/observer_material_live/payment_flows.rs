@@ -10,7 +10,7 @@ use babylon_persistence::money_journal::{
     FlowAmounts, FlowDirection, FlowGroup, FlowPage, FlowPeer, FlowQuery, FlowViewport,
     JournalError, MoneyMovement, MoneyPurpose, PeriodWindow,
 };
-use babylon_persistence::observer_reader::ObserverEconomyReader;
+use babylon_persistence::observer_reader::{ObserverEconomyReader, ObserverMaterialCursor};
 use babylon_persistence::qualification_audit::trade;
 use postgres::{Client, Config, NoTls};
 use std::collections::BTreeMap;
@@ -29,6 +29,10 @@ pub(super) fn query(group: FlowGroup) -> FlowQuery {
 }
 
 pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId) {
+    assert!(matches!(
+        observer.company_decision_receipt(campaign, 1, CompanyId::from_bytes([0; 32])),
+        Err(babylon_persistence::observer_reader::ObserverEconomyError::Authority)
+    ));
     assert_eq!(
         observer.published_company_period_statements(campaign, 1),
         Err(JournalError::Authority)
@@ -232,10 +236,17 @@ pub(super) fn national(
     campaign: CampaignId,
     moves: &[MoneyMovement],
 ) {
+    let mut cursor = None;
     let source = observer
-        .committed_economic_payments_with_cursor(campaign, 1, &mut None)
+        .committed_economic_payments_with_cursor(campaign, 1, &mut cursor)
         .expect("canonical economic principals");
     let mut sql = config.connect(NoTls).expect("observer SQL");
+    check_company_decision(
+        config,
+        campaign,
+        cursor.as_ref().expect("full-observer cursor"),
+        source.source.identity.tick_content_hash().as_bytes(),
+    );
     check_source_rows(&source, &mut sql, campaign, moves);
     unknown_industry(
         &source,
@@ -318,6 +329,82 @@ pub(super) fn national(
         observer.economic_payment_flows(campaign, &missing),
         Err(JournalError::CoverageAbsent)
     );
+}
+
+fn check_company_decision(
+    config: &Config,
+    campaign: CampaignId,
+    cursor: &ObserverMaterialCursor,
+    content_hash: &[u8; 32],
+) {
+    let register = cursor.current_register().expect("authenticated register");
+    let evidence = register
+        .company_portfolios()
+        .expect("national portfolio register")
+        .companies
+        .iter()
+        .find(|c| !c.processes.is_empty())
+        .expect("company with production evidence");
+    let company = trade::hex(&evidence.company.as_bytes());
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_babylon-economic-projections"))
+        .env_clear()
+        .env(
+            "BABYLON_OBSERVER_DSN",
+            super::runtime_process::child_dsn(config),
+        )
+        .args([
+            "company-decision",
+            "--campaign",
+            &campaign.as_uuid().to_string(),
+            "--period",
+            "1",
+            "--company",
+            &company,
+        ])
+        .output()
+        .expect("run full-observer decision inspection");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let decision: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one decision report");
+    assert_eq!(decision["version"], 1);
+    assert_eq!(decision["campaign"], campaign.as_uuid().to_string());
+    assert_eq!(decision["tick_content_hash"], trade::hex(content_hash));
+    assert_eq!(decision["company"], company);
+    assert_eq!(decision["resolve_tick"], 1);
+    assert_eq!(
+        decision["evidence"]["operating_income_micros"][0],
+        evidence.history[0].micro_units().to_string()
+    );
+    assert_eq!(
+        decision["evidence"]["processes"]
+            .as_array()
+            .expect("process list")
+            .len(),
+        evidence.processes.len()
+    );
+    let alternatives = decision["alternatives"]
+        .as_array()
+        .expect("four alternatives");
+    assert_eq!(alternatives.len(), 4);
+    for (i, row) in alternatives.iter().enumerate() {
+        assert_eq!(row["original_weight"], evidence.original_weights[i]);
+        assert_eq!(row["eligible_weight"], evidence.weights[i]);
+        assert_eq!(row["feasible"], evidence.feasible[i]);
+        assert_eq!(
+            row["plan"].as_array().expect("process limits").len(),
+            evidence.plans[i].len()
+        );
+    }
+    let winner = alternatives
+        .iter()
+        .find(|r| r["member"] == decision["selected_outcome"])
+        .expect("receipt selects one enumerated branch");
+    assert_eq!(winner["feasible"], true);
+    assert!(winner["eligible_weight"].as_u64().expect("eligible weight") > 0);
 }
 
 fn check_selected_company(

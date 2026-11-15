@@ -475,7 +475,7 @@ fn ranked_page(
             plural
         };
         rail.spawn(label(
-            format!("{remaining_groups} more {noun}\n{remainder}"),
+            format!("{remaining_groups} {noun} outside this page\n{remainder}"),
             15.0,
             theme::GRAY,
             ObserverFontRole::Exact,
@@ -705,13 +705,15 @@ fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) ->
     }
 }
 
-fn control_selected(target: &Target, view: &MoneyView) -> bool {
-    (target.action == Action::IndustrySources && view.industry.expanded)
-        || matches!(&target.action,Action::Freight(command) if view.freight.chosen(command))
-        || matches!(&target.action,Action::Select(row) if view.selected_row().is_some_and(|active| &active.key == row))
-        || matches!(target.action,Action::Diagram(diagram) if diagram==view.diagram)
-        || matches!(target.action,Action::Group(group) if group==target.scope.group)
-        || matches!(target.action,Action::Measure(measure) if measure==target.scope.measure)
+fn pressed(target: &Target, view: &MoneyView) -> Option<bool> {
+    match &target.action {
+        Action::Freight(command) => view.freight.pressed(command),
+        Action::Select(row) => Some(view.selected_row().is_some_and(|active| &active.key == row)),
+        Action::Diagram(diagram) => Some(*diagram == view.diagram),
+        Action::Group(group) => Some(*group == target.scope.group),
+        Action::Measure(measure) => Some(*measure == target.scope.measure),
+        _ => None,
+    }
 }
 
 pub(super) fn highlight(
@@ -746,9 +748,16 @@ pub(super) fn highlight(
         {
             continue;
         }
-        if let (Action::IndustrySources, Some(mut node)) = (&target.action, accessibility) {
-            if node.is_expanded() != Some(view.industry.expanded) {
+        let pressed = pressed(target, &view);
+        let disclosure = target.action == Action::IndustrySources;
+        if let Some(mut node) = accessibility {
+            if disclosure && node.is_expanded() != Some(view.industry.expanded) {
                 node.set_expanded(view.industry.expanded);
+            }
+            if let Some(state) = pressed.map(Into::into) {
+                if node.toggled() != Some(state) {
+                    node.set_toggled(state);
+                }
             }
         }
         let conditional = control_availability(target, &view, &obs);
@@ -769,7 +778,7 @@ pub(super) fn highlight(
         if conditional.is_none() && focus.available != obs.interactive() {
             focus.available = obs.interactive();
         }
-        let active = control_selected(target, &view);
+        let active = pressed.unwrap_or(false) || (disclosure && view.industry.expanded);
         border.set_if_neq(BorderColor::all(if active {
             theme::YELLOW
         } else if let (Action::Select(key), FlowGroup::Industry) =

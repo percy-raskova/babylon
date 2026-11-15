@@ -81,15 +81,15 @@ impl Freight {
             .and_then(|rows| rows.get(self.offset..rows.len().min(self.offset + PAGE)))
             .unwrap_or_default()
     }
-    pub(super) fn chosen(&self, command: &Command) -> bool {
+    pub(super) fn pressed(&self, command: &Command) -> Option<bool> {
         match command {
-            Command::Select(origin, direction, location) => {
+            Command::Select(origin, direction, location) => Some(
                 self.origin == *origin
                     && self.direction == *direction
-                    && self.selected == Some(*location)
-            }
-            Command::Direction(direction) => self.direction == *direction,
-            _ => false,
+                    && self.selected == Some(*location),
+            ),
+            Command::Direction(direction) => Some(self.direction == *direction),
+            _ => None,
         }
     }
     pub(super) fn apply(&mut self, command: &Command, scope: &Scope) -> bool {

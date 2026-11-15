@@ -797,6 +797,62 @@ fn freight_and_economic_diagrams_have_separate_native_sample_windows() {
 }
 
 #[test]
+fn ranked_remainder_reports_all_off_page_groups_and_keeps_paging_directional() {
+    use super::rail;
+    use babylon_persistence::money_journal::FlowPage;
+
+    let (mut app, _, _, _) = interaction_fixture();
+    app.world_mut().spawn((state::MoneyRail, Node::default()));
+    app.add_systems(Update, rail::paint);
+    for (offset, count, outside) in [(0, 20, 5), (20, 5, 20)] {
+        let groups: Vec<_> = (offset..offset + count)
+            .map(|n| {
+                counterparty(
+                    Some(&format!("county:{:05}", 26001 + n * 2)),
+                    "1000000",
+                    "0",
+                    "0",
+                )
+            })
+            .collect();
+        let mut total = counterparty(None, "25000000", "0", "0");
+        total.groups = 25;
+        let mut remainder = counterparty(None, &(outside * 1_000_000).to_string(), "0", "0");
+        remainder.groups = outside;
+        {
+            let mut view = app.world_mut().resource_mut::<MoneyView>();
+            view.offset = offset;
+            view.rows = state::connections(&groups);
+            view.page = Some(Page::Money(Box::new(FlowPage {
+                groups,
+                total,
+                remainder,
+            })));
+        }
+        app.update();
+        let world = app.world_mut();
+        let expected =
+            format!("{outside} locations outside this page\nReceived $0.00\nPaid ${outside}.00");
+        assert!(
+            world
+                .query::<&Text>()
+                .iter(world)
+                .any(|text| text.contains(&expected)),
+            "{expected}"
+        );
+        let targets: Vec<_> = world
+            .query::<&Target>()
+            .iter(world)
+            .filter_map(|target| match target.action {
+                Action::Page(to) => Some(to),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(targets, [if offset == 0 { 20 } else { 0 }]);
+    }
+}
+
+#[test]
 fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
     use super::rail;
     use babylon_persistence::money_journal::FlowPage;
@@ -849,8 +905,18 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
             .observe(state::keyboard)
             .id()
     };
+    let pressed = |app: &mut App, action: Action| {
+        let world = app.world_mut();
+        world
+            .query::<(&Target, &bevy::a11y::AccessibilityNode)>()
+            .iter(world)
+            .find(|(target, _)| target.action == action)
+            .expect("named inspector control")
+            .1
+            .toggled()
+    };
     let toggle = button(&mut app, Action::IndustrySources);
-    let unknown = button(&mut app, Action::Select(unreported));
+    let unknown = button(&mut app, Action::Select(unreported.clone()));
     let press = |entity| ObserverKeyboardActivate {
         entity,
         context: Some(scope.context.clone()),
@@ -860,12 +926,25 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
         .expect("connection") = Target {
         scope: scope.clone(),
         offset: 0,
-        action: Action::Select(food),
+        action: Action::Select(food.clone()),
     };
     app.world_mut().trigger(press(toggle));
     assert!(!app.world().resource::<MoneyView>().industry.expanded);
     app.world_mut().trigger(press(select));
     app.update();
+    for (action, active) in [
+        (Action::Select(food.clone()), true),
+        (Action::Select(unreported.clone()), false),
+        (Action::Measure(state::Measure::Money), true),
+        (Action::Measure(state::Measure::Labor), false),
+        (Action::Group(FlowGroup::Industry), true),
+        (Action::Group(FlowGroup::Company), false),
+        (Action::Diagram(state::Diagram::Map), true),
+        (Action::Diagram(state::Diagram::Sankey), false),
+    ] {
+        assert_eq!(pressed(&mut app, action), Some(active.into()));
+    }
+    assert_eq!(pressed(&mut app, Action::Follow), None);
     assert!(has_text(&mut app, "Showing industries 1–2 of 2"));
     assert!(has_text(
         &mut app,
@@ -887,6 +966,11 @@ fn industry_sources_expand_and_collapse_for_the_current_typed_peer_only() {
     app.world_mut().trigger(press(toggle));
     assert!(!app.world().resource::<MoneyView>().industry.expanded);
     app.update();
+    assert_eq!(pressed(&mut app, Action::Select(food)), Some(false.into()));
+    assert_eq!(
+        pressed(&mut app, Action::Select(unreported)),
+        Some(true.into())
+    );
     assert!(has_text(&mut app, "→ Industry unreported\n$0.000009"));
 }
 

@@ -1,0 +1,598 @@
+{
+  "qualification": "Deterministic P66 material replay from checked P65 disk checkpoint, ordinary national-economy, seed 319. All four original P66 hashes matched.",
+  "scope": "P65 opening to P66, single-process food and materials sites with positive previously accepted unshipped output orders",
+  "identity": {
+    "period": 66,
+    "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+    "prior_world_sha256": "65b3b67a1db77e645c85a41b4c8810575ff46b323b7ed87392a66b12348f2701",
+    "world_sha256": "d5a5b5bab6ec7f012718b6e9652374a54d437086258e89fc5259a0f5e5e2673c",
+    "tick_sha256": "0f5e8c5bf591c22746a92b8fafefb38d0d44da0bc7e3090316dbb95a7e4a96f0",
+    "receipts_sha256": "a4d22db0ba032f47c25e4ba7451d3856a87626154ae771e402087542893d861d",
+    "material_register_sha256": "5e253a5d89238de5ac68b27044e0ba61580579fce31a13c6e7665219ce30d12d"
+  },
+  "input_scope_sha256": "355567b2433a8b8151f4ef325eb2d8dfd896cb041cccb7fb72605800bf221fda",
+  "coverage": {
+    "all": {
+      "sites": 382,
+      "actual_produced_zero": 382,
+      "opening_commitment_positive": 379,
+      "zero_demand_and_commitment": 3,
+      "jurisdictions": {
+        "domestic_county": 357,
+        "us_dependency": 1,
+        "foreign_counterpart": 24
+      },
+      "among_positive_commitments": {
+        "zero_payroll_and_both_services": 364,
+        "positive_paid_labor_both_services_zero": 14,
+        "positive_paid_labor_and_utility_business_service_zero": 1
+      }
+    },
+    "food": {
+      "sites": 197,
+      "actual_produced_zero": 197,
+      "opening_commitment_positive": 195,
+      "zero_demand_and_commitment": 2,
+      "jurisdictions": {
+        "domestic_county": 184,
+        "us_dependency": 1,
+        "foreign_counterpart": 12
+      },
+      "among_positive_commitments": {
+        "zero_payroll_and_both_services": 186,
+        "positive_paid_labor_both_services_zero": 8,
+        "positive_paid_labor_and_utility_business_service_zero": 1
+      }
+    },
+    "materials": {
+      "sites": 185,
+      "actual_produced_zero": 185,
+      "opening_commitment_positive": 184,
+      "zero_demand_and_commitment": 1,
+      "jurisdictions": {
+        "domestic_county": 173,
+        "foreign_counterpart": 12
+      },
+      "among_positive_commitments": {
+        "zero_payroll_and_both_services": 178,
+        "positive_paid_labor_both_services_zero": 6
+      }
+    }
+  },
+  "wage_measurement": "Opening cash plus actual cash postings preceding the first shift reservation. Payroll uses whole hours at the recorded per-member wage. All posted period cash reconciles to the closing account and each site's reservations match accrued wages.",
+  "cases": [
+    {
+      "actual_labor": {
+        "available": 30337280,
+        "funded": 0,
+        "nonwage": 0,
+        "planned": 30337280,
+        "unfunded": 30337280,
+        "used": 0
+      },
+      "demand_plan": 699122953,
+      "hours_per_batch": 16,
+      "inputs": [
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 4339355,
+          "name": "materials",
+          "opening_stock": 4339355,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 0,
+          "providers": null,
+          "service": false,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 0,
+          "service_used": 0
+        },
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 0,
+          "name": "utility",
+          "opening_stock": 0,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 2107600,
+          "providers": [
+            {
+              "admitted": 0,
+              "market": {
+                "admitted": 1197280,
+                "available_capacity": 9875200,
+                "performed": 0,
+                "requested": 7844318
+              },
+              "performed": 0,
+              "provider": "representative energy_utilities — Kern County/AboveCellReserveRate",
+              "requested": 1896080
+            }
+          ],
+          "service": true,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 1896080,
+          "service_used": 0
+        },
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 0,
+          "name": "business_services",
+          "opening_stock": 0,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 2107600,
+          "providers": [
+            {
+              "admitted": 0,
+              "market": {
+                "admitted": 0,
+                "available_capacity": 1443840,
+                "performed": 0,
+                "requested": 2229502
+              },
+              "performed": 0,
+              "provider": "representative business_services — Kern County/AboveCellReserveRate",
+              "requested": 1896080
+            }
+          ],
+          "service": true,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 1896080,
+          "service_used": 0
+        }
+      ],
+      "installed_capacity": 1896080,
+      "jurisdiction": "domestic_county",
+      "opening_commitment": 1896080,
+      "opening_labor_hours": 30337280,
+      "output": "food",
+      "output_per_batch": 16,
+      "outstanding_accepted_output_units_at_open": 11155633484,
+      "p67_demand_plan_at_p66_close": {
+        "buffer": 30333760,
+        "dispatched": 0,
+        "planned_batches": 699122953,
+        "stock": 0,
+        "unshipped": 11155633484
+      },
+      "payroll": {
+        "accrued_wages_micros": "0",
+        "cash_at_p66_close_micros": "11375000",
+        "cash_available_at_payroll_micros": "11375000",
+        "cash_open_at_p65_close_micros": "11375000",
+        "cash_postings_before_payroll_micros": "0",
+        "cash_reserved_for_attendance_micros": "0",
+        "planned_hours_by_rate_micros_per_hour": {
+          "24000000": 30337280
+        },
+        "planned_wage_bill_micros": "728094720000000"
+      },
+      "phase_binds": [
+        "attended labor",
+        "utility",
+        "business_services"
+      ],
+      "phase_limits": [
+        [
+          "commitment",
+          1896080
+        ],
+        [
+          "capacity",
+          1896080
+        ],
+        [
+          "attended labor",
+          0
+        ],
+        [
+          "materials",
+          4339355
+        ],
+        [
+          "utility",
+          0
+        ],
+        [
+          "business_services",
+          0
+        ]
+      ],
+      "phase_min": 0,
+      "planning_binds": [
+        "capacity",
+        "potential labor"
+      ],
+      "planning_limits": [
+        [
+          "demand",
+          699122953
+        ],
+        [
+          "capacity",
+          1896080
+        ],
+        [
+          "potential labor",
+          1896080
+        ],
+        [
+          "materials",
+          4339355
+        ],
+        [
+          "utility",
+          2107600
+        ],
+        [
+          "business_services",
+          2107600
+        ]
+      ],
+      "planning_min": 1896080,
+      "process": "62bc599ace9b34b52bc05e5d5d8937acda0490c54a82bb63274a73768c919f3d",
+      "produced": 0,
+      "site": "representative food — Kern County/AboveCellReserveRate",
+      "site_id": "097cfb3a2318e5871ffbbb4beb19f7bedca7c6c1e151d612bdd3a6a34a647126"
+    },
+    {
+      "actual_labor": {
+        "available": 21812480,
+        "funded": 0,
+        "nonwage": 0,
+        "planned": 21812480,
+        "unfunded": 21812480,
+        "used": 0
+      },
+      "demand_plan": 1527042707,
+      "hours_per_batch": 16,
+      "inputs": [
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 0,
+          "name": "utility",
+          "opening_stock": 0,
+          "per_batch": 2,
+          "prospective_service_units_at_planning": 2980040,
+          "providers": [
+            {
+              "admitted": 0,
+              "market": {
+                "admitted": 8595618,
+                "available_capacity": 25600000,
+                "performed": 0,
+                "requested": 14598880
+              },
+              "performed": 0,
+              "provider": "representative energy_utilities — Los Angeles County/AtCellReserveRate",
+              "requested": 2726560
+            }
+          ],
+          "service": true,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 2726560,
+          "service_used": 0
+        },
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 21814275,
+          "name": "resources",
+          "opening_stock": 21814275,
+          "per_batch": 8,
+          "prospective_service_units_at_planning": 0,
+          "providers": null,
+          "service": false,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 0,
+          "service_used": 0
+        },
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 0,
+          "name": "business_services",
+          "opening_stock": 0,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 1490020,
+          "providers": [
+            {
+              "admitted": 0,
+              "market": {
+                "admitted": 0,
+                "available_capacity": 13912320,
+                "performed": 0,
+                "requested": 1812720
+              },
+              "performed": 0,
+              "provider": "representative business_services — Los Angeles County/AtCellReserveRate",
+              "requested": 1363280
+            }
+          ],
+          "service": true,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 1363280,
+          "service_used": 0
+        }
+      ],
+      "installed_capacity": 1363280,
+      "jurisdiction": "domestic_county",
+      "opening_commitment": 1363280,
+      "opening_labor_hours": 21812480,
+      "output": "materials",
+      "output_per_batch": 8,
+      "outstanding_accepted_output_units_at_open": 12205435412,
+      "p67_demand_plan_at_p66_close": {
+        "buffer": 10906240,
+        "dispatched": 0,
+        "planned_batches": 1527042707,
+        "stock": 0,
+        "unshipped": 12205435412
+      },
+      "payroll": {
+        "accrued_wages_micros": "0",
+        "cash_at_p66_close_micros": "20425000",
+        "cash_available_at_payroll_micros": "20425000",
+        "cash_open_at_p65_close_micros": "20425000",
+        "cash_postings_before_payroll_micros": "0",
+        "cash_reserved_for_attendance_micros": "0",
+        "planned_hours_by_rate_micros_per_hour": {
+          "24000000": 21812480
+        },
+        "planned_wage_bill_micros": "523499520000000"
+      },
+      "phase_binds": [
+        "attended labor",
+        "utility",
+        "business_services"
+      ],
+      "phase_limits": [
+        [
+          "commitment",
+          1363280
+        ],
+        [
+          "capacity",
+          1363280
+        ],
+        [
+          "attended labor",
+          0
+        ],
+        [
+          "utility",
+          0
+        ],
+        [
+          "resources",
+          2726784
+        ],
+        [
+          "business_services",
+          0
+        ]
+      ],
+      "phase_min": 0,
+      "planning_binds": [
+        "capacity",
+        "potential labor"
+      ],
+      "planning_limits": [
+        [
+          "demand",
+          1527042707
+        ],
+        [
+          "capacity",
+          1363280
+        ],
+        [
+          "potential labor",
+          1363280
+        ],
+        [
+          "utility",
+          1490020
+        ],
+        [
+          "resources",
+          2726784
+        ],
+        [
+          "business_services",
+          1490020
+        ]
+      ],
+      "planning_min": 1363280,
+      "process": "f2ce5e0e83f10f2fbc6caf6d317c58044c3325270f8e4fd0ebcc32be572d6af1",
+      "produced": 0,
+      "site": "representative manufacturing — Los Angeles County/AtCellReserveRate",
+      "site_id": "32a26bdb712188d40b9e2a5a281e53e827e0be79efb3bb6216b4ab20b4f4feae"
+    },
+    {
+      "actual_labor": {
+        "available": 125856960,
+        "funded": 125856816,
+        "nonwage": 0,
+        "planned": 125856816,
+        "unfunded": 0,
+        "used": 0
+      },
+      "demand_plan": 7866051,
+      "hours_per_batch": 16,
+      "inputs": [
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 785977768,
+          "name": "materials",
+          "opening_stock": 785977768,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 0,
+          "providers": null,
+          "service": false,
+          "service_admitted": 0,
+          "service_expired": 0,
+          "service_performed": 0,
+          "service_requested": 0,
+          "service_used": 0
+        },
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 7866051,
+          "name": "utility",
+          "opening_stock": 0,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 7866051,
+          "providers": [
+            {
+              "admitted": 7866051,
+              "market": {
+                "admitted": 548170633,
+                "available_capacity": 17148608000,
+                "performed": 548170633,
+                "requested": 1189099873
+              },
+              "performed": 7866051,
+              "provider": "latin_america_caribbean: energy_utilities",
+              "requested": 7866051
+            }
+          ],
+          "service": true,
+          "service_admitted": 7866051,
+          "service_expired": 0,
+          "service_performed": 7866051,
+          "service_requested": 7866051,
+          "service_used": 0
+        },
+        {
+          "arrived_before_production": 0,
+          "available_at_production": 0,
+          "name": "business_services",
+          "opening_stock": 0,
+          "per_batch": 1,
+          "prospective_service_units_at_planning": 7866051,
+          "providers": [
+            {
+              "admitted": 7866051,
+              "market": {
+                "admitted": 7866051,
+                "available_capacity": 308675200,
+                "performed": 0,
+                "requested": 436581251
+              },
+              "performed": 0,
+              "provider": "latin_america_caribbean: business_services",
+              "requested": 7866051
+            }
+          ],
+          "service": true,
+          "service_admitted": 7866051,
+          "service_expired": 7866051,
+          "service_performed": 0,
+          "service_requested": 7866051,
+          "service_used": 0
+        }
+      ],
+      "installed_capacity": 321536360,
+      "jurisdiction": "foreign_counterpart",
+      "opening_commitment": 7866051,
+      "opening_labor_hours": 125856960,
+      "output": "food",
+      "output_per_batch": 16,
+      "outstanding_accepted_output_units_at_open": 14549619,
+      "p67_demand_plan_at_p66_close": {
+        "buffer": 5144581760,
+        "dispatched": 71428,
+        "planned_batches": 7866051,
+        "stock": 5033274574,
+        "unshipped": 14478191
+      },
+      "payroll": {
+        "accrued_wages_micros": "880997712000000",
+        "cash_at_p66_close_micros": "231978887704988703",
+        "cash_available_at_payroll_micros": "232918880799488703",
+        "cash_open_at_p65_close_micros": "232910880191488703",
+        "cash_postings_before_payroll_micros": "8000608000000",
+        "cash_reserved_for_attendance_micros": "880997712000000",
+        "planned_hours_by_rate_micros_per_hour": {
+          "7000000": 125856816
+        },
+        "planned_wage_bill_micros": "880997712000000"
+      },
+      "phase_binds": [
+        "business_services"
+      ],
+      "phase_limits": [
+        [
+          "commitment",
+          7866051
+        ],
+        [
+          "capacity",
+          321536360
+        ],
+        [
+          "attended labor",
+          7866051
+        ],
+        [
+          "materials",
+          785977768
+        ],
+        [
+          "utility",
+          7866051
+        ],
+        [
+          "business_services",
+          0
+        ]
+      ],
+      "phase_min": 0,
+      "planning_binds": [
+        "demand",
+        "utility",
+        "business_services"
+      ],
+      "planning_limits": [
+        [
+          "demand",
+          7866051
+        ],
+        [
+          "capacity",
+          321536360
+        ],
+        [
+          "potential labor",
+          7866060
+        ],
+        [
+          "materials",
+          785977768
+        ],
+        [
+          "utility",
+          7866051
+        ],
+        [
+          "business_services",
+          7866051
+        ]
+      ],
+      "planning_min": 7866051,
+      "process": "95d5077a8579ebf7e37a86432108bcf623f2bdf58948c9a1aba069960528c720",
+      "produced": 0,
+      "site": "latin_america_caribbean: food",
+      "site_id": "425365a6ee47ca557d03d2183db8d2c6f0c9aa9610af482feb7294a694d062c0"
+    }
+  ]
+}

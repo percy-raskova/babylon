@@ -8,7 +8,7 @@ Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route
 | --- | --- | --- |
 | Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | Repeat the live tests on the final build. |
 | Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. The inspector labels all groups outside each page and exposes selected controls through AccessKit. | Repeat the native checks on the final build. |
-| Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. The current runtime reproduced the historic company's decision and books. A fresh six-period replay followed one machine from parent funding in Kodiak to local delivery. | Restore the six-period case from Postgres and repeat the two-seed comparisons with the current policy. |
+| Companies and investment | The opening assigns 2,788 private sites to 99 occupied companies. The 300- and 600-controller comparisons keep sites fixed. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | Repeat the two-seed comparisons with the current policy. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
 | National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. Three earlier rendered turns after reopening displayed Wayne’s finances in 24.998–29.742 seconds. | A fresh first turn took 37.551 seconds against 30. The running game added 42,385,408 bytes through its first close and reopen against a 40,000,000-byte limit. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
 
@@ -39,13 +39,27 @@ The economy produced something in every period. Its companies deferred investmen
 
 At tick 260 the economy completed 4,216,085 batches. Member sites accounted for 18,012 of them. Energy and utilities supplied 17,997 and construction and housing supplied 15.
 
-Member food and manufacturing sites each completed zero batches at both ticks 65 and 260. At tick 260 food had 11,606,755,727 units of accepted demand outstanding and manufacturing had 12,351,479,310. The checkpoints identify spare capacity in both sectors. The cause of the production shortfall remains open.
+Member food and manufacturing sites each completed zero batches at both ticks 65 and 260. At tick 260 food had 11,606,755,727 units of accepted demand outstanding and manufacturing had 12,351,479,310. The checkpoints identify spare capacity in both sectors.
 
 National equipment purchases totaled 1,740,110 units in 74 orders. Of these, 26 orders for 1,739,285 units came in period 2 after all 99 companies deferred. The engine gives controlled sites a zero limit after that choice, so these orders came from sites outside the company groups. The last order was in period 158. [Company limits on purchases](../rust/crates/babylon-material-circuit/src/portfolio/execution.rs)
 
 At period 65 a fresh process reopened four checkpoint files and reproduced world hash `65b3b67a1db77e645c85a41b4c8810575ff46b323b7ed87392a66b12348f2701`. That process continued to period 260. Another fresh process reopened the final files and reproduced `b9c4d66587805cfa3c20a3b16e4479a6240b9a181dc96b7c5ebc8efea9f4e6f6`. The run used the material engine directly. The [per-period records](economic-flows-qualification-2026-11-14-assets/national-economic-trajectory-260.csv) give the quantities, decisions and source hashes for all 260 closes.
 
 The media drive holds the captured opening, both checkpoints and the replay instructions in `babylon-recovery/per293-ordinary-v9-seed319-t260`. All 298 files matched their SHA-256 manifest.
+
+### What stopped production after year five
+
+Replaying tick 66 from the five-year save reproduced its world and receipts. The replay followed 382 sites with one production process and accepted orders for food or manufactured materials still awaiting shipment. Of those sites, 357 represented US counties, one represented a US dependency and 24 represented foreign counterparts.
+
+Of the 379 sites that planned production, 364 funded zero hours of attendance and received neither utility nor business services. Fourteen funded some labor and received neither service. One funded its full payroll and received all required utility. All 379 needed business services, received zero units and completed zero batches. The other three sites entered the period with zero planned batches.
+
+| Site | Batches planned | Cash available at payroll | Planned wage bill | What happened before production |
+| --- | ---: | ---: | ---: | --- |
+| Kern County food | 1,896,080 | $11.375 | $728,094,720 | Had enough materials. Cash fell short of one hour at $24. Received neither required service. |
+| Los Angeles County manufacturing | 1,363,280 | $20.425 | $523,499,520 | Had enough resources. Cash fell short of one hour at $24. Received neither required service. |
+| Latin America and Caribbean food | 7,866,051 | $232.92 billion | $880,997,712 | Paid the full wage bill and received all required utility. Its provider accepted all 7,866,051 units of business services. The entire order expired without delivery. |
+
+These receipts identify the constraints at this close. Explaining how sites ran down their cash and how providers lost the ability to fill orders requires tracing earlier periods. The [site and provider receipts](economic-flows-qualification-2026-11-14-assets/national-production-constraints-period-66.json) include cash at payroll and quantities requested, admitted and performed. The full 382-site replay is on the media drive in `babylon-recovery/per293-ordinary-v9-seed319-p66-production`. [Production and payroll order](../rust/crates/babylon-material-circuit/src/transition/state.rs)
 
 ## Money and recorded labor in the v7 campaign
 
@@ -540,6 +554,10 @@ A fresh v9 national replay used seed 2 and the manufacturing opening described a
 The Kodiak equipment order was `dbc46f011032aed20c857e11e50482cf4eae88d35fbc000b8dfb6b65822b806d`. The delivery receipt identifies this order. Installation records pool equipment by site and process.
 
 Kodiak opened period 5 with $153,600 and closed with $162,106.887187 in cash. Its cash-flow statement records the $16,000 equipment reservation as an investing outflow. The group's accounts eliminated $2,692,972,400 in contributions to member sites, including Kodiak's $352,000. The [six-period replay](../rust/crates/babylon-persistence/tests/support/company_governed_admission.rs) checks the balance and the delivery.
+
+Postgres campaign `11be3a5e-366e-42c8-9461-479e914ff9ad` committed and published all six periods. A second database restored the 104,486,610-byte archive. The native runtime reopened period 6 with the original world hash. The full observer reproduced both decision reports, five company reports and the Philadelphia and Kodiak site statements byte for byte.
+
+The media drive holds the archive and its restore instructions in `babylon-recovery/per293-kodiak-11be3a5e-366e-42c8-9461-479e914ff9ad`. The archive SHA-256 is `461c58dcf8e36a788246f3db0fb2bf1951500301082fee0406d0c97316672050`. The direct restore used the v9 runtime and database schema in revision `bfa871b08`.
 
 ## Repeat the local checks
 

@@ -51,6 +51,7 @@ bevy = { version = "0.20.0", default-features = false, features = [
     "webp",
 ] }
 babylon-kernel = { path = "../babylon-kernel" }
+babylon-material-circuit = { path = "../babylon-material-circuit" }
 # Archive commands use the confined fog-safe reader. The explicit economy
 # status command uses the separately provisioned full-observer reader, as does
 # the window's full-observer view. Neither receives a writer capability.

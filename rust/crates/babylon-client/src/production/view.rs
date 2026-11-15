@@ -1033,13 +1033,13 @@ pub(crate) fn spawn_site_label(
             if selected {
                 format!(
                     "{}\n{}",
-                    site.name.trim_end_matches(" cohort"),
+                    readings::site_subject(site),
                     committed_plan_status(site)
                         .strip_prefix("Committed ")
                         .unwrap_or(committed_plan_status(site))
                 )
             } else {
-                site.name.trim_end_matches(" cohort").to_owned()
+                readings::site_subject(site)
             },
             12.0,
             theme::PAPER,
@@ -1288,10 +1288,9 @@ pub(crate) fn spawn_county_cohorts(
         button(
             panel,
             &format!(
-                "{} / {:?}\n{} · {}",
-                site.name,
+                "{} / {:?}\n{}",
+                readings::site_subject(site),
                 site.roles,
-                site.sector_code.as_deref().unwrap_or(&site.function),
                 workforce
             ),
             ProductionCommand::Select {
@@ -1807,7 +1806,7 @@ pub(crate) fn paint_readings(
                 text.0 = match (snapshot, site) {
                     (Some(snapshot), Some(site)) if navigation.details_open => {
                         if subject.is_some() {
-                            site.name.trim_end_matches(" cohort").into()
+                            readings::site_subject(site)
                         } else {
                             readings::reading_headline(site, snapshot, state.viewed_tick)
                         }

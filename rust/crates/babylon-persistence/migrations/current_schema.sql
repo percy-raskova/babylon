@@ -1685,3 +1685,81 @@ REVOKE ALL ON FUNCTION babylon_state.territory_immutable_v1(),
  babylon_state.territory_definition_insert_v1(),babylon_state.territory_field_insert_v1(),
  babylon_state.territory_definition_complete_v1(),babylon_state.territory_tick_insert_v1(),
  babylon_state.territory_marker_complete_v1() FROM PUBLIC;
+
+-- Derived money evidence is published by the database owner after observer authentication.
+-- It is independent of tick adjudication and never supplies simulation inputs.
+CREATE TABLE babylon_state.money_journal_period_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL CHECK (resolve_tick > 0),
+    journal_version smallint NOT NULL CHECK (journal_version = 1),
+    tick_content_hash bytea NOT NULL CHECK (octet_length(tick_content_hash) = 32),
+    envelope_digest bytea NOT NULL CHECK (octet_length(envelope_digest) = 32),
+    schema_sha256 bytea NOT NULL CHECK (octet_length(schema_sha256) = 32),
+    foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32),
+    content_sha256 bytea NOT NULL CHECK (octet_length(content_sha256) = 32),
+    source_identity_bytes bytea NOT NULL CHECK (octet_length(source_identity_bytes) BETWEEN 1 AND 1024),
+    receipt_sha256 bytea NOT NULL CHECK (octet_length(receipt_sha256) = 32),
+    movement_sha256 bytea NOT NULL CHECK (octet_length(movement_sha256) = 32),
+    movement_count bigint NOT NULL CHECK (movement_count >= 0),
+    detail_retained boolean NOT NULL,
+    PRIMARY KEY (campaign_id, resolve_tick),
+    FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id, resolve_tick),
+    FOREIGN KEY (campaign_id) REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id)
+);
+CREATE TABLE babylon_state.money_movement_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    ordinal bigint NOT NULL CHECK (ordinal >= 0),
+    purpose text NOT NULL CHECK (purpose IN ('purchase_reservation','delivery_settlement','purchase_refund',
+        'shift_reservation','wage_payment','shift_cancellation','tax','public_transfer',
+        'household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')),
+    reference_kind text CHECK (reference_kind IN ('delivery','local_final_demand','service','shift')),
+    reference_id bytea CHECK (octet_length(reference_id) = 32),
+    debit_kind text NOT NULL CHECK (debit_kind IN ('site_cash','household_cash','organization_cash','public_cash',
+        'delivery_reserve','local_final_demand_reserve','service_reserve','payroll_reserve')),
+    debit_id bytea NOT NULL CHECK (octet_length(debit_id) = 32),
+    credit_kind text NOT NULL CHECK (credit_kind IN ('site_cash','household_cash','organization_cash','public_cash',
+        'delivery_reserve','local_final_demand_reserve','service_reserve','payroll_reserve')),
+    credit_id bytea NOT NULL CHECK (octet_length(credit_id) = 32),
+    amount_micros numeric NOT NULL CHECK (scale(amount_micros) = 0 AND amount_micros > 0
+        AND amount_micros <= 170141183460469231731687303715884105727),
+    PRIMARY KEY (campaign_id, resolve_tick, ordinal),
+    FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.money_journal_period_v1(campaign_id, resolve_tick)
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT money_movement_reference_v1 CHECK (
+        (purpose IN ('purchase_reservation','delivery_settlement','purchase_refund')
+            AND reference_kind IS NOT NULL AND reference_kind IN ('delivery','local_final_demand','service') AND reference_id IS NOT NULL)
+        OR (purpose IN ('shift_reservation','wage_payment','shift_cancellation')
+            AND reference_kind IS NOT NULL AND reference_kind = 'shift' AND reference_id IS NOT NULL)
+        OR (purpose IN ('tax','public_transfer','household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')
+            AND reference_kind IS NULL AND reference_id IS NULL)),
+    CONSTRAINT money_movement_postings_v1 CHECK (
+        (purpose = 'purchase_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+            AND credit_kind = reference_kind || '_reserve' AND credit_id = reference_id)
+        OR (purpose IN ('delivery_settlement','purchase_refund') AND debit_kind = reference_kind || '_reserve'
+            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash'))
+        OR (purpose = 'shift_reservation' AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+            AND credit_kind = 'payroll_reserve' AND credit_id = reference_id)
+        OR (purpose IN ('wage_payment','shift_cancellation') AND debit_kind = 'payroll_reserve'
+            AND debit_id = reference_id AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash'))
+        OR (purpose IN ('tax','public_transfer','household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')
+            AND debit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+            AND credit_kind IN ('site_cash','household_cash','organization_cash','public_cash')
+            AND (debit_kind, debit_id) <> (credit_kind, credit_id)))
+);
+-- NUMERIC aggregates intentionally exceed i128: individual transfers remain bounded.
+CREATE TABLE babylon_state.money_movement_total_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    purpose text NOT NULL CHECK (purpose IN ('purchase_reservation','delivery_settlement','purchase_refund',
+        'shift_reservation','wage_payment','shift_cancellation','tax','public_transfer',
+        'household_transfer','ownership_distribution','capital_contribution','transport_service','mutual_aid')),
+    movement_count bigint NOT NULL CHECK (movement_count > 0),
+    amount_micros numeric NOT NULL CHECK (scale(amount_micros) = 0 AND amount_micros > 0
+        AND amount_micros <= movement_count::numeric * 170141183460469231731687303715884105727),
+    PRIMARY KEY (campaign_id, resolve_tick, purpose),
+    FOREIGN KEY (campaign_id, resolve_tick) REFERENCES babylon_state.money_journal_period_v1(campaign_id, resolve_tick)
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+REVOKE ALL ON babylon_state.money_journal_period_v1, babylon_state.money_movement_v1,
+    babylon_state.money_movement_total_v1 FROM PUBLIC;

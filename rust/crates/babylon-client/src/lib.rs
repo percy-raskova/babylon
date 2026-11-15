@@ -29,6 +29,7 @@ pub(crate) mod observer_warning;
 pub mod organizer;
 pub mod palette;
 pub mod session_log;
+mod site_financial_statements;
 pub mod tessellate;
 #[cfg(test)]
 mod test_support;

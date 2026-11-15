@@ -1,5 +1,6 @@
 //! Exact textual readings from one disclosed production snapshot.
 
+use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
 use std::fmt::Write as _;
@@ -12,6 +13,40 @@ use babylon_persistence::production_observation::FreightOrderIndex;
 use babylon_persistence::production_observation::PhysicalRouteIndex;
 use babylon_persistence::production_observation::ProductionSiteRole;
 use std::collections::BTreeSet;
+
+/// Name the operating function without rewriting the source classification.
+fn function_label(site: &ProductionSite) -> &str {
+    EconomicFunction::from_source_key(&site.function)
+        .map_or(site.function.as_str(), |function| function.label())
+}
+
+pub(crate) fn site_subject(site: &ProductionSite) -> String {
+    let name = site.name.trim_end_matches(" cohort");
+    let Some(function) = EconomicFunction::from_source_key(&site.function) else {
+        return name.to_owned();
+    };
+    let key = function.source_key();
+    let label = function.label();
+    if let Some(suffix) = name
+        .strip_prefix("representative ")
+        .and_then(|value| value.strip_prefix(key))
+        .and_then(|value| value.strip_prefix(" — "))
+    {
+        return format!("representative {label} — {suffix}");
+    }
+    if let Some((county, token)) = name.rsplit_once(": ") {
+        if let Some(ownership) = token.strip_prefix(key) {
+            if matches!(ownership, " (1)" | " (2)" | " (3)" | " (5)") {
+                return format!("{county}: {label}{ownership}");
+            }
+        }
+    }
+    if name == label {
+        name.to_owned()
+    } else {
+        format!("{name} · {label}")
+    }
+}
 
 pub(super) fn describe(
     site: &ProductionSite,
@@ -289,11 +324,20 @@ pub(super) fn describe_work(site: &ProductionSite, snapshot: &ProductionSnapshot
 
 fn describe_sources(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
     let mut value = format!(
-        "WORKPLACE / {}\n{} · {:?}\n",
+        "WORKPLACE / {}\n{} · {:?}\nSite name: {}\nSite ID: {}\nFunction code: {}\n",
         site.location,
-        site.industry_code.as_deref().unwrap_or(&site.function),
-        site.roles
+        function_label(site),
+        site.roles,
+        site.name,
+        site.id,
+        site.function
     );
+    if let Some(code) = &site.industry_code {
+        writeln!(value, "Industry / NAICS: {code}").expect("String write");
+    }
+    if let Some(code) = &site.sector_code {
+        writeln!(value, "Sector / NAICS: {code}").expect("String write");
+    }
     if site.county_geoid().is_some() {
         value.push_str("\nRegional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.\n");
     }

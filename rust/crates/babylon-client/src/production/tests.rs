@@ -2956,3 +2956,114 @@ fn maintenance_is_navigable_both_ways_without_becoming_a_parts_route() {
             .all(|row| row.supplier != provider.id)
     );
 }
+
+#[test]
+fn production_labels_and_inspector_show_actual_function_and_preserve_source_codes() {
+    use bevy::ecs::system::RunSystemOnce;
+
+    let mut app = dependency_navigation_app();
+    let mut snapshot = attributed_snapshot();
+    snapshot.sites[0].function = "capital_goods".into();
+    let selected = snapshot.sites[0].clone();
+    let sources = readings::describe(&selected, &snapshot, ProductionReadingSection::Sources);
+    assert!(sources.contains("Capital goods"), "{sources}");
+    assert!(sources.contains("Function code: capital_goods"));
+    assert!(sources.contains("Industry / NAICS: 331"));
+    assert!(sources.contains("Sector / NAICS: 31-33"));
+    assert!(sources.contains("Manufacturing | NAICS 31-33"));
+    assert!(sources.contains("county:26163"));
+    assert!(sources.contains("Modeled processes sharing this context: Cohort a; Cohort b"));
+
+    app.world_mut()
+        .resource_mut::<ObserverFrame>()
+        .0
+        .as_mut()
+        .expect("frame")
+        .production = Some(snapshot.clone());
+    let context = app.world().resource::<ObserverSession>().context();
+    let scene_context = context.clone();
+    app.world_mut()
+        .run_system_once(move |mut commands: Commands| {
+            let parent = commands.spawn_empty().id();
+            view::spawn_site_label(
+                &mut commands,
+                &selected,
+                &scene_context,
+                Vec3::ZERO,
+                true,
+                Color::WHITE,
+                parent,
+            );
+        })
+        .expect("site label");
+    {
+        let world = app.world_mut();
+        assert!(world
+            .query::<&Text>()
+            .iter(world)
+            .any(|text| text.0.contains("Capital goods")));
+    }
+    app.world_mut()
+        .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
+        .expect("readings panel");
+    app.add_systems(Update, view::paint_readings.after(navigation::navigate));
+    send_command(
+        &mut app,
+        ProductionCommand::Select {
+            site_id: "a".into(),
+            context,
+        },
+    );
+    send_command(&mut app, ProductionCommand::Details);
+    assert!(panel_text::<ProductionReadingSubject>(&mut app).contains("Capital goods"));
+    assert_eq!(
+        app.world()
+            .resource::<ObserverFrame>()
+            .0
+            .as_ref()
+            .expect("frame")
+            .production
+            .as_ref(),
+        Some(&snapshot)
+    );
+}
+
+#[test]
+fn production_subject_replaces_only_governed_national_name_tokens() {
+    let mut operating_site = site("a", &[]);
+    operating_site.function = "capital_goods".into();
+    for (authored, expected) in [
+        (
+            "representative capital_goods — Wayne/Employee",
+            "representative Capital goods — Wayne/Employee",
+        ),
+        ("Wayne: capital_goods (5)", "Wayne: Capital goods (5)"),
+        ("Capital Works", "Capital Works · Capital goods"),
+        (
+            "capital_goods research cooperative",
+            "capital_goods research cooperative · Capital goods",
+        ),
+        (
+            "Wayne: capital_goods (50)",
+            "Wayne: capital_goods (50) · Capital goods",
+        ),
+        (
+            "Wayne: business_services (5)",
+            "Wayne: business_services (5) · Capital goods",
+        ),
+    ] {
+        operating_site.name = authored.into();
+        assert_eq!(readings::site_subject(&operating_site), expected);
+        let mut snapshot = snapshot();
+        snapshot.sites = vec![operating_site.clone()];
+        let sources = readings::describe(
+            &operating_site,
+            &snapshot,
+            ProductionReadingSection::Sources,
+        );
+        assert!(sources.contains(&format!("Site name: {authored}")));
+        assert!(sources.contains("Site ID: a"));
+        assert_eq!(snapshot.sites[0].name, authored);
+        assert_eq!(snapshot.sites[0].function, "capital_goods");
+    }
+}

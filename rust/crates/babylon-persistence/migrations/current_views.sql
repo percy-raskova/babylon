@@ -349,3 +349,23 @@ REVOKE ALL ON
     public.v_observer_archive_dirty_receipt_v1,
     public.v_observer_tick_action_batch_v1
 FROM PUBLIC;
+
+-- Only committed, identity-bound published evidence is exposed to the full observer.
+CREATE VIEW public.v_observer_money_journal_period_v1 AS
+SELECT p.* FROM babylon_state.money_journal_period_v1 p
+JOIN babylon_state.tick_commit t USING (campaign_id, resolve_tick)
+JOIN babylon_state.material_tick_v3 m USING (campaign_id, resolve_tick)
+JOIN babylon_state.material_campaign_foundation_v3 f USING (campaign_id)
+JOIN babylon_meta.current_schema s ON s.singleton AND s.schema_sha256 = p.schema_sha256
+WHERE p.source_identity_bytes = m.identity_bytes AND p.tick_content_hash = t.tick_content_hash
+    AND p.envelope_digest = t.envelope_digest AND p.foundation_sha256 = f.foundation_sha256
+    AND p.content_sha256 = f.content_sha256;
+CREATE VIEW public.v_observer_money_movement_v1 AS
+SELECT d.* FROM babylon_state.money_movement_v1 d
+JOIN public.v_observer_money_journal_period_v1 p USING (campaign_id, resolve_tick)
+WHERE p.detail_retained;
+CREATE VIEW public.v_observer_money_movement_total_v1 AS
+SELECT d.* FROM babylon_state.money_movement_total_v1 d
+JOIN public.v_observer_money_journal_period_v1 p USING (campaign_id, resolve_tick);
+REVOKE ALL ON public.v_observer_money_journal_period_v1, public.v_observer_money_movement_v1,
+    public.v_observer_money_movement_total_v1 FROM PUBLIC;

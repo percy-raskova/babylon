@@ -9,6 +9,7 @@ pub(crate) mod maintenance;
 pub(crate) mod navigation;
 
 mod readings;
+pub(crate) use readings::site_subject;
 
 #[path = "production/view.rs"]
 mod view;

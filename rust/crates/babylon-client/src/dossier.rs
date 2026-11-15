@@ -173,8 +173,22 @@ fn county_subject(geoid: &str) -> Result<ArchivePageRef, String> {
 }
 
 fn execute(invocation: &HeadlessInvocation) -> Result<(), String> {
-    let reader = SemanticArchiveReader::from_env().map_err(|error| error.to_string())?;
     let mut out = std::io::stdout().lock();
+    let site_row =
+        match invocation.command {
+            CliCommand::EconomySite { site, period } => Some(
+                crate::site_financial_statements::read(invocation.campaign_id, site, period)?,
+            ),
+            CliCommand::EconomySites => Some(crate::site_financial_statements::sites(
+                invocation.campaign_id,
+            )?),
+            _ => None,
+        };
+    if let Some(row) = site_row {
+        write_jsonl(&mut out, &row)?;
+        return out.flush().map_err(|error| error.to_string());
+    }
+    let reader = SemanticArchiveReader::from_env().map_err(|error| error.to_string())?;
     if invocation.command == CliCommand::EconomyStatus {
         write_jsonl(
             &mut out,
@@ -199,7 +213,10 @@ fn execute(invocation: &HeadlessInvocation) -> Result<(), String> {
             CliCommand::Changelog { geoid } => {
                 write_changes(&mut out, &reader, &scope, &county_subject(geoid)?)?;
             }
-            CliCommand::TickStatus | CliCommand::EconomyStatus => unreachable!("handled above"),
+            CliCommand::TickStatus
+            | CliCommand::EconomyStatus
+            | CliCommand::EconomySites
+            | CliCommand::EconomySite { .. } => unreachable!("handled above"),
         }
     }
     out.flush().map_err(|error| error.to_string())

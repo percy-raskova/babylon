@@ -3,6 +3,12 @@
 // Every deliberate metadata fault in these tests is confined to DisposableTarget's
 // freshly created clone. Neither the template nor an existing user campaign is altered.
 
+#[path = "observer_material_live/money_journal.rs"]
+mod money_journal;
+
+#[path = "observer_material_live/site_statements.rs"]
+mod site_statements;
+
 #[path = "observer_material_live/runtime_process.rs"]
 mod runtime_process;
 

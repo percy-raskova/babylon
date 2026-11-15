@@ -1,0 +1,542 @@
+//! Permanent coverage, exact rebuild and capability confinement in a disposable database.
+use super::{
+    CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls,
+    ObserverEconomyReader, ObserverVisibility, Uuid,
+};
+use babylon_persistence::money_journal::{
+    self as journal, JournalError, MoneyJournalWriter, MoneyMovement, MoneyPurpose, MoneyTotal,
+};
+use babylon_persistence::observer_reader::{CommittedMaterialReceipts, ObserverMaterialCursor};
+use postgres::{Client, Config};
+use serde_json::Value;
+use std::process::Command;
+
+fn journal_cli(
+    operation: &str,
+    observer: &Config,
+    writer: Option<&Config>,
+    campaign: CampaignId,
+) -> Value {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_babylon-money-journal"));
+    command
+        .args([
+            operation,
+            "--campaign",
+            &campaign.as_uuid().to_string(),
+            "--first",
+            "1",
+        ])
+        .env(
+            "BABYLON_OBSERVER_DSN",
+            super::runtime_process::child_dsn(observer),
+        )
+        .env_remove("BABYLON_RUNTIME_DSN");
+    if let Some(writer) = writer {
+        command.env(
+            "BABYLON_RUNTIME_DSN",
+            super::runtime_process::child_dsn(writer),
+        );
+    }
+    let output = command
+        .output()
+        .expect("start the actual money journal CLI");
+    assert!(
+        output.status.success(),
+        "money journal {operation} CLI must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: Value =
+        serde_json::from_slice(&output.stdout).expect("journal CLI emits one JSON response");
+    assert_eq!(result["version"], 1, "CLI journal protocol version");
+    assert_eq!(
+        result["campaign"],
+        campaign.as_uuid().to_string(),
+        "CLI response preserves the requested campaign"
+    );
+    result
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
+    let mut target = DisposableTarget::create();
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x7391));
+    let mut runtime = DurableMaterialRuntime::create(
+        &target.writer,
+        campaign,
+        MichiganContentPreset::FourWeekStandard
+            .create_foundation(&crate::test_support::catalog())
+            .expect("the authored catalog builds the foundation"),
+    )
+    .expect("the disposable database creates the campaign");
+    super::install_reader_role(&target.writer).expect("reader grants");
+    super::provision_observer_role(&target.writer).expect("observer grants");
+    let observer_config = target.login("babylon_observer", "moneyobserver");
+    let observer =
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the full observer target is bounded");
+    let preview = ObserverEconomyReader::connect(
+        &target.login("babylon_reader", "moneypreview"),
+        ObserverVisibility::KnownPreview,
+    )
+    .expect("the preview target is bounded");
+    let writer = MoneyJournalWriter::connect(&target.writer).expect("the owner target is bounded");
+    assert!(
+        matches!(
+            writer.publish(&preview, campaign, 1),
+            Err(JournalError::Observer(_))
+        ),
+        "preview credentials cannot admit source receipts"
+    );
+    let mut cursor = publish_fourteen_periods(&mut runtime, &writer, &observer, campaign);
+    let mut owner = assert_empty_retention(&observer, &preview, &writer, &target.writer, campaign);
+    assert_authority_and_cursor(
+        &observer_config,
+        &observer,
+        &writer,
+        &mut owner,
+        campaign,
+        &mut cursor,
+    );
+}
+
+fn publish_fourteen_periods(
+    runtime: &mut DurableMaterialRuntime,
+    writer: &MoneyJournalWriter,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+) -> Option<ObserverMaterialCursor> {
+    let mut cursor = None;
+    for period in 1..=14 {
+        super::advance_material_period(runtime);
+        if period == 14 {
+            let mut reports = Vec::new();
+            std::thread::scope(|scope| {
+                let first = scope.spawn(|| writer.publish(observer, campaign, period));
+                let second = scope.spawn(|| writer.publish(observer, campaign, period));
+                reports.push(
+                    first
+                        .join()
+                        .expect("publisher thread completes")
+                        .expect("first concurrent publication"),
+                );
+                reports.push(
+                    second
+                        .join()
+                        .expect("publisher thread completes")
+                        .expect("second concurrent publication"),
+                );
+            });
+            assert_eq!(reports.iter().filter(|r| r.changed).count(), 1,
+                "concurrent identical publishers commit one projection and observe one idempotent result");
+        } else {
+            writer
+                .publish_with_cursor(observer, campaign, period, &mut cursor)
+                .expect("authenticated publication commits");
+            assert_eq!(
+                cursor.as_ref().expect("receipt cursor").completed_tick(),
+                period,
+                "sequential publication advances the receipt-only history cursor"
+            );
+        }
+    }
+    cursor
+}
+
+fn assert_empty_retention(
+    observer: &ObserverEconomyReader,
+    preview: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    writer_config: &Config,
+    campaign: CampaignId,
+) -> Client {
+    assert!(
+        matches!(
+            observer.money_totals(campaign, 1, 15),
+            Err(JournalError::CoverageAbsent)
+        ),
+        "an unpublished period is not a zero-money period"
+    );
+    assert_eq!(
+        observer
+            .money_totals(campaign, 1, 14)
+            .expect("all empty periods are covered"),
+        Vec::new(),
+        "an empty aggregate remains distinct from missing coverage"
+    );
+    assert!(
+        matches!(
+            preview.money_totals(campaign, 1, 14),
+            Err(JournalError::Authority)
+        ),
+        "preview cannot query full money facts"
+    );
+    let receipts = observer
+        .committed_material_receipts(campaign, 1)
+        .expect("source remains durable");
+    let expected = journal::derive_movements(&receipts).expect("source transfers are valid");
+    assert_eq!(
+        observer
+            .money_movements(campaign, 1)
+            .expect("pruned history rebuilds"),
+        expected,
+        "historical query reconstructs exactly the source transfers"
+    );
+    writer
+        .rebuild(observer, campaign, 1)
+        .expect("explicit rebuild authenticates old source");
+    let mut owner = writer_config.connect(NoTls).expect("owner connection");
+    let retained: i64 = owner.query_one("SELECT count(*) FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1 AND detail_retained", &[campaign.as_uuid()])
+        .expect("retention query").get(0);
+    assert_eq!(
+        retained, 13,
+        "only the latest thirteen source periods retain detail"
+    );
+    assert_eq!(
+        owner
+            .query_one(
+                "SELECT count(*) FROM babylon_state.money_journal_period_v1 WHERE campaign_id=$1",
+                &[campaign.as_uuid()]
+            )
+            .expect("coverage query")
+            .get::<_, i64>(0),
+        14,
+        "empty periods also retain permanent coverage"
+    );
+    owner
+}
+
+fn assert_authority_and_cursor(
+    observer_config: &Config,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    owner: &mut Client,
+    campaign: CampaignId,
+    cursor: &mut Option<ObserverMaterialCursor>,
+) {
+    let mut reader = observer_config
+        .connect(NoTls)
+        .expect("observer SQL connection");
+    assert!(
+        reader
+            .execute("DELETE FROM babylon_state.money_movement_v1", &[])
+            .is_err(),
+        "full observer remains read only"
+    );
+    assert!(
+        matches!(
+            MoneyJournalWriter::connect(observer_config)
+                .expect("bounded target")
+                .publish(observer, campaign, 14),
+            Err(JournalError::Schema)
+        ),
+        "publication requires the current schema's database owner"
+    );
+    let before_failure = cursor
+        .as_ref()
+        .expect("prior receipt cursor")
+        .completed_tick();
+    assert!(
+        MoneyJournalWriter::connect(observer_config)
+            .expect("observer target")
+            .publish_with_cursor(observer, campaign, 14, cursor)
+            .is_err(),
+        "failed owner admission must not publish its receipt cursor candidate"
+    );
+    assert_eq!(
+        cursor.as_ref().expect("preserved cursor").completed_tick(),
+        before_failure,
+        "publication rollback preserves the caller's history"
+    );
+    let first = writer
+        .publish_with_cursor(observer, campaign, 14, cursor)
+        .expect("idempotent publication");
+    assert!(
+        !first.changed,
+        "identical publication has no replacement write"
+    );
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET identity_bytes=decode('00','hex') WHERE campaign_id=$1 AND resolve_tick=1", &[campaign.as_uuid()])
+        .expect("disposable source corruption");
+    assert!(
+        writer.rebuild_with_cursor(observer, campaign, 14, cursor).is_err(),
+        "receipt-only cursor freshly authenticates its prefix and refuses changed historical source"
+    );
+    assert_eq!(
+        cursor
+            .as_ref()
+            .expect("preserved receipt cursor")
+            .completed_tick(),
+        14,
+        "failed prefix authentication preserves the prior successful cursor"
+    );
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and national sources"]
+fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+    use babylon_persistence::economic_catalog::{self, CapturedEconomicCatalog};
+    let mut target = DisposableTarget::create();
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x7392));
+    let foundation =
+        CapturedEconomicCatalog::capture(economic_catalog::national_catalog_input(), None)
+            .expect("national source capture")
+            .create_foundation(
+                ReplaySessionId::try_from("national-money-journal").expect("session"),
+                ReplaySeed::new(319),
+            )
+            .expect("national observer foundation");
+    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("national opening commits");
+    super::provision_observer_role(&target.writer).expect("observer grants");
+    let observer_config = target.login("babylon_observer", "nationalmoney");
+    let observer =
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("observer target");
+    let site_opening =
+        super::site_statements::opening(&observer, &target.writer, campaign, &runtime);
+    super::advance_material_period(&mut runtime);
+    let source = observer
+        .committed_material_receipts(campaign, 1)
+        .expect("source authenticates");
+    super::site_statements::period_one(&observer, campaign, &runtime, &source, &site_opening);
+    super::site_statements::native_cli(&observer_config, campaign, &site_opening);
+    let expected = journal::derive_movements(&source).expect("source transfer projection");
+    assert_ne!(expected.len(), 0, "actual monetary period has transfers");
+    let writer = MoneyJournalWriter::connect(&target.writer).expect("owner target");
+    assert_published_source(
+        &observer,
+        &observer_config,
+        &writer,
+        &target.writer,
+        campaign,
+        &expected,
+    );
+    let totals = assert_source_totals(&observer, &observer_config, campaign, &source, &expected);
+    let mut owner = target.writer.connect(NoTls).expect("owner connection");
+    assert_nonzero_history(&mut owner, &observer, &writer, campaign, &expected, &totals);
+    assert_source_faults(&mut owner, &observer, &writer, campaign, &expected, &totals);
+}
+
+fn assert_published_source(
+    observer: &ObserverEconomyReader,
+    observer_config: &Config,
+    writer: &MoneyJournalWriter,
+    writer_config: &Config,
+    campaign: CampaignId,
+    expected: &[MoneyMovement],
+) {
+    let published = journal_cli("publish", observer_config, Some(writer_config), campaign);
+    assert_eq!(
+        published["periods"],
+        serde_json::json!([{"period":1,"movement_count":expected.len(),"changed":true}]),
+        "actual CLI publishes every nonzero source transfer exactly once"
+    );
+    let details = journal_cli("details", observer_config, None, campaign);
+    assert_eq!(details["period"], 1, "CLI detail period provenance");
+    let cli_movements: Vec<MoneyMovement> = serde_json::from_value(details["movements"].clone())
+        .expect("CLI movements preserve the typed journal model");
+    assert_eq!(
+        cli_movements, expected,
+        "actual observer-only CLI returns exact source ordinals, purposes, postings and micros"
+    );
+    assert_eq!(
+        observer
+            .money_movements(campaign, 1)
+            .expect("retained detail"),
+        expected,
+        "every typed posting and exact amount matches its source ordinal"
+    );
+    assert!(
+        !writer
+            .publish(observer, campaign, 1)
+            .expect("idempotent repeat")
+            .changed
+    );
+}
+
+fn assert_source_totals(
+    observer: &ObserverEconomyReader,
+    observer_config: &Config,
+    campaign: CampaignId,
+    source: &CommittedMaterialReceipts,
+    expected: &[MoneyMovement],
+) -> Vec<MoneyTotal> {
+    let totals = observer
+        .money_totals(campaign, 1, 1)
+        .expect("SQL aggregate");
+    let aggregated = journal_cli("totals", observer_config, None, campaign);
+    assert_eq!(
+        aggregated["first"], 1,
+        "CLI aggregate starts at the requested period"
+    );
+    assert_eq!(
+        aggregated["last"], 1,
+        "CLI aggregate ends at the requested period"
+    );
+    let cli_totals: Vec<MoneyTotal> = serde_json::from_value(aggregated["totals"].clone())
+        .expect("CLI totals preserve exact decimal strings");
+    assert_eq!(
+        cli_totals, totals,
+        "actual observer-only CLI preserves the SQL totals checked against authoritative transfers"
+    );
+    assert_eq!(
+        totals.iter().map(|r| r.movement_count).sum::<u64>(),
+        u64::try_from(expected.len()).expect("bounded receipt count"),
+        "each source transfer appears once in SQL aggregates"
+    );
+    let mut sql = observer_config.connect(NoTls).expect("observer SQL");
+    for total in &totals {
+        let expected_amount = source
+            .receipts
+            .money_transfers
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| expected[*i].purpose == total.purpose)
+            .try_fold(0_i128, |sum, (_, r)| {
+                sum.checked_add(r.credit.delta.micro_units())
+            })
+            .expect("authored national per-purpose sum fits the exact reference check");
+        assert_eq!(
+            total.amount_micros,
+            expected_amount.to_string(),
+            "SQL sum equals authoritative receipts for {:?}",
+            total.purpose
+        );
+    }
+    let sales = totals
+        .iter()
+        .find(|r| r.purpose == MoneyPurpose::DeliverySettlement)
+        .expect("settled sales");
+    let reservations = totals
+        .iter()
+        .find(|r| r.purpose == MoneyPurpose::PurchaseReservation)
+        .expect("reservations remain separate");
+    assert!(
+        sales.movement_count > 0 && reservations.movement_count > 0,
+        "reservation must not count as another sale"
+    );
+    assert!(
+        sql.execute(
+            "UPDATE public.v_observer_money_movement_v1 SET amount_micros=1",
+            &[]
+        )
+        .is_err(),
+        "observer cannot mutate projected facts"
+    );
+    totals
+}
+
+fn assert_nonzero_history(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+    expected: &[MoneyMovement],
+    totals: &[MoneyTotal],
+) {
+    owner
+        .execute(
+            babylon_persistence::money_journal::MONEY_DETAIL_RETENTION_SQL,
+            &[campaign.as_uuid(), &1_i64],
+        )
+        .expect("controlled expired-period pruning uses production SQL");
+    let retained_rows: i64 = owner.query_one("SELECT count(*) FROM babylon_state.money_movement_v1 WHERE campaign_id=$1 AND resolve_tick=1",
+        &[campaign.as_uuid()]).expect("expired detail count").get(0);
+    assert_eq!(
+        retained_rows, 0,
+        "the nonzero source period has actually lost its stored detail"
+    );
+    assert_eq!(
+        observer
+            .money_totals(campaign, 1, 1)
+            .expect("permanent expired totals"),
+        totals,
+        "purpose totals survive nonzero detail expiration exactly"
+    );
+    let independently_reauthenticated = observer
+        .committed_material_receipts(campaign, 1)
+        .expect("expired source independently reauthenticates");
+    assert_eq!(
+        observer
+            .money_movements(campaign, 1)
+            .expect("expired movements reconstruct"),
+        journal::derive_movements(&independently_reauthenticated)
+            .expect("independent source movements"),
+        "every expired nonzero posting reconstructs from its independently authenticated source"
+    );
+    assert_eq!(
+        owner.execute("UPDATE babylon_state.money_movement_total_v1 SET amount_micros=amount_micros+1 WHERE campaign_id=$1 AND resolve_tick=1 AND purpose=$2",
+            &[campaign.as_uuid(), &MoneyPurpose::DeliverySettlement.as_str()]).expect("confined permanent summary drift"),
+        1,
+        "one expired period summary is damaged without changing its movement count"
+    );
+    assert!(
+        matches!(
+            writer.publish(observer, campaign, 1),
+            Err(JournalError::Projection)
+        ),
+        "repeat publication must detect an incorrect purpose sum even without retained detail"
+    );
+    writer
+        .rebuild(observer, campaign, 1)
+        .expect("explicit authenticated rebuild restores current-window detail");
+    assert_eq!(
+        observer
+            .money_totals(campaign, 1, 1)
+            .expect("repaired permanent totals"),
+        totals,
+        "authenticated rebuild repairs the damaged purpose summary exactly"
+    );
+    assert_eq!(
+        observer
+            .money_movements(campaign, 1)
+            .expect("rebuilt detail"),
+        expected,
+        "rebuild reproduces the original source ordinals and both postings"
+    );
+}
+
+fn assert_source_faults(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    writer: &MoneyJournalWriter,
+    campaign: CampaignId,
+    expected: &[MoneyMovement],
+    totals: &[MoneyTotal],
+) {
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=decode('00','hex') WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid()]).expect("confined packed source fault");
+    assert_eq!(
+        observer
+            .money_movements(campaign, 1)
+            .expect("warm retained detail uses SQL"),
+        expected,
+        "packed receipt decoding is absent from warm SQL query"
+    );
+    assert_eq!(
+        observer
+            .money_totals(campaign, 1, 1)
+            .expect("warm aggregate uses SQL"),
+        totals,
+        "warm SQL aggregate does not decode packed source"
+    );
+    assert!(
+        writer.rebuild(observer, campaign, 1).is_err(),
+        "authenticated rebuild refuses corrupted source instead of reusing published facts"
+    );
+    owner.execute("UPDATE babylon_state.tick_commit SET tick_content_hash=decode(repeat('00',32),'hex') WHERE campaign_id=$1 AND resolve_tick=1",&[campaign.as_uuid()]).expect("confined marker fault");
+    assert!(
+        matches!(
+            observer.money_totals(campaign, 1, 1),
+            Err(JournalError::CoverageAbsent)
+        ),
+        "changed commit marker hides stale projected rows"
+    );
+    assert!(
+        matches!(
+            observer.money_movements(campaign, 1),
+            Err(JournalError::CoverageAbsent)
+        ),
+        "changed marker cannot expose stale detail"
+    );
+}

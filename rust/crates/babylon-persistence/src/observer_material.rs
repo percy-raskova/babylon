@@ -11,7 +11,7 @@ mod snapshot;
 use snapshot::MaterialObservationRow;
 pub(crate) use snapshot::{
     committed_observation, committed_receipts, material_observation, production_history,
-    read_material_header, MaterialHeader, MaterialObservation,
+    read_material_header, site_financial_statements, MaterialHeader, MaterialObservation,
 };
 pub use snapshot::{ObserverMaterialCursor, ObserverOpeningFoundations};
 

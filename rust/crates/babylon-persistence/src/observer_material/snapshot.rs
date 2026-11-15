@@ -39,9 +39,11 @@ use crate::production_projection::metadata::Metadata;
 use crate::production_projection::sites;
 use crate::production_projection::sites::Quantities;
 use crate::production_projection::staffing;
+use crate::site_financial_statements::{SiteFinancialStatements, SiteStatementsError};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::SiteId;
 use babylon_tick::material_world;
 use diagnostics::Timing;
 use postgres::Error;
@@ -865,14 +867,21 @@ pub(crate) fn committed_receipts(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    expected: &EconomicContentAdmission,
+    expected: &EconomicContentHandle,
+    cursor: &mut Option<ObserverMaterialCursor>,
 ) -> Result<CommittedMaterialReceipts, ObserverEconomyError> {
-    let mut history = MaterialHistory::new(expected)?;
-    extend_history(transaction, campaign, expected, &mut history, 0, tick)?;
+    let history = history_for_read(transaction, campaign, tick, expected, cursor)?;
     let (current, _) = authenticated_history_endpoints(transaction, campaign, expected, &history)?;
     let identity = current.identity;
     drop(current);
-    read_committed_receipts(campaign, tick, expected, &history, &identity)
+    let result = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
+    *cursor = Some(ObserverMaterialCursor {
+        campaign,
+        admission: expected.downgrade(),
+        admission_digest: expected.digest(),
+        history,
+    });
+    Ok(result)
 }
 
 pub(crate) fn read_committed_receipts(
@@ -1029,6 +1038,55 @@ pub(crate) fn attribute_production(
         ObserverEconomyError::InvalidProjection
     })?;
     Ok(production)
+}
+
+/// A focused selected-site projection avoids constructing a national display snapshot.
+pub(crate) fn site_financial_statements(
+    transaction: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+    expected: &EconomicContentAdmission,
+    site: SiteId,
+) -> Result<SiteFinancialStatements, SiteStatementsError> {
+    use crate::site_financial_statements;
+    if !expected
+        .view()
+        .opening
+        .sites
+        .iter()
+        .any(|row| row.site_id == site)
+    {
+        return Err(SiteStatementsError::SiteAbsent);
+    }
+    let history = history_for_read(transaction, campaign, tick, expected, &mut None)?;
+    let identity = if tick == 0 {
+        None
+    } else {
+        let (current, _) =
+            authenticated_history_endpoints(transaction, campaign, expected, &history)?;
+        read_committed_receipts(campaign, tick, expected, &history, &current.identity)?;
+        Some(current.identity)
+    };
+    let register = history.register(expected);
+    if register.completed_tick() != tick {
+        return Err(SiteStatementsError::PeriodMismatch);
+    }
+    let books = site_financial_statements::project(
+        site,
+        history.opening(expected).map(|r| &r.state().accounting),
+        &register.state().accounting,
+        history.receipt().map(|(r, _)| r),
+    )?;
+    Ok(SiteFinancialStatements {
+        campaign_id: campaign,
+        site_id: site,
+        resolve_tick: tick,
+        foundation_digest: expected.digest(),
+        nominal_world_hash: identity.map(|r| r.result_world_hash()),
+        tick_content_hash: identity.map(|r| *r.tick_content_hash().as_bytes()),
+        receipt_digest: identity.map(|r| r.receipt_digest()),
+        books,
+    })
 }
 
 #[cfg(test)]

@@ -179,6 +179,79 @@ BABYLON_RUNTIME_DSN = "host=127.0.0.1 port=5433 dbname=babylon_play user=test pa
 Replace the database and credentials with those of your dedicated database.
 The local file stays outside Git.
 
+### Query committed money movements
+
+The `babylon-money-journal` operator publishes derived facts for an existing
+campaign in a database with the current schema. It does not create campaigns or
+advance periods. Set `BABYLON_OBSERVER_DSN` to a confined login with the
+installed `babylon_observer` role. Publication also needs `BABYLON_RUNTIME_DSN`
+with the database owner's credentials. Both connections must use the same host,
+port and database. The observer credential remains read only.
+
+From `rust/`, publish a committed period, read its movements, or total its
+payments over a published interval. Replace the UUID with the existing campaign
+identity:
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- publish \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 1
+cargo run -p babylon-persistence --bin babylon-money-journal -- details \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 1
+cargo run -p babylon-persistence --bin babylon-money-journal -- totals \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 1 --last 13
+```
+
+Publish every period in an interval before querying its totals. The `publish`
+command accepts `--last` for this purpose. Missing coverage produces a refusal,
+including when adjacent published periods contain no transfers. Each period
+publishes atomically. Repeating publication verifies the same source and facts.
+
+Amounts are exact currency micro-units, returned as decimal strings. A
+movement's debit is minus its positive amount and its credit is plus that
+amount. Cash accounts, order reserves and payroll reserves have separate typed
+identities. A reserve identity identifies stored money rather than its owner.
+Only `delivery_settlement` records a sale payment. Reservations, refunds and
+cancellations remain separate in SQL totals.
+
+Detailed rows cover the latest 13 committed source periods as of publication.
+Period identity, coverage and purpose totals remain stored for older periods.
+The `details` command reconstructs older movements from authenticated source
+receipts. Use `rebuild` with the same period flags as `publish` to replace
+derived facts from those receipts. Retention still applies.
+
+Warm detail and total queries use the SQL facts directly. The full observer can
+also sum `public.v_observer_money_movement_total_v1` or inspect
+`public.v_observer_money_movement_v1` with SQL.
+
+### Read a site's financial statements
+
+Set `BABYLON_OBSERVER_DSN` to the confined observer login described above.
+The site commands need only this credential. From `rust/`, list the captured
+campaign's sites. Set `SITE_ID` to a returned ID to read its first committed period.
+
+```bash
+cargo run -p babylon-client -- --headless \
+  --campaign 28100000-0000-0000-0000-000000000001 economy sites
+cargo run -p babylon-client -- --headless \
+  --campaign 28100000-0000-0000-0000-000000000001 economy site "$SITE_ID" 1
+```
+
+The directory uses the fixed campaign foundation at period zero. At that period
+the command returns the opening balance sheet. For each committed period it
+returns opening and closing balances, income, and cash flows.
+
+Amounts are exact decimal strings in currency micros. Spendable cash excludes
+order and payroll reserves. The cash-flow statement shows reserve movements
+that lack a documented operating, investing, or financing purpose on their own line.
+
+To test the reports locally, run the disposable database check from the
+project root. Set `BABYLON_SITE_STATEMENTS_CLIENT_EXE` to the absolute path of
+a built `babylon-client` to include the native command checks.
+
+```bash
+BABYLON_POSTGRES_LIVE_FOCUS=money_journal mise run test:rust-postgres
+```
+
 ## 5. Run the repository check
 
 Run the standard local gate:

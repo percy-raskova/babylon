@@ -712,7 +712,7 @@ fn live_runtime_child_pipe_failure_and_orderly_exit_preserve_committed_world() {
     }
 }
 
-fn child_dsn(config: &Config) -> String {
+pub(super) fn child_dsn(config: &Config) -> String {
     super::validate_connection_target(config).expect("the authored fixture satisfies the rule");
     let [postgres::config::Host::Tcp(host)] = config.get_hosts() else {
         panic!("runtime process fixture requires one validated local TCP host");

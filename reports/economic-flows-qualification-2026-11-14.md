@@ -251,6 +251,50 @@ Periods 3 and 4 fit the 40,000,000-byte limit. Period 5 exceeded it by 5,662,208
 
 After the three turns, fresh full-observer CLI processes compared period 2 with period 1. Warm `--group counterparty` queries took 0.850 seconds for Wayne and 1.108 seconds nationwide. The national company ranking took 0.959 seconds. Each complete ranked page matched the earlier SQL result.
 
+### Graph validation and recovery of expired labor detail
+
+A test placed 33,370 graph nodes and 56,628 numeric attributes from national period 2 under a new marker. Reading the selected period's vectors and the campaign's names once cut validation from 4.316 seconds to 0.334 seconds. Nine malformed graphs produced the same rejection as before. Rolling back restored the original marker function and period-2 state.
+
+An ordinary turn exposed a different plan in period 4. Postgres estimated ten attribute rows and ten member rows, then repeatedly scanned the member list for each attribute. The graph query took 145.077 seconds inside the canonical commit. The period-2 benchmark did not reproduce this later-period cost.
+
+The replacement checks membership by set difference and groups attributes by node and name to detect duplicates. On the saved period-5 campaign, all 36 plans checked the period-3 through period-5 attributes in 78–106 milliseconds. This covered missing statistics, empty-table estimates, period-2 estimates and current estimates. The full check for a new marker took 159–173 milliseconds. Both versions rejected ten damaged graphs with the same errors.
+
+The national recovery test exposed a separate delay after the last period of labor detail expired. Postgres still estimated zero rows in both parent tables after the writer restored the nodes. It checked some references by scanning the period and filtering for the node ordinal.
+
+On a copy of the save, the writer restored 31,540 period-2 nodes and refreshed both estimates in 52 milliseconds. Postgres then used all three primary-key columns. The deferred checks took 3.703 seconds. Every restored node, position and movement matched the source.
+
+The labor directory retains each full content digest. Period links refer to its entry by an integer key. Across the same two periods, growth in these two tables and their indexes fell from 9,134,080 to 6,643,712 bytes.
+
+The following native run combined integer labor references with the graph query tested above. All three closes reproduced the original campaign hashes and Wayne amounts. The publisher authenticated the reopened period-2 history in 10.788 seconds before the first step. On this restored database, the observer's first count of period-2 payments timed out after five seconds.
+
+| Period | Commit visible by (s) | Financial figures visible between (s) | Charged growth (bytes) |
+| ---: | ---: | ---: | ---: |
+| 3 | 9.226 | 32.028–32.279 | 35,217,408 |
+| 4 | 153.425 | 174.177–174.429 | 43,614,208 |
+| 5 | 149.177 | 169.725–169.977 | 33,021,952 |
+
+Period 4 exceeded the storage limit by 3,614,208 bytes. Warm labor queries with `--group counterparty` took 0.894 seconds for Wayne and 1.044 seconds nationwide. The national company ranking took 0.823 seconds.
+
+The writer can store opening and closing holdings on the node that carries them in each period. In a replay of all five periods, this saved 2,588,672, 2,580,480 and 2,473,984 bytes across the final three closes. These savings cover the affected labor tables and indexes. Every node, position and movement matched, including after removal and reconstruction of period 3.
+
+On a freshly restored period-2 save, resolving both payment parties from the captured account directory let the original coverage check finish in 63 milliseconds. The first Wayne ranking took 193 milliseconds and matched the previous complete result. Two-period company rankings took about 2.5 seconds on a cold restore and 0.48–0.53 seconds when warm.
+
+Commit `3db768eeb` passed all five Postgres 17.11 integration cases. They covered exact national account totals, recovery of expired or damaged records, concurrent reads, inspection of a predecessor campaign and organizer actions during financial publication. The Python gate passed 4,169 tests and skipped 18.
+
+### Three native turns after the graph and labor repairs
+
+The repaired build reopened the national campaign on the RTX 3060. All 439,481 rows across the 14 observer views still matched the original archive. The first Wayne payment query returned in 0.316 seconds. Screen capture confirmed all three period-2 amounts within 5.131 seconds of the opening measurement.
+
+| Period | Commit visible by (s) | Journal visible by (s) | Wayne figures visible between (s) | Charged growth (bytes) |
+| ---: | ---: | ---: | ---: | ---: |
+| 3 | 8.419 | 30.469 | 30.495–30.746 | 33,341,440 |
+| 4 | 8.088 | 27.330 | 29.785–30.037 | 36,323,328 |
+| 5 | 8.279 | 26.725 | 26.615–26.866 | 32,948,224 |
+
+All three turns fit the 40,000,000-byte limit and reproduced the earlier world hashes. Period 3 missed the 30-second usable-turn limit. The period-4 samples fall on either side of the limit. Period 5 passed. Separate sampling clocks recorded the journal and the rendered figures.
+
+Warm labor queries with `--group counterparty` took 0.854 seconds for Wayne and 1.051 seconds nationwide. The national company ranking took 0.860 seconds. The [native measurements](economic-flows-qualification-2026-11-14-assets/national-compact-native-turns.csv) identify each of the three database layouts and saved inputs.
+
 ### Organizer action during financial publication
 
 An ordinary organizer submitted remote aid while the financial writer was running. The second confirmation timed out. In a two-connection replay, an uncommitted financial row held a foreign-key lock on the campaign foundation. Postgres refused the organizer’s original update lock with SQLSTATE `55P03`.

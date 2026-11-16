@@ -230,7 +230,22 @@ The first group lacked purchasing power. Its account had zero goods payments tha
 
 At period 4, 59 of 1,583 domestic household budgets reserved cash for extra supplies while short of cash for current food. At their posted prices, that cash covered another 561,245 food parcels. At period 5, the same calculation gave 6,313,761 parcels across 217 budgets. No households met both conditions in periods 2 or 3. The calculation uses each period separately and counts the cash once. [Orders, prices and calculation](economic-flows-qualification-2026-11-14-assets/national-household-purchase-priority-v10.json)
 
-One group served by an Allegheny County retailer already held the 210,481 supplies bundles it needed. It bought 210,481 more for $30,309,264. It needed 390,268 food parcels, held 205,263 and funded an order for 116,521. Its retailer delivered one. A replay can measure how much food households eat and which supplies or services they give up.
+One group served by an Allegheny County retailer already held the 210,481 supplies bundles it needed. It bought 210,481 more for $30,309,264. It needed 390,268 food parcels, held 205,263 and funded an order for 116,521. Its retailer delivered one. The one-period replay gave that group enough cash to fund 185,005 food parcels. Its retailer delivered two.
+
+For the replay, 59 groups limited new supplies orders so that cash went to current needs before extra stocks. The ordinary engine handled sales, refunds and consumption. Both branches reproduced the same 11,980 payments before goods reservations. The replay used each household’s available cash, including small balances left after it ordered whole units. That funded one parcel beyond the calculation based solely on the released cash.
+
+| US household food at period 4 | Ordinary | Current needs first | Change |
+| --- | ---: | ---: | ---: |
+| Parcels funded | 382,559,952 | 383,121,198 | +561,246 |
+| Parcels delivered | 64,132,450 | 64,132,576 | +126 |
+| Parcels eaten | 254,275,140 | 254,275,405 | +265 |
+| Closing pantry | 62,752,289 | 62,752,150 | −139 |
+
+Households reserved $176,488,746 more for food. Retailers received $39,844 of that money and households recovered $176,448,902 in refunds.
+
+The 59 groups whose budgets changed ate 532 more food parcels. Other US groups ate 267 fewer. Across all 1,583 groups, 30 ate more and 24 ate less. Households used 139 extra parcels from pantry stocks. They consumed the same total quantity of manufactured supplies, with 906 bundles redistributed. The treatment also delivered 27 fewer utility units and 142 more units of public provision. [Matched tick-4 replay, including domestic and external households](economic-flows-qualification-2026-11-14-assets/national-household-current-needs-p4-v10.json)
+
+The game still uses its ordinary purchasing order. The comparison covers one close and seed 319. Changing which contracted supplier a buyer pays would test another cause of shortages at the same point in the campaign.
 
 **Let the national scenario set which public claim gets paid first.** The government already collects taxes, pays provider operating grants and supports households with reserve workers. The national opening gives providers first claim on the budget.
 

@@ -1,0 +1,1883 @@
+{
+  "identity": {
+    "closing_household_purchase_policies_match": true,
+    "common_closing_cash_and_reserves_micros": "29274357622617840000",
+    "control": {
+      "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+      "material_register_sha256": "7c70d22608417a7671e8a6cea4c4ed0bd6780ef40a394b040569f79c6456874b",
+      "prior_world_sha256": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25",
+      "receipts_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58",
+      "tick_sha256": "2cbbf44bed8df70384b6aeb0ea5c6e441339c05e365d131956a8a9a468507996",
+      "world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629"
+    },
+    "identical_pre_goods_payments": 11980,
+    "modified_domestic_materials_caps": 59,
+    "p3_after_caps": "7ab30b4b1f404d3f157189d12789ab984da04be47291bca526109620a44134bf",
+    "p3_ordinary_and_control": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25",
+    "period": 4,
+    "seed": 319,
+    "treatment": {
+      "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+      "material_register_sha256": "97b08e5176b7d617df6e8508f0c8e967df8e9bd67b9579db04be98624d1fae67",
+      "prior_world_sha256": "7ab30b4b1f404d3f157189d12789ab984da04be47291bca526109620a44134bf",
+      "receipts_sha256": "92ca80f9b35e7af32328563353e7295cd6c411f8aaafcd2688e49a349757939c",
+      "tick_sha256": "87067543e967b148f481fdc8969ad5187078eba5ad507259209df6323b4f2793",
+      "world_sha256": "d7aab61d50544388c9868803e546c588d131afd1dd42cd85ee865cb65aeac41f"
+    },
+    "verification": "all ordinary admissions reconstructed from cash and posted terms; actual treatment cash postings before reservations identical; every order verified for unchanged price, stock, need, buyer and seller and predicted cash admission; government, workforce, prices, ordinary service policies and production rules unchanged at the branch."
+  },
+  "scope": "One treatment at P4, ordinary seed 319. Budgets are population groups, not people.",
+  "groups": {
+    "all_us": {
+      "count": 1583,
+      "goods": {
+        "materials": {
+          "admitted": {
+            "ordinary": 134637463,
+            "treatment": 133433502,
+            "net": -1203961,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 59,
+            "loss_units": 1203961
+          },
+          "delivered": {
+            "ordinary": 87149198,
+            "treatment": 86714980,
+            "net": -434218,
+            "gaining_budgets": 100,
+            "gain_units": 191846,
+            "losing_budgets": 57,
+            "loss_units": 626064
+          },
+          "consumed": {
+            "ordinary": 122528803,
+            "treatment": 122528803,
+            "net": 0,
+            "gaining_budgets": 25,
+            "gain_units": 906,
+            "losing_budgets": 11,
+            "loss_units": 906
+          },
+          "unmet": {
+            "ordinary": 6698693,
+            "treatment": 6698693,
+            "net": 0,
+            "gaining_budgets": 11,
+            "gain_units": 906,
+            "losing_budgets": 25,
+            "loss_units": 906
+          },
+          "closing": {
+            "ordinary": 87008937,
+            "treatment": 86574719,
+            "net": -434218,
+            "gaining_budgets": 75,
+            "gain_units": 190940,
+            "losing_budgets": 46,
+            "loss_units": 625158
+          },
+          "reserved_micros": {
+            "ordinary": 19824806511000000,
+            "treatment": 19648319958000000,
+            "net": -176486553000000,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 59,
+            "loss_units": 176486553000000
+          },
+          "settled_micros": {
+            "ordinary": 12783616191000000,
+            "treatment": 12720675348000000,
+            "net": -62940843000000,
+            "gaining_budgets": 100,
+            "gain_units": 27775875000000,
+            "losing_budgets": 57,
+            "loss_units": 90716718000000
+          },
+          "refunded_micros": {
+            "ordinary": 7041190320000000,
+            "treatment": 6927644610000000,
+            "net": -113545710000000,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 139,
+            "loss_units": 113545710000000
+          }
+        },
+        "food": {
+          "admitted": {
+            "ordinary": 382559952,
+            "treatment": 383121198,
+            "net": 561246,
+            "gaining_budgets": 59,
+            "gain_units": 561246,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "delivered": {
+            "ordinary": 64132450,
+            "treatment": 64132576,
+            "net": 126,
+            "gaining_budgets": 36,
+            "gain_units": 540,
+            "losing_budgets": 43,
+            "loss_units": 414
+          },
+          "consumed": {
+            "ordinary": 254275140,
+            "treatment": 254275405,
+            "net": 265,
+            "gaining_budgets": 30,
+            "gain_units": 534,
+            "losing_budgets": 24,
+            "loss_units": 269
+          },
+          "unmet": {
+            "ordinary": 80699366,
+            "treatment": 80699101,
+            "net": -265,
+            "gaining_budgets": 24,
+            "gain_units": 269,
+            "losing_budgets": 30,
+            "loss_units": 534
+          },
+          "closing": {
+            "ordinary": 62752289,
+            "treatment": 62752150,
+            "net": -139,
+            "gaining_budgets": 6,
+            "gain_units": 6,
+            "losing_budgets": 19,
+            "loss_units": 145
+          },
+          "reserved_micros": {
+            "ordinary": 120614901016000000,
+            "treatment": 120791389762000000,
+            "net": 176488746000000,
+            "gaining_budgets": 59,
+            "gain_units": 176488746000000,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 19980869690000000,
+            "treatment": 19980909534000000,
+            "net": 39844000000,
+            "gaining_budgets": 36,
+            "gain_units": 170929000000,
+            "losing_budgets": 43,
+            "loss_units": 131085000000
+          },
+          "refunded_micros": {
+            "ordinary": 100634031326000000,
+            "treatment": 100810480228000000,
+            "net": 176448902000000,
+            "gaining_budgets": 95,
+            "gain_units": 176451439000000,
+            "losing_budgets": 8,
+            "loss_units": 2537000000
+          }
+        }
+      },
+      "services": {
+        "utility": {
+          "admitted": {
+            "ordinary": 290754554,
+            "treatment": 290754518,
+            "net": -36,
+            "gaining_budgets": 12,
+            "gain_units": 13,
+            "losing_budgets": 28,
+            "loss_units": 49
+          },
+          "performed": {
+            "ordinary": 161160798,
+            "treatment": 161160771,
+            "net": -27,
+            "gaining_budgets": 17,
+            "gain_units": 18,
+            "losing_budgets": 28,
+            "loss_units": 45
+          },
+          "satisfied": {
+            "ordinary": 161160798,
+            "treatment": 161160771,
+            "net": -27,
+            "gaining_budgets": 17,
+            "gain_units": 18,
+            "losing_budgets": 28,
+            "loss_units": 45
+          },
+          "unmet": {
+            "ordinary": 173813708,
+            "treatment": 173813735,
+            "net": 27,
+            "gaining_budgets": 28,
+            "gain_units": 45,
+            "losing_budgets": 17,
+            "loss_units": 18
+          },
+          "reserved_micros": {
+            "ordinary": 21316146997500000,
+            "treatment": 21316144485000000,
+            "net": -2512500000,
+            "gaining_budgets": 12,
+            "gain_units": 913125000,
+            "losing_budgets": 28,
+            "loss_units": 3425625000
+          },
+          "settled_micros": {
+            "ordinary": 11453908762500000,
+            "treatment": 11453906878125000,
+            "net": -1884375000,
+            "gaining_budgets": 17,
+            "gain_units": 1263750000,
+            "losing_budgets": 28,
+            "loss_units": 3148125000
+          },
+          "refunded_micros": {
+            "ordinary": 9862238235000000,
+            "treatment": 9862237606875000,
+            "net": -628125000,
+            "gaining_budgets": 4,
+            "gain_units": 281250000,
+            "losing_budgets": 12,
+            "loss_units": 909375000
+          }
+        },
+        "housing": {
+          "admitted": {
+            "ordinary": 104329343,
+            "treatment": 104329343,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 63434058,
+            "treatment": 63434058,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 63434058,
+            "treatment": 63434058,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 65793438,
+            "treatment": 65793438,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 143668890393750000,
+            "treatment": 143668890393750000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 85852322100000000,
+            "treatment": 85852322100000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 57816568293750000,
+            "treatment": 57816568293750000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "household_services": {
+          "admitted": {
+            "ordinary": 280498500,
+            "treatment": 280498500,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 14876,
+            "treatment": 14876,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 14876,
+            "treatment": 14876,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 334959630,
+            "treatment": 334959630,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 180920360580000000,
+            "treatment": 180920360580000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 8425080000000,
+            "treatment": 8425080000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 180911935500000000,
+            "treatment": 180911935500000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "public_provision": {
+          "admitted": {
+            "ordinary": 290087631,
+            "treatment": 290087926,
+            "net": 295,
+            "gaining_budgets": 34,
+            "gain_units": 793,
+            "losing_budgets": 25,
+            "loss_units": 498
+          },
+          "performed": {
+            "ordinary": 159462032,
+            "treatment": 159462174,
+            "net": 142,
+            "gaining_budgets": 62,
+            "gain_units": 881,
+            "losing_budgets": 59,
+            "loss_units": 739
+          },
+          "satisfied": {
+            "ordinary": 159462032,
+            "treatment": 159462174,
+            "net": 142,
+            "gaining_budgets": 62,
+            "gain_units": 881,
+            "losing_budgets": 59,
+            "loss_units": 739
+          },
+          "unmet": {
+            "ordinary": 175512474,
+            "treatment": 175512332,
+            "net": -142,
+            "gaining_budgets": 59,
+            "gain_units": 739,
+            "losing_budgets": 62,
+            "loss_units": 881
+          },
+          "reserved_micros": {
+            "ordinary": 311844203325000,
+            "treatment": 311844520450000,
+            "net": 317125000,
+            "gaining_budgets": 34,
+            "gain_units": 852475000,
+            "losing_budgets": 25,
+            "loss_units": 535350000
+          },
+          "settled_micros": {
+            "ordinary": 171421684400000,
+            "treatment": 171421837050000,
+            "net": 152650000,
+            "gaining_budgets": 62,
+            "gain_units": 947075000,
+            "losing_budgets": 59,
+            "loss_units": 794425000
+          },
+          "refunded_micros": {
+            "ordinary": 140422518925000,
+            "treatment": 140422683400000,
+            "net": 164475000,
+            "gaining_budgets": 46,
+            "gain_units": 430000000,
+            "losing_budgets": 33,
+            "loss_units": 265525000
+          }
+        }
+      }
+    },
+    "us_with_changed_caps": {
+      "count": 59,
+      "goods": {
+        "materials": {
+          "admitted": {
+            "ordinary": 4449415,
+            "treatment": 3245454,
+            "net": -1203961,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 59,
+            "loss_units": 1203961
+          },
+          "delivered": {
+            "ordinary": 2428403,
+            "treatment": 1802339,
+            "net": -626064,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 57,
+            "loss_units": 626064
+          },
+          "consumed": {
+            "ordinary": 4340676,
+            "treatment": 4339770,
+            "net": -906,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 11,
+            "loss_units": 906
+          },
+          "unmet": {
+            "ordinary": 370202,
+            "treatment": 371108,
+            "net": 906,
+            "gaining_budgets": 11,
+            "gain_units": 906,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "closing": {
+            "ordinary": 2424854,
+            "treatment": 1799696,
+            "net": -625158,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 46,
+            "loss_units": 625158
+          },
+          "reserved_micros": {
+            "ordinary": 654174597000000,
+            "treatment": 477688044000000,
+            "net": -176486553000000,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 59,
+            "loss_units": 176486553000000
+          },
+          "settled_micros": {
+            "ordinary": 355020651000000,
+            "treatment": 264303933000000,
+            "net": -90716718000000,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 57,
+            "loss_units": 90716718000000
+          },
+          "refunded_micros": {
+            "ordinary": 299153946000000,
+            "treatment": 213384111000000,
+            "net": -85769835000000,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 39,
+            "loss_units": 85769835000000
+          }
+        },
+        "food": {
+          "admitted": {
+            "ordinary": 2102026,
+            "treatment": 2663272,
+            "net": 561246,
+            "gaining_budgets": 59,
+            "gain_units": 561246,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "delivered": {
+            "ordinary": 668,
+            "treatment": 1200,
+            "net": 532,
+            "gaining_budgets": 28,
+            "gain_units": 532,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "consumed": {
+            "ordinary": 6527050,
+            "treatment": 6527582,
+            "net": 532,
+            "gaining_budgets": 28,
+            "gain_units": 532,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 2662747,
+            "treatment": 2662215,
+            "net": -532,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 28,
+            "loss_units": 532
+          },
+          "closing": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 660663033000000,
+            "treatment": 837151779000000,
+            "net": 176488746000000,
+            "gaining_budgets": 59,
+            "gain_units": 176488746000000,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 212200000000,
+            "treatment": 380592000000,
+            "net": 168392000000,
+            "gaining_budgets": 28,
+            "gain_units": 168392000000,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 660450833000000,
+            "treatment": 836771187000000,
+            "net": 176320354000000,
+            "gaining_budgets": 52,
+            "gain_units": 176320354000000,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        }
+      },
+      "services": {
+        "utility": {
+          "admitted": {
+            "ordinary": 70,
+            "treatment": 34,
+            "net": -36,
+            "gaining_budgets": 12,
+            "gain_units": 13,
+            "losing_budgets": 28,
+            "loss_units": 49
+          },
+          "performed": {
+            "ordinary": 57,
+            "treatment": 25,
+            "net": -32,
+            "gaining_budgets": 10,
+            "gain_units": 11,
+            "losing_budgets": 26,
+            "loss_units": 43
+          },
+          "satisfied": {
+            "ordinary": 57,
+            "treatment": 25,
+            "net": -32,
+            "gaining_budgets": 10,
+            "gain_units": 11,
+            "losing_budgets": 26,
+            "loss_units": 43
+          },
+          "unmet": {
+            "ordinary": 9189740,
+            "treatment": 9189772,
+            "net": 32,
+            "gaining_budgets": 26,
+            "gain_units": 43,
+            "losing_budgets": 10,
+            "loss_units": 11
+          },
+          "reserved_micros": {
+            "ordinary": 4897500000,
+            "treatment": 2385000000,
+            "net": -2512500000,
+            "gaining_budgets": 12,
+            "gain_units": 913125000,
+            "losing_budgets": 28,
+            "loss_units": 3425625000
+          },
+          "settled_micros": {
+            "ordinary": 3988125000,
+            "treatment": 1749375000,
+            "net": -2238750000,
+            "gaining_budgets": 10,
+            "gain_units": 770625000,
+            "losing_budgets": 26,
+            "loss_units": 3009375000
+          },
+          "refunded_micros": {
+            "ordinary": 909375000,
+            "treatment": 635625000,
+            "net": -273750000,
+            "gaining_budgets": 2,
+            "gain_units": 142500000,
+            "losing_budgets": 5,
+            "loss_units": 416250000
+          }
+        },
+        "housing": {
+          "admitted": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 4710878,
+            "treatment": 4710878,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "household_services": {
+          "admitted": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 9189797,
+            "treatment": 9189797,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "public_provision": {
+          "admitted": {
+            "ordinary": 1811,
+            "treatment": 2106,
+            "net": 295,
+            "gaining_budgets": 34,
+            "gain_units": 793,
+            "losing_budgets": 25,
+            "loss_units": 498
+          },
+          "performed": {
+            "ordinary": 1603,
+            "treatment": 1798,
+            "net": 195,
+            "gaining_budgets": 33,
+            "gain_units": 664,
+            "losing_budgets": 25,
+            "loss_units": 469
+          },
+          "satisfied": {
+            "ordinary": 1603,
+            "treatment": 1798,
+            "net": 195,
+            "gaining_budgets": 33,
+            "gain_units": 664,
+            "losing_budgets": 25,
+            "loss_units": 469
+          },
+          "unmet": {
+            "ordinary": 9188194,
+            "treatment": 9187999,
+            "net": -195,
+            "gaining_budgets": 25,
+            "gain_units": 469,
+            "losing_budgets": 33,
+            "loss_units": 664
+          },
+          "reserved_micros": {
+            "ordinary": 1946825000,
+            "treatment": 2263950000,
+            "net": 317125000,
+            "gaining_budgets": 34,
+            "gain_units": 852475000,
+            "losing_budgets": 25,
+            "loss_units": 535350000
+          },
+          "settled_micros": {
+            "ordinary": 1723225000,
+            "treatment": 1932850000,
+            "net": 209625000,
+            "gaining_budgets": 33,
+            "gain_units": 713800000,
+            "losing_budgets": 25,
+            "loss_units": 504175000
+          },
+          "refunded_micros": {
+            "ordinary": 223600000,
+            "treatment": 331100000,
+            "net": 107500000,
+            "gaining_budgets": 12,
+            "gain_units": 139750000,
+            "losing_budgets": 4,
+            "loss_units": 32250000
+          }
+        }
+      }
+    },
+    "other_us": {
+      "count": 1524,
+      "goods": {
+        "materials": {
+          "admitted": {
+            "ordinary": 130188048,
+            "treatment": 130188048,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "delivered": {
+            "ordinary": 84720795,
+            "treatment": 84912641,
+            "net": 191846,
+            "gaining_budgets": 100,
+            "gain_units": 191846,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "consumed": {
+            "ordinary": 118188127,
+            "treatment": 118189033,
+            "net": 906,
+            "gaining_budgets": 25,
+            "gain_units": 906,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 6328491,
+            "treatment": 6327585,
+            "net": -906,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 25,
+            "loss_units": 906
+          },
+          "closing": {
+            "ordinary": 84584083,
+            "treatment": 84775023,
+            "net": 190940,
+            "gaining_budgets": 75,
+            "gain_units": 190940,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 19170631914000000,
+            "treatment": 19170631914000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 12428595540000000,
+            "treatment": 12456371415000000,
+            "net": 27775875000000,
+            "gaining_budgets": 100,
+            "gain_units": 27775875000000,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 6742036374000000,
+            "treatment": 6714260499000000,
+            "net": -27775875000000,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 100,
+            "loss_units": 27775875000000
+          }
+        },
+        "food": {
+          "admitted": {
+            "ordinary": 380457926,
+            "treatment": 380457926,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "delivered": {
+            "ordinary": 64131782,
+            "treatment": 64131376,
+            "net": -406,
+            "gaining_budgets": 8,
+            "gain_units": 8,
+            "losing_budgets": 43,
+            "loss_units": 414
+          },
+          "consumed": {
+            "ordinary": 247748090,
+            "treatment": 247747823,
+            "net": -267,
+            "gaining_budgets": 2,
+            "gain_units": 2,
+            "losing_budgets": 24,
+            "loss_units": 269
+          },
+          "unmet": {
+            "ordinary": 78036619,
+            "treatment": 78036886,
+            "net": 267,
+            "gaining_budgets": 24,
+            "gain_units": 269,
+            "losing_budgets": 2,
+            "loss_units": 2
+          },
+          "closing": {
+            "ordinary": 62752289,
+            "treatment": 62752150,
+            "net": -139,
+            "gaining_budgets": 6,
+            "gain_units": 6,
+            "losing_budgets": 19,
+            "loss_units": 145
+          },
+          "reserved_micros": {
+            "ordinary": 119954237983000000,
+            "treatment": 119954237983000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 19980657490000000,
+            "treatment": 19980528942000000,
+            "net": -128548000000,
+            "gaining_budgets": 8,
+            "gain_units": 2537000000,
+            "losing_budgets": 43,
+            "loss_units": 131085000000
+          },
+          "refunded_micros": {
+            "ordinary": 99973580493000000,
+            "treatment": 99973709041000000,
+            "net": 128548000000,
+            "gaining_budgets": 43,
+            "gain_units": 131085000000,
+            "losing_budgets": 8,
+            "loss_units": 2537000000
+          }
+        }
+      },
+      "services": {
+        "utility": {
+          "admitted": {
+            "ordinary": 290754484,
+            "treatment": 290754484,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 161160741,
+            "treatment": 161160746,
+            "net": 5,
+            "gaining_budgets": 7,
+            "gain_units": 7,
+            "losing_budgets": 2,
+            "loss_units": 2
+          },
+          "satisfied": {
+            "ordinary": 161160741,
+            "treatment": 161160746,
+            "net": 5,
+            "gaining_budgets": 7,
+            "gain_units": 7,
+            "losing_budgets": 2,
+            "loss_units": 2
+          },
+          "unmet": {
+            "ordinary": 164623968,
+            "treatment": 164623963,
+            "net": -5,
+            "gaining_budgets": 2,
+            "gain_units": 2,
+            "losing_budgets": 7,
+            "loss_units": 7
+          },
+          "reserved_micros": {
+            "ordinary": 21316142100000000,
+            "treatment": 21316142100000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 11453904774375000,
+            "treatment": 11453905128750000,
+            "net": 354375000,
+            "gaining_budgets": 7,
+            "gain_units": 493125000,
+            "losing_budgets": 2,
+            "loss_units": 138750000
+          },
+          "refunded_micros": {
+            "ordinary": 9862237325625000,
+            "treatment": 9862236971250000,
+            "net": -354375000,
+            "gaining_budgets": 2,
+            "gain_units": 138750000,
+            "losing_budgets": 7,
+            "loss_units": 493125000
+          }
+        },
+        "housing": {
+          "admitted": {
+            "ordinary": 104329343,
+            "treatment": 104329343,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 63434058,
+            "treatment": 63434058,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 63434058,
+            "treatment": 63434058,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 61082560,
+            "treatment": 61082560,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 143668890393750000,
+            "treatment": 143668890393750000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 85852322100000000,
+            "treatment": 85852322100000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 57816568293750000,
+            "treatment": 57816568293750000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "household_services": {
+          "admitted": {
+            "ordinary": 280498500,
+            "treatment": 280498500,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 14876,
+            "treatment": 14876,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 14876,
+            "treatment": 14876,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 325769833,
+            "treatment": 325769833,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 180920360580000000,
+            "treatment": 180920360580000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 8425080000000,
+            "treatment": 8425080000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 180911935500000000,
+            "treatment": 180911935500000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "public_provision": {
+          "admitted": {
+            "ordinary": 290085820,
+            "treatment": 290085820,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 159460429,
+            "treatment": 159460376,
+            "net": -53,
+            "gaining_budgets": 29,
+            "gain_units": 217,
+            "losing_budgets": 34,
+            "loss_units": 270
+          },
+          "satisfied": {
+            "ordinary": 159460429,
+            "treatment": 159460376,
+            "net": -53,
+            "gaining_budgets": 29,
+            "gain_units": 217,
+            "losing_budgets": 34,
+            "loss_units": 270
+          },
+          "unmet": {
+            "ordinary": 166324280,
+            "treatment": 166324333,
+            "net": 53,
+            "gaining_budgets": 34,
+            "gain_units": 270,
+            "losing_budgets": 29,
+            "loss_units": 217
+          },
+          "reserved_micros": {
+            "ordinary": 311842256500000,
+            "treatment": 311842256500000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 171419961175000,
+            "treatment": 171419904200000,
+            "net": -56975000,
+            "gaining_budgets": 29,
+            "gain_units": 233275000,
+            "losing_budgets": 34,
+            "loss_units": 290250000
+          },
+          "refunded_micros": {
+            "ordinary": 140422295325000,
+            "treatment": 140422352300000,
+            "net": 56975000,
+            "gaining_budgets": 34,
+            "gain_units": 290250000,
+            "losing_budgets": 29,
+            "loss_units": 233275000
+          }
+        }
+      }
+    },
+    "foreign_and_dependencies": {
+      "count": 18,
+      "goods": {
+        "materials": {
+          "admitted": {
+            "ordinary": 2710195653,
+            "treatment": 2710195653,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "delivered": {
+            "ordinary": 2191730432,
+            "treatment": 2191730432,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "consumed": {
+            "ordinary": 2501953765,
+            "treatment": 2501953765,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 103561594,
+            "treatment": 103561594,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "closing": {
+            "ordinary": 2190611732,
+            "treatment": 2190611732,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 158837426027640000,
+            "treatment": 158837426027640000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 144977019816300000,
+            "treatment": 144977019816300000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 13860406211340000,
+            "treatment": 13860406211340000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "food": {
+          "admitted": {
+            "ordinary": 7826888860,
+            "treatment": 7826888860,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "delivered": {
+            "ordinary": 6347089030,
+            "treatment": 6347089030,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "consumed": {
+            "ordinary": 7821814842,
+            "treatment": 7821814842,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 0,
+            "treatment": 0,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "closing": {
+            "ordinary": 6342015012,
+            "treatment": 6342015012,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 1002799709584120000,
+            "treatment": 1002799709584120000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 910788975244380000,
+            "treatment": 910788975244380000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 92010734339740000,
+            "treatment": 92010734339740000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        }
+      },
+      "services": {
+        "utility": {
+          "admitted": {
+            "ordinary": 7821814842,
+            "treatment": 7821814842,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 7776950031,
+            "treatment": 7776950031,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 7776950031,
+            "treatment": 7776950031,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 44864811,
+            "treatment": 44864811,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 221072352782737500,
+            "treatment": 221072352782737500,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 219522643224112500,
+            "treatment": 219522643224112500,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 1549709558625000,
+            "treatment": 1549709558625000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "housing": {
+          "admitted": {
+            "ordinary": 2605515359,
+            "treatment": 2605515359,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 2590570498,
+            "treatment": 2590570498,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 2590570498,
+            "treatment": 2590570498,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 14944861,
+            "treatment": 14944861,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 1423728827365875000,
+            "treatment": 1423728827365875000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 1413748536623750000,
+            "treatment": 1413748536623750000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 9980290742125000,
+            "treatment": 9980290742125000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "household_services": {
+          "admitted": {
+            "ordinary": 7821814842,
+            "treatment": 7821814842,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 4981287696,
+            "treatment": 4981287696,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 4981287696,
+            "treatment": 4981287696,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 2840527146,
+            "treatment": 2840527146,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 2055375388034100000,
+            "treatment": 2055375388034100000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 1332722372478000000,
+            "treatment": 1332722372478000000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 722653015556100000,
+            "treatment": 722653015556100000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        },
+        "public_provision": {
+          "admitted": {
+            "ordinary": 7821814842,
+            "treatment": 7821814842,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "performed": {
+            "ordinary": 7775220648,
+            "treatment": 7775220648,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "satisfied": {
+            "ordinary": 7775220648,
+            "treatment": 7775220648,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "unmet": {
+            "ordinary": 46594194,
+            "treatment": 46594194,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "reserved_micros": {
+            "ordinary": 3425625646723500,
+            "treatment": 3425625646723500,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "settled_micros": {
+            "ordinary": 3400855813440000,
+            "treatment": 3400855813440000,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          },
+          "refunded_micros": {
+            "ordinary": 24769833283500,
+            "treatment": 24769833283500,
+            "net": 0,
+            "gaining_budgets": 0,
+            "gain_units": 0,
+            "losing_budgets": 0,
+            "loss_units": 0
+          }
+        }
+      }
+    }
+  },
+  "example": {
+    "principal": "57924e18a3c79f662a8a676f525fecb6fd906a62062f307027fb3ad0050b59d3",
+    "ordinary": {
+      "goods": {
+        "food": {
+          "admitted": 116521,
+          "closing": 0,
+          "consumed": 205264,
+          "delivered": 1,
+          "expired": 116520,
+          "need": 390268,
+          "price_micros": "311000000",
+          "refunded_micros": "36237720000000",
+          "requested": 575273,
+          "reserved_micros": "36238031000000",
+          "settled_micros": "311000000",
+          "stock": 205263,
+          "unmet": 185004
+        },
+        "materials": {
+          "admitted": 210481,
+          "closing": 210481,
+          "consumed": 210481,
+          "delivered": 210481,
+          "expired": 0,
+          "need": 210481,
+          "price_micros": "144000000",
+          "refunded_micros": "0",
+          "requested": 210481,
+          "reserved_micros": "30309264000000",
+          "settled_micros": "30309264000000",
+          "stock": 210481,
+          "unmet": 0
+        }
+      },
+      "residence": "county:42003",
+      "services": {
+        "household_services": {
+          "admitted": 0,
+          "need": 390268,
+          "performed": 0,
+          "refunded_micros": "0",
+          "requested": 390268,
+          "reserved_micros": "0",
+          "satisfied": 0,
+          "settled_micros": "0",
+          "unmet": 390268
+        },
+        "housing": {
+          "admitted": 0,
+          "need": 210481,
+          "performed": 0,
+          "refunded_micros": "0",
+          "requested": 210481,
+          "reserved_micros": "0",
+          "satisfied": 0,
+          "settled_micros": "0",
+          "unmet": 210481
+        },
+        "public_provision": {
+          "admitted": 45,
+          "need": 390268,
+          "performed": 45,
+          "refunded_micros": "0",
+          "requested": 390268,
+          "reserved_micros": "48375000",
+          "satisfied": 45,
+          "settled_micros": "48375000",
+          "unmet": 390223
+        },
+        "utility": {
+          "admitted": 2,
+          "need": 390268,
+          "performed": 2,
+          "refunded_micros": "0",
+          "requested": 390268,
+          "reserved_micros": "138750000",
+          "satisfied": 2,
+          "settled_micros": "138750000",
+          "unmet": 390266
+        }
+      }
+    },
+    "treatment": {
+      "goods": {
+        "food": {
+          "admitted": 185005,
+          "closing": 0,
+          "consumed": 205265,
+          "delivered": 2,
+          "expired": 185003,
+          "need": 390268,
+          "price_micros": "311000000",
+          "refunded_micros": "57535933000000",
+          "requested": 575273,
+          "reserved_micros": "57536555000000",
+          "settled_micros": "622000000",
+          "stock": 205263,
+          "unmet": 185003
+        },
+        "materials": {
+          "admitted": 62575,
+          "closing": 62575,
+          "consumed": 210481,
+          "delivered": 62575,
+          "expired": 0,
+          "need": 210481,
+          "price_micros": "144000000",
+          "refunded_micros": "0",
+          "requested": 62575,
+          "reserved_micros": "9010800000000",
+          "settled_micros": "9010800000000",
+          "stock": 210481,
+          "unmet": 0
+        }
+      },
+      "residence": "county:42003",
+      "services": {
+        "household_services": {
+          "admitted": 0,
+          "need": 390268,
+          "performed": 0,
+          "refunded_micros": "0",
+          "requested": 390268,
+          "reserved_micros": "0",
+          "satisfied": 0,
+          "settled_micros": "0",
+          "unmet": 390268
+        },
+        "housing": {
+          "admitted": 0,
+          "need": 210481,
+          "performed": 0,
+          "refunded_micros": "0",
+          "requested": 210481,
+          "reserved_micros": "0",
+          "satisfied": 0,
+          "settled_micros": "0",
+          "unmet": 210481
+        },
+        "public_provision": {
+          "admitted": 53,
+          "need": 390268,
+          "performed": 53,
+          "refunded_micros": "0",
+          "requested": 390268,
+          "reserved_micros": "56975000",
+          "satisfied": 53,
+          "settled_micros": "56975000",
+          "unmet": 390215
+        },
+        "utility": {
+          "admitted": 1,
+          "need": 390268,
+          "performed": 1,
+          "refunded_micros": "0",
+          "requested": 390268,
+          "reserved_micros": "69375000",
+          "satisfied": 1,
+          "settled_micros": "69375000",
+          "unmet": 390267
+        }
+      }
+    },
+    "terms": {
+      "cash_at_goods_open_micros": "66547482400000",
+      "food_at_admission": 205263,
+      "food_current_need": 390268,
+      "food_price_micros": "311000000",
+      "household": "57924e18a3c79f662a8a676f525fecb6fd906a62062f307027fb3ad0050b59d3",
+      "materials_at_admission": 210481,
+      "materials_current_need": 210481,
+      "materials_price_micros": "144000000",
+      "new_materials_cap": 62575,
+      "ordinary_food_admitted": 116521,
+      "ordinary_food_requested": 575273,
+      "ordinary_materials_admitted": 210481,
+      "ordinary_materials_requested": 210481,
+      "predicted_food_admitted": 185005
+    }
+  },
+  "inputs": {
+    "caps.json": "ea30a374731fb11cfc13a79b01847167dcc10f3f55549c6b76ccf71bbd7ce8bc",
+    "identities.json": "db3ef14ed4a922de91335a07e951dbc4d6243228c3930c3e8acc018413af7041",
+    "control-households.json": "ee858a48304ff3c2ca60d154925ea208949cf6359957c81713a978aa3ad158ce",
+    "treatment-households.json": "a45b7e719b8c79fddba2ab6acf1b19bd03da7210e4ffbfde0b6e9cfbdfc78a1e",
+    "counterfactual.rs": "e6a5b295162f93acc9f2aa502170fa07ff5e349d5d277517660ea0a343af5433",
+    "counterfactual": "3d6a02c79b31c307085b0f693637f8fa4366861fff97d955cb18e377fb1a893a",
+    "treatment-receipts.bin": "92ca80f9b35e7af32328563353e7295cd6c411f8aaafcd2688e49a349757939c",
+    "build.json": "b957ce5e826fc4cb9c9e8ad20af978794dff7e77bc9ae61262fd2c55b6890dae"
+  }
+}

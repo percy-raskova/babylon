@@ -58,9 +58,16 @@ The **Open household receipt** button selected the Wayne group with the
 largest shortfall. It had funds for all 1,804,207 parcels it requested. The
 shop supplied 23. The group ate 589,036 against a need of 1,196,610,
 leaving 607,574 unmet. The detailed account took 21.84–21.98 seconds to
-appear on the build used for this map check. The local evidence folder
-`babylon-recovery/per293-native-shortage-2v53qij4` holds the original
-windows, input times and contributing household accounts.
+appear on the first build. After the workplace view retained its controls,
+the same receipt appeared in 9.69–9.84 seconds. The county balance appeared
+within 0.641 seconds. The two-second target for the detailed receipt
+remains open.
+
+The local evidence folders `babylon-recovery/per293-native-shortage-2v53qij4`
+and `babylon-recovery/per293-native-wayne-final-2ccllh62` hold the windows,
+input times and contributing household accounts from the two runs. The
+second run used the same saved period and financial tools with the final
+client.
 
 Another Wayne group received no food from its retailer. It drew 20,536
 parcels from its pantry and still lacked 21,184. A missed retail order

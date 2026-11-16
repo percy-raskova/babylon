@@ -1457,6 +1457,23 @@ pub(crate) enum DependencyPage {
     },
 }
 
+impl DependencyPage {
+    fn for_navigation(navigation: &ProductionNavigation) -> Self {
+        if navigation.county_open {
+            Self::County {
+                county: navigation.county_geoid.clone(),
+                page: navigation.cohort_page,
+            }
+        } else {
+            Self::Site {
+                site: navigation.selected_site.clone(),
+                relationship_page: navigation.relationship_page,
+                competitor_page: navigation.competitor_page,
+            }
+        }
+    }
+}
+
 pub(crate) fn rebuild_dependencies(
     mut commands: Commands,
     roots: Query<Entity, With<ProductionDependencies>>,
@@ -1474,18 +1491,7 @@ pub(crate) fn rebuild_dependencies(
     {
         return;
     }
-    let page = if navigation.county_open {
-        DependencyPage::County {
-            county: navigation.county_geoid.clone(),
-            page: navigation.cohort_page,
-        }
-    } else {
-        DependencyPage::Site {
-            site: navigation.selected_site.clone(),
-            relationship_page: navigation.relationship_page,
-            competitor_page: navigation.competitor_page,
-        }
-    };
+    let page = DependencyPage::for_navigation(&navigation);
     if !frame.is_changed()
         && last_context
             .as_ref()

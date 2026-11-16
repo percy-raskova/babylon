@@ -1,6 +1,7 @@
 //! Observer navigation, scoped command admission, and production selection.
 
 use super::ProductionReadingSection;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
 use super::view::ProductionDetails;
@@ -329,41 +330,67 @@ pub(crate) struct NavigationScene<'w, 's> {
     selected: ResMut<'w, SelectedCounty>,
 }
 
+impl NavigationScene<'_, '_> {
+    fn resident_county_refusal(
+        &self,
+        command: &ProductionCommand,
+        view: PrimaryView,
+    ) -> Option<&'static str> {
+        let ProductionCommand::ResidentReceipt { county, .. } = command else {
+            return None;
+        };
+        let selected = self.selected.0.and_then(|index| self.atlas.county(index));
+        (view != PrimaryView::Map || selected.is_none_or(|place| place.fips != county))
+            .then_some("Select this resident county on the map first.")
+    }
+
+    fn open_resident_receipt(
+        &mut self,
+        site: &str,
+        principal: FinalDemandPrincipalId,
+        navigation: &mut ProductionNavigation,
+        ui: &mut ObserverUiState,
+    ) {
+        navigation.select_site(site);
+        navigation.details_open = true;
+        navigation.reading_section = ProductionReadingSection::Flow;
+        navigation.household = Some(principal);
+        ui.archive_open = false;
+        ui.disclosure = None;
+        ui.history_open = false;
+        if let (Some(focus), Ok(receipt)) = (self.focus.as_deref_mut(), self.reading.single()) {
+            focus.set(receipt, FocusCause::Navigated);
+        }
+    }
+}
+
 pub(crate) fn navigate(
     mut commands: Commands,
     mut events: MessageReader<ProductionCommand>,
     mut view: ResMut<PrimaryView>,
     mut navigation: ResMut<ProductionNavigation>,
     observation: ProductionObservation,
-    scene: NavigationScene,
-    ui: ProductionUi,
+    mut scene: NavigationScene,
+    mut ui: ProductionUi,
 ) {
-    let NavigationScene {
-        atlas,
-        mut selected,
-        mut focus,
-        reading,
-    } = scene;
-    let ProductionUi {
-        state: mut ui,
-        mut feedback,
-        time,
-    } = ui;
-    let ProductionObservation { frame, state } = observation;
-    let snapshot = frame
-        .for_session(&state)
+    let snapshot = observation
+        .frame
+        .for_session(&observation.state)
         .and_then(|frame| frame.production.as_ref());
     for event in events.read() {
-        if ui.menu_open || ui.splash_visible || ui.comparison_open {
+        if ui.state.menu_open || ui.state.splash_visible || ui.state.comparison_open {
             continue;
         }
-        if state.organizer_enabled && matches!(event, ProductionCommand::Open) {
+        if observation.state.organizer_enabled && matches!(event, ProductionCommand::Open) {
             commands.trigger(crate::organizer::ui::OrganizerEvidenceRequested);
             continue;
         }
         let available = ProductionControlAvailability::for_snapshot(snapshot, &navigation);
-        if let Some(reason) = available.refusal(event, snapshot, &navigation, &state) {
-            feedback.reject(reason, time.elapsed_secs_f64());
+        if let Some(reason) = available
+            .refusal(event, snapshot, &navigation, &observation.state)
+            .or_else(|| scene.resident_county_refusal(event, *view))
+        {
+            ui.feedback.reject(reason, ui.time.elapsed_secs_f64());
             continue;
         }
         let mut sync_county = false;
@@ -371,15 +398,15 @@ pub(crate) fn navigate(
             ProductionCommand::Open => {
                 sync_county = true;
                 *view = PrimaryView::Production;
-                ui.archive_open = false;
-                ui.disclosure = None;
-                if let Some(county) = selected.0.and_then(|index| atlas.county(index)) {
+                ui.state.archive_open = false;
+                ui.state.disclosure = None;
+                if let Some(county) = scene.selected.0.and_then(|index| scene.atlas.county(index)) {
                     navigation.open_county(county.fips, snapshot);
                 }
             }
             ProductionCommand::Map => {
                 *view = PrimaryView::Map;
-                ui.disclosure = None;
+                ui.state.disclosure = None;
             }
             ProductionCommand::Flat => {
                 navigation.flat = !navigation.flat;
@@ -396,34 +423,10 @@ pub(crate) fn navigate(
                 navigation.details_open = true;
             }
             ProductionCommand::ResidentReceipt {
-                county,
-                site_id,
-                principal,
-                ..
+                site_id, principal, ..
             } => {
-                if *view != PrimaryView::Map
-                    || !selected
-                        .0
-                        .and_then(|index| atlas.county(index))
-                        .is_some_and(|place| place.fips == county)
-                {
-                    feedback.reject(
-                        "Select this resident county on the map first.",
-                        time.elapsed_secs_f64(),
-                    );
-                    continue;
-                }
-                navigation.select_site(site_id);
-                navigation.details_open = true;
-                navigation.reading_section = ProductionReadingSection::Flow;
-                navigation.household = Some(*principal);
+                scene.open_resident_receipt(site_id, *principal, &mut navigation, &mut ui.state);
                 *view = PrimaryView::Production;
-                ui.archive_open = false;
-                ui.disclosure = None;
-                ui.history_open = false;
-                if let (Some(focus), Ok(receipt)) = (focus.as_deref_mut(), reading.single()) {
-                    focus.set(receipt, FocusCause::Navigated);
-                }
                 sync_county = true;
             }
             ProductionCommand::Household { principal, .. } => {
@@ -432,15 +435,15 @@ pub(crate) fn navigate(
             ProductionCommand::Page { kind, page, .. } => navigation.set_page(*kind, *page),
             ProductionCommand::Process { process_id, .. } => {
                 navigation.selected_process = Some(process_id.clone());
-                ui.history_open = true;
+                ui.state.history_open = true;
                 navigation.details_open = false;
             }
             ProductionCommand::Back => {
                 sync_county = navigation.back(&available);
                 if sync_county {
                     *view = PrimaryView::Production;
-                    ui.archive_open = false;
-                    ui.disclosure = None;
+                    ui.state.archive_open = false;
+                    ui.state.disclosure = None;
                 }
             }
             ProductionCommand::Select { site_id: id, .. }
@@ -452,8 +455,8 @@ pub(crate) fn navigate(
                 } else {
                     PrimaryView::Production
                 };
-                ui.archive_open = false;
-                ui.disclosure = None;
+                ui.state.archive_open = false;
+                ui.state.disclosure = None;
             }
         }
         if matches!(event, ProductionCommand::Open | ProductionCommand::Map) {
@@ -462,7 +465,7 @@ pub(crate) fn navigate(
         if !sync_county {
             continue;
         }
-        sync_selected_county(&navigation, snapshot, &atlas, &mut selected);
+        sync_selected_county(&navigation, snapshot, &scene.atlas, &mut scene.selected);
     }
 }
 

@@ -93,16 +93,7 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
     let preview_config = target.login("babylon_reader", "moneypreview");
     let preview = ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview)
         .expect("the preview target is bounded");
-    for config in [&observer_config, &preview_config] {
-        let mut login = config.connect(NoTls).expect("confined login");
-        for sql in [
-            "DELETE FROM babylon_state.money_movement_block_v1 WHERE false",
-            "UPDATE babylon_state.labor_movement_block_v1 SET unknown_opening=ARRAY[true] WHERE false",
-        ] {
-            let error = login.execute(sql, &[]).expect_err("movement storage requires writer authority");
-            assert_eq!(error.code(), Some(&postgres::error::SqlState::INSUFFICIENT_PRIVILEGE), "{sql}");
-        }
-    }
+    assert_movement_storage_read_only(&observer_config, &preview_config);
     let writer = MoneyJournalWriter::connect(&target.writer).expect("the owner target is bounded");
     assert!(matches!(
         JournalQueue::connect(&preview, &writer, None),
@@ -182,6 +173,19 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
         ungrouped().is_err(),
         "a known ungrouped site cannot hide a corrupted historical receipt"
     );
+}
+
+fn assert_movement_storage_read_only(observer: &Config, preview: &Config) {
+    for config in [observer, preview] {
+        let mut login = config.connect(NoTls).expect("confined login");
+        for sql in [
+            "DELETE FROM babylon_state.money_movement_block_v1 WHERE false",
+            "UPDATE babylon_state.labor_movement_block_v1 SET unknown_opening=ARRAY[true] WHERE false",
+        ] {
+            let error = login.execute(sql, &[]).expect_err("movement storage requires writer authority");
+            assert_eq!(error.code(), Some(&postgres::error::SqlState::INSUFFICIENT_PRIVILEGE), "{sql}");
+        }
+    }
 }
 
 fn publish_fourteen_periods(

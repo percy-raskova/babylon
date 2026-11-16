@@ -349,6 +349,19 @@ Choose **Observer Campaigns** and **Observe national economy** to start a full-o
 mise run play -- --new --preset national-economy
 ```
 
+Choose a county and open **Economy network**. The factory marks producers,
+the awning marks shops, and the pylon marks energy and utilities. Select a
+symbol or its row in **County workplaces** to see the sites it represents.
+Select a named site to open its circuit. The symbols share the county's
+location. A line points back to that location when symbols need room.
+
+In the organizer's **Places** view, choose **Show aid partners on map**.
+Select the hand and parcel for a local partner or the linked parcels for
+a remote partner. Select the dated food reading beside a symbol to open
+the partner's report. An opening pantry count shows food on hand. A later
+report shows how many parcels the household needed and how many it ate.
+Select the partner symbol itself to open its dossier and prepare an aid offer.
+
 After the first period closes, select a county and choose **By Company**.
 Select a named company in the ranked list and open **Company accounts**.
 The legal parent shows the treasury, claims and payments on its own books.
@@ -417,6 +430,9 @@ high-demand weights. Each saved campaign keeps its captured policy.
 Choose **Freight access** to inspect Wayne’s captured corridors. Switch between
 **Outbound from origin** and **Inbound to origin** to inspect each direction.
 Select an endpoint, then choose **Geographic map** or **Terminal network**.
+The compass marks your origin. A terminal shows its county and its attachment
+to the road network when known. Select the plane symbol to read the airport's
+name, position and source date.
 For shortest road distances, set `BABYLON_MICHIGAN_ROAD_MATRIX` to the
 verified Michigan matrix before starting the client. Without the matrix the
 view reports captured corridors and marks missing reference distances.

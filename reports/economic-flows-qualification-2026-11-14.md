@@ -4,6 +4,40 @@ Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route
 
 The [food shortage](#when-food-stopped-reaching-households) shows when deliveries failed and who still had food at home. The [supplier funding experiment](#what-changed-when-owners-funded-essential-suppliers) follows four decisions from the same opening. The [retailer’s household receipt and proposed economic connections](#which-existing-parts-of-the-economy-can-connect-next) use records the engine already keeps.
 
+## Reading the economic map
+
+The map groups workplaces by county. In period 2 Wayne County had 18 producer
+cohorts, three shops and two utilities. Selecting the awning listed all three
+shops. Selecting one opened its circuit and its **Work & Dependence** reading.
+Selecting the pylon listed Wayne's two energy sites. Each group uses the
+county location captured by the campaign. [Wayne workplaces in the game](economic-flows-qualification-2026-11-14-assets/wayne-county-workplaces.png)
+
+On the same close, the freight map showed 14 inbound corridors and no
+outbound corridor for Wayne. Selecting Oakland showed a captured corridor
+to Wayne. The campaign provided no length. The regional reference placed
+Oakland's county anchor 0.362993 km from its assigned road node and Wayne's
+anchor 0.432419 km from its node.
+
+In Los Angeles, selecting the plane opened
+the FAA point for Los Angeles International Airport. The point carries its
+source position and effective date. The rail leaves its road attachment and
+air service unverified. [Los Angeles airport in the game](economic-flows-qualification-2026-11-14-assets/freight-los-angeles-airport.png)
+
+In the organizer's opening, Wayne and Cook each reported zero parcels on hand
+and four needed. At the first close, each reported four parcels unmet.
+With Cook selected, choosing Wayne's dated tag opened Wayne's report. It
+recorded zero ordinary purchases, zero parcels eaten and zero left in the
+pantry.
+
+Choosing the partner's symbol opened its dossier. The same selection
+worked with Tab and Enter. A fresh process reopened the period 1 save. Both
+named readings fit beside the roster at 1366 × 768. [Wayne and Cook food reports on the map](economic-flows-qualification-2026-11-14-assets/wayne-cook-food-map.png)
+
+![Eight economic map symbols at 24 and 30 pixels, with a black-and-white row for comparison.](economic-flows-qualification-2026-11-14-assets/economic-map-symbol-key.png)
+
+The [artist guide](../design/bevy-assets/README.md#replace-the-economic-map-symbols)
+gives the tile order and the launch command for a Blender render.
+
 ## Evidence against the original plan on November 15
 
 | Delivery | What the local project demonstrates | What remains |

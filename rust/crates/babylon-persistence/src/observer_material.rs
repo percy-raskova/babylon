@@ -10,9 +10,9 @@ mod snapshot;
 
 use snapshot::MaterialObservationRow;
 pub(crate) use snapshot::{
-    committed_observation, committed_receipts, material_observation, production_history,
-    read_material_header, site_financial_statements, MaterialHeader, MaterialObservation,
-    PeriodRegister, MATERIAL_PAGE_ROWS,
+    committed_observation, committed_receipts, household_contributions, material_observation,
+    production_history, read_material_header, site_financial_statements, MaterialHeader,
+    MaterialObservation, ObserverFrameClose, MATERIAL_PAGE_ROWS,
 };
 pub use snapshot::{ObserverMaterialCursor, ObserverOpeningFoundations};
 

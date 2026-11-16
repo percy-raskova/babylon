@@ -6,7 +6,7 @@ pub use household::HouseholdPeriodReport;
 mod counties;
 
 pub use company_decision::CompanyDecisionReport;
-pub(crate) use company_decision::{CompanyDecisionClose, CompanyDraws};
+pub(crate) use company_decision::CompanyDraws;
 
 mod history;
 

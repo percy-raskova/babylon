@@ -5,7 +5,7 @@ use crate::economic_content::EconomicContentAdmission;
 use crate::identity::CampaignId;
 use crate::michigan_economy;
 use crate::national_economy::companies::CompanyKey;
-use crate::observer_material::PeriodRegister;
+use crate::observer_material::ObserverFrameClose;
 use crate::runtime::RustPersistenceRuntimeError;
 use crate::semantic_codec::ChoiceReceiptSemanticRow;
 use babylon_bsl::probability::MASS_NANOUNITS_PER_UNIT;
@@ -83,14 +83,6 @@ impl CompanyDraws {
         Ok(())
     }
 }
-/// Only constructed from the completed register and the same marker-checked envelope.
-#[derive(Clone)]
-pub(crate) struct CompanyDecisionClose {
-    pub(crate) register: PeriodRegister,
-    pub(crate) tick_hash: [u8; 32],
-    pub(crate) draws: CompanyDraws,
-}
-
 enum DecisionSubject {
     Company(CompanyId),
     Site(SiteId),
@@ -182,22 +174,11 @@ impl ObserverMaterialCursor {
         foundation: [u8; 32],
         tick_hash: [u8; 32],
     ) -> Result<Option<CompanyDecisionReport>, ObserverEconomyError> {
-        let expected = self
-            .admission(campaign)
-            .ok_or(ObserverEconomyError::SourceChanged)?;
-        let close = self
-            .company_close()
-            .ok_or(ObserverEconomyError::SourceChanged)?;
-        if expected.digest() != foundation
-            || close.tick_hash != tick_hash
-            || close.register.completed_tick() != tick
-        {
-            return Err(ObserverEconomyError::SourceChanged);
-        }
+        let (expected, close) = self.displayed_frame(campaign, tick, foundation, tick_hash)?;
         close.decision(campaign, &expected, subject)
     }
 }
-impl CompanyDecisionClose {
+impl ObserverFrameClose {
     fn decision(
         &self,
         campaign: CampaignId,
@@ -247,7 +228,7 @@ impl CompanyDecisionClose {
         Ok(Some(CompanyDecisionReport {
             campaign,
             foundation_sha256: expected.digest(),
-            tick_content_hash: self.tick_hash,
+            tick_content_hash: *self.identity.tick_content_hash().as_bytes(),
             company_label: key.label(),
             evidence: evidence.clone(),
             encounter_ordinal: draw.encounter,

@@ -8,17 +8,17 @@ use crate::atlas::CountyAtlas;
 use crate::cli;
 use crate::observer::ObservationContext;
 use crate::observer_io::ObservationCache;
-use crate::observer_map3d::money_map::household::{self, HouseholdRead, Reading};
+use crate::observer_map3d::money_map::household::{self, HouseholdRead};
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverUiState;
 use crate::ui::Interaction;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::production_observation::ProductionSnapshot;
+use babylon_persistence::{national_economy, ProductionHouseholdAccount};
 use bevy::a11y::AccessibilityNode;
 use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::prelude::*;
-use bevy::tasks::{self, IoTaskPool, Task};
 
 #[derive(Component)]
 pub(super) struct Rows;
@@ -60,6 +60,16 @@ pub(super) enum CustomerControl {
     Back,
 }
 
+impl CustomerControl {
+    fn open(principal: FinalDemandPrincipalId, row: &ProductionHouseholdAccount) -> Self {
+        Self::Open {
+            principal,
+            good: row.good_id.clone(),
+            unit: row.unit_id.clone(),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq)]
 pub(super) struct CustomerScope {
     context: ObservationContext,
@@ -79,20 +89,30 @@ impl Controls {
         &mut self,
         next: Option<&CustomerScope>,
         current: Option<CustomerControl>,
+        snapshot: Option<&ProductionSnapshot>,
     ) -> Option<CustomerControl> {
-        let (old, new) = self.scope.as_ref().zip(next)?;
-        if old.retailer != new.retailer
-            || old.context.campaign != new.context.campaign
-            || old.context.perspective != new.context.perspective
-            || !old.authorized
-            || !new.authorized
-        {
-            self.origin = None;
-            return None;
-        }
-        match (old.household, new.household) {
+        let new = next.filter(|scope| scope.authorized)?;
+        let old = self.scope.as_ref().filter(|scope| {
+            scope.authorized
+                && scope.retailer == new.retailer
+                && scope.context.campaign == new.context.campaign
+                && scope.context.perspective == new.context.perspective
+        });
+        let current = old.and(current);
+        match (old.and_then(|scope| scope.household), new.household) {
             (None, Some(id)) => {
-                self.origin = current.filter(|target| matches!(target, CustomerControl::Open{principal,..} if *principal == id));
+                self.origin = current
+                    .filter(|target| matches!(target, CustomerControl::Open { principal, .. } if *principal == id))
+                    .or_else(|| {
+                        // The county warning opens this household's food row directly.
+                        let food = national_economy::commodity_good_id("food").as_bytes();
+                        let row = snapshot?.household_accounts.iter().find(|row| {
+                            row.retailer_site_id == new.retailer
+                                && cli::identity_bytes(&row.demand_principal_id) == Some(id.as_bytes())
+                                && cli::identity_bytes(&row.good_id) == Some(food)
+                        })?;
+                        Some(CustomerControl::open(id, row))
+                    });
                 Some(CustomerControl::Back)
             }
             (Some(_), None) => self.origin.take(),
@@ -104,13 +124,14 @@ impl Controls {
 pub(super) fn rebuild_rows(
     mut commands: Commands,
     roots: Query<Entity, With<Rows>>,
-    observation: ProductionObservation,
+    (observation, view): (ProductionObservation, Res<PrimaryView>),
     navigation: Res<ProductionNavigation>,
     controls: Query<(&CustomerControl, &Interaction)>,
     mut focus: Option<ResMut<InputFocus>>,
     mut previous: Local<Controls>,
 ) {
-    if !observation.frame.is_changed()
+    if !view.is_changed()
+        && !observation.frame.is_changed()
         && !observation.state.is_changed()
         && !navigation.is_changed()
     {
@@ -125,7 +146,8 @@ pub(super) fn rebuild_rows(
         .selected_site
         .as_ref()
         .filter(|_| {
-            snapshot.is_some()
+            *view == PrimaryView::Production
+                && snapshot.is_some()
                 && navigation.details_open
                 && navigation.reading_section == ProductionReadingSection::Flow
         })
@@ -150,7 +172,7 @@ pub(super) fn rebuild_rows(
                 .and_then(|entity| controls.get(entity).ok().map(|(row, _)| row))
         })
         .cloned();
-    let restore = previous.focus_after(next.as_ref(), current);
+    let restore = previous.focus_after(next.as_ref(), current, snapshot);
     previous.scope = next;
     let mut rows = commands.entity(root);
     rows.despawn_related::<Children>();
@@ -197,11 +219,7 @@ fn render_customers(
                 .as_ref()
                 .is_some_and(|done| done.period == scope.context.tick);
         if let Some(principal) = principal.filter(|_| admitted) {
-            let target = CustomerControl::Open {
-                principal,
-                good: row.good_id.clone(),
-                unit: row.unit_id.clone(),
-            };
+            let target = CustomerControl::open(principal, row);
             let entity = customer_button(
                 parent,
                 format!(
@@ -272,6 +290,7 @@ fn request(
     Some(HouseholdRead {
         context: observation.state.context(),
         principal,
+        retailer: Some(site.clone()),
         foundation: frame.foundation_digest.clone(),
         tick_hash: frame.tick_content_hash.clone()?,
     })
@@ -284,35 +303,21 @@ pub(super) fn update(
     ui: Res<ObserverUiState>,
     (cache, atlas): (Option<Res<ObservationCache>>, Res<CountyAtlas>),
     mut receipt: ResMut<Receipt>,
-    mut pending: Local<Option<(HouseholdRead, Task<Reading>)>>,
 ) {
-    if observation.frame.is_changed()
-        || observation.state.is_changed()
-        || navigation.is_changed()
-        || view.is_changed()
-        || ui.is_changed()
+    if !observation.frame.is_changed()
+        && !observation.state.is_changed()
+        && !navigation.is_changed()
+        && !view.is_changed()
+        && !ui.is_changed()
     {
-        let current = request(&observation, &navigation, *view, &ui);
-        if receipt.request != current {
-            receipt.request = current;
-            receipt.text = None;
-        }
+        return;
     }
-    if let Some((key, task)) = pending.as_mut() {
-        let Some(result) = tasks::block_on(tasks::futures_lite::future::poll_once(task)) else {
-            return;
-        };
-        if receipt.request.as_ref() == Some(key) {
-            receipt.text = Some(household::sections(Some(&result), &atlas).join("\n\n"));
-        }
-        *pending = None;
-    }
-    if let Some(key) = receipt.request.as_ref().filter(|_| receipt.text.is_none()) {
-        let reader = cache.as_deref().and_then(ObservationCache::full_reader);
-        let requested = key.clone();
-        *pending = Some((
-            key.clone(),
-            IoTaskPool::get().spawn(async move { requested.read(reader) }),
-        ));
+    let current = request(&observation, &navigation, *view, &ui);
+    if receipt.request != current {
+        receipt.text = current.as_ref().map(|key| {
+            let result = key.read(cache.as_deref(), &observation.state, &observation.frame);
+            household::sections(Some(&result), &atlas).join("\n\n")
+        });
+        receipt.request = current;
     }
 }

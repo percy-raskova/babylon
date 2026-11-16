@@ -4,9 +4,7 @@ use super::ProductionReadingSection;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
-use super::view::ProductionDetails;
 use bevy::ecs::system::SystemParam;
-use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::prelude::*;
 
 use crate::atlas::CountyAtlas;
@@ -46,6 +44,21 @@ impl ProductionNavigation {
             self.household = None;
             self.history.clear();
         }
+    }
+
+    fn open_resident_receipt(
+        &mut self,
+        site: &str,
+        principal: FinalDemandPrincipalId,
+        ui: &mut ObserverUiState,
+    ) {
+        self.select_site(site);
+        self.details_open = true;
+        self.reading_section = ProductionReadingSection::Flow;
+        self.household = Some(principal);
+        ui.archive_open = false;
+        ui.disclosure = None;
+        ui.history_open = false;
     }
 
     fn set_page(&mut self, kind: ProductionPage, page: usize) {
@@ -323,14 +336,12 @@ pub(crate) fn readings_panel_visible(
 }
 
 #[derive(SystemParam)]
-pub(crate) struct NavigationScene<'w, 's> {
-    focus: Option<ResMut<'w, InputFocus>>,
-    reading: Query<'w, 's, Entity, With<ProductionDetails>>,
+pub(crate) struct NavigationScene<'w> {
     atlas: Res<'w, CountyAtlas>,
     selected: ResMut<'w, SelectedCounty>,
 }
 
-impl NavigationScene<'_, '_> {
+impl NavigationScene<'_> {
     fn resident_county_refusal(
         &self,
         command: &ProductionCommand,
@@ -342,25 +353,6 @@ impl NavigationScene<'_, '_> {
         let selected = self.selected.0.and_then(|index| self.atlas.county(index));
         (view != PrimaryView::Map || selected.is_none_or(|place| place.fips != county))
             .then_some("Select this resident county on the map first.")
-    }
-
-    fn open_resident_receipt(
-        &mut self,
-        site: &str,
-        principal: FinalDemandPrincipalId,
-        navigation: &mut ProductionNavigation,
-        ui: &mut ObserverUiState,
-    ) {
-        navigation.select_site(site);
-        navigation.details_open = true;
-        navigation.reading_section = ProductionReadingSection::Flow;
-        navigation.household = Some(principal);
-        ui.archive_open = false;
-        ui.disclosure = None;
-        ui.history_open = false;
-        if let (Some(focus), Ok(receipt)) = (self.focus.as_deref_mut(), self.reading.single()) {
-            focus.set(receipt, FocusCause::Navigated);
-        }
     }
 }
 
@@ -425,7 +417,7 @@ pub(crate) fn navigate(
             ProductionCommand::ResidentReceipt {
                 site_id, principal, ..
             } => {
-                scene.open_resident_receipt(site_id, *principal, &mut navigation, &mut ui.state);
+                navigation.open_resident_receipt(site_id, *principal, &mut ui.state);
                 *view = PrimaryView::Production;
                 sync_county = true;
             }

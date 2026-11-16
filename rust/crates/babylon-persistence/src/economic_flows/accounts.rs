@@ -15,14 +15,27 @@ use std::collections::BTreeMap;
 pub(super) fn project(
     catalog: &CapturedEconomicCatalog,
     book: &MonetaryBook,
+    selected: Option<AccountId>,
 ) -> FlowResult<Vec<FlowAccount>> {
-    geographies(catalog, book.cash_accounts().map(|(&account, _)| account))
+    project_geographies(
+        catalog,
+        book.cash_accounts().map(|(&account, _)| account),
+        selected,
+    )
 }
 
 /// Captured geography can also describe physical work sites without a monetary book.
 pub(crate) fn geographies(
     catalog: &CapturedEconomicCatalog,
     principals: impl Iterator<Item = AccountId>,
+) -> FlowResult<Vec<FlowAccount>> {
+    project_geographies(catalog, principals, None)
+}
+
+fn project_geographies(
+    catalog: &CapturedEconomicCatalog,
+    principals: impl Iterator<Item = AccountId>,
+    selected: Option<AccountId>,
 ) -> FlowResult<Vec<FlowAccount>> {
     let view = catalog.view();
     let opening = view.opening;
@@ -63,16 +76,13 @@ pub(crate) fn geographies(
     principals
         .map(|account| {
             let location = locations.get(&account).copied();
-            let industry = functions
-                .get(&account)
-                .map(|value| value.source_key().to_owned());
             let catchment = membership
                 .get(&account)
                 .map(|&(id, hub)| {
                     if location != Some(hub) {
                         return Err(EconomicFlowError::AccountGeographyMismatch);
                     }
-                    Ok(format!("catchment:{}", michigan_economy::digest_hex(&id.0)))
+                    Ok(id)
                 })
                 .transpose()?;
             let county_internal_point = match (location, view.sources) {
@@ -83,23 +93,29 @@ pub(crate) fn geographies(
                     let row = counties
                         .county(county.geoid())
                         .map_err(|_| EconomicFlowError::AccountGeographyMismatch)?;
-                    let anchor = row.internal_point();
-                    Some(CountyInternalPoint {
-                        longitude: anchor.longitude().to_owned(),
-                        latitude: anchor.latitude().to_owned(),
-                    })
+                    Some(row.internal_point())
                 }
                 _ => None,
             };
-            Ok(FlowAccount {
+            if selected.is_some_and(|id| id != account) {
+                return Ok(None);
+            }
+            Ok(Some(FlowAccount {
                 company: companies.get(&account).copied(),
                 account: account.into(),
                 location: location.map(|key| key.to_string()),
-                industry,
-                catchment,
-                county_internal_point,
-            })
+                industry: functions
+                    .get(&account)
+                    .map(|value| value.source_key().to_owned()),
+                catchment: catchment
+                    .map(|id| format!("catchment:{}", michigan_economy::digest_hex(&id.0))),
+                county_internal_point: county_internal_point.map(|anchor| CountyInternalPoint {
+                    longitude: anchor.longitude().to_owned(),
+                    latitude: anchor.latitude().to_owned(),
+                }),
+            }))
         })
+        .filter_map(Result::transpose)
         .collect()
 }
 

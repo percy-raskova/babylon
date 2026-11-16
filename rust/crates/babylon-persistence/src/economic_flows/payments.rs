@@ -2,13 +2,13 @@
 use super::accounts;
 use super::model::FlowResult;
 use super::principals::{Parties, Principals};
-use super::{EconomicFlowError, EconomicPaymentPeriod, Settlement};
+use super::{EconomicFlowError, EconomicPaymentPeriod, FlowAccount, Settlement};
 use crate::economic_content::EconomicContentAdmission;
 use crate::observer_reader::CommittedMaterialReceipts;
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
 };
-use babylon_tick::material_world::MaterialWorldRegister;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
 pub(crate) fn project(
     source: CommittedMaterialReceipts,
@@ -16,6 +16,34 @@ pub(crate) fn project(
     previous: &MaterialWorldRegister,
     current: &MaterialWorldRegister,
 ) -> FlowResult<EconomicPaymentPeriod> {
+    let (accounts, settlements) =
+        project_for(&source.receipts, foundation, previous, current, None)?;
+    Ok(EconomicPaymentPeriod {
+        source,
+        accounts,
+        settlements,
+    })
+}
+
+/// Validate the same monetary evidence, retaining only the requested account's counterparties.
+pub(crate) fn account_settlements(
+    receipts: &MaterialTickReceipts,
+    foundation: &EconomicContentAdmission,
+    previous: &MaterialWorldRegister,
+    current: &MaterialWorldRegister,
+    account: AccountId,
+) -> FlowResult<Vec<Settlement>> {
+    project_for(receipts, foundation, previous, current, Some(account))
+        .map(|(_, settlements)| settlements)
+}
+
+fn project_for(
+    receipts: &MaterialTickReceipts,
+    foundation: &EconomicContentAdmission,
+    previous: &MaterialWorldRegister,
+    current: &MaterialWorldRegister,
+    account: Option<AccountId>,
+) -> FlowResult<(Vec<FlowAccount>, Vec<Settlement>)> {
     let (before, after, opening) = match (
         &previous.state().accounting,
         &current.state().accounting,
@@ -30,13 +58,7 @@ pub(crate) fn project(
             CircuitAccounting::PhysicalControl,
             CircuitAccounting::PhysicalControl,
             CircuitAccounting::PhysicalControl,
-        ) if source.receipts.money_transfers.is_empty() => {
-            return Ok(EconomicPaymentPeriod {
-                source,
-                accounts: Vec::new(),
-                settlements: Vec::new(),
-            })
-        }
+        ) if receipts.money_transfers.is_empty() => return Ok((Vec::new(), Vec::new())),
         _ => return Err(EconomicFlowError::MonetaryBookMismatch),
     };
     let catalog = foundation
@@ -45,15 +67,15 @@ pub(crate) fn project(
         .content_bundle()
         .economic_catalog()
         .ok_or(EconomicFlowError::MonetaryBookMismatch)?;
-    let accounts = accounts::project(catalog, &opening.book)?;
+    let accounts = accounts::project(catalog, &opening.book, account)?;
     let agency = current
         .city_pd()
         .into_iter()
         .flat_map(|row| &row.attempts)
         .map(|attempt| &attempt.funding);
-    let principals = Principals::for_period(&before.book, &after.book, &source.receipts, agency)?;
+    let principals = Principals::for_period(&before.book, &after.book, receipts, agency)?;
     let mut settlements = Vec::new();
-    for (ordinal, transfer) in source.receipts.money_transfers.iter().enumerate() {
+    for (ordinal, transfer) in receipts.money_transfers.iter().enumerate() {
         if let Some((payer, recipient)) = parties(transfer, &principals)? {
             for account in [payer, recipient] {
                 opening
@@ -61,18 +83,18 @@ pub(crate) fn project(
                     .cash(account)
                     .map_err(|_| EconomicFlowError::UnknownCashAccount)?;
             }
+            let ordinal = u64::try_from(ordinal).map_err(|_| EconomicFlowError::ReceiptOrdinal)?;
+            if account.is_some_and(|account| account != payer && account != recipient) {
+                continue;
+            }
             settlements.push(Settlement {
-                ordinal: u64::try_from(ordinal).map_err(|_| EconomicFlowError::ReceiptOrdinal)?,
+                ordinal,
                 payer: payer.into(),
                 recipient: recipient.into(),
             });
         }
     }
-    Ok(EconomicPaymentPeriod {
-        source,
-        accounts,
-        settlements,
-    })
+    Ok((accounts, settlements))
 }
 
 pub(super) fn parties(

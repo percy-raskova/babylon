@@ -1,16 +1,19 @@
 //! One household's closed-period population, provisioning and time on the same durable source.
-use super::{CommittedMaterialReceipts, ObserverEconomyError, ObserverEconomyReader};
+use super::{ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor};
 use crate::economic_catalog::{CommodityLabel, EconomicOpening};
-use crate::economic_flows::EconomicPaymentPeriod;
+use crate::economic_content::EconomicContentAdmission;
+use crate::economic_flows::{self, Settlement};
 use crate::identity::CampaignId;
 use crate::michigan_economy;
 use crate::money_journal::MoneyEndpoint;
+use crate::observer_material::{self, ObserverFrameClose};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdLifecycleReceipt,
     HouseholdStock, HouseholdTimeReceipt, MoneyTransferPurpose, OutboundOrderId,
     PublicTransferTreatment, ResidentAges, UnitId,
 };
+use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -152,48 +155,87 @@ impl ObserverEconomyReader {
         period: u64,
         principal: FinalDemandPrincipalId,
     ) -> Result<HouseholdPeriodReport, ObserverEconomyError> {
-        self.with_committed_receipts(campaign, period, &mut None, |cursor, admission, source| {
-            let payments = cursor.economic_payments(admission, source)?;
-            let before = cursor.labor_opening(admission)?.state();
-            let stocks = match &before.accounting {
-                CircuitAccounting::Monetary(book) => book
-                    .recurring
-                    .as_ref()
-                    .map_or(&[][..], |economy| economy.household_stocks.as_slice()),
-                CircuitAccounting::PhysicalControl => &[],
-            };
-            read_household(admission.view().opening, stocks, &payments, principal)
+        self.with_committed_receipts(campaign, period, &mut None, |cursor, _, source| {
+            cursor.household_period_for_frame(
+                campaign,
+                period,
+                principal,
+                source.identity.foundation_digest(),
+                *source.identity.tick_content_hash().as_bytes(),
+            )
         })
     }
 }
 
+impl ObserverMaterialCursor {
+    /// Read one household's closed-period receipt from the full-observer frame already on screen.
+    /// # Errors
+    /// Refuses changed frames, absent households and inconsistent posting or provisioning evidence.
+    pub fn household_period_for_frame(
+        &self,
+        campaign: CampaignId,
+        tick: u64,
+        principal: FinalDemandPrincipalId,
+        foundation: [u8; 32],
+        tick_hash: [u8; 32],
+    ) -> Result<HouseholdPeriodReport, ObserverEconomyError> {
+        let (admission, close) = self.displayed_frame(campaign, tick, foundation, tick_hash)?;
+        read_household(campaign, &admission, close, principal)
+    }
+}
+
+fn household_stocks(accounting: &CircuitAccounting) -> &[HouseholdStock] {
+    match accounting {
+        CircuitAccounting::Monetary(book) => book
+            .recurring
+            .as_ref()
+            .map_or(&[], |economy| economy.household_stocks.as_slice()),
+        CircuitAccounting::PhysicalControl => &[],
+    }
+}
+
 fn read_household(
-    opening: &EconomicOpening,
-    stocks: &[HouseholdStock],
-    payments: &EconomicPaymentPeriod,
+    campaign: CampaignId,
+    admission: &EconomicContentAdmission,
+    close: &ObserverFrameClose,
     id: FinalDemandPrincipalId,
 ) -> Result<HouseholdPeriodReport, ObserverEconomyError> {
-    let source = &payments.source;
+    let opening = admission.view().opening;
+    let before = close.opening(admission);
+    let rows = &close.receipts;
+    let settlements = economic_flows::account_settlements(
+        rows,
+        admission,
+        before,
+        &close.register,
+        AccountId::Household(id),
+    )
+    .map_err(ObserverEconomyError::EconomicFlow)?;
+    let contributions =
+        observer_material::household_contributions(&close.register, close.identity.resolve_tick())?;
     let household = opening
         .households
         .iter()
         .find(|h| h.principal_id == id)
         .ok_or(ObserverEconomyError::HouseholdAbsent)?;
-    let rows = &source.receipts;
     let population = rows
         .household_lifecycle
         .iter()
         .find(|r| r.principal_id == id)
         .map(HouseholdPopulationReport::from);
     let hours = rows.household_time.iter().find(|r| r.principal_id == id);
-    let contribution_used = source
-        .household_contributions
+    let contribution_used = contributions
         .iter()
         .filter(|r| r.contribution.principal_id == id)
         .try_fold(0_u64, |sum, r| sum.checked_add(r.contribution.hours))
         .ok_or(ObserverEconomyError::InvalidProjection)?;
     let time = hours.map(|row| HouseholdHours::from_close(row, contribution_used));
-    let (goods, services) = provisions(opening, stocks, source, id)?;
+    let (goods, services) = provisions(
+        opening,
+        household_stocks(&before.state().accounting),
+        rows,
+        id,
+    )?;
     let income_support = rows
         .public_budgets
         .iter()
@@ -223,33 +265,33 @@ fn read_household(
         .collect();
     Ok(HouseholdPeriodReport {
         version: HouseholdPeriodReport::VERSION,
-        campaign: source.campaign_id.as_uuid().to_string(),
-        period: source.identity.resolve_tick(),
+        campaign: campaign.as_uuid().to_string(),
+        period: close.identity.resolve_tick(),
         household: michigan_economy::digest_hex(&id.as_bytes()),
         residence: household.location,
-        foundation_sha256: michigan_economy::digest_hex(&source.identity.foundation_digest()),
-        world_sha256: michigan_economy::digest_hex(&source.identity.result_world_hash()),
+        foundation_sha256: michigan_economy::digest_hex(&close.identity.foundation_digest()),
+        world_sha256: michigan_economy::digest_hex(&close.identity.result_world_hash()),
         tick_content_sha256: michigan_economy::digest_hex(
-            source.identity.tick_content_hash().as_bytes(),
+            close.identity.tick_content_hash().as_bytes(),
         ),
-        receipts_sha256: michigan_economy::digest_hex(&source.identity.receipt_digest()),
+        receipts_sha256: michigan_economy::digest_hex(&close.identity.receipt_digest()),
         population,
         time,
         goods,
         services,
-        cash: cash(payments, id)?,
+        cash: cash(rows, &settlements, id)?,
         income_support,
         workforce_attrition,
     })
 }
 
 fn cash(
-    payments: &EconomicPaymentPeriod,
+    receipts: &MaterialTickReceipts,
+    settlements: &[Settlement],
     id: FinalDemandPrincipalId,
 ) -> Result<HouseholdCash, ObserverEconomyError> {
     let account = AccountId::Household(id);
     let endpoint = MoneyEndpoint::from(account);
-    let receipts = &payments.source.receipts;
     let earned = receipts
         .wage_accruals
         .iter()
@@ -259,7 +301,7 @@ fn cash(
     let mut paid = 0_i128;
     let mut goods = 0_i128;
     let mut services = 0_i128;
-    for settlement in &payments.settlements {
+    for settlement in settlements {
         if settlement.recipient != endpoint && settlement.payer != endpoint {
             continue;
         }
@@ -328,10 +370,9 @@ impl HouseholdHours {
 fn provisions(
     opening: &EconomicOpening,
     stocks: &[HouseholdStock],
-    source: &CommittedMaterialReceipts,
+    rows: &MaterialTickReceipts,
     id: FinalDemandPrincipalId,
 ) -> Result<(Vec<HouseholdGoodUse>, Vec<HouseholdServiceUse>), ObserverEconomyError> {
-    let rows = &source.receipts;
     let labels: BTreeMap<_, _> = opening
         .commodity_labels
         .iter()

@@ -42,7 +42,7 @@ pub(crate) fn read(
 ) -> Result<String, JournalError> {
     let cursor = cache
         .ok_or(JournalError::SourceChanged)?
-        .investment_cursor(session, frame, context, foundation, tick_hash)
+        .full_cursor_for_frame(session, frame, context, foundation, tick_hash)
         .map_err(journal_error)?;
     let response = match subject {
         Subject::Company(company) => cursor

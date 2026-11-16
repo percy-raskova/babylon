@@ -29,7 +29,7 @@ use crate::material_storage::LookupAnchor;
 use crate::material_storage::OpeningRegister;
 use crate::michigan_economy;
 use crate::money_journal::JournalPeriodSource;
-use crate::observer_reader::{CommittedMaterialReceipts, CompanyDecisionClose};
+use crate::observer_reader::{CommittedMaterialReceipts, CompanyDraws};
 use crate::observer_reader::{
     ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
 };
@@ -45,8 +45,8 @@ use crate::recorded_labor::{RecordedLaborLedger, RecordedLaborPeriod};
 use crate::site_financial_statements::{self, SiteFinancialStatements, SiteStatementsError};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::CircuitAccounting;
-use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::SiteId;
+use babylon_material_circuit::{HouseholdContributionReceipt, HouseholdTimeAccounting};
 use babylon_tick::material_world;
 use diagnostics::Timing;
 use postgres::Error;
@@ -181,8 +181,27 @@ pub struct ObserverMaterialCursor {
     campaign: CampaignId,
     admission: EconomicContentRef,
     admission_digest: [u8; 32],
-    company_close: Option<CompanyDecisionClose>,
+    displayed_close: Option<ObserverFrameClose>,
     history: MaterialHistory,
+}
+
+/// Shared evidence for the period on screen, even when reusable history is further ahead.
+#[derive(Clone)]
+pub(crate) struct ObserverFrameClose {
+    pub(crate) register: PeriodRegister,
+    pub(crate) identity: IdentifiedMaterialTick,
+    pub(crate) draws: CompanyDraws,
+    pub(crate) receipts: MaterialReceiptHandle,
+    opening: MaterialRegisterBoundary,
+}
+
+impl ObserverFrameClose {
+    pub(crate) fn opening<'a>(
+        &'a self,
+        admission: &'a EconomicContentAdmission,
+    ) -> &'a MaterialWorldRegister {
+        self.opening.resolve(admission)
+    }
 }
 
 /// Separate identities copied from the successfully authenticated opening.
@@ -281,8 +300,27 @@ impl ObserverMaterialCursor {
     pub fn admission_handle(&self) -> Option<EconomicContentHandle> {
         self.admission.upgrade()
     }
-    pub(crate) fn company_close(&self) -> Option<&CompanyDecisionClose> {
-        self.company_close.as_ref()
+    pub(crate) fn displayed_frame(
+        &self,
+        campaign: CampaignId,
+        tick: u64,
+        foundation: [u8; 32],
+        hash: [u8; 32],
+    ) -> Result<(EconomicContentHandle, &ObserverFrameClose), ObserverEconomyError> {
+        let admission = self
+            .admission(campaign)
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        let close = self
+            .displayed_close
+            .as_ref()
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        if admission.digest() != foundation
+            || close.identity.resolve_tick() != tick
+            || close.identity.tick_content_hash().as_bytes() != &hash
+        {
+            return Err(ObserverEconomyError::SourceChanged);
+        }
+        Ok((admission, close))
     }
     pub(crate) fn admission(&self, campaign: CampaignId) -> Option<EconomicContentHandle> {
         (self.campaign == campaign)
@@ -776,7 +814,7 @@ pub(crate) fn material_observation(
     // Authenticate endpoint graph/events before allocating the full current projection.
     // Only the projected staffing accounts survive the endpoint ownership scope.
     let staffing_timing = Timing::start(Stage::Staffing, tick);
-    let (staffing_accounts, company_close) = diagnostics::observer(
+    let (staffing_accounts, displayed_close) = diagnostics::observer(
         Stage::Staffing,
         tick,
         authenticated_staffing(transaction, campaign, expected, &history),
@@ -808,11 +846,11 @@ pub(crate) fn material_observation(
             admission: expected.downgrade(),
             admission_digest: expected.digest(),
             history,
-            company_close,
+            displayed_close,
         });
     } else if let Some(high_water) = cursor {
         // The reusable history may be newer than a reopened historical frame.
-        high_water.company_close = company_close;
+        high_water.displayed_close = displayed_close;
     }
     Ok(MaterialObservation {
         foundation_digest: michigan_economy::digest_hex(&expected.digest()),
@@ -975,13 +1013,13 @@ pub(crate) fn committed_receipts(
         journal_connection,
     )?;
     let identity = current.identity;
-    let company_close = Some(decision_close(&history, current)?);
+    let displayed_close = Some(frame_close(&history, current)?);
     let result = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
     *cursor = Some(ObserverMaterialCursor {
         campaign,
         admission: expected.downgrade(),
         admission_digest: expected.digest(),
-        company_close,
+        displayed_close,
         history,
     });
     Ok(result)
@@ -1001,18 +1039,8 @@ pub(crate) fn read_committed_receipts(
     if receipts.resolve_tick != tick || *digest != identity.receipt_digest() {
         return Err(ObserverEconomyError::InvalidProjection);
     }
-    let household_contributions = match &history.register(expected).state().accounting {
-        CircuitAccounting::PhysicalControl => Vec::new(),
-        CircuitAccounting::Monetary(economy) => match &economy.household_time {
-            HouseholdTimeAccounting::NotModeled => Vec::new(),
-            HouseholdTimeAccounting::Modeled(book) => {
-                if book.contributions.iter().any(|row| row.period != tick) {
-                    return Err(ObserverEconomyError::InvalidProjection);
-                }
-                book.contributions.clone()
-            }
-        },
-    };
+    let household_contributions =
+        household_contributions(history.register(expected), tick)?.to_vec();
     Ok(CommittedMaterialReceipts {
         campaign_id: campaign,
         identity: *identity,
@@ -1020,6 +1048,22 @@ pub(crate) fn read_committed_receipts(
         receipts: receipts.clone(),
         household_contributions,
     })
+}
+
+pub(crate) fn household_contributions(
+    register: &MaterialWorldRegister,
+    tick: u64,
+) -> Result<&[HouseholdContributionReceipt], ObserverEconomyError> {
+    let CircuitAccounting::Monetary(economy) = &register.state().accounting else {
+        return Ok(&[]);
+    };
+    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
+        return Ok(&[]);
+    };
+    if book.contributions.iter().any(|row| row.period != tick) {
+        return Err(ObserverEconomyError::InvalidProjection);
+    }
+    Ok(&book.contributions)
 }
 
 pub(crate) fn committed_observation(
@@ -1041,7 +1085,7 @@ pub(crate) fn committed_observation(
     let identity = current.identity;
     let staffing = project_authenticated_staffing(expected, &history, &current, previous.as_ref())?;
     drop(previous);
-    let company_close = Some(decision_close(&history, current)?);
+    let displayed_close = Some(frame_close(&history, current)?);
     drop(staffing_timing);
     let projection_timing = Timing::start(Stage::CurrentProjection, tick);
     let mut production = production_projection::project_economic_current(
@@ -1069,23 +1113,33 @@ pub(crate) fn committed_observation(
         campaign,
         admission: expected.downgrade(),
         admission_digest: expected.digest(),
-        company_close,
+        displayed_close,
         history,
     });
     Ok((observation, accounting))
 }
 
-fn decision_close(
+fn frame_close(
     history: &MaterialHistory,
     current: StoredMaterialTick<'_>,
-) -> Result<CompanyDecisionClose, ObserverEconomyError> {
+) -> Result<ObserverFrameClose, ObserverEconomyError> {
     let MaterialRegisterBoundary::Period(register) = &history.register else {
         return Err(ObserverEconomyError::InvalidProjection);
     };
-    Ok(CompanyDecisionClose {
+    Ok(ObserverFrameClose {
         register: register.clone(),
-        tick_hash: *current.identity.tick_content_hash().as_bytes(),
+        identity: current.identity,
         draws: current.company_draws,
+        opening: history
+            .opening
+            .clone()
+            .ok_or(ObserverEconomyError::InvalidProjection)?,
+        receipts: history
+            .receipt
+            .as_ref()
+            .ok_or(ObserverEconomyError::InvalidProjection)?
+            .0
+            .clone(),
     })
 }
 
@@ -1094,7 +1148,7 @@ fn authenticated_staffing(
     campaign: CampaignId,
     expected: &EconomicContentAdmission,
     history: &MaterialHistory,
-) -> Result<(Vec<ProductionStaffingAccount>, Option<CompanyDecisionClose>), ObserverEconomyError> {
+) -> Result<(Vec<ProductionStaffingAccount>, Option<ObserverFrameClose>), ObserverEconomyError> {
     let register = history.register(expected);
     let tick = register.completed_tick();
     if tick == 0 {
@@ -1115,7 +1169,7 @@ fn authenticated_staffing(
     let (current, previous) =
         authenticated_history_endpoints(transaction, campaign, expected, history, None)?;
     let staffing = project_authenticated_staffing(expected, history, &current, previous.as_ref())?;
-    Ok((staffing, Some(decision_close(history, current)?)))
+    Ok((staffing, Some(frame_close(history, current)?)))
 }
 
 pub(crate) fn project_authenticated_staffing(
@@ -1227,7 +1281,7 @@ mod opening_controls {
             campaign,
             admission: owner.downgrade(),
             admission_digest: owner.digest(),
-            company_close: None,
+            displayed_close: None,
             history: MaterialHistory::new(&owner)
                 .expect("the constructor accepts the authored fixture arguments"),
         };

@@ -4,7 +4,7 @@ use super::company::{self, Accounts, Worker as CompanyWorker};
 use super::compare::Periods;
 use super::freight::{Command as FreightCommand, Freight, Source as FreightSource};
 use super::geographic_legs::{self, Locations, Worker as LocationWorker};
-use super::household::{self, Receipt as HouseholdReceipt, Worker as HouseholdWorker};
+use super::household::{self, Receipt as HouseholdReceipt};
 use super::industry::{self, Sources as IndustrySources, Worker as IndustryWorker};
 use super::publication::Publication;
 use super::{freight, freight_plot, freight_rail, geometry, rail, sankey};
@@ -650,7 +650,7 @@ pub(super) fn activate(
     }
     match &target.action {
         Action::IndustrySources if industry::selected(view).is_some() => view.industry.toggle(),
-        Action::HouseholdReceipt(open) => return household::set_open(view, *open),
+        Action::HouseholdReceipt(open) => return household::set_open(view, *open, commands),
         Action::CompanyAccounts(open) => {
             let id = company::selected(view);
             return view.company.set_open(id, *open);
@@ -807,7 +807,6 @@ pub(in crate::observer_map3d) fn install(app: &mut App) {
         )
         .init_resource::<BooksWorker>()
         .init_resource::<LocationWorker>()
-        .init_resource::<HouseholdWorker>()
         .add_systems(
             Update,
             household::update.after(update).before(ObserverSet::Paint),

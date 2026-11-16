@@ -207,7 +207,7 @@ impl ObservationCache {
     }
 
     /// Borrow the installed full-observer evidence only for this exact live request.
-    pub(crate) fn investment_cursor(
+    pub(crate) fn full_cursor_for_frame(
         &self,
         session: &ObserverSession,
         frame: &ObserverFrame,

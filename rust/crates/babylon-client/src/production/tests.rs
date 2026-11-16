@@ -3287,15 +3287,55 @@ fn household_receipt_opens_from_zero_purchase_and_returns_to_its_retailer() {
 }
 
 #[test]
+fn retailer_receipt_immediately_refuses_a_period_without_an_admitted_cursor() {
+    use super::customers::{self, Receipt};
+    use bevy::ecs::system::RunSystemOnce;
+
+    let ReadingsFocusFixture { mut app, .. } = readings_focus_app();
+    open_retailer_with_unfulfilled_food(&mut app);
+    let principal = FinalDemandPrincipalId::from_bytes([0x17; 32]);
+    let (button, _) = food_button(app.world_mut(), principal);
+    app.world_mut()
+        .entity_mut(button)
+        .insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().household,
+        Some(principal)
+    );
+    app.init_resource::<Receipt>();
+    app.world_mut()
+        .run_system_once(customers::update)
+        .expect("update the opened receipt");
+    assert!(
+        app.world()
+            .resource::<Receipt>()
+            .text()
+            .contains("SourceChanged"),
+        "an unauthenticated source gives an immediate terminal reading"
+    );
+}
+
+#[test]
 fn resident_food_receipt_selects_the_exact_household_and_retailer_from_the_county_map() {
     use bevy::ecs::system::RunSystemOnce;
     use bevy::input_focus::InputFocus;
+    use bevy::ui::UiSystems;
     let ReadingsFocusFixture {
         mut app,
         window,
+        body,
         reading,
         ..
     } = readings_focus_app();
+    app.add_systems(
+        PostUpdate,
+        view::reset_inspector_scroll.before(UiSystems::Layout),
+    );
+    app.world_mut()
+        .entity_mut(reading)
+        .insert(UiGlobalTransform::from_translation(Vec2::new(0.0, 518.0)));
     let retailer = open_retailer_with_unfulfilled_food(&mut app);
     send_command(&mut app, ProductionCommand::Map);
     let context = app.world().resource::<ObserverSession>().context();
@@ -3359,12 +3399,44 @@ fn resident_food_receipt_selects_the_exact_household_and_retailer_from_the_count
     assert_eq!(navigation.selected_site.as_deref(), Some(retailer.as_str()));
     assert!(navigation.details_open);
     assert!(!app.world().resource::<ObserverUiState>().history_open);
-    assert_eq!(
-        app.world().resource::<InputFocus>().get(),
-        Some(reading),
-        "opening the receipt transfers keyboard control to its reading"
-    );
     assert_eq!(navigation.reading_section, ProductionReadingSection::Flow);
+    assert_map_receipt_controls(&mut app, window, body);
+
+    send_command(&mut app, ProductionCommand::Map);
+    app.world_mut().insert_resource(SelectedCounty(Some(index)));
+    app.world_mut()
+        .entity_mut(button)
+        .insert(Interaction::Pressed);
+    app.update();
+    assert_map_receipt_controls(&mut app, window, body);
+}
+
+fn assert_map_receipt_controls(app: &mut App, window: Entity, body: Entity) {
+    app.update(); // Let the regular focus reveal run on the settled receipt.
+    assert_eq!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("receipt scroll")
+            .0,
+        Vec2::ZERO,
+        "opening the map receipt must leave its leading Back row and heading in view"
+    );
+    assert_eq!(focused_customer_label(app), "Back to retailer");
+    readings_key(app, window, KeyCode::PageDown);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("receipt scroll")
+            .0
+            .y
+            > 0.0
+    );
+    readings_key(app, window, KeyCode::Backspace);
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().household,
+        None
+    );
+    assert!(focused_customer_label(app).contains("/ food\n"));
 }
 
 fn open_retailer_with_unfulfilled_food(app: &mut App) -> String {
@@ -3377,6 +3449,9 @@ fn open_retailer_with_unfulfilled_food(app: &mut App) -> String {
     let mut snapshot = crate::production_freight::tests::aid_fixture();
     let row = &mut snapshot.household_accounts[0];
     row.demand_principal_id = "17".repeat(32);
+    row.good_id = babylon_persistence::qualification_audit::trade::hex(
+        &babylon_persistence::national_economy::commodity_good_id("food").as_bytes(),
+    );
     row.completed = Some(CompletedHouseholdBalance {
         population_basis: None,
         period: 1,

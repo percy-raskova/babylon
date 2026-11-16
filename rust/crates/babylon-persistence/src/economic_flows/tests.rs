@@ -334,7 +334,7 @@ fn representative_payee_uses_its_live_hub_and_keeps_the_catchment_separate() {
             .to_vec(),
     )
     .expect("two captured sites");
-    let rows = accounts::project(&catalog, &book).expect("authenticated geography");
+    let rows = accounts::project(&catalog, &book, None).expect("authenticated geography");
     let domestic = rows
         .iter()
         .find(|row| row.account == AccountId::Site(site.site_id).into())

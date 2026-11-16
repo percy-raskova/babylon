@@ -1,21 +1,18 @@
 //! Closed-period household receipts for the account selected on the full-observer flow page.
 use super::rail;
-use super::state::{Action, Measure, MoneyView, Scope};
+use super::state::{Action, Measure, MoneyRail, MoneyView, Observation, Scope};
 use crate::atlas::CountyAtlas;
 use crate::cli;
 use crate::human_numbers;
-use crate::observer::{ObservationContext, Perspective};
+use crate::observer::{ObservationContext, ObserverSession, Perspective};
 use crate::observer_io::ObservationCache;
 use crate::observer_theme as theme;
-use crate::observer_ui::{self, ObserverFontRole};
+use crate::observer_ui::{self, ObserverFontRole, ObserverFrame};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::money_journal::{FlowGroup, JournalError};
-use babylon_persistence::observer_reader::{
-    HouseholdPeriodReport, ObserverEconomyError, ObserverEconomyReader,
-};
+use babylon_persistence::observer_reader::{HouseholdPeriodReport, ObserverEconomyError};
 use bevy::prelude::*;
-use bevy::tasks::{self, IoTaskPool, Task};
 use bevy::text::LineBreak;
 
 pub(crate) type Reading = Result<HouseholdPeriodReport, JournalError>;
@@ -26,22 +23,48 @@ pub(crate) struct HouseholdRead {
     pub foundation: String,
     pub tick_hash: String,
     pub principal: FinalDemandPrincipalId,
+    pub retailer: Option<String>,
 }
 
 impl HouseholdRead {
-    pub(crate) fn read(&self, reader: Option<ObserverEconomyReader>) -> Reading {
-        let reader = reader
-            .map_or_else(ObserverEconomyReader::from_observer_env, Ok)
+    pub(crate) fn read(
+        &self,
+        cache: Option<&ObservationCache>,
+        session: &ObserverSession,
+        frame: &ObserverFrame,
+    ) -> Reading {
+        let foundation =
+            cli::identity_bytes(&self.foundation).ok_or(JournalError::SourceChanged)?;
+        let tick_hash = cli::identity_bytes(&self.tick_hash).ok_or(JournalError::SourceChanged)?;
+        let cursor = cache
+            .ok_or(JournalError::SourceChanged)?
+            .full_cursor_for_frame(session, frame, &self.context, foundation, tick_hash)
             .map_err(JournalError::Observer)?;
-        let report = reader
-            .household_period(self.context.campaign, self.context.tick, self.principal)
+        let report = cursor
+            .household_period_for_frame(
+                self.context.campaign,
+                self.context.tick,
+                self.principal,
+                foundation,
+                tick_hash,
+            )
             .map_err(JournalError::Observer)?;
+        self.validate(report)
+    }
+
+    fn validate(&self, report: HouseholdPeriodReport) -> Reading {
         if report.version != HouseholdPeriodReport::VERSION
             || report.period != self.context.tick
             || report.campaign != self.context.campaign.as_uuid().to_string()
             || cli::identity_bytes(&report.household) != Some(self.principal.as_bytes())
             || report.foundation_sha256 != self.foundation
             || report.tick_content_sha256 != self.tick_hash
+            || self.retailer.as_ref().is_some_and(|site| {
+                !report
+                    .goods
+                    .iter()
+                    .any(|good| &good.retailer_site_id == site)
+            })
         {
             return Err(JournalError::SourceChanged);
         }
@@ -79,63 +102,72 @@ pub(super) fn selected(view: &MoneyView) -> Option<FinalDemandPrincipalId> {
     cli::identity_bytes(key).map(FinalDemandPrincipalId::from_bytes)
 }
 
-pub(super) fn set_open(view: &mut MoneyView, open: bool) -> bool {
+pub(super) fn set_open(view: &mut MoneyView, open: bool, commands: &mut Commands) -> bool {
     if view.household.open == open || (open && selected(view).is_none()) {
         return false;
     }
     view.household = Receipt { open, result: None };
+    commands.run_system_cached_with(scroll_on_navigation, open);
     true
 }
 
-pub(super) fn accepts(view: &MoneyView, scope: &Scope, id: FinalDemandPrincipalId) -> bool {
-    view.household.open && view.scope.as_ref() == Some(scope) && selected(view) == Some(id)
+fn scroll_on_navigation(
+    In(open): In<bool>,
+    rails: Query<&ChildOf, With<MoneyRail>>,
+    mut positions: Query<&mut ScrollPosition>,
+    mut return_position: Local<Option<Vec2>>,
+) {
+    let Ok(parent) = rails.single() else { return };
+    let Ok(mut scroll) = positions.get_mut(parent.parent()) else {
+        return;
+    };
+    if open {
+        *return_position = Some(scroll.0);
+        scroll.0 = Vec2::ZERO;
+    } else if let Some(previous) = return_position.take() {
+        scroll.0 = previous;
+    }
 }
 
-struct Pending {
-    scope: Scope,
-    principal: FinalDemandPrincipalId,
-    read: Task<Reading>,
+pub(super) fn selected_for_frame(
+    view: &MoneyView,
+    scope: &Scope,
+) -> Option<FinalDemandPrincipalId> {
+    if !view.household.open || view.scope.as_ref() != Some(scope) {
+        return None;
+    }
+    selected(view)
 }
-
-#[derive(Resource, Default)]
-pub(super) struct Worker(Option<Pending>);
 
 pub(super) fn update(
     mut view: ResMut<MoneyView>,
-    mut worker: ResMut<Worker>,
+    observation: Observation,
     cache: Option<Res<ObservationCache>>,
 ) {
-    if let Some(job) = &mut worker.0 {
-        let Some(result) = tasks::block_on(tasks::futures_lite::future::poll_once(&mut job.read))
-        else {
-            return;
-        };
-        if accepts(&view, &job.scope, job.principal) {
-            view.household.result = Some(result);
-        }
-        worker.0 = None;
-    }
     if !view.household.open || view.household.result.is_some() || view.freight.enabled {
         return;
     }
-    let (Some(scope), Some(principal)) = (&view.scope, selected(&view)) else {
+    let Some(shown) = &view.scope else {
         return;
     };
-    let Some(tick_hash) = scope.tick_hash.clone() else {
+    let Some(scope) = observation.scope(shown.measure, shown.periods, shown.group) else {
         return;
     };
-    let requested = HouseholdRead {
-        context: scope.context.clone(),
-        foundation: scope.foundation.clone(),
+    let Some(principal) = selected_for_frame(&view, &scope) else {
+        return;
+    };
+    let Some(tick_hash) = scope.tick_hash else {
+        return;
+    };
+    let request = HouseholdRead {
+        context: scope.context,
+        foundation: scope.foundation,
         tick_hash,
         principal,
+        retailer: None,
     };
-    let reader = cache.as_deref().and_then(ObservationCache::full_reader);
-    worker.0 = Some(Pending {
-        scope: scope.clone(),
-        principal,
-        read: IoTaskPool::get().spawn(async move { requested.read(reader) }),
-    });
+    view.household.result =
+        Some(request.read(cache.as_deref(), &observation.session, &observation.frame));
 }
 
 fn population(report: &HouseholdPeriodReport) -> String {
@@ -327,13 +359,13 @@ pub(crate) fn sections(result: Option<&Reading>, atlas: &CountyAtlas) -> Vec<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
-    #[test]
-    fn household_receipt_explains_a_zero_delivery_with_pantry_stock() {
-        let report: HouseholdPeriodReport = serde_json::from_value(serde_json::json!({
-            "version": HouseholdPeriodReport::VERSION, "campaign": "example", "period": 4, "household": "example",
-            "residence": "county:26163", "foundation_sha256": "", "world_sha256": "",
-            "tick_content_sha256": "", "receipts_sha256": "", "population": null,
+    fn closed_household() -> HouseholdPeriodReport {
+        serde_json::from_value(serde_json::json!({
+            "version": HouseholdPeriodReport::VERSION, "campaign": Uuid::nil().to_string(), "period": 4, "household": "19".repeat(32),
+            "residence": "county:26163", "foundation_sha256": "ff".repeat(32), "world_sha256": "",
+            "tick_content_sha256": "ab".repeat(32), "receipts_sha256": "", "population": null,
             "cash": {"wages_accrued_micros":"0","wages_paid_micros":"0",
                     "goods_purchases_settled_micros":"0","service_purchases_settled_micros":"0"},
             "income_support": [], "services": [], "time": null, "workforce_attrition": [],
@@ -342,7 +374,49 @@ mod tests {
                         "requested":12, "admitted":7, "expired":7, "closing_stock":0,
                         "required":10, "purchased":0, "consumed":4, "unmet":6}]
         }))
-        .expect("one food order and its consumption receipt");
+        .expect("one food order and its consumption receipt")
+    }
+
+    #[test]
+    fn a_retailer_receipt_matches_the_order_even_if_nothing_was_bought() {
+        use babylon_persistence::identity::CampaignId;
+        let report = closed_household();
+        let request = HouseholdRead {
+            context: ObservationContext {
+                campaign: CampaignId::from_uuid(Uuid::nil()),
+                perspective: Perspective::FullObserver,
+                tick: 4,
+                generation: 1,
+            },
+            foundation: report.foundation_sha256.clone(),
+            tick_hash: report.tick_content_sha256.clone(),
+            principal: FinalDemandPrincipalId::from_bytes([0x19; 32]),
+            retailer: Some("17".repeat(32)),
+        };
+        assert!(request.validate(report).is_ok());
+        let other_site = HouseholdRead {
+            retailer: Some("18".repeat(32)),
+            ..request
+        };
+        assert!(matches!(
+            other_site.validate(closed_household()),
+            Err(JournalError::SourceChanged)
+        ));
+        let account = HouseholdRead {
+            retailer: None,
+            ..other_site
+        };
+        let mut no_goods = closed_household();
+        no_goods.goods.clear();
+        assert!(
+            account.validate(no_goods).is_ok(),
+            "Money opens the household without a goods order"
+        );
+    }
+
+    #[test]
+    fn household_receipt_explains_a_zero_delivery_with_pantry_stock() {
+        let report = closed_household();
         let text = provisioning(&report);
         for detail in [
             "Wayne County: Distribution/transport (5)",

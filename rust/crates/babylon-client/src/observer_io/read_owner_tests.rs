@@ -185,7 +185,7 @@ fn investment_requires_the_current_full_observer_request_and_runtime_epoch() {
     // This fixture has no authenticated cursor. Only the exact scope can reach that check.
     assert_eq!(
         cache
-            .investment_cursor(&session, &frame, &request, foundation, tick_hash)
+            .full_cursor_for_frame(&session, &frame, &request, foundation, tick_hash)
             .err(),
         Some(ObserverEconomyError::ProductionHistoryUnavailable)
     );
@@ -198,7 +198,7 @@ fn investment_requires_the_current_full_observer_request_and_runtime_epoch() {
     ] {
         assert_eq!(
             cache
-                .investment_cursor(&session, &frame, context, digest, hash)
+                .full_cursor_for_frame(&session, &frame, context, digest, hash)
                 .err(),
             Some(ObserverEconomyError::SourceChanged)
         );
@@ -209,7 +209,7 @@ fn investment_requires_the_current_full_observer_request_and_runtime_epoch() {
     });
     assert_eq!(
         cache
-            .investment_cursor(&session, &frame, &request, foundation, tick_hash)
+            .full_cursor_for_frame(&session, &frame, &request, foundation, tick_hash)
             .err(),
         Some(ObserverEconomyError::SourceChanged)
     );
@@ -217,7 +217,7 @@ fn investment_requires_the_current_full_observer_request_and_runtime_epoch() {
     session.organizer_enabled = true;
     assert_eq!(
         cache
-            .investment_cursor(&session, &frame, &request, foundation, tick_hash)
+            .full_cursor_for_frame(&session, &frame, &request, foundation, tick_hash)
             .err(),
         Some(ObserverEconomyError::Authority)
     );
@@ -225,7 +225,7 @@ fn investment_requires_the_current_full_observer_request_and_runtime_epoch() {
     session.perspective = Perspective::PlayerKnowledge;
     assert_eq!(
         cache
-            .investment_cursor(&session, &frame, &session.context(), foundation, tick_hash)
+            .full_cursor_for_frame(&session, &frame, &session.context(), foundation, tick_hash)
             .err(),
         Some(ObserverEconomyError::Authority)
     );

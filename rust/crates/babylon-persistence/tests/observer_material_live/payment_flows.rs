@@ -23,6 +23,7 @@ use postgres::{Client, Config, NoTls};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::process::Command;
+use uuid::Uuid;
 
 pub(super) fn query(group: FlowGroup) -> FlowQuery {
     FlowQuery {
@@ -263,18 +264,18 @@ pub(super) fn national(
     let source = observer
         .committed_economic_payments_with_cursor(campaign, 1, &mut cursor)
         .expect("canonical economic principals");
+    let cursor = cursor.as_ref().expect("full-observer cursor");
     let mut sql = config.connect(NoTls).expect("observer SQL");
     check_company_decision(
         config,
         campaign,
-        cursor.as_ref().expect("full-observer cursor"),
+        cursor,
         source.source.identity.tick_content_hash().as_bytes(),
     );
     let foundation = cursor
-        .as_ref()
-        .and_then(ObserverMaterialCursor::admission_handle)
+        .admission_handle()
         .expect("admitted economic catalog");
-    check_household_period(config, &source, moves, foundation.view().opening);
+    check_household_period(config, &source, moves, foundation.view().opening, cursor);
     check_source_rows(&source, &mut sql, campaign, moves);
     unknown_industry(
         &source,
@@ -364,6 +365,7 @@ fn check_household_period(
     source: &EconomicPaymentPeriod,
     moves: &[MoneyMovement],
     opening: &EconomicOpening,
+    cursor: &ObserverMaterialCursor,
 ) {
     let durable = &source.source;
     let receipts = &durable.receipts;
@@ -416,6 +418,7 @@ fn check_household_period(
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    check_household_frame(cursor, source, id, &output.stdout);
     let report: Value = serde_json::from_slice(&output.stdout).expect("household period JSON");
     assert_eq!(report["household"], household);
     assert_eq!(report["version"], 2);
@@ -454,6 +457,43 @@ fn check_household_period(
     );
     let goods = report["goods"].as_array().expect("consumed goods");
     check_household_goods(goods, opening, receipts, id);
+}
+
+fn check_household_frame(
+    cursor: &ObserverMaterialCursor,
+    period: &EconomicPaymentPeriod,
+    principal: FinalDemandPrincipalId,
+    cli: &[u8],
+) {
+    let source = &period.source;
+    let campaign = source.campaign_id;
+    let tick = source.identity.resolve_tick();
+    let foundation = source.identity.foundation_digest();
+    let hash = *source.identity.tick_content_hash().as_bytes();
+    let read = |campaign, tick, id, foundation, hash| {
+        cursor.household_period_for_frame(campaign, tick, id, foundation, hash)
+    };
+    let report = read(campaign, tick, principal, foundation, hash)
+        .expect("exact displayed household receipt");
+    let mut bytes = serde_json::to_vec(&report).expect("household report JSON");
+    bytes.push(b'\n');
+    assert_eq!(bytes, cli, "frame and standalone receipt bytes agree");
+    let missing = FinalDemandPrincipalId::from_bytes([0; 32]);
+    assert_eq!(
+        read(campaign, tick, missing, foundation, hash),
+        Err(ObserverEconomyError::HouseholdAbsent)
+    );
+    for (campaign, tick, foundation, hash) in [
+        (CampaignId::from_uuid(Uuid::nil()), tick, foundation, hash),
+        (campaign, 0, foundation, hash),
+        (campaign, tick, [0; 32], hash),
+        (campaign, tick, foundation, [0; 32]),
+    ] {
+        assert_eq!(
+            read(campaign, tick, missing, foundation, hash),
+            Err(ObserverEconomyError::SourceChanged)
+        );
+    }
 }
 
 fn check_household_goods(
@@ -850,6 +890,36 @@ fn unowned_site_decision(
     );
 }
 
+fn check_historical_household_frame(
+    cursor: &ObserverMaterialCursor,
+    prior: &EconomicPaymentPeriod,
+    later: &EconomicPaymentPeriod,
+) {
+    let sample = prior
+        .source
+        .receipts
+        .household_consumption
+        .first()
+        .expect("historical pantry");
+    let read = |period: &EconomicPaymentPeriod| {
+        let source = &period.source;
+        cursor.household_period_for_frame(
+            source.campaign_id,
+            source.identity.resolve_tick(),
+            sample.principal_id,
+            source.identity.foundation_digest(),
+            *source.identity.tick_content_hash().as_bytes(),
+        )
+    };
+    let report = read(prior).expect("earlier displayed close while forward history stays at P2");
+    assert_eq!(report.period, prior.source.identity.resolve_tick());
+    assert_eq!(
+        report.world_sha256,
+        trade::hex(&prior.source.identity.result_world_hash())
+    );
+    assert_eq!(read(later), Err(ObserverEconomyError::SourceChanged));
+}
+
 pub(super) fn comparison(
     owner: &mut Client,
     observer: &ObserverEconomyReader,
@@ -907,6 +977,7 @@ pub(super) fn comparison(
         ),
         Err(ObserverEconomyError::SourceChanged)
     );
+    check_historical_household_frame(cursor, &prior, &later);
     let before = account_nets(&prior);
     let after = account_nets(&later);
     let (key, current) = after

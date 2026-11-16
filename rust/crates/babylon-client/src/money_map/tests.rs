@@ -1197,16 +1197,21 @@ fn household_receipt_is_bound_to_the_selected_account_and_observer_frame() {
         tick_hash: Some("another close".into()),
         ..scope.clone()
     };
-    assert!(!household::accepts(
-        app.world().resource::<MoneyView>(),
-        &stale,
-        id
-    ));
-    assert!(household::accepts(
-        app.world().resource::<MoneyView>(),
-        &scope,
-        id
-    ));
+    assert_eq!(
+        household::selected_for_frame(app.world().resource::<MoneyView>(), &stale),
+        None
+    );
+    assert_eq!(
+        household::selected_for_frame(app.world().resource::<MoneyView>(), &scope),
+        Some(id)
+    );
+    app.add_systems(Update, household::update);
+    app.update();
+    assert_eq!(
+        app.world().resource::<MoneyView>().household.key(),
+        (true, true),
+        "a household account with no admitted source resolves to an error in the opening update"
+    );
     app.world_mut()
         .get_mut::<Target>(select)
         .expect("household selection control")
@@ -1214,6 +1219,109 @@ fn household_receipt_is_bound_to_the_selected_account_and_observer_frame() {
     app.world_mut().trigger(press(select));
     let view = app.world().resource::<MoneyView>();
     assert!(!view.household.open);
-    assert!(!household::accepts(view, &scope, id));
+    assert_eq!(household::selected_for_frame(view, &scope), None);
     assert!(household::selected(view).is_none());
+}
+
+#[test]
+fn household_receipt_opens_at_top_and_returns_to_its_scrolled_account() {
+    use super::rail;
+    let (mut app, select, mut scope, _) = interaction_fixture();
+    scope.group = FlowGroup::Account;
+    let account = format!("household_cash:{}", "17".repeat(32));
+    let rows = state::connections(&[counterparty(Some(&account), "12", "0", "0")]);
+    let chosen = rows[0].key.clone();
+    let inspector = app.world_mut().spawn(Node::default()).id();
+    let rail = app
+        .world_mut()
+        .spawn((state::MoneyRail, Node::default()))
+        .id();
+    app.world_mut().entity_mut(inspector).add_child(rail);
+    let list_position = Vec2::new(0.0, 620.0);
+    let scroll = |app: &App| {
+        app.world()
+            .get::<ScrollPosition>(inspector)
+            .expect("inspector scroll")
+            .0
+    };
+    app.world_mut()
+        .entity_mut(inspector)
+        .insert(ScrollPosition(list_position));
+    {
+        let mut view = app.world_mut().resource_mut::<MoneyView>();
+        view.scope = Some(scope.clone());
+        view.rows = rows;
+    }
+    *app.world_mut()
+        .get_mut::<Target>(select)
+        .expect("selection control") = Target {
+        scope: scope.clone(),
+        offset: 0,
+        action: Action::Select(chosen.clone()),
+    };
+    let press = |entity| ObserverKeyboardActivate {
+        entity,
+        context: Some(scope.context.clone()),
+    };
+    app.world_mut().trigger(press(select));
+    let open = app
+        .world_mut()
+        .spawn(Target {
+            scope: scope.clone(),
+            offset: 0,
+            action: Action::HouseholdReceipt(true),
+        })
+        .observe(state::keyboard)
+        .id();
+    app.add_systems(Update, rail::paint);
+    app.update();
+    assert_eq!(scroll(&app), list_position);
+
+    app.world_mut().trigger(press(open));
+    app.update();
+    assert_eq!(
+        scroll(&app),
+        Vec2::ZERO,
+        "the heading and Back must be at the top on entry"
+    );
+    app.world_mut()
+        .get_mut::<ScrollPosition>(inspector)
+        .expect("receipt scroll")
+        .0
+        .y = 80.0;
+    app.add_systems(Update, super::household::update.before(rail::paint));
+    app.update();
+    assert_eq!(
+        app.world().resource::<MoneyView>().household.key(),
+        (true, true)
+    );
+    assert_eq!(
+        scroll(&app),
+        Vec2::new(0.0, 80.0),
+        "the completed receipt preserves manual scrolling"
+    );
+    let back = {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &Target)>()
+            .iter(world)
+            .find(|(_, target)| target.action == Action::HouseholdReceipt(false))
+            .expect("the receipt has its Back to flows control")
+            .0
+    };
+    app.world_mut().trigger(press(back));
+    app.update();
+    assert_eq!(
+        scroll(&app),
+        list_position,
+        "Back restores the position in the account list"
+    );
+    assert_eq!(
+        app.world()
+            .resource::<MoneyView>()
+            .selected_row()
+            .expect("kept selected account")
+            .key,
+        chosen
+    );
 }

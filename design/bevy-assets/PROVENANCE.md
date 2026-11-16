@@ -31,6 +31,10 @@ editable master is `sources/economic-map-atlas.svg`. The game uses its transpare
 export, `economic-map-atlas.png`. Each cell identifies the same kind of place or partner when an
 artist supplies a replacement.
 
+On 2026-11-16, Codex recolored the shop with a blue and white awning. Inkscape produced the
+updated atlas and the 24- and 30-pixel symbol key. The earlier Wayne period 2 screenshot
+shows the original warm-colored shop.
+
 ## OpenAI-generated illustrations
 
 OpenAI's built-in image-generation tool created the ten illustration masters on 2026-08-22. The

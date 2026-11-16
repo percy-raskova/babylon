@@ -350,7 +350,7 @@ mise run play -- --new --preset national-economy
 ```
 
 Choose a county, open **Map lens +**, then choose **Economy network**.
-An orange factory marks producers, a striped awning marks shops, and a
+An orange factory marks producers, a blue-and-white awning marks shops, and a
 gold pylon marks energy and utilities. Select a symbol or its row in
 **County workplaces** to see the sites it represents.
 Select a named site to open its circuit. The symbols share the county's

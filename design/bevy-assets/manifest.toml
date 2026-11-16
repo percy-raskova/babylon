@@ -93,7 +93,7 @@ height = 256
 columns = 4
 rows = 2
 sampler = "linear"
-sha256 = "c8e6a10fd758b4e88f68870e41848f39d8563e13b9aeaa24ddc019e02533dbd2"
+sha256 = "9adb4a82112debe7909b6dca6f1dc114905885a5eba974fd21d6803a1691aed7"
 license = "AGPL-3.0-or-later"
 
 [[asset]]

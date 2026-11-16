@@ -134,7 +134,7 @@ _EXPECTED_MANIFEST_METADATA = (
         4,
         2,
         "linear",
-        "c8e6a10fd758b4e88f68870e41848f39d8563e13b9aeaa24ddc019e02533dbd2",
+        "9adb4a82112debe7909b6dca6f1dc114905885a5eba974fd21d6803a1691aed7",
         "AGPL-3.0-or-later",
     ),
     (

@@ -31,15 +31,15 @@
 
   <g id="shop" transform="translate(128)" aria-label="Shop">
     <use xlink:href="#shop-outline" class="shadow" transform="translate(0 5)"/>
-    <use xlink:href="#shop-outline" class="edge" fill="#ddaa68"/>
-    <path d="M28 65L65 77V101L28 90Z" fill="#e4b574"/>
-    <path d="M65 76L100 62V87L65 102Z" fill="#997346"/>
-    <path d="M34 70L48 74V85L34 81ZM52 75L61 78V98L52 95Z" fill="#394747"/>
-    <path d="M74 78L91 70V79L74 88Z" fill="#3b4642"/>
-    <path d="M29 36L79 25L103 38L63 53Z" fill="#e9bc77"/>
-    <path d="M30 36L65 48L105 37L108 60L70 76L20 64Z" fill="#b04d44" class="thin"/>
-    <path d="M38 39L46 42L38 66L28 63ZM54 45L62 48L58 72L47 68ZM73 47L82 44L84 69L74 73ZM92 41L99 39L104 62L94 66Z" fill="#f7dfad"/>
-    <path d="M20 62L70 76L108 60" fill="none" stroke="#633f39" stroke-width="3"/>
+    <use xlink:href="#shop-outline" class="edge" fill="#569bd4"/>
+    <path d="M28 65L65 77V101L28 90Z" fill="#71b2e3"/>
+    <path d="M65 76L100 62V87L65 102Z" fill="#436c9e"/>
+    <path d="M34 70L48 74V85L34 81ZM52 75L61 78V98L52 95Z" fill="#213b58"/>
+    <path d="M74 78L91 70V79L74 88Z" fill="#213b58"/>
+    <path d="M29 36L79 25L103 38L63 53Z" fill="#83bee9"/>
+    <path d="M30 36L65 48L105 37L108 60L70 76L20 64Z" fill="#265ca6" class="thin"/>
+    <path d="M38 39L46 42L38 66L28 63ZM54 45L62 48L58 72L47 68ZM73 47L82 44L84 69L74 73ZM92 41L99 39L104 62L94 66Z" fill="#edf6fc"/>
+    <path d="M20 62L70 76L108 60" fill="none" stroke="#213c65" stroke-width="3"/>
   </g>
 
   <g id="utility" transform="translate(256)" aria-label="Utility">

@@ -64,16 +64,12 @@ WHERE campaign_id = $1::uuid ORDER BY county_geoid, territory_local_name";
 /// committed tick the receipt names, never from material ledgers or
 /// `MAX(tick)` shortcuts.
 pub const ARCHIVE_COUNTY_FIELD_READ_SQL: &str = "SELECT \
-    t.territory_id, f.field_name, f.value_tag, f.real_bits, f.int_value \
-    FROM babylon_state.territory_state_v1 t \
-    JOIN babylon_state.territory_state_field_v1 f \
-      ON f.campaign_id = t.campaign_id \
-     AND f.resolve_tick = t.resolve_tick \
-     AND f.territory_id = t.territory_id \
-    WHERE t.campaign_id = $1::uuid AND t.resolve_tick = $2 \
+    f.territory_id, f.field_name, f.value_tag, f.real_bits, f.int_value \
+    FROM babylon_state.territory_state_field_v1 f \
+    WHERE f.campaign_id = $1::uuid AND f.resolve_tick = $2 \
       AND f.field_name IN ('median-wage', 'phi-hour', 'qcew-establishments', \
           'qcew-employment', 'qcew-total-annual-wages', 'qcew-average-weekly-wage') \
-    ORDER BY t.territory_id, f.position";
+    ORDER BY f.territory_id, f.position";
 
 /// Read-only stored county-page projection used by the dirty diff.
 ///

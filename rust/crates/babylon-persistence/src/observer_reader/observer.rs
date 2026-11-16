@@ -105,6 +105,8 @@ pub enum ObserverEconomyError {
     InvalidProjection,
     EconomicFlow(EconomicFlowError),
     InvalidSiteAccounting,
+    SiteAbsent,
+    SourceChanged,
     CompanyPortfoliosNotCaptured,
     CompanyDecisionAbsent,
     HouseholdAbsent,

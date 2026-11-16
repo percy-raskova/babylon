@@ -9,6 +9,7 @@
 pub mod app;
 pub mod atlas;
 pub mod cli;
+mod company_investment;
 pub mod decision_surface;
 pub mod dossier;
 mod economy_status;

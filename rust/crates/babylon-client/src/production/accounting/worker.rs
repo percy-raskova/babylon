@@ -1,12 +1,13 @@
 //! Load a single authenticated journal reading off the UI thread.
-use super::reading::Scope;
+use super::reading::{Reading, Scope};
 use crate::cli;
+use crate::company_investment::ProcessLabel;
 use crate::observer::{ObserverSession, Perspective};
 use crate::observer_ui::ObserverUiState;
 use crate::production::{
     navigation, PrimaryView, ProductionNavigation, ProductionObservation, ProductionReadingSection,
 };
-use babylon_material_circuit::SiteId;
+use babylon_material_circuit::{ProcessId, SiteId};
 use babylon_persistence::money_journal::JournalError;
 use bevy::prelude::*;
 use bevy::tasks::{self, IoTaskPool, Task};
@@ -31,8 +32,10 @@ impl Selection {
         primary: PrimaryView,
         ui: &ObserverUiState,
     ) -> Self {
-        if navigation.reading_section != ProductionReadingSection::Accounts
-            || !authorized(&observation.state)
+        if !matches!(
+            navigation.reading_section,
+            ProductionReadingSection::Accounts | ProductionReadingSection::Investment
+        ) || !authorized(&observation.state)
         {
             return Self::Inactive;
         }
@@ -44,13 +47,14 @@ impl Selection {
         let Some((frame, snapshot)) = frame.zip(snapshot) else {
             return Self::FrameUnavailable;
         };
-        let Some(site) = navigation.selected_site.as_deref().and_then(|id| {
-            snapshot
-                .sites
-                .iter()
-                .find(|site| site.id == id)
-                .and_then(|site| cli::identity_bytes(&site.id))
-        }) else {
+        let Some(site) = navigation
+            .selected_site
+            .as_deref()
+            .and_then(|id| snapshot.sites.iter().find(|site| site.id == id))
+        else {
+            return Self::SiteUnavailable;
+        };
+        let Some(site_id) = cli::identity_bytes(&site.id) else {
             return Self::SiteUnavailable;
         };
         if observation.state.viewed_tick == 0 {
@@ -66,7 +70,23 @@ impl Selection {
         };
         Self::Period(Scope {
             context: observation.state.context(),
-            site: SiteId::from_bytes(site),
+            reading: if navigation.reading_section == ProductionReadingSection::Investment {
+                Reading::Investment(
+                    site.processes
+                        .iter()
+                        .filter_map(|p| {
+                            Some(ProcessLabel {
+                                id: ProcessId::from_bytes(cli::identity_bytes(&p.id)?),
+                                name: p.name.clone(),
+                                unit: p.output_unit.clone(),
+                            })
+                        })
+                        .collect(),
+                )
+            } else {
+                Reading::Accounts
+            },
+            site: SiteId::from_bytes(site_id),
             foundation,
             tick_hash,
         })
@@ -91,10 +111,11 @@ impl AccountsView {
     pub(in crate::production) fn text(&self) -> &str {
         match &self.selection {
             Selection::Inactive => "Choose an operating site in the full observer to read its accounts.",
-            Selection::Opening => "Opening foundation. Financial statements start with the first completed period.",
+            Selection::Opening => "Opening foundation. Financial statements and investment decisions start with the first completed period.",
             Selection::SiteUnavailable => "Invalid operating-site identity in the selected frame.",
-            Selection::FrameUnavailable => "Missing committed period identity. Site accounts are unavailable.",
-            Selection::Period(_) => match &self.status {
+            Selection::FrameUnavailable => "Missing committed period identity. Financial readings are unavailable.",
+            Selection::Period(scope) => match &self.status {
+                Status::Waiting if matches!(scope.reading, Reading::Investment(_)) => "Reading the company’s investment decision…",
                 Status::Waiting => "Reading the selected site’s accounts…",
                 Status::Publishing => "Site accounts have not been published for this period. Waiting for publication…",
                 Status::Finished(text) => text,
@@ -118,11 +139,11 @@ impl AccountsView {
                 Status::Finished("This site has no entry in the published period.".into())
             }
             Err(JournalError::SourceChanged | JournalError::Projection) => Status::Finished(
-                "The published accounts failed verification for the selected committed frame."
+                "The financial reading failed verification for the selected committed frame."
                     .into(),
             ),
             Err(error) => Status::Finished(format!(
-                "Could not read the selected site’s accounts ({error})."
+                "Could not read the selected site’s financial evidence ({error})."
             )),
         };
     }

@@ -18,7 +18,7 @@ use crate::observer_performance::RenderMode;
 use crate::observer_ui::{ObserverFrame, ObserverUiState};
 use crate::production::PrimaryView;
 use crate::ui::Interaction;
-use babylon_material_circuit::SiteId;
+use babylon_material_circuit::{CompanyId, SiteId};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
     FlowGroup, FlowPage, FlowQuery, FlowRow, JournalError, LaborAmount, LaborFlowPage,
@@ -332,11 +332,7 @@ impl MoneyView {
             };
         }
         if self.company.is_open() {
-            return if self.company.key().1 {
-                RenderMode::CompanyConsolidated
-            } else {
-                RenderMode::CompanyParent
-            };
+            return self.company.mode();
         }
         if self.books.offset.is_some() {
             return RenderMode::CountyAccounts;
@@ -571,6 +567,10 @@ pub(super) enum Action {
     CompanyAccounts(bool),
     HouseholdReceipt(bool),
     CompanyConsolidated(bool),
+    CompanyInvestment {
+        company: CompanyId,
+        open: bool,
+    },
     Freight(FreightCommand),
     Group(FlowGroup),
     Geography(i8),
@@ -654,6 +654,10 @@ pub(super) fn activate(
         Action::CompanyAccounts(open) => {
             let id = company::selected(view);
             return view.company.set_open(id, *open);
+        }
+        Action::CompanyInvestment { company, open } => {
+            return company::selected(view) == Some(*company)
+                && view.company.show_investment(*company, *open);
         }
         Action::CompanyConsolidated(next) => return view.company.show_consolidated(*next),
         Action::Books { from, to } if target.scope.measure == Measure::Money => {
@@ -794,6 +798,7 @@ pub(in crate::observer_map3d) fn install(app: &mut App) {
         )
         .add_systems(Update, freight_plot::paint.in_set(ObserverSet::Paint))
         .add_systems(Update, freight_rail::detail.after(rail::paint))
+        .add_systems(Update, company::paint_investment.after(rail::paint))
         .init_resource::<Loader>()
         .init_resource::<IndustryWorker>()
         .add_systems(

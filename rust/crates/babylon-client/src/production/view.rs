@@ -85,6 +85,7 @@ pub enum ProductionReadingSection {
     Work,
     Sources,
     Accounts,
+    Investment,
 }
 
 impl ProductionReadingSection {
@@ -95,6 +96,7 @@ impl ProductionReadingSection {
             Self::Work => "Work",
             Self::Sources => "Sources",
             Self::Accounts => "Accounts",
+            Self::Investment => "Investment",
         }
     }
 }
@@ -542,6 +544,7 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
                 ProductionReadingSection::Work,
                 ProductionReadingSection::Sources,
                 ProductionReadingSection::Accounts,
+                ProductionReadingSection::Investment,
             ] {
                 button(tabs, section.label(), ProductionCommand::Reading(section));
             }

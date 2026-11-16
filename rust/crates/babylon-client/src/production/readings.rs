@@ -87,9 +87,9 @@ pub(super) fn describe(
     accounts: Option<&AccountsView>,
 ) -> String {
     match section {
-        ProductionReadingSection::Accounts => accounts
+        ProductionReadingSection::Accounts | ProductionReadingSection::Investment => accounts
             .map_or(
-                "Waiting for the selected site’s accounts.",
+                "Waiting for the selected site’s financial reading.",
                 AccountsView::text,
             )
             .to_owned(),

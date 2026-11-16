@@ -174,9 +174,9 @@ impl ProductionControlAvailability {
         state: &ObserverSession,
     ) -> Option<Display> {
         let available = match command {
-            ProductionCommand::Reading(ProductionReadingSection::Accounts) => {
-                self.readings && super::accounting::authorized(state)
-            }
+            ProductionCommand::Reading(
+                ProductionReadingSection::Accounts | ProductionReadingSection::Investment,
+            ) => self.readings && super::accounting::authorized(state),
             ProductionCommand::Back => self.previous_index.is_some() || self.county_back,
             ProductionCommand::Details | ProductionCommand::Reading(_) => self.readings,
             ProductionCommand::Flat => self.scene,
@@ -197,10 +197,10 @@ impl ProductionControlAvailability {
         state: &ObserverSession,
     ) -> Option<&'static str> {
         match command {
-            ProductionCommand::Reading(ProductionReadingSection::Accounts)
-                if !super::accounting::authorized(state) =>
-            {
-                Some("Operating-site accounts require the full observer.")
+            ProductionCommand::Reading(
+                ProductionReadingSection::Accounts | ProductionReadingSection::Investment,
+            ) if !super::accounting::authorized(state) => {
+                Some("Financial readings require the full observer.")
             }
             ProductionCommand::Back
                 if navigation.household.is_none()

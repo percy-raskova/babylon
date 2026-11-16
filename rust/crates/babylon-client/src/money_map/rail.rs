@@ -9,6 +9,7 @@ use super::state::{
 use super::{company, freight_rail, grouping, household, industry};
 use crate::atlas::CountyAtlas;
 use crate::observer_focus::ObserverFocusTarget;
+use crate::observer_performance::RenderMode;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
 use crate::ui::{self, Interaction};
@@ -214,7 +215,7 @@ pub(super) struct RailKey {
     status: Status,
     books: (Option<u64>, bool),
     household: (bool, bool),
-    company: (Option<CompanyId>, bool, bool),
+    company: (Option<CompanyId>, RenderMode, bool),
     freight: Option<FreightPageKey>,
     active: bool,
 }

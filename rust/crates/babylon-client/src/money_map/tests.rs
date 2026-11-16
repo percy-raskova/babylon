@@ -589,6 +589,8 @@ fn grouping_ranks_the_same_county_and_draws_only_the_selected_groups_actual_loca
 
 #[test]
 fn company_statements_require_a_selected_represented_company_and_a_current_full_observer() {
+    use crate::observer_performance::RenderMode;
+    use babylon_material_circuit::CompanyId;
     let (mut app, select, mut scope, _) = interaction_fixture();
     scope.group = FlowGroup::Company;
     let company = format!("company:{}", "34".repeat(32));
@@ -632,6 +634,34 @@ fn company_statements_require_a_selected_represented_company_and_a_current_full_
         .perspective = Perspective::FullObserver;
     app.world_mut().trigger(press(open));
     assert!(app.world().resource::<MoneyView>().company.is_open());
+    let investment = app
+        .world_mut()
+        .spawn(Target {
+            scope: scope.clone(),
+            offset: 0,
+            action: Action::CompanyInvestment {
+                company: CompanyId::from_bytes([0x34; 32]),
+                open: true,
+            },
+        })
+        .observe(state::keyboard)
+        .id();
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .perspective = Perspective::PlayerKnowledge;
+    app.world_mut().trigger(press(investment));
+    assert_eq!(
+        app.world().resource::<MoneyView>().render_mode(),
+        RenderMode::CompanyParent
+    );
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .perspective = Perspective::FullObserver;
+    app.world_mut().trigger(press(investment));
+    assert_eq!(
+        app.world().resource::<MoneyView>().render_mode(),
+        RenderMode::CompanyInvestment
+    );
 }
 
 use babylon_kernel::economic_location::EconomicLocation;

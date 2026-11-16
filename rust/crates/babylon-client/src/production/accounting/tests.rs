@@ -1,4 +1,4 @@
-use super::reading::Scope;
+use super::reading::{Reading, Scope};
 use super::worker::{AccountsView, Selection};
 use crate::observer::{ObservationContext, Perspective};
 use babylon_kernel::currency::Currency;
@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 fn scope() -> Scope {
     Scope {
+        reading: Reading::Accounts,
         context: ObservationContext {
             campaign: CampaignId::from_uuid(Uuid::from_u128(42)),
             perspective: Perspective::FullObserver,
@@ -56,6 +57,13 @@ fn physical_books_keep_cash_unknown_and_replies_follow_the_selected_generation()
     assert!(view.text().contains("have not been published"));
     view.receive(&later, Ok(physical));
     assert!(view.text().contains("Physical books only"));
+    let mut investment = later.clone();
+    investment.reading = Reading::Investment(Vec::new());
+    view.select(Selection::Period(investment.clone()));
+    view.receive(&later, Ok("Stale financial statements".into()));
+    assert_eq!(view.text(), "Reading the company’s investment decision…");
+    view.receive(&investment, Ok("Committed investment choice".into()));
+    assert_eq!(view.text(), "Committed investment choice");
     view.select(Selection::Opening);
     assert!(view.text().contains("first completed period"));
 }

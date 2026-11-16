@@ -2524,24 +2524,28 @@ fn accounts_keyboard_selection_shows_invalid_evidence_without_changing_the_ledge
             .after(navigation::navigate)
             .before(view::paint_readings),
     );
-    let selected = {
-        let world = app.world_mut();
-        world
-            .query::<(&Text, &ChildOf)>()
-            .iter(world)
-            .find_map(|(text, parent)| (text.0 == "Accounts").then_some(parent.parent()))
-            .expect("an Accounts reading tab")
-    };
     let period = app.world().resource::<ObserverSession>().viewed_tick;
-    app.world_mut()
-        .resource_mut::<InputFocus>()
-        .set(selected, FocusCause::Navigated);
-    readings_key(&mut app, window, KeyCode::Enter);
-    assert!(panel_text::<ProductionDetails>(&mut app).contains("Invalid operating-site identity"));
-    assert_eq!(
-        app.world().resource::<ObserverSession>().viewed_tick,
-        period
-    );
+    for label in ["Accounts", "Investment"] {
+        let selected = {
+            let world = app.world_mut();
+            world
+                .query::<(&Text, &ChildOf)>()
+                .iter(world)
+                .find_map(|(text, parent)| (text.0 == label).then_some(parent.parent()))
+                .expect("a financial reading tab")
+        };
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(selected, FocusCause::Navigated);
+        readings_key(&mut app, window, KeyCode::Enter);
+        assert!(
+            panel_text::<ProductionDetails>(&mut app).contains("Invalid operating-site identity")
+        );
+        assert_eq!(
+            app.world().resource::<ObserverSession>().viewed_tick,
+            period
+        );
+    }
 }
 
 #[test]
@@ -2565,6 +2569,7 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         ProductionReadingSection::Work,
         ProductionReadingSection::Sources,
         ProductionReadingSection::Accounts,
+        ProductionReadingSection::Investment,
     ] {
         readings_key(&mut app, window, KeyCode::Tab);
         let focused = app

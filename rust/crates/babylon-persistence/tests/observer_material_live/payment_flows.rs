@@ -2,8 +2,9 @@
 #[path = "payment_registry.rs"]
 mod payment_registry;
 
+use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{
-    AccountId, CompanyId, FinalDemandPrincipalId, PublicTransferTreatment,
+    AccountId, CompanyId, FinalDemandPrincipalId, PublicTransferTreatment, SiteId,
 };
 use babylon_persistence::company_statements::CompanyPeriodReport;
 use babylon_persistence::economic_catalog::EconomicOpening;
@@ -45,6 +46,16 @@ pub(super) fn restricted(observer: &ObserverEconomyReader, campaign: CampaignId)
         observer.company_decision_receipt(campaign, 1, CompanyId::from_bytes([0; 32])),
         Err(ObserverEconomyError::Authority)
     ));
+    assert_eq!(
+        observer.site_company_decision_for_frame(
+            campaign,
+            1,
+            SiteId::from_bytes([0; 32]),
+            [0; 32],
+            [0; 32]
+        ),
+        Err(ObserverEconomyError::Authority)
+    );
     assert_eq!(
         observer.published_company_period_statements(campaign, 1),
         Err(JournalError::Authority)
@@ -687,11 +698,103 @@ fn account_nets(source: &EconomicPaymentPeriod) -> BTreeMap<String, i128> {
     nets
 }
 
+/// Both closes are durable. A shop with no production process still belongs to its parent.
+fn historical_site_decision(
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    cursor: &ObserverMaterialCursor,
+    content_hash: &[u8; 32],
+) {
+    let foundation = cursor
+        .admission_handle()
+        .expect("admitted historical foundation");
+    let opening = foundation.view().opening;
+    let books = observer
+        .company_opening_statements(campaign)
+        .expect("captured parent companies");
+    let shop = books
+        .companies
+        .iter()
+        .find(|company| company.key.function == EconomicFunction::DistributionTransport)
+        .expect("private distribution company");
+    let site = shop.members.first().expect("captured shop subsidiary").site;
+    assert!(opening
+        .sites
+        .iter()
+        .any(|s| s.site_id == site && s.processes.is_empty() && s.merchant.is_some()));
+    let report = observer
+        .site_company_decision_for_frame(campaign, 1, site, foundation.digest(), *content_hash)
+        .expect("authenticate earlier period")
+        .expect("whole-site parent membership");
+    assert_eq!(report.campaign, campaign);
+    assert_eq!(report.foundation_sha256, foundation.digest());
+    assert_eq!(&report.tick_content_hash, content_hash);
+    assert_eq!(report.evidence.period, 1);
+    assert_eq!(report.evidence.company, shop.company);
+    assert_eq!(report.company_label, shop.key.label());
+    assert_eq!(
+        report.evidence,
+        *cursor
+            .current_register()
+            .expect("period one register")
+            .company_portfolios()
+            .expect("captured portfolios")
+            .companies
+            .iter()
+            .find(|row| row.company == shop.company)
+            .expect("shop company close")
+    );
+
+    let public = opening
+        .sites
+        .iter()
+        .find(|s| s.function == EconomicFunction::PublicProvisioning)
+        .expect("public provisioning site")
+        .site_id;
+    let read_public =
+        |digest, hash| observer.site_company_decision_for_frame(campaign, 1, public, digest, hash);
+    assert_eq!(read_public(foundation.digest(), *content_hash), Ok(None));
+    assert_eq!(
+        read_public([0; 32], *content_hash),
+        Err(ObserverEconomyError::SourceChanged)
+    );
+    assert_eq!(
+        read_public(foundation.digest(), [0; 32]),
+        Err(ObserverEconomyError::SourceChanged)
+    );
+    assert_eq!(
+        observer.site_company_decision_for_frame(
+            campaign,
+            3,
+            public,
+            foundation.digest(),
+            *content_hash
+        ),
+        Err(ObserverEconomyError::TickAbsent)
+    );
+    assert_eq!(
+        observer.site_company_decision_for_frame(
+            campaign,
+            1,
+            SiteId::from_bytes([0; 32]),
+            foundation.digest(),
+            *content_hash
+        ),
+        Err(ObserverEconomyError::SiteAbsent)
+    );
+}
+
 pub(super) fn comparison(observer: &ObserverEconomyReader, campaign: CampaignId) {
     let mut cursor = None;
     let prior = observer
         .committed_economic_payments_with_cursor(campaign, 1, &mut cursor)
         .expect("first canonical payments");
+    historical_site_decision(
+        observer,
+        campaign,
+        cursor.as_ref().expect("period one cursor"),
+        prior.source.identity.tick_content_hash().as_bytes(),
+    );
     let later = observer
         .committed_economic_payments_with_cursor(campaign, 2, &mut cursor)
         .expect("second canonical payments");

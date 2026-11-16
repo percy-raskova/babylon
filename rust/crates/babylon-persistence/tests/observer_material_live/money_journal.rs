@@ -131,6 +131,24 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
         Err(JournalError::CompanyBooksNotCaptured)
     );
     let site = super::site_accounting_sql::stocks(&runtime, &observer, campaign, 14);
+    let earlier = observer
+        .committed_material_receipts(campaign, 1)
+        .expect("period one frame of the ungrouped Michigan campaign")
+        .identity;
+    let ungrouped = || {
+        observer.site_company_decision_for_frame(
+            campaign,
+            1,
+            site,
+            earlier.foundation_digest(),
+            *earlier.tick_content_hash().as_bytes(),
+        )
+    };
+    assert_eq!(
+        ungrouped(),
+        Ok(None),
+        "a historical Michigan site has no captured parent company"
+    );
     super::site_accounting_sql::restricted(&preview, campaign, site);
     let physical = observer
         .published_site_period(campaign, 14, site)
@@ -151,6 +169,10 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
         &mut owner,
         campaign,
         &mut cursor,
+    );
+    assert!(
+        ungrouped().is_err(),
+        "a known ungrouped site cannot hide a corrupted historical receipt"
     );
 }
 

@@ -4,20 +4,37 @@ use babylon_material_circuit::SiteId;
 use babylon_persistence::money_journal::{JournalError, PublishedSitePeriod};
 use babylon_persistence::observer_reader::ObserverEconomyReader;
 
+use crate::company_investment::{self, ProcessLabel, Subject};
 use crate::human_numbers;
 use crate::observer::ObservationContext;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Scope {
+    pub(super) reading: Reading,
     pub(super) context: ObservationContext,
     pub(super) site: SiteId,
     pub(super) foundation: [u8; 32],
     pub(super) tick_hash: [u8; 32],
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Reading {
+    Accounts,
+    Investment(Vec<ProcessLabel>),
+}
+
 impl Scope {
     pub(super) fn read(&self) -> Result<String, JournalError> {
         let reader = ObserverEconomyReader::from_observer_env().map_err(JournalError::Observer)?;
+        if let Reading::Investment(labels) = &self.reading {
+            return company_investment::read(
+                &reader,
+                &self.context,
+                self.foundation,
+                self.tick_hash,
+                Subject::Site(self.site, labels),
+            );
+        }
         let period =
             reader.published_site_period(self.context.campaign, self.context.tick, self.site)?;
         self.describe(&period)

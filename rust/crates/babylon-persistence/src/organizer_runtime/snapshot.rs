@@ -24,9 +24,12 @@ use crate::ArchiveEvidenceClass;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::{FinalDemandPrincipalId, MaterialCircuitState};
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerCollectionResolution;
+use babylon_practice_contract::OrganizerConfig;
 use babylon_practice_contract::OrganizerPeriodJournal;
 use postgres::Row;
 use std::collections::BTreeSet;
@@ -108,6 +111,27 @@ pub struct OrganizerSnapshot {
     pub collection_resolutions: Vec<OrganizerCollectionResolution>,
 }
 
+fn disclose_partner_counties(
+    view: &mut OrganizerView,
+    config: &OrganizerConfig,
+    state: &MaterialCircuitState,
+) {
+    for partner in &mut view.aid_partners {
+        let Some(binding) = config.aid_bindings.iter().find(|binding| {
+            binding.partner.actor_id == partner.actor_id && binding.kind == partner.kind
+        }) else {
+            continue;
+        };
+        let id = FinalDemandPrincipalId::from_bytes(binding.recipient_principal_id);
+        partner.location = state
+            .final_demand_principals
+            .binary_search_by_key(&id, |principal| principal.id)
+            .ok()
+            .map(|index| state.final_demand_principals[index].location)
+            .filter(|location| matches!(location, EconomicLocation::County(_)));
+    }
+}
+
 /// Bind received aid disclosures to the exact authenticated material register.
 pub(crate) fn aid_snapshot_matches(
     catalog: &MaterialCatalog,
@@ -131,6 +155,7 @@ pub(crate) fn aid_snapshot_matches(
     )
     .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     expected_view.public_workplace_contact = register.public_venue().is_some();
+    disclose_partner_counties(&mut expected_view, config, register.state());
     let encounters_match = encounter_snapshot_matches(register, snapshot)?;
     Ok(encounters_match
         && expected_view == snapshot.view
@@ -179,6 +204,7 @@ pub(crate) fn captured_organizer_snapshot(
     )
     .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     view.public_workplace_contact = register.public_venue().is_some();
+    disclose_partner_counties(&mut view, config, register.state());
     Ok(OrganizerSnapshot {
         body: OrganizerBodyDisclosure::Unavailable,
         body_scope: OrganizerBodyScope {

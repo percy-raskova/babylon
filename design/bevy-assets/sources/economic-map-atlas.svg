@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="256" viewBox="0 0 512 256">
+  <title>Babylon economic map pieces</title>
+  <desc>Eight transparent 128-unit tiles, read left to right. The pieces are lit from the upper left. The cream edges and cast shadows hold the silhouettes against county terrain.</desc>
+  <defs>
+    <style>
+      .shadow { fill:#101719; stroke:#101719; stroke-width:7; opacity:.78; stroke-linejoin:round; }
+      .edge {stroke:#f5e9c9;stroke-width:5;stroke-linejoin:round;stroke-linecap:round}
+      .ink {stroke:#253336;stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
+      .thin {stroke:#253336;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+    </style>
+    <path id="mill-outline" d="M18 91L18 56L36 46L36 57L55 44L55 55L73 42L75 25L88 23L90 48L96 50L97 36L107 34L109 83L68 103Z"/>
+    <path id="shop-outline" d="M18 63L29 34L80 23L104 37L109 63L101 70L101 88L66 105L26 92L26 71Z"/>
+    <path id="pylon-outline" d="M36 104L49 78L54 57L37 57L32 66L25 62L31 46L56 39L59 32L45 34L41 42L34 39L39 25L60 20L65 14L72 19L91 23L97 36L90 40L85 32L74 31L77 39L99 44L105 58L99 63L93 55L78 55L85 81L98 101L84 106L71 89L61 89L50 106Z"/>
+    <path id="crane-outline" d="M17 90L28 85L28 37L37 29L72 21L100 35L100 43L89 46L89 57L103 63L103 80L111 84L110 94L68 108L18 99Z"/>
+    <path id="aircraft-outline" d="M21 75L48 59L60 46L54 21L61 17L78 35L92 22Q102 14 108 19Q113 25 105 36L89 54L105 80L98 86L72 71L55 85L53 100L46 105L39 91L25 88L19 84L34 78Z"/>
+    <path id="origin-outline" d="M64 12L74 28Q93 31 101 48L113 58L99 69Q96 87 76 96L65 111L52 99Q31 96 24 76L13 65L26 55Q30 35 51 29Z"/>
+    <path id="supply-outline" d="M14 66Q14 57 20 58L36 68L40 69L41 52L67 33L91 46L92 64L106 53Q114 50 113 60L107 79L92 91L66 104L48 102L28 90L18 84Z"/>
+    <path id="solidarity-outline" d="M15 54L38 39L53 44L64 32Q72 25 81 28L90 32Q97 35 96 43L98 48L112 54L112 76L87 94L71 89L59 99Q52 105 42 102L32 97Q23 93 25 83L17 78Z"/>
+  </defs>
+
+  <g id="producer" aria-label="Producer">
+    <use xlink:href="#mill-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#mill-outline" class="edge" fill="#c5764f"/>
+    <path d="M20 59L36 50L36 63L55 50L55 63L72 49L72 87L68 99L20 89Z" fill="#dc8657"/>
+    <path d="M74 47L87 41L89 52L96 55L95 42L104 39L107 82L70 99L70 62Z" fill="#914e40"/>
+    <path d="M76 27L86 25L86 31L76 34ZM98 38L105 36L105 43L98 44Z" fill="#fae0a2"/>
+    <path d="M18 59L36 48V60L55 47V59L72 46" fill="none" stroke="#fae0a2" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M27 70L36 72V81L27 78ZM42 73L51 75V84L42 81ZM56 76L64 78V87L56 84Z" fill="#373c38"/>
+    <path d="M78 69L86 65V75L78 80ZM92 62L100 58V69L92 73Z" fill="#e9b171"/>
+  </g>
+
+  <g id="shop" transform="translate(128)" aria-label="Shop">
+    <use xlink:href="#shop-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#shop-outline" class="edge" fill="#ddaa68"/>
+    <path d="M28 65L65 77V101L28 90Z" fill="#e4b574"/>
+    <path d="M65 76L100 62V87L65 102Z" fill="#997346"/>
+    <path d="M34 70L48 74V85L34 81ZM52 75L61 78V98L52 95Z" fill="#394747"/>
+    <path d="M74 78L91 70V79L74 88Z" fill="#3b4642"/>
+    <path d="M29 36L79 25L103 38L63 53Z" fill="#e9bc77"/>
+    <path d="M30 36L65 48L105 37L108 60L70 76L20 64Z" fill="#b04d44" class="thin"/>
+    <path d="M38 39L46 42L38 66L28 63ZM54 45L62 48L58 72L47 68ZM73 47L82 44L84 69L74 73ZM92 41L99 39L104 62L94 66Z" fill="#f7dfad"/>
+    <path d="M20 62L70 76L108 60" fill="none" stroke="#633f39" stroke-width="3"/>
+  </g>
+
+  <g id="utility" transform="translate(256)" aria-label="Utility">
+    <use xlink:href="#pylon-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#pylon-outline" class="edge" fill="#e7b750"/>
+    <path d="M66 18L71 22L77 49L87 82L94 99L86 103L70 82L68 53Z" fill="#986c36"/>
+    <path d="M42 27L65 22L89 26M34 48L65 40L97 46" fill="none" stroke="#ffdf87" stroke-width="5" stroke-linecap="round"/>
+    <path d="M53 83L66 57L77 82L65 75Z" fill="#283c3c"/>
+    <path d="M64 45L58 62L65 61L61 74L77 53L69 55L74 44Z" fill="#fff1af" stroke="#73512d" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M49 98L65 81L84 96" fill="none" stroke="#ffdc79" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <g id="freight-terminal" transform="translate(384)" aria-label="Freight terminal">
+    <use xlink:href="#crane-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#crane-outline" class="edge" fill="#4f8f90"/>
+    <path d="M20 91L60 76L108 85L67 100Z" fill="#81a8a3"/>
+    <path d="M20 92L67 101L108 86V92L68 105L20 98Z" fill="#3f646c"/>
+    <path d="M30 86L31 38L39 35L39 84Z" fill="#9acfc4"/>
+    <path d="M39 84L39 36L46 38V82Z" fill="#345c66"/>
+    <path d="M30 37L72 23L99 35L89 41L69 34L41 44Z" fill="#a4d8cd" class="thin"/>
+    <path d="M42 67L66 41L62 37L40 57Z" fill="#274c58"/>
+    <path d="M85 44V57" fill="none" stroke="#2a4950" stroke-width="4"/>
+    <path d="M56 67L78 57L101 64L81 75Z" fill="#f2cb85" class="thin"/>
+    <path d="M56 67L81 75V91L56 84Z" fill="#c38e53" class="thin"/>
+    <path d="M81 75L101 64V80L81 91Z" fill="#96643f" class="thin"/>
+    <path d="M69 63L91 70V85" fill="none" stroke="#ffe3a7" stroke-width="4"/>
+  </g>
+
+  <g id="airport" transform="translate(0 128)" aria-label="Airport">
+    <use xlink:href="#aircraft-outline" class="shadow" transform="translate(0 6)"/>
+    <use xlink:href="#aircraft-outline" class="edge" fill="#d5e4db"/>
+    <path d="M39 86L60 68L91 35L103 23L105 23L101 32L87 49L68 68L48 85Z" fill="#87bac1"/>
+    <path d="M62 21L77 39L69 47Z" fill="#63a3ad"/>
+    <path d="M73 63L101 81L99 83L74 70L62 79Z" fill="#6e9faa"/>
+    <path d="M93 26L102 22L98 30Z" fill="#3d646e"/>
+    <path d="M46 93L50 90L49 99Z" fill="#bc6b45"/>
+  </g>
+
+  <g id="origin-selected-hub" transform="translate(128 128)" aria-label="Origin or selected hub">
+    <use xlink:href="#origin-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#origin-outline" class="edge" fill="#c17a47"/>
+    <ellipse cx="63" cy="63" rx="32" ry="30" fill="#263e40" stroke="#f4cf72" stroke-width="5"/>
+    <path d="M65 21L71 50L98 61L71 68L61 99L55 74L28 64L56 56Z" fill="#bd6b45" stroke="#f5d392" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M65 21L64 63L56 56ZM98 61L64 63L71 50ZM61 99L64 63L71 68ZM28 64L64 63L55 74Z" fill="#ffe5a1"/>
+    <circle cx="64" cy="63" r="6" fill="#293d3e"/>
+  </g>
+
+  <g id="local-aid-partner" transform="translate(256 128)" aria-label="Local aid partner">
+    <use xlink:href="#supply-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#supply-outline" class="edge" fill="#41988a"/>
+    <path d="M42 52L66 36L88 47L65 63Z" fill="#ffda8b" class="thin"/>
+    <path d="M42 52L65 63V80L42 68Z" fill="#ce9652" class="thin"/>
+    <path d="M65 63L88 47V65L66 80Z" fill="#b57549" class="thin"/>
+    <path d="M54 44L77 54V69" fill="none" stroke="#fff0b3" stroke-width="5"/>
+    <path d="M16 63Q18 58 22 63L42 74L56 75Q61 75 63 80Q68 74 73 73L92 66L107 55Q113 53 110 63L103 78L88 90L65 101L49 99L29 87L20 81Z" fill="#75bca7"/>
+    <path d="M20 72L32 84L50 93L62 94L62 100L48 98L26 86Z" fill="#43887e"/>
+    <path d="M37 76L48 84L61 88M64 85L73 80L91 74" fill="none" stroke="#366966" stroke-width="4" stroke-linecap="round"/>
+    <path d="M68 96L86 87L101 75" fill="none" stroke="#c6dfb9" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <g id="remote-aid-partner" transform="translate(384 128)" aria-label="Remote aid partner">
+    <use xlink:href="#solidarity-outline" class="shadow" transform="translate(0 5)"/>
+    <use xlink:href="#solidarity-outline" class="edge" fill="#b0a4bf"/>
+    <path d="M42 61L65 37Q75 26 85 33L91 38Q96 45 86 56L75 65" fill="none" stroke="#53485e" stroke-width="12" stroke-linecap="round"/>
+    <path d="M43 58L66 35Q75 28 83 33L89 37" fill="none" stroke="#d8cbea" stroke-width="5" stroke-linecap="round"/>
+    <path d="M44 75L33 86Q30 91 36 94L45 98Q50 101 58 94L81 72" fill="none" stroke="#68586f" stroke-width="11" stroke-linecap="round"/>
+    <path d="M36 92L44 97Q50 99 56 94L78 73" fill="none" stroke="#efe1cf" stroke-width="4" stroke-linecap="round"/>
+    <path d="M16 55L39 41L59 48L38 63Z" fill="#e3c6d5" class="thin"/>
+    <path d="M16 55L38 63V84L18 76Z" fill="#b388a6" class="thin"/>
+    <path d="M38 63L59 48V69L38 84Z" fill="#756478" class="thin"/>
+    <path d="M25 49L47 57V77" fill="none" stroke="#efe4be" stroke-width="4"/>
+    <path d="M67 62L88 47L110 55L88 72Z" fill="#c8d2d3" class="thin"/>
+    <path d="M67 62L88 72V92L67 83Z" fill="#91aeb2" class="thin"/>
+    <path d="M88 72L110 55V76L88 92Z" fill="#626f85" class="thin"/>
+    <path d="M76 56L98 64V82" fill="none" stroke="#f5e7c1" stroke-width="4"/>
+  </g>
+</svg>

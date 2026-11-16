@@ -483,6 +483,7 @@ dependencies = [
  "babylon-tick",
  "bevy",
  "earcut",
+ "image",
  "log",
  "postgres",
  "rodio",

@@ -1,7 +1,7 @@
 pub(crate) fn install_national_opening(app: &mut App) {
     use babylon_persistence::runtime_session::OrganizerSnapshot;
     let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
+        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v20.json"
     ))
     .expect("national opening");
     install_captured_opening(app, snapshot);
@@ -425,13 +425,13 @@ fn replace_digit(app: &mut App, window: Entity, field: AmountField, value: &str)
 fn repaired_positive_absent_leg_blocks_review_and_zero_unselected_leg_allows_it() {
     for (capture, choice, absent, reason) in [
         (
-            include_str!("../../../babylon-persistence/tests/fixtures/food_only_no_payer_v19.json"),
+            include_str!("../../../babylon-persistence/tests/fixtures/food_only_no_payer_v20.json"),
             OrganizerChoice::LocalAid,
             AmountField::Cash,
             "cash payer",
         ),
         (
-            include_str!("../../../babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"),
+            include_str!("../../../babylon-persistence/tests/fixtures/cash_only_no_food_v20.json"),
             OrganizerChoice::RemoteAid,
             AmountField::Food,
             "food terms",
@@ -482,7 +482,7 @@ fn private_payers_review_the_same_basket_with_identical_terms_and_controls() {
         openings: [OrganizerSnapshot; 2],
     }
     let pair: Pair = serde_json::from_str(include_str!(
-        "../../tests/fixtures/wayne_private_funding_v19.json"
+        "../../tests/fixtures/wayne_private_funding_v20.json"
     ))
     .expect("independently captured public openings");
     let [low, high] = pair.openings.map(|opening| {
@@ -584,7 +584,7 @@ fn two_cap_opening() -> (
         config: cfg,
         snapshot,
     } = serde_json::from_str(include_str!(
-        "../../tests/fixtures/wayne_two_cap_opening_v19.json"
+        "../../tests/fixtures/wayne_two_cap_opening_v20.json"
     ))
     .expect("opening captured from the admitted material register");
     for (kind, cap) in [(OrganizerAidKind::Local, 2), (OrganizerAidKind::Remote, 4)] {
@@ -624,8 +624,22 @@ fn repaired_recipient_switch_reconciles_valid_raw_basket_with_cards_and_original
         cfg.controlled_actor_id,
     )
     .expect("authenticated view");
-    // The runtime additionally decorates the public workplace contact on this view.
+    // The material host supplies venue status and the recipients' county locations.
     disclosed.public_workplace_contact = snapshot.view.public_workplace_contact;
+    let opening: OrganizerSnapshot = serde_json::from_str(include_str!(
+        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v20.json"
+    ))
+    .expect("captured national organizer opening");
+    assert_eq!(snapshot.body_scope, opening.body_scope);
+    for partner in &mut disclosed.aid_partners {
+        let admitted = opening
+            .view
+            .aid_partners
+            .iter()
+            .find(|known| known.actor_id == partner.actor_id && known.kind == partner.kind)
+            .expect("same disclosed recipient in the material opening");
+        partner.location = admitted.location;
+    }
     assert_eq!(snapshot.view, disclosed);
     let (mut app, window, _, _) = focused_organizer(false);
     install_captured_opening(&mut app, snapshot);

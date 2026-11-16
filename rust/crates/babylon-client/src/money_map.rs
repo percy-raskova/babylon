@@ -41,5 +41,6 @@ mod sankey_layout;
 #[path = "money_map/state.rs"]
 mod state;
 
+pub(super) use geometry::frame_bounds;
 pub(super) use state::install;
 pub(crate) use state::{MoneyRail, MoneyView};

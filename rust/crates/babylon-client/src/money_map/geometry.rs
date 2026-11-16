@@ -9,8 +9,12 @@ use super::{geographic_legs, grouping};
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverViewport;
+use crate::visual_assets::VisualAssets;
+use babylon_kernel::geography::CountyGeoid;
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::FlowGroup;
 use bevy::camera::visibility::RenderLayers;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -24,21 +28,46 @@ fn width(value: f64, max: f64) -> f32 {
     1.0 + 5.0 * (value / max).clamp(0.0, 1.0).sqrt() as f32
 }
 
+/// Reuse one unlit material per authored hue across map selections and layout switches.
+#[derive(SystemParam)]
+pub(super) struct RibbonPalette<'w, 's> {
+    materials: ResMut<'w, Assets<StandardMaterial>>,
+    handles: Local<'s, Vec<(Color, Handle<StandardMaterial>)>>,
+}
+
+impl RibbonPalette<'_, '_> {
+    fn material(&mut self, color: Color) -> Handle<StandardMaterial> {
+        if let Some((_, handle)) = self.handles.iter().find(|(cached, _)| *cached == color) {
+            return handle.clone();
+        }
+        let handle = self.materials.add(StandardMaterial {
+            base_color: color,
+            unlit: true,
+            cull_mode: None,
+            ..default()
+        });
+        self.handles.push((color, handle.clone()));
+        handle
+    }
+}
+
 pub(super) fn render(
     mut commands: Commands,
     view: Res<MoneyView>,
     anchors: Res<CountyAnchors>,
-    old: Query<(Entity, &Mesh3d), With<Ribbon>>,
+    old: Query<(Entity, Option<&Mesh3d>), With<Ribbon>>,
+    visual: Res<VisualAssets>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut palette: Local<Vec<(Color, Handle<StandardMaterial>)>>,
+    mut palette: RibbonPalette,
 ) {
     if !view.is_changed() && !anchors.is_changed() {
         return;
     }
     for (entity, mesh) in &old {
         commands.entity(entity).despawn();
-        meshes.remove(mesh.0.id());
+        if let Some(mesh) = mesh {
+            meshes.remove(mesh.0.id());
+        }
     }
     if view.shows_sankey() {
         return;
@@ -46,23 +75,18 @@ pub(super) fn render(
     let Some(scope) = &view.scope else {
         return;
     };
-    // One unlit material per authored hue, retained across selections and layout switches.
-    let mut material = |color: Color| {
-        if let Some((_, handle)) = palette.iter().find(|(cached, _)| *cached == color) {
-            return handle.clone();
-        }
-        let handle = materials.add(StandardMaterial {
-            base_color: color,
-            unlit: true,
-            cull_mode: None,
-            ..default()
-        });
-        palette.push((color, handle.clone()));
-        handle
-    };
     if view.freight.enabled {
-        let colors = [theme::YELLOW, theme::BLUE, theme::GRAY, theme::PAPER].map(material);
-        super::freight_plot::geography(&mut commands, &mut meshes, &view, scope, &anchors, &colors);
+        let colors = [theme::YELLOW, theme::BLUE, theme::GRAY, theme::PAPER]
+            .map(|color| palette.material(color));
+        super::freight_plot::geography(
+            &mut commands,
+            &mut meshes,
+            &view,
+            scope,
+            &anchors,
+            &colors,
+            &visual,
+        );
         return;
     }
     let Some(home) = anchors.county_position(&scope.county) else {
@@ -115,7 +139,7 @@ pub(super) fn render(
         commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(material(industry.unwrap_or(if selected {
+                MeshMaterial3d(palette.material(industry.unwrap_or(if selected {
                     theme::PAPER
                 } else {
                     color
@@ -154,7 +178,12 @@ fn endpoint(row: &Connection, home: Vec3, anchors: &CountyAnchors) -> Option<Vec
         .and_then(|county| anchors.county_position(county))
 }
 
-pub(super) fn frame_bounds(orbit: &mut MapOrbit, min: Vec3, max: Vec3, aspect: f32) {
+pub(in crate::observer_map3d) fn frame_bounds(
+    orbit: &mut MapOrbit,
+    min: Vec3,
+    max: Vec3,
+    aspect: f32,
+) {
     // The map camera uses a 45-degree vertical field of view. Include the arrow bend and
     // loop outside the endpoint chord, and keep the current pitch, yaw and national reset.
     let half_angle = ((std::f32::consts::FRAC_PI_8).tan() * aspect.min(1.0)).atan();
@@ -162,6 +191,35 @@ pub(super) fn frame_bounds(orbit: &mut MapOrbit, min: Vec3, max: Vec3, aspect: f
     orbit.target = min.midpoint(max);
     orbit.distance = (1.12 * radius / half_angle.sin())
         .clamp(orbit.fitted_distance * 0.08, orbit.fitted_distance * 3.0);
+}
+
+/// Wait for the first freight page so an opening request can fit both ends. Keep the player's camera on refreshes.
+pub(super) fn frame_freight_on_entry(
+    obs: Observation,
+    view: Res<MoneyView>,
+    viewport: Res<ObserverViewport>,
+    anchors: Res<CountyAnchors>,
+    mut orbit: ResMut<MapOrbit>,
+    mut framed: Local<Option<(CampaignId, CountyGeoid)>>,
+) {
+    if !obs.active() || !view.freight.enabled || view.shows_sankey() {
+        *framed = None;
+        return;
+    }
+    let Some(origin) = view.freight.origin else {
+        return;
+    };
+    let key = (obs.session.campaign, origin);
+    if *framed == Some(key) || !obs.interactive() || view.freight.rows.is_none() {
+        return;
+    }
+    let Some(rect) = viewport.0.filter(|r| r.size().min_element() > 0.0) else {
+        return;
+    };
+    if let Some((lo, hi)) = super::freight_plot::frame(&view.freight, &anchors) {
+        frame_bounds(&mut orbit, lo, hi, rect.width() / rect.height());
+        *framed = Some(key);
+    }
 }
 
 pub(super) fn frame_connections(
@@ -182,10 +240,17 @@ pub(super) fn frame_connections(
     {
         return;
     }
-    let Some(home) = anchors.county_position(&event.scope.county) else {
+    let Some(rect) = viewport.0.filter(|r| r.width() > 0.0 && r.height() > 0.0) else {
         return;
     };
-    let Some(rect) = viewport.0.filter(|r| r.width() > 0.0 && r.height() > 0.0) else {
+    if view.freight.enabled {
+        if let Some((min, max)) = super::freight_plot::frame(&view.freight, &anchors) {
+            frame_bounds(&mut orbit, min, max, rect.width() / rect.height());
+            view.diagram = Diagram::Map;
+        }
+        return;
+    }
+    let Some(home) = anchors.county_position(&event.scope.county) else {
         return;
     };
     let selected = view

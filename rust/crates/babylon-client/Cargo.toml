@@ -57,6 +57,7 @@ babylon-material-circuit = { path = "../babylon-material-circuit" }
 # the window's full-observer view. Neither receives a writer capability.
 babylon-persistence = { path = "../babylon-persistence" }
 earcut = "0.4.11"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 uuid = "1.24"

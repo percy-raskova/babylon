@@ -160,6 +160,7 @@ fn roster(
             CountyGeoid::try_from(row.county_geoid.as_str()).map_err(|_| AccessError::Terminal)?;
         if !id.as_str().starts_with("26")
             || row.status != "attached"
+            || row.evidence_class != "Designed"
             || map.insert(id, row).is_some()
         {
             return Err(AccessError::Terminal);

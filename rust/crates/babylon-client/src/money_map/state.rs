@@ -645,7 +645,7 @@ pub(super) fn activate(
     if let Action::Freight(command) = &target.action {
         return view.freight.apply(command, &target.scope);
     }
-    if view.freight.enabled && !matches!(target.action, Action::Diagram(_)) {
+    if view.freight.enabled && !matches!(target.action, Action::Diagram(_) | Action::Frame) {
         return false;
     }
     match &target.action {
@@ -819,6 +819,10 @@ pub(in crate::observer_map3d) fn install(app: &mut App) {
                 .before(ObserverSet::Paint),
         )
         .add_observer(geometry::frame_connections)
+        .add_systems(
+            Update,
+            geometry::frame_freight_on_entry.after(super::super::sync_camera),
+        )
         .add_systems(
             Update,
             books::update.after(update).before(ObserverSet::Paint),

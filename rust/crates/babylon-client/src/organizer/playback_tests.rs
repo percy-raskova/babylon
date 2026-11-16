@@ -323,11 +323,11 @@ struct DevelopmentPeriod {
 #[test]
 fn new_national_developments_pause_with_short_feedback_and_retain_full_dated_facts() {
     let periods: Vec<DevelopmentPeriod> = serde_json::from_str(include_str!(
-        "../../tests/fixtures/wayne_public_developments_v19.json"
+        "../../tests/fixtures/wayne_public_developments_v20.json"
     ))
     .expect("captured national collection, payment and shortfalls");
     let opening: OrganizerSnapshot = serde_json::from_str(include_str!(
-        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
+        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v20.json"
     ))
     .expect("actual opening seeds existing notices");
     let (mut client, mut session) = tests::ready();

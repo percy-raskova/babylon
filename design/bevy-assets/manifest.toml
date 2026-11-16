@@ -83,6 +83,20 @@ sha256 = "d3592cb05b45b87b0a105b39a4d0b64b6437e0febaa5bc7206a629a6ff2170dc"
 license = "AGPL-3.0-or-later"
 
 [[asset]]
+id = "economic-map-atlas"
+category = "map"
+source = "design/bevy-assets/sources/economic-map-atlas.svg"
+runtime = "assets/visual/economic-map-atlas.png"
+format = "png"
+width = 512
+height = 256
+columns = 4
+rows = 2
+sampler = "linear"
+sha256 = "c8e6a10fd758b4e88f68870e41848f39d8563e13b9aeaa24ddc019e02533dbd2"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
 id = "hero-red-apparatus"
 category = "illustration"
 source = "design/bevy-assets/prompts/hero-red-apparatus.md"

@@ -42,6 +42,10 @@ pub struct Corridor {
 pub struct AccessRow {
     pub peer: EconomicLocation,
     pub access: Access,
+    /// Designed map-origin county anchor to its assigned regional road node, outside path length.
+    pub origin_attachment_mm: Option<u64>,
+    /// Designed peer county anchor to its assigned regional road node, outside path length.
+    pub peer_attachment_mm: Option<u64>,
     pub corridors: Vec<Corridor>,
 }
 
@@ -57,13 +61,13 @@ pub fn distance_band(mm: u64) -> &'static str {
 }
 
 impl Reference {
-    /// Whether this matrix and any campaign road capture identify the same physical graph.
+    /// Whether the campaign declares this regional road graph.
     #[must_use]
     pub fn graph_matches(&self, snapshot: &ProductionSnapshot) -> bool {
         snapshot
             .road_source
             .as_ref()
-            .is_none_or(|s| s.graph_sha256 == self.graph_sha256)
+            .is_some_and(|s| s.graph_sha256 == self.graph_sha256)
     }
 
     /// Join the selected observer frame's disclosed, directed corridors to the independent regional reference.
@@ -80,8 +84,16 @@ impl Reference {
             return Err(AccessError::Authority);
         }
         let snapshot = frame.production.as_ref().ok_or(AccessError::Authority)?;
-        let same_graph = self.graph_matches(snapshot);
+        let compatible_graph = snapshot.road_source.is_none() || self.graph_matches(snapshot);
         let home = EconomicLocation::domestic_county(origin).map_err(|_| AccessError::Terminal)?;
+        let attachment = |location| match location {
+            EconomicLocation::County(county) if compatible_graph => self
+                .terminals
+                .get(&county.geoid())
+                .map(|terminal| terminal.attachment_distance_mm),
+            _ => None,
+        };
+        let origin_attachment_mm = attachment(home);
         let sites: BTreeMap<_, _> = snapshot
             .sites
             .iter()
@@ -138,7 +150,7 @@ impl Reference {
                     }
                     _ => Access::OutsideCoverage,
                 };
-                let access = if !same_graph && access != Access::OutsideCoverage {
+                let access = if !compatible_graph && access != Access::OutsideCoverage {
                     Access::Unqualified
                 } else {
                     access
@@ -146,6 +158,8 @@ impl Reference {
                 AccessRow {
                     peer,
                     access,
+                    origin_attachment_mm,
+                    peer_attachment_mm: attachment(peer),
                     corridors: corridors.into_iter().collect(),
                 }
             })

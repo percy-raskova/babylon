@@ -10,7 +10,7 @@ use babylon_persistence::ArchiveEvidenceClass;
 use babylon_persistence::runtime_session::{
     CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerBodyDisclosure,
     OrganizerBodyScope, OrganizerBodySource, OrganizerChoice, OrganizerCollectionPreview,
-    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerKnownAidPartner,
     OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
     RuntimeSessionRequest, RuntimeSessionScope, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
     RUNTIME_SESSION_PROTOCOL_VERSION,
@@ -230,6 +230,32 @@ pub(crate) struct OrganizerClient {
 }
 
 impl OrganizerClient {
+    /// Known recipients in the authenticated organizer projection for this period.
+    pub(super) fn known_aid_partners(
+        &self,
+        session: &ObserverSession,
+    ) -> &[OrganizerKnownAidPartner] {
+        self.view
+            .as_ref()
+            .filter(|view| {
+                self.body_for(session).is_some_and(|(_, scope)| {
+                    scope.period == session.viewed_tick && view.period == scope.period
+                })
+            })
+            .map_or(&[], |view| view.aid_partners.as_slice())
+    }
+
+    pub(super) fn selected_aid_partner(
+        &self,
+        session: &ObserverSession,
+    ) -> Option<&OrganizerKnownAidPartner> {
+        let OrganizerSubject::AidPartner(actor) = self.selected_subject? else {
+            return None;
+        };
+        self.known_aid_partners(session)
+            .iter()
+            .find(|partner| partner.actor_id == actor)
+    }
     /// Derive a scene only from the authenticated view for this period.
     pub(crate) fn scene_for(&self, session: &ObserverSession) -> Option<OrganizerScene> {
         let view = self.view.as_ref()?;

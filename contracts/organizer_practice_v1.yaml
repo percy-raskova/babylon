@@ -7,7 +7,7 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 19
+  runtime_session_protocol_version: 20
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
   version: config_and_state_schema_version_12_where_present
   current_domains: {config: "babylon.organizer-config.v11\0", state: "babylon.organizer-state.v10\0",
@@ -35,6 +35,7 @@ captured_content:
   promises: disjoint_actor_commitments_whose_sum_cannot_exceed_contributor_hours
   communication: workplace_record_permissions_and_bounded_contact_scope
   aid_partner_roster: known_actor_and_label_independent_of_action_availability
+  aid_partner_geography: recipient_county_only_when_located_in_the_committed_material_principal_roster
   partner_report_sharing: independent_Designed_scopes_for_food_required_period_services_and_labor_time
   partner_reports: Derived_opening_food_assessment_or_completed_material_receipts_with_exact_subject_and_dated_grant
   initial_knowledge: attributed_period_specific_observations

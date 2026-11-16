@@ -133,7 +133,7 @@ pub(super) fn project_network(
     sector: NetworkSector,
     good: Option<&MaterialGoodKey>,
 ) -> NetworkProjection {
-    let Some(snapshot) = super::disclosed_snapshot(frame, session) else {
+    let Some(snapshot) = super::super::disclosed_snapshot(frame, session) else {
         return NetworkProjection::default();
     };
     let sites: BTreeMap<_, _> = snapshot.sites.iter().map(|s| (s.id.as_str(), s)).collect();
@@ -247,14 +247,24 @@ fn add_nodes(
                 _ => unreachable!(),
             };
             let rank = ranks.entry(county.clone()).or_default();
+            let symbols = match endpoint {
+                Endpoint::Site(id) => super::facilities::kinds(sites[id]),
+                Endpoint::Demand(_) => Vec::new(),
+            };
+            let position = if symbols.is_empty() {
+                super::node_position(anchor.position, *rank)
+            } else {
+                anchor.position
+            };
             result.nodes.insert(
                 key.clone(),
                 NetworkNode {
+                    symbols,
                     key,
                     site_id: site_id.to_owned(),
                     county,
                     sector,
-                    position: super::node_position(anchor.position, *rank),
+                    position,
                     caption,
                 },
             );

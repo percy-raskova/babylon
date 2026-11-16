@@ -275,6 +275,15 @@ fn check_food_wiring(kind: OrganizerAidKind) {
         OrganizerChoice::LocalAid
     };
     let session = captured_aid_session(materials, config);
+    if !routed {
+        let disclosure = cold_report_snapshot(&session);
+        let known = serde_json::to_value(&disclosure.view.aid_partners)
+            .expect("actor-safe wire projection");
+        assert_eq!(
+            known[0]["location"], "county:26001",
+            "even an unwired local food leg retains the disclosed partner's actual county"
+        );
+    }
     let register = session.material();
     let config = register.organizer_config().expect("captured configuration");
     let positive = fixture::commitment_with_allocation(
@@ -392,7 +401,7 @@ fn private_payer_balances_change_settlement_but_leave_the_opening_disclosure_ide
     assert_eq!(low.aid[0].funding, OrganizerAidFunding::Mandated);
     let session = private_payer_session(1_000_000);
     let installed: Value = serde_json::from_str(include_str!(
-        "../../../babylon-client/tests/fixtures/wayne_private_funding_v19.json"
+        "../../../babylon-client/tests/fixtures/wayne_private_funding_v20.json"
     ))
     .expect("paired public opening used by the ordinary client Review");
     assert_eq!(
@@ -524,9 +533,9 @@ fn verify_independent_selected_terms(
 ) {
     let cash_only = accepted.command.choice == OrganizerChoice::RemoteAid;
     let expected: Value = serde_json::from_str(if cash_only {
-        include_str!("../../tests/fixtures/cash_only_no_food_v19.json")
+        include_str!("../../tests/fixtures/cash_only_no_food_v20.json")
     } else {
-        include_str!("../../tests/fixtures/food_only_no_payer_v19.json")
+        include_str!("../../tests/fixtures/food_only_no_payer_v20.json")
     })
     .expect("actual producer fixture");
     assert_eq!(

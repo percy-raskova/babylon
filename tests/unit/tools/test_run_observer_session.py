@@ -944,7 +944,7 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
-    protocol_version: int | float = 19,
+    protocol_version: int | float = 20,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
     ready_changes: dict[str, object] | None = None,
@@ -1280,7 +1280,7 @@ def test_national_smoke_refuses_numeric_hash_evidence(
 def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
-    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=19)
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=20)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
     for index in (1, 2):
         requests = [
@@ -1288,7 +1288,7 @@ def test_installation_check_admits_current_protocol_and_exact_progress_stream(
             for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
         ]
         assert all(
-            type(row["protocol_version"]) is int and row["protocol_version"] == 19
+            type(row["protocol_version"]) is int and row["protocol_version"] == 20
             for row in requests
         )
         assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
@@ -1418,8 +1418,10 @@ def test_lifecycle_requires_committed_world_hash(monkeypatch, tmp_path, world_ha
         17.0,
         18,
         18.0,
+        19,
         19.0,
-        20,
+        20.0,
+        21,
     ],
 )
 def test_installation_check_refuses_unsupported_or_untyped_version(
@@ -1427,7 +1429,7 @@ def test_installation_check_refuses_unsupported_or_untyped_version(
 ):
     _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
-    assert "requires runtime session protocol 19" in capsys.readouterr().err
+    assert "requires runtime session protocol 20" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

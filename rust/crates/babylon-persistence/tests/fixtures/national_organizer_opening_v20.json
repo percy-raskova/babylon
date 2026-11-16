@@ -1017,12 +1017,14 @@
       {
         "actor_id": 2616302,
         "kind": "local",
-        "label": "Wayne Local Aid Partners"
+        "label": "Wayne Local Aid Partners",
+        "location": "county:26163"
       },
       {
         "actor_id": 1703101,
         "kind": "remote",
-        "label": "Cook Independent Solidarity Partners"
+        "label": "Cook Independent Solidarity Partners",
+        "location": "county:17031"
       }
     ],
     "authority_id": [

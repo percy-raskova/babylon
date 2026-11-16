@@ -704,10 +704,41 @@ fn check_captured_road_fallback(
         .iter()
         .filter(|r| r.peer != canada)
         .all(|r| r.access == Access::Unqualified));
+    assert!(
+        preserved
+            .iter()
+            .all(|r| r.origin_attachment_mm.is_none() && r.peer_attachment_mm.is_none()),
+        "county attachments on the regional graph cannot locate nodes on a different graph"
+    );
     let incoming = reference
         .connections(&frame, origin, AccessDirection::Inbound)
         .expect("inbound freight access");
     assert!(incoming.iter().all(|r| r.peer != canada));
+    let source = frame
+        .production
+        .as_mut()
+        .expect("campaign")
+        .road_source
+        .as_mut()
+        .expect("captured graph");
+    source.graph_sha256.clone_from(&reference.graph_sha256);
+    let matched = reference
+        .connections(&frame, origin, AccessDirection::Outbound)
+        .expect("matching declared graph");
+    let kent = "county:26081".parse().expect("Kent");
+    let kent_row = matched
+        .iter()
+        .find(|r| r.peer == kent)
+        .expect("regional Kent endpoint");
+    assert_eq!(
+        (kent_row.origin_attachment_mm, kent_row.peer_attachment_mm),
+        (Some(432_419), Some(391_840))
+    );
+    assert_eq!(
+        kent_row.access,
+        Access::Unqualified,
+        "a matching graph cannot replace a missing path matrix"
+    );
     frame.visibility = ObserverVisibility::KnownPreview;
     assert!(reference
         .connections(&frame, origin, AccessDirection::Outbound)
@@ -742,6 +773,11 @@ fn freight_map_and_network_share_typed_foreign_corridor_without_an_invented_road
         .find(|r| r.peer == canada)
         .expect("Canada endpoint");
     assert_eq!(foreign.access, Access::OutsideCoverage);
+    assert_eq!(foreign.origin_attachment_mm, Some(432_419));
+    assert_eq!(
+        foreign.peer_attachment_mm, None,
+        "Canada has no Michigan terminal"
+    );
     assert_eq!(foreign.corridors[0].route_id, "a-b");
     assert_eq!(foreign.corridors[0].distance_mm, None);
     assert!(outgoing

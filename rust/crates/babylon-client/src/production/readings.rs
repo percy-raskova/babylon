@@ -29,6 +29,19 @@ fn national_site_name(name: &str) -> Option<(EconomicFunction, String)> {
         .and_then(|value| value.split_once(" — "))
     {
         let function = EconomicFunction::from_source_key(key)?;
+        let suffix = suffix
+            .rsplit_once('/')
+            .and_then(|(county, position)| {
+                let reserve = match position {
+                    "BelowCellReserveRate" => "below the cell reserve rate",
+                    "AtCellReserveRate" => "at the cell reserve rate",
+                    "AboveCellReserveRate" => "above the cell reserve rate",
+                    "NoLaborForce" => "no labor force",
+                    _ => return None,
+                };
+                Some(format!("{county} · {reserve}"))
+            })
+            .unwrap_or_else(|| suffix.to_owned());
         return Some((
             function,
             format!("representative {} — {suffix}", function.label()),

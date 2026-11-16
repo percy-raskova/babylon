@@ -703,6 +703,7 @@ fn control_availability(target: &Target, view: &MoneyView, obs: &Observation) ->
         Action::HouseholdReceipt(true) => Some(household::selected(view).is_some()),
         Action::Geography(delta) => Some(view.geography.can_navigate(delta)),
         Action::Frame if view.diagram != Diagram::Map => Some(false),
+        Action::Frame if view.freight.enabled => Some(view.freight.origin.is_some()),
         Action::Frame if target.scope.group != FlowGroup::Location => {
             Some(view.geography.rows().iter().any(|r| {
                 r.quantity.micros() != "0"

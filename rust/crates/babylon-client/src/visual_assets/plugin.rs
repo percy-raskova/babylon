@@ -22,7 +22,7 @@ pub(crate) fn linear_image_settings(settings: &mut ImageLoaderSettings) {
     settings.sampler = ImageSampler::linear();
 }
 
-pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 20] = [
+pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 21] = [
     (
         "hero-liberty.webp",
         include_bytes!(concat!(
@@ -112,6 +112,13 @@ pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 20] = [
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../assets/visual/interface-atlas.png"
+        )) as &[u8],
+    ),
+    (
+        "economic-map-atlas.png",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/visual/economic-map-atlas.png"
         )) as &[u8],
     ),
     (
@@ -232,11 +239,25 @@ impl Plugin for VisualAssetsPlugin {
             load_linear_image(server, "embedded://visual/group-workplace-committee.webp");
         let group_neighborhood_contact =
             load_linear_image(server, "embedded://visual/group-neighborhood-contact.webp");
+        let economic_map_atlas = super::map_art::load(server);
 
         let (interface_layout, marker_layout, provenance_layout, frame_layout, surface_layout) =
             create_atlas_layouts(app);
 
+        let economic_map_layout = app
+            .world_mut()
+            .resource_mut::<Assets<TextureAtlasLayout>>()
+            .add(TextureAtlasLayout::from_grid(
+                UVec2::splat(128),
+                4,
+                2,
+                None,
+                None,
+            ));
+
         app.insert_resource(VisualAssets {
+            economic_map_atlas,
+            economic_map_layout,
             group_wayne_collective,
             group_workplace_committee,
             group_neighborhood_contact,
@@ -338,6 +359,10 @@ pub(crate) fn create_atlas_layouts(app: &mut App) -> AtlasLayouts {
 /// Named image and layout handles for the complete visual-asset family.
 #[derive(Clone, Resource)]
 pub struct VisualAssets {
+    /// Eight centered, transparent economic-map symbols.
+    pub economic_map_atlas: Handle<Image>,
+    /// Row-major 128-pixel economic map tiles.
+    pub economic_map_layout: Handle<TextureAtlasLayout>,
     /// Anonymous collective illustration for Wayne Organizing Collective.
     pub group_wayne_collective: Handle<Image>,
     /// Anonymous collective illustration for Workplace Committee.
@@ -403,6 +428,7 @@ impl VisualAssets {
             VisualAssetId::HeroLiberty => self.hero_liberty.clone(),
             VisualAssetId::TitleMark => self.title_mark.clone(),
             VisualAssetId::InterfaceAtlas => self.interface_atlas.clone(),
+            VisualAssetId::EconomicMapAtlas => self.economic_map_atlas.clone(),
             VisualAssetId::MarkerAtlas => self.marker_atlas.clone(),
             VisualAssetId::ProvenanceAtlas => self.provenance_atlas.clone(),
             VisualAssetId::FrameAtlas => self.frame_atlas.clone(),
@@ -419,4 +445,22 @@ impl VisualAssets {
             VisualAssetId::BannerCollapse => self.banner_collapse.clone(),
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn install_test_assets(app: &mut App) {
+    use bevy::asset::AssetPlugin;
+    use bevy::image::ImagePlugin;
+    use bevy::render::texture::TexturePlugin;
+    use bevy::text::TextPlugin;
+    use bevy::MinimalPlugins;
+
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        ImagePlugin::default(),
+        TextPlugin,
+        TexturePlugin,
+        VisualAssetsPlugin,
+    ));
 }

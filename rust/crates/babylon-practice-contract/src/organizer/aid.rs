@@ -15,6 +15,7 @@ use super::OrganizerRefusal;
 use super::OrganizerReportSharing;
 use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
+use babylon_kernel::economic_location::EconomicLocation;
 use serde::{Deserialize, Serialize};
 
 use crate::CampaignId;
@@ -79,6 +80,20 @@ pub struct OrganizerKnownAidPartner {
     pub kind: OrganizerAidKind,
     pub actor_id: u64,
     pub label: String,
+    /// Recipient county when the material host can locate the disclosed aid mandate.
+    #[serde(deserialize_with = "recipient_county")]
+    pub location: Option<EconomicLocation>,
+}
+
+fn recipient_county<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<EconomicLocation>, D::Error> {
+    use serde::de::Error;
+
+    match Option::<EconomicLocation>::deserialize(deserializer)? {
+        location @ (Some(EconomicLocation::County(_)) | None) => Ok(location),
+        Some(_) => Err(D::Error::custom("aid recipient location must be a county")),
+    }
 }
 
 /// Pre-material commitment. Receiving a gift does not authorize later partner practice.

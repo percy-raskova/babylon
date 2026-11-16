@@ -3,6 +3,105 @@ use babylon_persistence::runtime_session::{
 };
 
 #[test]
+fn aid_map_frames_the_disclosed_counties_and_opens_the_selected_recipients_offer() {
+    use crate::observer_map3d::FrameOrganizerCounties;
+
+    #[derive(Resource, Default)]
+    struct Framed(Vec<Vec<String>>);
+    let (mut app, _) = allocation_opening();
+    {
+        let world = app.world_mut();
+        let dock = world
+            .query::<(&ActionButton, &ChildOf)>()
+            .iter(world)
+            .find_map(|(button, parent)| {
+                (button.0 == OrganizerAction::ShowAidPartners).then_some(parent.parent())
+            })
+            .expect("Places dock");
+        assert!(world
+            .get::<crate::observer_map3d::symbols::MapObstruction>(dock)
+            .is_some());
+        assert!(world.get::<Visibility>(dock).is_some());
+    }
+    app.init_resource::<Framed>().add_observer(
+        |event: On<FrameOrganizerCounties>, mut frames: ResMut<Framed>| {
+            frames
+                .0
+                .push(event.0.iter().map(ToString::to_string).collect());
+        },
+    );
+    let (recipient, previous_choice) = {
+        let client = app.world().resource::<OrganizerClient>();
+        let partner = client
+            .known_aid_partners(app.world().resource::<ObserverSession>())
+            .iter()
+            .find(|partner| partner.kind == OrganizerAidKind::Remote)
+            .expect("known remote partner");
+        (partner.actor_id, client.choice())
+    };
+    ordinary(&mut app, OrganizerAction::ShowAidPartners);
+    assert_eq!(app.world().resource::<Framed>().0[0], ["26163", "17031"]);
+    let session = app.world().resource::<ObserverSession>();
+    let marker = OrganizerAction::Follow(DatedLink::new(
+        session,
+        session.viewed_tick,
+        Destination::Subject(OrganizerSubject::AidPartner(recipient)),
+    ));
+    ordinary(&mut app, marker);
+    let cook = app
+        .world()
+        .resource::<CountyAtlas>()
+        .index_of_fips("17031")
+        .expect("Cook County in atlas");
+    assert_eq!(app.world().resource::<SelectedCounty>().0, Some(cook));
+    assert_eq!(app.world().resource::<Framed>().0[1], ["17031"]);
+    assert_eq!(
+        app.world().resource::<OrganizerClient>().choice(),
+        previous_choice,
+        "inspecting preserves the draft"
+    );
+    ordinary(&mut app, OrganizerAction::PreparePartnerOffer);
+    assert_eq!(
+        app.world().resource::<OrganizerClient>().choice(),
+        OrganizerChoice::RemoteAid
+    );
+    let workplace = app
+        .world()
+        .resource::<OrganizerClient>()
+        .view
+        .as_ref()
+        .expect("admitted view")
+        .workplace_id;
+    ordinary(
+        &mut app,
+        OrganizerAction::SelectSubject(OrganizerSubject::Workplace(workplace)),
+    );
+    assert_eq!(
+        app.world().resource::<Framed>().0[2],
+        ["26163"],
+        "selecting the local workplace after Cook reframes Wayne"
+    );
+    app.world_mut().resource_mut::<ObserverSession>().generation += 1;
+    app.world_mut()
+        .resource_mut::<OrganizerClient>()
+        .selected_subject = None;
+    ordinary(&mut app, marker);
+    assert!(
+        app.world()
+            .resource::<OrganizerClient>()
+            .selected_subject
+            .is_none(),
+        "old marker clicks cannot open a new session's dossier"
+    );
+    ordinary(&mut app, OrganizerAction::ShowAidPartners);
+    assert_eq!(
+        app.world().resource::<Framed>().0.len(),
+        3,
+        "stale disclosure cannot frame partner locations"
+    );
+}
+
+#[test]
 fn aid_cards_show_what_each_partner_shared_before_choosing_a_gift() {
     use babylon_persistence::runtime_session::{OrganizerPartnerFacts, OrganizerReport};
 
@@ -73,7 +172,7 @@ fn install_dated_food_reports(app: &mut App) -> (u64, u64) {
     }
 
     let periods: Vec<Period> = serde_json::from_str(include_str!(
-        "../../tests/fixtures/wayne_public_developments_v19.json"
+        "../../tests/fixtures/wayne_public_developments_v20.json"
     ))
     .expect("completed Wayne and Cook disclosures");
     let mut view = periods.into_iter().last().expect("period three").view;
@@ -520,7 +619,7 @@ fn native_collection_card_is_reachable_and_history_navigation_cannot_act() {
 fn pending_route_navigation_keeps_the_draft_and_pause_needs_its_own_review() {
     let mut app = aid_review_fixture(OrganizerAidKind::Remote, "Remote recipient", true);
     let mut snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-        "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
+        "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v20.json"
     ))
     .expect("actual pending remote support");
     {

@@ -2,7 +2,7 @@
 
 # Bevy visual assets
 
-This directory is the review index for Babylon's twenty embedded Bevy images. `manifest.toml` is
+This directory is the review index for Babylon's embedded Bevy images. `manifest.toml` is
 the byte-level catalog, and `PROVENANCE.md` is the authoritative origin and license record.
 
 ## Asset families
@@ -40,6 +40,25 @@ inkscape design/bevy-assets/sources/provenance-atlas.svg --export-type=png --exp
 inkscape design/bevy-assets/sources/frame-atlas.svg --export-type=png --export-filename=assets/visual/frame-atlas.png
 inkscape design/bevy-assets/sources/surface-atlas.svg --export-type=png --export-filename=assets/visual/surface-atlas.png
 ```
+
+## Replace the economic map symbols
+
+The maps use one transparent 512 × 256 PNG. Each cell is 128 × 128 pixels. Read the cells from left to right.
+
+| Row | First | Second | Third | Fourth |
+| --- | --- | --- | --- | --- |
+| Top | Producer | Shop | Utility | County freight terminal |
+| Bottom | Airport | Freight origin | Local aid partner | Remote aid partner |
+
+For Blender artwork, render each object with **Film → Transparent** and export RGBA PNG. Center its visual mass within the cell and leave a clear margin on all four edges. Each tile needs visible artwork and transparent pixels. Keep the atlas at or below 2 MiB. Use a different outer shape for each kind. Check a 24-pixel preview in color and in black and white before packing the tiles.
+
+To audition an atlas in the local game, set `BABYLON_MAP_SYMBOL_ATLAS` to its path before launch.
+
+```bash
+BABYLON_MAP_SYMBOL_ATLAS=/absolute/path/artist-map.png mise run play
+```
+
+The selected atlas applies to the building, freight and aid markers. The game supplies the labels, selected state, mouse targets and geographic positions. If the game cannot read the supplied atlas, its log gives the reason and the map uses the bundled artwork. The editable bundled master is `sources/economic-map-atlas.svg`. Its export is `assets/visual/economic-map-atlas.png` at the repository root.
 
 ## Illustration exports
 

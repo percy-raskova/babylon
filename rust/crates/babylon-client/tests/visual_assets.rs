@@ -51,7 +51,7 @@ type ExpectedVisualAsset = (
     u32,
 );
 
-fn expected_interface_assets() -> [ExpectedVisualAsset; 6] {
+fn expected_interface_assets() -> [ExpectedVisualAsset; 7] {
     use babylon_client::visual_assets::VisualAssetId;
 
     [
@@ -75,6 +75,14 @@ fn expected_interface_assets() -> [ExpectedVisualAsset; 6] {
         ),
         (VisualAssetId::FrameAtlas, "Frame atlas", 256, 64, 4, 1),
         (VisualAssetId::SurfaceAtlas, "Surface atlas", 384, 128, 3, 1),
+        (
+            VisualAssetId::EconomicMapAtlas,
+            "Economic map symbols",
+            512,
+            256,
+            4,
+            2,
+        ),
     ]
 }
 
@@ -230,13 +238,13 @@ fn assert_visual_asset(
 fn typed_catalog_pins_every_asset_id_and_atlas_dimension() {
     let catalog = &babylon_client::visual_assets::VISUAL_ASSET_CATALOG;
     let expected_interfaces = expected_interface_assets();
-    for index in 0..6 {
+    for index in 0..7 {
         assert_visual_asset(&catalog[index], expected_interfaces[index], index);
     }
 
     let expected_illustrations = expected_illustration_assets();
     for (index, expected) in expected_illustrations.into_iter().enumerate() {
-        let catalog_index = index + 6;
+        let catalog_index = index + 7;
         assert_visual_asset(&catalog[catalog_index], expected, catalog_index);
     }
 }
@@ -317,7 +325,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
     let mut labels = world.query_filtered::<&Text, With<GalleryAssetLabel>>();
     let actual: Vec<_> = labels
         .iter(world)
-        .take(21)
+        .take(22)
         .map(|text| text.0.clone())
         .collect();
     let expected: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
@@ -325,7 +333,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
         .map(|descriptor| descriptor.label.to_owned())
         .collect();
 
-    assert_eq!(actual.len(), 20);
+    assert_eq!(actual.len(), 21);
     assert_eq!(actual, expected);
 }
 
@@ -391,14 +399,14 @@ fn gallery_cards_are_non_shrinking_and_require_scroll_at_1080p() {
     assert_eq!(root_node.overflow.y, OverflowAxis::Scroll);
 
     let mut labels = world.query_filtered::<Entity, With<GalleryAssetLabel>>();
-    let label_entities: [Entity; 20] = labels
+    let label_entities: [Entity; 21] = labels
         .iter(world)
-        .take(21)
+        .take(22)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap_or_else(|entities: Vec<Entity>| {
             panic!(
-                "gallery must contain exactly 20 labeled cards, found {}",
+                "gallery must contain exactly 21 labeled cards, found {}",
                 entities.len()
             )
         });

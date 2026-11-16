@@ -3088,6 +3088,10 @@ fn production_subject_replaces_only_governed_national_name_tokens() {
     operating_site.function = "capital_goods".into();
     for (authored, expected) in [
         (
+            "representative capital_goods — Wayne/AboveCellReserveRate",
+            "representative Capital goods — Wayne · above the cell reserve rate",
+        ),
+        (
             "representative capital_goods — Wayne/Employee",
             "representative Capital goods — Wayne/Employee",
         ),

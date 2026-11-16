@@ -45,6 +45,7 @@ fn assert_loaded_asset_contract(app: &App) {
     }
 
     let linear_images = [
+        ("economic-map-atlas", &assets.economic_map_atlas),
         ("hero-liberty", &assets.hero_liberty),
         ("hero-red-apparatus", &assets.hero_red_apparatus),
         ("hero-empire-anatomized", &assets.hero_empire_anatomized),
@@ -79,6 +80,12 @@ fn assert_loaded_asset_contract(app: &App) {
 
     let layouts = world.resource::<Assets<TextureAtlasLayout>>();
     let atlas_layouts = [
+        (
+            "economic-map-atlas",
+            &assets.economic_map_layout,
+            UVec2::new(512, 256),
+            8,
+        ),
         (
             "interface-atlas",
             &assets.interface_layout,

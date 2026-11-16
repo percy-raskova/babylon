@@ -759,7 +759,7 @@ mod tests {
     fn national_aid_compares_destinations_and_preserves_the_shared_basket() {
         use babylon_persistence::runtime_session::OrganizerSnapshot;
         let captured: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
+            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v20.json"
         ))
         .expect("released national opening snapshot");
         let (mut client, mut session) = super::super::tests::ready();
@@ -1096,6 +1096,7 @@ mod tests {
                 kind: OrganizerAidKind::Local,
                 actor_id: 95,
                 label: "Recipient collective".into(),
+                location: None,
             },
         );
         view_mut(client).aid_options.push(OrganizerAidOption {

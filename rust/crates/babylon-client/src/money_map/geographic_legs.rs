@@ -259,12 +259,11 @@ mod tests {
     use crate::atlas::CountyAtlas;
     use crate::map::{MapPlugin, SelectedCounty};
     use crate::observer_focus::{ObserverFocusTarget, ObserverKeyboardActivate};
-    use crate::observer_map3d::CountyAnchors;
-    use crate::observer_ui::ObserverFrame;
+    use crate::observer_map3d::{CountyAnchors, MapOrbit};
+    use crate::observer_ui::{ObserverFrame, ObserverViewport};
     use crate::ui::Interaction;
     use babylon_persistence::money_journal::LaborAmount;
     use babylon_persistence::observer_reader::ObserverCountyEconomy;
-    use bevy::asset::AssetPlugin;
 
     fn group_page(row: &Connection) -> Page {
         use babylon_persistence::money_journal::{FlowPage, LaborDirections, LaborFlowPage};
@@ -383,11 +382,15 @@ mod tests {
             remainder: leg.quantity.clone(),
         }));
         world.spawn((state::MoneyRail, Node::default()));
-        app.add_plugins((MinimalPlugins, AssetPlugin::default(), MapPlugin))
-            .init_asset::<Image>()
+        crate::visual_assets::install_test_assets(&mut app);
+        app.add_plugins(MapPlugin)
             .init_asset::<StandardMaterial>()
-            .init_resource::<CountyAnchors>();
+            .init_resource::<CountyAnchors>()
+            .init_resource::<MapOrbit>()
+            .init_resource::<ObserverViewport>();
         state::install(&mut app);
+        app.finish();
+        app.cleanup();
         app.update();
         (app, scope)
     }

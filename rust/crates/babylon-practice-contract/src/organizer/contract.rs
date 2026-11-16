@@ -1128,6 +1128,7 @@ pub fn organizer_view(
                 kind: b.kind,
                 actor_id: b.partner.actor_id,
                 label: b.partner.label.clone(),
+                location: None,
             })
             .collect(),
         aid_options: config

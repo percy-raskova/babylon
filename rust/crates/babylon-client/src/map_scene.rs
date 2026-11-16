@@ -1,4 +1,5 @@
 //! Rebuild geographic geometry only when the admitted campaign scope changes.
+use super::symbols::MapLabelExclusions;
 use super::{
     relationships, CountySlab, MapGeometry, MapLegend, MapOrbit, ObserverMapCamera, BASE_HEIGHT,
     DATA_HEIGHT, MAP_LAYER, METRES_TO_SCENE,
@@ -324,6 +325,7 @@ fn spawn_insets(commands: &mut Commands, atlas: &CountyAtlas, counties: &[usize]
 #[derive(SystemParam)]
 pub(super) struct InsetPlacement<'w, 's> {
     view: Res<'w, PrimaryView>,
+    exclusions: Res<'w, MapLabelExclusions>,
     ui: Res<'w, ObserverUiState>,
     viewport: Res<'w, ObserverViewport>,
     scale: Res<'w, UiScale>,
@@ -346,6 +348,7 @@ pub(super) fn place_geographic_labels(mut placement: InsetPlacement) {
         && !placement.ui.splash_visible
         && !placement.ui.comparison_open
         && placement.ui.disclosure.is_none();
+    let mut county_labels = Vec::new();
     for (label, computed, mut node, mut visibility) in &mut placement.labels {
         let rect = if active && label.view == *placement.view {
             match (
@@ -371,12 +374,23 @@ pub(super) fn place_geographic_labels(mut placement: InsetPlacement) {
         } else {
             None
         };
+        // Keep the geographic names at their counties and give the player controls priority.
+        let rect = rect.filter(|label_rect| {
+            *placement.view != PrimaryView::Organizer
+                || placement
+                    .exclusions
+                    .0
+                    .iter()
+                    .chain(&county_labels)
+                    .all(|occupied| label_rect.intersect(occupied.inflate(6.0)).is_empty())
+        });
         visibility.set_if_neq(if rect.is_some() {
             Visibility::Visible
         } else {
             Visibility::Hidden
         });
         if let Some(rect) = rect {
+            county_labels.push(rect);
             let left = px(rect.min.x / placement.scale.0);
             let top = px(rect.min.y / placement.scale.0);
             if node.left != left {

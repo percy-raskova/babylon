@@ -357,8 +357,8 @@ pub(crate) mod tests {
         use super::amount_editor::AmountField;
         use babylon_practice_contract::{OrganizerAllocation, OrganizerConfig, OrganizerState};
         for bytes in [
-            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v19.json"),
-            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v20.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v20.json"),
         ] {
             let capture: Value = serde_json::from_str(bytes).expect("producer capture");
             let snapshot: OrganizerSnapshot =

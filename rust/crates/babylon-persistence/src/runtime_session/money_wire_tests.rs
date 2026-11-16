@@ -143,8 +143,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v19.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v19.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v20.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v20.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");
@@ -154,6 +154,26 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         assert_eq!(
             snapshot.body_scope.content_digest,
             snapshot.view.content_digest
+        );
+        let mut known =
+            serde_json::to_value(&snapshot.view.aid_partners[0]).expect("known partner wire");
+        let object = known.as_object_mut().expect("partner object");
+        assert!(object.remove("location").is_some());
+        assert!(
+            serde_json::from_value::<super::OrganizerKnownAidPartner>(known.clone()).is_err(),
+            "current wire must disclose location or explicit absence"
+        );
+        known["location"] = Value::Null;
+        assert!(
+            serde_json::from_value::<super::OrganizerKnownAidPartner>(known.clone())
+                .expect("unknown county")
+                .location
+                .is_none()
+        );
+        known["location"] = serde_json::json!("foreign:canada");
+        assert!(
+            serde_json::from_value::<super::OrganizerKnownAidPartner>(known).is_err(),
+            "a market cannot be used as a county"
         );
     }
 }

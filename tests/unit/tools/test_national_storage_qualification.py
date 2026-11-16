@@ -3988,7 +3988,7 @@ def cash_only_producer_practice():
     fixture = json.loads(
         (
             Path(__file__).resolve().parents[3]
-            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"
+            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v20.json"
         ).read_bytes()
     )
     resolution = fixture["resolutions"][0]

@@ -3,7 +3,7 @@
 
 # Bevy asset provenance
 
-This file is the authoritative provenance and license record for the twenty catalog assets in
+This file is the authoritative provenance and license record for the assets in
 `manifest.toml`. Every asset in this estate uses `AGPL-3.0-or-later`.
 
 ## Original interface work
@@ -23,6 +23,13 @@ that direction. The work does not copy third-party art, icons, logos, or font ou
 
 Inkscape produced the runtime PNG files from the SVG masters. The source geometry, runtime bytes,
 and SHA-256 digests remain in the repository for review.
+
+## Economic map symbols
+
+On 2026-11-15, Codex drew eight original symbols for the Director’s economic and aid maps. The
+editable master is `sources/economic-map-atlas.svg`. The game uses its transparent raster
+export, `economic-map-atlas.png`. Each cell identifies the same kind of place or partner when an
+artist supplies a replacement.
 
 ## OpenAI-generated illustrations
 

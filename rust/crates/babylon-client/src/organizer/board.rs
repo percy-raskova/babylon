@@ -194,7 +194,7 @@ fn dossier(root: &mut ChildSpawnerCommands) {
         BorderColor::all(theme::COPPER),
     ))
     .with_children(|panel| {
-        kicker(panel, "FIELD DOSSIER   /   WAYNE", theme::COPPER);
+        kicker(panel, "FIELD DOSSIER", theme::COPPER);
         ui::spawn_scrolling_reading(panel, |panel| {
             panel.spawn((
                 ImageNode::default(),
@@ -216,6 +216,11 @@ fn dossier(root: &mut ChildSpawnerCommands) {
                 TextPart::Situation,
                 ObserverFocusTarget::reading(None),
             ));
+            ui::button(
+                panel,
+                "Prepare aid offer",
+                OrganizerAction::PreparePartnerOffer,
+            );
             panel
                 .spawn((ui::row(), SceneEvidence))
                 .with_children(|links| {

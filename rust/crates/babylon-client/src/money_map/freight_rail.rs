@@ -1,5 +1,5 @@
 //! Scrollable, keyboard-operable freight access and exact route detail.
-use super::freight::{Command, Freight, PAGE};
+use super::freight::{Command, Freight, Point, PAGE};
 use super::rail;
 use super::state::{Action, Diagram, MoneyView, Scope};
 use crate::atlas::CountyAtlas;
@@ -21,7 +21,7 @@ pub(super) fn km(mm: u64) -> String {
 pub(super) fn reading(row: &AccessRow) -> String {
     let status = match row.access {
         Access::Reachable { distance_mm } => format!(
-            "{} · {}",
+            "Shortest permitted truck path {} · {}",
             km(distance_mm),
             freight_access::distance_band(distance_mm)
         ),
@@ -39,12 +39,29 @@ pub(super) fn peer_name(row: &AccessRow, atlas: &CountyAtlas) -> String {
     rail::location(Some(&row.peer.to_string()), atlas)
 }
 
+pub(super) fn origin_name(freight: &Freight, atlas: &CountyAtlas) -> String {
+    freight.origin.map_or_else(String::new, |county| {
+        rail::location(Some(&format!("county:{county}")), atlas)
+    })
+}
+
 #[derive(Component)]
 pub(super) struct Detail;
 
-pub(super) fn detail(view: Res<MoneyView>, mut labels: Query<&mut Text, With<Detail>>) {
+pub(super) fn detail(
+    view: Res<MoneyView>,
+    atlas: Res<CountyAtlas>,
+    mut labels: Query<&mut Text, With<Detail>>,
+) {
     for mut label in &mut labels {
         if !view.is_changed() && !label.is_added() {
+            continue;
+        }
+        if let Some(point) = &view.freight.point {
+            label.0 = match point {
+                Point::Origin => format!("Comparison origin · {}\nThe compass marks the county anchor. Select an endpoint for its terminal attachment.", origin_name(&view.freight, &atlas)),
+                Point::Airport(id) => view.freight.airports.iter().find(|p| &p.id==id).map_or_else(String::new, |p| format!("{} · {}\nFAA facility point {}, {} · effective {}. Road attachment and dated air service unverified.",p.name,p.id,p.latitude,p.longitude,p.effective_date)),
+            };
             continue;
         }
         let Some(row) = view
@@ -56,6 +73,16 @@ pub(super) fn detail(view: Res<MoneyView>, mut labels: Query<&mut Text, With<Det
             label.0.clear();
             continue;
         };
+        let endpoint = |name: String, distance_mm: Option<u64>| match distance_mm {
+            Some(mm) => format!("{name} · Designed anchor to assigned road node {}", km(mm)),
+            None => name,
+        };
+        let origin = endpoint(origin_name(&view.freight, &atlas), row.origin_attachment_mm);
+        let peer = endpoint(peer_name(row, &atlas), row.peer_attachment_mm);
+        let (from, to) = match view.freight.direction {
+            AccessDirection::Outbound => (origin, peer),
+            AccessDirection::Inbound => (peer, origin),
+        };
         let ids: Vec<_> = row
             .corridors
             .iter()
@@ -64,12 +91,7 @@ pub(super) fn detail(view: Res<MoneyView>, mut labels: Query<&mut Text, With<Det
                 None => format!("{} · physical distance unreported", c.route_id),
             })
             .collect();
-        label.0 = format!(
-            "Selected {}\n{}\n{}",
-            row.peer,
-            reading(row),
-            ids.join("\n")
-        );
+        label.0 = format!("From {from}\nTo {to}\n{}\n{}", reading(row), ids.join("\n"));
     }
 }
 
@@ -86,13 +108,18 @@ fn controls(
     rail::control(parent, view, scope, Action::Freight(action), label.into());
 }
 
-fn show_reference_status(parent: &mut ChildSpawnerCommands, freight: &Freight) -> bool {
+fn show_reference_status(
+    parent: &mut ChildSpawnerCommands,
+    view: &MoneyView,
+    scope: &Scope,
+) -> bool {
+    let freight = &view.freight;
     if !freight.source.is_empty() {
         notice(parent, freight.source.clone());
     }
     notice(
         parent,
-        "Lines link county anchors schematically. The road profile covers major freight roads.",
+        "Compass: comparison origin · crane: county freight endpoint · aircraft: FAA point. Solid gold arrows show captured economic corridors. Dashed blue arrows show independent truck access. Small diamonds mark other endpoints. Arrows join county anchors schematically.",
     );
     if !freight.source.is_empty() {
         if freight.airports.is_empty() {
@@ -101,15 +128,16 @@ fn show_reference_status(parent: &mut ChildSpawnerCommands, freight: &Freight) -
                 "The selected FAA facility reference has no airport point for this origin.",
             );
         }
-        for point in &freight.airports {
-            notice(
-                parent,
-                format!(
-                    "{} · {}\nFAA facility point {}, {} · effective {}. \
-                     Road attachment and dated air service unverified.",
-                    point.name, point.id, point.latitude, point.longitude, point.effective_date,
-                ),
-            );
+        if let Some(origin) = freight.origin {
+            for point in &freight.airports {
+                controls(
+                    parent,
+                    view,
+                    scope,
+                    Command::Point(origin, Point::Airport(point.id.clone())),
+                    format!("Airport · {}", point.name),
+                );
+            }
         }
     }
     match &freight.rows {
@@ -164,9 +192,7 @@ pub(super) fn panel(
     atlas: &CountyAtlas,
 ) {
     let freight = &view.freight;
-    let name = freight.origin.map_or_else(String::new, |c| {
-        rail::location(Some(&format!("county:{c}")), atlas)
-    });
+    let name = origin_name(freight, atlas);
     parent.spawn(rail::label(
         format!("Freight access · {name}"),
         22.0,
@@ -202,7 +228,23 @@ pub(super) fn panel(
             }
         }
     }
-    if !show_reference_status(parent, freight) {
+    if let Some(origin) = freight.origin {
+        controls(
+            parent,
+            view,
+            scope,
+            Command::Point(origin, Point::Origin),
+            format!("Inspect origin · {name}"),
+        );
+    }
+    rail::control(
+        parent,
+        view,
+        scope,
+        Action::Frame,
+        "Frame freight endpoints".into(),
+    );
+    if !show_reference_status(parent, view, scope) {
         return;
     }
     parent.spawn((

@@ -925,7 +925,8 @@
           {
             "actor_id": 120,
             "kind": "local",
-            "label": "Independent recipient"
+            "label": "Independent recipient",
+            "location": "county:26163"
           }
         ],
         "authority_id": [
@@ -1377,7 +1378,8 @@
           {
             "actor_id": 120,
             "kind": "local",
-            "label": "Independent recipient"
+            "label": "Independent recipient",
+            "location": "county:26163"
           }
         ],
         "authority_id": [

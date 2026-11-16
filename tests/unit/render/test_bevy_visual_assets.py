@@ -124,6 +124,20 @@ _EXPECTED_MANIFEST_METADATA = (
         "AGPL-3.0-or-later",
     ),
     (
+        "economic-map-atlas",
+        "map",
+        "design/bevy-assets/sources/economic-map-atlas.svg",
+        "assets/visual/economic-map-atlas.png",
+        "png",
+        512,
+        256,
+        4,
+        2,
+        "linear",
+        "c8e6a10fd758b4e88f68870e41848f39d8563e13b9aeaa24ddc019e02533dbd2",
+        "AGPL-3.0-or-later",
+    ),
+    (
         "hero-red-apparatus",
         "illustration",
         "design/bevy-assets/prompts/hero-red-apparatus.md",
@@ -331,7 +345,7 @@ _PALETTE = {
     "#228b22",
 }
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
-_MAX_MANIFEST_ASSETS = 20
+_MAX_MANIFEST_ASSETS = 21
 _MAX_SVG_COLOR_MATCHES = 32
 
 
@@ -340,7 +354,7 @@ def _bounded_manifest_rows(rows: object) -> tuple[dict[str, object], ...]:
         raise AssertionError("manifest asset rows must be a list")
     rows_with_sentinel = tuple(islice(rows, _MAX_MANIFEST_ASSETS + 1))
     if len(rows_with_sentinel) > _MAX_MANIFEST_ASSETS:
-        raise AssertionError("manifest must contain at most 20 asset rows")
+        raise AssertionError("manifest must contain at most 21 asset rows")
     bounded_rows = rows_with_sentinel[:_MAX_MANIFEST_ASSETS]
     for index in range(_MAX_MANIFEST_ASSETS):
         if index >= len(bounded_rows):
@@ -368,9 +382,9 @@ def _manifest_assets() -> tuple[dict[str, object], ...]:
     return _bounded_manifest_rows(data.get("asset"))
 
 
-def test_manifest_reader_rejects_a_twenty_first_row() -> None:
-    rows: list[object] = [{} for _ in range(21)]
-    with pytest.raises(AssertionError, match="at most 20 asset rows"):
+def test_manifest_reader_rejects_a_twenty_second_row() -> None:
+    rows: list[object] = [{} for _ in range(22)]
+    with pytest.raises(AssertionError, match="at most 21 asset rows"):
         _bounded_manifest_rows(rows)
 
 
@@ -399,14 +413,14 @@ def _manifest_metadata(asset: dict[str, object]) -> tuple[object, ...]:
 
 def test_manifest_pins_every_complete_metadata_tuple() -> None:
     assets = _manifest_assets()
-    assert len(assets) == 20
-    actual = tuple(_manifest_metadata(assets[index]) for index in range(20))
+    assert len(assets) == _MAX_MANIFEST_ASSETS
+    actual = tuple(_manifest_metadata(assets[index]) for index in range(_MAX_MANIFEST_ASSETS))
     assert actual == _EXPECTED_MANIFEST_METADATA
 
 
 def test_interface_sources_and_rasters_match_the_manifest() -> None:
     manifest = _manifest_assets()
-    assert len(manifest) in (6, 20)
+    assert len(manifest) == _MAX_MANIFEST_ASSETS
     assets = manifest[:6]
     assert tuple(assets[index]["id"] for index in range(6)) == _INTERFACE_IDS
     for index in range(6):
@@ -432,8 +446,8 @@ def test_interface_svg_colors_are_palette_roles() -> None:
 
 def test_illustrations_decode_and_match_the_manifest() -> None:
     manifest = _manifest_assets()
-    assert len(manifest) == 20
-    assets = manifest[6:20]
+    assert len(manifest) == _MAX_MANIFEST_ASSETS
+    assets = manifest[7:]
     assert tuple(assets[index]["id"] for index in range(14)) == _ILLUSTRATION_IDS
     for index in range(14):
         asset = assets[index]
@@ -450,7 +464,38 @@ def test_illustrations_decode_and_match_the_manifest() -> None:
 
 def test_manifest_and_runtime_directory_have_exactly_the_same_files() -> None:
     assets = _manifest_assets()
-    assert len(assets) == 20
-    declared = {Path(str(assets[index]["runtime"])).name for index in range(20)}
-    actual = {path.name for path in islice(_RUNTIME.iterdir(), 21)}
+    assert len(assets) == _MAX_MANIFEST_ASSETS
+    declared = {Path(str(assets[index]["runtime"])).name for index in range(_MAX_MANIFEST_ASSETS)}
+    actual = {path.name for path in islice(_RUNTIME.iterdir(), _MAX_MANIFEST_ASSETS + 1)}
     assert actual == declared
+
+
+def test_economic_map_pieces_have_distinct_visible_shapes_and_clear_surroundings() -> None:
+    asset = _manifest_assets()[6]
+    assert asset["id"] == "economic-map-atlas"
+    source = _ROOT / str(asset["source"])
+    svg = ET.parse(source).getroot()  # noqa: S314 - version-controlled SVG master only
+    namespace = "{http://www.w3.org/2000/svg}"
+    assert [group.attrib["id"] for group in svg.findall(f"{namespace}g")] == [
+        "producer",
+        "shop",
+        "utility",
+        "freight-terminal",
+        "airport",
+        "origin-selected-hub",
+        "local-aid-partner",
+        "remote-aid-partner",
+    ]
+    runtime = _ROOT / str(asset["runtime"])
+    assert hashlib.sha256(runtime.read_bytes()).hexdigest() == asset["sha256"]
+    with Image.open(runtime) as image:
+        assert (image.format, image.mode, image.size) == ("PNG", "RGBA", (512, 256))
+        silhouettes = set()
+        for index in range(8):
+            x, y = (index % 4) * 128, (index // 4) * 128
+            alpha = image.crop((x, y, x + 128, y + 128)).getchannel("A")
+            assert alpha.getextrema() == (0, 255)
+            bounds = alpha.getbbox()
+            assert bounds and min(bounds[:2]) > 0 and max(bounds[2:]) < 128
+            silhouettes.add(alpha.resize((24, 24)).tobytes())
+        assert len(silhouettes) == 8

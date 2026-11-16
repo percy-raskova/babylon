@@ -283,7 +283,11 @@ In period 5, no food arrived from the regional producer in either campaign. The 
 
 A general buyer rule would still have to handle equal prices, freight time and a cheap seller with little stock. [Supplier contracts](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Order and cash reservation](../rust/crates/babylon-material-circuit/src/recurring/firms.rs)
 
-**Show where food given by another household entered the pantry.** A Wayne organizer can already arrange a local gift or send parcels to Cook County. The scenario allows up to four parcels and requires two hours of the donor’s time per parcel.
+**Choose a partner from what it has shared.** In New Game, the Wayne organizer can compare a local handoff with a freight shipment to Cook County. Each aid card shows the recipient’s own dated account of food on hand at opening or food eaten after a close. When a partner reports late, the card gives the period it described and the period the organizer heard from it. The player can weigh that report against the gift, the hours it takes and the work it displaces. [Partner reports on the decision cards](../rust/crates/babylon-client/src/organizer/partner_copy.rs)
+
+In a native organizer game, both partners reported eating zero of the four parcels they needed in period 1. The player selected one parcel and no cash for Wayne. In period 2, the practice history recorded two organizer-hours spent and the partner’s participation. Wayne reported eating one parcel, buying none and ending with an empty pantry. Three parcels of need went unmet. [Both offers before the decision](economic-flows-qualification-2026-11-14-assets/wayne-and-cook-aid-food-reports.png) · [Wayne’s next report](economic-flows-qualification-2026-11-14-assets/wayne-food-report-after-local-aid.png)
+
+**Show where food given by another household entered the pantry.** The Wayne scenario allows up to four parcels and requires two hours of the donor’s time per parcel.
 
 The retailer’s summary counts gifts sent and received. The detailed household receipt shows its opening pantry, purchases, consumption and closing pantry. Adding the two gift quantities would let the observer account for every parcel even when the household bought nothing.
 

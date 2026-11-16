@@ -937,6 +937,16 @@ captures and database counters in
 
 The timed run and the two-period memory run used the [qualification database settings](../docker/postgres/postgresql.ci.conf), including 512 MB of shared buffers. The normal local launcher starts the database with [the local Compose settings](../docker/postgres/postgresql.conf), which specify 4 GB of shared buffers.
 
+With the local player's database settings, the first close committed
+in 8.422–8.826 seconds. The financial records appeared in 33.284–33.687
+seconds. Wayne’s three amounts first appeared on screen in 34.321–34.572
+seconds. This missed the 30-second target. The reopened campaign
+reproduced all 35,290 payments and 40,609 labor movements.
+
+The highest of 37 combined memory samples was 4,304,302,080 bytes.
+The media folder `babylon-recovery/per293-native-player-p1-v10-46eef9a2d5c4`
+holds the screen frames, timing and database settings from this run.
+
 Postgres refreshed statistics on the first period’s territory membership before observers read it. Seven Archive county queries completed in 44–76 milliseconds. An earlier run had two five-second timeouts. Reopening the v9 save reproduced the first-period world from the twenty-year material run.
 
 A separate fresh campaign at revision `ce2c266ed` measured storage through the first two closes. Period 1 used 39,337,984 bytes, down from 76,595,200 in the earlier campaign. Period 2 used 13,336,576 bytes. Both fit the 40,000,000-byte limit and reopened with identical committed world and register hashes. The first two financial publications in this run took 25.620 and 13.832 seconds.

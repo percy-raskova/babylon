@@ -59,15 +59,24 @@ largest shortfall. It had funds for all 1,804,207 parcels it requested. The
 shop supplied 23. The group ate 589,036 against a need of 1,196,610,
 leaving 607,574 unmet. The detailed account took 21.84–21.98 seconds to
 appear on the first build. After the workplace view retained its controls,
-the same receipt appeared in 9.69–9.84 seconds. The county balance appeared
-within 0.641 seconds. The two-second target for the detailed receipt
-remains open.
+the same receipt appeared in 9.69–9.84 seconds. The client now reads
+the authenticated period already on screen. The physical map click
+showed the household name, period and Back button in 0.476–0.581
+seconds on the RTX 3060. They stayed visible through the five-second
+capture. Scrolling down showed the pantry, order and meals eaten.
+[The shop and this household's pantry](economic-flows-qualification-2026-11-14-assets/wayne-retailer-pantry-from-map.png)
 
 The local evidence folders `babylon-recovery/per293-native-shortage-2v53qij4`
 and `babylon-recovery/per293-native-wayne-final-2ccllh62` hold the windows,
 input times and contributing household accounts from the two runs. The
-second run used the same saved period and financial tools with the final
-client.
+second run used the same saved period and financial tools to measure the
+change to the workplace controls.
+
+Opening the same household from its Money account took 0.009–0.172
+seconds on the corrected client. Neither click issued another observer
+database query. The two timings start with the receipt button visible.
+The local folder `babylon-recovery/per293-native-household-final-78pnzwcp`
+holds the screenshots and the input times from both routes.
 
 Another Wayne group received no food from its retailer. It drew 20,536
 parcels from its pantry and still lacked 21,184. A missed retail order
@@ -86,7 +95,7 @@ records its purchases, stocks and consumption.
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The local rebuild recovered the September 8 continental state from seven publisher updates. Full distances still depend on verifying the regional truck graph and routing its 83 terminals. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
 | International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
-| National qualification | Both the five-year and twenty-year material checkpoints reopened with the same world hashes. At the five-year close the national database used 741,267,123 bytes. A second database restored the save and reproduced the accounts. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Running-game memory at both horizons and database storage at twenty years still need measurement. |
+| National qualification | Both the five-year and twenty-year material checkpoints reopened with the same world hashes. At the five-year close the national database used 741,267,123 bytes. A second database restored the save and reproduced the accounts. | The latest first turn showed Wayne’s three figures in 35.337–35.588 seconds against a target of 30 seconds. Running-game memory at both horizons and database storage at twenty years still need measurement. |
 
 The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 
@@ -472,6 +481,25 @@ The local folder `babylon-recovery/per293-ordinary-v10-seed319-p65`
 holds the save, the accounts from the separate restore and the timing
 for each close.
 
+On the restored database, a new process read the published company books
+in 0.165 seconds. Wayne's flow totals took 0.265 seconds.
+Reconstructing the household account from scratch took 67.484
+seconds. The investment decision took 68.994 seconds. A player reading
+a household from an open map already has its authenticated period in
+memory.
+
+The Archive worker also encountered a slow query at period 25. It joined
+the same county membership twice to read six fields. The revised query
+reads the committed fields once. On a populated Michigan close, both
+queries returned the same 332 rows with the same counts. The revised
+query took 2.518 milliseconds on the server. On the restored national
+period 65, both returned zero rows and the revised query took 0.750
+milliseconds.
+
+All five financial and recovery checks passed on local
+Postgres 17.11. The gate log and comparison plan are on the media
+drive in `babylon-recovery/per293-household-archive-checks-hmsob3vn`.
+
 ## The first company-enabled national opening
 
 The v8 opening assigned 2,788 whole sites to 99 occupied companies. Those sites had 121,486,688 captured jobs.
@@ -835,6 +863,21 @@ The writer spent 27.315 seconds on the first publication. This included 4.968 se
 The v9 national campaign `9945464b-5962-4960-85f6-0bac750fbf76` repeated the advance from period 0 on the RTX 3060. The material writer took 8.844 seconds. Financial publication took 27.075 seconds, including 4.817 seconds reading the source and 10.834 seconds publishing labor. Wayne’s three figures matched the independent observer query between 36.565 and 36.817 seconds after the advance. The 30-second target remains open.
 
 The demographic campaign `18307cb9-5ea9-4b75-92bf-694679b7633b` used the same GPU for its first turn. Its first close committed in 8.983–9.387 seconds. The journal appeared in 35.451–35.854 seconds. The native observer displayed the three Wayne figures in 36.111–36.362 seconds. An independent query matched all three amounts, and the reopened save matched the committed world. [First-turn measurements](economic-flows-qualification-2026-11-14-assets/national-household-first-turn-v10.json)
+
+Another fresh campaign on the same GPU showed the three figures in
+35.337–35.588 seconds. The material close committed in 8.706–9.110
+seconds. The financial records became available in 34.373–34.776
+seconds. The full publication took 25.826 seconds, including 4.433
+seconds authenticating the source and 10.567 seconds publishing recorded
+labor. Six database statements that resolved labor nodes and wrote their
+balances took 7.043 seconds in total. Publishing the labor movements
+used 159 statements and took 2.039 seconds of database time.
+
+The first-period save reopened with the same world hash. The largest of
+38 memory samples during the advance was 4,063,342,592 bytes across the
+game, runtime, publisher and database. The media drive holds the frame
+captures and database counters in
+`babylon-recovery/per293-native-first-turn-profile-9f5950b26e5c`.
 
 The timed run and the two-period memory run used the [qualification database settings](../docker/postgres/postgresql.ci.conf), including 512 MB of shared buffers. The normal local launcher starts the database with [the local Compose settings](../docker/postgres/postgresql.conf), which specify 4 GB of shared buffers.
 

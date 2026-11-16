@@ -1,0 +1,108 @@
+{
+  "scope": "Continental source for the September 8 regional road reconstruction. The comparison of the regional graph and county paths is a separate stage.",
+  "attribution": "OpenStreetMap contributors, ODbL-1.0",
+  "publisher": "Geofabrik GmbH",
+  "base": {
+    "replication_timestamp": "2026-09-01T20:20:50Z",
+    "sequence_number": 4900,
+    "url": "https://download.geofabrik.de/north-america-260901.osm.pbf",
+    "bytes": 19321695055,
+    "sha256": "8c1794a3c5f48fd4d7d16348049a16b041adee25ed20510b5adaf01236ad7428",
+    "md5": "849023c14a88e3bd76e517ac5fe10665"
+  },
+  "changes": [
+    {
+      "sequence": 4901,
+      "timestamp": "2026-09-02T20:20:51Z",
+      "state_sha256": "3b42f8d4d9d63a893b770302bb354350dc7da6f81032a789e37de9154ae13590",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/901.osc.gz",
+        "bytes": 12351983,
+        "sha256": "3cc30f413fa9420cc3c2d49651e878d2cf4e0dfafb4da31fb8a7e77861bea2df"
+      }
+    },
+    {
+      "sequence": 4902,
+      "timestamp": "2026-09-03T20:21:51Z",
+      "state_sha256": "24cb3637c3d133003cb647eba89dd516542f7306d31425885219ac7a72ff481f",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/902.osc.gz",
+        "bytes": 13304778,
+        "sha256": "ac9460d68aba463f09a556f77b3d7bc9533b325993e108b82daad4197364abc4"
+      }
+    },
+    {
+      "sequence": 4903,
+      "timestamp": "2026-09-04T20:21:21Z",
+      "state_sha256": "4032dff333462d8032952948ff31b3fe32500ffefc69411495a8a6dec774ada5",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/903.osc.gz",
+        "bytes": 47062065,
+        "sha256": "f106163607a29dca51cca374837ba60bd2c7fb52f795415cab0b0489bca5ee45"
+      }
+    },
+    {
+      "sequence": 4904,
+      "timestamp": "2026-09-05T20:22:06Z",
+      "state_sha256": "3c8cd90aa6bc5d8ee1c9a634b6688b11216895b861b41b2c5dc7b521acd7845c",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/904.osc.gz",
+        "bytes": 29280591,
+        "sha256": "d48487c51d64ab2a5d7963d6e7fbee4d18cef5024a8035c31db7dc8b5380ea8c"
+      }
+    },
+    {
+      "sequence": 4905,
+      "timestamp": "2026-09-06T20:21:35Z",
+      "state_sha256": "b6f1726db19ed4481f536a71fefd6b5ca20c070ae6d9e133f10b33fe0527703a",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/905.osc.gz",
+        "bytes": 13788871,
+        "sha256": "b351d04437ce15a070d318fd96f935b25cd6945a587a1c4a1d10d04d0bdb488d"
+      }
+    },
+    {
+      "sequence": 4906,
+      "timestamp": "2026-09-07T20:21:20Z",
+      "state_sha256": "dbe22e19837feedb0bfb3932cfd5e216695e627b108e3c88872f22be23a77e53",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/906.osc.gz",
+        "bytes": 23579502,
+        "sha256": "0d5a9b2e23bd976aea2102ba78e0bd79d88caa0efd1dc8df024dbe5578928788"
+      }
+    },
+    {
+      "sequence": 4907,
+      "timestamp": "2026-09-08T20:21:01Z",
+      "state_sha256": "5d687a010016676b53fb99fd00ec2b3726441e49b896d6af6a19f97216e95d2e",
+      "changes": {
+        "url": "https://download.geofabrik.de/north-america-updates/000/004/907.osc.gz",
+        "bytes": 28161836,
+        "sha256": "717ede93ff4cbcb3618e46e4706106327e31f9c2b4df6b3352e2b5ddaa24fa84"
+      }
+    }
+  ],
+  "upstream_original": {
+    "url": "https://download.geofabrik.de/north-america-260908.osm.pbf",
+    "bytes": 19349498972,
+    "sha256": "31abe79b95cab2836ac9c6924701dc5ed0e6001ff102c572581097573df1d094",
+    "replication_timestamp": "2026-09-08T20:21:01Z"
+  },
+  "replay": {
+    "sequence": 4907,
+    "replication_timestamp": "2026-09-08T20:21:01Z",
+    "pbf_sha256": "36c78f282faaf52b06c142cb2fc70bcf61a10234629b7d8d64cd29d4511ab2e4",
+    "pbf_bytes": 19351328489,
+    "footprint_sha256": "74b7932b77bb96782026b281e638513d4debcf93928514e2ca7709b57506b7b9",
+    "native_program": "osmium/1.18.0",
+    "native_sha256": "1474b37568c4bef8345b4eba7f3a3bebceb2ec088c1f80ba2d364d8cb9a8ddef",
+    "elapsed_seconds": 748.369,
+    "max_process_rss_bytes": 1201041408
+  },
+  "published_reference": {
+    "graph_sha256": "d6ec26e347bfabcd3c86c3f9e784c7d9fbb4d32e8a7cb76ae724e53fdc745550",
+    "matrix_sha256": "66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4",
+    "terminal_count": 83,
+    "pair_count": 6889
+  }
+}

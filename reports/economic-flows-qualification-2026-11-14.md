@@ -11,7 +11,7 @@ The [food shortage](#when-food-stopped-reaching-households) shows when deliverie
 | Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | The demographic build also reconstructed older journal periods and reopened the Wayne household. The separate database reference checks last ran on v9. |
 | Recorded labor and map/Sankey | On the final household-receipt build, both Money and Labor switched from the map to the Sankey and back. Wayne’s amounts matched the ledger. The industry selection and source rows also appeared on the native display. | Current hardware evidence covers specific interactions. The frame-time samples below came from earlier builds. |
 | Companies and investment | The current policy completed the two-seed comparisons with 99, 300 and 600 companies on the same 7,463 sites. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | The ordinary twenty-year run used seed 319. Its companies made no capital contributions to members. |
-| Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
+| Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The local rebuild recovered the September 8 continental state from seven publisher updates. Full distances still depend on verifying the regional truck graph and routing its 83 terminals. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
 | International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
 | National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The v9 running game stayed within its storage and memory limits through two measured closes. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
@@ -267,7 +267,21 @@ This takes more work than changing the public payment order. The company must us
 
 In period 2 one sub-Saharan African distributor reserved 310,752,377 food parcels from Kern at $287 each. Its remaining cash covered only 753,120,664 of the 932,257,133 it requested locally at $50.40 each. The local seller delivered all 753,120,664 parcels that period. At the twenty-year close, Kern had delivered 41,646 parcels on its order. The buyer still had $89,173,979,797 in escrow on that contract. [The two orders, deliveries and payments](economic-flows-qualification-2026-11-14-assets/national-supplier-quotes-v10.json)
 
-Let the buyer consider the cheaper quote first for new orders. Test both price orders and equal prices, preserve existing freight bookings, and follow the parcels through actual delivery. A seller can quote a low price while holding little stock. [Supplier contracts](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Order and cash reservation](../rust/crates/babylon-material-circuit/src/recurring/firms.rs)
+A local replay gave the distributor’s cheaper food contract first claim on cash in period 2. Its two materials contracts kept their positions. The four funded quantities matched an independent calculation at the original prices. Other buyers placed the same period-2 orders. Both branches then used the ordinary purchasing rule through period 13.
+
+| Distributor’s food | Ordinary order | Cheaper contract first |
+| --- | ---: | ---: |
+| Period 2 parcels delivered and paid for within the buying region | 753,120,664 | 932,257,133 |
+| Period 2 parcels ordered from Kern | 310,752,377 | 279,294,265 |
+| Parcels from that Kern order received in period 4 | 12,192 | 11,150 |
+| Buying region’s household food eaten in period 4 | 1,243,847,366 | 1,243,847,366 |
+| Buying region’s household food stocks at the end of period 4 | 440,755,016 | 619,890,657 |
+
+The distributor tied up $9,028,478,144 less in its Kern order. The regional household group bought 179,135,641 more parcels in period 4 and carried them forward. Its members had enough food to meet their needs in both branches. Across US households, food eaten that period rose by 16 parcels. The regional group represents households across sub-Saharan Africa in this scenario. [Funded orders, trade receipts and household stocks](economic-flows-qualification-2026-11-14-assets/national-food-supplier-order-p2-v10.json)
+
+In period 5, no food arrived from the regional producer in either campaign. The household group drew down its pantry and ate 440,780,022 parcels under the ordinary order and 619,915,063 after buying locally first. Its shortfall fell from 803,341,489 to 624,206,448 parcels. The group ate 179,135,119 extra parcels across the first year. Its pantry ran dry in period 5 in both campaigns. From periods 9 through 13 it ate zero in both. [Purchases, inventories, consumption and imports by period](economic-flows-qualification-2026-11-14-assets/national-food-supplier-order-year-one-v10.json)
+
+A general buyer rule would still have to handle equal prices, freight time and a cheap seller with little stock. [Supplier contracts](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Order and cash reservation](../rust/crates/babylon-material-circuit/src/recurring/firms.rs)
 
 **Show where food given by another household entered the pantry.** A Wayne organizer can already arrange a local gift or send parcels to Cook County. The scenario allows up to four parcels and requires two hours of the donor’s time per parcel.
 
@@ -325,6 +339,10 @@ Each CLI sample ran a new process against the restored database after a warm-up.
 | Labor, periods 2 and 1 | 528.718 | 521.690 | 448.124 |
 
 The separate 15-period integration case exercised thirteen-period detail retention and reconstruction across gaps. The test canceled publication after the writer acquired its locks. A second connection verified the rollback. The next graph and material identities matched after the retry. Another case copied the selected campaign from the predecessor schema and inspected the copy. All three cases passed at the money and labor milestone, commit `a00dbf0bf`.
+
+The ordinary v10 national campaign crossed its first retention boundary in local Postgres. After period 13, the database held detailed payments and labor for periods 1–13. After period 14 it held periods 2–14. The observer then reopened Wayne’s period-1 payment and household reports and reproduced both byte for byte. New runtime processes also reopened periods 13 and 14 with their original hashes.
+
+The database grew from 209,278,643 bytes when restored at period 4 to 325,359,283 at period 14. Every advance waited for financial publication. The separate semantic Archive had processed period 13 when the operator measured period 14. These samples cover database storage through the first retention boundary. [Period sizes, retained rows and restored hashes](economic-flows-qualification-2026-11-14-assets/national-first-retention-window-v10.json)
 
 ## The first company-enabled national opening
 
@@ -734,7 +752,9 @@ The capture also records SHA-256 `66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614a
 
 The matrix carries the scenario digest from its original capture. A later maintenance change updated that digest in the physical network file. Both captures have the same graph, transport settings, atlas and 83 terminals. The freight reader now checks a recovered copy of this specific matrix against its original source identities. Its full 83 × 83 distance table remains unavailable. [Maintenance capture record](maintenance-qualification-2026-09-13.md) · [Freight reference reader](../rust/crates/babylon-persistence/src/freight_access/reference.rs)
 
-An executable directed-road case exercised access restrictions, asymmetric distance and selection with a missing matrix. Captured corridors remain inspectable when reference distances are unavailable. Airports appear as facility locations. Complete Great Lakes reachability and observed air services remain unqualified. The [source manifest](../tools/michigan_road_network_source_manifest.json) identifies the exact extract for a future rebuild.
+An executable directed-road case exercised access restrictions, asymmetric distance and selection with a missing matrix. Captured corridors remain inspectable when reference distances are unavailable. Airports appear as facility locations. Complete Great Lakes reachability and observed air services remain unqualified. The [source manifest](../tools/michigan_road_network_source_manifest.json) identifies the original extract.
+
+The local rebuild started with the September 1 North America snapshot. Its 19,321,695,055 bytes matched the publisher’s MD5. Osmium 1.18.0 applied all seven daily changes through sequence 4907. The resulting file records September 8 at 20:21:01 UTC and has SHA-256 `36c78f282faaf52b06c142cb2fc70bcf61a10234629b7d8d64cd29d4511ab2e4`. The original publisher file has a different digest. The regional extraction and directed path checks use their own recorded identities. [Source files, dated states and checksums](economic-flows-qualification-2026-11-14-assets/great-lakes-september-source-reconstruction.json)
 
 ## Controller count and investment
 

@@ -1,0 +1,641 @@
+{
+  "P1_household_sha256": "20cea9db8a11792a99da0eb5514ff74d2fc924c164c5b8950d07a9f72312e9a0",
+  "P1_money_sha256": "666289f3c1b0f54c59b7cf52fdf961a824b5dcb4796a22c6e5acd1ed3f40895a",
+  "archive_bytes": 169132769,
+  "archive_sha256": "6c7a7258fd04682fad5bb27a8f9b540b39c1e30d88e0064766c479db442c5c47",
+  "campaign": "5efafb84-10df-41ea-9451-51b8c7e2020d",
+  "same_flow_bytes": true,
+  "same_household_bytes": true,
+  "scope": "P4 restore, P5\u201314 real PostgreSQL advances with live financial writer; measured DB allocations at publication. No graphics or long-horizon storage or RAM qualification.",
+  "source_owner": "per293_owner_2178f688adcf",
+  "source_manifest_sha256": "36def099523c447b6a7ff9876d6f4eb004bb124433e6361ea433200a2eb440aa",
+  "source_directory": "per293-first-window-v10-q8zucjjl",
+  "archive_worker": {
+    "table": "babylon_meta.archive_receipt_consumption_v1",
+    "source_P4": [
+      1,
+      2
+    ],
+    "final_P14": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+    ],
+    "runtime_retry_log_count": 24,
+    "source_tick_hashes_match_financial_periods": true
+  },
+  "periods": [
+    {
+      "period": 5,
+      "database_bytes": 219772595,
+      "payment_count": 19381,
+      "canonical_seconds": 7.534627496963367,
+      "published_seconds": 32.22652090410702,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "bb4bcbc776d805554ac06092f9e0f48fa9f793ac15ca9847fa829dfd6f27b385",
+        "prior_world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629",
+        "receipts_sha256": "3e82eaa3329ac92b4e10a36410363883ea9306e71f9e1dbd9eb8e541718c95bc",
+        "tick_sha256": "06865379bcd247a27543961d63d3c01ac4216867c09d3cbfd8fa29040ae0f214",
+        "world_sha256": "71db8d316f3974a1f9e78a594ab5b4b2089efbb114da08044de52e7884da8176"
+      }
+    },
+    {
+      "period": 6,
+      "database_bytes": 231233203,
+      "payment_count": 18618,
+      "canonical_seconds": 7.657390886219218,
+      "published_seconds": 21.038752823136747,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "011b4d2a072064c7ae1ac0e18497c71b8204134241aba40883abf55c671fc5d1",
+        "prior_world_sha256": "71db8d316f3974a1f9e78a594ab5b4b2089efbb114da08044de52e7884da8176",
+        "receipts_sha256": "aeab369ec1ed3081e4fbebd3ed647819a9a2d20b80c7d353c3c15e62d9593f0f",
+        "tick_sha256": "3dc05e57ecbda58925e4efc154c5331db605b92b54ef23e0bb6001516e40babc",
+        "world_sha256": "edf8d3d82af323ebf64992b336789a12607893d2e0f5f88dd773777c94b8f737"
+      }
+    },
+    {
+      "period": 7,
+      "database_bytes": 243365555,
+      "payment_count": 17409,
+      "canonical_seconds": 7.074971197871491,
+      "published_seconds": 19.403426949866116,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "e408a507083d9e6164bbf175bd9deb897e412549cd68f239d33a4ff87d27f10d",
+        "prior_world_sha256": "edf8d3d82af323ebf64992b336789a12607893d2e0f5f88dd773777c94b8f737",
+        "receipts_sha256": "9ddd62dbe462a1e6a10b105951ba61e181594838656679ad0658a731475999d2",
+        "tick_sha256": "f14413d15ba6303b3de15d5d913d75100c78240b7b7fda8aa8ad3c9730dc6a9f",
+        "world_sha256": "35f2673e500a01dbba8546a155a8ff4eaf0070f9b94989e55c6e800a6716e409"
+      }
+    },
+    {
+      "period": 8,
+      "database_bytes": 255571635,
+      "payment_count": 16052,
+      "canonical_seconds": 6.957080910913646,
+      "published_seconds": 19.291978251887485,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "733d93d9add8b923befd84d532c7b02c793e82be527808a4671ea46cc8273d71",
+        "prior_world_sha256": "35f2673e500a01dbba8546a155a8ff4eaf0070f9b94989e55c6e800a6716e409",
+        "receipts_sha256": "5a9aad7ee72507bcef033e2834ab8a9ef49febc8f31f9c4867f39f418d0db345",
+        "tick_sha256": "2bb2554067b133fa8e18aebdd910728a901d6b7032aff9e67eda4e6b7e25bdcd",
+        "world_sha256": "9ecda8fa12048f770b76e2063814ecc5675385aef6ad4cff314982a21113b68d"
+      }
+    },
+    {
+      "period": 9,
+      "database_bytes": 267409075,
+      "payment_count": 15572,
+      "canonical_seconds": 7.229443604126573,
+      "published_seconds": 19.93577455705963,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "ff6185344e7703e5e1d2e592eb181ded2a5a9e58021dcc8d12ad39da20029f3b",
+        "prior_world_sha256": "9ecda8fa12048f770b76e2063814ecc5675385aef6ad4cff314982a21113b68d",
+        "receipts_sha256": "a374bb3f48f1b29532019fd7f004a383e0e9c521a6378db1d9ad2feaf4b31758",
+        "tick_sha256": "789aa36af7cfc817b86a790466802386eb446a1d7adf4ecdfdfc042152affc42",
+        "world_sha256": "a2daf6de0b4b18fbf464242c9204e36fdf2207c175e7f3372437088b6116faac"
+      }
+    },
+    {
+      "period": 10,
+      "database_bytes": 279230131,
+      "payment_count": 15223,
+      "canonical_seconds": 6.716151087079197,
+      "published_seconds": 18.337821694090962,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "b0e9aed82e85aee386e3f26954cde77d5e9210d9668f18ac4b77714adac74a4c",
+        "prior_world_sha256": "a2daf6de0b4b18fbf464242c9204e36fdf2207c175e7f3372437088b6116faac",
+        "receipts_sha256": "0ab26811aad89312ac100ee1bc20555730ef53ae812ae7255da571f93d6576ee",
+        "tick_sha256": "d7389c995be22d61a811869c3f6e217a078273f724c8d8a20f758a09f6b20f55",
+        "world_sha256": "23cf5daaa6afd50896e329c33f8fd7e4a3a23b39eeabadb798d85b855fa8e095"
+      }
+    },
+    {
+      "period": 11,
+      "database_bytes": 290879155,
+      "payment_count": 14928,
+      "canonical_seconds": 6.7972680949606,
+      "published_seconds": 18.06883727782406,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "1daf1029e2aecfe89769fab6cdf30162d6daaf04d6ba045a28d1b61fbcbb3e98",
+        "prior_world_sha256": "23cf5daaa6afd50896e329c33f8fd7e4a3a23b39eeabadb798d85b855fa8e095",
+        "receipts_sha256": "58fbe28557f53ba793bd11aadb5024c2db670998117f0403007a69c463e568c3",
+        "tick_sha256": "f7b281cd8025b4d0ab94c3d1bc929274c2ac7aa766a25761a8f04b496412eaa5",
+        "world_sha256": "1f40989d35d430097de994e028fec942a935b3215357f829f783566a31b01bf0"
+      }
+    },
+    {
+      "period": 12,
+      "database_bytes": 302446259,
+      "payment_count": 14828,
+      "canonical_seconds": 6.683135934174061,
+      "published_seconds": 17.955218699062243,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "a2b51a0cc027e6a249d59c06a86c2e330e737b91182a3d42b06df42cc83cebe6",
+        "prior_world_sha256": "1f40989d35d430097de994e028fec942a935b3215357f829f783566a31b01bf0",
+        "receipts_sha256": "1568c23c587b6f4bdd4343892e1df4ee774a65755f6cf4f61abbfca6b6bb5eb3",
+        "tick_sha256": "aefca4559fc381eb53f421a5c40e399da011367b24424543f3a2986f436cf6c5",
+        "world_sha256": "31690a88d0c92536ccc4451aaa91162dc0502161d7626255c98302df9362db08"
+      }
+    },
+    {
+      "period": 13,
+      "database_bytes": 314062515,
+      "payment_count": 14468,
+      "canonical_seconds": 6.685193568933755,
+      "published_seconds": 18.303877387894318,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "249b7db39741a332cd9b6f85a27e0fe3c3bada18ef597cf6d694b6e018f5d3ac",
+        "prior_world_sha256": "31690a88d0c92536ccc4451aaa91162dc0502161d7626255c98302df9362db08",
+        "receipts_sha256": "b9b41b9352a3d5a3abdce6384cc1f4389ba1a0d7cc9c297bda7f03c0eb0c3ab0",
+        "tick_sha256": "9f7eecb8a1f09261f6ecd902b3532bb797f81aef439b70b8dac90a4e3a031bf8",
+        "world_sha256": "51de32df7e9170b04940a45eb2fd137afeb39b60e2e1a28cf756a7c55c897eb6"
+      }
+    },
+    {
+      "period": 14,
+      "database_bytes": 325359283,
+      "payment_count": 14202,
+      "canonical_seconds": 6.670683515025303,
+      "published_seconds": 18.315762626938522,
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "material_register_sha256": "cb9fb583a73452303d1d9735f2cfdafc8929ceeba1f0689d2880cc6836c2cc3a",
+        "prior_world_sha256": "51de32df7e9170b04940a45eb2fd137afeb39b60e2e1a28cf756a7c55c897eb6",
+        "receipts_sha256": "7bea21deef14562ba55261f1bef95fe5b72140f0fdd2b980250221e7f0f2b08f",
+        "tick_sha256": "1ac985ca6cdd8ef564c8d17fa61f6dbce2504dd2d369bb40ff78672212103807",
+        "world_sha256": "f7b1f8f02ea4d5294e71f6b1fdf0492ace44951917e0cf141896f9a8108b0d1b"
+      }
+    }
+  ],
+  "window_and_reopen": {
+    "13": {
+      "payments": [
+        [
+          1,
+          35290
+        ],
+        [
+          2,
+          22971
+        ],
+        [
+          3,
+          22292
+        ],
+        [
+          4,
+          20531
+        ],
+        [
+          5,
+          19381
+        ],
+        [
+          6,
+          18618
+        ],
+        [
+          7,
+          17409
+        ],
+        [
+          8,
+          16052
+        ],
+        [
+          9,
+          15572
+        ],
+        [
+          10,
+          15223
+        ],
+        [
+          11,
+          14928
+        ],
+        [
+          12,
+          14828
+        ],
+        [
+          13,
+          14468
+        ]
+      ],
+      "labor": {
+        "labor_movement_block_v1": [
+          [
+            1,
+            318
+          ],
+          [
+            2,
+            221
+          ],
+          [
+            3,
+            222
+          ],
+          [
+            4,
+            197
+          ],
+          [
+            5,
+            171
+          ],
+          [
+            6,
+            155
+          ],
+          [
+            7,
+            130
+          ],
+          [
+            8,
+            113
+          ],
+          [
+            9,
+            107
+          ],
+          [
+            10,
+            101
+          ],
+          [
+            11,
+            98
+          ],
+          [
+            12,
+            95
+          ],
+          [
+            13,
+            91
+          ]
+        ],
+        "labor_movement_roster_v1": [
+          [
+            1,
+            134
+          ],
+          [
+            2,
+            124
+          ],
+          [
+            3,
+            125
+          ],
+          [
+            4,
+            119
+          ],
+          [
+            5,
+            113
+          ],
+          [
+            6,
+            110
+          ],
+          [
+            7,
+            102
+          ],
+          [
+            8,
+            97
+          ],
+          [
+            9,
+            95
+          ],
+          [
+            10,
+            93
+          ],
+          [
+            11,
+            92
+          ],
+          [
+            12,
+            91
+          ],
+          [
+            13,
+            90
+          ]
+        ],
+        "labor_node_block_v1": [
+          [
+            1,
+            134
+          ],
+          [
+            2,
+            124
+          ],
+          [
+            3,
+            125
+          ],
+          [
+            4,
+            119
+          ],
+          [
+            5,
+            113
+          ],
+          [
+            6,
+            110
+          ],
+          [
+            7,
+            102
+          ],
+          [
+            8,
+            97
+          ],
+          [
+            9,
+            95
+          ],
+          [
+            10,
+            93
+          ],
+          [
+            11,
+            92
+          ],
+          [
+            12,
+            91
+          ],
+          [
+            13,
+            90
+          ]
+        ]
+      },
+      "reopened": {
+        "resolve_tick": 13,
+        "tick_content_hash": "9f7eecb8a1f09261f6ecd902b3532bb797f81aef439b70b8dac90a4e3a031bf8",
+        "world_hash": "51de32df7e9170b04940a45eb2fd137afeb39b60e2e1a28cf756a7c55c897eb6"
+      }
+    },
+    "14": {
+      "payments": [
+        [
+          2,
+          22971
+        ],
+        [
+          3,
+          22292
+        ],
+        [
+          4,
+          20531
+        ],
+        [
+          5,
+          19381
+        ],
+        [
+          6,
+          18618
+        ],
+        [
+          7,
+          17409
+        ],
+        [
+          8,
+          16052
+        ],
+        [
+          9,
+          15572
+        ],
+        [
+          10,
+          15223
+        ],
+        [
+          11,
+          14928
+        ],
+        [
+          12,
+          14828
+        ],
+        [
+          13,
+          14468
+        ],
+        [
+          14,
+          14202
+        ]
+      ],
+      "labor": {
+        "labor_movement_block_v1": [
+          [
+            2,
+            221
+          ],
+          [
+            3,
+            222
+          ],
+          [
+            4,
+            197
+          ],
+          [
+            5,
+            171
+          ],
+          [
+            6,
+            155
+          ],
+          [
+            7,
+            130
+          ],
+          [
+            8,
+            113
+          ],
+          [
+            9,
+            107
+          ],
+          [
+            10,
+            101
+          ],
+          [
+            11,
+            98
+          ],
+          [
+            12,
+            95
+          ],
+          [
+            13,
+            91
+          ],
+          [
+            14,
+            89
+          ]
+        ],
+        "labor_movement_roster_v1": [
+          [
+            2,
+            124
+          ],
+          [
+            3,
+            125
+          ],
+          [
+            4,
+            119
+          ],
+          [
+            5,
+            113
+          ],
+          [
+            6,
+            110
+          ],
+          [
+            7,
+            102
+          ],
+          [
+            8,
+            97
+          ],
+          [
+            9,
+            95
+          ],
+          [
+            10,
+            93
+          ],
+          [
+            11,
+            92
+          ],
+          [
+            12,
+            91
+          ],
+          [
+            13,
+            90
+          ],
+          [
+            14,
+            89
+          ]
+        ],
+        "labor_node_block_v1": [
+          [
+            2,
+            124
+          ],
+          [
+            3,
+            125
+          ],
+          [
+            4,
+            119
+          ],
+          [
+            5,
+            113
+          ],
+          [
+            6,
+            110
+          ],
+          [
+            7,
+            102
+          ],
+          [
+            8,
+            97
+          ],
+          [
+            9,
+            95
+          ],
+          [
+            10,
+            93
+          ],
+          [
+            11,
+            92
+          ],
+          [
+            12,
+            91
+          ],
+          [
+            13,
+            90
+          ],
+          [
+            14,
+            89
+          ]
+        ]
+      },
+      "reopened": {
+        "resolve_tick": 14,
+        "tick_content_hash": "1ac985ca6cdd8ef564c8d17fa61f6dbce2504dd2d369bb40ff78672212103807",
+        "world_hash": "f7b1f8f02ea4d5294e71f6b1fdf0492ace44951917e0cf141896f9a8108b0d1b"
+      }
+    }
+  }
+}

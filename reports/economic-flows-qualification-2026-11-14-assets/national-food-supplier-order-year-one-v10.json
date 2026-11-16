@@ -1,0 +1,2197 @@
+{
+  "experiment": "seed 319, P2-only local-food-first procurement; ordinary same-terms closes through P13",
+  "first_buying_region_consumption_difference": 5,
+  "through_period": 13,
+  "cumulative_P2_to_P13": {
+    "bought": {
+      "ordinary": 2928540536,
+      "treatment": 3107675655,
+      "delta": 179135119
+    },
+    "eaten": {
+      "ordinary": 4171550046,
+      "treatment": 4350685165,
+      "delta": 179135119
+    },
+    "unmet": {
+      "ordinary": 10765817862,
+      "treatment": 10586682743,
+      "delta": -179135119
+    },
+    "regional_distributor_named_local_seller_deliveries": {
+      "ordinary": 753120666,
+      "treatment": 932257134,
+      "delta": 179136468
+    },
+    "total_import_delivered": {
+      "ordinary": 153227,
+      "treatment": 151878,
+      "delta": -1349
+    },
+    "total_import_settled_micros": {
+      "ordinary": 43596616000000,
+      "treatment": 43238230000000,
+      "delta": -358386000000
+    }
+  },
+  "periods": [
+    {
+      "period": 2,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 1243009510,
+          "treatment": 1243009510,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1243291377,
+          "treatment": 1243291377,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 1243573244,
+          "treatment": 1243573244,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 1243573244,
+          "treatment": 1243573244,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 1243150396,
+          "treatment": 1243150396,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 1243291377,
+          "treatment": 1243291377,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 1242868529,
+          "treatment": 1242868529,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 2175266643,
+          "treatment": 2175266643,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 1685258519,
+          "treatment": 1864394988,
+          "delta": 179136469
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 753120664,
+          "treatment": 932257133,
+          "delta": 179136469
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 753120664,
+          "treatment": 932257133,
+          "delta": 179136469
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 1243150396,
+          "treatment": 1243150396,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 21608,
+          "treatment": 21608,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 21608,
+          "treatment": 21608,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 6050240000000,
+          "treatment": 6050240000000,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 21608,
+          "treatment": 21608,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 21608,
+          "treatment": 21608,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 6050240000000,
+          "treatment": 6050240000000,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 54400000,
+          "treatment": 54400000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 0,
+          "treatment_unmet_budgets": 0,
+          "ordinary_unmet_quantity": 0,
+          "treatment_unmet_quantity": 0,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 2,
+          "treatment_unmet_budgets": 2,
+          "ordinary_unmet_quantity": 8,
+          "treatment_unmet_quantity": 8,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 0,
+          "treatment_unmet_budgets": 0,
+          "ordinary_unmet_quantity": 0,
+          "treatment_unmet_quantity": 0,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 2,
+          "treatment_unmet_budgets": 2,
+          "ordinary_unmet_quantity": 8,
+          "treatment_unmet_quantity": 8,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        }
+      }
+    },
+    {
+      "period": 3,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 1242868529,
+          "treatment": 1242868529,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1243570657,
+          "treatment": 1243570657,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 1244272785,
+          "treatment": 1244272785,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 1244272785,
+          "treatment": 1244272785,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 1244272785,
+          "treatment": 1244272785,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 1243570657,
+          "treatment": 1243570657,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 1243570657,
+          "treatment": 1243570657,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 1685258519,
+          "treatment": 1864394988,
+          "delta": 179136469
+        },
+        "retailer_closing_stock": {
+          "ordinary": 441007343,
+          "treatment": 620143811,
+          "delta": 179136468
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 1,
+          "treatment": 0,
+          "delta": -1
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 1,
+          "treatment": 0,
+          "delta": -1
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 1244272785,
+          "treatment": 1244272785,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 24382,
+          "treatment": 23555,
+          "delta": -827
+        },
+        "total_import_delivered": {
+          "ordinary": 21608,
+          "treatment": 21608,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 6050240000000,
+          "treatment": 6050240000000,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 24382,
+          "treatment": 23555,
+          "delta": -827
+        },
+        "us_import_delivered": {
+          "ordinary": 21608,
+          "treatment": 21608,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 6050240000000,
+          "treatment": 6050240000000,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 55660000,
+          "treatment": 55660000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 0,
+          "treatment_unmet_budgets": 0,
+          "ordinary_unmet_quantity": 0,
+          "treatment_unmet_quantity": 0,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 2,
+          "treatment_unmet_budgets": 2,
+          "ordinary_unmet_quantity": 8,
+          "treatment_unmet_quantity": 8,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 0,
+          "treatment_unmet_budgets": 0,
+          "ordinary_unmet_quantity": 0,
+          "treatment_unmet_quantity": 0,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 2,
+          "treatment_unmet_budgets": 2,
+          "ordinary_unmet_quantity": 8,
+          "treatment_unmet_quantity": 8,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        }
+      }
+    },
+    {
+      "period": 4,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 1243570657,
+          "treatment": 1243570657,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1243847366,
+          "treatment": 1243847366,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 1244124075,
+          "treatment": 1244124075,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 1244124075,
+          "treatment": 1244124075,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 441031725,
+          "treatment": 620167366,
+          "delta": 179135641
+        },
+        "eaten": {
+          "ordinary": 1243847366,
+          "treatment": 1243847366,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 440755016,
+          "treatment": 619890657,
+          "delta": 179135641
+        },
+        "retailer_opening_stock": {
+          "ordinary": 441007343,
+          "treatment": 620143811,
+          "delta": 179136468
+        },
+        "retailer_closing_stock": {
+          "ordinary": 1,
+          "treatment": 1,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 1,
+          "treatment": 1,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 1,
+          "treatment": 1,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 441031725,
+          "treatment": 620167366,
+          "delta": 179135641
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 25005,
+          "treatment": 24405,
+          "delta": -600
+        },
+        "total_import_delivered": {
+          "ordinary": 24382,
+          "treatment": 23555,
+          "delta": -827
+        },
+        "total_import_settled_micros": {
+          "ordinary": 6912304000000,
+          "treatment": 6673450000000,
+          "delta": -238854000000
+        },
+        "us_import_dispatched": {
+          "ordinary": 25005,
+          "treatment": 24405,
+          "delta": -600
+        },
+        "us_import_delivered": {
+          "ordinary": 24382,
+          "treatment": 23555,
+          "delta": -827
+        },
+        "us_import_settled_micros": {
+          "ordinary": 6912304000000,
+          "treatment": 6673450000000,
+          "delta": -238854000000
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 55660000,
+          "treatment": 55660000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 0,
+          "treatment_unmet_budgets": 0,
+          "ordinary_unmet_quantity": 0,
+          "treatment_unmet_quantity": 0,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 942,
+          "treatment_unmet_budgets": 942,
+          "ordinary_unmet_quantity": 80699366,
+          "treatment_unmet_quantity": 80699350,
+          "net_food_eaten": 16,
+          "gainers": 21,
+          "gains": 27,
+          "losers": 6,
+          "losses": 11
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 0,
+          "treatment_unmet_budgets": 0,
+          "ordinary_unmet_quantity": 0,
+          "treatment_unmet_quantity": 0,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 942,
+          "treatment_unmet_budgets": 942,
+          "ordinary_unmet_quantity": 80699366,
+          "treatment_unmet_quantity": 80699350,
+          "net_food_eaten": 16,
+          "gainers": 21,
+          "gains": 27,
+          "losers": 6,
+          "losses": 11
+        }
+      }
+    },
+    {
+      "period": 5,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 440755016,
+          "treatment": 619890657,
+          "delta": 179135641
+        },
+        "required": {
+          "ordinary": 1244121511,
+          "treatment": 1244121511,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2047488006,
+          "treatment": 1868352365,
+          "delta": -179135641
+        },
+        "admitted": {
+          "ordinary": 2047488006,
+          "treatment": 1868352365,
+          "delta": -179135641
+        },
+        "bought": {
+          "ordinary": 25006,
+          "treatment": 24406,
+          "delta": -600
+        },
+        "eaten": {
+          "ordinary": 440780022,
+          "treatment": 619915063,
+          "delta": 179135041
+        },
+        "unmet": {
+          "ordinary": 803341489,
+          "treatment": 624206448,
+          "delta": -179135041
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 1,
+          "treatment": 1,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 25006,
+          "treatment": 24406,
+          "delta": -600
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "total_import_delivered": {
+          "ordinary": 25005,
+          "treatment": 24405,
+          "delta": -600
+        },
+        "total_import_settled_micros": {
+          "ordinary": 7162211000000,
+          "treatment": 6989822000000,
+          "delta": -172389000000
+        },
+        "us_import_dispatched": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "us_import_delivered": {
+          "ordinary": 25005,
+          "treatment": 24405,
+          "delta": -600
+        },
+        "us_import_settled_micros": {
+          "ordinary": 7162211000000,
+          "treatment": 6989822000000,
+          "delta": -172389000000
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 56920000,
+          "treatment": 56920000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 803341489,
+          "treatment_unmet_quantity": 624206448,
+          "net_food_eaten": 179135041,
+          "gainers": 1,
+          "gains": 179135041,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1334,
+          "treatment_unmet_budgets": 1334,
+          "ordinary_unmet_quantity": 269063084,
+          "treatment_unmet_quantity": 269063170,
+          "net_food_eaten": -86,
+          "gainers": 30,
+          "gains": 247,
+          "losers": 8,
+          "losses": 333
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 675309631,
+          "treatment_unmet_quantity": 675309631,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1336,
+          "treatment_unmet_budgets": 1336,
+          "ordinary_unmet_quantity": 1747714204,
+          "treatment_unmet_quantity": 1568579249,
+          "net_food_eaten": 179134955,
+          "gainers": 31,
+          "gains": 179135288,
+          "losers": 8,
+          "losses": 333
+        }
+      }
+    },
+    {
+      "period": 6,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1244393100,
+          "treatment": 1244393100,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2488786200,
+          "treatment": 2488786200,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2488786200,
+          "treatment": 2488786200,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "eaten": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "unmet": {
+          "ordinary": 1244370481,
+          "treatment": 1244370453,
+          "delta": -28
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "total_import_delivered": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "total_import_settled_micros": {
+          "ordinary": 6500053000000,
+          "treatment": 6519471000000,
+          "delta": 19418000000
+        },
+        "us_import_dispatched": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "us_import_delivered": {
+          "ordinary": 22619,
+          "treatment": 22647,
+          "delta": 28
+        },
+        "us_import_settled_micros": {
+          "ordinary": 6500053000000,
+          "treatment": 6519471000000,
+          "delta": 19418000000
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 58180000,
+          "treatment": 58180000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1244370481,
+          "treatment_unmet_quantity": 1244370453,
+          "net_food_eaten": 28,
+          "gainers": 1,
+          "gains": 28,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1461,
+          "treatment_unmet_budgets": 1461,
+          "ordinary_unmet_quantity": 314364288,
+          "treatment_unmet_quantity": 314364286,
+          "net_food_eaten": 2,
+          "gainers": 6,
+          "gains": 17,
+          "losers": 5,
+          "losses": 15
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1452536364,
+          "treatment_unmet_quantity": 1452536364,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1463,
+          "treatment_unmet_budgets": 1463,
+          "ordinary_unmet_quantity": 3011271133,
+          "treatment_unmet_quantity": 3011271103,
+          "net_food_eaten": 30,
+          "gainers": 7,
+          "gains": 45,
+          "losers": 5,
+          "losses": 15
+        }
+      }
+    },
+    {
+      "period": 7,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1244662149,
+          "treatment": 1244662149,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2489324298,
+          "treatment": 2489324298,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2489324298,
+          "treatment": 2489324298,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "eaten": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "unmet": {
+          "ordinary": 1244642186,
+          "treatment": 1244642160,
+          "delta": -26
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "total_import_delivered": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "total_import_settled_micros": {
+          "ordinary": 5736808000000,
+          "treatment": 5754294000000,
+          "delta": 17486000000
+        },
+        "us_import_dispatched": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "us_import_delivered": {
+          "ordinary": 19963,
+          "treatment": 19989,
+          "delta": 26
+        },
+        "us_import_settled_micros": {
+          "ordinary": 5736808000000,
+          "treatment": 5754294000000,
+          "delta": 17486000000
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 59440000,
+          "treatment": 59440000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1244642186,
+          "treatment_unmet_quantity": 1244642160,
+          "net_food_eaten": 26,
+          "gainers": 1,
+          "gains": 26,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1483,
+          "treatment_unmet_budgets": 1483,
+          "ordinary_unmet_quantity": 322708175,
+          "treatment_unmet_quantity": 322708172,
+          "net_food_eaten": 3,
+          "gainers": 9,
+          "gains": 17,
+          "losers": 6,
+          "losses": 14
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 2,
+          "treatment_unmet_budgets": 2,
+          "ordinary_unmet_quantity": 1455034577,
+          "treatment_unmet_quantity": 1455033869,
+          "net_food_eaten": 708,
+          "gainers": 1,
+          "gains": 708,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1486,
+          "treatment_unmet_budgets": 1486,
+          "ordinary_unmet_quantity": 3022384938,
+          "treatment_unmet_quantity": 3022384201,
+          "net_food_eaten": 737,
+          "gainers": 11,
+          "gains": 751,
+          "losers": 6,
+          "losses": 14
+        }
+      }
+    },
+    {
+      "period": 8,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1244928665,
+          "treatment": 1244928665,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2489857330,
+          "treatment": 2489857330,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2489857330,
+          "treatment": 2489857330,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "eaten": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "unmet": {
+          "ordinary": 1244910623,
+          "treatment": 1244910599,
+          "delta": -24
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "total_import_settled_micros": {
+          "ordinary": 5184760000000,
+          "treatment": 5200713000000,
+          "delta": 15953000000
+        },
+        "us_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 18042,
+          "treatment": 18066,
+          "delta": 24
+        },
+        "us_import_settled_micros": {
+          "ordinary": 5184760000000,
+          "treatment": 5200713000000,
+          "delta": 15953000000
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 60700000,
+          "treatment": 60700000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1244910623,
+          "treatment_unmet_quantity": 1244910599,
+          "net_food_eaten": 24,
+          "gainers": 1,
+          "gains": 24,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1510,
+          "treatment_unmet_budgets": 1510,
+          "ordinary_unmet_quantity": 325331976,
+          "treatment_unmet_quantity": 325331973,
+          "net_food_eaten": 3,
+          "gainers": 7,
+          "gains": 14,
+          "losers": 6,
+          "losses": 11
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 16,
+          "treatment_unmet_budgets": 16,
+          "ordinary_unmet_quantity": 5122398431,
+          "treatment_unmet_quantity": 5122395973,
+          "net_food_eaten": 2458,
+          "gainers": 4,
+          "gains": 2476,
+          "losers": 2,
+          "losses": 18
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1527,
+          "treatment_unmet_budgets": 1527,
+          "ordinary_unmet_quantity": 6692641030,
+          "treatment_unmet_quantity": 6692638545,
+          "net_food_eaten": 2485,
+          "gainers": 12,
+          "gains": 2514,
+          "losers": 8,
+          "losses": 29
+        }
+      }
+    },
+    {
+      "period": 9,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1245192656,
+          "treatment": 1245192656,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2490385312,
+          "treatment": 2490385312,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2490385312,
+          "treatment": 2490385312,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 1245192656,
+          "treatment": 1245192656,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 61960000,
+          "treatment": 61960000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1245192656,
+          "treatment_unmet_quantity": 1245192656,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1527,
+          "treatment_unmet_budgets": 1527,
+          "ordinary_unmet_quantity": 328204263,
+          "treatment_unmet_quantity": 328203966,
+          "net_food_eaten": 297,
+          "gainers": 9,
+          "gains": 620,
+          "losers": 8,
+          "losses": 323
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 17,
+          "treatment_unmet_budgets": 17,
+          "ordinary_unmet_quantity": 6581704619,
+          "treatment_unmet_quantity": 6581704260,
+          "net_food_eaten": 359,
+          "gainers": 3,
+          "gains": 364,
+          "losers": 1,
+          "losses": 5
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1545,
+          "treatment_unmet_budgets": 1545,
+          "ordinary_unmet_quantity": 8155101538,
+          "treatment_unmet_quantity": 8155100882,
+          "net_food_eaten": 656,
+          "gainers": 12,
+          "gains": 984,
+          "losers": 9,
+          "losses": 328
+        }
+      }
+    },
+    {
+      "period": 10,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1245454134,
+          "treatment": 1245454134,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2490908268,
+          "treatment": 2490908268,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2490908268,
+          "treatment": 2490908268,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 1245454134,
+          "treatment": 1245454134,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 63220000,
+          "treatment": 63220000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1245454134,
+          "treatment_unmet_quantity": 1245454134,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1544,
+          "treatment_unmet_budgets": 1544,
+          "ordinary_unmet_quantity": 329097508,
+          "treatment_unmet_quantity": 329097509,
+          "net_food_eaten": -1,
+          "gainers": 6,
+          "gains": 300,
+          "losers": 9,
+          "losses": 301
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 17,
+          "treatment_unmet_budgets": 17,
+          "ordinary_unmet_quantity": 6586401044,
+          "treatment_unmet_quantity": 6586401044,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1562,
+          "treatment_unmet_budgets": 1562,
+          "ordinary_unmet_quantity": 8160952686,
+          "treatment_unmet_quantity": 8160952687,
+          "net_food_eaten": -1,
+          "gainers": 6,
+          "gains": 300,
+          "losers": 9,
+          "losses": 301
+        }
+      }
+    },
+    {
+      "period": 11,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1245713110,
+          "treatment": 1245713110,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2491426220,
+          "treatment": 2491426220,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2491426220,
+          "treatment": 2491426220,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 1245713110,
+          "treatment": 1245713110,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 64480000,
+          "treatment": 64480000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1245713110,
+          "treatment_unmet_quantity": 1245713110,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1557,
+          "treatment_unmet_budgets": 1557,
+          "ordinary_unmet_quantity": 329888918,
+          "treatment_unmet_quantity": 329888914,
+          "net_food_eaten": 4,
+          "gainers": 6,
+          "gains": 298,
+          "losers": 9,
+          "losses": 294
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 17,
+          "treatment_unmet_budgets": 17,
+          "ordinary_unmet_quantity": 6587770611,
+          "treatment_unmet_quantity": 6587770611,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1575,
+          "treatment_unmet_budgets": 1575,
+          "ordinary_unmet_quantity": 8163372639,
+          "treatment_unmet_quantity": 8163372635,
+          "net_food_eaten": 4,
+          "gainers": 6,
+          "gains": 298,
+          "losers": 9,
+          "losses": 294
+        }
+      }
+    },
+    {
+      "period": 12,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1245969592,
+          "treatment": 1245969592,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2491939184,
+          "treatment": 2491939184,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2491939184,
+          "treatment": 2491939184,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 1245969592,
+          "treatment": 1245969592,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 65740000,
+          "treatment": 65740000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1245969592,
+          "treatment_unmet_quantity": 1245969592,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1557,
+          "treatment_unmet_budgets": 1557,
+          "ordinary_unmet_quantity": 330579398,
+          "treatment_unmet_quantity": 330579396,
+          "net_food_eaten": 2,
+          "gainers": 7,
+          "gains": 290,
+          "losers": 7,
+          "losses": 288
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 17,
+          "treatment_unmet_budgets": 17,
+          "ordinary_unmet_quantity": 6589126992,
+          "treatment_unmet_quantity": 6589126992,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1575,
+          "treatment_unmet_budgets": 1575,
+          "ordinary_unmet_quantity": 8165675982,
+          "treatment_unmet_quantity": 8165675980,
+          "net_food_eaten": 2,
+          "gainers": 7,
+          "gains": 290,
+          "losers": 7,
+          "losses": 288
+        }
+      }
+    },
+    {
+      "period": 13,
+      "region": {
+        "opening_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "required": {
+          "ordinary": 1246223591,
+          "treatment": 1246223591,
+          "delta": 0
+        },
+        "requested": {
+          "ordinary": 2492447182,
+          "treatment": 2492447182,
+          "delta": 0
+        },
+        "admitted": {
+          "ordinary": 2492447182,
+          "treatment": 2492447182,
+          "delta": 0
+        },
+        "bought": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "eaten": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "unmet": {
+          "ordinary": 1246223591,
+          "treatment": 1246223591,
+          "delta": 0
+        },
+        "closing_pantry": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_opening_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_closing_stock": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_local_food_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_named_local_seller_deliveries": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "regional_distributor_household_handoffs": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "retailer_inventory_balance_residual": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "total_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_dispatched": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_delivered": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "us_import_settled_micros": {
+          "ordinary": 0,
+          "treatment": 0,
+          "delta": 0
+        },
+        "household_food_unit_price_micros": {
+          "ordinary": 67000000,
+          "treatment": 67000000,
+          "delta": 0
+        }
+      },
+      "who_ate": {
+        "region": {
+          "budgets": 1,
+          "ordinary_unmet_budgets": 1,
+          "treatment_unmet_budgets": 1,
+          "ordinary_unmet_quantity": 1246223591,
+          "treatment_unmet_quantity": 1246223591,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "us": {
+          "budgets": 1583,
+          "ordinary_unmet_budgets": 1559,
+          "treatment_unmet_budgets": 1559,
+          "ordinary_unmet_quantity": 331071869,
+          "treatment_unmet_quantity": 331071866,
+          "net_food_eaten": 3,
+          "gainers": 7,
+          "gains": 287,
+          "losers": 13,
+          "losses": 284
+        },
+        "other_external": {
+          "budgets": 17,
+          "ordinary_unmet_budgets": 17,
+          "treatment_unmet_budgets": 17,
+          "ordinary_unmet_quantity": 6590470239,
+          "treatment_unmet_quantity": 6590470239,
+          "net_food_eaten": 0,
+          "gainers": 0,
+          "gains": 0,
+          "losers": 0,
+          "losses": 0
+        },
+        "all": {
+          "budgets": 1601,
+          "ordinary_unmet_budgets": 1577,
+          "treatment_unmet_budgets": 1577,
+          "ordinary_unmet_quantity": 8167765699,
+          "treatment_unmet_quantity": 8167765696,
+          "net_food_eaten": 3,
+          "gainers": 7,
+          "gains": 287,
+          "losers": 13,
+          "losses": 284
+        }
+      }
+    }
+  ],
+  "identities": {
+    "control": {
+      "p1_branch_opening": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+      "p1_ordinary": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+      "periods": {
+        "10": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "b0e9aed82e85aee386e3f26954cde77d5e9210d9668f18ac4b77714adac74a4c",
+          "prior_world_sha256": "a2daf6de0b4b18fbf464242c9204e36fdf2207c175e7f3372437088b6116faac",
+          "receipts_sha256": "0ab26811aad89312ac100ee1bc20555730ef53ae812ae7255da571f93d6576ee",
+          "tick_sha256": "d7389c995be22d61a811869c3f6e217a078273f724c8d8a20f758a09f6b20f55",
+          "world_sha256": "23cf5daaa6afd50896e329c33f8fd7e4a3a23b39eeabadb798d85b855fa8e095"
+        },
+        "11": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "1daf1029e2aecfe89769fab6cdf30162d6daaf04d6ba045a28d1b61fbcbb3e98",
+          "prior_world_sha256": "23cf5daaa6afd50896e329c33f8fd7e4a3a23b39eeabadb798d85b855fa8e095",
+          "receipts_sha256": "58fbe28557f53ba793bd11aadb5024c2db670998117f0403007a69c463e568c3",
+          "tick_sha256": "f7b281cd8025b4d0ab94c3d1bc929274c2ac7aa766a25761a8f04b496412eaa5",
+          "world_sha256": "1f40989d35d430097de994e028fec942a935b3215357f829f783566a31b01bf0"
+        },
+        "12": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "a2b51a0cc027e6a249d59c06a86c2e330e737b91182a3d42b06df42cc83cebe6",
+          "prior_world_sha256": "1f40989d35d430097de994e028fec942a935b3215357f829f783566a31b01bf0",
+          "receipts_sha256": "1568c23c587b6f4bdd4343892e1df4ee774a65755f6cf4f61abbfca6b6bb5eb3",
+          "tick_sha256": "aefca4559fc381eb53f421a5c40e399da011367b24424543f3a2986f436cf6c5",
+          "world_sha256": "31690a88d0c92536ccc4451aaa91162dc0502161d7626255c98302df9362db08"
+        },
+        "13": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "249b7db39741a332cd9b6f85a27e0fe3c3bada18ef597cf6d694b6e018f5d3ac",
+          "prior_world_sha256": "31690a88d0c92536ccc4451aaa91162dc0502161d7626255c98302df9362db08",
+          "receipts_sha256": "b9b41b9352a3d5a3abdce6384cc1f4389ba1a0d7cc9c297bda7f03c0eb0c3ab0",
+          "tick_sha256": "9f7eecb8a1f09261f6ecd902b3532bb797f81aef439b70b8dac90a4e3a031bf8",
+          "world_sha256": "51de32df7e9170b04940a45eb2fd137afeb39b60e2e1a28cf756a7c55c897eb6"
+        },
+        "2": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "38e67ebfb14ac32ad8c115d1b82c11fe309bf03ab181e9e45add89a082ce65d6",
+          "prior_world_sha256": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+          "receipts_sha256": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272",
+          "tick_sha256": "f04238e75909adcaa522a4970789699d0b8c70983dd55ea36448db29496a65fa",
+          "world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67"
+        },
+        "3": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "a3b1a46af047518b2bc3168a05af1852349b5d3495e08133e13c0d6762994de6",
+          "prior_world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67",
+          "receipts_sha256": "907bf75ad6e22b11d41a8b8479d2e9ffa235df038a8d5f985bee56dcb0951a53",
+          "tick_sha256": "5c5a61a7d4fc099282f9a592ee24f22e52f0fb938fb875b731b866d14fc7a34e",
+          "world_sha256": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25"
+        },
+        "4": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "7c70d22608417a7671e8a6cea4c4ed0bd6780ef40a394b040569f79c6456874b",
+          "prior_world_sha256": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25",
+          "receipts_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58",
+          "tick_sha256": "2cbbf44bed8df70384b6aeb0ea5c6e441339c05e365d131956a8a9a468507996",
+          "world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629"
+        },
+        "5": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "bb4bcbc776d805554ac06092f9e0f48fa9f793ac15ca9847fa829dfd6f27b385",
+          "prior_world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629",
+          "receipts_sha256": "3e82eaa3329ac92b4e10a36410363883ea9306e71f9e1dbd9eb8e541718c95bc",
+          "tick_sha256": "06865379bcd247a27543961d63d3c01ac4216867c09d3cbfd8fa29040ae0f214",
+          "world_sha256": "71db8d316f3974a1f9e78a594ab5b4b2089efbb114da08044de52e7884da8176"
+        },
+        "6": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "011b4d2a072064c7ae1ac0e18497c71b8204134241aba40883abf55c671fc5d1",
+          "prior_world_sha256": "71db8d316f3974a1f9e78a594ab5b4b2089efbb114da08044de52e7884da8176",
+          "receipts_sha256": "aeab369ec1ed3081e4fbebd3ed647819a9a2d20b80c7d353c3c15e62d9593f0f",
+          "tick_sha256": "3dc05e57ecbda58925e4efc154c5331db605b92b54ef23e0bb6001516e40babc",
+          "world_sha256": "edf8d3d82af323ebf64992b336789a12607893d2e0f5f88dd773777c94b8f737"
+        },
+        "7": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "e408a507083d9e6164bbf175bd9deb897e412549cd68f239d33a4ff87d27f10d",
+          "prior_world_sha256": "edf8d3d82af323ebf64992b336789a12607893d2e0f5f88dd773777c94b8f737",
+          "receipts_sha256": "9ddd62dbe462a1e6a10b105951ba61e181594838656679ad0658a731475999d2",
+          "tick_sha256": "f14413d15ba6303b3de15d5d913d75100c78240b7b7fda8aa8ad3c9730dc6a9f",
+          "world_sha256": "35f2673e500a01dbba8546a155a8ff4eaf0070f9b94989e55c6e800a6716e409"
+        },
+        "8": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "733d93d9add8b923befd84d532c7b02c793e82be527808a4671ea46cc8273d71",
+          "prior_world_sha256": "35f2673e500a01dbba8546a155a8ff4eaf0070f9b94989e55c6e800a6716e409",
+          "receipts_sha256": "5a9aad7ee72507bcef033e2834ab8a9ef49febc8f31f9c4867f39f418d0db345",
+          "tick_sha256": "2bb2554067b133fa8e18aebdd910728a901d6b7032aff9e67eda4e6b7e25bdcd",
+          "world_sha256": "9ecda8fa12048f770b76e2063814ecc5675385aef6ad4cff314982a21113b68d"
+        },
+        "9": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "ff6185344e7703e5e1d2e592eb181ded2a5a9e58021dcc8d12ad39da20029f3b",
+          "prior_world_sha256": "9ecda8fa12048f770b76e2063814ecc5675385aef6ad4cff314982a21113b68d",
+          "receipts_sha256": "a374bb3f48f1b29532019fd7f004a383e0e9c521a6378db1d9ad2feaf4b31758",
+          "tick_sha256": "789aa36af7cfc817b86a790466802386eb446a1d7adf4ecdfdfc042152affc42",
+          "world_sha256": "a2daf6de0b4b18fbf464242c9204e36fdf2207c175e7f3372437088b6116faac"
+        }
+      }
+    },
+    "treatment": {
+      "p1_branch_opening": "7e52641268e201a9381727ed43a68bbb2f32aad0473ea7b02711e549f5c26359",
+      "p1_ordinary": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+      "periods": {
+        "10": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "37ef3392ac3efe98320c82a87abb97d160c985fa3a0b0de8ee15076dbd0c412c",
+          "prior_world_sha256": "e53e892451fb48295f8d9cc55dff531390ddd88041b2196749254ab6ad575420",
+          "receipts_sha256": "45c9637d02afb2c7a332749f31996086b23e4c96295b795e104020c56f43fe8b",
+          "tick_sha256": "5b49ffe3e71ba97398b11642c9e8216d9850bdb68b0b59e7deb26e86903fd53e",
+          "world_sha256": "f0bcc35cd28dcf3b0c9459a0a3197009266ef5c6af13c201ac48a6b255458abb"
+        },
+        "11": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "7f82872f5e3d93732af2cec5f30c69e59fb5287222e99f6dabb2c11ac75097f2",
+          "prior_world_sha256": "f0bcc35cd28dcf3b0c9459a0a3197009266ef5c6af13c201ac48a6b255458abb",
+          "receipts_sha256": "8daa955fb41c370ca12293d16f73c994bc5c427b7de8a5a00f39283296515208",
+          "tick_sha256": "63508f7d6e0fe76457171b8bb8a8cb04bde3737a65713296337494e2cdb9a871",
+          "world_sha256": "2645a057ddab3e6b345bd376598c7066fbd345e9187b1c0d60583f53236c9d4e"
+        },
+        "12": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "e7243bc90b3dfa140e1925efcfe440310a22e3e1edd899837466a29754abd21f",
+          "prior_world_sha256": "2645a057ddab3e6b345bd376598c7066fbd345e9187b1c0d60583f53236c9d4e",
+          "receipts_sha256": "70d61cf844f35eb691b3d745cd6807244f828535a6ffd6ed5a48165991d46e22",
+          "tick_sha256": "903f24ed36e660020242c81a68c5b77e8d450428633c7171c7b0ca0ca55eac4f",
+          "world_sha256": "5147d2c51e6e466dafba042a79874bd8920660b6c1c98dfff47fc7c90bd8b5f8"
+        },
+        "13": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "e8e9145f2b4066d3e1bb3a92a883ad9f7d99b8cf3ab4d58de808f782fa78fb97",
+          "prior_world_sha256": "5147d2c51e6e466dafba042a79874bd8920660b6c1c98dfff47fc7c90bd8b5f8",
+          "receipts_sha256": "9a4417c4313eb18185a69758f06e0a926ab2775f8a8f1e57a9cd672cefedc376",
+          "tick_sha256": "44d723259b71dfd9d859f6887c5191aa4adfec95c483fe4854cff487d574b18e",
+          "world_sha256": "fa14ad4e9d01536951a191c6597ec608b98991918ab76e514a9340f4a49ed97d"
+        },
+        "2": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "6eb291b90bcf31723a15a6cd177be4145427cfd88b6a50804e892e3a2dbfc5d1",
+          "prior_world_sha256": "7e52641268e201a9381727ed43a68bbb2f32aad0473ea7b02711e549f5c26359",
+          "receipts_sha256": "c8018b3ebe27e0b9a23687fe0eea35e60425937ae021a5b673883cf6ed307356",
+          "tick_sha256": "ce8e152efbe967e44bde0774a29ae6823edd487d1accec2bac98c2f640b308bc",
+          "world_sha256": "9ac1e8400ffde030a490039841a5cbbb9ad0b9d10ccb85f179f4faed63da3d19"
+        },
+        "3": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "7405d6030e12ce43cdb9c028cfe1fe1e81ce587e62a4d76dc4a9f60f9ac1029b",
+          "prior_world_sha256": "9220a172b8b9818b2ea076182c23669ed041defa151996e5144c2686cde8b4d1",
+          "receipts_sha256": "92b99702f9a884d855201ed737276fd92b4c2534cda7919fd3f516ab526827ce",
+          "tick_sha256": "d8a6dd4349f6e083da4e3274c9b9081a94df4e5b05a4da9841b4ddfae8042348",
+          "world_sha256": "44043eb8b50d0a15aa9d1e108acf68d8e0c06d057d15a85659757e2ed2fee834"
+        },
+        "4": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "cd2b45ce71312dd980b4d53a0914eb0aaedb8e969d22f86ec0540f9b1921b264",
+          "prior_world_sha256": "44043eb8b50d0a15aa9d1e108acf68d8e0c06d057d15a85659757e2ed2fee834",
+          "receipts_sha256": "b8fc51c5eed4f1fd5ea152a440e63985c630407a833ecb905e0aeb617b8f8629",
+          "tick_sha256": "b0d350465207dbdce66df62feca18bf90e361a520814713208f269ff99abe4a5",
+          "world_sha256": "71843d4bb22d815c716c966d29d35c305a75a633773b0ae80d86e610de4c1157"
+        },
+        "5": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "5b0cfb7d73d9f3d77b43b161c520212f11e579d9dca746e8c5529fb458d6ac84",
+          "prior_world_sha256": "71843d4bb22d815c716c966d29d35c305a75a633773b0ae80d86e610de4c1157",
+          "receipts_sha256": "95488e979ebf1ebe47b802b34cb4f1273e3896d3eae539581bde1c7566d77262",
+          "tick_sha256": "9b426af15a9d41c12fafffd2096d833be6588470a3367f46932df0449d90ce76",
+          "world_sha256": "4f9b98c1678771c0bed01229bd660c5327abf4ed932ae3a1c9b45dfe77eac126"
+        },
+        "6": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "f37c32239c60f31208b756c751a3587c05494bd8a307691e9b47947eed7072c9",
+          "prior_world_sha256": "4f9b98c1678771c0bed01229bd660c5327abf4ed932ae3a1c9b45dfe77eac126",
+          "receipts_sha256": "ed15b25506b15676a4ebe8d949412cddeb07a1a3ec31ac95f4a1d51cb7efd551",
+          "tick_sha256": "6e7d32041ac51e9fdf67264d26ee4a826e07c56e1bde71b4b381ceaa10a30544",
+          "world_sha256": "4db714259b019ce195dba60b6b2c4b92890d0205143f3291a495fd61aca4ece2"
+        },
+        "7": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "d130d9ac8786db4a1255a94222e5710360397630756823ddc3e681ccfae941ef",
+          "prior_world_sha256": "4db714259b019ce195dba60b6b2c4b92890d0205143f3291a495fd61aca4ece2",
+          "receipts_sha256": "bab116d03e9ffca1caa3a486baff0c752afa99e18cc43bbfd08956e4c0c09566",
+          "tick_sha256": "515e88fe9f853c261bac9f89af48b9661fed0c83cad43f36d9083f44784cc0d0",
+          "world_sha256": "adb9fe3f761ea9bfc0efa804922012889a7cdef8f9b59175bdf93d883b15739a"
+        },
+        "8": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "707195a3ae3704bd27bd3330f96f86122d6116587aa90132d60f799bfdeee214",
+          "prior_world_sha256": "adb9fe3f761ea9bfc0efa804922012889a7cdef8f9b59175bdf93d883b15739a",
+          "receipts_sha256": "3bee91cd28d4487f42cb57b9d582af5bd8893886608b0f8f8ec7aec658fe8266",
+          "tick_sha256": "eeb09a871ff04ca30179760d525797884f6b6fed32f13d65edf1ad6b771f0de9",
+          "world_sha256": "5e011bd60b1f4129417f10c30fc3413c2c4ff96e05543193ee4329670f02a839"
+        },
+        "9": {
+          "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+          "material_register_sha256": "27220737b7f94e8703451d8c6f33af0d9a661d42684e50fd475e6f16a3542508",
+          "prior_world_sha256": "5e011bd60b1f4129417f10c30fc3413c2c4ff96e05543193ee4329670f02a839",
+          "receipts_sha256": "35fc2bbf871faab8cddc80b11faa19a02d3f578dc81b0901cb61bef37f956ded",
+          "tick_sha256": "eb982625d446efcb183de7280175a436a1ee6ad9522fe2ac53860973d6c700f3",
+          "world_sha256": "e53e892451fb48295f8d9cc55dff531390ddd88041b2196749254ab6ad575420"
+        }
+      }
+    }
+  },
+  "source_archive": "/media/user/data/babylon-recovery/per293-two-food-supplier-quotes-v10-seed319",
+  "sha256": {
+    "build.json": "b957ce5e826fc4cb9c9e8ad20af978794dff7e77bc9ae61262fd2c55b6890dae",
+    "counterfactual": "8673a678c5aaa40a0ec7519134b3e76cdc69f6d5d4ffc1924117a24e38296902",
+    "counterfactual.rs": "b5ca6770f9ff0b96a526410b8b1ca07bab4adb5141384c8a9cb838d87b4d0717",
+    "compare.py": "bdbdddac4b0dc354fc5bb8b5ea7343ae63196440f40bd4428043acfaec310b1b",
+    "quote-witness.json": "53e65224964a339a5daa42f15ab1ed30053af4f7f054ad484fec9c0574d0926b",
+    "control/period-2.json": "e00afd55b52a9577cfdf569a1d1587b58c8c7d71080de14b41b5a4ea1dfdaddb",
+    "control/period-3.json": "bf5ca47c922bdeaef2cb849891d20b6c91a9642595f9b6c0f01a104374a24757",
+    "control/period-4.json": "58b2eb19441a48a639648a58b28c2e2dc2d8348b1c9694ae62c69aee53cb15a1",
+    "control/period-5.json": "e27066b5f2a89b82f33d1039558fea4b98c012535cfd47c843c2c8a53aea3374",
+    "control/period-6.json": "67704aeca45eea48f7ef671e12c9a08e0a039630743ffbb88f57396f8e8df81d",
+    "control/period-7.json": "eca842e4d5aa623c97a654c7f3c676b3e5aed5064afde030d51914b401651391",
+    "control/period-8.json": "b7765519384a66bb7434ccd51a8663e792f478e8b58e1d3622119efeb7c3226c",
+    "control/period-9.json": "d537be162ae6a80a230a8b0e5e83f5fdd63fd9c2218524892d075a50c5401015",
+    "control/period-10.json": "ac37a48181f339c911b20b01adbfc0344ca2beb0762059cd0fced1b48eac2b13",
+    "control/period-11.json": "53850c76568dc9666e7e066a4c614cd85e33e969cf5d9838f44150e538dc165a",
+    "control/period-12.json": "0da415ed6360bff3c7957af67d15db1660dc0ae3f23d89c93c1546989f10edc0",
+    "control/period-13.json": "072e901c0aae11e25b4de614d83d81e9e36049925a2861b0922f678f59fe04e9",
+    "treatment/period-2.json": "8d6af07d3c06c349937ea36abfbdf2a1edf04260c45da01182f1790e9edd0ed5",
+    "treatment/period-3.json": "99d9b10fd139be8433aa317a0e2778c33560e931e74d85840888cf586ff836ef",
+    "treatment/period-4.json": "8d5980aceb346958e214e7b8975265addf5de6d0d7e6e5e734dd6a18be742dd3",
+    "treatment/period-5.json": "bc6e7ad20ab9f9a38c2dc787e139a56ef8c4f11e86134b348997505e49d43016",
+    "treatment/period-6.json": "9bc28005187cc7d776eef065db45344df107793b5ecf0a3b68bf900fedf47a4d",
+    "treatment/period-7.json": "c469c1557699db061cabeea8eacbb78aff8a7a73abfbc729badd2e5616daa369",
+    "treatment/period-8.json": "2223e6dd56465c1a2393678ac62b994ec40932ab9837826629d7a9f86e377f27",
+    "treatment/period-9.json": "07802af5a1fdbee9e98b4175556715602164b53d4a53bd0b33d2518f52af044b",
+    "treatment/period-10.json": "b3c5113796d3a79a20149c358d9f89de6e59cd5557ab1145c6c660229b343ef4",
+    "treatment/period-11.json": "0858fe6d9834fc8ab33fbbaeb27236c3a4ade94e7494d8c3ee4e77f9dba08adb",
+    "treatment/period-12.json": "57715e68a77ca1ecb121ae21ea9a9a2ccf250baad15e9c139c9e94c240b1b43b",
+    "treatment/period-13.json": "ae99544d40c5f1800cc36bb8b055a1bd46f7acc2b98c0467666cf52f76ebba4e"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "scope": "Continental source for the September 8 regional road reconstruction. The comparison of the regional graph and county paths is a separate stage.",
+  "scope": "Continental source reconstruction, regional directed truck graph and recovery of the published Michigan county path matrix.",
   "attribution": "OpenStreetMap contributors, ODbL-1.0",
   "publisher": "Geofabrik GmbH",
   "base": {
@@ -104,5 +104,41 @@
     "matrix_sha256": "66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4",
     "terminal_count": 83,
     "pair_count": 6889
+  },
+  "county_routing": {
+    "graph": {
+      "nodes": 683795,
+      "directed_edges": 1250536,
+      "turn_rules": 41187,
+      "rebuilt_sha256": "24f4a2069c76c41247fafc45170f483a25a15fb47e187d76d446d664c06314e7",
+      "rebuilt_with_original_source_metadata_sha256": "b83ce2c2371b955e11934e6473f5fec12356a4b6e9176193d943ae83ad02754a",
+      "matches_original_graph": false
+    },
+    "rebuilt_matrix_sha256": "21bccc16cab241922b9539d07ca5e9fdcfb97a19e24906831396d5e1d19e4032",
+    "matrix_with_original_graph_id_sha256": "66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4",
+    "recovered_file_sha256": "66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4",
+    "original_matrix_bytes_recovered": true,
+    "terminal_rows_equal": true,
+    "reachable_pairs": 6889,
+    "unreachable_pairs": 0,
+    "outgoing_wayne_to_ingham": {
+      "band": "over 50–150 km",
+      "distance_km_exact": "108.936291",
+      "distance_mm": 108936291,
+      "status": "reachable"
+    },
+    "incoming_ingham_to_wayne": {
+      "band": "over 50–150 km",
+      "distance_km_exact": "108.818287",
+      "distance_mm": 108818287,
+      "status": "reachable"
+    },
+    "wayne_attachment_mm": 432419,
+    "ingham_attachment_mm": 1719110,
+    "cook": {
+      "status": "outside_coverage"
+    },
+    "compact_distances_sha256": "541020a2b511f1458ffb128f796a8cecb9488e68fe88305aff3b177bf6525653",
+    "independent_verification_sha256": "3a029cebbd2de516efe8cea1108031a63695ed1e7e63805f837884b49834d0fc"
   }
 }

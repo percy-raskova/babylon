@@ -12,11 +12,13 @@ shops. Selecting one opened its circuit and its **Work & Dependence** reading.
 Selecting the pylon listed Wayne's two energy sites. Each group uses the
 county location captured by the campaign. [Wayne workplaces in the game](economic-flows-qualification-2026-11-14-assets/wayne-county-workplaces.png)
 
-On the same close, the freight map showed 14 inbound corridors and no
-outbound corridor for Wayne. Selecting Oakland showed a captured corridor
-to Wayne. The campaign provided no length. The regional reference placed
-Oakland's county anchor 0.362993 km from its assigned road node and Wayne's
-anchor 0.432419 km from its node.
+On the same close, the freight map showed 14 inbound economic corridors
+and no outbound corridor for Wayne. Selecting Oakland showed a captured
+corridor to Wayne. The campaign provided no length for that corridor.
+The regional truck reference separately shows which Michigan terminals a
+truck can reach. It places Oakland's county anchor 0.362993 km from its
+assigned road node and Wayne's anchor 0.432419 km from its node.
+[Wayne's two truck routes](#michigan-freight-coverage)
 
 In Los Angeles, selecting the plane opened
 the FAA point for Los Angeles International Airport. The point carries its
@@ -117,7 +119,7 @@ records its purchases, stocks and consumption.
 | Recorded labor and map/Sankey | On the final household-receipt build, both Money and Labor switched from the map to the Sankey and back. Wayne’s amounts matched the ledger. The industry selection and source rows also appeared on the native display. | Current hardware evidence covers specific interactions. The frame-time samples below came from earlier builds. |
 | Workplace and household map | The national observer can open producers, shops and utilities at their recorded county. A food warning opens the county's balance and the household group with the largest shortfall. | Regional household groups share a hub. A workplace symbol identifies the county that contains the sites. |
 | Companies and investment | The current policy completed the two-seed comparisons with 99, 300 and 600 companies on the same 7,463 sites. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | The ordinary twenty-year run used seed 319. Its companies made no capital contributions to members. |
-| Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The local rebuild recovered the September 8 continental state from seven publisher updates. Full distances still depend on verifying the regional truck graph and routing its 83 terminals. |
+| Freight access | The game includes directed road distances for all 83 Michigan terminals. Switching direction changed the selected route's length on both the geographic map and the terminal network. | The truck reference covers Michigan terminals. Airports have positions, but dated flight services still need evidence. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
 | International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
 | National qualification | The national database used 741,267,123 bytes at five years and 2,389,595,827 bytes at twenty years. Each portable save reopened in a second database with the same world and financial records. The populated native map opened at both dates. | The first usable turn exceeded the 30-second target. The twenty-year observer took over five minutes to reopen. The memory samples cover the two closing dates. |
@@ -981,17 +983,45 @@ A fresh local Postgres 17.11 run on the source in commit `1a531db05` passed all 
 
 ## Michigan freight coverage
 
-The observer opens freight access at Wayne. It can show the captured corridors in each direction, with the same selected endpoint on the geographic and network views. The local reference identifies 83 Michigan county terminals. The complete directed distance matrix was absent from the available source drives. Its pinned upstream road extract, dated September 8, 2026, returned HTTP 404. The pinned extract has 19,349,498,972 bytes and SHA-256 `31abe79b95cab2836ac9c6924701dc5ed0e6001ff102c572581097573df1d094`.
+The observer opens freight access at Wayne. It can show the captured corridors in each direction, with the same selected endpoint on the geographic and network views. The local reference identifies 83 Michigan county terminals. The original search found no complete directed distance matrix on the available source drives. Its pinned upstream road extract, dated September 8, 2026, returned HTTP 404. The pinned extract has 19,349,498,972 bytes and SHA-256 `31abe79b95cab2836ac9c6924701dc5ed0e6001ff102c572581097573df1d094`.
 
 The retained Michigan road capture contains 7,085 selected edges and 83 terminals. Its 581 captured orders cover 97 directed pairs between counties and 83 pairs within a county. Its source record identifies the full graph by SHA-256 `d6ec26e347bfabcd3c86c3f9e784c7d9fbb4d32e8a7cb76ae724e53fdc745550`. [Captured road edges and terminals](../content/scenarios/michigan/statewide-physical.json.gz) · [Captured order paths](../content/scenarios/michigan/statewide-qualification.json.gz)
 
-The capture also records SHA-256 `66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4` for the compressed file `michigan-county-paths-v6.json.gz`. Compare the compressed bytes of a recovered copy with that digest.
+The capture records SHA-256 `66df8effd50e25fdf5d557ae5a1ae8dcfe7ffda786614adf966ff45ea79945c4` for the compressed file `michigan-county-paths-v6.json.gz`. The recovered file matched that digest.
 
-The matrix carries the scenario digest from its original capture. A later maintenance change updated that digest in the physical network file. Both captures have the same graph, transport settings, atlas and 83 terminals. The freight reader now checks a recovered copy of this specific matrix against its original source identities. Its full 83 × 83 distance table remains unavailable. [Maintenance capture record](maintenance-qualification-2026-09-13.md) · [Freight reference reader](../rust/crates/babylon-persistence/src/freight_access/reference.rs)
+The matrix carries the scenario digest from its original capture. A later maintenance change updated that digest in the physical network file. Both captures have the same graph, transport settings, atlas and 83 terminals. The freight reader checks the matrix against its original source identities. [Maintenance capture record](maintenance-qualification-2026-09-13.md) · [Freight reference reader](../rust/crates/babylon-persistence/src/freight_access/reference.rs)
 
-An executable directed-road case exercised access restrictions, asymmetric distance and selection with a missing matrix. Captured corridors remain inspectable when reference distances are unavailable. Airports appear as facility locations. Complete Great Lakes reachability and observed air services remain unqualified. The [source manifest](../tools/michigan_road_network_source_manifest.json) identifies the original extract.
+An executable directed-road case exercised access restrictions, asymmetric distance and selection with a missing matrix. Captured corridors remain inspectable when reference distances are unavailable. Airports appear as facility locations. Flight connections still lack dated service evidence. The [source manifest](../tools/michigan_road_network_source_manifest.json) identifies the original extract.
 
 The local rebuild started with the September 1 North America snapshot. Its 19,321,695,055 bytes matched the publisher’s MD5. Osmium 1.18.0 applied all seven daily changes through sequence 4907. The resulting file records September 8 at 20:21:01 UTC and has SHA-256 `36c78f282faaf52b06c142cb2fc70bcf61a10234629b7d8d64cd29d4511ab2e4`. The original publisher file has a different digest. The regional extraction and directed path checks use their own recorded identities. [Source files, dated states and checksums](economic-flows-qualification-2026-11-14-assets/great-lakes-september-source-reconstruction.json)
+
+The rebuilt graph contained 683,795 nodes, 1,250,536 directed edges
+and 41,187 turn rules. It differed from the historical graph after
+accounting for their source records. The router reached all 83 county
+terminals from every origin. The two directions between a pair can
+use different roads.
+
+Using the rebuilt graph produced a new matrix with its own graph ID.
+Substituting the historical graph ID in a copy reproduced the original
+compressed matrix byte for byte. The compact table retains all 6,889
+directed distances and all terminal attachments. It uses 68,036 bytes.
+
+<!-- vale Vale.Spelling = NO -->
+The permitted truck route from Wayne's terminal to Ingham's is
+108.936291 km. The reverse route is 108.818287 km. The road distances
+exclude the attachment from each county anchor to its terminal. That
+attachment is 0.432419 km at Wayne and 1.719110 km at Ingham. Cook
+County lies outside the reference coverage.
+<!-- vale Vale.Spelling = YES -->
+
+The native game opened the bundled road table from a period 4 national
+save. From Wayne it showed 83 reachable terminals in each direction.
+The campaign had 14 inbound economic corridors and zero outbound.
+Two inbound corridors came from Canada. Selecting Canada showed the
+captured links and explained that their lengths were unknown.
+Selecting a terminal kept its distance and direction when switching
+between the geographic map and the terminal network.
+[Outbound on the map](economic-flows-qualification-2026-11-14-assets/michigan-freight-wayne-ingham.png) · [Inbound on the network](economic-flows-qualification-2026-11-14-assets/michigan-freight-ingham-wayne-network.png)
 
 ## Controller count and investment
 

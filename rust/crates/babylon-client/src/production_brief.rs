@@ -217,15 +217,21 @@ impl<'a> MaterialRelation<'a> {
 
 fn material_relations(
     snapshot: &ProductionSnapshot,
+    includes: impl Fn(&str, &str) -> bool,
 ) -> BTreeMap<RelationKey<'_>, MaterialRelation<'_>> {
     let mut relations = BTreeMap::new();
+    let sites: BTreeMap<_, _> = snapshot
+        .sites
+        .iter()
+        .map(|site| (site.id.as_str(), site))
+        .collect();
     for declared in crate::material_relations::declared_material_relations(snapshot) {
-        let supplier = snapshot
-            .sites
-            .iter()
-            .find(|site| site.id == declared.supplier);
-        let buyer = snapshot.sites.iter().find(|site| site.id == declared.buyer);
-        let (Some(supplier), Some(buyer)) = (supplier, buyer) else {
+        if !includes(declared.supplier, declared.buyer) {
+            continue;
+        }
+        let (Some(&supplier), Some(&buyer)) =
+            (sites.get(declared.supplier), sites.get(declared.buyer))
+        else {
             continue;
         };
         let key = (
@@ -254,16 +260,17 @@ fn material_relations(
             }
         }
     }
-    for ((supplier, buyer, good, unit), relation) in &mut relations {
-        if snapshot.freight.iter().any(|lot| {
-            lot.quantity > 0
-                && relation.route_ids.contains(lot.route_id.as_str())
-                && lot.source_site_id == *supplier
-                && lot.destination_site_id == *buyer
-                && lot.good_id == *good
-                && lot.unit_id == *unit
-        }) {
-            relation.facts.insert(FlowFact::InTransit);
+    for lot in snapshot.freight.iter().filter(|lot| lot.quantity > 0) {
+        let key = (
+            lot.source_site_id.as_str(),
+            lot.destination_site_id.as_str(),
+            lot.good_id.as_str(),
+            lot.unit_id.as_str(),
+        );
+        if let Some(relation) = relations.get_mut(&key) {
+            if relation.route_ids.contains(lot.route_id.as_str()) {
+                relation.facts.insert(FlowFact::InTransit);
+            }
         }
     }
     relations
@@ -292,26 +299,17 @@ pub(crate) fn dependency_flow_summary(
             account.output_unit
         );
     }
-    let relations = material_relations(snapshot);
-    let relevant: Vec<_> = relations
-        .values()
-        .filter(|relation| match direction {
-            DependencyDirection::MaintenanceProvider | DependencyDirection::ServiceConsumer => {
-                false
-            }
-            DependencyDirection::Upstream => {
-                relation.buyer.id == site.id && relation.supplier.id == other.id
-            }
-            DependencyDirection::Downstream => {
-                relation.supplier.id == site.id && relation.buyer.id == other.id
-            }
-        })
-        .collect();
+    let (supplier, buyer) = if direction == DependencyDirection::Upstream {
+        (&other.id, &site.id)
+    } else {
+        (&site.id, &other.id)
+    };
+    let relevant = material_relations(snapshot, |from, to| from == supplier && to == buyer);
     if relevant.is_empty() {
         return "Material relationship unavailable".into();
     }
     let mut lines: Vec<_> = relevant
-        .iter()
+        .values()
         .take(2)
         .map(|relation| format!("{}: {}", relation.material(), relation.flow()))
         .collect();
@@ -336,7 +334,7 @@ pub(crate) fn describe_overview(snapshot: &ProductionSnapshot) -> String {
     if snapshot.sites.is_empty() {
         return "No production cohorts are visible in this observation.".to_owned();
     }
-    let relations = material_relations(snapshot);
+    let relations = material_relations(snapshot, |_, _| true);
     let mut lines = vec!["MATERIAL RELATIONSHIPS".to_owned()];
     for relation in relations.values().take(4) {
         lines.push(format!(

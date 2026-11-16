@@ -2752,6 +2752,62 @@ fn repainted_reading_scope_reenters_tab_order_after_a_committed_period_refresh()
 }
 
 #[test]
+fn section_switches_keep_the_site_links_and_county_controls_for_the_installed_frame() {
+    let mut app = unstarted_dependency_navigation_app();
+    let county = app
+        .world_mut()
+        .spawn((Node::default(), ProductionCountyCohorts))
+        .id();
+    let site = app
+        .world_mut()
+        .query_filtered::<Entity, With<ProductionDependencies>>()
+        .single(app.world())
+        .expect("one circuit dependency panel");
+    app.update();
+    app.world_mut()
+        .resource_mut::<ProductionNavigation>()
+        .selected_site = Some("b".into());
+    app.update();
+    let first = |app: &App, panel| app.world().get::<Children>(panel).expect("has rows")[0];
+    let links = first(&app, site);
+    let cohorts = first(&app, county);
+    for command in [
+        ProductionCommand::Details,
+        ProductionCommand::Reading(ProductionReadingSection::Investment),
+        ProductionCommand::Reading(ProductionReadingSection::Flow),
+    ] {
+        send_command(&mut app, command);
+        assert_eq!(
+            first(&app, site),
+            links,
+            "the same links stay available to focus"
+        );
+        assert_eq!(first(&app, county), cohorts);
+    }
+    let context = app.world().resource::<ObserverSession>().context();
+    send_command(
+        &mut app,
+        ProductionCommand::Select {
+            site_id: "a".into(),
+            context,
+        },
+    );
+    assert_ne!(
+        first(&app, site),
+        links,
+        "a different site installs its own links"
+    );
+    assert_eq!(first(&app, county), cohorts);
+    app.world_mut().resource_mut::<ObserverSession>().generation += 1;
+    app.update();
+    assert_ne!(
+        first(&app, county),
+        cohorts,
+        "a new observation needs new scoped controls"
+    );
+}
+
+#[test]
 fn native_dependency_navigation_preserves_back_and_rejects_late_contexts() {
     let mut app = dependency_navigation_app();
     app.world_mut()

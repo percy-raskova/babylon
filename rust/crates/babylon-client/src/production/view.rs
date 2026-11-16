@@ -1444,19 +1444,56 @@ pub(crate) fn visible_dependency_directions<'a>(
     })
 }
 
+#[derive(PartialEq, Eq)]
+pub(crate) enum DependencyPage {
+    County {
+        county: Option<String>,
+        page: usize,
+    },
+    Site {
+        site: Option<String>,
+        relationship_page: usize,
+        competitor_page: usize,
+    },
+}
+
 pub(crate) fn rebuild_dependencies(
     mut commands: Commands,
     roots: Query<Entity, With<ProductionDependencies>>,
     state: Res<ObserverSession>,
     frame: Res<ObserverFrame>,
     navigation: Res<ProductionNavigation>,
-    mut last_context: Local<Option<ObservationContext>>,
+    mut last_context: Local<Option<(ObservationContext, DependencyPage)>>,
 ) {
     let context = state.context();
-    if !frame.is_changed() && !navigation.is_changed() && last_context.as_ref() == Some(&context) {
+    if !frame.is_changed()
+        && !navigation.is_changed()
+        && last_context
+            .as_ref()
+            .is_some_and(|(previous, _)| previous == &context)
+    {
         return;
     }
-    *last_context = Some(context.clone());
+    let page = if navigation.county_open {
+        DependencyPage::County {
+            county: navigation.county_geoid.clone(),
+            page: navigation.cohort_page,
+        }
+    } else {
+        DependencyPage::Site {
+            site: navigation.selected_site.clone(),
+            relationship_page: navigation.relationship_page,
+            competitor_page: navigation.competitor_page,
+        }
+    };
+    if !frame.is_changed()
+        && last_context
+            .as_ref()
+            .is_some_and(|(previous, prior_page)| previous == &context && prior_page == &page)
+    {
+        return;
+    }
+    *last_context = Some((context.clone(), page));
     let snapshot = frame
         .for_session(&state)
         .and_then(|frame| frame.production.as_ref());
@@ -1478,14 +1515,9 @@ pub(crate) fn rebuild_dependencies(
         else {
             continue;
         };
-        let layout =
-            ProductionLayout::focused(snapshot, Some(&site.id), navigation.relationship_page);
         let links = production_brief::dependency_sites(site, snapshot);
-        let group_count = links
-            .iter()
-            .map(|(_, site)| &site.id)
-            .collect::<BTreeSet<_>>()
-            .len();
+        let (group_count, page) =
+            production_layout::neighbor_page(snapshot, &links, navigation.relationship_page);
         commands.entity(root).with_children(|panel| {
             for process in &site.processes {
                 if site.processes.len() > 1 {
@@ -1511,7 +1543,8 @@ pub(crate) fn rebuild_dependencies(
                 panel.spawn(text(direction.label(), 13.0, theme::YELLOW));
                 let mut count = 0;
                 for (_, neighbor) in links.iter().filter(|(candidate, neighbor)| {
-                    *candidate == direction && layout.positions.contains_key(&neighbor.id)
+                    *candidate == direction
+                        && (neighbor.id == site.id || page.contains(neighbor.id.as_str()))
                 }) {
                     count += 1;
                     button(
@@ -1540,16 +1573,25 @@ pub(crate) fn rebuild_county_cohorts(
     roots: Query<Entity, With<ProductionCountyCohorts>>,
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
-    mut last_context: Local<Option<ObservationContext>>,
+    mut last_context: Local<Option<(ObservationContext, Option<String>, usize)>>,
 ) {
     let context = observation.state.context();
     if !observation.frame.is_changed()
-        && !navigation.is_changed()
-        && last_context.as_ref() == Some(&context)
+        && last_context
+            .as_ref()
+            .is_some_and(|(previous, county, page)| {
+                previous == &context
+                    && county == &navigation.county_geoid
+                    && *page == navigation.cohort_page
+            })
     {
         return;
     }
-    *last_context = Some(context.clone());
+    *last_context = Some((
+        context.clone(),
+        navigation.county_geoid.clone(),
+        navigation.cohort_page,
+    ));
     let snapshot = observation
         .frame
         .for_session(&observation.state)
@@ -1843,13 +1885,20 @@ pub(crate) struct ReadingSources<'w> {
     household: Option<Res<'w, Receipt>>,
 }
 
+pub(crate) struct BriefScope {
+    context: ObservationContext,
+    site: Option<String>,
+    county: Option<String>,
+    county_open: bool,
+}
+
 pub(crate) fn paint_readings(
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
     sources: ReadingSources,
     mut details: Query<ReadingText, ReadingMarkers>,
     mut reading_targets: ReadingFocusTargets,
-    mut last_context: Local<Option<ObservationContext>>,
+    mut last_brief: Local<Option<BriefScope>>,
 ) {
     let ReadingSources {
         accounts,
@@ -1858,14 +1907,28 @@ pub(crate) fn paint_readings(
     } = sources;
     let ProductionObservation { frame, state } = observation;
     let context = state.context();
+    let refresh_brief = frame.is_changed()
+        || last_brief.as_ref().is_none_or(|previous| {
+            previous.context != context
+                || previous.site != navigation.selected_site
+                || previous.county_open != navigation.county_open
+                || previous.county != navigation.county_geoid
+        });
     if navigation.is_changed()
         || frame.is_changed()
-        || last_context.as_ref() != Some(&context)
+        || refresh_brief
         || accounts.as_ref().is_some_and(DetectChanges::is_changed)
         || household.as_ref().is_some_and(DetectChanges::is_changed)
         || codes.as_ref().is_some_and(DetectChanges::is_changed)
     {
-        *last_context = Some(context.clone());
+        if refresh_brief {
+            *last_brief = Some(BriefScope {
+                context: context.clone(),
+                site: navigation.selected_site.clone(),
+                county_open: navigation.county_open,
+                county: navigation.county_geoid.clone(),
+            });
+        }
         for mut target in &mut reading_targets {
             let mut next = target.clone();
             next.context = Some(context.clone());
@@ -1881,8 +1944,11 @@ pub(crate) fn paint_readings(
                 .and_then(|id| snapshot.sites.iter().find(|site| site.id == *id))
         });
         for (mut text, brief, subject, headline) in &mut details {
+            if brief.is_some() && !refresh_brief {
+                continue;
+            }
             if subject.is_some() || headline.is_some() {
-                text.0 = match (snapshot, site) {
+                let next = match (snapshot, site) {
                     (_, Some(site))
                         if navigation.details_open
                             && navigation.household.is_some()
@@ -1903,9 +1969,10 @@ pub(crate) fn paint_readings(
                     }
                     _ => String::new(),
                 };
+                text.set_if_neq(Text::new(next));
                 continue;
             }
-            text.0 = match (snapshot, site, brief.is_some()) {
+            let next = match (snapshot, site, brief.is_some()) {
                 (Some(snapshot), Some(site), true) => production_brief::describe_brief(site, snapshot),
                 (_, Some(_), false) if navigation.details_open && navigation.household.is_some()
                     && accounting::authorized(&state) => {
@@ -1926,6 +1993,7 @@ pub(crate) fn paint_readings(
                 (None, _, true) => "No production relationships are disclosed at this period and perspective. Open World to explore the information available to you.".into(),
                 _ => String::new(),
             };
+            text.set_if_neq(Text::new(next));
         }
     }
 }
@@ -2001,4 +2069,3 @@ use bevy::input::mouse::MouseWheel;
 use bevy::ui::UiSystems;
 use bevy::ui_widgets::Button;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;

@@ -31,6 +31,21 @@ const PHYSICAL: &[u8] =
 const QUALIFICATION: &[u8] =
     include_bytes!("../../../../../content/scenarios/michigan/statewide-qualification.json.gz");
 
+const DISTANCES: &[u8] =
+    include_bytes!("../../../../../content/scenarios/michigan/region-road-distances.json.gz");
+const DISTANCE_SOURCE: &[u8] =
+    include_bytes!("../../../../../content/scenarios/michigan/region-road-distances-sources.json");
+
+#[derive(Deserialize)]
+struct DistanceDigests {
+    #[serde(rename = "distances_sha256")]
+    distances: String,
+    #[serde(rename = "matrix_sha256")]
+    matrix: String,
+    #[serde(rename = "graph_sha256")]
+    graph: String,
+}
+
 #[derive(Deserialize)]
 struct Manifest {
     schema: String,
@@ -214,6 +229,25 @@ impl Reference {
         reference.supplement_error = path.and_then(|p| reference.admit_file(p).err());
         Ok(reference)
     }
+    /// Read the original qualified routes for the freight map. An explicit external
+    /// matrix keeps its own acceptance or refusal in the returned reference.
+    ///
+    /// # Errors
+    /// Returns a source error for an invalid bundled capture or distance product.
+    pub fn for_freight_map(path: Option<&Path>) -> Result<Self, AccessError> {
+        let mut reference = Self::load(path)?;
+        if path.is_none() {
+            let source: DistanceDigests =
+                serde_json::from_slice(DISTANCE_SOURCE).map_err(|_| AccessError::Document)?;
+            if source.matrix != reference.matrix_sha256 || source.graph != reference.graph_sha256 {
+                return Err(AccessError::Source);
+            }
+            let matrix = decode(DISTANCES, &source.distances, MATRIX_LIMIT)?;
+            reference.admit_matrix(matrix, "MichiganRegionalRoadDistancesV1")?;
+        }
+        Ok(reference)
+    }
+
     fn admit_file(&mut self, path: &Path) -> Result<(), AccessError> {
         let mut bytes = Vec::new();
         File::open(path)
@@ -238,7 +272,11 @@ impl Reference {
 
     pub(super) fn admit(&mut self, bytes: &[u8]) -> Result<(), AccessError> {
         let matrix: Matrix = decode(bytes, &self.matrix_sha256, MATRIX_LIMIT)?;
-        if matrix.schema != "MichiganCountyPathMatrixV1"
+        self.admit_matrix(matrix, "MichiganCountyPathMatrixV1")
+    }
+
+    fn admit_matrix(&mut self, matrix: Matrix, schema: &str) -> Result<(), AccessError> {
+        if matrix.schema != schema
             || matrix.source_pins != self.pins
             || matrix.policy != self.policy
             || roster(matrix.terminals)? != self.terminals
@@ -313,6 +351,15 @@ impl Reference {
 mod tests {
     use super::Reference;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn rejected_external_matrix_keeps_its_refusal_on_the_freight_map() {
+        let wrong = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../content/scenarios/michigan/statewide-qualification.json.gz");
+        let reference = Reference::for_freight_map(Some(&wrong)).expect("captured reference");
+        assert_eq!(reference.supplement_error, Some(super::AccessError::Digest));
+        assert!(!reference.qualified());
+    }
 
     #[test]
     fn bundled_capture_expects_the_original_qualified_matrix_source() {

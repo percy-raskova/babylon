@@ -170,10 +170,21 @@ impl Freight {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub(super) struct Source {
+    matrix_path: Option<PathBuf>,
     task: Option<Task<Result<Reference, AccessError>>>,
     ready: Option<Result<Reference, AccessError>>,
+}
+
+impl Default for Source {
+    fn default() -> Self {
+        Self {
+            matrix_path: std::env::var_os("BABYLON_MICHIGAN_ROAD_MATRIX").map(PathBuf::from),
+            task: None,
+            ready: None,
+        }
+    }
 }
 
 pub(super) fn update(obs: Observation, mut view: ResMut<MoneyView>, mut source: ResMut<Source>) {
@@ -205,9 +216,11 @@ pub(super) fn update(obs: Observation, mut view: ResMut<MoneyView>, mut source: 
                     "Complete regional path matrix absent.".to_owned()
                 };
                 view.freight.source = format!(
-                    "Michigan regional reference · {} · {} · © OpenStreetMap contributors. {graph_note} {matrix_note}",
+                    "Michigan regional reference · {} · {} · © OpenStreetMap contributors. {graph_note} {matrix_note} Pinned graph {:.12} · matrix {:.12}.",
                     reference.source_date,
                     reference.profile,
+                    reference.graph_sha256,
+                    reference.matrix_sha256,
                 );
                 view.freight.airports = reference.airport_points(origin).to_vec();
                 reference.connections(frame, origin, view.freight.direction)
@@ -235,10 +248,10 @@ pub(super) fn update(obs: Observation, mut view: ResMut<MoneyView>, mut source: 
             source.task = None;
         }
     } else {
-        source.task = Some(IoTaskPool::get().spawn(async {
-            let path = std::env::var_os("BABYLON_MICHIGAN_ROAD_MATRIX").map(PathBuf::from);
-            Reference::load(path.as_deref())
-        }));
+        let path = source.matrix_path.clone();
+        source.task = Some(
+            IoTaskPool::get().spawn(async move { Reference::for_freight_map(path.as_deref()) }),
+        );
     }
 }
 
@@ -253,6 +266,68 @@ mod tests {
     use crate::observer_focus::ObserverKeyboardActivate;
     use crate::observer_ui::ObserverFrame;
     use bevy::prelude::*;
+
+    #[test]
+    fn qualified_road_through_the_normal_freight_source() {
+        use babylon_persistence::freight_access::Access;
+        use bevy::tasks::{IoTaskPool, TaskPoolBuilder};
+        use std::time::{Duration, Instant};
+
+        IoTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
+        let (mut app, _, scope, _) = tests::interaction_fixture();
+        let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
+        frame.0.as_mut().expect("current observer frame").production =
+            Some(crate::production::tests::snapshot());
+        app.insert_resource(Source {
+            matrix_path: None,
+            ..default()
+        })
+        .add_systems(Update, super::update);
+        let peer = "county:26065".parse().expect("Ingham location");
+        for (command, expected) in [
+            (
+                Command::Open,
+                Access::Reachable {
+                    distance_mm: 108_936_291,
+                },
+            ),
+            (
+                Command::Direction(AccessDirection::Inbound),
+                Access::Reachable {
+                    distance_mm: 108_818_287,
+                },
+            ),
+        ] {
+            assert!(app
+                .world_mut()
+                .resource_mut::<super::MoneyView>()
+                .freight
+                .apply(&command, &scope));
+            let start = Instant::now();
+            let actual = loop {
+                app.update();
+                let freight = &app.world().resource::<super::MoneyView>().freight;
+                if let Some(rows) = &freight.rows {
+                    break rows
+                        .as_ref()
+                        .expect("accepted normal freight source")
+                        .iter()
+                        .find(|row| row.peer == peer)
+                        .expect("Ingham in the terminal roster")
+                        .access;
+                }
+                assert!(
+                    start.elapsed() < Duration::from_secs(30),
+                    "freight loader did not finish"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            assert_eq!(
+                actual, expected,
+                "directed route through the normal freight source"
+            );
+        }
+    }
 
     fn activate(app: &mut App, action: &Action) {
         let world = app.world_mut();
@@ -318,8 +393,8 @@ mod tests {
             .production = Some(snapshot);
         app.world_mut().spawn((MoneyRail, Node::default()));
         app.insert_resource(Source {
-            task: None,
             ready: Some(Reference::load(None)),
+            ..default()
         })
         .add_systems(
             Update,

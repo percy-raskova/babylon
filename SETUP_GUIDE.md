@@ -446,15 +446,21 @@ it uses the spare-capacity weights even if orders went unfilled. If it used
 all ten batches and still has unfilled accepted orders, it uses the
 high-demand weights. Each saved campaign keeps its captured policy.
 
-Choose **Freight access** to inspect Wayne’s captured corridors. Switch between
+Choose **Freight access** to inspect Wayne’s captured corridors and compare truck routes. Switch between
 **Outbound from origin** and **Inbound to origin** to inspect each direction.
 Select an endpoint, then choose **Geographic map** or **Terminal network**.
 The compass marks your origin. A terminal shows its county and its attachment
 to the road network when known. Select the plane symbol to read the airport's
 name, position and source date.
-For shortest road distances, set `BABYLON_MICHIGAN_ROAD_MATRIX` to the
-verified Michigan matrix before starting the client. Without the matrix the
-view reports captured corridors and marks missing reference distances.
+
+<!-- vale Vale.Spelling = NO -->
+The game includes the shortest permitted road distances between Michigan's
+83 county terminals. From Wayne, select Ingham and switch directions to
+compare the two routes. The game shows a terminal's attachment to the road
+separately. A solid arrow marks a corridor captured by the campaign. A dashed
+connection shows road access. For an external copy of the original full
+matrix, set `BABYLON_MICHIGAN_ROAD_MATRIX` to its path before launch.
+<!-- vale Vale.Spelling = YES -->
 
 ### Follow recorded labor
 

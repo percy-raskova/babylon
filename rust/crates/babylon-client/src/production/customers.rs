@@ -12,6 +12,7 @@ use crate::observer_map3d::money_map::household::{self, HouseholdRead, Reading};
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverUiState;
 use crate::ui::Interaction;
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::production_observation::ProductionSnapshot;
 use bevy::a11y::AccessibilityNode;
@@ -28,8 +29,19 @@ pub(super) fn served(
     principal: FinalDemandPrincipalId,
     period: u64,
 ) -> bool {
+    served_at(snapshot, retailer, principal, period, None)
+}
+
+pub(super) fn served_at(
+    snapshot: &ProductionSnapshot,
+    retailer: &str,
+    principal: FinalDemandPrincipalId,
+    period: u64,
+    county: Option<&str>,
+) -> bool {
     snapshot.household_accounts.iter().any(|row| {
-        row.retailer_site_id == retailer
+        county.is_none_or(|fips| matches!(row.location, EconomicLocation::County(c) if c.geoid().as_str() == fips))
+            && row.retailer_site_id == retailer
             && cli::identity_bytes(&row.demand_principal_id) == Some(principal.as_bytes())
             && row
                 .completed

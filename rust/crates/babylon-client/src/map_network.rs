@@ -24,7 +24,7 @@ use std::fmt::Write as _;
 
 #[path = "map_facilities.rs"]
 mod facilities;
-use self::facilities::Active;
+use self::facilities::{Active, LegendFocus, Selection};
 use crate::map_economy_lens::MapLens;
 use crate::observer_map3d::symbols::GeographicSymbol;
 use crate::visual_assets::{MapSymbol, VisualAssets};
@@ -257,8 +257,8 @@ fn rebuild_network(
     observation: RelationshipObservation,
     mut art: NetworkArt,
     active: Res<Active>,
-    mut scope: ResMut<NetworkScope>,
-    mut hovered: ResMut<HoveredNode>,
+    (mut scope, mut hovered): (ResMut<NetworkScope>, ResMut<HoveredNode>),
+    mut keyboard: LegendFocus,
     old: Query<(Entity, Option<&Mesh3d>), With<EconomyEntity>>,
 ) {
     let context = observation.session.context();
@@ -320,6 +320,7 @@ fn rebuild_network(
             &observation,
             &art.visual,
             &active,
+            &mut keyboard,
         );
     }
     spawn_network_connections(
@@ -603,7 +604,7 @@ fn frame_network(
     observation: RelationshipObservation,
     viewport: Res<ObserverViewport>,
     mut orbit: ResMut<MapOrbit>,
-    markers: Query<&GeographicSymbol, With<EconomyEntity>>,
+    markers: Query<&GeographicSymbol, With<Selection>>,
     remaining: Query<&EconomyNode>,
     mut framed: Local<Option<(CampaignId, usize)>>,
 ) {
@@ -672,7 +673,10 @@ fn place_legend(
         });
         if let Some(bounds) = bounds {
             node.max_height = px((bounds.height() / scale.0 - 16.0).max(0.0));
-            node.max_width = px((bounds.width() / scale.0 * 0.32).min(250.0));
+            let width = bounds.width() / scale.0;
+            node.max_width = px((width * 0.32)
+                .clamp(190.0, 250.0)
+                .min((width - 16.0).max(0.0)));
             node.left = px((bounds.min.x + 8.0) / scale.0);
             node.top = px((bounds.min.y + 8.0) / scale.0);
         }

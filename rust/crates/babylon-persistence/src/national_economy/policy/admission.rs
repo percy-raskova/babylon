@@ -19,7 +19,7 @@ use crate::national_economy::companies::{
     CompanyCaptureError, CompanyPolicy, ExperimentalPopulation,
 };
 use babylon_kernel::content_digest;
-use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, ServiceStage, UnitId};
+use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage, UnitId};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -576,12 +576,10 @@ fn commodity(key: &str, raw: RawCommodity) -> Result<GameCommodity, Error> {
     if cargo.is_some() != (matches!(kind, CommodityKind::Storable { .. }) && price.is_some()) {
         return Err(fail());
     }
-    let mut good_bytes = b"NationalGoodV1\0".to_vec();
-    good_bytes.extend_from_slice(key.as_bytes());
     let mut unit_bytes = b"NationalUnitV1\0".to_vec();
     unit_bytes.extend_from_slice(raw.unit_label.as_bytes());
     Ok(GameCommodity {
-        good_id: GoodId::from_bytes(content_digest::sha256_of(&good_bytes)),
+        good_id: crate::national_economy::commodity_good_id(key),
         unit_id: UnitId::from_bytes(content_digest::sha256_of(&unit_bytes)),
         label: raw.label,
         unit_label: raw.unit_label,

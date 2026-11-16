@@ -183,6 +183,12 @@ pub enum ProductionCommand {
         page: usize,
         context: ObservationContext,
     },
+    ResidentReceipt {
+        county: String,
+        site_id: String,
+        principal: FinalDemandPrincipalId,
+        context: ObservationContext,
+    },
     Household {
         site_id: String,
         principal: FinalDemandPrincipalId,
@@ -719,6 +725,7 @@ pub(crate) fn production_command_context(
     match command {
         ProductionCommand::Select { context, .. }
         | ProductionCommand::Focus { context, .. }
+        | ProductionCommand::ResidentReceipt { context, .. }
         | ProductionCommand::Household { context, .. }
         | ProductionCommand::Page { context, .. }
         | ProductionCommand::Process { context, .. } => Some(context),
@@ -1629,6 +1636,7 @@ pub(crate) fn paint_buttons(
             }
             ProductionCommand::Back
             | ProductionCommand::Page { .. }
+            | ProductionCommand::ResidentReceipt { .. }
             | ProductionCommand::Household { .. } => false,
         };
         // Labels can overlap bright geometry in the flat view. Keep their

@@ -1,10 +1,9 @@
 //! Stable slots for artist-rendered map symbols. Each tile has a centered pivot.
-use super::VisualAssets;
+use super::{InterfaceIcon, VisualAssets};
 use bevy::prelude::{ImageNode, TextureAtlas};
 
-/// Row-major slots in the transparent, four-column economic map sheet.
+/// A geographic place, organizer channel, or reported condition.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-#[repr(usize)]
 pub enum MapSymbol {
     /// Workplace or producing cohort.
     Producer,
@@ -22,6 +21,8 @@ pub enum MapSymbol {
     LocalAid,
     /// Remote aid channel disclosed to the organizer.
     RemoteAid,
+    /// Food shortage recorded at this close.
+    FoodShortage,
 }
 
 impl MapSymbol {
@@ -30,6 +31,7 @@ impl MapSymbol {
     pub const fn size(self) -> f32 {
         match self {
             Self::Origin => 46.0,
+            Self::FoodShortage => 44.0,
             Self::Utility | Self::LocalAid => 42.0,
             Self::Producer | Self::RemoteAid => 38.0,
             Self::Airport | Self::Shop => 34.0,
@@ -40,11 +42,30 @@ impl MapSymbol {
     /// Build a UI sprite with the same semantic slot in every map and legend.
     #[must_use]
     pub fn image(self, assets: &VisualAssets) -> ImageNode {
+        let index = match self {
+            Self::Producer => 0,
+            Self::Shop => 1,
+            Self::Utility => 2,
+            Self::Terminal => 3,
+            Self::Airport => 4,
+            Self::Origin => 5,
+            Self::LocalAid => 6,
+            Self::RemoteAid => 7,
+            Self::FoodShortage => {
+                return ImageNode::from_atlas_image(
+                    assets.interface_atlas.clone(),
+                    TextureAtlas {
+                        layout: assets.interface_layout.clone(),
+                        index: InterfaceIcon::Warning.index(),
+                    },
+                );
+            }
+        };
         ImageNode::from_atlas_image(
             assets.economic_map_atlas.clone(),
             TextureAtlas {
                 layout: assets.economic_map_layout.clone(),
-                index: self as usize,
+                index,
             },
         )
     }

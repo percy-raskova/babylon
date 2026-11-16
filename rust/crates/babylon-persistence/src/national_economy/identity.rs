@@ -10,10 +10,18 @@ use babylon_kernel::economic_location::EconomicLocation;
 
 use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::content_digest;
-use babylon_material_circuit::{FinalDemandPrincipalId, SiteId, StaffingPoolId};
+use babylon_material_circuit::{FinalDemandPrincipalId, GoodId, SiteId, StaffingPoolId};
 
 /// Qualified BSCN scope shared by every national graph subject.
 pub const NATIONAL_SCENARIO_ID: &str = "economy/national-world";
+
+/// Stable identity of a national scenario commodity, independent of its display label.
+#[must_use]
+pub fn commodity_good_id(key: &str) -> GoodId {
+    let mut bytes = b"NationalGoodV1\0".to_vec();
+    bytes.extend_from_slice(key.as_bytes());
+    GoodId::from_bytes(content_digest::sha256_of(&bytes))
+}
 
 /// The observation supporting activity, or a named Designed placement.
 #[derive(Debug, Clone, PartialEq, Eq)]

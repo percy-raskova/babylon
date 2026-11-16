@@ -685,6 +685,7 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
 
 #[derive(SystemParam)]
 struct RelationshipObservation<'w> {
+    atlas: Option<Res<'w, CountyAtlas>>,
     frame: Res<'w, ObserverFrame>,
     session: Res<'w, ObserverSession>,
     selected: Res<'w, SelectedCounty>,
@@ -695,6 +696,21 @@ struct RelationshipObservation<'w> {
 }
 
 impl RelationshipObservation<'_> {
+    fn selected_place(&self) -> Option<(&str, &str)> {
+        self.selected.0.and_then(|index| {
+            self.atlas
+                .as_ref()
+                .and_then(|atlas| atlas.county(index))
+                .map(|county| (county.fips, county.name))
+                .or_else(|| {
+                    self.anchors
+                        .0
+                        .iter()
+                        .find(|(_, a)| a.index == index)
+                        .map(|(fips, a)| (fips.as_str(), a.name.as_str()))
+                })
+        })
+    }
     fn changed(&self) -> bool {
         self.anchors.is_changed()
             || self.frame.is_changed()

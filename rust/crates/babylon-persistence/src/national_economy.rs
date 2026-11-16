@@ -15,7 +15,7 @@ pub use opening::{
 };
 
 pub use identity::{
-    household_enterprise_target, household_principal, resident_employer_target,
+    commodity_good_id, household_enterprise_target, household_principal, resident_employer_target,
     source_workplace_target, ResidentWorkplaceSource, ResidentWorkplaceTarget,
     NATIONAL_SCENARIO_ID,
 };

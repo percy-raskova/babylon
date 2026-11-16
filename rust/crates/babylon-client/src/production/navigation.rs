@@ -3,7 +3,9 @@
 use super::ProductionReadingSection;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
+use super::view::ProductionDetails;
 use bevy::ecs::system::SystemParam;
+use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::prelude::*;
 
 use crate::atlas::CountyAtlas;
@@ -223,6 +225,19 @@ impl ProductionControlAvailability {
             ProductionCommand::Reading(_) if !self.scene => {
                 Some("Exact readings need disclosed production relationships.")
             }
+            ProductionCommand::ResidentReceipt {
+                site_id,
+                principal,
+                context,
+                county,
+            } if !state.accepts(context)
+                || !super::accounting::authorized(state)
+                || !snapshot.is_some_and(|s| {
+                    super::customers::served_at(s, site_id, *principal, context.tick, Some(county))
+                }) =>
+            {
+                Some("This household receipt is unavailable for the selected retailer and period.")
+            }
             ProductionCommand::Household {
                 site_id,
                 principal,
@@ -307,7 +322,9 @@ pub(crate) fn readings_panel_visible(
 }
 
 #[derive(SystemParam)]
-pub(crate) struct ProductionLocation<'w> {
+pub(crate) struct NavigationScene<'w, 's> {
+    focus: Option<ResMut<'w, InputFocus>>,
+    reading: Query<'w, 's, Entity, With<ProductionDetails>>,
     atlas: Res<'w, CountyAtlas>,
     selected: ResMut<'w, SelectedCounty>,
 }
@@ -318,13 +335,15 @@ pub(crate) fn navigate(
     mut view: ResMut<PrimaryView>,
     mut navigation: ResMut<ProductionNavigation>,
     observation: ProductionObservation,
-    location: ProductionLocation,
+    scene: NavigationScene,
     ui: ProductionUi,
 ) {
-    let ProductionLocation {
+    let NavigationScene {
         atlas,
         mut selected,
-    } = location;
+        mut focus,
+        reading,
+    } = scene;
     let ProductionUi {
         state: mut ui,
         mut feedback,
@@ -375,6 +394,37 @@ pub(crate) fn navigate(
                 navigation.household = None;
                 navigation.reading_section = *section;
                 navigation.details_open = true;
+            }
+            ProductionCommand::ResidentReceipt {
+                county,
+                site_id,
+                principal,
+                ..
+            } => {
+                if *view != PrimaryView::Map
+                    || !selected
+                        .0
+                        .and_then(|index| atlas.county(index))
+                        .is_some_and(|place| place.fips == county)
+                {
+                    feedback.reject(
+                        "Select this resident county on the map first.",
+                        time.elapsed_secs_f64(),
+                    );
+                    continue;
+                }
+                navigation.select_site(site_id);
+                navigation.details_open = true;
+                navigation.reading_section = ProductionReadingSection::Flow;
+                navigation.household = Some(*principal);
+                *view = PrimaryView::Production;
+                ui.archive_open = false;
+                ui.disclosure = None;
+                ui.history_open = false;
+                if let (Some(focus), Ok(receipt)) = (focus.as_deref_mut(), reading.single()) {
+                    focus.set(receipt, FocusCause::Navigated);
+                }
+                sync_county = true;
             }
             ProductionCommand::Household { principal, .. } => {
                 navigation.household = Some(*principal);

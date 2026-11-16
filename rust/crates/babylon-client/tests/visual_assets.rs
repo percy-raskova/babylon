@@ -318,6 +318,38 @@ fn every_typed_atlas_enum_variant_has_its_declared_index() {
 }
 
 #[test]
+fn food_shortage_uses_the_warning_cell_and_preserves_the_artist_map_sheet() {
+    use babylon_client::visual_assets::{InterfaceIcon, MapSymbol, VisualAssets};
+
+    let _guard = bevy_app_test_guard();
+    let mut app = App::new();
+    add_visual_asset_plugins(&mut app);
+    let assets = app.world().resource::<VisualAssets>();
+    let places = [
+        MapSymbol::Producer,
+        MapSymbol::Shop,
+        MapSymbol::Utility,
+        MapSymbol::Terminal,
+        MapSymbol::Airport,
+        MapSymbol::Origin,
+        MapSymbol::LocalAid,
+        MapSymbol::RemoteAid,
+    ];
+    for (index, place) in places.into_iter().enumerate() {
+        let sprite = place.image(assets);
+        let cell = sprite.texture_atlas.expect("placed symbol");
+        assert_eq!(sprite.image, assets.economic_map_atlas);
+        assert_eq!(cell.layout, assets.economic_map_layout);
+        assert_eq!(cell.index, index);
+    }
+    let warning = MapSymbol::FoodShortage.image(assets);
+    let cell = warning.texture_atlas.expect("food shortage warning");
+    assert_eq!(warning.image, assets.interface_atlas);
+    assert_eq!(cell.layout, assets.interface_layout);
+    assert_eq!(cell.index, InterfaceIcon::Warning.index());
+}
+
+#[test]
 fn gallery_labels_match_the_fixed_visual_asset_catalog() {
     let _guard = bevy_app_test_guard();
     let mut app = visual_asset_gallery_app();

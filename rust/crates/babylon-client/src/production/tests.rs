@@ -2457,7 +2457,7 @@ fn readings_focus_app() -> ReadingsFocusFixture {
     }
 }
 
-fn readings_key(app: &mut App, window: Entity, key_code: KeyCode) {
+pub(crate) fn readings_key(app: &mut App, window: Entity, key_code: KeyCode) {
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::ButtonState;
 
@@ -3228,6 +3228,87 @@ fn household_receipt_opens_from_zero_purchase_and_returns_to_its_retailer() {
         .resource::<ProductionNavigation>()
         .household
         .is_none());
+}
+
+#[test]
+fn resident_food_receipt_selects_the_exact_household_and_retailer_from_the_county_map() {
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::input_focus::InputFocus;
+    let ReadingsFocusFixture {
+        mut app,
+        window,
+        reading,
+        ..
+    } = readings_focus_app();
+    let retailer = open_retailer_with_unfulfilled_food(&mut app);
+    send_command(&mut app, ProductionCommand::Map);
+    let context = app.world().resource::<ObserverSession>().context();
+    let principal = FinalDemandPrincipalId::from_bytes([0x17; 32]);
+    let county = app
+        .world()
+        .resource::<ObserverFrame>()
+        .0
+        .as_ref()
+        .expect("committed test frame")
+        .production
+        .as_ref()
+        .expect("full-visibility production")
+        .household_accounts[0]
+        .location
+        .to_string();
+    let county = county
+        .strip_prefix("county:")
+        .expect("domestic resident account");
+    let index = app
+        .world()
+        .resource::<CountyAtlas>()
+        .index_of_fips(county)
+        .expect("resident county");
+    app.world_mut().insert_resource(SelectedCounty(Some(index)));
+    app.world_mut()
+        .resource_mut::<ProductionNavigation>()
+        .details_open = false;
+    app.world_mut()
+        .resource_mut::<ObserverUiState>()
+        .history_open = true;
+    let open = ProductionCommand::ResidentReceipt {
+        county: county.to_owned(),
+        site_id: retailer.clone(),
+        principal,
+        context,
+    };
+    let button = app
+        .world_mut()
+        .run_system_once(move |mut commands: Commands| {
+            let mut row = None;
+            commands
+                .spawn((Node::default(), TabGroup::new(24)))
+                .with_children(|panel| {
+                    row = Some(view::button(panel, "Open household receipt", open.clone()));
+                });
+            row.expect("food map receipt button")
+        })
+        .expect("spawn the real production control");
+    app.update();
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(button, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Enter);
+    let navigation = app.world().resource::<ProductionNavigation>();
+    assert_eq!(
+        *app.world().resource::<PrimaryView>(),
+        PrimaryView::Production
+    );
+    assert_eq!(navigation.household, Some(principal));
+    assert_eq!(navigation.selected_site.as_deref(), Some(retailer.as_str()));
+    assert!(navigation.details_open);
+    assert!(!app.world().resource::<ObserverUiState>().history_open);
+    assert_eq!(
+        app.world().resource::<InputFocus>().get(),
+        Some(reading),
+        "opening the receipt transfers keyboard control to its reading"
+    );
+    assert_eq!(navigation.reading_section, ProductionReadingSection::Flow);
 }
 
 fn open_retailer_with_unfulfilled_food(app: &mut App) -> String {

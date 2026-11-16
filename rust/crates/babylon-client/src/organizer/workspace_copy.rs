@@ -129,8 +129,9 @@ fn aid_card_terms(view: &OrganizerView, choice: &PracticeChoice) -> Option<Strin
             OrganizerAidTransportPreview::Local => "local handoff",
             OrganizerAidTransportPreview::Routed { .. } => "freight · delay and loss possible",
         });
+    let parcels = super::partner_copy::parcel_label(food_quantity);
     if matches!(choice.availability, ChoiceAvailability::PendingAid { .. }) {
-        return Some(format!("{name} · {route}\nUnsubmitted draft: {food_quantity} parcels + {}.\nEarlier support is still open on this route.", crate::human_numbers::currency(cash_micros)));
+        return Some(format!("{name} · {route}\nUnsubmitted draft: {food_quantity} {parcels} + {}.\nEarlier support is still open on this route.", crate::human_numbers::currency(cash_micros)));
     }
     let cash = if aid.cash_receiving_consent == OrganizerGiftConsent::Refuse {
         "cash receiving refused"
@@ -154,7 +155,7 @@ fn aid_card_terms(view: &OrganizerView, choice: &PracticeChoice) -> Option<Strin
             super::partner_copy::aid_food_report(view, aid)
         );
     }
-    let _ = write!(text, "\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours);
+    let _ = write!(text, "\n{food_quantity} {parcels} + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours);
     Some(text)
 }
 

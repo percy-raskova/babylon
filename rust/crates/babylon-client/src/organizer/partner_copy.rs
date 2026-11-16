@@ -6,6 +6,14 @@ use babylon_persistence::runtime_session::{
     OrganizerReportCommodity, OrganizerView,
 };
 
+pub(super) fn parcel_label(quantity: u64) -> &'static str {
+    if quantity == 1 {
+        "parcel"
+    } else {
+        "parcels"
+    }
+}
+
 pub(super) fn aid_food_report(view: &OrganizerView, aid: &OrganizerMaterialAidPreview) -> String {
     use OrganizerPartnerFacts::{FoodProvision, OpeningAssessment};
 
@@ -44,11 +52,7 @@ pub(super) fn aid_food_report(view: &OrganizerView, aid: &OrganizerMaterialAidPr
             },
         )) => {
             let stock = observer_ui::grouped(*opening_stock);
-            let parcels = if *opening_stock == 1 {
-                "parcel"
-            } else {
-                "parcels"
-            };
+            let parcels = parcel_label(*opening_stock);
             format!(
                 "{} · {stock} {parcels} on hand, {} needed",
                 heading(row, "pantry"),
@@ -61,7 +65,7 @@ pub(super) fn aid_food_report(view: &OrganizerView, aid: &OrganizerMaterialAidPr
                 consumed, required, ..
             },
         )) => {
-            let parcels = if *required == 1 { "parcel" } else { "parcels" };
+            let parcels = parcel_label(*required);
             format!(
                 "{} · ate {} of {} {parcels} needed",
                 heading(row, "food"),

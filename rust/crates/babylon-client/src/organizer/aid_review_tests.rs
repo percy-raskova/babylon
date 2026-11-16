@@ -21,7 +21,7 @@ fn aid_cards_show_what_each_partner_shared_before_choosing_a_gift() {
         OrganizerAction::Choose(OrganizerChoice::RemoteAid),
     );
     assert!(panel_has_visible_text(&mut app, false,
-        "Cook Independent Solidarity Partners · freight · delay and loss possible\nP0 pantry report · 0 parcels on hand, 4 needed"));
+        "Cook Independent Solidarity Partners · freight · delay and loss possible\nP0 pantry report · 0 parcels on hand, 4 needed\n1 parcel + $0.00"));
 
     let (local, remote) = install_dated_food_reports(&mut app);
     app.update();

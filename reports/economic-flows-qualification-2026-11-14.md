@@ -38,12 +38,43 @@ named readings fit beside the roster at 1366 × 768. [Wayne and Cook food report
 The [artist guide](../design/bevy-assets/README.md#replace-the-economic-map-symbols)
 gives the tile order and the launch command for a Blender render.
 
+### Where households missed meals in period 4
+
+<!-- vale Vale.Spelling = NO -->
+In the ordinary national campaign, seven household groups mapped to
+Wayne needed 1,772,587 food parcels. They ate 872,569 and
+had a shortfall of 900,018. At Ingham, all ten groups together ate the
+3,172,223 parcels they needed. Regional groups appear at their model hub,
+so these figures describe the residents represented there.
+<!-- vale Vale.Spelling = YES -->
+
+Selecting Wayne's warning triangle opened the seven groups' food balance
+in 0.49–0.64 seconds. They started with 872,535 parcels, bought 34 and
+ended with empty pantries. The map showed no warning for the fully fed
+county. Returning to the opening showed that food consumption begins in
+period 1. [Wayne's food balance on the map](economic-flows-qualification-2026-11-14-assets/wayne-household-food-shortage.png)
+
+The **Open household receipt** button selected the Wayne group with the
+largest shortfall. It had funds for all 1,804,207 parcels it requested. The
+shop supplied 23. The group ate 589,036 against a need of 1,196,610,
+leaving 607,574 unmet. The detailed account took 21.84–21.98 seconds to
+appear on the build used for this map check. The local evidence folder
+`babylon-recovery/per293-native-shortage-2v53qij4` holds the original
+windows, input times and contributing household accounts.
+
+Another Wayne group received no food from its retailer. It drew 20,536
+parcels from its pantry and still lacked 21,184. A missed retail order
+and a shortfall at the table have different quantities in the same
+period. The [household receipt](economic-flows-qualification-2026-11-14-assets/wayne-food-retailer-receipt-v2.json)
+records its purchases, stocks and consumption.
+
 ## Evidence against the original plan on November 15
 
 | Delivery | What the local project demonstrates | What remains |
 | --- | --- | --- |
-| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | The demographic build also reconstructed older journal periods and reopened the Wayne household. The separate database reference checks last ran on v9. |
+| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. The demographic build reconstructed older journal periods and reopened the Wayne household. On the map build, all nine schema and recovery checks and all three spatial reference and login checks passed on local Postgres 17.11. | The five-year and twenty-year checkpoints still lack a comparable inspection of the closing period's database. |
 | Recorded labor and map/Sankey | On the final household-receipt build, both Money and Labor switched from the map to the Sankey and back. Wayne’s amounts matched the ledger. The industry selection and source rows also appeared on the native display. | Current hardware evidence covers specific interactions. The frame-time samples below came from earlier builds. |
+| Workplace and household map | The national observer can open producers, shops and utilities at their recorded county. A food warning opens the county's balance and the household group with the largest shortfall. | Regional household groups share a hub. A workplace symbol identifies the county that contains the sites. |
 | Companies and investment | The current policy completed the two-seed comparisons with 99, 300 and 600 companies on the same 7,463 sites. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | The ordinary twenty-year run used seed 319. Its companies made no capital contributions to members. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The local rebuild recovered the September 8 continental state from seven publisher updates. Full distances still depend on verifying the regional truck graph and routing its 83 terminals. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
@@ -184,6 +215,19 @@ In year five, US public accounts collected $6.12 billion in taxes and paid $17.5
 Each run recorded 25,740 company decisions. The counts by choice matched in 259 of 260 periods. At tick 157 all 99 companies deferred investment in the demographic run. The fixed-population control recorded 98 deferrals and one modest expansion.
 
 The five-year save reopened with world hash `9ab00c12b584bf84b22907819e1cce1ab1099b3ea76c125236c48f8cfbfbb7b5`. The twenty-year save reopened with `da5bca935a47cbcc3e1285a90d7df207ff06baad9953cded0e25ab2d38f90537`.
+
+Across the 259 changes between consecutive closes, the combined cash of
+all 99 parents reconciled to the last millionth of a dollar. Member
+distributions added cash. Payments to beneficiaries and funding paid to
+member sites removed cash. The parent treasuries closed year five at
+$95,619,266,188.68 and year twenty at $92,831,224,358.75.
+
+Cash plus reserves across all accounts held at $29,274,357,622,617.84 in
+all 260 closes. The calculation used the balances and transfer totals in
+the 260 period summaries under `babylon-recovery/per293-household-lifecycle-v10-seed319`
+on the media drive. Each summary matched its recorded checksum. Checking
+a company's published database statement still needs the records for that
+close.
 
 ### When food stopped reaching households
 
@@ -883,6 +927,44 @@ Postgres campaign `11be3a5e-366e-42c8-9461-479e914ff9ad` committed and published
 The media drive holds the archive and its restore instructions in `babylon-recovery/per293-kodiak-11be3a5e-366e-42c8-9461-479e914ff9ad`. The archive SHA-256 is `461c58dcf8e36a788246f3db0fb2bf1951500301082fee0406d0c97316672050`. The direct restore used the v9 runtime and database schema in revision `bfa871b08`.
 
 The current runtime also read the same campaign after copying its six commits to a fresh database and rebuilding the financial reports there. The final world, both decisions and all seven financial reports matched. Kodiak’s original order still showed one unit bought in period 5 and delivered locally in period 6. The media drive holds the original and copied report digests in `babylon-recovery/per293-kodiak-current-copy-11be3a5e-366e-42c8-9461-479e914ff9ad`. [Instructions for opening the saved campaign](../SETUP_GUIDE.md#read-a-campaign-from-the-earlier-schema)
+
+The native observer also reopened period 4 while the live game stood at
+period 6. Selecting Kodiak's producer symbol and manufacturing site opened
+its investment reading. All 400 available batches ran at the site. Accepted
+orders for 20,812 supplies bundles remained unfilled.
+
+Across all its sites,
+the parent still had spare capacity. After the feasibility check it had
+an 80% chance to defer investment and a 20% chance of modest expansion.
+The rule excluded replacement. The larger expansion plan met the funding
+limits and had zero weight under this campaign's policy.
+
+On the first build with this reading, a second click on **Investment**
+after visiting **Flow** took 42.03–42.18 seconds to show the decision.
+Both clicks read the committed choice from the database. The first still
+showed a loading message at 30.97 seconds. The underlying six-period save
+and its two command-line decision reports matched the original again.
+
+On the next build the same site reading took 28.32–28.47 seconds. The
+client had the verified decision in memory, but switching tabs rebuilt
+the workplace relationships. After the client retained those controls,
+selecting the site from the producer list took 0.622–0.762 seconds.
+Opening **Readings** took 0.017–0.203 seconds and the first
+**Investment** click took 0.008–0.197 seconds. The site showed up to
+22 expansion units and $352,000 for period 5. Returning from **Sources**
+showed the decision again within 0.192 seconds. [Kodiak workplace and its investment reading](economic-flows-qualification-2026-11-14-assets/kodiak-workplace-investment.png)
+
+The company accounts cover all member sites. At the same close, the
+selected plan authorized up to 241,147 expansion units and $2,692,972,400
+across the company. Opening that reading took 12.71–12.86 seconds on the
+first build. Reading the choice already verified for the displayed
+period took 0.009–0.213 seconds on the same save. The database recorded
+no further decision query. [Kodiak company accounts in the game](economic-flows-qualification-2026-11-14-assets/kodiak-company-investment.png)
+
+On local Postgres 17.11, the full observer's investment reading also
+passed the national money-journal check. The suite checked which sites
+had a company, rejected a restricted reader, and rebuilt historical
+financial data across the thirteen-period retention boundary.
 
 ## Repeat the local checks
 

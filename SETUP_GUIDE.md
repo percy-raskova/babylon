@@ -349,11 +349,22 @@ Choose **Observer Campaigns** and **Observe national economy** to start a full-o
 mise run play -- --new --preset national-economy
 ```
 
-Choose a county and open **Economy network**. The factory marks producers,
-the awning marks shops, and the pylon marks energy and utilities. Select a
-symbol or its row in **County workplaces** to see the sites it represents.
+Choose a county, open **Map lens +**, then choose **Economy network**.
+An orange factory marks producers, a striped awning marks shops, and a
+gold pylon marks energy and utilities. Select a symbol or its row in
+**County workplaces** to see the sites it represents.
 Select a named site to open its circuit. The symbols share the county's
 location. A line points back to that location when symbols need room.
+
+In the national **Economy network**, a yellow triangle marks a food shortage
+where the game places a household group. Select the warning or the county's
+dated food reading to compare parcels needed and eaten. The symbols keep
+their size as you zoom. A regional group appears at its hub.
+
+The pantry balance shows what residents ate
+even when a retailer delivered nothing. Choose **Open household receipt**
+to inspect the group with the largest shortfall, or **Trace food retailer**
+to visit its supplier.
 
 In the organizer's **Places** view, choose **Show aid partners on map**.
 Select the hand and parcel for a local partner or the linked parcels for
@@ -362,12 +373,20 @@ the partner's report. An opening pantry count shows food on hand. A later
 report shows how many parcels the household needed and how many it ate.
 Select the partner symbol itself to open its dossier and prepare an aid offer.
 
-After the first period closes, select a county and choose **By Company**.
+After the first period closes, select a county. Open **Money flows** from
+**Map lens +** and choose **By Company**.
 Select a named company in the ranked list and open **Company accounts**.
 The legal parent shows the treasury, claims and payments on its own books.
 Choose **Show consolidated company** to include its operating sites and see
 the adjustments for internal sales, contributions, dividends and margins.
 A campaign captured before companies existed retains its original owners.
+
+In **Company accounts**, choose **Investment decision** to see what the
+company chose at this close and how likely each alternative was. To see
+what that choice authorized at one workplace, open the site's **Circuit**,
+choose **Readings**, then **Investment**. A producer's reading also shows
+how much it produced and how much accepted demand went unfilled. The
+following period's accounts show how much money changed hands.
 
 To follow a household, choose **By Account**, select its household cash
 account and open **Household period receipt**. You can also choose a retailer

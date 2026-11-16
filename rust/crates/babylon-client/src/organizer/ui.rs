@@ -2082,7 +2082,11 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::ReviewAvailability => copy::review_reason(&scope.client, comparison.as_ref()),
             TextPart::ChoiceHeading => if complete { "Campaign complete".into() } else if historical { "Past commitments".into() } else { format!("Work for period {}", scope.session.viewed_tick.saturating_add(1)) },
             TextPart::Approach(_) if historical => String::new(),
-            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
+            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else {
+                scope.client.view.as_ref()
+                    .filter(|view| view.period == scope.session.viewed_tick)
+                    .map_or_else(|| "Awaiting current terms".into(), |view| presentation::client_approach(&scope.client, view, *choice))
+            },
             TextPart::ChoiceMarker(choice) => {
                 if complete { "CLOSED".into() }
                 else if scope.client.commitment.as_ref().is_some_and(|value| value.command.choice == *choice) { "ACCEPTED".into() }

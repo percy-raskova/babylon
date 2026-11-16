@@ -2,9 +2,76 @@
 use crate::human_numbers;
 use crate::observer_ui;
 use babylon_persistence::runtime_session::{
-    OrganizerObservation, OrganizerPartnerFacts, OrganizerReport, OrganizerReportCommodity,
-    OrganizerView,
+    OrganizerMaterialAidPreview, OrganizerObservation, OrganizerPartnerFacts, OrganizerReport,
+    OrganizerReportCommodity, OrganizerView,
 };
+
+pub(super) fn aid_food_report(view: &OrganizerView, aid: &OrganizerMaterialAidPreview) -> String {
+    use OrganizerPartnerFacts::{FoodProvision, OpeningAssessment};
+
+    let latest = super::evidence::disclosed_reports(view, view.period)
+        .filter(|row| row.subject_id == aid.recipient_actor_id)
+        .filter_map(|row| {
+            let OrganizerReport::Partner { facts, .. } = &row.report else {
+                return None;
+            };
+            let (OpeningAssessment { commodity, .. } | FoodProvision { commodity, .. }) = facts
+            else {
+                return None;
+            };
+            (commodity.good_id == aid.good_id && commodity.unit_id == aid.unit_id)
+                .then_some((row, facts))
+        })
+        .max_by_key(|(row, _)| (row.observed_period, row.acquired_period, row.observation_id));
+    let heading = |row: &OrganizerObservation, topic: &str| {
+        let observed = row.observed_period;
+        if observed == row.acquired_period {
+            format!("P{observed} {topic} report")
+        } else {
+            format!(
+                "P{observed} {topic} report (received P{})",
+                row.acquired_period
+            )
+        }
+    };
+    match latest {
+        Some((
+            row,
+            OpeningAssessment {
+                opening_stock,
+                required,
+                ..
+            },
+        )) => {
+            let stock = observer_ui::grouped(*opening_stock);
+            let parcels = if *opening_stock == 1 {
+                "parcel"
+            } else {
+                "parcels"
+            };
+            format!(
+                "{} · {stock} {parcels} on hand, {} needed",
+                heading(row, "pantry"),
+                observer_ui::grouped(*required)
+            )
+        }
+        Some((
+            row,
+            FoodProvision {
+                consumed, required, ..
+            },
+        )) => {
+            let parcels = if *required == 1 { "parcel" } else { "parcels" };
+            format!(
+                "{} · ate {} of {} {parcels} needed",
+                heading(row, "food"),
+                observer_ui::grouped(*consumed),
+                observer_ui::grouped(*required)
+            )
+        }
+        _ => "No food report available.".into(),
+    }
+}
 
 pub(super) fn comparable(left: &OrganizerPartnerFacts, right: &OrganizerPartnerFacts) -> bool {
     use OrganizerPartnerFacts::{

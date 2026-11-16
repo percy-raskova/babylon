@@ -1,6 +1,162 @@
 use babylon_persistence::runtime_session::{
     OrganizerAidFoodPreview, OrganizerCollectionPreview, OrganizerCommitment,
 };
+
+#[test]
+fn aid_cards_show_what_each_partner_shared_before_choosing_a_gift() {
+    use babylon_persistence::runtime_session::{OrganizerPartnerFacts, OrganizerReport};
+
+    let (mut app, _) = allocation_opening();
+    ordinary(
+        &mut app,
+        OrganizerAction::Inspect(OrganizerInspector::Practices),
+    );
+    assert!(panel_has_visible_text(
+        &mut app,
+        true,
+        "Wayne Local Aid Partners\nP0 pantry report · 0 parcels on hand, 4 needed"
+    ));
+    ordinary(
+        &mut app,
+        OrganizerAction::Choose(OrganizerChoice::RemoteAid),
+    );
+    assert!(panel_has_visible_text(&mut app, false,
+        "Cook Independent Solidarity Partners · freight · delay and loss possible\nP0 pantry report · 0 parcels on hand, 4 needed"));
+
+    let (local, remote) = install_dated_food_reports(&mut app);
+    app.update();
+    assert!(panel_has_visible_text(&mut app, false,
+        "Wayne Local Aid Partners · local handoff\nP2 food report (received P3) · ate 0 of 4 parcels needed"));
+    assert!(panel_has_visible_text(&mut app, false,
+        "Cook Independent Solidarity Partners · freight · delay and loss possible\nP3 food report · ate 4 of 4 parcels needed"));
+
+    let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+    let view = client.view.as_mut().expect("admitted view");
+    for row in view
+        .observations
+        .iter_mut()
+        .filter(|r| r.subject_id == remote)
+    {
+        let OrganizerReport::Partner { facts, .. } = &mut row.report else {
+            continue;
+        };
+        match (row.observed_period, facts) {
+            (0, OrganizerPartnerFacts::OpeningAssessment { commodity, .. }) => {
+                commodity.good_id = [99; 32];
+            }
+            (1, OrganizerPartnerFacts::FoodProvision { commodity, .. }) => {
+                commodity.unit_id = [99; 32];
+            }
+            (2, _) => row.actor_id = remote,
+            (3, _) => row.source_actor_id = local,
+            _ => {}
+        }
+    }
+    app.update();
+    assert!(panel_has_visible_text(&mut app, false,
+        "Cook Independent Solidarity Partners · freight · delay and loss possible\nNo food report available."));
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .viewed_tick = 1;
+    app.update();
+    assert!(!panel_has_visible_text(&mut app, false, "P2 food report"));
+}
+
+fn install_dated_food_reports(app: &mut App) -> (u64, u64) {
+    use babylon_persistence::runtime_session::{
+        OrganizerPartnerFacts, OrganizerReport, OrganizerView,
+    };
+
+    #[derive(serde::Deserialize)]
+    struct Period {
+        view: OrganizerView,
+    }
+
+    let periods: Vec<Period> = serde_json::from_str(include_str!(
+        "../../tests/fixtures/wayne_public_developments_v19.json"
+    ))
+    .expect("completed Wayne and Cook disclosures");
+    let mut view = periods.into_iter().last().expect("period three").view;
+    let local = view
+        .aid_options
+        .iter()
+        .find(|o| o.kind == OrganizerAidKind::Local)
+        .expect("local recipient")
+        .partner_actor_id;
+    let remote = view
+        .aid_options
+        .iter()
+        .find(|o| o.kind == OrganizerAidKind::Remote)
+        .expect("remote recipient")
+        .partner_actor_id;
+    // Wayne's P3 report arrives next period. Its P2 report arrived this period.
+    // Cook shared the distinct synthetic case of every required parcel eaten.
+    for row in &mut view.observations {
+        if let OrganizerReport::Partner {
+            facts:
+                OrganizerPartnerFacts::FoodProvision {
+                    required,
+                    consumed,
+                    unmet,
+                    ..
+                },
+            ..
+        } = &mut row.report
+        {
+            if row.subject_id == local && row.observed_period >= 2 {
+                row.acquired_period = row.observed_period + 1;
+            } else if row.subject_id == remote && row.observed_period == 3 {
+                *consumed = *required;
+                *unmet = 0;
+            }
+        }
+    }
+    {
+        let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+        for terms in &mut client.aid {
+            terms.period = view.period;
+        }
+        client.view = Some(view);
+    }
+    {
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        session.viewed_tick = 3;
+        session.durable_tick = 3;
+    }
+    (local, remote)
+}
+
+#[test]
+fn aid_cards_wait_for_current_terms_after_advancing_past_the_installed_view() {
+    let (mut app, _) = allocation_opening();
+    ordinary(
+        &mut app,
+        OrganizerAction::Inspect(OrganizerInspector::Practices),
+    );
+    install_dated_food_reports(&mut app);
+    app.update();
+    assert!(panel_has_visible_text(
+        &mut app,
+        true,
+        "Recipient: Wayne Local Aid Partners\nP2 food report"
+    ));
+
+    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+    session.viewed_tick = 4;
+    session.durable_tick = 4;
+    app.update();
+    assert!(!panel_has_visible_text(
+        &mut app,
+        true,
+        "Recipient: Wayne Local Aid Partners"
+    ));
+    assert!(panel_has_visible_text(
+        &mut app,
+        true,
+        "Awaiting current terms"
+    ));
+}
+
 fn aid_review_fixture(kind: OrganizerAidKind, label: &str, active: bool) -> App {
     use babylon_persistence::runtime_session::{
         OrganizerAidFunding, OrganizerAidOption, OrganizerAidRouteStage,

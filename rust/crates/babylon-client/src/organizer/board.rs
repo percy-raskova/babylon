@@ -530,8 +530,9 @@ fn paint_cards(
             }));
         }
     }
+    let deck = choices.as_ref().zip(scope.client.view.as_ref());
     for (field, mut value) in &mut texts {
-        let next = choices.as_ref().map_or_else(
+        let next = deck.map_or_else(
             || match field.field {
                 CardField::Status => "UNAVAILABLE".into(),
                 CardField::Title => {
@@ -543,11 +544,11 @@ fn paint_cards(
                 }
                 CardField::Terms => String::new(),
             },
-            |choices| {
+            |(choices, view)| {
                 let term = &choices.alternatives[field.slot];
                 match field.field {
                     CardField::Title => term.title.into(),
-                    CardField::Terms => copy::terms(term),
+                    CardField::Terms => copy::terms(view, term),
                     CardField::Status => {
                         let status = if term.choice == choices.draft_choice {
                             "DRAFT"

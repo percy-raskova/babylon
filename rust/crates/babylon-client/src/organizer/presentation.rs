@@ -368,7 +368,13 @@ fn approach_terms(
     let recipient = aid_recipient(view, preview);
     let mut text = recipient.map_or_else(
         || "UNAVAILABLE · Recipient attribution unavailable. Refresh before choosing aid.\n".into(),
-        |option| format!("Recipient: {}\n", option.partner_label),
+        |option| {
+            format!(
+                "Recipient: {}\n{}\n",
+                option.partner_label,
+                super::partner_copy::aid_food_report(view, preview)
+            )
+        },
     );
     let _ = writeln!(text, "Material preview: period {}.", preview.period);
     if let Some(period) = preview.period.checked_add(1) {
@@ -398,7 +404,7 @@ fn approach_terms(
     text
 }
 
-fn aid_recipient<'a>(
+pub(super) fn aid_recipient<'a>(
     view: &'a OrganizerView,
     preview: &OrganizerMaterialAidPreview,
 ) -> Option<&'a OrganizerAidOption> {

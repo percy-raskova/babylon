@@ -103,7 +103,7 @@ pub(super) fn availability(term: ChoiceAvailability) -> String {
     }
 }
 
-fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
+fn aid_card_terms(view: &OrganizerView, choice: &PracticeChoice) -> Option<String> {
     use babylon_persistence::runtime_session::{
         OrganizerAidTransportPreview, OrganizerAllocation, OrganizerGiftConsent,
     };
@@ -142,7 +142,20 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
     } else {
         "Displaces routine once."
     };
-    Some(format!("{name} · {route}\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours))
+    let mut text = format!("{name} · {route}");
+    if presentation::aid_recipient(view, aid).is_some_and(|option| {
+        choice
+            .partner
+            .is_some_and(|partner| partner.actor_id == option.partner_actor_id)
+    }) {
+        let _ = write!(
+            text,
+            "\n{}",
+            super::partner_copy::aid_food_report(view, aid)
+        );
+    }
+    let _ = write!(text, "\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours);
+    Some(text)
 }
 
 /// Explain a blocked selected route beside its Review control.
@@ -173,9 +186,9 @@ pub(super) fn review_reason(
     }
 }
 
-pub(super) fn terms(choice: &PracticeChoice) -> String {
+pub(super) fn terms(view: &OrganizerView, choice: &PracticeChoice) -> String {
     use babylon_persistence::runtime_session::OrganizerAllocation;
-    if let Some(terms) = aid_card_terms(choice) {
+    if let Some(terms) = aid_card_terms(view, choice) {
         return terms;
     }
     let parties = match (choice.target, choice.partner) {

@@ -75,18 +75,18 @@ and a shortfall at the table have different quantities in the same
 period. The [household receipt](economic-flows-qualification-2026-11-14-assets/wayne-food-retailer-receipt-v2.json)
 records its purchases, stocks and consumption.
 
-## Evidence against the original plan on November 15
+## Evidence against the original plan on November 16
 
 | Delivery | What the local project demonstrates | What remains |
 | --- | --- | --- |
-| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. The demographic build reconstructed older journal periods and reopened the Wayne household. On the map build, all nine schema and recovery checks and all three spatial reference and login checks passed on local Postgres 17.11. | The five-year and twenty-year checkpoints still lack a comparable inspection of the closing period's database. |
+| Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage. At the five-year close the database statements reconciled for all 2,788 company-owned sites and all 99 parents. The observer can also reconstruct a household receipt outside the thirteen-period journal window. | The twenty-year checkpoint still needs the same database inspection. |
 | Recorded labor and map/Sankey | On the final household-receipt build, both Money and Labor switched from the map to the Sankey and back. Wayne’s amounts matched the ledger. The industry selection and source rows also appeared on the native display. | Current hardware evidence covers specific interactions. The frame-time samples below came from earlier builds. |
 | Workplace and household map | The national observer can open producers, shops and utilities at their recorded county. A food warning opens the county's balance and the household group with the largest shortfall. | Regional household groups share a hub. A workplace symbol identifies the county that contains the sites. |
 | Companies and investment | The current policy completed the two-seed comparisons with 99, 300 and 600 companies on the same 7,463 sites. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | The ordinary twenty-year run used seed 319. Its companies made no capital contributions to members. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The local rebuild recovered the September 8 continental state from seven publisher updates. Full distances still depend on verifying the regional truck graph and routing its 83 terminals. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
 | International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
-| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The v9 running game stayed within its storage and memory limits through two measured closes. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
+| National qualification | Both the five-year and twenty-year material checkpoints reopened with the same world hashes. At the five-year close the national database used 741,267,123 bytes. A second database restored the save and reproduced the accounts. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Running-game memory at both horizons and database storage at twenty years still need measurement. |
 
 The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 
@@ -232,9 +232,9 @@ $95,619,266,188.68 and year twenty at $92,831,224,358.75.
 Cash plus reserves across all accounts held at $29,274,357,622,617.84 in
 all 260 closes. The calculation used the balances and transfer totals in
 the 260 period summaries under `babylon-recovery/per293-household-lifecycle-v10-seed319`
-on the media drive. Each summary matched its recorded checksum. Checking
-a company's published database statement still needs the records for that
-close.
+on the media drive. Each summary matched its recorded checksum. The
+[five-year database inspection](#following-waynes-retailer-after-the-first-year)
+also reconciled these balances to the published statements.
 
 ### When food stopped reaching households
 
@@ -432,6 +432,45 @@ The separate 15-period integration case exercised thirteen-period detail retenti
 The ordinary v10 national campaign crossed its first retention boundary in local Postgres. After period 13, the database held detailed payments and labor for periods 1–13. After period 14 it held periods 2–14. The observer then reopened Wayne’s period-1 payment and household reports and reproduced both byte for byte. New runtime processes also reopened periods 13 and 14 with their original hashes.
 
 The database grew from 209,278,643 bytes when restored at period 4 to 325,359,283 at period 14. Every advance waited for financial publication. The separate semantic Archive had processed period 13 when the operator measured period 14. These samples cover database storage through the first retention boundary. [Period sizes, retained rows and restored hashes](economic-flows-qualification-2026-11-14-assets/national-first-retention-window-v10.json)
+
+### Following Wayne's retailer after the first year
+
+Restoring period 14 put Wayne's household food receipt and the retailer's
+accounts on the same close. The shop that sold 23 food parcels to the
+largest-gap group in period 4 booked $9,210 in sales across its customers
+in period 14. It recorded a loss of $113,801,949.24 and closed with
+$776,472,279.197375 in spendable cash. The household bought 14 food
+parcels in that period.
+
+The observer's published statements balanced for all 2,788 company-owned
+sites. Each of the 99 companies had separate accounts for the parent,
+the subsidiaries together and the consolidated company. The combined
+parent cash of $147,730,199,784.483748 matched the independent material
+replay at this close.
+
+The same shop recorded $17,625 in sales and a loss of $1,014.24 at the
+five-year close. Its spendable cash had fallen to $17,644.397375. The
+household group still had funds to replenish its empty pantry.
+Its public income support had fallen to zero.
+
+| Wayne household group | Food needed | Funded food order | Delivered and eaten | Unmet food | Public income support paid |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Period 14 | 1,197,257 | 2,394,514 | 14 | 1,197,243 | $10,874,360 |
+| Period 65 | 1,197,527 | 2,395,054 | 15 | 1,197,512 | $0 |
+
+Across the economy, the 99 parent companies held $95,619,266,188.680890
+at period 65. Their combined opening and closing cash matched the
+independent material replay. The restored database reproduced the site's
+sixteen financial fields. [Household and company accounts at both closes](economic-flows-qualification-2026-11-14-assets/national-demographic-financial-horizons-v10.json)
+
+The 51 closes from period 15 through 65 reached the canonical commit in
+a median of 6.65 seconds. The financial records became available in a
+median of 17.98 seconds from the same advance. The database used
+741,267,123 bytes at period 65. Its portable save used 515,206,922 bytes.
+The recovered game and observer accounts used the same saved identities.
+The local folder `babylon-recovery/per293-ordinary-v10-seed319-p65`
+holds the save, the accounts from the separate restore and the timing
+for each close.
 
 ## The first company-enabled national opening
 

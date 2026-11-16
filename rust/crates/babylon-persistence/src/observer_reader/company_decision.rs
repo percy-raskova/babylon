@@ -1,15 +1,20 @@
 //! One company's material evidence and actual BSL draw from one committed observer snapshot.
 use super::{ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor};
 use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::economic_content::EconomicContentAdmission;
 use crate::identity::CampaignId;
 use crate::michigan_economy;
 use crate::national_economy::companies::CompanyKey;
+use crate::observer_material::PeriodRegister;
+use crate::runtime::RustPersistenceRuntimeError;
+use crate::semantic_codec::ChoiceReceiptSemanticRow;
 use babylon_bsl::probability::MASS_NANOUNITS_PER_UNIT;
+use babylon_graph::stable_element::StableElementKey;
 use babylon_material_circuit::{CompanyCondition, CompanyId, CompanyPortfolioEvidence, SiteId};
 use babylon_tick::company_graph;
-use babylon_tick::material_world::MaterialWorldRegister;
 use serde::{Serialize, Serializer};
 use serde_json::json;
+use std::collections::BTreeMap;
 
 const MEMBERS: [&str; 4] = [
     "DEFER",
@@ -31,15 +36,65 @@ pub struct CompanyDecisionReport {
     pub draw_ticket: u64,
 }
 
-enum DecisionSubject {
-    Company(CompanyId),
-    Site {
-        id: SiteId,
-        foundation: [u8; 32],
-        tick_hash: [u8; 32],
-    },
+#[derive(Clone, Default)]
+pub(crate) struct CompanyDraws(BTreeMap<StableElementKey, CompanyDraw>);
+#[derive(Clone, Copy)]
+struct CompanyDraw {
+    encounter: u32,
+    ticket: u64,
+    selected: usize,
+    masses: [u64; 4],
+}
+impl CompanyDraws {
+    /// Retain the same typed values encoded into the authenticated envelope.
+    pub(crate) fn retain(
+        &mut self,
+        row: &ChoiceReceiptSemanticRow,
+    ) -> Result<(), RustPersistenceRuntimeError> {
+        if row.rule_id != "company/portfolio-investment" {
+            return Ok(());
+        }
+        let invalid = RustPersistenceRuntimeError::CampaignConflict;
+        if row.sample != "company/investment-portfolio"
+            || row.slot != 0
+            || row.outcome_enum != "CompanyPortfolio"
+            || !row
+                .branches
+                .iter()
+                .map(|b| b.outcome_member.as_str())
+                .eq(MEMBERS)
+        {
+            return Err(invalid);
+        }
+        let selected = MEMBERS
+            .iter()
+            .position(|&member| member == row.selected_outcome)
+            .ok_or(RustPersistenceRuntimeError::CampaignConflict)?;
+        let masses = std::array::from_fn(|index| row.branches[index].mass_nanounits);
+        let draw = CompanyDraw {
+            encounter: row.encounter_ordinal,
+            ticket: row.draw_ticket,
+            selected,
+            masses,
+        };
+        if masses[selected] == 0 || self.0.insert(row.stable_carrier.clone(), draw).is_some() {
+            return Err(invalid);
+        }
+        Ok(())
+    }
+}
+/// Only constructed from the completed register and the same marker-checked envelope.
+#[derive(Clone)]
+pub(crate) struct CompanyDecisionClose {
+    pub(crate) register: PeriodRegister,
+    pub(crate) tick_hash: [u8; 32],
+    pub(crate) draws: CompanyDraws,
 }
 
+enum DecisionSubject {
+    Company(CompanyId),
+    Site(SiteId),
+}
 impl DecisionSubject {
     fn company_key(
         self,
@@ -57,7 +112,7 @@ impl DecisionSubject {
                     .key;
                 Ok(Some(key))
             }
-            Self::Site { id: site, .. } => {
+            Self::Site(site) => {
                 if !catalog
                     .opening()
                     .sites
@@ -78,6 +133,130 @@ impl DecisionSubject {
     }
 }
 
+impl ObserverMaterialCursor {
+    /// Inspect an owned site and its parent from the authenticated observer frame already on screen.
+    /// # Errors
+    /// Refuses unknown sites, a missing full-observer close, or a different campaign, period or source.
+    pub fn site_company_decision_for_frame(
+        &self,
+        campaign: CampaignId,
+        tick: u64,
+        site: SiteId,
+        foundation: [u8; 32],
+        tick_hash: [u8; 32],
+    ) -> Result<Option<CompanyDecisionReport>, ObserverEconomyError> {
+        self.decision_for_frame(
+            campaign,
+            tick,
+            DecisionSubject::Site(site),
+            foundation,
+            tick_hash,
+        )
+    }
+    /// Borrow the exact governed outcome of this company's decision in the displayed frame.
+    /// # Errors
+    /// Refuses unavailable company policies or choices, and any mismatch in the supplied frame.
+    pub fn company_decision_for_frame(
+        &self,
+        campaign: CampaignId,
+        tick: u64,
+        company: CompanyId,
+        foundation: [u8; 32],
+        tick_hash: [u8; 32],
+    ) -> Result<CompanyDecisionReport, ObserverEconomyError> {
+        self.decision_for_frame(
+            campaign,
+            tick,
+            DecisionSubject::Company(company),
+            foundation,
+            tick_hash,
+        )?
+        .ok_or(ObserverEconomyError::CompanyDecisionAbsent)
+    }
+
+    fn decision_for_frame(
+        &self,
+        campaign: CampaignId,
+        tick: u64,
+        subject: DecisionSubject,
+        foundation: [u8; 32],
+        tick_hash: [u8; 32],
+    ) -> Result<Option<CompanyDecisionReport>, ObserverEconomyError> {
+        let expected = self
+            .admission(campaign)
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        let close = self
+            .company_close()
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        if expected.digest() != foundation
+            || close.tick_hash != tick_hash
+            || close.register.completed_tick() != tick
+        {
+            return Err(ObserverEconomyError::SourceChanged);
+        }
+        close.decision(campaign, &expected, subject)
+    }
+}
+impl CompanyDecisionClose {
+    fn decision(
+        &self,
+        campaign: CampaignId,
+        expected: &EconomicContentAdmission,
+        subject: DecisionSubject,
+    ) -> Result<Option<CompanyDecisionReport>, ObserverEconomyError> {
+        let catalog = expected
+            .foundation()
+            .graph_foundation()
+            .content_bundle()
+            .economic_catalog()
+            .ok_or(ObserverEconomyError::ScenarioMismatch)?;
+        if catalog.national_companies().is_some()
+            != expected.material_catalog().company_portfolios.is_some()
+        {
+            return Err(ObserverEconomyError::InvalidProjection);
+        }
+        let Some(key) = subject.company_key(catalog)? else {
+            return Ok(None);
+        };
+        let rows = &self
+            .register
+            .company_portfolios()
+            .ok_or(ObserverEconomyError::InvalidProjection)?
+            .companies;
+        let company = key.id();
+        let evidence = rows
+            .binary_search_by_key(&company, |row| row.company)
+            .ok()
+            .map(|index| &rows[index])
+            .filter(|row| row.period == self.register.completed_tick())
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        let carrier =
+            company_graph::company_key(expected.foundation_graph().scenario_scope(), company);
+        let draw = self
+            .draws
+            .0
+            .get(&carrier)
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        if draw.masses
+            != evidence
+                .weights
+                .map(|weight| u64::from(weight) * MASS_NANOUNITS_PER_UNIT)
+        {
+            return Err(ObserverEconomyError::InvalidProjection);
+        }
+        Ok(Some(CompanyDecisionReport {
+            campaign,
+            foundation_sha256: expected.digest(),
+            tick_content_hash: self.tick_hash,
+            company_label: key.label(),
+            evidence: evidence.clone(),
+            encounter_ordinal: draw.encounter,
+            selected_outcome: MEMBERS[draw.selected].into(),
+            draw_ticket: draw.ticket,
+        }))
+    }
+}
+
 impl ObserverEconomyReader {
     /// Read all four investment alternatives, their evidence and the realized draw.
     /// # Errors
@@ -88,7 +267,7 @@ impl ObserverEconomyReader {
         tick: u64,
         company: CompanyId,
     ) -> Result<CompanyDecisionReport, ObserverEconomyError> {
-        self.decision_for(campaign, tick, DecisionSubject::Company(company))?
+        self.decision_for(campaign, tick, DecisionSubject::Company(company), None)?
             .ok_or(ObserverEconomyError::CompanyDecisionAbsent)
     }
 
@@ -107,105 +286,37 @@ impl ObserverEconomyReader {
         self.decision_for(
             campaign,
             tick,
-            DecisionSubject::Site {
-                id: site,
-                foundation,
-                tick_hash,
-            },
+            DecisionSubject::Site(site),
+            Some((foundation, tick_hash)),
         )
     }
-
     fn decision_for(
         &self,
         campaign: CampaignId,
         tick: u64,
         subject: DecisionSubject,
+        frame: Option<([u8; 32], [u8; 32])>,
     ) -> Result<Option<CompanyDecisionReport>, ObserverEconomyError> {
         self.with_statement_source(campaign, tick, |tx, expected| {
             if tick == 0 {
                 return Err(ObserverEconomyError::TickAbsent);
             }
-            let catalog = expected
-                .foundation()
-                .graph_foundation()
-                .content_bundle()
-                .economic_catalog()
-                .ok_or(ObserverEconomyError::ScenarioMismatch)?;
-            if catalog.national_companies().is_some()
-                != expected.material_catalog().company_portfolios.is_some()
-            {
-                return Err(ObserverEconomyError::InvalidProjection);
-            }
             let mut cursor = None;
             let source = crate::observer_material::committed_receipts(
-                tx, campaign, tick, expected, &mut cursor, None,
+                tx,
+                campaign,
+                tick,
+                expected,
+                &mut cursor,
+                None,
             )?;
             let hash = *source.identity.tick_content_hash().as_bytes();
-            if matches!(&subject, DecisionSubject::Site { foundation, tick_hash, .. }
-                if *foundation != expected.digest() || *tick_hash != hash)
-            {
-                return Err(ObserverEconomyError::SourceChanged);
-            }
-            let Some(key) = subject.company_key(catalog)? else {
-                return Ok((None, Some(hash)));
-            };
-            let company = key.id();
-            let evidence = cursor
+            let (foundation, tick_hash) = frame.unwrap_or((expected.digest(), hash));
+            let result = cursor
                 .as_ref()
-                .and_then(ObserverMaterialCursor::current_register)
-                .and_then(MaterialWorldRegister::company_portfolios)
                 .ok_or(ObserverEconomyError::InvalidProjection)?
-                .companies
-                .iter()
-                .find(|row| row.company == company && row.period == tick)
-                .ok_or(ObserverEconomyError::InvalidProjection)?;
-            let carrier = company_graph::company_key(expected.foundation_graph().scenario_scope(), company)
-                .canonical_bytes()
-                .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-            let sql_tick = i64::try_from(tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
-            // The complete envelope just authenticated these choice rows in this transaction.
-            let row = tx.query_opt(
-                "SELECT r.encounter_ordinal, r.selected_outcome, r.draw_ticket::text,
-                        array_agg(b.outcome_member ORDER BY b.position),
-                        array_agg(b.mass_nanounits::text ORDER BY b.position)
-                   FROM public.v_observer_tick_choice_receipt_v1 AS r
-                   JOIN public.v_observer_tick_choice_receipt_branch_v1 AS b
-                     USING (campaign_id, resolve_tick, encounter_ordinal)
-                  WHERE r.campaign_id=$1 AND r.resolve_tick=$2 AND r.stable_carrier=$3
-                    AND r.rule_id='company/portfolio-investment' AND r.sample='company/investment-portfolio'
-                    AND r.slot=0 AND r.outcome_enum='CompanyPortfolio'
-                  GROUP BY r.encounter_ordinal, r.selected_outcome, r.draw_ticket",
-                &[campaign.as_uuid(), &sql_tick, &carrier],
-            )
-            .map_err(|_| ObserverEconomyError::Database)?
-            .ok_or(ObserverEconomyError::InvalidProjection)?;
-
-            let invalid = |_| ObserverEconomyError::InvalidProjection;
-            let members: Vec<String> = row.try_get(3).map_err(invalid)?;
-            let masses: Vec<String> = row.try_get(4).map_err(invalid)?;
-            let selected: String = row.try_get(1).map_err(invalid)?;
-            let expected_masses = evidence.weights.map(|weight| {
-                (u64::from(weight) * MASS_NANOUNITS_PER_UNIT).to_string()
-            });
-            let winner_eligible = MEMBERS.iter().zip(evidence.weights)
-                .any(|(member, weight)| *member == selected && weight > 0);
-            if members != MEMBERS || masses != expected_masses || !winner_eligible {
-                return Err(ObserverEconomyError::InvalidProjection);
-            }
-            let ordinal: i64 = row.try_get(0).map_err(invalid)?;
-            let ticket: &str = row.try_get(2).map_err(invalid)?;
-            let report = CompanyDecisionReport {
-                campaign,
-                foundation_sha256: expected.digest(),
-                tick_content_hash: hash,
-                company_label: key.label(),
-                evidence: evidence.clone(),
-                encounter_ordinal: u32::try_from(ordinal)
-                    .map_err(|_| ObserverEconomyError::InvalidProjection)?,
-                selected_outcome: selected,
-                draw_ticket: ticket.parse().map_err(|_| ObserverEconomyError::InvalidProjection)?,
-            };
-            Ok((Some(report), Some(hash)))
+                .decision_for_frame(campaign, tick, subject, foundation, tick_hash)?;
+            Ok((result, Some(hash)))
         })
     }
 }

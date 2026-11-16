@@ -29,7 +29,7 @@ use crate::material_storage::LookupAnchor;
 use crate::material_storage::OpeningRegister;
 use crate::michigan_economy;
 use crate::money_journal::JournalPeriodSource;
-use crate::observer_reader::CommittedMaterialReceipts;
+use crate::observer_reader::{CommittedMaterialReceipts, CompanyDecisionClose};
 use crate::observer_reader::{
     ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
 };
@@ -181,6 +181,7 @@ pub struct ObserverMaterialCursor {
     campaign: CampaignId,
     admission: EconomicContentRef,
     admission_digest: [u8; 32],
+    company_close: Option<CompanyDecisionClose>,
     history: MaterialHistory,
 }
 
@@ -279,6 +280,9 @@ impl ObserverMaterialCursor {
     #[must_use]
     pub fn admission_handle(&self) -> Option<EconomicContentHandle> {
         self.admission.upgrade()
+    }
+    pub(crate) fn company_close(&self) -> Option<&CompanyDecisionClose> {
+        self.company_close.as_ref()
     }
     pub(crate) fn admission(&self, campaign: CampaignId) -> Option<EconomicContentHandle> {
         (self.campaign == campaign)
@@ -772,7 +776,7 @@ pub(crate) fn material_observation(
     // Authenticate endpoint graph/events before allocating the full current projection.
     // Only the projected staffing accounts survive the endpoint ownership scope.
     let staffing_timing = Timing::start(Stage::Staffing, tick);
-    let staffing_accounts = diagnostics::observer(
+    let (staffing_accounts, company_close) = diagnostics::observer(
         Stage::Staffing,
         tick,
         authenticated_staffing(transaction, campaign, expected, &history),
@@ -804,7 +808,11 @@ pub(crate) fn material_observation(
             admission: expected.downgrade(),
             admission_digest: expected.digest(),
             history,
+            company_close,
         });
+    } else if let Some(high_water) = cursor {
+        // The reusable history may be newer than a reopened historical frame.
+        high_water.company_close = company_close;
     }
     Ok(MaterialObservation {
         foundation_digest: michigan_economy::digest_hex(&expected.digest()),
@@ -967,12 +975,13 @@ pub(crate) fn committed_receipts(
         journal_connection,
     )?;
     let identity = current.identity;
-    drop(current);
+    let company_close = Some(decision_close(&history, current)?);
     let result = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
     *cursor = Some(ObserverMaterialCursor {
         campaign,
         admission: expected.downgrade(),
         admission_digest: expected.digest(),
+        company_close,
         history,
     });
     Ok(result)
@@ -1032,7 +1041,7 @@ pub(crate) fn committed_observation(
     let identity = current.identity;
     let staffing = project_authenticated_staffing(expected, &history, &current, previous.as_ref())?;
     drop(previous);
-    drop(current);
+    let company_close = Some(decision_close(&history, current)?);
     drop(staffing_timing);
     let projection_timing = Timing::start(Stage::CurrentProjection, tick);
     let mut production = production_projection::project_economic_current(
@@ -1060,17 +1069,32 @@ pub(crate) fn committed_observation(
         campaign,
         admission: expected.downgrade(),
         admission_digest: expected.digest(),
+        company_close,
         history,
     });
     Ok((observation, accounting))
 }
 
-pub(crate) fn authenticated_staffing(
+fn decision_close(
+    history: &MaterialHistory,
+    current: StoredMaterialTick<'_>,
+) -> Result<CompanyDecisionClose, ObserverEconomyError> {
+    let MaterialRegisterBoundary::Period(register) = &history.register else {
+        return Err(ObserverEconomyError::InvalidProjection);
+    };
+    Ok(CompanyDecisionClose {
+        register: register.clone(),
+        tick_hash: *current.identity.tick_content_hash().as_bytes(),
+        draws: current.company_draws,
+    })
+}
+
+fn authenticated_staffing(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     expected: &EconomicContentAdmission,
     history: &MaterialHistory,
-) -> Result<Vec<ProductionStaffingAccount>, ObserverEconomyError> {
+) -> Result<(Vec<ProductionStaffingAccount>, Option<CompanyDecisionClose>), ObserverEconomyError> {
     let register = history.register(expected);
     let tick = register.completed_tick();
     if tick == 0 {
@@ -1082,6 +1106,7 @@ pub(crate) fn authenticated_staffing(
             &[],
             None,
         )
+        .map(|staffing| (staffing, None))
         .map_err(|error| {
             let _ = diagnostics::projection::<()>(Stage::Staffing, tick, Err(error));
             ObserverEconomyError::InvalidProjection
@@ -1089,7 +1114,8 @@ pub(crate) fn authenticated_staffing(
     }
     let (current, previous) =
         authenticated_history_endpoints(transaction, campaign, expected, history, None)?;
-    project_authenticated_staffing(expected, history, &current, previous.as_ref())
+    let staffing = project_authenticated_staffing(expected, history, &current, previous.as_ref())?;
+    Ok((staffing, Some(decision_close(history, current)?)))
 }
 
 pub(crate) fn project_authenticated_staffing(
@@ -1201,6 +1227,7 @@ mod opening_controls {
             campaign,
             admission: owner.downgrade(),
             admission_digest: owner.digest(),
+            company_close: None,
             history: MaterialHistory::new(&owner)
                 .expect("the constructor accepts the authored fixture arguments"),
         };

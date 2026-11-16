@@ -206,6 +206,53 @@ impl ObservationCache {
         self.full_reader.clone()
     }
 
+    /// Borrow the installed full-observer evidence only for this exact live request.
+    pub(crate) fn investment_cursor(
+        &self,
+        session: &ObserverSession,
+        frame: &ObserverFrame,
+        request: &ObservationContext,
+        foundation: [u8; 32],
+        tick_hash: [u8; 32],
+    ) -> Result<&ObserverMaterialCursor, ObserverEconomyError> {
+        if session.organizer_enabled
+            || session.perspective != Perspective::FullObserver
+            || request.perspective != Perspective::FullObserver
+        {
+            return Err(ObserverEconomyError::Authority);
+        }
+        if !session.accepts(request) {
+            return Err(ObserverEconomyError::SourceChanged);
+        }
+        let snapshot = frame
+            .for_session(session)
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        let scope = session
+            .runtime_scope()
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        let key = self
+            .key
+            .as_ref()
+            .ok_or(ObserverEconomyError::SourceChanged)?;
+        if key.perspective != Perspective::FullObserver
+            || key.campaign != request.campaign
+            || key.epoch != Some(scope.epoch)
+            || scope.campaign_id.as_deref() != Some(snapshot.campaign_id.as_str())
+            || key.foundation.as_deref() != Some(snapshot.foundation_digest.as_str())
+            || crate::cli::identity_bytes(&snapshot.foundation_digest) != Some(foundation)
+            || snapshot
+                .tick_content_hash
+                .as_deref()
+                .and_then(crate::cli::identity_bytes)
+                != Some(tick_hash)
+        {
+            return Err(ObserverEconomyError::SourceChanged);
+        }
+        self.cursor
+            .as_ref()
+            .ok_or(ObserverEconomyError::ProductionHistoryUnavailable)
+    }
+
     pub(super) fn reconcile(&mut self, key: ObservationCacheKey) {
         if self.key.as_ref() != Some(&key) {
             *self = Self {

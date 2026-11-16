@@ -154,3 +154,79 @@ fn failed_reader_construction_is_retried() {
         ObserverVisibility::FullObserver
     );
 }
+
+#[test]
+fn investment_requires_the_current_full_observer_request_and_runtime_epoch() {
+    use super::tests;
+    use crate::observer::ObserverSession;
+    use crate::observer_ui::ObserverFrame;
+
+    let mut session = ObserverSession::new(key().campaign);
+    session.connected_fixture();
+    session.viewed_tick = 4;
+    session.durable_tick = 4;
+    session.foundation_digest = Some("aa".repeat(32));
+    session.content_hash = Some("bb".repeat(32));
+    let mut snapshot = tests::snapshot_with_event(&session, "delivery", 4);
+    snapshot.foundation_digest = session
+        .foundation_digest
+        .clone()
+        .expect("fixture foundation");
+    let frame = ObserverFrame(Some(snapshot), None);
+    let request = session.context();
+    let owner = ObservationCacheKey {
+        perspective: Perspective::FullObserver,
+        ..key()
+    };
+    let mut cache = ObservationCache::default();
+    let foundation = [0xaa; 32];
+    let tick_hash = [0xbb; 32];
+    cache.reconcile(owner.clone());
+    // This fixture has no authenticated cursor. Only the exact scope can reach that check.
+    assert_eq!(
+        cache
+            .investment_cursor(&session, &frame, &request, foundation, tick_hash)
+            .err(),
+        Some(ObserverEconomyError::ProductionHistoryUnavailable)
+    );
+    let mut stale = request.clone();
+    stale.generation += 1;
+    for (context, digest, hash) in [
+        (&stale, foundation, tick_hash),
+        (&request, [0; 32], tick_hash),
+        (&request, foundation, [0; 32]),
+    ] {
+        assert_eq!(
+            cache
+                .investment_cursor(&session, &frame, context, digest, hash)
+                .err(),
+            Some(ObserverEconomyError::SourceChanged)
+        );
+    }
+    cache.reconcile(ObservationCacheKey {
+        epoch: Some(2),
+        ..owner.clone()
+    });
+    assert_eq!(
+        cache
+            .investment_cursor(&session, &frame, &request, foundation, tick_hash)
+            .err(),
+        Some(ObserverEconomyError::SourceChanged)
+    );
+    cache.reconcile(owner);
+    session.organizer_enabled = true;
+    assert_eq!(
+        cache
+            .investment_cursor(&session, &frame, &request, foundation, tick_hash)
+            .err(),
+        Some(ObserverEconomyError::Authority)
+    );
+    session.organizer_enabled = false;
+    session.perspective = Perspective::PlayerKnowledge;
+    assert_eq!(
+        cache
+            .investment_cursor(&session, &frame, &session.context(), foundation, tick_hash)
+            .err(),
+        Some(ObserverEconomyError::Authority)
+    );
+}

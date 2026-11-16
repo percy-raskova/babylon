@@ -1,10 +1,11 @@
 //! Financial statements of the represented company selected on the geographic flow page.
 use super::rail;
-use super::state::{Action, MoneyView, Scope};
+use super::state::{Action, MoneyView, Observation, Scope};
 use crate::cli;
 use crate::company_investment::{self, Subject};
 use crate::human_numbers;
 use crate::observer_focus::ObserverFocusTarget;
+use crate::observer_io::ObservationCache;
 use crate::observer_performance::RenderMode;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
@@ -52,14 +53,6 @@ impl Accounts {
         )
     }
 
-    fn loaded(&self) -> bool {
-        if self.investment_open {
-            self.investment.is_some()
-        } else {
-            self.result.is_some()
-        }
-    }
-
     pub(super) fn show_investment(&mut self, company: CompanyId, open: bool) -> bool {
         if self.id != Some(company) || self.investment_open == open {
             return false;
@@ -104,20 +97,14 @@ pub(super) fn selected(view: &MoneyView) -> Option<CompanyId> {
     cli::identity_bytes(peer).map(CompanyId::from_bytes)
 }
 
-enum Reading {
-    Accounts(Box<SelectedCompanyAccounts>),
-    Investment(String),
-}
-
 struct Pending {
     scope: Scope,
     company: CompanyId,
-    investment: bool,
-    read: Task<Result<Reading, JournalError>>,
+    read: Task<Result<SelectedCompanyAccounts, JournalError>>,
 }
 
 impl Pending {
-    fn start(scope: &Scope, company: CompanyId, investment: bool) -> Self {
+    fn start(scope: &Scope, company: CompanyId) -> Self {
         let requested = scope.clone();
         let read = IoTaskPool::get().spawn(async move {
             let reader =
@@ -126,33 +113,17 @@ impl Pending {
                 .tick_hash
                 .as_deref()
                 .ok_or(JournalError::SourceChanged)?;
-            if investment {
-                let foundation = cli::identity_bytes(&requested.foundation)
-                    .ok_or(JournalError::SourceChanged)?;
-                let tick_hash = cli::identity_bytes(hash).ok_or(JournalError::SourceChanged)?;
-                return company_investment::read(
-                    &reader,
-                    &requested.context,
-                    foundation,
-                    tick_hash,
-                    Subject::Company(company),
-                )
-                .map(Reading::Investment);
-            }
-            reader
-                .company_accounts_for_frame(
-                    requested.context.campaign,
-                    requested.context.tick,
-                    company,
-                    &requested.foundation,
-                    hash,
-                )
-                .map(|books| Reading::Accounts(Box::new(books)))
+            reader.company_accounts_for_frame(
+                requested.context.campaign,
+                requested.context.tick,
+                company,
+                &requested.foundation,
+                hash,
+            )
         });
         Self {
             scope: scope.clone(),
             company,
-            investment,
             read,
         }
     }
@@ -161,7 +132,36 @@ impl Pending {
 #[derive(Resource, Default)]
 pub(super) struct Worker(Option<Pending>);
 
-pub(super) fn update(mut view: ResMut<MoneyView>, mut worker: ResMut<Worker>) {
+pub(super) fn update(
+    observation: Observation,
+    cache: Option<Res<ObservationCache>>,
+    mut view: ResMut<MoneyView>,
+    mut worker: ResMut<Worker>,
+) {
+    if view.company.investment_open && view.company.investment.is_none() {
+        if let Some((scope, company)) = view.scope.as_ref().zip(view.company.id) {
+            if selected(&view) == Some(company) && observation.active() {
+                // This first-open projection uses the installed cursor even while statements load.
+                let source = cli::identity_bytes(&scope.foundation)
+                    .zip(scope.tick_hash.as_deref().and_then(cli::identity_bytes));
+                let result =
+                    source
+                        .ok_or(JournalError::SourceChanged)
+                        .and_then(|(foundation, hash)| {
+                            company_investment::read(
+                                cache.as_deref(),
+                                &observation.session,
+                                &observation.frame,
+                                &scope.context,
+                                foundation,
+                                hash,
+                                Subject::Company(company),
+                            )
+                        });
+                view.company.investment = Some(result);
+            }
+        }
+    }
     if let Some(job) = &mut worker.0 {
         let Some(result) = tasks::block_on(tasks::futures_lite::future::poll_once(&mut job.read))
         else {
@@ -171,20 +171,18 @@ pub(super) fn update(mut view: ResMut<MoneyView>, mut worker: ResMut<Worker>) {
             && view.company.id == Some(job.company)
             && selected(&view) == Some(job.company)
         {
-            match result {
-                Ok(Reading::Accounts(books)) => view.company.result = Some(Ok(*books)),
-                Ok(Reading::Investment(reading)) => view.company.investment = Some(Ok(reading)),
-                Err(error) if job.investment => view.company.investment = Some(Err(error)),
-                Err(error) => view.company.result = Some(Err(error)),
-            }
+            view.company.result = Some(result);
         }
         worker.0 = None;
     }
     let (Some(scope), Some(company)) = (&view.scope, view.company.id) else {
         return;
     };
-    if !view.company.loaded() && selected(&view) == Some(company) {
-        worker.0 = Some(Pending::start(scope, company, view.company.investment_open));
+    if !view.company.investment_open
+        && view.company.result.is_none()
+        && selected(&view) == Some(company)
+    {
+        worker.0 = Some(Pending::start(scope, company));
     }
 }
 

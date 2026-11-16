@@ -700,6 +700,7 @@ fn account_nets(source: &EconomicPaymentPeriod) -> BTreeMap<String, i128> {
 
 /// Both closes are durable. A shop with no production process still belongs to its parent.
 fn historical_site_decision(
+    owner: &mut Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
     cursor: &ObserverMaterialCursor,
@@ -726,6 +727,22 @@ fn historical_site_decision(
         .site_company_decision_for_frame(campaign, 1, site, foundation.digest(), *content_hash)
         .expect("authenticate earlier period")
         .expect("whole-site parent membership");
+    let stored = owner.query_one(
+        "SELECT selected_outcome, draw_ticket::text, stable_carrier
+         FROM babylon_state.tick_choice_receipt_v1
+         WHERE campaign_id=$1 AND resolve_tick=1 AND encounter_ordinal=$2 AND rule_id='company/portfolio-investment'",
+        &[campaign.as_uuid(), &i64::from(report.encounter_ordinal)],
+    ).expect("the original committed draw for this company");
+    assert_eq!(stored.get::<_, String>(0), report.selected_outcome);
+    assert_eq!(stored.get::<_, String>(1), report.draw_ticket.to_string());
+    let carrier = babylon_tick::company_graph::company_key(
+        foundation.foundation_graph().scenario_scope(),
+        shop.company,
+    );
+    assert_eq!(
+        stored.get::<_, Vec<u8>>(2),
+        carrier.canonical_bytes().expect("company carrier")
+    );
     assert_eq!(report.campaign, campaign);
     assert_eq!(report.foundation_sha256, foundation.digest());
     assert_eq!(&report.tick_content_hash, content_hash);
@@ -745,31 +762,80 @@ fn historical_site_decision(
             .expect("shop company close")
     );
 
+    assert_eq!(
+        cursor.site_company_decision_for_frame(
+            campaign,
+            1,
+            site,
+            foundation.digest(),
+            *content_hash
+        ),
+        Ok(Some(report.clone())),
+        "the frame retains the admitted draw of a non-producing subsidiary"
+    );
+    assert_eq!(
+        cursor.company_decision_for_frame(
+            campaign,
+            1,
+            shop.company,
+            foundation.digest(),
+            *content_hash
+        ),
+        Ok(report),
+        "the company and its shop open the same admitted draw"
+    );
+
     let public = opening
         .sites
         .iter()
         .find(|s| s.function == EconomicFunction::PublicProvisioning)
         .expect("public provisioning site")
         .site_id;
+    unowned_site_decision(
+        observer,
+        campaign,
+        cursor,
+        public,
+        foundation.digest(),
+        *content_hash,
+    );
+}
+
+fn unowned_site_decision(
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    cursor: &ObserverMaterialCursor,
+    public: SiteId,
+    foundation: [u8; 32],
+    content_hash: [u8; 32],
+) {
+    assert_eq!(
+        cursor.site_company_decision_for_frame(campaign, 1, public, foundation, content_hash),
+        Ok(None)
+    );
+    for (tick, digest, hash) in [
+        (2, foundation, content_hash),
+        (1, [0; 32], content_hash),
+        (1, foundation, [0; 32]),
+    ] {
+        assert_eq!(
+            cursor.site_company_decision_for_frame(campaign, tick, public, digest, hash),
+            Err(ObserverEconomyError::SourceChanged)
+        );
+    }
     let read_public =
         |digest, hash| observer.site_company_decision_for_frame(campaign, 1, public, digest, hash);
-    assert_eq!(read_public(foundation.digest(), *content_hash), Ok(None));
+    assert_eq!(read_public(foundation, content_hash), Ok(None));
     assert_eq!(
-        read_public([0; 32], *content_hash),
+        read_public([0; 32], content_hash),
         Err(ObserverEconomyError::SourceChanged)
     );
     assert_eq!(
-        read_public(foundation.digest(), [0; 32]),
+        read_public(foundation, [0; 32]),
         Err(ObserverEconomyError::SourceChanged)
     );
     assert_eq!(
-        observer.site_company_decision_for_frame(
-            campaign,
-            3,
-            public,
-            foundation.digest(),
-            *content_hash
-        ),
+        observer.site_company_decision_for_frame(campaign, 3, public, foundation, content_hash),
         Err(ObserverEconomyError::TickAbsent)
     );
     assert_eq!(
@@ -777,19 +843,24 @@ fn historical_site_decision(
             campaign,
             1,
             SiteId::from_bytes([0; 32]),
-            foundation.digest(),
-            *content_hash
+            foundation,
+            content_hash
         ),
         Err(ObserverEconomyError::SiteAbsent)
     );
 }
 
-pub(super) fn comparison(observer: &ObserverEconomyReader, campaign: CampaignId) {
+pub(super) fn comparison(
+    owner: &mut Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+) {
     let mut cursor = None;
     let prior = observer
         .committed_economic_payments_with_cursor(campaign, 1, &mut cursor)
         .expect("first canonical payments");
     historical_site_decision(
+        owner,
         observer,
         campaign,
         cursor.as_ref().expect("period one cursor"),
@@ -798,6 +869,44 @@ pub(super) fn comparison(observer: &ObserverEconomyReader, campaign: CampaignId)
     let later = observer
         .committed_economic_payments_with_cursor(campaign, 2, &mut cursor)
         .expect("second canonical payments");
+    let historical = observer
+        .snapshot_with_cursor(campaign, 1, &mut cursor)
+        .expect("ordinary historical observer frame");
+    let cursor = cursor
+        .as_ref()
+        .expect("authenticated frame and forward history");
+    assert_eq!(
+        cursor.completed_tick(),
+        2,
+        "opening an earlier frame preserves the reusable forward history"
+    );
+    let company = cursor
+        .current_register()
+        .expect("P2")
+        .company_portfolios()
+        .expect("national policy")
+        .companies[0]
+        .company;
+    let report = cursor
+        .company_decision_for_frame(
+            campaign,
+            1,
+            company,
+            prior.source.identity.foundation_digest(),
+            *prior.source.identity.tick_content_hash().as_bytes(),
+        )
+        .expect("P1 draw, independent of the retained P2 history");
+    assert_eq!(report.evidence.period, historical.resolve_tick);
+    assert_eq!(
+        cursor.company_decision_for_frame(
+            campaign,
+            2,
+            company,
+            later.source.identity.foundation_digest(),
+            *later.source.identity.tick_content_hash().as_bytes()
+        ),
+        Err(ObserverEconomyError::SourceChanged)
+    );
     let before = account_nets(&prior);
     let after = account_nets(&later);
     let (key, current) = after

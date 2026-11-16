@@ -1,20 +1,20 @@
 //! Explain a committed company choice and its next-period authority.
 use crate::human_numbers;
-use crate::observer::{ObservationContext, Perspective};
+use crate::observer::{ObservationContext, ObserverSession};
+use crate::observer_io::ObservationCache;
+use crate::observer_ui::ObserverFrame;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     CompanyCondition, CompanyId, CompanyPortfolioEvidence, ProcessId, SiteId,
 };
 use babylon_persistence::money_journal::JournalError;
-use babylon_persistence::observer_reader::{
-    CompanyDecisionReport, ObserverEconomyError, ObserverEconomyReader,
-};
+use babylon_persistence::observer_reader::{CompanyDecisionReport, ObserverEconomyError};
 use std::fmt::Write as _;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProcessLabel {
     pub(crate) id: ProcessId,
-    pub(crate) name: String,
+    pub(crate) output_good: String,
     pub(crate) unit: String,
 }
 
@@ -32,23 +32,29 @@ const ALTERNATIVES: [(&str, &str); 4] = [
 ];
 
 pub(crate) fn read(
-    reader: &ObserverEconomyReader,
+    cache: Option<&ObservationCache>,
+    session: &ObserverSession,
+    frame: &ObserverFrame,
     context: &ObservationContext,
     foundation: [u8; 32],
     tick_hash: [u8; 32],
     subject: Subject<'_>,
 ) -> Result<String, JournalError> {
-    if context.perspective != Perspective::FullObserver {
-        return Err(JournalError::Observer(ObserverEconomyError::Authority));
-    }
-    if context.tick == 0 {
-        return Ok("Investment decisions start with the first completed period.".into());
-    }
+    let cursor = cache
+        .ok_or(JournalError::SourceChanged)?
+        .investment_cursor(session, frame, context, foundation, tick_hash)
+        .map_err(journal_error)?;
     let response = match subject {
-        Subject::Company(company) => reader
-            .company_decision_receipt(context.campaign, context.tick, company)
+        Subject::Company(company) => cursor
+            .company_decision_for_frame(
+                context.campaign,
+                context.tick,
+                company,
+                foundation,
+                tick_hash,
+            )
             .map(Some),
-        Subject::Site(site, _) => reader.site_company_decision_for_frame(
+        Subject::Site(site, _) => cursor.site_company_decision_for_frame(
             context.campaign,
             context.tick,
             site,
@@ -56,13 +62,17 @@ pub(crate) fn read(
             tick_hash,
         ),
     };
-    let report = match response {
-        Ok(Some(report)) => report,
-        Ok(None) => return Ok("No parent company was recorded for this site.".into()),
-        Err(ObserverEconomyError::SourceChanged) => return Err(JournalError::SourceChanged),
-        Err(error) => return Err(JournalError::Observer(error)),
+    let Some(report) = response.map_err(journal_error)? else {
+        return Ok("No parent company was recorded for this site.".into());
     };
     committed_reading(&report, context, foundation, tick_hash, subject)
+}
+
+fn journal_error(error: ObserverEconomyError) -> JournalError {
+    match error {
+        ObserverEconomyError::SourceChanged => JournalError::SourceChanged,
+        other => JournalError::Observer(other),
+    }
 }
 
 fn committed_reading(
@@ -204,11 +214,14 @@ fn site_processes(
     }
     for (i, row) in rows.by_ref().take(3).enumerate() {
         let label = labels.iter().find(|label| label.id == row.process);
-        let name = label.map_or_else(|| format!("Process {}", i + 1), |label| label.name.clone());
+        let name = label.map_or_else(
+            || format!("Process {}", i + 1),
+            |label| label.output_good.clone(),
+        );
         let unit = label.map_or("units", |label| label.unit.as_str());
         writeln!(
             text,
-            "{name} · {} of {} batches\n{} {unit} of accepted demand unmet",
+            "{name} · {} of {} batches\nAccepted demand unfilled · {} ({unit})",
             human_numbers::grouped(u128::from(row.produced_batches)),
             human_numbers::grouped(u128::from(row.capacity_batches)),
             human_numbers::grouped(u128::from(row.unmet_accepted_units))
@@ -304,8 +317,8 @@ mod tests {
         };
         let labels = [ProcessLabel {
             id: process,
-            name: "Produce food".into(),
-            unit: "food units".into(),
+            output_good: "Supplies".into(),
+            unit: "supplies bundle".into(),
         }];
         let site = reading(Subject::Site(kodiak, &labels));
         for line in [
@@ -316,8 +329,8 @@ mod tests {
             "Replacement only  0% · infeasible",
             "Modest expansion  20% · chosen",
             "Larger expansion  0% · no policy weight",
-            "Produce food · 400 of 400 batches",
-            "20,812 food units of accepted demand unmet",
+            "Supplies · 400 of 400 batches",
+            "Accepted demand unfilled · 20,812 (supplies bundle)",
             "P5 limits · this site",
             "Up to 22 expansion units",
             "Treasury funding limit  $352,000.00",

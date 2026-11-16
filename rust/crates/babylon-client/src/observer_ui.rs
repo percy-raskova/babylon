@@ -1196,22 +1196,12 @@ fn scroll_panel(
 
 fn pointer_buttons(
     buttons: Query<(&Interaction, &ObserverButton), Changed<Interaction>>,
-    ui: Res<ObserverUiState>,
-    session: Res<ObserverSession>,
-    view: Res<PrimaryView>,
-    opening: Option<Res<OpeningPresentation>>,
+    state: ShellControls,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            dispatch_button(
-                *button,
-                &ui,
-                &session,
-                *view,
-                opening.as_deref(),
-                &mut commands,
-            );
+            dispatch_button(*button, &state, &mut commands);
         }
     }
 }
@@ -1221,6 +1211,7 @@ fn button_visible(
     ui: &ObserverUiState,
     session: &ObserverSession,
     view: PrimaryView,
+    lens_row: Visibility,
 ) -> bool {
     if ui.splash_visible || ui.comparison_open || button.in_menu != ui.menu_open {
         return false;
@@ -1229,6 +1220,7 @@ fn button_visible(
         return true;
     }
     let map = view == PrimaryView::Map;
+    let map_lenses = lens_row == Visibility::Visible;
     match button.command {
         ObserverCommand::TogglePlay | ObserverCommand::Speed | ObserverCommand::StopOnDelivery => {
             ui.disclosure == Some(ObserverDisclosure::Time)
@@ -1241,13 +1233,9 @@ fn button_visible(
         | ObserverCommand::Lens(_)
         | ObserverCommand::MaterialLens(_)
         | ObserverCommand::ObserverCampaigns => {
-            map && ui.disclosure == Some(ObserverDisclosure::Lens)
+            map_lenses && ui.disclosure == Some(ObserverDisclosure::Lens)
         }
-        ObserverCommand::CycleGood(_) => {
-            map && !ui.history_open
-                && session.viewed_tick == session.durable_tick
-                && matches!(ui.lens, MapLens::Material { .. })
-        }
+        ObserverCommand::CycleGood(_) => map_lenses && matches!(ui.lens, MapLens::Material { .. }),
         ObserverCommand::PreviousPeriod | ObserverCommand::NextPeriod | ObserverCommand::Live => {
             ui.history_open
                 || session.viewed_tick < session.durable_tick
@@ -1257,7 +1245,7 @@ fn button_visible(
         ObserverCommand::EconomicDetails | ObserverCommand::Archive => {
             map && !ui.archive_open && !ui.history_open
         }
-        ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map,
+        ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map_lenses,
         _ => true,
     }
 }
@@ -1287,13 +1275,17 @@ fn menu_scope_visible(button: ObserverButton, opening: Option<&OpeningPresentati
 
 fn dispatch_button(
     button: ObserverButton,
-    ui: &ObserverUiState,
-    session: &ObserverSession,
-    view: PrimaryView,
-    opening: Option<&OpeningPresentation>,
+    state: &ShellControls,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
-    if button_visible(button, ui, session, view) && menu_scope_visible(button, opening) {
+    if button_visible(
+        button,
+        &state.ui,
+        &state.session,
+        *state.view,
+        state.lens_row_visibility(),
+    ) && menu_scope_visible(button, state.opening.as_deref())
+    {
         // The canonical observer command handler still admits or refuses the request.
         commands.write(button.command);
     }
@@ -1302,29 +1294,19 @@ fn dispatch_button(
 fn keyboard_button(
     event: On<ObserverKeyboardActivate>,
     buttons: Query<(&ObserverButton, &ObserverFocusTarget)>,
-    ui: Res<ObserverUiState>,
-    session: Res<ObserverSession>,
-    view: Res<PrimaryView>,
-    opening: Option<Res<OpeningPresentation>>,
+    state: ShellControls,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
     let Ok((button, target)) = buttons.get(event.entity) else {
         return;
     };
     if event.context == target.context {
-        dispatch_button(
-            *button,
-            &ui,
-            &session,
-            *view,
-            opening.as_deref(),
-            &mut commands,
-        );
+        dispatch_button(*button, &state, &mut commands);
     }
 }
 
 #[derive(SystemParam)]
-struct ShellFocusState<'w, 's> {
+struct ShellControls<'w, 's> {
     ui: Res<'w, ObserverUiState>,
     session: Res<'w, ObserverSession>,
     view: Res<'w, PrimaryView>,
@@ -1334,8 +1316,29 @@ struct ShellFocusState<'w, 's> {
     titles: Query<'w, 's, Entity, With<TitleMenuRoot>>,
 }
 
+impl ShellControls<'_, '_> {
+    fn lens_row_visibility(&self) -> Visibility {
+        if *self.view == PrimaryView::Map
+            && !self.ui.history_open
+            && !self.ui.archive_open
+            && !self.ui.splash_visible
+            && !self.ui.menu_open
+            && !self.ui.comparison_open
+            && (self.session.viewed_tick == self.session.durable_tick
+                || (self.session.viewed_tick < self.session.durable_tick
+                    && self.session.perspective == Perspective::FullObserver
+                    && !self.session.organizer_enabled
+                    && self.frame.for_session(&self.session).is_some()))
+        {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        }
+    }
+}
+
 fn sync_focus_policy(
-    state: ShellFocusState,
+    state: ShellControls,
     menus: Query<Entity, With<ObserverMenu>>,
     warnings: Query<Entity, With<ObserverWarningRoot>>,
     comparisons: Query<Entity, With<ComparisonPanel>>,
@@ -1384,20 +1387,22 @@ pub(crate) fn install_shell_focus_policy(app: &mut App) {
 }
 
 fn sync_focus_targets(
-    state: ShellFocusState,
+    state: ShellControls,
     mut targets: Query<(
         &mut ObserverFocusTarget,
         Option<&ObserverButton>,
         Option<&ObserverText>,
     )>,
 ) {
+    let map_lenses = state.lens_row_visibility();
     for (mut target, button, reading) in &mut targets {
         let mut next = target.clone();
         if let Some(button) = button {
-            next.available = button_visible(*button, &state.ui, &state.session, *state.view)
-                && menu_scope_visible(*button, state.opening.as_deref())
-                && observer_controls::availability(button.command, &state.session)
-                    == ControlAvailability::Enabled;
+            next.available =
+                button_visible(*button, &state.ui, &state.session, *state.view, map_lenses)
+                    && menu_scope_visible(*button, state.opening.as_deref())
+                    && observer_controls::availability(button.command, &state.session)
+                        == ControlAvailability::Enabled;
         } else if let Some(reading) = reading {
             let scope_visible = !state.ui.splash_visible && !state.ui.comparison_open;
             next.available = scope_visible
@@ -1621,30 +1626,33 @@ type DisclosureRows<'w, 's> = Query<
     )>,
 >;
 
-fn paint_view_controls(
-    view: Res<PrimaryView>,
-    ui: Res<ObserverUiState>,
-    state: Res<ObserverSession>,
-    mut rows: DisclosureRows,
-) {
-    if !(view.is_changed() || ui.is_changed() || state.is_changed()) {
+fn paint_view_controls(state: ShellControls, mut rows: DisclosureRows) {
+    let ShellControls {
+        view,
+        ui,
+        session,
+        frame,
+        ..
+    } = &state;
+    if !(view.is_changed() || ui.is_changed() || session.is_changed() || frame.is_changed()) {
         return;
     }
+    let map_lenses = state.lens_row_visibility() == Visibility::Visible;
     for (mut node, map, circuit, drawer, history, evidence) in &mut rows {
         let visible = if let Some(drawer) = drawer {
             ui.disclosure == Some(drawer.0)
                 && !ui.menu_open
                 && !ui.splash_visible
                 && !ui.comparison_open
-                && (drawer.0 != ObserverDisclosure::Lens || *view == PrimaryView::Map)
+                && (drawer.0 != ObserverDisclosure::Lens || map_lenses)
         } else if map.is_some() {
-            *view == PrimaryView::Map && !ui.history_open && state.viewed_tick == state.durable_tick
+            map_lenses
         } else if circuit.is_some() {
-            *view == PrimaryView::Production
+            **view == PrimaryView::Production
                 && !ui.history_open
-                && state.viewed_tick == state.durable_tick
+                && session.viewed_tick == session.durable_tick
         } else if history.is_some() {
-            ui.history_open || state.viewed_tick < state.durable_tick
+            ui.history_open || session.viewed_tick < session.durable_tick
         } else {
             evidence.is_some() && ui.evidence_open
         };
@@ -2930,7 +2938,8 @@ pub(crate) mod tests {
                 },
                 &ui,
                 &session,
-                PrimaryView::Map
+                PrimaryView::Map,
+                Visibility::Hidden
             ));
             assert!(!button_visible(
                 ObserverButton {
@@ -2939,7 +2948,8 @@ pub(crate) mod tests {
                 },
                 &ui,
                 &session,
-                PrimaryView::Map
+                PrimaryView::Map,
+                Visibility::Hidden
             ));
         }
     }
@@ -3162,6 +3172,71 @@ pub(crate) mod tests {
                 .get::<ObserverFocusTarget>(target)
                 .expect("the fixture world holds the addressed component")
                 .available
+        );
+    }
+
+    #[test]
+    fn historical_full_observer_map_keeps_the_lens_row_and_money_keyboard_dispatch() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut app, window, _) = focused_shell(false, ObserverCommand::History);
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| {
+                spawn_footer(&mut commands);
+                spawn_drawers(&mut commands);
+            })
+            .expect("the map controls are installed");
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        session.viewed_tick = 4;
+        session.durable_tick = 5;
+        let historical = crate::observer_io::tests::snapshot_with_event(&session, "delivery", 4);
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure = None;
+        app.add_systems(Update, paint_view_controls);
+        app.update();
+        let row = app
+            .world_mut()
+            .query_filtered::<Entity, With<MapLensControls>>()
+            .single(app.world())
+            .expect("the map has one lens row");
+        assert_eq!(
+            app.world().get::<Node>(row).expect("lens row").display,
+            Display::None
+        );
+        app.world_mut().resource_mut::<ObserverFrame>().0 = Some(historical);
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(row).expect("lens row").display,
+            Display::Flex
+        );
+        let money = app
+            .world_mut()
+            .query::<(Entity, &ObserverButton)>()
+            .iter(app.world())
+            .find_map(|(entity, button)| {
+                (button.command == ObserverCommand::Money).then_some(entity)
+            })
+            .expect("the drawer offers Money");
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure =
+            Some(ObserverDisclosure::Lens);
+        app.update();
+        app.update();
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(money, FocusCause::Navigated);
+        focus_key(&mut app, window, KeyCode::Enter);
+        assert_eq!(
+            app.world_mut()
+                .resource_mut::<Messages<ObserverCommand>>()
+                .drain()
+                .collect::<Vec<_>>(),
+            [ObserverCommand::Money]
+        );
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = true;
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(row).expect("lens row").display,
+            Display::None
         );
     }
 
@@ -3455,6 +3530,7 @@ pub(crate) mod tests {
             MinimalPlugins,
             crate::test_support::HeadlessVisibilityPlugin,
         ))
+        .init_resource::<ObserverFrame>()
         .insert_resource(ObserverSession::new(
             babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
         ))
@@ -3521,6 +3597,7 @@ pub(crate) mod tests {
             ..default()
         })
         .insert_resource(PrimaryView::Map)
+        .init_resource::<ObserverFrame>()
         .insert_resource(ObserverSession::new(
             babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
         ))

@@ -121,6 +121,7 @@ impl CapturedRuntimeCheckpoint {
         // Cold callers supply no borrowed state/receipt witness. Keep the owned
         // complete proof for runtime restore; Archive can then release that proof.
         Ok(StoredMaterialTick {
+            company_draws: stored.company_draws,
             identity: stored.identity,
             envelope: stored.envelope,
             graph: stored.graph,

@@ -1,8 +1,9 @@
 //! Load a single authenticated journal reading off the UI thread.
 use super::reading::{Reading, Scope};
 use crate::cli;
-use crate::company_investment::ProcessLabel;
+use crate::company_investment::{self, ProcessLabel, Subject};
 use crate::observer::{ObserverSession, Perspective};
+use crate::observer_io::ObservationCache;
 use crate::observer_ui::ObserverUiState;
 use crate::production::{
     navigation, PrimaryView, ProductionNavigation, ProductionObservation, ProductionReadingSection,
@@ -77,7 +78,7 @@ impl Selection {
                         .filter_map(|p| {
                             Some(ProcessLabel {
                                 id: ProcessId::from_bytes(cli::identity_bytes(&p.id)?),
-                                name: p.name.clone(),
+                                output_good: p.output_good.clone(),
                                 unit: p.output_unit.clone(),
                             })
                         })
@@ -161,7 +162,7 @@ pub(in crate::production) fn update(
     navigation: Res<ProductionNavigation>,
     primary: Res<PrimaryView>,
     ui: Res<ObserverUiState>,
-    time: Res<Time<Real>>,
+    (time, cache): (Res<Time<Real>>, Option<Res<ObservationCache>>),
     mut view: ResMut<AccountsView>,
     mut loader: Local<Loader>,
 ) {
@@ -176,6 +177,25 @@ pub(in crate::production) fn update(
             view.select(selected);
             loader.retry_at = 0.0;
             loader.delay = 1.0;
+        }
+    }
+    if let Selection::Period(scope) = &view.selection {
+        if let Reading::Investment(labels) = &scope.reading {
+            if !matches!(view.status, Status::Finished(_)) {
+                // Previously requested cash accounts may still be waiting on PostgreSQL.
+                let result = company_investment::read(
+                    cache.as_deref(),
+                    &observation.state,
+                    &observation.frame,
+                    &scope.context,
+                    scope.foundation,
+                    scope.tick_hash,
+                    Subject::Site(scope.site, labels),
+                );
+                let scope = scope.clone();
+                view.receive(&scope, result);
+            }
+            return;
         }
     }
     if let Some((_, task)) = &mut loader.pending {
@@ -199,6 +219,6 @@ pub(in crate::production) fn update(
     let requested = scope.clone();
     loader.pending = Some((
         scope.clone(),
-        IoTaskPool::get().spawn(async move { requested.read() }),
+        IoTaskPool::get().spawn(async move { requested.read_accounts() }),
     ));
 }

@@ -126,6 +126,14 @@ fn money_journal_retains_thirteen_periods_and_rebuilds_authenticated_history() {
     super::payment_flows::restricted(&preview, campaign);
     super::recorded_labor::restricted(&preview, campaign);
     let mut cursor = publish_fourteen_periods(&mut runtime, &writer, &observer, campaign);
+    let mut preview_cursor = cursor.clone();
+    let preview_frame = preview
+        .snapshot_with_cursor(campaign, 1, &mut preview_cursor)
+        .expect("restricted snapshot");
+    assert!(
+        preview_frame.production.is_none() && preview_cursor.is_none(),
+        "a restricted observation cannot retain a full observer decision capability"
+    );
     assert_eq!(
         observer.published_company_period_statements(campaign, 14),
         Err(JournalError::CompanyBooksNotCaptured)
@@ -430,7 +438,7 @@ fn national_money_journal_matches_nonzero_source_and_sql_aggregation() {
         campaign,
         &mut returning_session,
     );
-    super::payment_flows::comparison(&observer, campaign);
+    super::payment_flows::comparison(&mut owner, &observer, campaign);
     super::payment_flows::check_company_rebuild(&mut owner, &observer, &writer, campaign);
     super::site_accounting_sql::stocks(&runtime, &observer, campaign, 1);
     super::site_accounting_sql::national(

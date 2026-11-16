@@ -19,6 +19,7 @@ use crate::committed_tick_envelope::CommittedTickRowFamilies;
 use crate::foundation::{CampaignFoundation, FoundationContentBundle};
 use crate::identity::CampaignId;
 use crate::material_envelope::{CommittedMaterialTickAttestation, CommittedMaterialTickEnvelope};
+use crate::observer_reader::CompanyDraws;
 use crate::runtime::RustPersistenceRuntimeError;
 use crate::semantic_batches::StableGraphRowRef;
 use crate::stored_tick;
@@ -1745,6 +1746,7 @@ impl StoredMaterialEnvelope {
 
 /// A fully authenticated committed material tick, never a partial checkpoint read.
 pub(crate) struct StoredMaterialTick<'w> {
+    pub(crate) company_draws: CompanyDraws,
     pub(crate) identity: IdentifiedMaterialTick,
     pub(super) envelope: StoredMaterialEnvelope,
     pub(crate) graph: babylon_graph::stable_state::StableGraphState,
@@ -2285,11 +2287,12 @@ impl CapturedMaterialTick {
             &mut |row: StableGraphRowRef<'_>| row.encode(),
         )?;
         let events = self.events.admit()?;
+        let (choice_receipt, company_draws) = self.choices.admit()?;
         let families = CommittedTickRowFamilies {
             graph: graph_rows,
             state: semantic_batches::compose_material_state_rows(&material)?,
             event: events.encoded,
-            choice_receipt: self.choices.admit()?,
+            choice_receipt,
             checkpoint,
             archive_dirty_receipt: self.archive.admit()?,
         };
@@ -2306,6 +2309,7 @@ impl CapturedMaterialTick {
             return Err(MaterialRuntimeError::InvalidCheckpoint);
         }
         Ok(StoredMaterialTick {
+            company_draws,
             identity,
             envelope,
             graph,
@@ -2371,7 +2375,7 @@ impl CapturedMaterialTick {
             graph: graph_rows,
             state: semantic_batches::compose_material_state_rows(&material)?,
             event: events.encoded,
-            choice_receipt: self.choices.admit()?,
+            choice_receipt: self.choices.admit()?.0,
             checkpoint,
             archive_dirty_receipt: self.archive.admit()?,
         };

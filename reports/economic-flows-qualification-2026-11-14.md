@@ -38,6 +38,31 @@ named readings fit beside the roster at 1366 × 768. [Wayne and Cook food report
 The [artist guide](../design/bevy-assets/README.md#replace-the-economic-map-symbols)
 gives the tile order and the launch command for a Blender render.
 
+### Wayne's workplaces at five and twenty years
+
+The orange factory, blue shop awning and gold pylon each opened a
+different list in the restored game. At both dates, the three lists
+contained 18 producer groups, three shops and two utilities. Choosing a
+site from each list opened its circuit. The database identified the three
+selections as Wayne household services, distribution and energy.
+
+The triangle recorded the shortfall for each period. At the five-year
+close, Wayne's mapped households needed 1,774,097 parcels and ate 21.
+At twenty years they needed 1,731,679 and ate 14.
+[Wayne's workplaces and food shortage at twenty years](economic-flows-qualification-2026-11-14-assets/wayne-county-workplaces-year-twenty.png)
+
+| Native game on the RTX 3060 | Five years | Twenty years |
+| --- | ---: | ---: |
+| Fresh game and runtime to authenticated observer | 101.17 seconds | 331.75 seconds |
+| Fresh game and runtime to populated workplace map | 108.51 seconds | 339.08 seconds |
+| Highest sampled game, runtime and database memory | 3,936,034,816 bytes | 3,916,570,624 bytes |
+| Successful memory samples | 199 | 510 |
+
+The five-year check reopened the same restored database after an earlier
+shop visit. The twenty-year check used the first game process on its new
+restore. The timings begin after the database restore. Memory samples
+cover reopening and selecting workplaces at these two dates.
+
 ### Where households missed meals in period 4
 
 <!-- vale Vale.Spelling = NO -->
@@ -95,7 +120,7 @@ records its purchases, stocks and consumption.
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The local rebuild recovered the September 8 continental state from seven publisher updates. Full distances still depend on verifying the regional truck graph and routing its 83 terminals. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
 | International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
-| National qualification | The national database used 741,267,123 bytes at five years and 2,389,595,827 bytes at twenty years. Each portable save reopened in a second database with the same world and financial records. | The latest first turn showed Wayne’s three figures in 35.337–35.588 seconds against a target of 30 seconds. Memory measurements from a running game cover specific periods. |
+| National qualification | The national database used 741,267,123 bytes at five years and 2,389,595,827 bytes at twenty years. Each portable save reopened in a second database with the same world and financial records. The populated native map opened at both dates. | The first usable turn exceeded the 30-second target. The twenty-year observer took over five minutes to reopen. The memory samples cover the two closing dates. |
 
 The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 

@@ -20,6 +20,7 @@ use crate::production_brief;
 use crate::production_brief::DependencyDirection;
 use crate::production_layout;
 use crate::production_layout::ProductionLayout;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 use babylon_persistence::production_observation::{ProductionInput, ProductionRoute};
@@ -3120,4 +3121,201 @@ fn production_subject_replaces_only_governed_national_name_tokens() {
         assert_eq!(snapshot.sites[0].name, authored);
         assert_eq!(snapshot.sites[0].function, "capital_goods");
     }
+}
+
+#[test]
+fn household_receipt_opens_from_zero_purchase_and_returns_to_its_retailer() {
+    use bevy::input_focus::InputFocus;
+    let ReadingsFocusFixture {
+        mut app,
+        window,
+        body,
+        reading,
+        ..
+    } = readings_focus_app();
+    let context = app.world().resource::<ObserverSession>().context();
+    let principal = FinalDemandPrincipalId::from_bytes([0x17; 32]);
+    let retailer = open_retailer_with_unfulfilled_food(&mut app);
+    let world = app.world_mut();
+    let (entity, open) = food_button(world, principal);
+    world
+        .resource_mut::<InputFocus>()
+        .set(entity, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Enter);
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().household,
+        Some(principal)
+    );
+    assert_eq!(focused_customer_label(&app), "Back to retailer");
+    readings_key(&mut app, window, KeyCode::PageDown);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("reading scroll")
+            .0
+            .y
+            > 0.0
+    );
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(reading, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Backspace);
+    let nav = app.world().resource::<ProductionNavigation>();
+    assert_eq!(nav.selected_site.as_ref(), Some(&retailer));
+    assert!(nav.details_open && nav.household.is_none());
+    let label = focused_customer_label(&app);
+    app.world_mut()
+        .resource_mut::<ObserverFrame>()
+        .set_changed();
+    app.update();
+    app.update();
+    assert_eq!(
+        focused_customer_label(&app),
+        label,
+        "a refreshed frame preserves its customer"
+    );
+    assert!(label.starts_with("Open household receipt · 17171717"));
+    assert!(label.contains("/ food\n"), "return to the ordered good");
+    let row = app
+        .world()
+        .resource::<InputFocus>()
+        .get()
+        .expect("returned row");
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(reading, FocusCause::Navigated);
+    app.world_mut().entity_mut(row).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert_eq!(focused_customer_label(&app), "Back to retailer");
+    readings_key(&mut app, window, KeyCode::Enter);
+    assert_eq!(focused_customer_label(&app), label);
+    let wrong_retailer = ProductionCommand::Household {
+        site_id: "meals".into(),
+        principal,
+        context,
+    };
+    send_command(&mut app, wrong_retailer);
+    assert!(app
+        .world()
+        .resource::<ProductionNavigation>()
+        .household
+        .is_none());
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .organizer_enabled = true;
+    send_command(&mut app, open.clone());
+    assert!(app
+        .world()
+        .resource::<ProductionNavigation>()
+        .household
+        .is_none());
+    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+    session.organizer_enabled = false;
+    session.viewed_tick = 2;
+    send_command(&mut app, open);
+    assert!(app
+        .world()
+        .resource::<ProductionNavigation>()
+        .household
+        .is_none());
+}
+
+fn open_retailer_with_unfulfilled_food(app: &mut App) -> String {
+    use babylon_persistence::CompletedHouseholdBalance;
+    app.add_systems(
+        Update,
+        super::customers::rebuild_rows.after(navigation::navigate),
+    );
+    let context = app.world().resource::<ObserverSession>().context();
+    let mut snapshot = crate::production_freight::tests::aid_fixture();
+    let row = &mut snapshot.household_accounts[0];
+    row.demand_principal_id = "17".repeat(32);
+    row.completed = Some(CompletedHouseholdBalance {
+        population_basis: None,
+        period: 1,
+        opening_stock: 2,
+        received: 0,
+        support_granted: 0,
+        support_dispatched: 0,
+        required: 4,
+        consumed: 2,
+        unmet: 2,
+        closing_stock: 0,
+        desired: 4,
+        requested: 4,
+        admitted: 3,
+        fulfilled: 0,
+        expired: 3,
+    });
+    let retailer = row.retailer_site_id.clone();
+    let mut materials = row.clone();
+    materials.good = "materials".into();
+    materials.good_id = "materials".into();
+    snapshot.household_accounts.insert(0, materials);
+    app.world_mut()
+        .resource_mut::<ObserverFrame>()
+        .0
+        .as_mut()
+        .expect("fixture frame")
+        .production = Some(snapshot);
+    send_command(
+        app,
+        ProductionCommand::Select {
+            site_id: retailer.clone(),
+            context,
+        },
+    );
+    send_command(
+        app,
+        ProductionCommand::Reading(ProductionReadingSection::Flow),
+    );
+    retailer
+}
+
+fn food_button(
+    world: &mut World,
+    principal: FinalDemandPrincipalId,
+) -> (Entity, ProductionCommand) {
+    world
+        .query::<(Entity, &ProductionButton, &Children)>()
+        .iter(world)
+        .find_map(|(entity, button, children)| {
+            let ProductionCommand::Household {
+                principal: customer,
+                ..
+            } = &button.0
+            else {
+                return None;
+            };
+            let food = children
+                .iter()
+                .filter_map(|child| world.get::<Text>(child))
+                .any(|text| text.0.contains("/ food\n"));
+            (food && *customer == principal).then_some((entity, button.0.clone()))
+        })
+        .expect("a zero-purchase household has its own control")
+}
+
+/// Check the same accessible button node and its text child exposed by the native UI tree.
+fn focused_customer_label(app: &App) -> String {
+    use bevy::a11y::AccessibilityNode;
+    use bevy::input_focus::InputFocus;
+    let world = app.world();
+    let focused = world
+        .resource::<InputFocus>()
+        .get()
+        .expect("retailer control focus");
+    let node = world
+        .get::<AccessibilityNode>(focused)
+        .expect("focused AccessKit node");
+    assert_eq!(format!("{:?}", node.role()), "Button");
+    let visible = world
+        .get::<Children>(focused)
+        .expect("button content")
+        .iter()
+        .find_map(|e| world.get::<Text>(e))
+        .expect("visible label");
+    assert_eq!(node.label(), Some(visible.0.as_str()));
+    visible.0.clone()
 }

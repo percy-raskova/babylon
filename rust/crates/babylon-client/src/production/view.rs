@@ -1,8 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::accounting::AccountsView;
+use super::customers::{CustomerControl, Receipt};
 use super::source_codes::{self, Codes};
-use super::{accounting, navigation};
+use super::{accounting, customers, navigation};
+use babylon_material_circuit::FinalDemandPrincipalId;
 
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
@@ -13,11 +15,13 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
 
 use bevy::input_focus::tab_navigation::TabGroup;
+use bevy::input_focus::InputFocus;
 
 use bevy::light::CascadeShadowConfigBuilder;
 
 use bevy::prelude::*;
 
+use bevy::text::LineBreak;
 use bevy::window::PrimaryWindow;
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
@@ -54,6 +58,7 @@ pub enum PrimaryView {
 pub struct ProductionNavigation {
     pub selected_site: Option<String>,
     pub selected_process: Option<String>,
+    pub(super) household: Option<FinalDemandPrincipalId>,
     pub(crate) county_geoid: Option<String>,
     pub(crate) county_open: bool,
     pub(super) cohort_page: usize,
@@ -174,6 +179,11 @@ pub enum ProductionCommand {
     Page {
         kind: ProductionPage,
         page: usize,
+        context: ObservationContext,
+    },
+    Household {
+        site_id: String,
+        principal: FinalDemandPrincipalId,
         context: ObservationContext,
     },
     Process {
@@ -552,8 +562,18 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
         ))
         .with_children(|details| {
             details.spawn((
+                customers::Rows,
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(4),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+            ));
+            details.spawn((
                 text("", 15.0, theme::PAPER),
                 ProductionDetails,
+                TextLayout::linebreak(LineBreak::WordOrCharacter),
                 ObserverFocusTarget::reading(None),
                 Node {
                     flex_shrink: 0.0,
@@ -608,8 +628,12 @@ pub(crate) fn orbit_input(
     }
 }
 
+type ReceiptFocusTargets = Or<(With<CustomerControl>, With<ProductionDetails>)>;
+
 #[derive(SystemParam)]
-pub(crate) struct ProductionInputContext<'w> {
+pub(crate) struct ProductionInputContext<'w, 's> {
+    focus: Option<Res<'w, InputFocus>>,
+    receipt_targets: Query<'w, 's, (), ReceiptFocusTargets>,
     observation: ProductionObservation<'w>,
     navigation: Res<'w, ProductionNavigation>,
     claim: Option<Res<'w, ObserverKeyboardClaim>>,
@@ -627,6 +651,8 @@ pub(crate) fn inputs(
         return;
     }
     let ProductionInputContext {
+        focus,
+        receipt_targets,
         observation,
         navigation,
         claim,
@@ -640,6 +666,17 @@ pub(crate) fn inputs(
         .as_ref()
         .is_some_and(|claim| claim.blocks_world_shortcuts())
     {
+        if *view == PrimaryView::Production
+            && navigation.details_open
+            && navigation.household.is_some()
+            && keys.just_pressed(KeyCode::Backspace)
+            && focus
+                .as_ref()
+                .and_then(|focus| focus.get())
+                .is_some_and(|e| receipt_targets.contains(e))
+        {
+            events.write(ProductionCommand::Back);
+        }
         return;
     }
     if [
@@ -679,6 +716,7 @@ pub(crate) fn production_command_context(
     match command {
         ProductionCommand::Select { context, .. }
         | ProductionCommand::Focus { context, .. }
+        | ProductionCommand::Household { context, .. }
         | ProductionCommand::Page { context, .. }
         | ProductionCommand::Process { context, .. } => Some(context),
         _ => None,
@@ -795,6 +833,7 @@ pub(crate) struct InspectorScrollScope {
     perspective: Perspective,
     site: Option<String>,
     section: ProductionReadingSection,
+    household: Option<FinalDemandPrincipalId>,
 }
 
 /// New subjects start at their brief; a new period preserves the reader's place.
@@ -809,6 +848,7 @@ pub(crate) fn reset_inspector_scroll(
         perspective: state.perspective,
         site: navigation.selected_site.clone(),
         section: navigation.reading_section,
+        household: navigation.household,
     };
     if previous.as_ref() == Some(&scope) {
         return;
@@ -1584,7 +1624,9 @@ pub(crate) fn paint_buttons(
             ProductionCommand::Process { process_id, .. } => {
                 navigation.selected_process.as_ref() == Some(process_id)
             }
-            ProductionCommand::Back | ProductionCommand::Page { .. } => false,
+            ProductionCommand::Back
+            | ProductionCommand::Page { .. }
+            | ProductionCommand::Household { .. } => false,
         };
         // Labels can overlap bright geometry in the flat view. Keep their
         // text surface opaque and carry interaction feedback in the border.
@@ -1783,21 +1825,33 @@ pub(crate) type ReadingFocusTargets<'w, 's> = Query<
     Or<(With<ProductionBrief>, With<ProductionDetails>)>,
 >;
 
+#[derive(SystemParam)]
+pub(crate) struct ReadingSources<'w> {
+    accounts: Option<Res<'w, AccountsView>>,
+    codes: Option<Res<'w, Codes>>,
+    household: Option<Res<'w, Receipt>>,
+}
+
 pub(crate) fn paint_readings(
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
-    accounts: Option<Res<AccountsView>>,
-    codes: Option<Res<Codes>>,
+    sources: ReadingSources,
     mut details: Query<ReadingText, ReadingMarkers>,
     mut reading_targets: ReadingFocusTargets,
     mut last_context: Local<Option<ObservationContext>>,
 ) {
+    let ReadingSources {
+        accounts,
+        codes,
+        household,
+    } = sources;
     let ProductionObservation { frame, state } = observation;
     let context = state.context();
     if navigation.is_changed()
         || frame.is_changed()
         || last_context.as_ref() != Some(&context)
         || accounts.as_ref().is_some_and(DetectChanges::is_changed)
+        || household.as_ref().is_some_and(DetectChanges::is_changed)
         || codes.as_ref().is_some_and(DetectChanges::is_changed)
     {
         *last_context = Some(context.clone());
@@ -1818,6 +1872,17 @@ pub(crate) fn paint_readings(
         for (mut text, brief, subject, headline) in &mut details {
             if subject.is_some() || headline.is_some() {
                 text.0 = match (snapshot, site) {
+                    (_, Some(site))
+                        if navigation.details_open
+                            && navigation.household.is_some()
+                            && accounting::authorized(&state) =>
+                    {
+                        if subject.is_some() {
+                            "Household period receipt".into()
+                        } else {
+                            format!("Retailer · {}", readings::site_subject(site))
+                        }
+                    }
                     (Some(snapshot), Some(site)) if navigation.details_open => {
                         if subject.is_some() {
                             readings::site_subject(site)
@@ -1831,6 +1896,10 @@ pub(crate) fn paint_readings(
             }
             text.0 = match (snapshot, site, brief.is_some()) {
                 (Some(snapshot), Some(site), true) => production_brief::describe_brief(site, snapshot),
+                (_, Some(_), false) if navigation.details_open && navigation.household.is_some()
+                    && accounting::authorized(&state) => {
+                    household.as_deref().map_or("Reading the household receipt…", Receipt::text).to_owned()
+                }
                 (Some(snapshot), Some(site), false) if navigation.details_open => {
                     let mut reading = readings::describe(site, snapshot, navigation.reading_section, accounts.as_deref());
                     if navigation.reading_section == ProductionReadingSection::Sources {
@@ -1858,6 +1927,7 @@ impl Plugin for ProductionPlugin {
             .init_resource::<ProductionNavigation>()
             .init_resource::<AccountsView>()
             .init_resource::<Codes>()
+            .init_resource::<Receipt>()
             .init_resource::<ProductionOrbit>()
             .init_resource::<ObserverFeedback>()
             .add_message::<ProductionCommand>()
@@ -1891,6 +1961,8 @@ impl Plugin for ProductionPlugin {
                     paint_labels,
                     accounting::update,
                     source_codes::update,
+                    customers::rebuild_rows,
+                    customers::update,
                     paint_readings,
                     paint_disclosure,
                     paint_buttons,

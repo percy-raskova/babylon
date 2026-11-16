@@ -357,10 +357,17 @@ the adjustments for internal sales, contributions, dividends and margins.
 A campaign captured before companies existed retains its original owners.
 
 To follow a household, choose **By Account**, select its household cash
-account and open **Household period receipt**. The receipt gives the opening
-and closing population, wages earned and paid, food consumed, services
-delivered, public support received and unpaid provisioning hours. Compare
-two periods to see how a birth or death changes food needs.
+account and open **Household period receipt**. You can also choose a retailer
+in **Circuit**, open **Readings**, choose **Flow** and open a customer’s
+household receipt. This route works even when the retailer sold that group
+nothing. **Back to retailer** returns to the customer list.
+
+For each good, compare the quantities requested, affordable and bought.
+The expired quantity shows how much of the funded order the retailer failed
+to deliver. Opening and closing pantry stocks show what the household had
+left to eat when deliveries fell.
+The same receipt records population, wages, services, public support and
+unpaid provisioning hours.
 
 From `rust/`, use the household account's 64-character ID to read that close.
 

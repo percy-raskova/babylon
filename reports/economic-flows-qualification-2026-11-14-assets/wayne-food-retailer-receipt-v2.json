@@ -1,0 +1,61 @@
+{
+  "scenario": "national-economy",
+  "seed": 319,
+  "campaign": "5efafb84-10df-41ea-9451-51b8c7e2020d",
+  "quantity_unit": "person-period food parcels",
+  "sources": "Ordinary PostgreSQL household reports checked against authenticated demand and consumption receipts; period-opening pantry checked against the preceding consumption receipt.",
+  "period_2": {
+    "version": 2,
+    "household": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+    "residence": "county:26163",
+    "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+    "tick_content_sha256": "f04238e75909adcaa522a4970789699d0b8c70983dd55ea36448db29496a65fa",
+    "world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67",
+    "receipts_sha256": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272",
+    "food": {
+      "admitted": 0,
+      "closing_stock": 0,
+      "consumed": 0,
+      "expired": 0,
+      "good": "food",
+      "opening_stock": 0,
+      "purchased": 0,
+      "requested": 8,
+      "required": 4,
+      "retailer_name": "Wayne County: distribution_transport (5)",
+      "retailer_site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+      "unit": "person-period food parcel",
+      "unmet": 4
+    },
+    "restricted_household_denied": true,
+    "goods_settlement_rows": 0,
+    "goods_settled_micros": "0"
+  },
+  "period_4": {
+    "version": 2,
+    "household": "27e21622a0782bb9bf5fb73ff58b5e47d6da986eb1576b65548fba68e84817f4",
+    "residence": "county:26163",
+    "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+    "tick_content_sha256": "2cbbf44bed8df70384b6aeb0ea5c6e441339c05e365d131956a8a9a468507996",
+    "world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629",
+    "receipts_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58",
+    "food": {
+      "admitted": 62904,
+      "closing_stock": 0,
+      "consumed": 20536,
+      "expired": 62904,
+      "good": "food",
+      "opening_stock": 20536,
+      "purchased": 0,
+      "requested": 62904,
+      "required": 41720,
+      "retailer_name": "Wayne County: distribution_transport (5)",
+      "retailer_site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+      "unit": "person-period food parcel",
+      "unmet": 21184
+    },
+    "restricted_household_denied": true,
+    "domestic_budgets_with_funded_food_order_and_zero_delivery": 343
+  },
+  "screenshot_sha256": "8c0b04e2f3d1d96e82bf35461b75094f416dcf24c849566c8b69bba1542cab9e"
+}

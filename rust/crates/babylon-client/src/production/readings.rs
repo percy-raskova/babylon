@@ -3,6 +3,7 @@
 use super::accounting::AccountsView;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
+use babylon_persistence::ProductionHouseholdAccount;
 
 use std::fmt::Write as _;
 
@@ -21,27 +22,44 @@ fn function_label(site: &ProductionSite) -> &str {
         .map_or(site.function.as_str(), |function| function.label())
 }
 
+/// Recognize only the two national source label forms carrying a named economic function.
+fn national_site_name(name: &str) -> Option<(EconomicFunction, String)> {
+    if let Some((key, suffix)) = name
+        .strip_prefix("representative ")
+        .and_then(|value| value.split_once(" — "))
+    {
+        let function = EconomicFunction::from_source_key(key)?;
+        return Some((
+            function,
+            format!("representative {} — {suffix}", function.label()),
+        ));
+    }
+    let (county, token) = name.rsplit_once(": ")?;
+    let (key, ownership) = token.rsplit_once(" (")?;
+    if !matches!(ownership, "1)" | "2)" | "3)" | "5)") {
+        return None;
+    }
+    let function = EconomicFunction::from_source_key(key)?;
+    Some((
+        function,
+        format!("{county}: {} ({ownership}", function.label()),
+    ))
+}
+
+pub(crate) fn retailer_name(captured: &str) -> String {
+    national_site_name(captured.trim_end_matches(" cohort"))
+        .map_or_else(|| captured.to_owned(), |(_, label)| label)
+}
+
 pub(crate) fn site_subject(site: &ProductionSite) -> String {
     let name = site.name.trim_end_matches(" cohort");
     let Some(function) = EconomicFunction::from_source_key(&site.function) else {
         return name.to_owned();
     };
-    let key = function.source_key();
+    if let Some((_, label)) = national_site_name(name).filter(|(found, _)| *found == function) {
+        return label;
+    }
     let label = function.label();
-    if let Some(suffix) = name
-        .strip_prefix("representative ")
-        .and_then(|value| value.strip_prefix(key))
-        .and_then(|value| value.strip_prefix(" — "))
-    {
-        return format!("representative {label} — {suffix}");
-    }
-    if let Some((county, token)) = name.rsplit_once(": ") {
-        if let Some(ownership) = token.strip_prefix(key) {
-            if matches!(ownership, " (1)" | " (2)" | " (3)" | " (5)") {
-                return format!("{county}: {label}{ownership}");
-            }
-        }
-    }
     if name == label {
         name.to_owned()
     } else {
@@ -698,6 +716,35 @@ fn describe_labor_accounts(
     }
 }
 
+pub(super) fn customer_summary(row: &ProductionHouseholdAccount) -> String {
+    let mut value = String::new();
+    writeln!(
+        value,
+        "HOUSEHOLD GOODS / {} / {}\n{} households · {} persons · {} {} needed each period",
+        row.location,
+        row.good,
+        grouped(row.household_count),
+        grouped(row.person_count),
+        grouped(row.required_per_period),
+        row.unit
+    )
+    .expect("String write");
+    if let Some(done) = &row.completed {
+        writeln!(
+                value,
+                "{} purchased · {} support received · {} support sent · {} consumed · {} unmet · {} in pantry",
+                grouped(done.received),
+                grouped(done.support_granted),
+                grouped(done.support_dispatched),
+                grouped(done.consumed),
+                grouped(done.unmet),
+                grouped(done.closing_stock)
+            )
+            .expect("String write");
+    }
+    value.trim_end().to_owned()
+}
+
 fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &ProductionSnapshot) {
     let has_households = snapshot
         .household_accounts
@@ -709,36 +756,6 @@ fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &Pro
             .any(|row| row.provider_site_ids.contains(&site.id));
     if site.county_geoid().is_some() && has_households {
         value.push_str("Regional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.\n");
-    }
-    for row in snapshot
-        .household_accounts
-        .iter()
-        .filter(|r| r.retailer_site_id == site.id)
-    {
-        writeln!(
-            value,
-            "HOUSEHOLD GOODS / {} / {}\n{} households · {} persons · {} {} needed each period",
-            row.location,
-            row.good,
-            grouped(row.household_count),
-            grouped(row.person_count),
-            grouped(row.required_per_period),
-            row.unit
-        )
-        .expect("String write");
-        if let Some(done) = &row.completed {
-            writeln!(
-                value,
-                "{} purchased · {} support received · {} support sent · {} consumed · {} unmet · {} in pantry",
-                grouped(done.received),
-                grouped(done.support_granted),
-                grouped(done.support_dispatched),
-                grouped(done.consumed),
-                grouped(done.unmet),
-                grouped(done.closing_stock)
-            )
-            .expect("String write");
-        }
     }
     for row in snapshot
         .household_service_accounts
@@ -871,8 +888,8 @@ mod aid_reading_tests {
             .iter()
             .find(|s| s.id == "panels")
             .expect("the fixture holds the searched element");
-        let mut text = String::new();
-        describe_households(&mut text, site, &snapshot);
+        assert_eq!(snapshot.household_accounts[0].retailer_site_id, site.id);
+        let text = customer_summary(&snapshot.household_accounts[0]);
         assert!(text.contains("3 purchased · 2 support received · 4 support sent · 4 consumed · 0 unmet · 2 in pantry"));
         assert!(text.contains("4 households · 4 persons"));
     }

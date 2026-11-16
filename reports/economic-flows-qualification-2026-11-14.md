@@ -2,19 +2,19 @@
 
 Use the [local setup guide](../SETUP_GUIDE.md#inspect-a-company-or-freight-route) to open a national campaign and follow a payment from a county to a company’s books. The [household campaign](#five-and-twenty-years-with-births-aging-and-deaths) covers twenty model years. The [earlier economic run](#five-and-twenty-years-in-the-ordinary-national-economy) provides the fixed-population comparison. The [company comparisons](#repeating-the-company-comparisons-with-the-v9-policy) use two seeds to distinguish investment choices from equipment purchases. The [first-turn measurements](#the-first-turn-of-a-new-national-observer-campaign) record when the observer shows Wayne’s financial figures and how much storage and memory the running game uses.
 
-The [food shortage](#when-food-stopped-reaching-households) shows when deliveries failed and who still had food at home. The [supplier funding experiment](#what-changed-when-owners-funded-essential-suppliers) follows four decisions from the same opening. Four [possible connections](#which-existing-parts-of-the-economy-can-connect-next) use records that the engine already keeps.
+The [food shortage](#when-food-stopped-reaching-households) shows when deliveries failed and who still had food at home. The [supplier funding experiment](#what-changed-when-owners-funded-essential-suppliers) follows four decisions from the same opening. The [retailer’s household receipt and proposed economic connections](#which-existing-parts-of-the-economy-can-connect-next) use records the engine already keeps.
 
 ## Evidence against the original plan on November 15
 
 | Delivery | What the local project demonstrates | What remains |
 | --- | --- | --- |
 | Financial statements and money flows | The full observer can follow nine settled payments totaling $800,060.625 from Sitka to Anchorage and inspect site, parent and consolidated books. Local Postgres tests cover interrupted publication, historical reconstruction and restricted readers. | The demographic build also reconstructed older journal periods and reopened the Wayne household. The separate database reference checks last ran on v9. |
-| Recorded labor and map/Sankey | Wayne’s opening and closing hours reconcile to the ledger. Both displays preserve the selected connection and industry color. The full observer can expand the captured industry sources. The inspector labels all groups outside each page and exposes selected controls through AccessKit. | Repeat the native checks on the final build. |
+| Recorded labor and map/Sankey | On the final household-receipt build, both Money and Labor switched from the map to the Sankey and back. Wayne’s amounts matched the ledger. The industry selection and source rows also appeared on the native display. | Current hardware evidence covers specific interactions. The frame-time samples below came from earlier builds. |
 | Companies and investment | The current policy completed the two-seed comparisons with 99, 300 and 600 companies on the same 7,463 sites. A six-period Postgres campaign followed parent funding to a delivered machine in Kodiak. Restoring the save reproduced both investment decisions and seven financial reports. | The ordinary twenty-year run used seed 319. Its companies made no capital contributions to members. |
 | Freight access | The native geographic and network views show captured corridors for the 83 Michigan terminals. | The pinned regional road extract is absent locally and its upstream URL returned 404. Full permitted-road distances need that source or a verified replacement. |
 | Household reproduction and government | The national campaign pays wages, collects taxes, allocates grants and support, and tracks paid and unpaid provisioning. Every period's population supplies the next period's needs. | Initial public claims still set the recurring requests. New labor-force entrants, old-age entitlements and a response of mortality to shortages need explicit policy. |
 | International trade and war | A temporary Canada freight closure preserved booked cargo, delayed payment and reduced the distributor’s inventory. | The scenario has no political decision that declares war or orders a border closure. |
-| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The latest running game stayed within its storage and memory limits through two closes. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
+| National qualification | The ordinary economy completed twenty years. Both the five-year and twenty-year material checkpoints reopened with the same world hashes. The v9 running game stayed within its storage and memory limits through two measured closes. | Wayne’s first financial figures appeared in 36.111–36.362 seconds on the demographic build against a target of 30 seconds. Full running-game memory and database storage measurements remain open at periods 65 and 260. |
 
 The named Oklahoma County case exposes an overlap in the investment rules. Its profitable company used 85.24% of capacity, had outstanding accepted demand and needed no replacement. The saved v8 policy gave larger expansion a weight of 20. The v9 capture places spare capacity first, giving larger expansion a weight of zero in that case. The [Philadelphia and Kodiak replay](#equipment-funding-in-philadelphia-and-kodiak) follows the revised order through selection and next-period admission.
 
@@ -167,7 +167,7 @@ Domestic pantries supplied a net 82,007,739 parcels in period 3 and 190,142,690 
 
 Wayne's earning households without business ownership show what a shortage signals at different times. In period 3, sellers delivered 589,205 parcels to that group. Its members still ate all 1,196,535 parcels they needed.
 
-In period 4 their budget covered orders for 1,804,207 parcels, but only 23 arrived. They ate 589,036 parcels, leaving 607,574 unmet. Falling deliveries gave an earlier warning than unmet need. The full observer already reports purchases and unmet need. The underlying orders also record how much cash the household reserved and what the retailer failed to deliver.
+In period 4 their budget covered orders for 1,804,207 parcels, but only 23 arrived. They ate 589,036 parcels, leaving 607,574 unmet. Falling deliveries gave an earlier warning than unmet need. The full observer can now open the household from the retailer and compare the affordable order with what arrived. The opening and closing pantry stocks show how much the household drew down.
 
 Domestic suppliers had already missed production in the first period. The 185 US food suppliers listed on procurement orders planned 21,973,080 batches and completed zero. The 186 US business-service providers with accepted sales requested 19,589,344 utility units and obtained zero. Food producers in foreign markets and dependencies completed 1,468,962,526 batches that period. US distributors also received 213,902,408 parcels through local handoffs against new orders.
 
@@ -215,29 +215,50 @@ The targeted payment produced extra US food only in period 2 over the twenty-yea
 
 ### Which existing parts of the economy can connect next
 
-**1. Show where a household’s food order failed.** This is the smallest change. The full observer shows how much food a household needed, bought and ate. The same period already records its retailer, opening stock, quantity requested, quantity affordable, quantity delivered, expired orders and closing stock.
+**The retailer now shows where a household’s food order failed.** Select a retailer in the circuit and open a household from the Flow reading. The same receipt also opens from the household's cash account. It shows the seller for each good, opening and closing pantry stocks, quantities requested and affordable, purchases, expired orders, consumption and unmet need. Only the full observer can read it.
 
-Add these figures to the household receipt and let the observer open it from the retailer’s existing list of customers. That gives the player a way to find a family group that spent nothing. In Wayne, the delivery failure would become visible in period 3 while families still had enough at home. [Order and consumption receipts](../rust/crates/babylon-material-circuit/src/recurring/model.rs) · [Household reader](../rust/crates/babylon-persistence/src/observer_reader/household.rs) · [Retailer’s customer list](../rust/crates/babylon-persistence/src/production_projection/households/projection.rs)
+Two groups served by the same Wayne County retailer faced different shortages. Both bought zero food in the selected period.
 
-**2. Let the national scenario set which public claim gets paid first.** The government already collects taxes, pays provider operating grants and supports households with reserve workers. The national opening gives providers first claim on the budget.
+| Household group | Period | Food needed | Opening pantry | Requested | Affordable | Delivered | Expired | Eaten | Unmet | Closing pantry |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Budget `8c33ef0b…` | 2 | 4 | 0 | 8 | 0 | 0 | 0 | 0 | 4 | 0 |
+| Budget `27e21622…` | 4 | 41,720 | 20,536 | 62,904 | 62,904 | 0 | 62,904 | 20,536 | 21,184 | 0 |
+
+The first group lacked purchasing power. Its account had zero goods payments that period. The second group had cash for its whole food order and the retailer supplied none of it. Across US counties, 343 of 1,583 household budgets had a funded food order with zero delivery in period 4. The native client displayed both groups' orders and pantries on the RTX 3060. [Paired receipts](economic-flows-qualification-2026-11-14-assets/wayne-food-retailer-receipt-v2.json) · [Native retailer screen](economic-flows-qualification-2026-11-14-assets/wayne-food-retailer-receipt-v2.png)
+
+**Reserve household cash for current needs before stocking next period's pantry.** The ordinary buyer requests enough of each good for current consumption and a closing stock. It reserves cash by commodity ID. In the national scenario, a household can buy extra manufactured supplies before it reserves cash for food it needs this period. [Household purchasing](../rust/crates/babylon-material-circuit/src/recurring/households.rs#L104) · [Opening pantry targets](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs#L393)
+
+At period 4, 59 of 1,583 domestic household budgets reserved cash for extra supplies while short of cash for current food. At their posted prices, that cash covered another 561,245 food parcels. At period 5, the same calculation gave 6,313,761 parcels across 217 budgets. No households met both conditions in periods 2 or 3. The calculation uses each period separately and counts the cash once. [Orders, prices and calculation](economic-flows-qualification-2026-11-14-assets/national-household-purchase-priority-v10.json)
+
+One group served by an Allegheny County retailer already held the 210,481 supplies bundles it needed. It bought 210,481 more for $30,309,264. It needed 390,268 food parcels, held 205,263 and funded an order for 116,521. Its retailer delivered one. A replay can measure how much food households eat and which supplies or services they give up.
+
+**Let the national scenario set which public claim gets paid first.** The government already collects taxes, pays provider operating grants and supports households with reserve workers. The national opening gives providers first claim on the budget.
 
 At the five-year close, 142 of 316 US county accounts paid operating grants while household support went partly or wholly unfunded. Los Angeles County paid providers $135,013,825.80. Households had $105,875,000 in support claims and received zero. [County allocation receipts](economic-flows-qualification-2026-11-14-assets/national-public-allocations-v10.json)
 
-A scenario setting can reverse that order under the same cash limit. Follow provider wages and services alongside the households’ transfers and actual food purchases. A cash transfer buys food only if a retailer can deliver it. [Public claims](../rust/crates/babylon-persistence/src/national_economy/opening/financial.rs) · [Payment order](../rust/crates/babylon-material-circuit/src/financial/validation.rs) · [Budget settlement](../rust/crates/babylon-material-circuit/src/financial/close.rs)
+Holding each county's spending and claims fixed, paying households first would move $1.010 billion from provider grants to household support in period 65. Los Angeles households would receive the full $105,875,000 claimed. Its providers would receive the remaining $29,138,825.80. The same calculation changed no payments in periods 1, 2 or 3. At the twenty-year close, 256 of 316 counties would shift a combined $1.822 billion. These figures describe each close separately. [County totals and calculation](economic-flows-qualification-2026-11-14-assets/national-public-allocations-v10.json)
+
+Make the payment order a scenario setting to compare the two policies in play. Follow provider wages and services alongside household transfers and food purchases. A cash transfer buys food only if a retailer can deliver it. [Public claims](../rust/crates/babylon-persistence/src/national_economy/opening/financial.rs) · [Payment order](../rust/crates/babylon-material-circuit/src/financial/validation.rs) · [Budget settlement](../rust/crates/babylon-material-circuit/src/financial/close.rs)
 
 Eligibility raises a separate policy choice. The opening reserve workforce sets each household’s recurring claim. Staffing records later movements into and out of reserve. Basing the next claim on that roster would let a newly unemployed household qualify and reduce support when its members find work. That policy must include households whose opening claim was zero. [Staffing records](../rust/crates/babylon-tick/src/material_replay.rs) · [Opening household support](../rust/crates/babylon-persistence/src/national_economy/opening/financial.rs)
 
-**3. Let a parent consider operating cash for an owned supplier.** The normal company decision can fund replacement or expansion equipment. The same accounts can transfer money to an owned operating site, as the Kern comparison demonstrates.
+**Let a parent consider operating cash for an owned supplier.** The normal company decision can fund replacement or expansion equipment. The same accounts can transfer money to an owned operating site, as the Kern comparison demonstrates.
 
 Give the parent a choice at the next close when a subsidiary had paying customers and lacked cash for a necessary input. It can fund that subsidiary or keep its cash.
 
 This takes more work than changing the public payment order. The company must use orders and prices from the previous close and reserve each dollar once across competing sites. Follow the transfer through payroll, electricity, performed services and the food its customers produce. [Company choices](../rust/crates/babylon-material-circuit/src/portfolio/execution.rs) · [Owner payments](../rust/crates/babylon-material-circuit/src/financial/close.rs)
 
-**4. Compare prices on two existing supply contracts.** Some buyers already have two reachable sellers with different posted quotes, routes and order limits. They reserve cash in the order of the captured contracts.
+**Compare prices on two existing supply contracts.** Some buyers already have two reachable sellers with different posted quotes, routes and order limits. They reserve cash in the order of the captured contracts.
 
 In period 2 one sub-Saharan African distributor reserved 310,752,377 food parcels from Kern at $287 each. Its remaining cash covered only 753,120,664 of the 932,257,133 it requested locally at $50.40 each. The local seller delivered all 753,120,664 parcels that period. At the twenty-year close, Kern had delivered 41,646 parcels on its order. The buyer still had $89,173,979,797 in escrow on that contract. [The two orders, deliveries and payments](economic-flows-qualification-2026-11-14-assets/national-supplier-quotes-v10.json)
 
 Let the buyer consider the cheaper quote first for new orders. Test both price orders and equal prices, preserve existing freight bookings, and follow the parcels through actual delivery. A seller can quote a low price while holding little stock. [Supplier contracts](../rust/crates/babylon-persistence/src/national_economy/opening/markets.rs) · [Order and cash reservation](../rust/crates/babylon-material-circuit/src/recurring/firms.rs)
+
+**Show where food given by another household entered the pantry.** A Wayne organizer can already arrange a local gift or send parcels to Cook County. The scenario allows up to four parcels and requires two hours of the donor’s time per parcel.
+
+The retailer’s summary counts gifts sent and received. The detailed household receipt shows its opening pantry, purchases, consumption and closing pantry. Adding the two gift quantities would let the observer account for every parcel even when the household bought nothing.
+
+Compare the same household with and without a gift. A parcel leaves the donor on dispatch. A routed parcel enters the recipient’s pantry on arrival. Follow both households’ stocks and the donor’s hours. This uses existing receipts and requires no change to aid eligibility. [Organizer terms](../content/scenarios/national/defines.toml#L353) · [Gift movements](../rust/crates/babylon-persistence/src/production_projection/aid.rs#L86) · [Household receipt](../rust/crates/babylon-persistence/src/observer_reader/household.rs#L109)
 
 ### One freight closure between Kern County and Canada
 
@@ -378,6 +399,10 @@ Opening a company showed its legal parent and consolidated statements. Five read
 The native site view summarizes the balance sheet, income and cash flow for a completed period. The financial CLI also exposes stock basis by good, tax and expense detail, individual claims and the opening balance sheet. The native comparison uses the preceding period. The CLI accepts two explicit period ranges.
 
 Switching from map to Sankey and back kept the same Household services company and its $829,377,792.00 Wayne payment leg. Both freight layouts showed the complete 64-character ID of the Oakland-to-Wayne corridor. Expanding Wayne’s food industry row showed seven source codes. NAICS 311 had 1,446,647 reported jobs, 1,317 reporting cells and 1,332 suppressed cells in the captured national data.
+
+The four-week household campaign also reopened at period 2 on the RTX 3060. Wayne received $81,362,648.371583, paid $348,930,601.20 outside the county and settled $3,798,173,783.031147 within it. The Food selection followed three local payments worth $25,145,340 from the map to the Sankey and back.
+
+Five movements into Wayne carried 61.96325 recorded labor hours. All five had unknown earlier labor. The final binary repeated both display switches and the amounts matched separate Postgres reads. The local evidence is in `babylon-recovery/per293-food-household-native-v10-5efafb84`.
 
 At 1366 × 768, Wayne’s prior external money net was −$348,926,580.00. Its current net was −$267,567,952.828417. The signed change of +$81,358,627.171583 was visible by 0.932 seconds.
 

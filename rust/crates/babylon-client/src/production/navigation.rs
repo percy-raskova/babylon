@@ -40,6 +40,7 @@ impl ProductionNavigation {
             self.details_open = false;
             self.cohort_page = 0;
             self.selected_site = None;
+            self.household = None;
             self.history.clear();
         }
     }
@@ -54,6 +55,9 @@ impl ProductionNavigation {
     }
 
     pub(super) fn select_site(&mut self, id: &str) {
+        if self.selected_site.as_deref() != Some(id) {
+            self.household = None;
+        }
         if let Some(previous) = self.selected_site.take() {
             if previous != id {
                 if self.history.len() == 128 {
@@ -67,6 +71,65 @@ impl ProductionNavigation {
         self.relationship_page = 0;
         self.competitor_page = 0;
         self.selected_process = None;
+    }
+
+    fn contains_page(
+        &self,
+        snapshot: &ProductionSnapshot,
+        kind: ProductionPage,
+        page: usize,
+    ) -> bool {
+        let count = match kind {
+            ProductionPage::Cohorts => snapshot
+                .sites
+                .iter()
+                .filter(|site| {
+                    self.county_geoid
+                        .as_deref()
+                        .is_some_and(|county| site.is_in_county(county))
+                })
+                .count(),
+            ProductionPage::Relationships => self
+                .selected_site
+                .as_ref()
+                .and_then(|id| snapshot.sites.iter().find(|site| site.id == *id))
+                .map_or(0, |site| {
+                    production_brief::dependency_sites(site, snapshot)
+                        .iter()
+                        .map(|(_, site)| &site.id)
+                        .collect::<BTreeSet<_>>()
+                        .len()
+                }),
+            ProductionPage::Competitors => match self
+                .selected_site
+                .as_deref()
+                .map(|id| production_freight::competitor_sites(id, snapshot))
+            {
+                Some(Ok(sites)) => sites.len(),
+                None => 0,
+                Some(Err(_)) => return false,
+            },
+        };
+        page < count.div_ceil(6).max(1)
+    }
+
+    /// Return whether the primary view and selected county should follow a previous site.
+    fn back(&mut self, available: &ProductionControlAvailability) -> bool {
+        if self.household.take().is_some() {
+            return false;
+        }
+        if let Some(index) = available.previous_index {
+            self.selected_site = Some(self.history[index].clone());
+            self.history.truncate(index);
+        } else if available.county_back {
+            self.county_open = true;
+            self.selected_site = None;
+            self.details_open = false;
+        }
+        self.relationship_page = 0;
+        self.competitor_page = 0;
+        self.selected_process = None;
+        available.previous_index.is_some()
     }
 
     pub(crate) fn process<'a>(&self, site: &'a ProductionSite) -> Option<&'a ProductionProcess> {
@@ -139,7 +202,11 @@ impl ProductionControlAvailability {
             {
                 Some("Operating-site accounts require the full observer.")
             }
-            ProductionCommand::Back if self.previous_index.is_none() && !self.county_back => {
+            ProductionCommand::Back
+                if navigation.household.is_none()
+                    && self.previous_index.is_none()
+                    && !self.county_back =>
+            {
                 Some("There is no previous work view in this observation.")
             }
             ProductionCommand::Flat if !self.scene => {
@@ -155,6 +222,21 @@ impl ProductionControlAvailability {
             }
             ProductionCommand::Reading(_) if !self.scene => {
                 Some("Exact readings need disclosed production relationships.")
+            }
+            ProductionCommand::Household {
+                site_id,
+                principal,
+                context,
+            } if !state.accepts(context)
+                || !super::accounting::authorized(state)
+                || !navigation.details_open
+                || navigation.reading_section != ProductionReadingSection::Flow
+                || navigation.selected_site.as_ref() != Some(site_id)
+                || !snapshot.is_some_and(|s| {
+                    super::customers::served(s, site_id, *principal, context.tick)
+                }) =>
+            {
+                Some("This household receipt is unavailable for the selected retailer and period.")
             }
             ProductionCommand::Page { context, .. }
             | ProductionCommand::Process { context, .. }
@@ -176,41 +258,8 @@ impl ProductionControlAvailability {
                 Some("This process is not disclosed for the selected owner.")
             }
             ProductionCommand::Page { kind, page, .. }
-                if !snapshot.is_some_and(|snapshot| {
-                    let count = match kind {
-                        ProductionPage::Cohorts => snapshot
-                            .sites
-                            .iter()
-                            .filter(|site| {
-                                navigation
-                                    .county_geoid
-                                    .as_deref()
-                                    .is_some_and(|county| site.is_in_county(county))
-                            })
-                            .count(),
-                        ProductionPage::Relationships => navigation
-                            .selected_site
-                            .as_ref()
-                            .and_then(|id| snapshot.sites.iter().find(|site| site.id == *id))
-                            .map_or(0, |site| {
-                                production_brief::dependency_sites(site, snapshot)
-                                    .iter()
-                                    .map(|(_, site)| &site.id)
-                                    .collect::<BTreeSet<_>>()
-                                    .len()
-                            }),
-                        ProductionPage::Competitors => match navigation
-                            .selected_site
-                            .as_deref()
-                            .map(|id| production_freight::competitor_sites(id, snapshot))
-                        {
-                            Some(Ok(sites)) => sites.len(),
-                            None => 0,
-                            Some(Err(_)) => return false,
-                        },
-                    };
-                    *page < count.div_ceil(6).max(1)
-                }) =>
+                if !snapshot
+                    .is_some_and(|snapshot| navigation.contains_page(snapshot, *kind, *page)) =>
             {
                 Some("This page is unavailable in the current observation.")
             }
@@ -318,10 +367,17 @@ pub(crate) fn navigate(
             }
             ProductionCommand::Details => {
                 navigation.details_open = !navigation.details_open;
+                if !navigation.details_open {
+                    navigation.household = None;
+                }
             }
             ProductionCommand::Reading(section) => {
+                navigation.household = None;
                 navigation.reading_section = *section;
                 navigation.details_open = true;
+            }
+            ProductionCommand::Household { principal, .. } => {
+                navigation.household = Some(*principal);
             }
             ProductionCommand::Page { kind, page, .. } => navigation.set_page(*kind, *page),
             ProductionCommand::Process { process_id, .. } => {
@@ -330,21 +386,12 @@ pub(crate) fn navigate(
                 navigation.details_open = false;
             }
             ProductionCommand::Back => {
-                if let Some(index) = available.previous_index {
-                    navigation.selected_site = Some(navigation.history[index].clone());
-                    navigation.history.truncate(index);
-                    sync_county = true;
+                sync_county = navigation.back(&available);
+                if sync_county {
                     *view = PrimaryView::Production;
                     ui.archive_open = false;
                     ui.disclosure = None;
-                } else if available.county_back {
-                    navigation.county_open = true;
-                    navigation.selected_site = None;
-                    navigation.details_open = false;
                 }
-                navigation.relationship_page = 0;
-                navigation.competitor_page = 0;
-                navigation.selected_process = None;
             }
             ProductionCommand::Select { site_id: id, .. }
             | ProductionCommand::Focus { site_id: id, .. } => {
@@ -421,6 +468,7 @@ pub(super) fn invalidate_navigation(
     if scope.as_ref() != Some(&current) {
         navigation.selected_site = None;
         navigation.selected_process = None;
+        navigation.household = None;
         navigation.county_open = false;
         navigation.county_geoid = None;
         navigation.relationship_page = 0;
@@ -444,6 +492,13 @@ pub(super) fn invalidate_navigation(
                 .is_some_and(|id| !snapshot.sites.iter().any(|site| site.id == *id))
             {
                 navigation.selected_site = None;
+            }
+            if navigation.household.is_some_and(|id| {
+                !navigation.selected_site.as_ref().is_some_and(|site| {
+                    super::customers::served(snapshot, site, id, state.viewed_tick)
+                })
+            }) {
+                navigation.household = None;
             }
         }
     }

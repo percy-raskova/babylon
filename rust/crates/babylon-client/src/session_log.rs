@@ -170,6 +170,7 @@ fn log_requests(
             ProductionCommand::Focus { .. } => "production_focus",
             ProductionCommand::Page { .. } => "production_page",
             ProductionCommand::Process { .. } => "production_process",
+            ProductionCommand::Household { .. } => "production_household",
         };
         scoped_info!(session, command = name, "observer command requested");
     }

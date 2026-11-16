@@ -124,5 +124,59 @@
       },
       "all_matching_accounts": 268
     }
-  ]
+  ],
+  "support_first_comparison": {
+    "scope": "Independent single-close calculation over the 316 US county public accounts at each retained payer reading. Each county keeps its own observed spending and claim amounts. No later wages, purchases or food deliveries were simulated under this policy.",
+    "calculation": "For each county, household-first support is min(household support requested, total allocations paid). The remainder pays provider grants. Ordinary support and grants must first reproduce the observed provider-first order.",
+    "rows": [
+      {
+        "period": 1,
+        "changed_counties": 0,
+        "fixed_spending_micros": "38565734700000000",
+        "ordinary_support_micros": "2492662200000000",
+        "support_first_micros": "2492662200000000",
+        "shifted_from_grants_to_support_micros": "0"
+      },
+      {
+        "period": 2,
+        "changed_counties": 0,
+        "fixed_spending_micros": "38565734700000000",
+        "ordinary_support_micros": "2492662200000000",
+        "support_first_micros": "2492662200000000",
+        "shifted_from_grants_to_support_micros": "0"
+      },
+      {
+        "period": 3,
+        "changed_counties": 0,
+        "fixed_spending_micros": "38565734700000000",
+        "ordinary_support_micros": "2492662200000000",
+        "support_first_micros": "2492662200000000",
+        "shifted_from_grants_to_support_micros": "0"
+      },
+      {
+        "period": 65,
+        "changed_counties": 142,
+        "fixed_spending_micros": "26765932511757141",
+        "ordinary_support_micros": "1249170827200000",
+        "support_first_micros": "2259077157000000",
+        "shifted_from_grants_to_support_micros": "1009906329800000"
+      },
+      {
+        "period": 66,
+        "changed_counties": 142,
+        "fixed_spending_micros": "26711190330526023",
+        "ordinary_support_micros": "1239749356000000",
+        "support_first_micros": "2246492498800000",
+        "shifted_from_grants_to_support_micros": "1006743142800000"
+      },
+      {
+        "period": 260,
+        "changed_counties": 256,
+        "fixed_spending_micros": "23935462298767943",
+        "ordinary_support_micros": "380640888592943",
+        "support_first_micros": "2202682647600000",
+        "shifted_from_grants_to_support_micros": "1822041759007057"
+      }
+    ]
+  }
 }

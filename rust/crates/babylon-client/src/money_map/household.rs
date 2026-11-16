@@ -4,7 +4,7 @@ use super::state::{Action, Measure, MoneyView, Scope};
 use crate::atlas::CountyAtlas;
 use crate::cli;
 use crate::human_numbers;
-use crate::observer::Perspective;
+use crate::observer::{ObservationContext, Perspective};
 use crate::observer_io::ObservationCache;
 use crate::observer_theme as theme;
 use crate::observer_ui::{self, ObserverFontRole};
@@ -16,8 +16,38 @@ use babylon_persistence::observer_reader::{
 };
 use bevy::prelude::*;
 use bevy::tasks::{self, IoTaskPool, Task};
+use bevy::text::LineBreak;
 
-type Reading = Result<HouseholdPeriodReport, JournalError>;
+pub(crate) type Reading = Result<HouseholdPeriodReport, JournalError>;
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct HouseholdRead {
+    pub context: ObservationContext,
+    pub foundation: String,
+    pub tick_hash: String,
+    pub principal: FinalDemandPrincipalId,
+}
+
+impl HouseholdRead {
+    pub(crate) fn read(&self, reader: Option<ObserverEconomyReader>) -> Reading {
+        let reader = reader
+            .map_or_else(ObserverEconomyReader::from_observer_env, Ok)
+            .map_err(JournalError::Observer)?;
+        let report = reader
+            .household_period(self.context.campaign, self.context.tick, self.principal)
+            .map_err(JournalError::Observer)?;
+        if report.version != HouseholdPeriodReport::VERSION
+            || report.period != self.context.tick
+            || report.campaign != self.context.campaign.as_uuid().to_string()
+            || cli::identity_bytes(&report.household) != Some(self.principal.as_bytes())
+            || report.foundation_sha256 != self.foundation
+            || report.tick_content_sha256 != self.tick_hash
+        {
+            return Err(JournalError::SourceChanged);
+        }
+        Ok(report)
+    }
+}
 
 #[derive(Default)]
 pub(super) struct Receipt {
@@ -91,32 +121,20 @@ pub(super) fn update(
     let (Some(scope), Some(principal)) = (&view.scope, selected(&view)) else {
         return;
     };
-    let requested = scope.clone();
+    let Some(tick_hash) = scope.tick_hash.clone() else {
+        return;
+    };
+    let requested = HouseholdRead {
+        context: scope.context.clone(),
+        foundation: scope.foundation.clone(),
+        tick_hash,
+        principal,
+    };
     let reader = cache.as_deref().and_then(ObservationCache::full_reader);
     worker.0 = Some(Pending {
         scope: scope.clone(),
         principal,
-        read: IoTaskPool::get().spawn(async move {
-            let reader = reader
-                .map_or_else(ObserverEconomyReader::from_observer_env, Ok)
-                .map_err(JournalError::Observer)?;
-            let report = reader
-                .household_period(
-                    requested.context.campaign,
-                    requested.context.tick,
-                    principal,
-                )
-                .map_err(JournalError::Observer)?;
-            if report.period != requested.context.tick
-                || report.campaign != requested.context.campaign.as_uuid().to_string()
-                || cli::identity_bytes(&report.household) != Some(principal.as_bytes())
-                || report.foundation_sha256 != requested.foundation
-                || Some(report.tick_content_sha256.as_str()) != requested.tick_hash.as_deref()
-            {
-                return Err(JournalError::SourceChanged);
-            }
-            Ok(report)
-        }),
+        read: IoTaskPool::get().spawn(async move { requested.read(reader) }),
     });
 }
 
@@ -160,11 +178,18 @@ fn provisioning(report: &HouseholdPeriodReport) -> String {
     for g in &report.goods {
         writeln!(
             text,
-            "{} ({})\n{} required · {} bought · {} consumed · {} unmet",
+            "{} ({})\nRetailer · {}\n{}\nPantry · {} opening · {} closing\nOrder · {} requested · {} affordable · {} bought · {} expired\nNeed · {} required · {} consumed · {} unmet",
             g.good.replace('_', " "),
             g.unit,
-            observer_ui::grouped(g.required),
+            crate::production::retailer_name(&g.retailer_name),
+            g.retailer_site_id,
+            observer_ui::grouped(g.opening_stock),
+            observer_ui::grouped(g.closing_stock),
+            observer_ui::grouped(g.requested),
+            observer_ui::grouped(g.admitted),
             observer_ui::grouped(g.purchased),
+            observer_ui::grouped(g.expired),
+            observer_ui::grouped(g.required),
             observer_ui::grouped(g.consumed),
             observer_ui::grouped(g.unmet)
         )
@@ -251,22 +276,37 @@ pub(super) fn panel(
         Action::HouseholdReceipt(false),
         "Back to flows".into(),
     );
-    let Some(Ok(report)) = &view.household.result else {
-        let text = match &view.household.result {
-            Some(Err(JournalError::Observer(ObserverEconomyError::HouseholdAbsent))) => {
-                "This account has no captured household.".into()
-            }
-            Some(Err(error)) => {
-                format!("Household receipt unavailable ({error}). Reopen to retry.")
-            }
-            _ => "Reading the household receipt…".into(),
-        };
-        parent.spawn(rail::label(text, 15.0, theme::GRAY, ObserverFontRole::Body));
-        return true;
+    for text in sections(view.household.result.as_ref(), atlas) {
+        parent.spawn((
+            rail::label(text, 15.0, theme::PAPER, ObserverFontRole::Body),
+            TextLayout::linebreak(LineBreak::WordOrCharacter),
+            Node {
+                width: percent(100),
+                min_width: px(0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ));
+    }
+    true
+}
+
+pub(crate) fn sections(result: Option<&Reading>, atlas: &CountyAtlas) -> Vec<String> {
+    let report = match result {
+        Some(Ok(report)) => report,
+        Some(Err(JournalError::Observer(ObserverEconomyError::HouseholdAbsent))) => {
+            return vec!["This account has no captured household.".into()];
+        }
+        Some(Err(error)) => {
+            return vec![format!(
+                "Household receipt unavailable ({error}). Reopen to retry."
+            )]
+        }
+        None => return vec!["Reading the household receipt…".into()],
     };
     let location = rail::location(Some(&report.residence.to_string()), atlas);
     let short: String = report.household.chars().take(8).collect();
-    for text in [
+    vec![
         format!(
             "{location} · Household {short}\nPeriod {} · four weeks",
             report.period
@@ -281,13 +321,42 @@ pub(super) fn panel(
             rail::amount(&report.cash.service_purchases_settled)
         ),
         support_and_time(report),
-    ] {
-        parent.spawn(rail::label(
-            text,
-            15.0,
-            theme::PAPER,
-            ObserverFontRole::Body,
-        ));
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn household_receipt_explains_a_zero_delivery_with_pantry_stock() {
+        let report: HouseholdPeriodReport = serde_json::from_value(serde_json::json!({
+            "version": HouseholdPeriodReport::VERSION, "campaign": "example", "period": 4, "household": "example",
+            "residence": "county:26163", "foundation_sha256": "", "world_sha256": "",
+            "tick_content_sha256": "", "receipts_sha256": "", "population": null,
+            "cash": {"wages_accrued_micros":"0","wages_paid_micros":"0",
+                    "goods_purchases_settled_micros":"0","service_purchases_settled_micros":"0"},
+            "income_support": [], "services": [], "time": null, "workforce_attrition": [],
+            "goods": [{"good": "food", "unit":"parcels", "retailer_site_id":"17".repeat(32),
+                        "retailer_name":"Wayne County: distribution_transport (5)", "opening_stock":4,
+                        "requested":12, "admitted":7, "expired":7, "closing_stock":0,
+                        "required":10, "purchased":0, "consumed":4, "unmet":6}]
+        }))
+        .expect("one food order and its consumption receipt");
+        let text = provisioning(&report);
+        for detail in [
+            "Wayne County: Distribution/transport (5)",
+            &"17".repeat(32),
+            "4 opening",
+            "12 requested",
+            "7 affordable",
+            "0 bought",
+            "7 expired",
+            "4 consumed",
+            "6 unmet",
+            "0 closing",
+        ] {
+            assert!(text.contains(detail), "missing {detail} in {text}");
+        }
     }
-    true
 }

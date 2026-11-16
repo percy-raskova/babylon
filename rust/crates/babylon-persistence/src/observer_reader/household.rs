@@ -7,8 +7,9 @@ use crate::michigan_economy;
 use crate::money_journal::MoneyEndpoint;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
-    AccountId, FinalDemandPrincipalId, GoodId, HouseholdLifecycleReceipt, HouseholdTimeReceipt,
-    MoneyTransferPurpose, OutboundOrderId, PublicTransferTreatment, ResidentAges, UnitId,
+    AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdLifecycleReceipt,
+    HouseholdStock, HouseholdTimeReceipt, MoneyTransferPurpose, OutboundOrderId,
+    PublicTransferTreatment, ResidentAges, UnitId,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -33,6 +34,11 @@ pub struct HouseholdPeriodReport {
     /// Absent in campaigns without household time accounting.
     pub time: Option<HouseholdHours>,
     pub workforce_attrition: Vec<HouseholdWorkforceRemoval>,
+}
+
+impl HouseholdPeriodReport {
+    /// Version 2 includes the retailer, order and both period pantry balances for each good.
+    pub const VERSION: u8 = 2;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +107,13 @@ pub struct HouseholdHours {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HouseholdGoodUse {
+    pub retailer_site_id: String,
+    pub retailer_name: String,
+    pub opening_stock: u64,
+    pub requested: u64,
+    pub admitted: u64,
+    pub expired: u64,
+    pub closing_stock: u64,
     pub good: String,
     pub unit: String,
     pub required: u64,
@@ -141,13 +154,22 @@ impl ObserverEconomyReader {
     ) -> Result<HouseholdPeriodReport, ObserverEconomyError> {
         self.with_committed_receipts(campaign, period, &mut None, |cursor, admission, source| {
             let payments = cursor.economic_payments(admission, source)?;
-            read_household(admission.view().opening, &payments, principal)
+            let before = cursor.labor_opening(admission)?.state();
+            let stocks = match &before.accounting {
+                CircuitAccounting::Monetary(book) => book
+                    .recurring
+                    .as_ref()
+                    .map_or(&[][..], |economy| economy.household_stocks.as_slice()),
+                CircuitAccounting::PhysicalControl => &[],
+            };
+            read_household(admission.view().opening, stocks, &payments, principal)
         })
     }
 }
 
 fn read_household(
     opening: &EconomicOpening,
+    stocks: &[HouseholdStock],
     payments: &EconomicPaymentPeriod,
     id: FinalDemandPrincipalId,
 ) -> Result<HouseholdPeriodReport, ObserverEconomyError> {
@@ -171,7 +193,7 @@ fn read_household(
         .try_fold(0_u64, |sum, r| sum.checked_add(r.contribution.hours))
         .ok_or(ObserverEconomyError::InvalidProjection)?;
     let time = hours.map(|row| HouseholdHours::from_close(row, contribution_used));
-    let (goods, services) = provisions(opening, source, id)?;
+    let (goods, services) = provisions(opening, stocks, source, id)?;
     let income_support = rows
         .public_budgets
         .iter()
@@ -200,7 +222,7 @@ fn read_household(
         })
         .collect();
     Ok(HouseholdPeriodReport {
-        version: 1,
+        version: HouseholdPeriodReport::VERSION,
         campaign: source.campaign_id.as_uuid().to_string(),
         period: source.identity.resolve_tick(),
         household: michigan_economy::digest_hex(&id.as_bytes()),
@@ -305,6 +327,7 @@ impl HouseholdHours {
 
 fn provisions(
     opening: &EconomicOpening,
+    stocks: &[HouseholdStock],
     source: &CommittedMaterialReceipts,
     id: FinalDemandPrincipalId,
 ) -> Result<(Vec<HouseholdGoodUse>, Vec<HouseholdServiceUse>), ObserverEconomyError> {
@@ -335,7 +358,23 @@ fn provisions(
             if demand.required_quantity != r.required_quantity {
                 return Err(ObserverEconomyError::InvalidProjection);
             }
+            let retailer = opening
+                .sites
+                .iter()
+                .find(|s| s.site_id == demand.retailer_site_id)
+                .ok_or(ObserverEconomyError::InvalidProjection)?;
+            // Inbound aid can reach the pantry between period open and order admission.
+            let stock = stocks
+                .binary_search_by_key(&key, |s| (s.principal_id, s.good_id, s.unit_id))
+                .map_err(|_| ObserverEconomyError::InvalidProjection)?;
             Ok(HouseholdGoodUse {
+                retailer_site_id: michigan_economy::digest_hex(&retailer.site_id.as_bytes()),
+                retailer_name: retailer.label.clone(),
+                opening_stock: stocks[stock].quantity,
+                requested: demand.requested_quantity,
+                admitted: demand.admitted_quantity,
+                expired: demand.expired_quantity,
+                closing_stock: r.closing_quantity,
                 good: name.key.clone(),
                 unit: name.unit_label.clone(),
                 required: r.required_quantity,

@@ -6,6 +6,7 @@ use babylon_material_circuit::{
     AccountId, CompanyId, FinalDemandPrincipalId, PublicTransferTreatment,
 };
 use babylon_persistence::company_statements::CompanyPeriodReport;
+use babylon_persistence::economic_catalog::EconomicOpening;
 use babylon_persistence::economic_flows::EconomicPaymentPeriod;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
@@ -16,6 +17,7 @@ use babylon_persistence::observer_reader::{
     ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor,
 };
 use babylon_persistence::qualification_audit::trade;
+use babylon_tick::material_world::MaterialTickReceipts;
 use postgres::{Client, Config, NoTls};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -257,7 +259,11 @@ pub(super) fn national(
         cursor.as_ref().expect("full-observer cursor"),
         source.source.identity.tick_content_hash().as_bytes(),
     );
-    check_household_period(config, &source, moves);
+    let foundation = cursor
+        .as_ref()
+        .and_then(ObserverMaterialCursor::admission_handle)
+        .expect("admitted economic catalog");
+    check_household_period(config, &source, moves, foundation.view().opening);
     check_source_rows(&source, &mut sql, campaign, moves);
     unknown_industry(
         &source,
@@ -346,6 +352,7 @@ fn check_household_period(
     config: &Config,
     source: &EconomicPaymentPeriod,
     moves: &[MoneyMovement],
+    opening: &EconomicOpening,
 ) {
     let durable = &source.source;
     let receipts = &durable.receipts;
@@ -400,7 +407,7 @@ fn check_household_period(
     );
     let report: Value = serde_json::from_slice(&output.stdout).expect("household period JSON");
     assert_eq!(report["household"], household);
-    assert_eq!(report["version"], 1);
+    assert_eq!(report["version"], 2);
     check_household_cash(&report["cash"], source, moves, id);
     assert_eq!(
         report["receipts_sha256"],
@@ -434,8 +441,69 @@ fn check_household_period(
             .filter(|r| r.principal_id == id)
             .count()
     );
+    let goods = report["goods"].as_array().expect("consumed goods");
+    check_household_goods(goods, opening, receipts, id);
+}
+
+fn check_household_goods(
+    goods: &[Value],
+    opening: &EconomicOpening,
+    receipts: &MaterialTickReceipts,
+    id: FinalDemandPrincipalId,
+) {
+    assert_ne!(goods, &[] as &[Value]);
+    let household = opening
+        .households
+        .iter()
+        .find(|h| h.principal_id == id)
+        .expect("opening household");
+    for demand in receipts
+        .household_demand
+        .iter()
+        .filter(|d| d.principal_id == id)
+    {
+        let same = |g, u| (g, u) == (demand.good_id, demand.unit_id);
+        let label = opening
+            .commodity_labels
+            .iter()
+            .find(|g| same(g.good_id, g.unit_id))
+            .expect("good and unit");
+        let row = goods
+            .iter()
+            .find(|r| r["good"] == label.key && r["unit"] == label.unit_label)
+            .expect("one reported good");
+        let stock = household
+            .opening_stock
+            .iter()
+            .find(|g| same(g.amount.good_id, g.amount.unit_id))
+            .map_or(0, |g| g.amount.quantity);
+        let site = opening
+            .sites
+            .iter()
+            .find(|s| s.site_id == demand.retailer_site_id)
+            .expect("captured retailer");
+        let consumed = receipts
+            .household_consumption
+            .iter()
+            .find(|r| r.principal_id == id && same(r.good_id, r.unit_id))
+            .expect("consumption at close");
+        assert_eq!(row["retailer_name"], site.label);
+        assert_eq!(
+            row["retailer_site_id"],
+            trade::hex(&site.site_id.as_bytes())
+        );
+        assert_eq!(row["opening_stock"], stock);
+        assert_eq!(row["closing_stock"], consumed.closing_quantity);
+        assert_eq!(row["requested"], demand.requested_quantity);
+        assert_eq!(row["admitted"], demand.admitted_quantity);
+        assert_eq!(row["purchased"], demand.fulfilled_quantity);
+        assert_eq!(row["expired"], demand.expired_quantity);
+        assert_eq!(row["consumed"], consumed.consumed_quantity);
+        assert_eq!(row["required"], consumed.required_quantity);
+        assert_eq!(row["unmet"], consumed.unmet_quantity);
+    }
     assert_eq!(
-        report["goods"].as_array().expect("consumed goods").len(),
+        goods.len(),
         receipts
             .household_consumption
             .iter()

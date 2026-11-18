@@ -38,6 +38,7 @@ pub(crate) enum RenderMode {
     OrganizerNotes,
     OrganizerReview,
     OrganizerPractices,
+    OrganizerHearing,
 }
 
 impl RenderMode {
@@ -63,6 +64,7 @@ impl RenderMode {
             Self::OrganizerReceipts => "organizer-receipts",
             Self::OrganizerReview => "organizer-review",
             Self::OrganizerPractices => "organizer-practices",
+            Self::OrganizerHearing => "organizer-hearing",
             Self::OrganizerNotes => "organizer-notes",
         }
     }
@@ -221,6 +223,7 @@ fn sample_frames(
                     OrganizerInspector::Receipts => RenderMode::OrganizerReceipts,
                     OrganizerInspector::Review => RenderMode::OrganizerReview,
                     OrganizerInspector::Practices => RenderMode::OrganizerPractices,
+                    OrganizerInspector::Hearing => RenderMode::OrganizerHearing,
                     OrganizerInspector::Notes => RenderMode::OrganizerNotes,
                 },
                 (PrimaryView::Map, _) => money

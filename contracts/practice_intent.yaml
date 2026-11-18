@@ -130,8 +130,17 @@ parameter_contract:
         key: 2
         value_kind: 1
         value_length: 1
-        values: {reinforce: 1, hold: 2, pause_standing: 3, resume_standing: 4, saved_standing_contact: 5}
+        values:
+          reinforce: 1
+          hold: 2
+          pause_standing: 3
+          resume_standing: 4
+          saved_standing_contact: 5
+          invite_hearing_claimant_only: 6
+          invite_hearing_joint_minutes: 7
+          hearing_attendance: 8
     saved_standing_contact_origin: engine_derived_only_no_player_choice
+    hearing_attendance_origin: engine_derived_from_each_group_hearing_mandate
     MUTUAL_AID:
       empty: independent_partner_response
       collection:

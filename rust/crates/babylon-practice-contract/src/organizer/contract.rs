@@ -6,6 +6,8 @@ use super::OrganizerCommand;
 use super::OrganizerCommitment;
 use super::OrganizerConfig;
 use super::OrganizerError;
+use super::OrganizerHearingNotice;
+use super::OrganizerHearingResponse;
 use super::OrganizerLearnedAuthority;
 use super::OrganizerObservation;
 use super::OrganizerOutcome;
@@ -151,6 +153,11 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
     for binding in &config.aid_bindings {
         actors.push(binding.partner.actor_id);
         authorities.push(binding.partner.authority_id);
+    }
+    if let Some(hearing) = &config.hearing {
+        super::hearing::validate_config(config, hearing)?;
+        actors.push(hearing.claimant_actor_id);
+        authorities.push(hearing.claimant_authority_id);
     }
     if actors.contains(&0)
         || actors.iter().copied().collect::<BTreeSet<_>>().len() != actors.len()
@@ -299,6 +306,13 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
         }
     }
     super::aid::validate_aid_state(state)?;
+    if state
+        .pending_hearing_review
+        .as_ref()
+        .is_some_and(|review| state.period == 0 || review.period < state.period)
+    {
+        return Err(OrganizerError::InvalidState);
+    }
     let mut product_ids = BTreeSet::new();
     for product in &state.contact_products {
         if product.produced_period == 0
@@ -437,6 +451,7 @@ fn validate_period_rows(
     super::collection::validate_collection_history(config, entries)?;
     super::aid::validate_aid_history(config, entries)?;
     super::aid::validate_consumption_credits(entries)?;
+    super::hearing::validate_entries(config, entries)?;
     super::aid::validate_period_allocations(config, entries)?;
     Ok(())
 }
@@ -455,6 +470,8 @@ pub fn validate_organizer_journal(
 ) -> Result<(), OrganizerError> {
     validate_organizer_pair(config, state)?;
     validate_journal_contents(config, &journal.periods)?;
+    super::hearing::validate_review_history(&journal.periods)?;
+    super::hearing::validate_review_cursor(config, state, &journal.periods)?;
     let latest = journal.latest();
     if state.period == 0 {
         if latest.is_some() {
@@ -463,7 +480,15 @@ pub fn validate_organizer_journal(
         return Ok(());
     }
     let latest = latest.ok_or(OrganizerError::InvalidState)?;
-    if latest.period != state.period {
+    if latest.period != state.period
+        || config.hearing.as_ref().is_some_and(|hearing| {
+            hearing.period <= state.period
+                && !journal
+                    .periods
+                    .iter()
+                    .any(|entries| entries.period == hearing.period)
+        })
+    {
         return Err(OrganizerError::InvalidState);
     }
     let receipt_ids: BTreeSet<_> = journal
@@ -547,6 +572,9 @@ pub fn validate_organizer_pair(
 ) -> Result<(), OrganizerError> {
     validate_organizer_config(config)?;
     validate_organizer_state(state)?;
+    if let Some(review) = &state.pending_hearing_review {
+        super::hearing::validate_review_shape(config, review)?;
+    }
     if state.period == 0
         && state.learned_authority_index != learned_authority_index(&config.initial_observations)
     {
@@ -675,6 +703,7 @@ pub fn encode_organizer_journal(
     journal: &OrganizerPeriodJournal,
 ) -> Result<Vec<u8>, OrganizerError> {
     validate_journal_contents(config, &journal.periods)?;
+    super::hearing::validate_review_history(&journal.periods)?;
     canonical(b"babylon.organizer-journal.v5", journal)
 }
 
@@ -690,6 +719,7 @@ pub fn decode_organizer_journal(
 ) -> Result<OrganizerPeriodJournal, OrganizerError> {
     let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v5", bytes)?;
     validate_journal_contents(config, &value.periods)?;
+    super::hearing::validate_review_history(&value.periods)?;
     Ok(value)
 }
 
@@ -740,6 +770,8 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
             receipt.outcome,
             OrganizerOutcome::CollectionCompleted | OrganizerOutcome::CollectionRefused
         ) && receipt.choice != OrganizerChoice::Collect)
+        || (receipt.outcome == OrganizerOutcome::HearingInvitationIssued
+            && !matches!(receipt.choice, OrganizerChoice::InviteToHearing(_)))
         || receipt.actor_id == 0
         || receipt.period == 0
         || own_hours != receipt.hours_spent
@@ -873,6 +905,7 @@ pub fn initial_organizer_state(config: &OrganizerConfig) -> Result<OrganizerStat
         last_workplace_facts: None,
         learned_authority_index: learned_authority_index(&config.initial_observations),
         last_period_time_witness: None,
+        pending_hearing_review: None,
     })
 }
 
@@ -930,6 +963,15 @@ pub(super) fn charged_time_ids(entries: &OrganizerPeriodJournalEntries) -> BTree
         for usage in &receipt.time_use {
             ids.insert(household_contribution_use_id(
                 &receipt.receipt_id,
+                usage.actor_id,
+                usage.contributor_id,
+            ));
+        }
+    }
+    if let Some(hearing) = &entries.hearing {
+        for usage in &hearing.time_use {
+            ids.insert(household_contribution_use_id(
+                &hearing.receipt_id,
                 usage.actor_id,
                 usage.contributor_id,
             ));
@@ -1116,6 +1158,28 @@ pub fn organizer_view(
             .filter(|row| row.actor_id == actor_id)
             .cloned()
             .collect(),
+        hearing: config
+            .hearing
+            .as_ref()
+            .filter(|h| h.period > state.period)
+            .map(OrganizerHearingNotice::from),
+        hearing_receipt: journal
+            .periods
+            .iter()
+            .find_map(|entries| entries.hearing.clone())
+            .map(|mut receipt| {
+                receipt.time_use.clear();
+                for seat in [&mut receipt.claimant, &mut receipt.partner] {
+                    if seat.response != OrganizerHearingResponse::Attended {
+                        seat.mandate = None;
+                    }
+                }
+                receipt
+            }),
+        hearing_review: journal
+            .periods
+            .iter()
+            .find_map(|entries| entries.hearing_review.clone()),
         total_observation_count,
         observations,
         total_receipt_count,
@@ -1167,6 +1231,10 @@ pub(super) fn required_hours(
         OrganizerChoice::Inquiry(_) => config.inquiry_hours,
         OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => config.contact_hours,
         OrganizerChoice::Hold if state.standing.authorized => config.contact_hours,
+        OrganizerChoice::InviteToHearing(_) => config
+            .hearing
+            .as_ref()
+            .map_or(0, |hearing| hearing.attendance_hours),
         OrganizerChoice::Hold | OrganizerChoice::PauseStanding => 0,
     }
 }
@@ -1207,6 +1275,13 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::ResourceContractChanged)
     } else if !command.allocation.matches_choice(command.choice) {
         Some(OrganizerRefusal::InvalidCommand)
+    } else if matches!(command.choice, OrganizerChoice::InviteToHearing(_))
+        && !config
+            .hearing
+            .as_ref()
+            .is_some_and(|hearing| hearing.period == resolves_period)
+    {
+        Some(OrganizerRefusal::HearingUnavailable)
     } else if state
         .pending_aid
         .iter()
@@ -1264,6 +1339,7 @@ pub fn preview_organizer(
             && matches!(
                 command.choice,
                 OrganizerChoice::Collect
+                    | OrganizerChoice::InviteToHearing(_)
                     | OrganizerChoice::Inquiry(_)
                     | OrganizerChoice::Reinforce
                     | OrganizerChoice::LocalAid

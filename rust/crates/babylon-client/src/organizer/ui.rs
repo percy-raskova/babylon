@@ -386,7 +386,10 @@ fn spawn_scene(commands: &mut Commands) {
 fn history_inspector_allowed(inspector: OrganizerInspector) -> bool {
     matches!(
         inspector,
-        OrganizerInspector::Evidence | OrganizerInspector::Receipts | OrganizerInspector::Notes
+        OrganizerInspector::Evidence
+            | OrganizerInspector::Receipts
+            | OrganizerInspector::Notes
+            | OrganizerInspector::Hearing
     )
 }
 
@@ -1099,6 +1102,11 @@ pub(super) fn visible(
             && field.applies(client.choice())
             && session.viewed_tick == session.durable_tick;
     }
+    if action == OrganizerAction::Inspect(OrganizerInspector::Hearing) {
+        return view == PrimaryView::Organizer
+            && client.inspector == OrganizerInspector::Closed
+            && super::hearing::has_entry(client, session);
+    }
     if action == OrganizerAction::DraftFromReport {
         return view == PrimaryView::Organizer
             && client.inspector == OrganizerInspector::Evidence
@@ -1116,7 +1124,18 @@ pub(super) fn visible(
     if let OrganizerAction::Choose(choice) = action {
         return view == PrimaryView::Organizer
             && match client.inspector {
-                OrganizerInspector::Practices => true,
+                OrganizerInspector::Practices => {
+                    !matches!(choice, OrganizerChoice::InviteToHearing(_))
+                }
+                OrganizerInspector::Hearing => {
+                    matches!(choice, OrganizerChoice::InviteToHearing(_))
+                        && session.viewed_tick == session.durable_tick
+                        && client
+                            .view
+                            .as_ref()
+                            .and_then(super::hearing::invitation)
+                            .is_some()
+                }
                 OrganizerInspector::Direction => matches!(
                     choice,
                     OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
@@ -1239,6 +1258,9 @@ pub(super) fn enabled(
                 }
         }
         OrganizerAction::InspectSubjectEvidence => client.selected_report_subject().is_some(),
+        OrganizerAction::Inspect(OrganizerInspector::Hearing) => {
+            super::hearing::has_entry(client, session)
+        }
         OrganizerAction::Inspect(_) | OrganizerAction::OpenReferences => client.view.is_some(),
         OrganizerAction::PreviousEvidence => client
             .evidence_neighbor(false, session.viewed_tick)
@@ -1773,7 +1795,7 @@ fn choose_approach(
     client.message = amount_editor::reconcile(client).err().unwrap_or_default();
     if matches!(
         client.inspector,
-        OrganizerInspector::Direction | OrganizerInspector::Practices
+        OrganizerInspector::Direction | OrganizerInspector::Practices | OrganizerInspector::Hearing
     ) {
         client.inspector = OrganizerInspector::Closed;
         if let Some(entity) = client.return_focus.take() {
@@ -2135,6 +2157,15 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let complete = scope.session.phase == SessionPhase::Complete;
     let (inspector_title, mut inspector_body) =
         presentation::inspector(&scope.client, scope.session.viewed_tick);
+    if scope.client.inspector == OrganizerInspector::Hearing {
+        inspector_body = scope.client.view.as_ref().map_or_else(String::new, |view| {
+            if super::hearing::has_entry(&scope.client, &scope.session) {
+                super::hearing::notice(view, scope.session.viewed_tick, !historical)
+            } else {
+                "No hearing record is available for this period.".into()
+            }
+        });
+    }
     if scope.client.inspector == OrganizerInspector::Relationships {
         if let Some((
             babylon_persistence::runtime_session::OrganizerBodyDisclosure::Partial(part),
@@ -2240,6 +2271,8 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
             OrganizerAction::FocusAmount(_)
                 | OrganizerAction::DraftFromReport
                 | OrganizerAction::PreparePartnerOffer
+                | OrganizerAction::Inspect(OrganizerInspector::Hearing)
+                | OrganizerAction::Choose(OrganizerChoice::InviteToHearing(_))
         ) {
             node.display = if visible(
                 button.0,
@@ -2383,6 +2416,10 @@ pub(super) fn install(app: &mut App) {
 pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
     app.add_observer(open_evidence);
 }
+
+#[cfg(test)]
+#[path = "hearing_tests.rs"]
+mod hearing_tests;
 
 #[cfg(test)]
 #[path = "report_reading_tests.rs"]
@@ -5027,6 +5064,9 @@ pub(crate) mod tests {
                 receipts: Vec::new(),
                 positions: Vec::new(),
                 aid_partners: vec![],
+                hearing: None,
+                hearing_receipt: None,
+                hearing_review: None,
                 aid_options: Vec::new(),
             }),
             ..default()
@@ -5146,7 +5186,7 @@ pub(crate) mod tests {
             });
     }
 
-    fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
+    pub(super) fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
         OrganizerPreview {
             allocation: command.allocation,
             choice: command.choice,
@@ -5175,7 +5215,7 @@ pub(crate) mod tests {
         assert!(session.installed(&context));
     }
 
-    fn press_named(app: &mut App, label: &str) {
+    pub(super) fn press_named(app: &mut App, label: &str) {
         let world = app.world_mut();
         let action = world
             .query::<(&ActionButton, &Children)>()
@@ -5210,7 +5250,7 @@ pub(crate) mod tests {
         app.update();
     }
 
-    fn painted_text(app: &mut App, inspector: bool) -> String {
+    pub(super) fn painted_text(app: &mut App, inspector: bool) -> String {
         let world = app.world_mut();
         world
             .query::<(&TextPart, &Text)>()

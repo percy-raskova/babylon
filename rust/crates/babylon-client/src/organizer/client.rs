@@ -42,6 +42,7 @@ pub(crate) enum OrganizerInspector {
     Notes,
     Review,
     Practices,
+    Hearing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,6 +186,31 @@ fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool
                 })
         }
     }
+}
+
+pub(super) fn hearing_update(
+    previous: Option<&OrganizerView>,
+    view: &OrganizerView,
+) -> Option<&'static str> {
+    if let Some(review) = super::hearing::committed_review(view, view.period) {
+        if review.period == view.period
+            && previous.is_none_or(|last| last.hearing_review.as_ref() != Some(review))
+        {
+            return Some("The county review report arrived. Read the period dispatch.");
+        }
+    }
+    if let Some(receipt) = &view.hearing_receipt {
+        if receipt.period == view.period
+            && previous.is_none_or(|last| last.hearing_receipt.as_ref() != Some(receipt))
+        {
+            return Some("Wayne hearing minutes arrived. Read the period dispatch.");
+        }
+    }
+    let hearing = super::hearing::invitation(view)?;
+    if previous.and_then(super::hearing::invitation) == Some(hearing) {
+        return None;
+    }
+    Some("Invitation window open. Read the Wayne hearing notice before advancing.")
 }
 
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
@@ -425,6 +451,13 @@ impl OrganizerClient {
     }
 
     pub(super) fn choice_available(&self, choice: OrganizerChoice) -> bool {
+        if matches!(choice, OrganizerChoice::InviteToHearing(_)) {
+            return self
+                .view
+                .as_ref()
+                .and_then(super::hearing::invitation)
+                .is_some();
+        }
         if choice == OrganizerChoice::Collect {
             return self
                 .collection_preview()
@@ -626,6 +659,9 @@ impl OrganizerClient {
                 && (previous.actor_id != snapshot.view.actor_id
                     || previous.authority_id != snapshot.view.authority_id
                     || previous.aid_partners != snapshot.view.aid_partners
+                    || previous.hearing != snapshot.view.hearing
+                    || previous.hearing_receipt != snapshot.view.hearing_receipt
+                    || previous.hearing_review != snapshot.view.hearing_review
                     || previous.workplace_id != snapshot.view.workplace_id
                     || previous.content_digest != snapshot.view.content_digest
                     || previous.resource_digest != snapshot.view.resource_digest)
@@ -664,6 +700,9 @@ impl OrganizerClient {
             session.complete();
         }
         let new_city_pd_notice = self.new_city_pd_notice(&snapshot, &context);
+        let hearing_notice = (context.observation.tick == context.durable_tick)
+            .then(|| hearing_update(self.view.as_ref(), &snapshot.view))
+            .flatten();
         let development = if context.observation.tick == context.durable_tick {
             self.developments.install(
                 &snapshot.view,
@@ -688,13 +727,18 @@ impl OrganizerClient {
         // new developments, pending operations and actionable failures.
         if new_city_pd_notice {
             self.pause_for_city_pd_notice(session);
-            if development.is_some() {
+            if let Some(hearing_notice) = hearing_notice {
+                let _ = write!(self.message, " · {hearing_notice}");
+            } else if development.is_some() {
                 let _ = write!(
                     self.message,
                     " · P{} dispatch updated. Read the period dispatch.",
                     session.durable_tick
                 );
             }
+        } else if let Some(hearing_notice) = hearing_notice {
+            session.pause_playback();
+            self.message = hearing_notice.into();
         } else if development.is_some() {
             session.pause_playback();
             self.message = format!(

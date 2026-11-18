@@ -17,6 +17,8 @@ use babylon_material_circuit::{
 
 use crate::national_transport::CargoClass;
 use babylon_practice_contract::OrganizerGiftConsent;
+use babylon_practice_contract::OrganizerHearingDelegation;
+use babylon_practice_contract::OrganizerHearingMandate;
 use babylon_practice_contract::OrganizerPartnerPolicy;
 use std::collections::BTreeMap;
 use std::fmt::Formatter;
@@ -355,6 +357,7 @@ pub enum VenueLogReader {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameOrganizerPolicy {
+    pub hearing: Option<GameHearingPolicy>,
     pub local_report_sharing: GamePartnerReportSharing,
     pub remote_report_sharing: GamePartnerReportSharing,
     pub evidence_class: String,
@@ -382,6 +385,24 @@ pub struct GameOrganizerPolicy {
     pub neighborhood_policy: OrganizerPartnerPolicy,
     pub local_policy: OrganizerPartnerPolicy,
     pub remote_policy: OrganizerPartnerPolicy,
+}
+
+/// Designed membership instructions for one relief hearing. Settlement grants review access.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GameHearingPolicy {
+    pub evidence_class: String,
+    pub county_geoid: String,
+    pub period: u64,
+    pub review_period: u64,
+    pub claimant_label: String,
+    pub claimant_claim: String,
+    pub partner_claim: String,
+    pub attendance_hours: u64,
+    pub claimant_mandate: OrganizerHearingMandate,
+    pub partner_mandate: OrganizerHearingMandate,
+    pub claimant_delegation: OrganizerHearingDelegation,
+    pub partner_delegation: OrganizerHearingDelegation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]

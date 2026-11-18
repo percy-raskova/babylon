@@ -1,4 +1,4 @@
-//! County-level aid partner markers follow the organizer's admitted roster.
+//! County-level aid partners and hearing notices from the organizer's admitted view.
 use super::workspace::DispatchDestination;
 use super::{
     ActionButton, OrganizerAction, OrganizerInspector, OrganizerSceneMode, OrganizerSubject, Scope,
@@ -190,6 +190,24 @@ fn partner_marker(
     })
 }
 
+fn hearing_marker(scope: &Scope, anchors: &CountyAnchors) -> Option<PartnerMarker> {
+    let (county, period, kind) =
+        crate::organizer::hearing::map_entry(&scope.client, &scope.session)?;
+    Some(PartnerMarker {
+        link: DatedLink::new(
+            &scope.session,
+            scope.session.viewed_tick,
+            Destination::Detail(DispatchDestination::Inspector(OrganizerInspector::Hearing)),
+        ),
+        name: format!("{kind} · P{period}"),
+        county_name: String::new(),
+        symbol: MapSymbol::Hearing,
+        anchor: anchors.county_position(county)?,
+        selected: false,
+        food: None,
+    })
+}
+
 pub(super) fn paint(
     mut commands: Commands,
     scope: Scope,
@@ -216,6 +234,7 @@ pub(super) fn paint(
         && scope.client.inspector == OrganizerInspector::Closed
         && scope.client.scene_mode == OrganizerSceneMode::Places
     {
+        markers.extend(hearing_marker(&scope, &anchors));
         markers.extend(
             scope
                 .client
@@ -251,7 +270,7 @@ pub(super) fn paint(
     for marker in &previous {
         let entity = GeographicSymbol {
             anchor: marker.anchor,
-            priority: u8::from(!marker.selected),
+            priority: u8::from(!marker.selected && marker.symbol != MapSymbol::Hearing),
             symbol: marker.symbol,
             label: format!("{} · county location", marker.name),
             view: PrimaryView::Organizer,
@@ -264,6 +283,27 @@ pub(super) fn paint(
             ObserverFocusTarget::action(Some(scope.session.context())),
         ))
         .id();
+        if marker.symbol == MapSymbol::Hearing {
+            commands
+                .entity(entity)
+                .entry::<Node>()
+                .and_modify(|mut node| {
+                    node.width = px(142);
+                    node.height = px(46);
+                });
+            commands.entity(entity).with_children(|parent| {
+                parent
+                    .spawn(super::text(&marker.name, 14.0, theme::PAPER))
+                    .insert((
+                        Node {
+                            width: px(92),
+                            ..default()
+                        },
+                        Pickable::IGNORE,
+                    ));
+            });
+            continue;
+        }
         commands
             .entity(entity)
             .entry::<Node>()

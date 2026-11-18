@@ -250,7 +250,7 @@ impl Plugin for VisualAssetsPlugin {
             .add(TextureAtlasLayout::from_grid(
                 UVec2::splat(128),
                 4,
-                2,
+                3,
                 None,
                 None,
             ));

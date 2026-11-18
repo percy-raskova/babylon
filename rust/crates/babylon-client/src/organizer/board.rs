@@ -467,6 +467,11 @@ fn dispatch_panel(root: &mut ChildSpawnerCommands) {
         panel
             .spawn((ui::text("", 23.0, theme::PAPER), PeriodTitle))
             .insert(ObserverFontRole::Display);
+        ui::button(
+            panel,
+            "Wayne hearing",
+            OrganizerAction::Inspect(OrganizerInspector::Hearing),
+        );
         ui::spawn_scrolling_reading(panel, |reading| {
             reading.spawn((
                 ui::text("", 15.0, theme::PAPER),

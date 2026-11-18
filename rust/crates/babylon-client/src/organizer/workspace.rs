@@ -123,6 +123,7 @@ pub(super) enum PossibleBenefit {
     Collection,
     LocalGift,
     RemoteGift,
+    Hearing,
     PauseRoutine,
     NoPractice,
 }
@@ -266,6 +267,10 @@ fn captured_parties<'a>(
             }),
             Some(known_partner(view, view.neighborhood_partner_id)),
         ),
+        OrganizerChoice::InviteToHearing(_) => (
+            None,
+            super::hearing::invitee(view).map(|partner| known_partner(view, partner.actor_id)),
+        ),
         OrganizerChoice::Collect => (
             client.collection_preview().map(|terms| NamedSubject {
                 subject: OrganizerSubject::Contributor(terms.contributor_id),
@@ -298,6 +303,9 @@ fn practice<'a>(
         OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => Some(view.contact_hours),
         OrganizerChoice::Hold if view.standing.authorized => Some(view.contact_hours),
         OrganizerChoice::Hold | OrganizerChoice::PauseStanding => Some(0),
+        OrganizerChoice::InviteToHearing(_) => {
+            super::hearing::invitation(view).map(|hearing| hearing.attendance_hours)
+        }
         OrganizerChoice::Collect => collection.map(|terms| terms.collection_hours),
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
             aid.map(|terms| terms.coordination_hours)
@@ -322,6 +330,7 @@ fn practice<'a>(
         }
         OrganizerChoice::PauseStanding => PossibleBenefit::PauseRoutine,
         OrganizerChoice::Collect => PossibleBenefit::Collection,
+        OrganizerChoice::InviteToHearing(_) => PossibleBenefit::Hearing,
         OrganizerChoice::LocalAid => PossibleBenefit::LocalGift,
         OrganizerChoice::RemoteAid => PossibleBenefit::RemoteGift,
     };
@@ -426,6 +435,9 @@ fn availability(
                     }
                 }
             });
+    }
+    if matches!(choice, OrganizerChoice::InviteToHearing(_)) && !client.choice_available(choice) {
+        return ChoiceAvailability::Refused(OrganizerRefusal::HearingUnavailable);
     }
     if aid_kind(choice).is_some() {
         let Some(terms) = client.aid_preview(choice) else {

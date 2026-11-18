@@ -975,7 +975,7 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
             ),
         ],
     );
-    panel.spawn(block_label("In a national game, organize in Wayne with food, funds and household time for local aid and remote solidarity. Observe production, payments and company accounts across 3,144 U.S. counties and external markets in the observer campaign.", 12.0, theme::GRAY));
+    panel.spawn(block_label("Lead the Wayne Organizing Collective. A county relief hearing gives you a choice over who gets the floor. The observer campaign opens the national accounts.", 12.0, theme::GRAY));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,

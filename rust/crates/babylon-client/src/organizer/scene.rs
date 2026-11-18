@@ -289,6 +289,9 @@ mod tests {
             receipts: vec![],
             positions: vec![],
             aid_partners: vec![],
+            hearing: None,
+            hearing_receipt: None,
+            hearing_review: None,
             aid_options: vec![],
         }
     }

@@ -43,9 +43,7 @@ impl CapturedEconomicCatalog {
                 let seed = super::graph::national_seed(
                     &self.input.scenario_id,
                     &self.opening,
-                    &sources.counties,
-                    &sources.aid,
-                    sources.companies.as_ref(),
+                    sources,
                     self.input.organizer.as_ref(),
                     self.input.city_pd.as_ref(),
                 )?;
@@ -84,9 +82,7 @@ impl CapturedEconomicCatalog {
                 let instances = super::graph::national_seed(
                     &self.input.scenario_id,
                     &self.opening,
-                    &sources.counties,
-                    &sources.aid,
-                    sources.companies.as_ref(),
+                    sources,
                     self.input.organizer.as_ref(),
                     self.input.city_pd.as_ref(),
                 )?;

@@ -117,9 +117,9 @@ pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 21] = [
         id: VisualAssetId::EconomicMapAtlas,
         label: "Economic map symbols",
         width: 512,
-        height: 256,
+        height: 384,
         columns: 4,
-        rows: 2,
+        rows: 3,
     },
     VisualAssetDescriptor {
         id: VisualAssetId::HeroRedApparatus,

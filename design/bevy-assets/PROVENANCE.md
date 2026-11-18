@@ -35,6 +35,9 @@ On 2026-11-16, Codex recolored the shop with a blue and white awning. Inkscape p
 updated atlas and the 24- and 30-pixel symbol key. The earlier Wayne period 2 screenshot
 shows the original warm-colored shop.
 
+On 2026-11-18, Codex added a hearing docket in the first cell of a third row. Inkscape rendered
+the docket from the editable master. The eight earlier stamps keep their original pixels.
+
 ## OpenAI-generated illustrations
 
 OpenAI's built-in image-generation tool created the ten illustration masters on 2026-08-22. The

@@ -447,3 +447,19 @@ evidence_class = "Designed"
 county = "26163"
 households = 2
 reserve_persons = 2
+
+# The two household bodies separately authorize their delegations for this hearing.
+# The minutes grant a place at the next review. They cannot spend county money.
+[organizer.hearing]
+evidence_class = "Designed"
+county_geoid = "26163"
+period = 2
+review_period = 3
+attendance_hours = 2
+claimant_label = "Wayne Relief Claimants Assembly"
+claimant_claim = "Keep current claimants on the relief roll while the county reviews their cases."
+partner_claim = "Hear the cases of residents who received no county support."
+claimant_mandate = "either_procedural_offer"
+partner_mandate = { settle = "joint_minutes" }
+claimant_delegation = { delegate_label = "Claimants' meeting secretary", authorizing_households = 2 }
+partner_delegation = { delegate_label = "Case delegate for the aid partners", authorizing_households = 3 }

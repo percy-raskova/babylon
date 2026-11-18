@@ -125,6 +125,7 @@ impl CapturedEconomicCatalog {
                 crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
                 &opening,
                 &national.aid,
+                national.support_claimant.as_ref(),
                 &input,
             )?;
             if *config != expected_config {
@@ -208,6 +209,7 @@ impl CapturedEconomicCatalog {
             crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
             &catalog.opening,
             &national.aid,
+            national.support_claimant.as_ref(),
             &catalog.input,
         )?;
         catalog.input.organizer = Some(config);

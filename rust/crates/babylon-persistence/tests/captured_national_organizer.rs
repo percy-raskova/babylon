@@ -260,9 +260,32 @@ fn assert_admitted_inputs(
         .organizer_state()
         .expect("the fixture register carries organizer state");
     assert_eq!(config.campaign_id, *campaign.canonical_bytes());
-    assert!(
-        matches!(&config.time_binding, OrganizerTimeBindingMode::Household{bindings} if bindings.len()==3)
-    );
+    let OrganizerTimeBindingMode::Household { bindings } = &config.time_binding else {
+        panic!("the national organizer uses actual household time")
+    };
+    assert_eq!(bindings.len(), 4);
+    let hearing = config.hearing.as_ref().expect("Wayne relief hearing");
+    let claimants = config
+        .participants
+        .iter()
+        .find(|body| {
+            body.commitments
+                .iter()
+                .any(|entry| entry.actor_id == hearing.claimant_actor_id)
+        })
+        .expect("claimants authorize their own participant body");
+    assert_ne!(hearing.claimant_actor_id, config.controlled_actor_id);
+    let budget = bindings
+        .iter()
+        .find(|binding| binding.contributor_id == claimants.contributor_id)
+        .expect("claimant members furnish hours from their own budget");
+    assert!(config
+        .aid_bindings
+        .iter()
+        .all(|aid| aid.recipient_principal_id != budget.principal_id
+            && aid.donor_principal_id != budget.principal_id));
+    assert_eq!(hearing.claimant_delegation.authorizing_households, 2);
+    assert_eq!(hearing.partner_delegation.authorizing_households, 3);
     assert_eq!(config.aid_bindings.len(), 2);
     let collection = config
         .collection
@@ -386,6 +409,7 @@ fn assert_native_bindings(
         "wayne-organizing-collective",
         "wayne-workplace-committee",
         "wayne-neighborhood-contact-group",
+        "wayne-relief-claimants-assembly",
         "wayne-local-aid-partners",
         "cook-independent-solidarity-partners",
     ] {
@@ -401,7 +425,7 @@ fn assert_native_bindings(
             .iter()
             .filter(|(_, kind)| kind == "PARTICIPANT_BODY")
             .count(),
-        3
+        4
     );
     for target in targets {
         assert!(nodes
@@ -411,6 +435,11 @@ fn assert_native_bindings(
     let bodies = admitted.foundation_graph().rows().hyperedges();
     for actor in [
         expected_config.controlled_actor_id,
+        expected_config
+            .hearing
+            .as_ref()
+            .expect("captured Wayne hearing")
+            .claimant_actor_id,
         expected_config.workplace_partner.actor_id,
         expected_config.neighborhood_partner.actor_id,
         expected_config.aid_bindings[0].partner.actor_id,

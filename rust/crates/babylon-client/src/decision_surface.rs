@@ -315,12 +315,12 @@ const fn gameplay_surface(
 pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
     gameplay_surface(
         SurfaceId::OrganizerWorkspace,
-        "How should our organization use its committed time to understand lost work and sustain cooperation?",
-        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "accepted ruling and actual practice receipts"],
-        &["partner cooperation is independent", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero"],
+        "How should our organization use its time, and whose demands can our partners take to the relief hearing?",
+        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "dated notice, signatory households and authorized delegates", "accepted ruling and actual practice receipts"],
+        &["partner cooperation is independent", "speaking authority can be narrower than settlement authority", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero"],
         &["only the player's actor-scoped organizer projection", "historical views cannot submit", "local drafts never execute"],
-        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work")],
-        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work"],
+        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work"), SurfaceAction::available("invite-to-relief-hearing")],
+        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work", "committed testimony and the next review agenda"],
         &["earned workplace report", "practice receipt", "county/<geoid>"],
     ),
     DecisionSurfaceContract {

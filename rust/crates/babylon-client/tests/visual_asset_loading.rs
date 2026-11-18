@@ -83,8 +83,8 @@ fn assert_loaded_asset_contract(app: &App) {
         (
             "economic-map-atlas",
             &assets.economic_map_layout,
-            UVec2::new(512, 256),
-            8,
+            UVec2::new(512, 384),
+            12,
         ),
         (
             "interface-atlas",

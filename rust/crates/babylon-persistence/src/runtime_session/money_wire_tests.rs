@@ -29,6 +29,9 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
             },
             city_pd_encounters: Vec::new(),
             view: OrganizerView {
+                hearing: None,
+                hearing_receipt: None,
+                hearing_review: None,
                 period: 0,
                 actor_id: 1,
                 authority_id: [1; 16],

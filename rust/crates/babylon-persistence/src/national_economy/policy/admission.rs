@@ -339,6 +339,24 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
 }
 
 fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {
+    if let Some(hearing) = &organizer.hearing {
+        if hearing.evidence_class != "Designed"
+            || babylon_kernel::geography::CountyGeoid::try_from(hearing.county_geoid.as_str())
+                .is_err()
+            || hearing.period == 0
+            || hearing.period.checked_add(1) != Some(hearing.review_period)
+            || !(1..=organizer.contributor_hours_cap).contains(&hearing.attendance_hours)
+            || [
+                &hearing.claimant_label,
+                &hearing.claimant_claim,
+                &hearing.partner_claim,
+            ]
+            .iter()
+            .any(|text| text.trim().is_empty() || text.len() > 128 || text.contains('\0'))
+        {
+            return Err(Error::Profile("Wayne relief hearing terms".into()));
+        }
+    }
     if organizer.collection_maximum_cash_micros <= 0
         || organizer.collection_initial_cash_micros <= 0
         || organizer.collection_initial_cash_micros > organizer.collection_maximum_cash_micros

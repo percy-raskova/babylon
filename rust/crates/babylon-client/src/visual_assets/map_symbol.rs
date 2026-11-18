@@ -23,6 +23,8 @@ pub enum MapSymbol {
     RemoteAid,
     /// Food shortage recorded at this close.
     FoodShortage,
+    /// Public county hearing docket.
+    Hearing,
 }
 
 impl MapSymbol {
@@ -32,7 +34,7 @@ impl MapSymbol {
         match self {
             Self::Origin => 46.0,
             Self::FoodShortage => 44.0,
-            Self::Utility | Self::LocalAid => 42.0,
+            Self::Utility | Self::LocalAid | Self::Hearing => 42.0,
             Self::Producer | Self::RemoteAid => 38.0,
             Self::Airport | Self::Shop => 34.0,
             Self::Terminal => 30.0,
@@ -51,6 +53,7 @@ impl MapSymbol {
             Self::Origin => 5,
             Self::LocalAid => 6,
             Self::RemoteAid => 7,
+            Self::Hearing => 8,
             Self::FoodShortage => {
                 return ImageNode::from_atlas_image(
                     assets.interface_atlas.clone(),

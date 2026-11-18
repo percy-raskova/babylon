@@ -75,6 +75,7 @@ pub(super) fn spawn(commands: &mut Commands) {
                     TextPart::InspectorBody,
                     ObserverFocusTarget::reading(None),
                 ));
+                crate::organizer::hearing::spawn_choices(body);
                 body.spawn((ui::column(), DetailControls(OrganizerInspector::Evidence)))
                     .with_children(|controls| {
                         ui::button(controls, "Report Archive", OrganizerAction::ArchiveReport);

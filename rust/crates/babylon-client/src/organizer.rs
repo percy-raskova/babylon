@@ -13,6 +13,7 @@ mod developments;
 mod editor;
 
 mod evidence;
+mod hearing;
 
 mod partner_copy;
 mod presentation;
@@ -137,6 +138,9 @@ pub(crate) mod tests {
             receipts: Vec::new(),
             positions: Vec::new(),
             aid_partners: vec![],
+            hearing: None,
+            hearing_receipt: None,
+            hearing_review: None,
             aid_options: Vec::new(),
         };
         (

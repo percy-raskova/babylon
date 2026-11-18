@@ -22,8 +22,8 @@ use crate::CampaignFoundation;
 use babylon_practice_contract::OrganizerCollectionResolution;
 use babylon_practice_contract::{
     OrganizerAidMaterialPostings, OrganizerAidResolutionReceipt, OrganizerChoice, OrganizerConfig,
-    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
-    OrganizerReceipt, OrganizerReport,
+    OrganizerHearingReceipt, OrganizerHearingReview, OrganizerInquiry, OrganizerObservation,
+    OrganizerOutcome, OrganizerPartnerResponse, OrganizerReceipt, OrganizerReport,
 };
 use babylon_tick::material_world::MaterialWorldRegister;
 use postgres::Config;
@@ -239,6 +239,20 @@ pub(crate) fn insert_projection(
             &format!("practice-{}", hex(&receipt.receipt_id)),
             receipt.period,
             &citation,
+        )
+        .map_err(archive_error)?;
+    }
+    for evidence in hearing_evidence(journal, state.period) {
+        archive::insert_grant_row(
+            client,
+            campaign,
+            "organization",
+            &actor,
+            &evidence.key(),
+            evidence.period(),
+            &evidence
+                .citation(config.controlled_actor_id)
+                .map_err(archive_error)?,
         )
         .map_err(archive_error)?;
     }
@@ -468,6 +482,7 @@ fn report_text(observation: &OrganizerObservation) -> String {
 fn receipt_text(receipt: &OrganizerReceipt) -> String {
     let practice = match receipt.choice {
         OrganizerChoice::Collect => "Collect a voluntary contribution",
+        OrganizerChoice::InviteToHearing(_) => "Invite a delegation to the county relief hearing",
         OrganizerChoice::LocalAid => "Local aid",
         OrganizerChoice::RemoteAid => "Cross-region support",
         OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Ask about work and output",
@@ -488,6 +503,7 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
         OrganizerOutcome::AidPracticeCompleted => "Independent aid practice completed",
         OrganizerOutcome::AidPracticeUncompleted => "Independent aid practice uncompleted",
         OrganizerOutcome::EvidenceObtained => "Evidence obtained",
+        OrganizerOutcome::HearingInvitationIssued => "Hearing invitation delivered",
         OrganizerOutcome::EvidenceWithheld => "No report obtained",
         OrganizerOutcome::ContactCompleted => "Mutual contact completed",
         OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",
@@ -765,6 +781,15 @@ impl CapturedOrganizerPages {
                     signals.push(PageEvidence::Encounter(encounter));
                 }
             } else {
+                if kind == "organization"
+                    && actor == id
+                    && actor == config.controlled_actor_id.to_string()
+                {
+                    signals.extend(
+                        hearing_evidence(journal, self.tick)
+                            .map(|row| PageEvidence::Hearing(config.controlled_actor_id, row)),
+                    );
+                }
                 let matching_receipts = receipts
                     .iter()
                     .copied()
@@ -803,7 +828,92 @@ impl CapturedOrganizerPages {
     }
 }
 
+#[derive(Clone, Copy)]
+enum HearingEvidence<'a> {
+    Minutes(&'a OrganizerHearingReceipt),
+    Review(&'a OrganizerHearingReceipt, &'a OrganizerHearingReview),
+}
+
+fn hearing_evidence(
+    journal: &OrganizerPeriodJournal,
+    through: u64,
+) -> impl Iterator<Item = HearingEvidence<'_>> {
+    let hearing = journal
+        .periods
+        .iter()
+        .find_map(|entries| entries.hearing.as_ref())
+        .filter(|hearing| hearing.period <= through);
+    let review = journal
+        .periods
+        .iter()
+        .find_map(|entries| entries.hearing_review.as_ref())
+        .filter(|review| review.period <= through);
+    hearing.into_iter().flat_map(move |hearing| {
+        std::iter::once(HearingEvidence::Minutes(hearing))
+            .chain(review.map(|review| HearingEvidence::Review(hearing, review)))
+    })
+}
+
+impl HearingEvidence<'_> {
+    fn period(self) -> u64 {
+        match self {
+            Self::Minutes(hearing) => hearing.period,
+            Self::Review(_, review) => review.period,
+        }
+    }
+
+    fn key(self) -> String {
+        match self {
+            Self::Minutes(hearing) => format!("hearing-{}", hex(&hearing.receipt_id)),
+            Self::Review(_, review) => {
+                format!("hearing-review-{}", hex(&review.hearing_receipt_id))
+            }
+        }
+    }
+
+    fn citation(self, actor: u64) -> Result<ArchiveCitation, SemanticArchiveError> {
+        match self {
+            Self::Minutes(hearing) => {
+                citation(actor, hearing.period, hearing.period, &hearing.receipt_id)
+            }
+            Self::Review(_, review) => {
+                ArchiveCitation::try_new(
+                    "committed-organizer-hearing-review-v1".into(),
+                    format!(
+                    "source-actor/{actor}/observed-period/{}/acquired-period/{}/hearing-receipt/{}",
+                    review.period, review.period, hex(&review.hearing_receipt_id)
+                ),
+                )
+            }
+        }
+    }
+
+    fn signal(self, actor: u64) -> Result<ArchiveSignal, SemanticArchiveError> {
+        match self {
+            Self::Minutes(hearing) => hearing_signal(actor, hearing),
+            Self::Review(hearing, review) => {
+                let report = match review.speaker_actor_ids.as_slice() {
+                    [] => "The county docket recorded no agreed speaking turns.".into(),
+                    [first, reply] => format!(
+                        "The county docket recorded the opening turn for {} and the reply for {}.",
+                        hearing_actor_label(hearing, *first)?,
+                        hearing_actor_label(hearing, *reply)?,
+                    ),
+                    _ => return Err(SemanticArchiveError::StoredPageMismatch),
+                };
+                ArchiveSignal::try_new(
+                    self.key(),
+                    format!("County relief review agenda from period {}", review.period),
+                    report,
+                    self.citation(actor)?,
+                )
+            }
+        }
+    }
+}
+
 enum PageEvidence<'a> {
+    Hearing(u64, HearingEvidence<'a>),
     Report(&'a OrganizerObservation),
     Encounter(&'a CityPdEncounter),
     Practice(&'a OrganizerReceipt),
@@ -814,6 +924,7 @@ enum PageEvidence<'a> {
 impl PageEvidence<'_> {
     fn period(&self) -> u64 {
         match self {
+            Self::Hearing(_, row) => row.period(),
             Self::Report(r) => r.acquired_period,
             Self::Encounter(r) => r.resolve_period,
             Self::Practice(r) => r.period,
@@ -823,6 +934,7 @@ impl PageEvidence<'_> {
     }
     fn signal(&self) -> Result<ArchiveSignal, SemanticArchiveError> {
         match self {
+            Self::Hearing(actor, row) => row.signal(*actor),
             Self::Report(r) => observation_signal(r),
             Self::Encounter(r) => encounter_signal(r),
             Self::Practice(r) => practice_signal(r),
@@ -867,6 +979,71 @@ fn observation_signal(
         ),
         report_text(observation),
         observation_citation(observation)?,
+    )
+}
+
+fn hearing_actor_label(
+    hearing: &OrganizerHearingReceipt,
+    actor: u64,
+) -> Result<&str, SemanticArchiveError> {
+    [&hearing.claimant, &hearing.partner]
+        .into_iter()
+        .find(|seat| seat.actor_id == actor)
+        .map(|seat| seat.label.as_str())
+        .ok_or(SemanticArchiveError::StoredPageMismatch)
+}
+
+fn hearing_signal(
+    actor: u64,
+    hearing: &OrganizerHearingReceipt,
+) -> Result<ArchiveSignal, SemanticArchiveError> {
+    use babylon_practice_contract::{OrganizerHearingOffer, OrganizerHearingOutcome};
+
+    let mut minutes = match hearing.outcome {
+        OrganizerHearingOutcome::Settled
+            if hearing.offer == Some(OrganizerHearingOffer::ClaimantOnly) =>
+        {
+            "The claimant delegate accepted both review turns for the claimant households."
+        }
+        OrganizerHearingOutcome::Settled => "Both delegates agreed to share the next review.",
+        OrganizerHearingOutcome::ReferredToMembers => {
+            "Members must decide whether to accept the proposed terms."
+        }
+        OrganizerHearingOutcome::NoOffer => "The hearing closed without a proposal.",
+        OrganizerHearingOutcome::NoQuorum => {
+            "A required delegation was absent when the offer came up."
+        }
+    }
+    .to_owned();
+    let seats = [&hearing.claimant, &hearing.partner];
+    for statement in &hearing.testimony {
+        let seat = seats
+            .iter()
+            .find(|seat| seat.actor_id == statement.actor_id)
+            .ok_or(SemanticArchiveError::StoredPageMismatch)?;
+        minutes.push(' ');
+        minutes.push_str(&format!(
+            "{} spoke for {} households in {}. Their demand was “{}”",
+            statement.delegate_label,
+            seat.delegation.authorizing_households,
+            seat.label,
+            statement.claim
+        ));
+    }
+    if let [first, reply] = hearing.review_access_actor_ids.as_slice() {
+        minutes.push_str(&format!(
+            " The agreement reserves the opening for {} and the reply for {} at the period {} review.",
+            hearing_actor_label(hearing, *first)?,
+            hearing_actor_label(hearing, *reply)?,
+            hearing.review_period,
+        ));
+    }
+    let evidence = HearingEvidence::Minutes(hearing);
+    ArchiveSignal::try_new(
+        evidence.key(),
+        format!("Relief hearing minutes from period {}", hearing.period),
+        minutes,
+        evidence.citation(actor)?,
     )
 }
 
@@ -989,6 +1166,7 @@ pub(crate) fn validate_projection(
 
 /// Exact mutable organizer projection rows, owned by the short capture snapshot.
 pub(crate) struct CapturedOrganizerProjection {
+    hearing_grants: Vec<Row>,
     subjects: Vec<Row>,
     observations: Vec<Row>,
     receipts: Vec<Row>,
@@ -1004,6 +1182,7 @@ pub(crate) fn capture_projection(
 ) -> Result<CapturedOrganizerProjection, MaterialRuntimeError> {
     let tick = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let subjects = capture_subjects(client, campaign)?;
+    let hearing_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'hearing-%' AND granted_tick<=$2 ORDER BY granted_tick, grant_key LIMIT 3", &[campaign.as_uuid(), &tick])?;
     let observations = client.query("SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes FROM babylon_state.organizer_observation_v1 WHERE campaign_id=$1 AND acquired_period<=$2 ORDER BY observation_id", &[campaign.as_uuid(),&tick])?;
     let receipts = client.query("SELECT receipt_id,actor_id,resolve_tick,receipt_bytes FROM babylon_state.organizer_receipt_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 ORDER BY receipt_id", &[campaign.as_uuid(),&tick])?;
     let bound = i64::try_from(babylon_practice_contract::CITY_PD_MAX_ROWS + 1)
@@ -1012,6 +1191,7 @@ pub(crate) fn capture_projection(
     let encounter_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%' AND granted_tick<=$2 ORDER BY grant_key LIMIT $3", &[campaign.as_uuid(), &tick, &bound])?;
     let report_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'report-%' AND granted_tick<=$2 ORDER BY grant_key", &[campaign.as_uuid(),&tick])?;
     Ok(CapturedOrganizerProjection {
+        hearing_grants,
         subjects,
         observations,
         receipts,
@@ -1033,6 +1213,26 @@ impl CapturedOrganizerProjection {
             .organizer_journal()
             .ok_or(MaterialRuntimeError::OrganizerStorage)?;
         validate_captured_subjects(&self.subjects, config)?;
+        let actor = config.controlled_actor_id.to_string();
+        let expected_hearing =
+            hearing_evidence(journal, register.completed_tick()).collect::<Vec<_>>();
+        if self.hearing_grants.len() != expected_hearing.len() {
+            return Err(MaterialRuntimeError::OrganizerStorage);
+        }
+        for (row, evidence) in self.hearing_grants.iter().zip(expected_hearing) {
+            let expected = evidence
+                .citation(config.controlled_actor_id)
+                .map_err(archive_error)?;
+            if row.get::<_, String>("subject_kind") != "organization"
+                || row.get::<_, String>("subject_id") != actor
+                || row.get::<_, String>("grant_key") != evidence.key()
+                || u64::try_from(row.get::<_, i64>("granted_tick")).ok() != Some(evidence.period())
+                || row.get::<_, String>("provenance_source_id") != expected.source_id()
+                || row.get::<_, String>("provenance_locator") != expected.locator()
+            {
+                return Err(MaterialRuntimeError::OrganizerStorage);
+            }
+        }
         let observed = &self.observations;
         let mut expected = report_rows(config, journal)
             .filter(|row| row.actor_id == config.controlled_actor_id)
@@ -1136,6 +1336,109 @@ mod projection_tests {
                 previous_output_kg: Some(960),
             },
         }
+    }
+
+    #[test]
+    fn hearing_review_signal_requires_its_own_dated_scope() {
+        use babylon_practice_contract::{
+            OrganizerHearingDelegation, OrganizerHearingMandate, OrganizerHearingOffer,
+            OrganizerHearingOutcome, OrganizerHearingResponse, OrganizerHearingSeat,
+        };
+        let seat = |actor_id, label: &str| OrganizerHearingSeat {
+            actor_id,
+            authority_id: [u8::try_from(actor_id).expect("small fixture identity"); 16],
+            label: label.into(),
+            claim: "Publish the relief schedule".into(),
+            delegation: OrganizerHearingDelegation {
+                delegate_label: "Delegate".into(),
+                authorizing_households: 1,
+            },
+            response: OrganizerHearingResponse::Attended,
+            mandate: Some(OrganizerHearingMandate::Settle(
+                OrganizerHearingOffer::JointMinutes,
+            )),
+        };
+        let hearing = OrganizerHearingReceipt {
+            county_geoid: "26163".into(),
+            receipt_id: [2; 32],
+            period: 2,
+            review_period: 3,
+            invitation_commitment_id: Some([3; 32]),
+            offer: Some(OrganizerHearingOffer::JointMinutes),
+            claimant: seat(2, "Claimants"),
+            partner: seat(3, "Aid Partners"),
+            outcome: OrganizerHearingOutcome::Settled,
+            testimony: vec![],
+            review_access_actor_ids: vec![2, 3],
+            time_use: vec![],
+        };
+        let mut journal = OrganizerPeriodJournal::empty();
+        let mut minutes = OrganizerPeriodJournalEntries::new(2);
+        let mut review = OrganizerPeriodJournalEntries::new(3);
+        review.hearing_review = Some(OrganizerHearingReview::from(&hearing));
+        minutes.hearing = Some(hearing);
+        journal.append(minutes).expect("minutes");
+        journal.append(review).expect("review");
+        let actor = 1;
+        let page = |period| {
+            organizer_page(
+                ArchiveSubject::try_new(
+                    ArchiveSubjectKind::Organization,
+                    actor.to_string(),
+                    "Wayne Organizing Collective".into(),
+                )
+                .expect("known organization"),
+                &PendingArchiveReceipt::try_new(period, [1; 32]).expect("committed period"),
+                hearing_evidence(&journal, period)
+                    .map(|evidence| PageEvidence::Hearing(actor, evidence))
+                    .collect(),
+            )
+            .expect("valid Archive page")
+        };
+        let early = page(2);
+        let late = page(3);
+        let [minutes] = early.signals() else {
+            panic!("expected only minutes")
+        };
+        let [_, review] = late.signals() else {
+            panic!("expected minutes and review")
+        };
+        assert_ne!(minutes.grant_key(), review.grant_key());
+        assert!(review.citation().locator().contains("/acquired-period/3/"));
+
+        let scope = early.subject().page_ref();
+        let grant = |key: &str, tick, citation| {
+            ArchiveKnowledgeGrant::try_new(scope.clone(), key.into(), tick, citation)
+                .expect("scoped grant")
+        };
+        let subject = grant(
+            "subject",
+            0,
+            ArchiveCitation::try_new("captured-organizer".into(), "organization".into())
+                .expect("subject citation"),
+        );
+        let minutes_grant = grant(minutes.grant_key(), 2, minutes.citation().clone());
+        let review_grant = grant(review.grant_key(), 3, review.citation().clone());
+        let before = ArchiveKnowledge::try_new(vec![subject.clone(), minutes_grant.clone()])
+            .expect("minutes reader");
+        let after = ArchiveKnowledge::try_new(vec![subject, minutes_grant, review_grant])
+            .expect("review reader");
+        let renderer = FogSafeArchiveRenderer::new().expect("Archive renderer");
+        assert!(!renderer
+            .render(&late, &before)
+            .expect("restricted page")
+            .citations()
+            .contains(review.citation()));
+        assert!(!renderer
+            .render(&early, &after)
+            .expect("historical page")
+            .citations()
+            .contains(review.citation()));
+        assert!(renderer
+            .render(&late, &after)
+            .expect("earned review")
+            .citations()
+            .contains(review.citation()));
     }
 
     #[test]

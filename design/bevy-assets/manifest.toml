@@ -89,11 +89,11 @@ source = "design/bevy-assets/sources/economic-map-atlas.svg"
 runtime = "assets/visual/economic-map-atlas.png"
 format = "png"
 width = 512
-height = 256
+height = 384
 columns = 4
-rows = 2
+rows = 3
 sampler = "linear"
-sha256 = "9adb4a82112debe7909b6dca6f1dc114905885a5eba974fd21d6803a1691aed7"
+sha256 = "bb9ea7ff78baf7205f40aef94f77f679e223ac7a266780e838f1257b1d758bbc"
 license = "AGPL-3.0-or-later"
 
 [[asset]]

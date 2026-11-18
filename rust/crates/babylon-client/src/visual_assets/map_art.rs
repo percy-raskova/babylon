@@ -12,7 +12,8 @@ use std::path::Path;
 const BUNDLED: &[u8] = include_bytes!("../../../../../assets/visual/economic-map-atlas.png");
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const WIDTH: u32 = 512;
-const HEIGHT: u32 = 256;
+const HEIGHT: u32 = 384;
+const SYMBOLS: u32 = 9;
 const TILE: u32 = 128;
 
 pub(super) fn load(server: &AssetServer) -> Handle<Image> {
@@ -63,7 +64,7 @@ fn decode(bytes: &[u8]) -> Result<Image> {
     if bytes.get(16..20) != Some(WIDTH.to_be_bytes().as_slice())
         || bytes.get(20..24) != Some(HEIGHT.to_be_bytes().as_slice())
     {
-        return Err(invalid("expected a 512 by 256 pixel PNG"));
+        return Err(invalid("expected a 512 by 384 pixel PNG"));
     }
     if bytes.get(25) != Some(&6) {
         return Err(invalid("expected RGBA PNG color type"));
@@ -77,21 +78,22 @@ fn decode(bytes: &[u8]) -> Result<Image> {
     let pixels = DynamicImage::from_decoder(decoder)
         .map_err(image_error)?
         .into_rgba8();
-    for row in 0..HEIGHT / TILE {
-        for column in 0..WIDTH / TILE {
-            let tile = pixels.view(column * TILE, row * TILE, TILE, TILE);
-            if !tile.pixels().any(|(_, _, pixel)| pixel[3] == 0)
-                || !tile.pixels().any(|(_, _, pixel)| pixel[3] > 0)
-            {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "tile at row {}, column {} requires transparent and visible pixels",
-                        row + 1,
-                        column + 1
-                    ),
-                ));
-            }
+    let columns = WIDTH / TILE;
+    for index in 0..SYMBOLS {
+        let row = index / columns;
+        let column = index % columns;
+        let tile = pixels.view(column * TILE, row * TILE, TILE, TILE);
+        if !tile.pixels().any(|(_, _, pixel)| pixel[3] == 0)
+            || !tile.pixels().any(|(_, _, pixel)| pixel[3] > 0)
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "tile at row {}, column {} requires transparent and visible pixels",
+                    row + 1,
+                    column + 1
+                ),
+            ));
         }
     }
     let mut image = Image::from_dynamic(
@@ -130,6 +132,7 @@ mod tests {
                 art.put_pixel(x, y, Rgba([61, 111, 193, 255]));
             }
         }
+        art.put_pixel(32, 301, Rgba([61, 111, 193, 255]));
         art.save(&path)?;
         assert_eq!(
             super::select(Some(&path)).data.as_deref(),
@@ -157,7 +160,7 @@ mod tests {
         assert!(super::decode(&wrong_size)
             .expect_err("invalid artist atlas must be rejected")
             .to_string()
-            .contains("512 by 256"));
+            .contains("512 by 384"));
         let mut wrong_channels = BUNDLED.to_vec();
         wrong_channels[25] = 2;
         assert!(super::decode(&wrong_channels)

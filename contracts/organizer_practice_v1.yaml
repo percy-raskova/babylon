@@ -4,10 +4,12 @@ meta:
   authority: ADR262
   evidence_class: Designed
   owners: [babylon-practice-contract, babylon-tick, babylon-persistence]
-  scope: Captured Wayne collective, two independent partners, and one workplace
+  scope: >-
+    Captured Wayne collective, independent partner organizations, one workplace,
+    and an optional Wayne relief hearing
 
 encoding:
-  runtime_session_protocol_version: 20
+  runtime_session_protocol_version: 21
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
   version: config_and_state_schema_version_12_where_present
   current_domains: {config: "babylon.organizer-config.v11\0", state: "babylon.organizer-state.v10\0",
@@ -80,6 +82,7 @@ causal_order:
   - organizer-practice resolves the admitted ruling or authorized routine after ooda.
   - Inquiry acquires a permitted report about the opening completed period.
   - New contact products are available only to the following period's reducer.
+  - The hearing uses the appointment period's time left after ordinary and pending aid practices.
   - Graph, material, organizer state, observations, receipts and marker publish atomically.
 
 practices:
@@ -95,6 +98,28 @@ practices:
   partner_response: independent_permission_policy_and_capacity
   player_ruling: no_subsequent_NPC_vote
   no_material_privilege: no_factory_stock_staffing_production_or_maintenance_writes
+
+hearing:
+  authorizing_body: Wayne County places the opening and reply at the named bodies' disposal under the hearing rules.
+  appointment: one_captured_county_period_with_a_later_named_review
+  notice: public_dates_labels_claims_and_counted_delegating_households
+  claimant: independent_home_appointment_even_if_the_player_waits
+  invitation: controlled_actor_commitment_charged_before_invited_group_can_attend
+  authority: separate_mandates_for_the_named_delegates_at_this_appointment
+  attendance: independent_shared_household_time_debit_for_each_attending_group
+  testimony: a_paid_authorized_delegate_enters_only_its_own_named_claim_on_the_hearing_date
+  county_docket: county_standing_rules_place_two_speaking_turns_under_the_parties_settled_terms
+  claimant_only: record_claimant_demand_and_reserve_opening_and_reply_review_turns_for_claimants
+  joint_minutes: record_both_demands_and_reserve_opening_for_claimants_and_reply_for_aid_partners
+  settlement: each_party_to_the_offer_must_attend_and_accept_within_its_captured_mandate
+  outside_mandate: refer_to_members_without_granting_review_turns
+  receipt: period_authorities_claims_actual_time_debits_and_ordered_review_entitlements
+  absent_mandate: withheld_from_public_notice_and_report
+  review_roll: consume_pending_settled_rights_once_at_scheduled_review_and_publish_ordered_speakers
+  unagreed_review_roll: publish_no_authorized_speakers
+  review_scope: authorized_agenda_only_no_attendance_or_debit_claim
+  material_effect: no_appropriation_or_payment
+  retention: canonical_journal_bound_to_nominal_material_world_hash
 
 cooperation:
   initial_report_access: through_captured_initial_agreement_period

@@ -130,11 +130,11 @@ _EXPECTED_MANIFEST_METADATA = (
         "assets/visual/economic-map-atlas.png",
         "png",
         512,
-        256,
+        384,
         4,
-        2,
+        3,
         "linear",
-        "9adb4a82112debe7909b6dca6f1dc114905885a5eba974fd21d6803a1691aed7",
+        "bb9ea7ff78baf7205f40aef94f77f679e223ac7a266780e838f1257b1d758bbc",
         "AGPL-3.0-or-later",
     ),
     (
@@ -485,17 +485,19 @@ def test_economic_map_pieces_have_distinct_visible_shapes_and_clear_surroundings
         "origin-selected-hub",
         "local-aid-partner",
         "remote-aid-partner",
+        "wayne-hearing",
     ]
     runtime = _ROOT / str(asset["runtime"])
     assert hashlib.sha256(runtime.read_bytes()).hexdigest() == asset["sha256"]
     with Image.open(runtime) as image:
-        assert (image.format, image.mode, image.size) == ("PNG", "RGBA", (512, 256))
+        assert (image.format, image.mode, image.size) == ("PNG", "RGBA", (512, 384))
         silhouettes = set()
-        for index in range(8):
+        for index in range(9):
             x, y = (index % 4) * 128, (index // 4) * 128
             alpha = image.crop((x, y, x + 128, y + 128)).getchannel("A")
             assert alpha.getextrema() == (0, 255)
             bounds = alpha.getbbox()
             assert bounds and min(bounds[:2]) > 0 and max(bounds[2:]) < 128
             silhouettes.add(alpha.resize((24, 24)).tobytes())
-        assert len(silhouettes) == 8
+        assert len(silhouettes) == 9
+        assert image.crop((128, 256, 512, 384)).getchannel("A").getextrema() == (0, 0)

@@ -79,9 +79,9 @@ fn expected_interface_assets() -> [ExpectedVisualAsset; 7] {
             VisualAssetId::EconomicMapAtlas,
             "Economic map symbols",
             512,
-            256,
+            384,
             4,
-            2,
+            3,
         ),
     ]
 }
@@ -334,6 +334,7 @@ fn food_shortage_uses_the_warning_cell_and_preserves_the_artist_map_sheet() {
         MapSymbol::Origin,
         MapSymbol::LocalAid,
         MapSymbol::RemoteAid,
+        MapSymbol::Hearing,
     ];
     for (index, place) in places.into_iter().enumerate() {
         let sprite = place.image(assets);

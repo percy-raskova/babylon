@@ -349,3 +349,44 @@ pub(super) fn remaining_after_uses(
     super::validate_organizer_config(&remaining)?;
     Ok((remaining, supply))
 }
+
+/// Select a full single-actor hearing contribution from actual remaining budgets.
+pub(super) fn allocate_hearing_hours(
+    config: &OrganizerConfig,
+    intent: &PracticeIntent,
+    hours: u64,
+    resources: &OrganizerPeriodTimeResources,
+) -> Result<Option<Vec<OrganizerTimeUse>>, OrganizerError> {
+    let actor_id = u64::from_be_bytes(intent.actor_org_id.to_bytes());
+    let mut available: BTreeMap<_, _> = resources
+        .capacities
+        .iter()
+        .map(|capacity| (capacity.resource_id, capacity.available))
+        .collect();
+    let mut funded = config.clone();
+    let mut remaining = hours;
+    for participant in &mut funded.participants {
+        let Some(promise) = participant
+            .commitments
+            .iter_mut()
+            .find(|row| row.actor_id == actor_id)
+        else {
+            continue;
+        };
+        let binding = resources
+            .bindings
+            .iter()
+            .find(|row| row.contributor_id == participant.contributor_id)
+            .ok_or(OrganizerError::TimeBindingMismatch)?;
+        let budget = available
+            .get_mut(&binding.budget_id)
+            .ok_or(OrganizerError::TimeCapacityMissing)?;
+        promise.hours = promise.hours.min(*budget).min(remaining);
+        *budget -= promise.hours;
+        remaining -= promise.hours;
+    }
+    if remaining > 0 {
+        return Ok(None);
+    }
+    allocate_hours(&funded, intent, None, hours, resources, None)
+}

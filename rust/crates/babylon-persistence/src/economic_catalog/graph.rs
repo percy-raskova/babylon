@@ -1,9 +1,9 @@
 //! Native instances use the ordinary BSL declaration/type admission path.
 
+use super::national::NationalSources;
 use super::{EconomicCatalogError, EconomicOpening};
-use crate::national_counties::NationalCountyReference;
 use crate::national_economy::companies::CompanyCapture;
-use crate::national_economy::NationalAidCapture;
+use crate::national_economy::{NationalAidCapture, NationalSupportClaimant};
 use babylon_bsl::scenario_seed::{
     EdgeSeed, GraphSeed, HyperedgeSeed, NodeSeed, SeedAttribute, SeedValue,
 };
@@ -71,14 +71,12 @@ fn company_nodes(scope: &str, companies: Option<&CompanyCapture>) -> Result<Vec<
 pub(super) fn national_seed(
     scope: &str,
     opening: &EconomicOpening,
-    counties: &NationalCountyReference,
-    aid: &NationalAidCapture,
-    companies: Option<&CompanyCapture>,
+    sources: &NationalSources,
     organizer: Option<&OrganizerConfig>,
     city_pd: Option<&CityPdConfig>,
 ) -> Result<GraphSeed> {
-    let mut nodes = company_nodes(scope, companies)?;
-    for county in counties.counties() {
+    let mut nodes = company_nodes(scope, sources.companies.as_ref())?;
+    for county in sources.counties.counties() {
         let geoid = county.geoid();
         nodes.push(NodeSeed {
             local_name: format!("county-{geoid}"),
@@ -141,11 +139,11 @@ pub(super) fn national_seed(
             )?);
         }
     }
-    append_aid_classes(scope, opening, aid, &mut nodes)?;
+    append_aid_classes(scope, opening, &sources.aid, &mut nodes)?;
     let mut edges = Vec::new();
     let mut hyperedges = Vec::new();
     if let Some(config) = organizer {
-        let organizer = organizer_rows(scope, opening, aid, config)?;
+        let organizer = organizer_rows(scope, opening, sources, config)?;
         nodes.extend(organizer.nodes);
         edges = organizer.edges;
         hyperedges = organizer.hyperedges;
@@ -222,17 +220,22 @@ struct OrganizerSeedRows {
     edges: Vec<EdgeSeed>,
     hyperedges: Vec<HyperedgeSeed>,
 }
-type OrganizerActors = [(u64, &'static str, u64); 5];
+type OrganizerActor = (u64, &'static str, u64);
 fn organizer_rows(
     scope: &str,
     opening: &EconomicOpening,
-    aid: &NationalAidCapture,
+    sources: &NationalSources,
     config: &OrganizerConfig,
 ) -> Result<OrganizerSeedRows> {
-    validate_organizer_seed(scope, opening, aid, config)?;
+    validate_organizer_seed(scope, opening, &sources.aid, config)?;
     let actors = organizer_actors(config);
     let mut nodes = organization_nodes(&actors)?;
-    let names = participant_nodes(aid, config, &mut nodes)?;
+    let names = participant_nodes(
+        &sources.aid,
+        sources.support_claimant.as_ref(),
+        config,
+        &mut nodes,
+    )?;
     let hyperedges = participant_bodies(&actors, config, &names)?;
     Ok(OrganizerSeedRows {
         nodes,
@@ -287,8 +290,8 @@ fn validate_organizer_seed(
     }
     Ok(())
 }
-fn organizer_actors(config: &OrganizerConfig) -> OrganizerActors {
-    [
+fn organizer_actors(config: &OrganizerConfig) -> Vec<OrganizerActor> {
+    let mut actors = vec![
         (
             config.controlled_actor_id,
             "wayne-organizing-collective",
@@ -314,9 +317,17 @@ fn organizer_actors(config: &OrganizerConfig) -> OrganizerActors {
             "cook-independent-solidarity-partners",
             17031,
         ),
-    ]
+    ];
+    if let Some(hearing) = &config.hearing {
+        actors.push((
+            hearing.claimant_actor_id,
+            crate::national_economy::organizer::CLAIMANTS_ASSEMBLY,
+            26163,
+        ));
+    }
+    actors
 }
-fn organization_nodes(actors: &OrganizerActors) -> Result<Vec<NodeSeed>> {
+fn organization_nodes(actors: &[OrganizerActor]) -> Result<Vec<NodeSeed>> {
     let mut nodes = Vec::new();
     for (_, name, county) in actors {
         nodes.push(NodeSeed {
@@ -338,23 +349,35 @@ fn organization_nodes(actors: &OrganizerActors) -> Result<Vec<NodeSeed>> {
 }
 fn participant_nodes(
     aid: &NationalAidCapture,
+    claimant: Option<&NationalSupportClaimant>,
     config: &OrganizerConfig,
     nodes: &mut Vec<NodeSeed>,
 ) -> Result<BTreeMap<u64, String>> {
     let mut participant_names = BTreeMap::new();
+    let babylon_practice_contract::OrganizerTimeBindingMode::Household { bindings } =
+        &config.time_binding
+    else {
+        return Err(EconomicCatalogError::Identity);
+    };
     for participant in &config.participants {
-        let child = aid
-            .children
-            .iter()
-            .find(|c| c.contributor == participant.contributor_id)
-            .ok_or(EconomicCatalogError::Identity)?;
-        let babylon_practice_contract::OrganizerTimeBindingMode::Household { bindings } =
-            &config.time_binding
-        else {
-            return Err(EconomicCatalogError::Identity);
+        let claimant_member = config.hearing.as_ref().is_some_and(|hearing| {
+            participant
+                .commitments
+                .iter()
+                .any(|c| c.actor_id == hearing.claimant_actor_id)
+        });
+        let principal = if claimant_member {
+            claimant.ok_or(EconomicCatalogError::Identity)?.principal
+        } else {
+            aid.children
+                .iter()
+                .find(|child| child.contributor == participant.contributor_id)
+                .ok_or(EconomicCatalogError::Identity)?
+                .principal
         };
-        if !bindings.iter().any(|b| {
-            b.contributor_id == child.contributor && b.principal_id == child.principal.as_bytes()
+        if !bindings.iter().any(|binding| {
+            binding.contributor_id == participant.contributor_id
+                && binding.principal_id == principal.as_bytes()
         }) {
             return Err(EconomicCatalogError::Identity);
         }
@@ -369,7 +392,7 @@ fn participant_nodes(
     Ok(participant_names)
 }
 fn participant_bodies(
-    actors: &OrganizerActors,
+    actors: &[OrganizerActor],
     config: &OrganizerConfig,
     participant_names: &BTreeMap<u64, String>,
 ) -> Result<Vec<HyperedgeSeed>> {
@@ -436,7 +459,7 @@ mod organizer_seed_tests {
             [7; 32],
         )
         .expect("the fixture call `config` succeeds for the authored inputs");
-        let actors: OrganizerActors = [
+        let actors = [
             (1, "wayne-organizing-collective", 26163),
             (2, "wayne-workplace-committee", 26163),
             (3, "wayne-neighborhood-contact-group", 26163),

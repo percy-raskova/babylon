@@ -114,6 +114,7 @@ pub(crate) fn config(
     identity
         .extend_from_slice(&serde_json::to_vec(d).map_err(|_| MichiganDefinesError::Canonical)?);
     let config = OrganizerConfig {
+        hearing: None,
         aid_bindings: vec![],
         collection: None,
         schema_version: ORGANIZER_SCHEMA_VERSION,

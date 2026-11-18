@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="256" viewBox="0 0 512 256">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="384" viewBox="0 0 512 384">
   <title>Babylon economic map pieces</title>
-  <desc>Eight transparent 128-unit tiles, read left to right. The pieces are lit from the upper left. The cream edges and cast shadows hold the silhouettes against county terrain.</desc>
+  <desc>Nine transparent 128-unit tiles, read left to right. The pieces are lit from the upper left. The cream edges and cast shadows hold the silhouettes against county terrain.</desc>
   <defs>
     <style>
       .shadow { fill:#101719; stroke:#101719; stroke-width:7; opacity:.78; stroke-linejoin:round; }
@@ -115,5 +115,14 @@
     <path d="M67 62L88 72V92L67 83Z" fill="#91aeb2" class="thin"/>
     <path d="M88 72L110 55V76L88 92Z" fill="#626f85" class="thin"/>
     <path d="M76 56L98 64V82" fill="none" stroke="#f5e7c1" stroke-width="4"/>
+  </g>
+
+  <g id="wayne-hearing" transform="translate(0 256)" aria-label="County representation hearing">
+    <path d="M21 48H42V21H86V48H107V88L94 103H34L21 88Z" class="shadow" transform="translate(0 4)"/>
+    <path d="M21 48H42V21H86V48H107V88L94 103H34L21 88Z" class="edge" fill="#b58754"/>
+    <path d="M44 22H72L87 37V75H44Z" fill="#f9e7b5" class="ink"/>
+    <path d="M72 24V38H84M53 46H77M53 56H77" fill="none" class="thin"/>
+    <path d="M23 64L34 83H94L105 64V86L94 101H34L23 86Z" fill="#a75542" class="ink"/>
+    <path d="M30 67L40 76H88L98 67" fill="none" stroke="#f2c98d" stroke-width="5" stroke-linecap="round"/>
   </g>
 </svg>

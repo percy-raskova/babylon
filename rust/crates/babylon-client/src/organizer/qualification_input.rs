@@ -135,6 +135,7 @@ enum Action {
     OpenOrganizer,
     OpenDirection,
     InspectPractices,
+    InspectHearing,
     InspectReceipts,
     OpenRelationships,
     ScenePlaces,
@@ -155,6 +156,8 @@ enum Action {
     CloseInspector,
     ChooseRemoteAid,
     ChooseLocalAid,
+    ChooseHearingClaimants,
+    ChooseHearingJoint,
     ChooseInquiryWorkLost,
     ChooseInquiryMaintenanceReceived,
     ChooseReinforce,
@@ -231,6 +234,7 @@ impl Action {
         client: &OrganizerClient,
         session: &ObserverSession,
     ) -> Option<OrganizerAction> {
+        use babylon_persistence::runtime_session::OrganizerHearingOffer;
         use ui::OrganizerAction as O;
         Some(match self {
             Self::ReadInquiryReport => {
@@ -262,6 +266,7 @@ impl Action {
             Self::ArchiveReport => O::ArchiveReport,
             Self::OpenOrganizer => O::Open,
             Self::InspectPractices => O::Inspect(OrganizerInspector::Practices),
+            Self::InspectHearing => O::Inspect(OrganizerInspector::Hearing),
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
             Self::InspectReceipts => O::Inspect(OrganizerInspector::Receipts),
             Self::OpenRelationships => O::Inspect(OrganizerInspector::Relationships),
@@ -281,6 +286,12 @@ impl Action {
             Self::CloseInspector => O::CloseInspector,
             Self::ChooseRemoteAid => O::Choose(OrganizerChoice::RemoteAid),
             Self::ChooseLocalAid => O::Choose(OrganizerChoice::LocalAid),
+            Self::ChooseHearingClaimants => O::Choose(OrganizerChoice::InviteToHearing(
+                OrganizerHearingOffer::ClaimantOnly,
+            )),
+            Self::ChooseHearingJoint => O::Choose(OrganizerChoice::InviteToHearing(
+                OrganizerHearingOffer::JointMinutes,
+            )),
             Self::ChooseInquiryWorkLost => {
                 O::Choose(OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost))
             }

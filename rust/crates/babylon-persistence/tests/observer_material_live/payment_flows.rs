@@ -12,7 +12,8 @@ use babylon_persistence::economic_flows::EconomicPaymentPeriod;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::money_journal::{
     FlowAmounts, FlowDirection, FlowGroup, FlowPage, FlowPeer, FlowQuery, FlowViewport,
-    JournalError, MoneyEndpoint, MoneyMovement, MoneyPurpose, MoneyReferenceKind, PeriodWindow,
+    JournalError, MoneyEndpoint, MoneyLocationKind, MoneyMovement, MoneyPurpose,
+    MoneyReferenceKind, PeriodWindow,
 };
 use babylon_persistence::observer_reader::{
     ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor,
@@ -421,7 +422,8 @@ fn check_household_period(
     check_household_frame(cursor, source, id, &output.stdout);
     let report: Value = serde_json::from_slice(&output.stdout).expect("household period JSON");
     assert_eq!(report["household"], household);
-    assert_eq!(report["version"], 2);
+    assert_eq!(report["version"], 3);
+    assert!(report["opening_role"]["budget"].is_string());
     check_household_cash(&report["cash"], source, moves, id);
     assert_eq!(
         report["receipts_sha256"],
@@ -582,10 +584,26 @@ fn check_household_cash(
     let mut paid = 0;
     let mut goods = 0;
     let mut services = 0;
+    let mut site_ownership = 0;
+    let mut company_ownership = 0;
+    let mut public_support = 0;
+    let mut mutual_aid = 0;
     for r in &payments.settlements {
         let m = &moves[usize::try_from(r.ordinal).expect("verified journal ordinal")];
-        if m.purpose == MoneyPurpose::WagePayment && r.recipient == endpoint {
-            paid += micros(&m.amount_micros);
+        if r.recipient == endpoint {
+            let total = match (m.purpose, m.debit.kind) {
+                (MoneyPurpose::WagePayment, _) => &mut paid,
+                (MoneyPurpose::OwnershipDistribution, MoneyLocationKind::SiteCash) => {
+                    &mut site_ownership
+                }
+                (MoneyPurpose::OwnershipDistribution, MoneyLocationKind::CompanyCash) => {
+                    &mut company_ownership
+                }
+                (MoneyPurpose::PublicTransfer, _) => &mut public_support,
+                (MoneyPurpose::MutualAid, _) => &mut mutual_aid,
+                _ => continue,
+            };
+            *total += micros(&m.amount_micros);
         }
         if m.purpose == MoneyPurpose::DeliverySettlement && r.payer == endpoint {
             if m.reference.as_ref().expect("settled order receipt").kind
@@ -604,6 +622,14 @@ fn check_household_cash(
         ("service_purchases_settled_micros", services),
     ] {
         assert_eq!(report[key], value.to_string());
+    }
+    for (key, value) in [
+        ("site_ownership_micros", site_ownership),
+        ("company_ownership_micros", company_ownership),
+        ("public_support_micros", public_support),
+        ("mutual_aid_micros", mutual_aid),
+    ] {
+        assert_eq!(report["other_income_received"][key], value.to_string());
     }
 }
 

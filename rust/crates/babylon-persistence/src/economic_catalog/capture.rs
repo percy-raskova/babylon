@@ -18,10 +18,11 @@ use crate::michigan_material::MichiganMaterialCatalog;
 use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
 use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
+use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use babylon_kernel::content_digest;
-use babylon_material_circuit::CompanyConditionOrder;
+use babylon_material_circuit::{CompanyConditionOrder, FinalDemandPrincipalId};
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use std::collections::BTreeSet;
 use std::fmt::Formatter;
@@ -233,6 +234,16 @@ impl CapturedEconomicCatalog {
     pub fn national_aid_capture(&self) -> Option<&NationalAidCapture> {
         match &self.sources {
             CapturedSources::National(sources) => Some(&sources.aid),
+            CapturedSources::Michigan(_) => None,
+        }
+    }
+    /// Captured opening budget for an exact household principal, where authored.
+    pub(crate) fn national_household_budget(
+        &self,
+        principal: FinalDemandPrincipalId,
+    ) -> Option<HouseholdBudgetKey> {
+        match &self.sources {
+            CapturedSources::National(sources) => sources.household_keys.get(&principal).copied(),
             CapturedSources::Michigan(_) => None,
         }
     }
@@ -597,6 +608,30 @@ mod tests {
             catalog.opening().households.len(),
             "foundation capture keeps the same conserved partition the opening published"
         );
+        let background = detail.background_households();
+        assert!(background
+            .iter()
+            .any(|row| row.key.budget == HouseholdBudgetKey::PooledExternal));
+        for row in background {
+            assert_eq!(
+                catalog.national_household_budget(row.key.principal),
+                Some(row.key.budget)
+            );
+        }
+        for child in &catalog
+            .national_aid_capture()
+            .expect("captured aid cohorts")
+            .children
+        {
+            assert_eq!(
+                catalog.national_household_budget(child.principal),
+                Some(child.budget)
+            );
+            assert_eq!(
+                catalog.national_household_budget(child.parent),
+                Some(child.budget)
+            );
+        }
     }
     #[test]
     fn previous_michigan_control_v1_compiler_is_refused() {

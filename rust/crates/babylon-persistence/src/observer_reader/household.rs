@@ -1,17 +1,21 @@
 //! One household's closed-period population, provisioning and time on the same durable source.
 use super::{ObserverEconomyError, ObserverEconomyReader, ObserverMaterialCursor};
-use crate::economic_catalog::{CommodityLabel, EconomicOpening};
+use crate::economic_catalog::{
+    CatalogAccounting, CommodityLabel, EconomicOpening, EconomicSourceView,
+};
 use crate::economic_content::EconomicContentAdmission;
 use crate::economic_flows::{self, Settlement};
 use crate::identity::CampaignId;
 use crate::michigan_economy;
 use crate::money_journal::MoneyEndpoint;
+use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::observer_material::{self, ObserverFrameClose};
+use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
-    AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdLifecycleReceipt,
-    HouseholdStock, HouseholdTimeReceipt, MoneyTransferPurpose, OutboundOrderId,
-    PublicTransferTreatment, ResidentAges, UnitId,
+    AccountId, CashTransferPurpose, CircuitAccounting, FinalDemandPrincipalId, GoodId,
+    HouseholdLifecycleReceipt, HouseholdStock, HouseholdTimeReceipt, MoneyLocation,
+    MoneyTransferPurpose, OutboundOrderId, PublicTransferTreatment, ResidentAges, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
@@ -24,6 +28,8 @@ pub struct HouseholdPeriodReport {
     pub period: u64,
     pub household: String,
     pub residence: EconomicLocation,
+    /// Immutable national opening identity, when this campaign captures a household budget.
+    pub opening_role: Option<HouseholdOpeningRole>,
     pub foundation_sha256: String,
     pub world_sha256: String,
     pub tick_content_sha256: String,
@@ -40,8 +46,15 @@ pub struct HouseholdPeriodReport {
 }
 
 impl HouseholdPeriodReport {
-    /// Version 2 includes the retailer, order and both period pantry balances for each good.
-    pub const VERSION: u8 = 2;
+    /// Version 3 adds the opening role and settled ownership payments and cash support.
+    pub const VERSION: u8 = 3;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HouseholdOpeningRole {
+    pub budget: HouseholdBudgetKey,
+    /// Stable authored node name for a separately modeled aid household.
+    pub authored_subject: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +99,20 @@ pub struct HouseholdCash {
     pub goods_purchases_settled: String,
     #[serde(rename = "service_purchases_settled_micros")]
     pub service_purchases_settled: String,
+    /// Absent when the period has no monetary accounting.
+    pub other_income_received: Option<HouseholdOtherIncomeReceived>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HouseholdOtherIncomeReceived {
+    #[serde(rename = "site_ownership_micros")]
+    pub site_ownership: String,
+    #[serde(rename = "company_ownership_micros")]
+    pub company_ownership: String,
+    #[serde(rename = "public_support_micros")]
+    pub public_support: String,
+    #[serde(rename = "mutual_aid_micros")]
+    pub mutual_aid: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HouseholdIncomeSupport {
@@ -269,6 +296,7 @@ fn read_household(
         period: close.identity.resolve_tick(),
         household: michigan_economy::digest_hex(&id.as_bytes()),
         residence: household.location,
+        opening_role: opening_role(admission, id, &household.subject)?,
         foundation_sha256: michigan_economy::digest_hex(&close.identity.foundation_digest()),
         world_sha256: michigan_economy::digest_hex(&close.identity.result_world_hash()),
         tick_content_sha256: michigan_economy::digest_hex(
@@ -279,16 +307,53 @@ fn read_household(
         time,
         goods,
         services,
-        cash: cash(rows, &settlements, id)?,
+        cash: cash(rows, &settlements, id, opening.accounting)?,
         income_support,
         workforce_attrition,
     })
+}
+
+fn opening_role(
+    admission: &EconomicContentAdmission,
+    id: FinalDemandPrincipalId,
+    subject: &StableElementKey,
+) -> Result<Option<HouseholdOpeningRole>, ObserverEconomyError> {
+    if !matches!(
+        admission.view().sources,
+        EconomicSourceView::National { .. }
+    ) {
+        return Ok(None);
+    }
+    let catalog = admission
+        .foundation()
+        .graph_foundation()
+        .content_bundle()
+        .economic_catalog()
+        .ok_or(ObserverEconomyError::InvalidProjection)?;
+    let budget = catalog
+        .national_household_budget(id)
+        .ok_or(ObserverEconomyError::InvalidProjection)?;
+    let authored_subject = catalog
+        .national_aid_capture()
+        .and_then(|capture| capture.children.iter().find(|child| child.principal == id))
+        .map(|child| match &child.subject {
+            StableElementKey::Node { local_name, .. } if &child.subject == subject => {
+                Ok(local_name.clone())
+            }
+            _ => Err(ObserverEconomyError::InvalidProjection),
+        })
+        .transpose()?;
+    Ok(Some(HouseholdOpeningRole {
+        budget,
+        authored_subject,
+    }))
 }
 
 fn cash(
     receipts: &MaterialTickReceipts,
     settlements: &[Settlement],
     id: FinalDemandPrincipalId,
+    accounting: CatalogAccounting,
 ) -> Result<HouseholdCash, ObserverEconomyError> {
     let account = AccountId::Household(id);
     let endpoint = MoneyEndpoint::from(account);
@@ -301,6 +366,10 @@ fn cash(
     let mut paid = 0_i128;
     let mut goods = 0_i128;
     let mut services = 0_i128;
+    let mut site_ownership = 0_i128;
+    let mut company_ownership = 0_i128;
+    let mut public_support = 0_i128;
+    let mut mutual_aid = 0_i128;
     for settlement in settlements {
         if settlement.recipient != endpoint && settlement.payer != endpoint {
             continue;
@@ -311,16 +380,23 @@ fn cash(
             .money_transfers
             .get(n)
             .ok_or(ObserverEconomyError::InvalidProjection)?;
-        let total = match payment.purpose {
-            MoneyTransferPurpose::WagePayment(_) if settlement.recipient == endpoint => &mut paid,
-            MoneyTransferPurpose::DeliverySettlement(order) if settlement.payer == endpoint => {
-                match order {
-                    OutboundOrderId::Service(_) => &mut services,
-                    OutboundOrderId::LocalFinalDemand(_) | OutboundOrderId::Delivery(_) => {
-                        &mut goods
-                    }
+        let total = match (payment.purpose, settlement.recipient == endpoint) {
+            (MoneyTransferPurpose::WagePayment(_), true) => &mut paid,
+            (MoneyTransferPurpose::DeliverySettlement(order), false) => match order {
+                OutboundOrderId::Service(_) => &mut services,
+                OutboundOrderId::LocalFinalDemand(_) | OutboundOrderId::Delivery(_) => &mut goods,
+            },
+            (MoneyTransferPurpose::Cash(CashTransferPurpose::OwnershipDistribution), true) => {
+                match payment.debit.location {
+                    MoneyLocation::Cash(AccountId::Site(_)) => &mut site_ownership,
+                    MoneyLocation::Cash(AccountId::Company(_)) => &mut company_ownership,
+                    _ => return Err(ObserverEconomyError::InvalidProjection),
                 }
             }
+            (MoneyTransferPurpose::Cash(CashTransferPurpose::PublicTransfer), true) => {
+                &mut public_support
+            }
+            (MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid), true) => &mut mutual_aid,
             _ => continue,
         };
         *total = total
@@ -332,6 +408,15 @@ fn cash(
         wages_paid: paid.to_string(),
         goods_purchases_settled: goods.to_string(),
         service_purchases_settled: services.to_string(),
+        other_income_received: match accounting {
+            CatalogAccounting::Monetary => Some(HouseholdOtherIncomeReceived {
+                site_ownership: site_ownership.to_string(),
+                company_ownership: company_ownership.to_string(),
+                public_support: public_support.to_string(),
+                mutual_aid: mutual_aid.to_string(),
+            }),
+            CatalogAccounting::PhysicalControl => None,
+        },
     })
 }
 
@@ -442,4 +527,72 @@ fn provisions(
         })
         .collect::<Result<_, ObserverEconomyError>>()?;
     Ok((goods, services))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::CashTransferPurpose::{
+        CapitalContribution, MutualAid, OwnershipDistribution, PublicTransfer,
+    };
+    use babylon_material_circuit::{
+        CompanyId, MoneyPosting, MoneyTransferReceipt, PublicAccountId, SiteId,
+    };
+
+    #[test]
+    fn household_cash_counts_only_settled_income_received_by_the_household() {
+        let id = FinalDemandPrincipalId::from_bytes([1; 32]);
+        let household = AccountId::Household(id);
+        let site = AccountId::Site(SiteId::from_bytes([2; 32]));
+        let company = AccountId::Company(CompanyId::from_bytes([3; 32]));
+        let parent_company = AccountId::Company(CompanyId::from_bytes([6; 32]));
+        let another = AccountId::Household(FinalDemandPrincipalId::from_bytes([4; 32]));
+        let public = AccountId::Public(PublicAccountId::from_bytes([5; 32]));
+        let mut receipts = crate::test_support::material_receipts(1);
+        let mut settlements = Vec::new();
+        for (payer, recipient, purpose, amount) in [
+            (site, household, OwnershipDistribution, 17),
+            (company, household, OwnershipDistribution, 31),
+            (site, company, OwnershipDistribution, 47),
+            (company, parent_company, OwnershipDistribution, 53),
+            (company, another, OwnershipDistribution, 63),
+            (household, site, CapitalContribution, 71),
+            (public, household, PublicTransfer, 89),
+            (another, household, MutualAid, 5),
+            (household, another, MutualAid, 7),
+        ] {
+            let ordinal =
+                u64::try_from(receipts.money_transfers.len()).expect("fixture has nine transfers");
+            receipts.money_transfers.push(MoneyTransferReceipt {
+                purpose: MoneyTransferPurpose::Cash(purpose),
+                debit: MoneyPosting {
+                    location: MoneyLocation::Cash(payer),
+                    delta: Currency::from_micro_units(-amount),
+                },
+                credit: MoneyPosting {
+                    location: MoneyLocation::Cash(recipient),
+                    delta: Currency::from_micro_units(amount),
+                },
+            });
+            settlements.push(Settlement {
+                ordinal,
+                payer: payer.into(),
+                recipient: recipient.into(),
+            });
+        }
+        // Use the same serialized output as the observer command.
+        let report = cash(&receipts, &settlements, id, CatalogAccounting::Monetary)
+            .expect("balanced fixture payments");
+        let result = serde_json::to_value(report).expect("serializable report");
+        let income = &result["other_income_received"];
+        assert_eq!(income["site_ownership_micros"], "17");
+        assert_eq!(income["company_ownership_micros"], "31");
+        assert_eq!(income["public_support_micros"], "89");
+        assert_eq!(income["mutual_aid_micros"], "5");
+        assert!(cash(&receipts, &[], id, CatalogAccounting::PhysicalControl)
+            .expect("physical control has no monetary settlements")
+            .other_income_received
+            .is_none());
+    }
 }

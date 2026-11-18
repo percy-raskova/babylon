@@ -297,6 +297,7 @@ impl<'a> Builder<'a> {
             finances,
             companies,
             opening: builder.opening,
+            household_keys: builder.household_keys,
             aid: builder.aid,
             detail,
             representation: roster.representation,
@@ -494,6 +495,8 @@ pub struct NationalOpening {
     pub finances: Option<CompanyFinances>,
     pub representation: NationalGenerationWitness,
     pub opening: EconomicOpening,
+    /// Opening budget identity by exact admitted household principal.
+    pub(crate) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub aid: NationalAidCapture,
     /// Authored foreground identities and conserved counted background cohorts.
     pub detail: NationalDetailPartition,

@@ -11,6 +11,7 @@ use crate::observer_ui::{self, ObserverFontRole, ObserverFrame};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::money_journal::{FlowGroup, JournalError};
+use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
 use babylon_persistence::observer_reader::{HouseholdPeriodReport, ObserverEconomyError};
 use bevy::prelude::*;
 use bevy::text::LineBreak;
@@ -197,11 +198,22 @@ fn population(report: &HouseholdPeriodReport) -> String {
     .into_iter()
     .map(u128::from)
     .sum();
-    format!("Residents · opening → closing\nD · under 18: {} → {}\nP · ages 18–64: {} → {}\nD′ · age 65+: {} → {}\nOccupied households: {} → {}\n{} births · {} deaths\nTurned 16: {} · 18: {} · 65: {}\n{source}",
-        under_18(opening.under_16, opening.age_16_17), under_18(closing.under_16, closing.age_16_17),
-        observer_ui::grouped(opening.age_18_64), observer_ui::grouped(closing.age_18_64), observer_ui::grouped(opening.age_65_plus), observer_ui::grouped(closing.age_65_plus),
-        observer_ui::grouped(p.opening_households), observer_ui::grouped(p.closing_households), observer_ui::grouped(p.births), human_numbers::grouped(deaths),
-        observer_ui::grouped(p.reached_16), observer_ui::grouped(p.reached_18), observer_ui::grouped(p.reached_65))
+    format!(
+        "Residents · opening → closing\nD · under 18: {} → {}\nP · ages 18–64: {} → {}\nD′ · age 65+: {} → {}\nOccupied households: {} → {}\n{} births · {} deaths\nTurned 16: {} · 18: {} · 65: {}\n{source}",
+        under_18(opening.under_16, opening.age_16_17),
+        under_18(closing.under_16, closing.age_16_17),
+        observer_ui::grouped(opening.age_18_64),
+        observer_ui::grouped(closing.age_18_64),
+        observer_ui::grouped(opening.age_65_plus),
+        observer_ui::grouped(closing.age_65_plus),
+        observer_ui::grouped(p.opening_households),
+        observer_ui::grouped(p.closing_households),
+        observer_ui::grouped(p.births),
+        human_numbers::grouped(deaths),
+        observer_ui::grouped(p.reached_16),
+        observer_ui::grouped(p.reached_18),
+        observer_ui::grouped(p.reached_65)
+    )
 }
 
 fn provisioning(report: &HouseholdPeriodReport) -> String {
@@ -244,6 +256,49 @@ fn provisioning(report: &HouseholdPeriodReport) -> String {
         text.push_str("No household goods or service needs were recorded.");
     }
     text.trim_end().to_owned()
+}
+
+fn income_received(report: &HouseholdPeriodReport) -> String {
+    let Some(income) = &report.cash.other_income_received else {
+        return "Income received\nCash accounting unavailable for this period.".into();
+    };
+    format!(
+        "Income received\nWages: {}\nOwnership payments from sites: {}\nOwnership payments from companies: {}\nPublic cash support: {}\nMutual aid received in cash: {}",
+        rail::amount(&report.cash.wages_paid),
+        rail::amount(&income.site_ownership),
+        rail::amount(&income.company_ownership),
+        rail::amount(&income.public_support),
+        rail::amount(&income.mutual_aid),
+    )
+}
+
+fn opening_role(report: &HouseholdPeriodReport) -> String {
+    let Some(role) = &report.opening_role else {
+        return "Opening household budget unavailable.".into();
+    };
+    let budget = match role.budget {
+        HouseholdBudgetKey::EarningNonowner => {
+            "Historical earnings · no modeled business ownership"
+        }
+        HouseholdBudgetKey::EarningOwner => "Historical earnings · modeled business ownership",
+        HouseholdBudgetKey::NoEarnerNonowner => {
+            "No historical earnings · no modeled business ownership"
+        }
+        HouseholdBudgetKey::NoEarnerOwner => "No historical earnings · modeled business ownership",
+        HouseholdBudgetKey::CollectiveResidence => "Collective residence",
+        HouseholdBudgetKey::PooledExternal => "Pooled external residents",
+    };
+    let subject = role
+        .authored_subject
+        .as_deref()
+        .map_or_else(String::new, |name| {
+            let mut label = name.replace('-', " ");
+            if let Some(initial) = label.get_mut(..1) {
+                initial.make_ascii_uppercase();
+            }
+            format!("\nNamed cohort · {label}")
+        });
+    format!("Opening budget · {budget}{subject}")
 }
 
 fn support_and_time(report: &HouseholdPeriodReport) -> String {
@@ -332,28 +387,32 @@ pub(crate) fn sections(result: Option<&Reading>, atlas: &CountyAtlas) -> Vec<Str
         Some(Err(error)) => {
             return vec![format!(
                 "Household receipt unavailable ({error}). Reopen to retry."
-            )]
+            )];
         }
         None => return vec!["Reading the household receipt…".into()],
     };
     let location = rail::location(Some(&report.residence.to_string()), atlas);
     let short: String = report.household.chars().take(8).collect();
-    vec![
+    let role = opening_role(report);
+    let mut sections = vec![
         format!(
-            "{location} · Household {short}\nPeriod {} · four weeks",
+            "{location} · Household {short}\n{role}\nPeriod {} · four weeks",
             report.period
         ),
+        income_received(report),
         population(report),
         provisioning(report),
-        format!(
-            "Wages accrued {} · wages paid {}\nPurchases settled: goods {} · services {}",
+    ];
+    if report.cash.other_income_received.is_some() {
+        sections.push(format!(
+            "Wages accrued {}\nPurchases settled: goods {} · services {}",
             rail::amount(&report.cash.wages_accrued),
-            rail::amount(&report.cash.wages_paid),
             rail::amount(&report.cash.goods_purchases_settled),
             rail::amount(&report.cash.service_purchases_settled)
-        ),
-        support_and_time(report),
-    ]
+        ));
+    }
+    sections.push(support_and_time(report));
+    sections
 }
 
 #[cfg(test)]
@@ -366,8 +425,12 @@ mod tests {
             "version": HouseholdPeriodReport::VERSION, "campaign": Uuid::nil().to_string(), "period": 4, "household": "19".repeat(32),
             "residence": "county:26163", "foundation_sha256": "ff".repeat(32), "world_sha256": "",
             "tick_content_sha256": "ab".repeat(32), "receipts_sha256": "", "population": null,
+            "opening_role": {"budget": "no-earner-owner", "authored_subject": null},
             "cash": {"wages_accrued_micros":"0","wages_paid_micros":"0",
-                    "goods_purchases_settled_micros":"0","service_purchases_settled_micros":"0"},
+                    "goods_purchases_settled_micros":"0","service_purchases_settled_micros":"0",
+                    "other_income_received": {"site_ownership_micros":"0",
+                        "company_ownership_micros":"4500000", "public_support_micros":"0",
+                        "mutual_aid_micros":"0"}},
             "income_support": [], "services": [], "time": null, "workforce_attrition": [],
             "goods": [{"good": "food", "unit":"parcels", "retailer_site_id":"17".repeat(32),
                         "retailer_name":"Wayne County: distribution_transport (5)", "opening_stock":4,
@@ -411,6 +474,58 @@ mod tests {
         assert!(
             account.validate(no_goods).is_ok(),
             "Money opens the household without a goods order"
+        );
+    }
+
+    #[test]
+    fn opening_budget_reports_the_captured_identity_independently_of_income() {
+        let mut report = closed_household();
+        assert_eq!(
+            opening_role(&report),
+            "Opening budget · No historical earnings · modeled business ownership"
+        );
+        let role = report.opening_role.as_mut().expect("captured opening role");
+        role.budget = HouseholdBudgetKey::NoEarnerNonowner;
+        role.authored_subject = Some("wayne-aid-recipient".into());
+        assert_eq!(
+            opening_role(&report),
+            "Opening budget · No historical earnings · no modeled business ownership\nNamed cohort · Wayne aid recipient"
+        );
+        let role = report.opening_role.as_mut().expect("captured opening role");
+        role.authored_subject = None;
+        role.budget = HouseholdBudgetKey::CollectiveResidence;
+        assert_eq!(
+            opening_role(&report),
+            "Opening budget · Collective residence"
+        );
+        report
+            .opening_role
+            .as_mut()
+            .expect("captured opening role")
+            .budget = HouseholdBudgetKey::PooledExternal;
+        assert_eq!(
+            opening_role(&report),
+            "Opening budget · Pooled external residents"
+        );
+    }
+
+    #[test]
+    fn household_receipt_distinguishes_zero_income_from_unavailable_cash_accounting() {
+        let mut report = closed_household();
+        let text = income_received(&report);
+        assert!(text.starts_with("Income received\n"));
+        assert!(text.contains(&format!(
+            "Ownership payments from sites: {}",
+            rail::amount("0")
+        )));
+        assert!(text.contains(&format!(
+            "Ownership payments from companies: {}",
+            rail::amount("4500000")
+        )));
+        report.cash.other_income_received = None;
+        assert_eq!(
+            income_received(&report),
+            "Income received\nCash accounting unavailable for this period."
         );
     }
 

@@ -11,6 +11,7 @@ use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
 use crate::national_economy::grain::NationalGenerationWitness;
 use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
+use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::national_households::NationalHouseholdReference;
 use crate::national_resident_workforce::NationalResidentWorkforceReference;
@@ -18,6 +19,8 @@ use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 use babylon_bsl::scenario_seed::GraphSeed;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, EconomicCatalogError>;
@@ -27,6 +30,7 @@ pub(super) struct NationalSources {
     pub(super) finances: Option<CompanyFinances>,
     pub(super) counties: NationalCountyReference,
     pub(super) aid: NationalAidCapture,
+    pub(super) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub(super) representation: NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
     pub(super) detail: NationalDetailPartition,
@@ -104,6 +108,7 @@ impl NationalSources {
         Ok((
             Self {
                 aid: opening.aid,
+                household_keys: opening.household_keys,
                 companies: opening.companies,
                 finances: opening.finances,
                 representation: opening.representation,

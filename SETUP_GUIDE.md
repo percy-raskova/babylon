@@ -372,6 +372,11 @@ even when a retailer delivered nothing. Choose **Open household receipt**
 to inspect the group with the largest shortfall, or **Trace food retailer**
 to visit its supplier.
 
+The household receipt names the group at the start of the campaign.
+Income received shows the wages, business ownership payments, public
+support and cash aid that reached its account in the selected period.
+Compare the food order and pantry to see what the household actually ate.
+
 At a retailer, choose **Readings** and **Orders**. For a goods order,
 compare what the shop held and already had on order with its stock target.
 Follow the supplier's button to see its own orders or open **Accounts**.

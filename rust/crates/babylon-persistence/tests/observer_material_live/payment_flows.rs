@@ -276,7 +276,19 @@ pub(super) fn national(
     let foundation = cursor
         .admission_handle()
         .expect("admitted economic catalog");
-    check_household_period(config, &source, moves, foundation.view().opening, cursor);
+    let claimant = foundation
+        .content_bundle()
+        .economic_catalog()
+        .and_then(|catalog| catalog.national_support_claimant())
+        .expect("independent Wayne claimant in the closed campaign");
+    check_household_period(
+        config,
+        &source,
+        moves,
+        foundation.view().opening,
+        cursor,
+        claimant.principal,
+    );
     check_source_rows(&source, &mut sql, campaign, moves);
     unknown_industry(
         &source,
@@ -367,25 +379,19 @@ fn check_household_period(
     moves: &[MoneyMovement],
     opening: &EconomicOpening,
     cursor: &ObserverMaterialCursor,
+    id: FinalDemandPrincipalId,
 ) {
     let durable = &source.source;
     let receipts = &durable.receipts;
-    let (id, paid) = receipts
+    let paid = receipts
         .public_budgets
         .iter()
-        .find_map(|row| {
-            let AccountId::Household(id) = row.recipient else {
-                return None;
-            };
-            (row.treatment == PublicTransferTreatment::HouseholdIncomeSupport
+        .find(|row| {
+            row.recipient == AccountId::Household(id)
+                && row.treatment == PublicTransferTreatment::HouseholdIncomeSupport
                 && row.paid.micro_units() > 0
-                && receipts
-                    .household_lifecycle
-                    .iter()
-                    .any(|r| r.principal_id == id))
-            .then_some((id, row))
         })
-        .expect("one funded resident with a known age position");
+        .expect("the independent Wayne claimant received real county support");
     let age = receipts
         .household_lifecycle
         .iter()
@@ -423,7 +429,11 @@ fn check_household_period(
     let report: Value = serde_json::from_slice(&output.stdout).expect("household period JSON");
     assert_eq!(report["household"], household);
     assert_eq!(report["version"], 3);
-    assert!(report["opening_role"]["budget"].is_string());
+    assert_eq!(report["opening_role"]["budget"], "no-earner-nonowner");
+    assert_eq!(
+        report["opening_role"]["authored_subject"],
+        "wayne-household-support-claimants"
+    );
     check_household_cash(&report["cash"], source, moves, id);
     assert_eq!(
         report["receipts_sha256"],

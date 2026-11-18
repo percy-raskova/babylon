@@ -3,14 +3,17 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::{
+    AccountId, CashTransferPurpose, HouseholdTimeAccounting, MoneyLocation, MoneyTransferPurpose,
+    PublicAllocation, PublicTransferTreatment,
+};
 use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, SourceArtifactKind,
 };
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::national_economy;
 use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
-use babylon_tick::material_world;
+use babylon_tick::material_world::{self, MaterialTickReceipts};
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -88,6 +91,29 @@ fn check_opening(capture: &CapturedEconomicCatalog) {
     assert!(external > 0);
 }
 
+fn check_claimant_support(receipts: &MaterialTickReceipts, policy_claim: &PublicAllocation) {
+    let claimant_account = policy_claim.recipient;
+    let settled = receipts
+        .public_budgets
+        .iter()
+        .find(|row| row.recipient == claimant_account)
+        .expect("ordinary government support close");
+    assert_eq!(
+        settled.treatment,
+        PublicTransferTreatment::HouseholdIncomeSupport
+    );
+    assert_eq!(settled.public_account, policy_claim.public_account);
+    assert_eq!(settled.requested, policy_claim.amount_per_period);
+    assert_eq!(settled.paid, settled.requested);
+    assert!(receipts.money_transfers.iter().any(|payment| {
+        payment.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::PublicTransfer)
+            && payment.debit.location
+                == MoneyLocation::Cash(AccountId::Public(settled.public_account))
+            && payment.credit.location == MoneyLocation::Cash(claimant_account)
+            && payment.credit.delta == settled.paid
+    }));
+}
+
 #[test]
 fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x2616_3024));
@@ -96,8 +122,25 @@ fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
         campaign,
     )
     .expect("playable national world, organizer and City PD");
-    assert_eq!(capture.compiler_version(), "national-world-v10");
+    assert_eq!(capture.compiler_version(), "national-world-v11");
     check_opening(&capture);
+    let claimant = capture
+        .national_support_claimant()
+        .expect("independent Wayne claimant");
+    let claimant_account = AccountId::Household(claimant.principal);
+    let policy_claim = capture
+        .opening()
+        .institutions
+        .public_allocations
+        .iter()
+        .find(|row| row.recipient == claimant_account)
+        .cloned()
+        .expect("the claimant has its own public allocation");
+    assert_eq!(
+        policy_claim.treatment,
+        PublicTransferTreatment::HouseholdIncomeSupport
+    );
+    assert!(policy_claim.amount_per_period.micro_units() > 0);
     let wayne =
         EconomicLocation::domestic_county(CountyGeoid::try_from("26163").expect("Wayne County"))
             .expect("domestic county");
@@ -138,6 +181,9 @@ fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
         let receipts =
             material_world::decode_material_receipts(candidate.material().receipt_bytes())
                 .expect("canonical material receipts");
+        if period == 1 {
+            check_claimant_support(&receipts, &policy_claim);
+        }
         let flow = receipts
             .household_lifecycle
             .iter()

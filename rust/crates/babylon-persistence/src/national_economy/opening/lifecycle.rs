@@ -87,25 +87,35 @@ fn pushforward(
         under_16: parent.time.under_16,
     };
     let mut leaves = Vec::new();
-    for child in opening
+    let claimant_exposure = opening
+        .support_claimant
+        .as_ref()
+        .filter(|claimant| claimant.parent == parent.source)
+        .map(|claimant| Exposure {
+            principal: claimant.principal,
+            eligible: claimant.margins.eligible_16_plus,
+            under_16: claimant.margins.under_16,
+        });
+    let aid_exposures = opening
         .aid
         .children
         .iter()
-        .filter(|c| c.parent == parent.source)
-    {
+        .filter(|child| child.parent == parent.source)
+        .map(|child| Exposure {
+            principal: child.principal,
+            eligible: child.eligible,
+            under_16: child.under16,
+        });
+    for child in aid_exposures.chain(claimant_exposure) {
         remainder.under_16 = remainder
             .under_16
-            .checked_sub(child.under16)
+            .checked_sub(child.under_16)
             .ok_or(Error::SourceScope)?;
         remainder.eligible = remainder
             .eligible
             .checked_sub(child.eligible)
             .ok_or(Error::SourceScope)?;
-        leaves.push(Exposure {
-            principal: child.principal,
-            eligible: child.eligible,
-            under_16: child.under16,
-        });
+        leaves.push(child);
     }
     if leaves.is_empty() {
         return accumulate(result.entry(parent.destination).or_default(), bands);

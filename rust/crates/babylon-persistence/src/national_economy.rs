@@ -10,6 +10,7 @@ pub(crate) mod organizer;
 mod policy;
 
 pub use opening::aid::{AidChildCapture, NationalAidCapture};
+pub use opening::claimant::NationalSupportClaimant;
 pub use opening::{
     build_national_opening, NationalOpening, NationalOpeningError, NationalOpeningPolicy,
 };
@@ -21,8 +22,8 @@ pub use identity::{
 };
 pub use policy::{
     GameAidPolicy, GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming,
-    GameMarketPolicy, GameNeed, GamePrice, GameProfile, GameRecipe, GameServiceReach,
-    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts,
-    VenueLogReader,
+    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdSupportClaimant,
+    GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed, GamePrice, GameProfile,
+    GameRecipe, GameServiceReach, InitialAgeDistribution, NationalGamePolicy,
+    NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
 };

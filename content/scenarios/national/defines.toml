@@ -1,7 +1,7 @@
 # Designed first national/world campaign policy. These are gameplay units,
 # not source-derived production, subsistence thresholds or a forecast.
 # Every price is millionths of one common currency unit; no exchange rates.
-schema_version = 5
+schema_version = 6
 evidence_class = "Designed"
 period_days = 28
 work_hours_per_person = 160
@@ -440,3 +440,10 @@ deaths_per_million_per_period = [15, 20, 340, 3250]
 # Designed foreign/dependency mix within the pre-existing 16+ control, in the
 # order 16–17, 18–64 and 65+. Domestic county ages use the captured ACS margins.
 external_eligible_age_bps = [400, 8000, 1600]
+
+# Separate no-earner nonowner households drawn from Wayne's reserve residents.
+[household_support_claimant]
+evidence_class = "Designed"
+county = "26163"
+households = 2
+reserve_persons = 2

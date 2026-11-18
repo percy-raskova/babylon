@@ -16,8 +16,8 @@ use super::control::MichiganSources;
 use crate::identity::CampaignId;
 use crate::michigan_material::MichiganMaterialCatalog;
 use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
-use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
+use crate::national_economy::{NationalAidCapture, NationalSupportClaimant};
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
@@ -237,6 +237,14 @@ impl CapturedEconomicCatalog {
             CapturedSources::Michigan(_) => None,
         }
     }
+    /// Independently accounted Wayne support claimant, regenerated from admitted source bytes.
+    #[must_use]
+    pub fn national_support_claimant(&self) -> Option<&NationalSupportClaimant> {
+        match &self.sources {
+            CapturedSources::National(sources) => sources.support_claimant.as_ref(),
+            CapturedSources::Michigan(_) => None,
+        }
+    }
     /// Captured opening budget for an exact household principal, where authored.
     pub(crate) fn national_household_budget(
         &self,
@@ -374,6 +382,11 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 ("national-world", None) => Ok("national-world-v7"),
                 ("national-world", Some(terms)) if terms.experiment.is_none() => {
                     Ok(match terms.portfolio.condition_order {
+                        CompanyConditionOrder::FirstApplicable
+                            if policy.household_support_claimant.is_some() =>
+                        {
+                            "national-world-v11"
+                        }
                         CompanyConditionOrder::HighDemandBeforeSpare => "national-world-v8",
                         CompanyConditionOrder::FirstApplicable
                             if policy.household_lifecycle.is_some() =>
@@ -390,6 +403,11 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                         && input.city_pd.is_none() =>
                 {
                     Ok(match terms.portfolio.condition_order {
+                        CompanyConditionOrder::FirstApplicable
+                            if policy.household_support_claimant.is_some() =>
+                        {
+                            "national-company-scale-v4"
+                        }
                         CompanyConditionOrder::HighDemandBeforeSpare => "national-company-scale-v1",
                         CompanyConditionOrder::FirstApplicable
                             if policy.household_lifecycle.is_some() =>
@@ -618,6 +636,24 @@ mod tests {
                 Some(row.key.budget)
             );
         }
+        let claimant = catalog
+            .national_support_claimant()
+            .expect("independent Wayne claimant");
+        assert_eq!(
+            catalog.national_household_budget(claimant.principal),
+            Some(HouseholdBudgetKey::NoEarnerNonowner)
+        );
+        assert!(detail
+            .foreground()
+            .household_principals()
+            .contains(&claimant.principal));
+        assert_eq!(
+            claimant.source_hash,
+            content_digest::sha256_of(
+                source(&catalog.input, SourceArtifactKind::NationalGamePolicy)
+                    .expect("exact current national policy")
+            )
+        );
         for child in &catalog
             .national_aid_capture()
             .expect("captured aid cohorts")

@@ -14,9 +14,11 @@ impl NationalGraph {
             "national-world-v8"
                 | "national-world-v9"
                 | "national-world-v10"
+                | "national-world-v11"
                 | "national-company-scale-v1"
                 | "national-company-scale-v2"
                 | "national-company-scale-v3"
+                | "national-company-scale-v4"
         ) {
             Self::Companies
         } else {

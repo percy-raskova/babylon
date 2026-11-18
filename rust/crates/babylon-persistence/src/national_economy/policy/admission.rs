@@ -13,8 +13,8 @@ use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_material_circuit::{CompanyConditionOrder, CompanyPortfolioPolicy};
 
-use super::GameAidPolicy;
 use super::GameOrganizerPolicy;
+use super::{GameAidPolicy, GameHouseholdSupportClaimant};
 use crate::national_economy::companies::{
     CompanyCaptureError, CompanyPolicy, ExperimentalPopulation,
 };
@@ -48,6 +48,7 @@ struct RawPolicy {
     household_time: RawHouseholdTime,
     household_lifecycle: Option<RawHouseholdLifecycle>,
     aid: GameAidPolicy,
+    household_support_claimant: Option<RawHouseholdSupportClaimant>,
     organizer: GameOrganizerPolicy,
     markets: RawMarkets,
     equipment: RawEquipment,
@@ -57,6 +58,33 @@ struct RawPolicy {
     counterpart: BTreeMap<String, RawProfile>,
     dependency: RawDependency,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawHouseholdSupportClaimant {
+    evidence_class: String,
+    county: String,
+    households: u64,
+    reserve_persons: u64,
+}
+
+impl RawHouseholdSupportClaimant {
+    fn admit(self) -> Result<GameHouseholdSupportClaimant, Error> {
+        if self.evidence_class != "Designed" {
+            return Err(Error::Evidence);
+        }
+        if self.county != "26163" || self.households == 0 || self.households > self.reserve_persons
+        {
+            return Err(Error::Profile("Wayne household support claimant".into()));
+        }
+        Ok(GameHouseholdSupportClaimant {
+            county: babylon_kernel::geography::CountyGeoid::try_from(self.county.as_str())
+                .map_err(|_| Error::Location)?,
+            households: self.households,
+            reserve_persons: self.reserve_persons,
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawHouseholdLifecycle {
@@ -288,6 +316,10 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         missing_peer_weight_per_establishment: raw.missing_peer_weight_per_establishment,
         household_enterprise_function: EconomicFunction::HouseholdServices,
         aid: raw.aid,
+        household_support_claimant: raw
+            .household_support_claimant
+            .map(RawHouseholdSupportClaimant::admit)
+            .transpose()?,
         organizer: raw.organizer,
         financial,
         households,
@@ -481,9 +513,13 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
         (
             raw.schema_version,
             raw.companies.is_some(),
-            raw.household_lifecycle.is_some()
+            raw.household_lifecycle.is_some(),
+            raw.household_support_claimant.is_some()
         ),
-        (2, false, false) | (3 | 4, true, false) | (5, true, true)
+        (2, false, false, false)
+            | (3 | 4, true, false, false)
+            | (5, true, true, false)
+            | (6, true, true, true)
     ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0

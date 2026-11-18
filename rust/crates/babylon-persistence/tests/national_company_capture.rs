@@ -28,7 +28,7 @@ fn pre_company_input(mut input: EconomicCatalogInput) -> EconomicCatalogInput {
                     .split_once("\n[companies]")
                     .expect("captured company table");
                 previous
-                    .replacen("schema_version = 5", "schema_version = 2", 1)
+                    .replacen("schema_version = 6", "schema_version = 2", 1)
                     .into_bytes()
             }
             SourceArtifactKind::Rules => {
@@ -46,11 +46,27 @@ fn pre_company_input(mut input: EconomicCatalogInput) -> EconomicCatalogInput {
 
 #[test]
 fn captured_99_company_roster_preserves_sites_and_employment_and_reopens() {
-    let input = economic_catalog::national_catalog_input();
+    let mut input = economic_catalog::national_catalog_input();
     let original = original_sites(input.clone());
+    // Compare the unchanged pre-claimant company opening to its pre-company source.
+    let source = input
+        .sources
+        .iter_mut()
+        .find(|source| source.kind() == SourceArtifactKind::NationalGamePolicy)
+        .expect("current national policy");
+    let previous = std::str::from_utf8(source.bytes())
+        .expect("policy text")
+        .split_once(
+            "\n# Separate no-earner nonowner households drawn from Wayne's reserve residents.",
+        )
+        .expect("current claimant policy starts after the previous source")
+        .0
+        .replacen("schema_version = 6", "schema_version = 5", 1);
+    *source = SourceArtifact::capture(source.kind(), previous.into_bytes());
     let capture =
         CapturedEconomicCatalog::capture(input, None).expect("company-enabled national opening");
     assert_eq!(capture.compiler_version(), "national-world-v10");
+    assert!(capture.national_support_claimant().is_none());
     let finances = capture
         .national_company_finances()
         .expect("source-bound treasury");

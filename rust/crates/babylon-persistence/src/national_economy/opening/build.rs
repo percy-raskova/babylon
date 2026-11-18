@@ -5,7 +5,9 @@ use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::OpeningProductiveEndowment;
 use babylon_material_circuit::AccountId;
 
-use super::{actors, aid, external, financial, household_time, markets, routes, templates};
+use super::{
+    actors, aid, claimant, external, financial, household_time, markets, routes, templates,
+};
 
 use super::super::{GameCommodity, NationalGamePolicy};
 use crate::national_economy::companies::{
@@ -50,6 +52,7 @@ use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::MaterialCircuitError;
+use claimant::NationalSupportClaimant;
 use std::collections::BTreeMap;
 use std::fmt::Formatter;
 
@@ -118,6 +121,7 @@ pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) endowments: BTreeMap<SiteId, OpeningProductiveEndowment>,
     pub(in crate::national_economy) financial_domains: BTreeMap<AccountId, FinancialDomainId>,
     pub(in crate::national_economy) aid: NationalAidCapture,
+    pub(in crate::national_economy) support_claimant: Option<NationalSupportClaimant>,
     pub(in crate::national_economy) eligible_overrides: BTreeMap<FinalDemandPrincipalId, u64>,
     pub(in crate::national_economy) household_keys:
         BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
@@ -171,12 +175,12 @@ pub fn build_national_opening(
     let time_controls =
         national_household_time_allocation::allocate_household_time(counties, &household_budgets)
             .map_err(NationalOpeningError::HouseholdTime)?;
-    let leaf_roster = crate::national_household_refinement::refine_households(
+    let (leaf_roster, support_claimant) = claimant::refine(
         &household_budgets,
         &time_controls,
-        &[],
-    )
-    .map_err(NationalOpeningError::HouseholdRefinement)?;
+        policy.household_support_claimant,
+        policy_source_hash,
+    )?;
     let mut allocation = national_resident_allocation::allocate_home_county(
         counties,
         cohorts,
@@ -186,7 +190,7 @@ pub fn build_national_opening(
         policy,
     )
     .map_err(NationalOpeningError::Workforce)?;
-    let mut builder = Builder::new(policy, transport)?;
+    let mut builder = Builder::new(policy, transport, support_claimant)?;
     aid::prepare(
         &mut builder,
         &household_budgets,
@@ -240,6 +244,7 @@ impl<'a> Builder<'a> {
             household_budgets,
             time_controls,
             &builder.aid,
+            builder.support_claimant.as_ref(),
             policy,
             &membership,
         )
@@ -264,6 +269,7 @@ impl<'a> Builder<'a> {
             &roster.workplaces,
             &roster.households,
         )?;
+        claimant::household(&mut builder)?;
         aid::fund(&mut builder)?;
         external::world(&mut builder, world)?;
         markets::wire(&mut builder)?;
@@ -299,6 +305,7 @@ impl<'a> Builder<'a> {
             opening: builder.opening,
             household_keys: builder.household_keys,
             aid: builder.aid,
+            support_claimant: builder.support_claimant,
             detail,
             representation: roster.representation,
         })
@@ -324,6 +331,7 @@ impl<'a> Builder<'a> {
     pub(super) fn new(
         policy: &'a NationalGamePolicy,
         transport: &'a NationalTransportReference,
+        support_claimant: Option<NationalSupportClaimant>,
     ) -> Result<Self> {
         let labor_unit = UnitId::from_bytes(babylon_kernel::content_digest::sha256_of(
             b"NationalLaborHourV1\0",
@@ -335,6 +343,7 @@ impl<'a> Builder<'a> {
             endowments: BTreeMap::new(),
             financial_domains: BTreeMap::new(),
             aid: NationalAidCapture::default(),
+            support_claimant,
             eligible_overrides: BTreeMap::new(),
             household_keys: BTreeMap::new(),
             transport,
@@ -498,6 +507,7 @@ pub struct NationalOpening {
     /// Opening budget identity by exact admitted household principal.
     pub(crate) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub aid: NationalAidCapture,
+    pub support_claimant: Option<NationalSupportClaimant>,
     /// Authored foreground identities and conserved counted background cohorts.
     pub detail: NationalDetailPartition,
 }

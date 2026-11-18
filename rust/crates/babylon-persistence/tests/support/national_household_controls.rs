@@ -10,7 +10,7 @@ use babylon_persistence::national_economy;
 use babylon_persistence::national_economy::companies::CompanyFinances;
 use babylon_persistence::national_economy::grain::NationalGenerationWitness;
 use babylon_persistence::national_economy::NationalAidCapture;
-use babylon_persistence::national_economy::NationalGamePolicy;
+use babylon_persistence::national_economy::{NationalGamePolicy, NationalSupportClaimant};
 use babylon_persistence::national_household_allocation;
 use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
 use babylon_persistence::national_household_allocation::NationalHouseholdAllocation;
@@ -24,6 +24,7 @@ pub(super) fn assert_people(
     opening: &EconomicOpening,
     policy: &NationalGamePolicy,
     aid: &NationalAidCapture,
+    claimant: &NationalSupportClaimant,
     representation: &NationalGenerationWitness,
 ) {
     let budgets = national_household_allocation::allocate_households(
@@ -57,12 +58,19 @@ pub(super) fn assert_people(
             total.1 += member.reserve;
         }
     }
-    let counted = assert_source_accounts(&budgets, &households, &assigned, aid, representation);
+    let counted = assert_source_accounts(
+        &budgets,
+        &households,
+        &assigned,
+        aid,
+        claimant,
+        representation,
+    );
     let domestic: Vec<_> = households
         .values()
         .filter(|h| matches!(h.location, EconomicLocation::County(_)))
         .collect();
-    assert_eq!(domestic.len(), counted + aid.children.len());
+    assert_eq!(domestic.len(), counted + aid.children.len() + 1);
     assert_eq!(
         domestic
             .iter()
@@ -85,7 +93,10 @@ pub(super) fn assert_people(
             .sum::<u64>(),
         8_200_068
     );
-    assert_eq!(opening.households.len() - counted - aid.children.len(), 18);
+    assert_eq!(
+        opening.households.len() - counted - aid.children.len() - 1,
+        18
+    );
     let represented: BTreeSet<_> = representation
         .source_incidence
         .iter()
@@ -110,6 +121,7 @@ fn assert_source_accounts(
     households: &BTreeMap<FinalDemandPrincipalId, &EconomicHouseholdSeed>,
     assigned: &BTreeMap<FinalDemandPrincipalId, (u64, u64)>,
     aid: &NationalAidCapture,
+    claimant: &NationalSupportClaimant,
     representation: &NationalGenerationWitness,
 ) -> usize {
     let source: BTreeMap<_, _> = representation
@@ -152,6 +164,18 @@ fn assert_source_accounts(
                 "protected child work"
             );
             work.0 += child_work.0;
+            work.1 += child_work.1;
+            people.0 += actual.persons;
+            people.1 += actual.households;
+        }
+        if claimant.parent == principal {
+            let actual = households[&claimant.principal];
+            let child_work = assigned[&claimant.principal];
+            assert_eq!(
+                (actual.persons, actual.households),
+                (claimant.margins.persons, claimant.margins.households)
+            );
+            assert_eq!(child_work, (0, claimant.margins.reserve));
             work.1 += child_work.1;
             people.0 += actual.persons;
             people.1 += actual.households;

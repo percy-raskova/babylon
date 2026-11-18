@@ -80,7 +80,7 @@ fn manufacturing_capture(old: &str, new: &str) -> CapturedEconomicCatalog {
         .split_once("\n[household_lifecycle]")
         .expect("separate the later lifecycle policy from this recorded company experiment")
         .0
-        .replacen("schema_version = 5", "schema_version = 4", 1);
+        .replacen("schema_version = 6", "schema_version = 4", 1);
     replace(&mut text, old, new);
     // Scarce supplies made from costly feedstock sustain funded orders for the manufacturer.
     replace(

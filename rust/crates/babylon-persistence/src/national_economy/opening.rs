@@ -4,6 +4,7 @@
 mod actors;
 
 pub mod aid;
+pub mod claimant;
 
 mod equipment;
 

@@ -9,6 +9,7 @@ use babylon_practice_contract::OrganizerSharingBasis;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
+use babylon_kernel::geography::CountyGeoid;
 
 use babylon_material_circuit::{
     CommodityKind, GoodId, HouseholdLifecycleRates, HouseholdNeedBasis, UnitId,
@@ -41,6 +42,7 @@ pub struct NationalGamePolicy {
     pub missing_peer_weight_per_establishment: u64,
     pub household_enterprise_function: EconomicFunction,
     pub aid: GameAidPolicy,
+    pub household_support_claimant: Option<GameHouseholdSupportClaimant>,
     pub organizer: GameOrganizerPolicy,
     pub financial: GameFinancialPolicy,
     pub households: GameHouseholdPolicy,
@@ -310,6 +312,14 @@ pub enum GameJourneyTiming {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameServiceReach {
     SameStateOrOwnCounterpart,
+}
+
+/// Designed counted subset of Wayne's no-earner nonowner households.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameHouseholdSupportClaimant {
+    pub county: CountyGeoid,
+    pub households: u64,
+    pub reserve_persons: u64,
 }
 
 /// Captured Designed gift terms; ordinary market prices remain independent.

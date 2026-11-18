@@ -32,6 +32,10 @@ pub(super) fn partition(
         selection.household_principals.insert(child.principal);
         selection.household_principals.insert(child.parent);
     }
+    if let Some(claimant) = &builder.support_claimant {
+        selection.household_principals.insert(claimant.principal);
+        selection.household_principals.insert(claimant.parent);
+    }
     for term in &builder.opening.employment {
         if selection.household_principals.contains(&term.payee) {
             selection.workplaces.insert(term.site_id);

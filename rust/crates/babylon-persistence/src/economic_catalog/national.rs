@@ -9,8 +9,8 @@ use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
 use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
 use crate::national_economy::grain::NationalGenerationWitness;
-use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
+use crate::national_economy::{NationalAidCapture, NationalSupportClaimant};
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::national_households::NationalHouseholdReference;
@@ -30,6 +30,7 @@ pub(super) struct NationalSources {
     pub(super) finances: Option<CompanyFinances>,
     pub(super) counties: NationalCountyReference,
     pub(super) aid: NationalAidCapture,
+    pub(super) support_claimant: Option<NationalSupportClaimant>,
     pub(super) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub(super) representation: NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
@@ -108,6 +109,7 @@ impl NationalSources {
         Ok((
             Self {
                 aid: opening.aid,
+                support_claimant: opening.support_claimant,
                 household_keys: opening.household_keys,
                 companies: opening.companies,
                 finances: opening.finances,

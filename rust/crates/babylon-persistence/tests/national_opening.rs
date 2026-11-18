@@ -63,11 +63,12 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
     let representation = opening.representation;
     let aid = opening.aid;
+    let claimant = opening.support_claimant.expect("admitted Wayne claimant");
     let finances = opening.finances.expect("national company finances");
     let opening = opening.opening;
     assert_eq!(opening.policies.aid_mandates, aid.mandates);
     eprintln!("native opening generation: {:?}", start.elapsed());
-    household_controls::assert_people(&opening, &policy, &aid, &representation);
+    household_controls::assert_people(&opening, &policy, &aid, &claimant, &representation);
     household_controls::assert_endowments_and_ownership(
         &opening,
         &policy,

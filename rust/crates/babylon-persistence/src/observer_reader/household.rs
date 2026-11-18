@@ -53,7 +53,7 @@ impl HouseholdPeriodReport {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HouseholdOpeningRole {
     pub budget: HouseholdBudgetKey,
-    /// Stable authored node name for a separately modeled aid household.
+    /// Stable authored node name for a separately modeled household cohort.
     pub authored_subject: Option<String>,
 }
 
@@ -333,11 +333,18 @@ fn opening_role(
     let budget = catalog
         .national_household_budget(id)
         .ok_or(ObserverEconomyError::InvalidProjection)?;
-    let authored_subject = catalog
+    let claimant = catalog
+        .national_support_claimant()
+        .filter(|claimant| claimant.principal == id)
+        .map(|claimant| &claimant.subject);
+    let aid = catalog
         .national_aid_capture()
         .and_then(|capture| capture.children.iter().find(|child| child.principal == id))
-        .map(|child| match &child.subject {
-            StableElementKey::Node { local_name, .. } if &child.subject == subject => {
+        .map(|child| &child.subject);
+    let authored_subject = claimant
+        .or(aid)
+        .map(|authored| match authored {
+            StableElementKey::Node { local_name, .. } if authored == subject => {
                 Ok(local_name.clone())
             }
             _ => Err(ObserverEconomyError::InvalidProjection),

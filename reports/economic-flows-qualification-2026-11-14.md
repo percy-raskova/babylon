@@ -127,15 +127,9 @@ player wait to see the result?
 The supplier replay below tests a choice with information an owner had
 at the time. It records what happened after the money moved. Turning
 that choice into routine company behavior would change the captured
-investment policy. The organizer currently acts through a different
-decision, choosing whether to send scarce food and time to a partner.
-
-The map warning opens the household receipt and names its retailer.
-The retailer's circuit names possible suppliers from its recipes and
-freight routes. The next player test is to follow a dated order from
-that retailer to the actual supplier and open its accounts at the same
-date. The order needs to show what the buyer funded and what arrived,
-expired or remained in transit.
+investment policy. The organizer has access to reports that partners
+share with it. A change in a company's books can explain why members
+bring a grievance to the organization.
 
 The observer opened the period 4 Wayne retailer from its blue shop
 symbol and scrolled through its accounts. The store's inventory fell
@@ -144,24 +138,65 @@ store lost $48,781,527.717416 after costs. The published statement
 reproduced the balances and loss for the retailer named on the household
 receipt. [Shop accounts on screen](economic-flows-qualification-2026-11-14-assets/wayne-shop-site-accounts-period-four.png) · [Period 4 statement](economic-flows-qualification-2026-11-14-assets/wayne-shop-site-accounts-period-four.json)
 
+The food warning also led through that household to the shop's dated
+orders. The shop held zero food and already had 3,544,484 parcels on
+order. It funded 34 more at $50.40 each. All 34 still awaited dispatch
+at the close. Another 34 arrived from the same supplier on an older
+order. [Shop orders on screen](economic-flows-qualification-2026-11-14-assets/wayne-retailer-dated-orders.png) · [Orders and deliveries](economic-flows-qualification-2026-11-14-assets/wayne-retailer-p4-dated-orders.json)
+
+Selecting the shop's order for 391,527 supplies bundles opened the actual
+Wayne manufacturer at period 4. It had funded 229,520 units of business
+support and 459,040 units of utility service. Both providers performed
+zero units. In Accounts, the supplier's spendable cash fell from
+$248,096,350 to $156,808,378. The period statement reproduced both
+balances. [Services on screen](economic-flows-qualification-2026-11-14-assets/wayne-supplier-service-orders.png) · [Service orders](economic-flows-qualification-2026-11-14-assets/wayne-manufacturing-p4-service-orders.json) · [Accounts on screen](economic-flows-qualification-2026-11-14-assets/wayne-manufacturing-p4-accounts.png) · [Supplier statement](economic-flows-qualification-2026-11-14-assets/wayne-manufacturing-p4-accounts.json)
+
 ### When to expand the game
 
-After the dated supplier link, return to the organizer. Give players
-the same opening and let them choose local aid, freight to Cook or holding
-the parcel. Observe what they expect to happen, which report they trust
-and what they do after the next report. Ask what they learned about who
-ate, what other work the choice cost and what they want to try on a replay.
+The player leads a small political organization. Its members can agree
+that a shortage is urgent and disagree about what to demand, who speaks
+for them and what terms they will accept. The three aid runs below show
+who ate and who had time to meet. Wayne still lacks a member vote
+or a bargain that binds its delegates. [Player role](../NORTH_STAR.md#player-promise) · [Current organizer actions](../rust/crates/babylon-practice-contract/src/organizer/types.rs)
+
+**Who speaks for Wayne?** In this proposed chapter, a neighborhood committee
+has a place at a county relief hearing this period. It offers the
+organization a joint appearance to seek more food for families already
+on the relief rolls. Some members want to take that opening while their
+neighbors need food. Families left off the rolls want the county to hear
+their claims too. They want to elect delegates and vote on any settlement.
+
+The neighborhood committee has promised its members that relief will
+come up at this hearing. It has a reason to decline a broader demand if
+changing the agenda costs the slot. Calling a membership meeting also
+takes time. The hearing can pass while members deliberate.
+[Leadership and membership in the negotiation design](../docs/gameplay/2026-10-26-negotiation-and-party-life-design.md#1-intent-and-the-why)
+
+Open on the committee's offer, the two positions members have voiced and
+the deadline. Identify the source and date of each report. Let the player
+take the hearing within the organization's existing authority, seek a
+member mandate, or propose different terms. Give the delegation the
+exact words of any promise and name who can approve a settlement.
+At the next review, show who turned up, whose agreement
+still matters and what the delegates can do now.
+
+The proposed chapter ends at that review. Replay the same opening with
+the same food transfer. Compare a delegation that can accept the terms
+with one that must take the offer back to members.
+If the session records the same authority and options either way, the
+political decision still needs work. A missed hearing or a refusal can
+be a valid ending. Invite players to try the chapter once that distinction works.
 
 | What to add | When it earns a place |
 | --- | --- |
-| A wiki entry | A player sees a funded order and expects a meal. Link the term to a short explanation and return to the same decision. Keep the organizer's dated reports within its knowledge. |
-| A new decision or screen | A player has a material choice they cannot express, or loses the thread between the choice and its outcome. Try the existing map, briefing or partner card first. |
+| A wiki entry | A member asks what the delegates promised. Open the exact terms, the body that approved them and their review date from the briefing. |
+| A new decision or screen | The player needs to bring a motion, hear an objection or answer an offer. Try the existing briefing or partner dossier first. |
 | A new group | A distinct interest, resource or right changes whom the player can approach. Try an existing household cohort, workplace, owner or organization before adding another actor. |
 | A stock market | A change of ownership or access to finance changes a workplace or an organizing choice. A sale of existing shares pays the seller. A new issue can fund the company. Trace one of those effects through to a decision. |
 
 The existing accounts record ownership, distributions and contributions.
-The current national campaign has no share exchange. The proposed play
-tests follow the [player promise](../NORTH_STAR.md#player-promise).
+The current national campaign has no share exchange. For this chapter,
+the next new mechanic would give members authority over a mandate.
 
 ### Local evidence by delivery
 
@@ -494,6 +529,17 @@ A general buyer rule would still have to handle equal prices, freight time and a
 **Choose a partner from what it has shared.** In New Game, the Wayne organizer can compare a local handoff with a freight shipment to Cook County. Each aid card shows the recipient’s own dated account of food on hand at opening or food eaten after a close. When a partner reports late, the card gives the period it described and the period the organizer heard from it. The player can weigh that report against the gift, the hours it takes and the work it displaces. [Partner reports on the decision cards](../rust/crates/babylon-client/src/organizer/partner_copy.rs)
 
 In a native organizer game, both partners reported eating zero of the four parcels they needed in period 1. The player selected one parcel and no cash for Wayne. In period 2, the practice history recorded two organizer-hours spent and the partner’s participation. Wayne reported eating one parcel, buying none and ending with an empty pantry. Three parcels of need went unmet. [Both offers before the decision](economic-flows-qualification-2026-11-14-assets/wayne-and-cook-aid-food-reports.png) · [Wayne’s next report](economic-flows-qualification-2026-11-14-assets/wayne-food-report-after-local-aid.png)
+
+Three automated runs reached the same opening and confirmed different
+choices in the native game. Local aid let Wayne eat one parcel in period
+2. Freight let Cook eat one in period 3. The original shipment arrived,
+but time ran out for the separate meeting with Cook. Keeping the routine
+allowed neighborhood contact in period 2 and left the donor one more
+parcel to eat in period 4.
+
+Across those three periods the donor and its
+two partners ate 19 parcels in each run. Every period 4 save reopened
+with its original result. [Matched household and organizer records](economic-flows-qualification-2026-11-14-assets/wayne-organizer-three-choices.json) · [Cook follow-up and standing work](economic-flows-qualification-2026-11-14-assets/cook-p3-coordination.png)
 
 **Show where food given by another household entered the pantry.** The Wayne scenario allows up to four parcels and requires two hours of the donor’s time per parcel.
 

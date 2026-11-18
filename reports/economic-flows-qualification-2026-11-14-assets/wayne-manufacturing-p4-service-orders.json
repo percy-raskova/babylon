@@ -1,0 +1,43 @@
+{
+  "period": 4,
+  "receipt_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58",
+  "sites": {
+    "df72f380ecb3643bdba56fe95e020b453dbfd3e90b9d8ea85863e8b3c0881356": [
+      {
+        "order_id": "20bfdaa7aae1b388bee9c36edaf1a7e8af3f4e3f85cefe68afffa84e4555bdf0",
+        "provider_site_id": "17c6eec1e8a2aa831ac95ed09705677c514de19b7386c579f729b190b2f2e0fe",
+        "provider": "Wayne County: business_services (5)",
+        "good_id": "97827e142242d6c2fbae9724059ac90c473451fa663994a0a67ef56fd11830ce",
+        "unit_id": "4cadb7fec5fb5522229394e716d0862fdb906f365d3facbfc5b85bb1fa374521",
+        "good": "Business support",
+        "unit": "business service unit",
+        "requested": 229520,
+        "admitted": 229520,
+        "performed": 0,
+        "used": 0,
+        "unused": 0,
+        "expired": 229520,
+        "unit_price_micros": 107500000,
+        "reserved_micros": 24673400000000
+      },
+      {
+        "order_id": "c8b6ed123d43ef2bdbfec2d87697e5968cbb46b315c63e4b2c2948d5ac86fc73",
+        "provider_site_id": "677b2cf22886b5ffd8a98fd9609bc875ae6dfd8f9b5ae6e61b98cf63f865bd2d",
+        "provider": "Wayne County: energy_utilities (5)",
+        "good_id": "15801bb4a9664ebb4f07e34322213ff127cadf9f0731ce5572c5c2b88031955f",
+        "unit_id": "f606b9cd9d0bc1aecb6ac1125fe39471514fbd61a18cb2c4e381c16ad67fc152",
+        "good": "Utility provision",
+        "unit": "utility service unit",
+        "requested": 459040,
+        "admitted": 459040,
+        "performed": 0,
+        "used": 0,
+        "unused": 0,
+        "expired": 459040,
+        "unit_price_micros": 76875000,
+        "reserved_micros": 35288700000000
+      }
+    ],
+    "a680a520ea1e9fec9d4afd7a603291dd43eb46682fb65d95e3670e74350b9fab": []
+  }
+}

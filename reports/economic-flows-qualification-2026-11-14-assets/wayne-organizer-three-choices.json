@@ -1,0 +1,2305 @@
+{
+  "matched_p1": {
+    "campaign_id": "04859fd1-9a35-4ba6-b274-ddaf78d8d4ce",
+    "durable_tick": 1,
+    "world_hash": "896dd3e3e0ed8a5129d0e65639848f6fabdd88f2395e5cb04abc0fc9a1231bd9",
+    "tick_content_hash": "c71850a13a586bf3db5508960ddb845be26d508d6c266cf76bc2ed5c4efeee56",
+    "foundation_sha256": "303951b043c747a62d097b2eaeb0380b5f75fd2aad25882f7f60f95d18480fc2",
+    "captured_binaries": {
+      "babylon-client": "d2f5aad25ffc97a9cd516a8885e5e87c00a2ab7a1ca752322c3f7a68dcfcdf8d",
+      "babylon-economic-projections": "4ed0ee8cd65977f16450611c9d97a430274a088e9d1b3c9b7040b78a9331289f",
+      "babylon-runtime": "e0ac873eeff95e37f2e9d244ce2054a30f9d770f88e47da81064c98ec7bddcd8"
+    }
+  },
+  "branches": {
+    "local_aid": {
+      "decisions": {
+        "ruling-confirmed": {
+          "choice": "local_aid",
+          "reviewed_command": null,
+          "commitment": {
+            "command": {
+              "actor_id": 2616301,
+              "allocation": {
+                "aid": {
+                  "cash_micros": "0",
+                  "food_quantity": 1
+                }
+              },
+              "authority_id": [
+                177,
+                184,
+                193,
+                27,
+                39,
+                243,
+                222,
+                95,
+                74,
+                49,
+                122,
+                122,
+                95,
+                234,
+                82,
+                60
+              ],
+              "campaign_id": [
+                4,
+                133,
+                159,
+                209,
+                154,
+                53,
+                75,
+                166,
+                178,
+                116,
+                221,
+                175,
+                120,
+                216,
+                212,
+                206
+              ],
+              "choice": "local_aid",
+              "content_digest": [
+                223,
+                46,
+                123,
+                177,
+                211,
+                82,
+                3,
+                17,
+                89,
+                47,
+                95,
+                19,
+                70,
+                206,
+                141,
+                114,
+                65,
+                202,
+                23,
+                142,
+                53,
+                210,
+                6,
+                49,
+                233,
+                22,
+                2,
+                246,
+                231,
+                21,
+                112,
+                212
+              ],
+              "expected_period": 1,
+              "nonce": [
+                174,
+                97,
+                53,
+                13,
+                34,
+                244,
+                64,
+                208,
+                138,
+                127,
+                232,
+                68,
+                136,
+                47,
+                211,
+                24
+              ],
+              "resource_digest": [
+                149,
+                234,
+                79,
+                242,
+                30,
+                116,
+                140,
+                122,
+                24,
+                73,
+                208,
+                169,
+                242,
+                214,
+                135,
+                222,
+                93,
+                35,
+                56,
+                110,
+                97,
+                234,
+                78,
+                1,
+                89,
+                188,
+                153,
+                175,
+                214,
+                238,
+                145,
+                185
+              ]
+            },
+            "commitment_id": [
+              3,
+              13,
+              130,
+              178,
+              152,
+              5,
+              135,
+              254,
+              134,
+              52,
+              96,
+              57,
+              179,
+              92,
+              66,
+              4,
+              188,
+              147,
+              93,
+              146,
+              196,
+              216,
+              218,
+              146,
+              102,
+              126,
+              18,
+              164,
+              132,
+              53,
+              225,
+              36
+            ],
+            "resolves_period": 2
+          },
+          "selected_allocation": {
+            "aid": {
+              "cash_micros": "0",
+              "food_quantity": 1
+            }
+          }
+        },
+        "ruling-reviewed": {
+          "choice": "local_aid",
+          "reviewed_command": {
+            "actor_id": 2616301,
+            "allocation": {
+              "aid": {
+                "cash_micros": "0",
+                "food_quantity": 1
+              }
+            },
+            "authority_id": [
+              177,
+              184,
+              193,
+              27,
+              39,
+              243,
+              222,
+              95,
+              74,
+              49,
+              122,
+              122,
+              95,
+              234,
+              82,
+              60
+            ],
+            "campaign_id": [
+              4,
+              133,
+              159,
+              209,
+              154,
+              53,
+              75,
+              166,
+              178,
+              116,
+              221,
+              175,
+              120,
+              216,
+              212,
+              206
+            ],
+            "choice": "local_aid",
+            "content_digest": [
+              223,
+              46,
+              123,
+              177,
+              211,
+              82,
+              3,
+              17,
+              89,
+              47,
+              95,
+              19,
+              70,
+              206,
+              141,
+              114,
+              65,
+              202,
+              23,
+              142,
+              53,
+              210,
+              6,
+              49,
+              233,
+              22,
+              2,
+              246,
+              231,
+              21,
+              112,
+              212
+            ],
+            "expected_period": 1,
+            "nonce": [
+              174,
+              97,
+              53,
+              13,
+              34,
+              244,
+              64,
+              208,
+              138,
+              127,
+              232,
+              68,
+              136,
+              47,
+              211,
+              24
+            ],
+            "resource_digest": [
+              149,
+              234,
+              79,
+              242,
+              30,
+              116,
+              140,
+              122,
+              24,
+              73,
+              208,
+              169,
+              242,
+              214,
+              135,
+              222,
+              93,
+              35,
+              56,
+              110,
+              97,
+              234,
+              78,
+              1,
+              89,
+              188,
+              153,
+              175,
+              214,
+              238,
+              145,
+              185
+            ]
+          },
+          "commitment": null,
+          "selected_allocation": {
+            "aid": {
+              "cash_micros": "0",
+              "food_quantity": 1
+            }
+          },
+          "preview": {
+            "resolves_period": 2,
+            "refusal": null,
+            "required_hours": 2,
+            "available_hours": 2,
+            "replaces_standing_work": true
+          }
+        },
+        "ruling-selected": {
+          "choice": "local_aid",
+          "reviewed_command": null,
+          "commitment": null,
+          "selected_allocation": {
+            "aid": {
+              "cash_micros": "0",
+              "food_quantity": 1
+            }
+          }
+        }
+      },
+      "practice_receipts": [
+        {
+          "choice": "hold",
+          "period": 1,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "local_aid",
+          "period": 2,
+          "standing_work": false,
+          "outcome": "aid_scheduled",
+          "hours_spent": 0,
+          "partner_response": "not_requested",
+          "time_use": [],
+          "made_contact_product": false
+        },
+        {
+          "choice": "local_aid",
+          "period": 2,
+          "standing_work": false,
+          "outcome": "aid_practice_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 2616302,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": false
+        },
+        {
+          "choice": "hold",
+          "period": 3,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "hold",
+          "period": 4,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        }
+      ],
+      "aid_resolutions": [
+        {
+          "admitted_period": 1,
+          "support": {
+            "dispatch_period": 2,
+            "period": 2,
+            "status": {
+              "granted": {
+                "granted_quantity": 1
+              }
+            },
+            "material_postings": {
+              "dispatched_quantity": 1,
+              "fulfillment_hours": 2,
+              "payer_cash_granted_micros": "0",
+              "lost_quantity": 0
+            },
+            "cash_status": "not_requested"
+          },
+          "practice": {
+            "choice": "local_aid",
+            "outcome": "aid_practice_completed",
+            "partner_response": "participated",
+            "hours_spent": 2,
+            "time_use": [
+              {
+                "contributor_id": 2616301,
+                "actor_id": 2616301,
+                "hours": 2
+              }
+            ]
+          }
+        }
+      ],
+      "pending_freight": {
+        "2": [],
+        "3": [],
+        "4": []
+      },
+      "household": {
+        "1": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 8,
+              "closing_stock": 8,
+              "purchased": 8,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "2": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 8,
+              "closing_stock": 6,
+              "purchased": 7,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 4
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 1,
+              "required": 4,
+              "unmet": 3
+            },
+            "time": {
+              "available_for_contribution": 451,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "3": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 6,
+              "closing_stock": 2,
+              "purchased": 4,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "4": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 2,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 2,
+              "required": 8,
+              "unmet": 6
+            },
+            "time": {
+              "available_for_contribution": 1288,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        }
+      },
+      "player_food_reports": [
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 1,
+          "acquired_period": 1,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 1,
+          "acquired_period": 1,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 2,
+          "acquired_period": 2,
+          "required": 4,
+          "consumed": 1,
+          "unmet": 3,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 2,
+          "acquired_period": 2,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 3,
+          "acquired_period": 3,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 3,
+          "acquired_period": 3,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 4,
+          "acquired_period": 4,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 4,
+          "acquired_period": 4,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        }
+      ],
+      "terminal_reopen": {
+        "resolve_tick": 4,
+        "tick_content_hash": "ac47db2ed9349d3dadf243bd08ce9db49955cdc86a5c1e218873b40aaae096b3",
+        "world_hash": "07f1ea98fa6e318ef92d3797374421f273e2e19fbe91da001d04a0e73bedfaae"
+      }
+    },
+    "remote_aid": {
+      "decisions": {
+        "ruling-confirmed": {
+          "choice": "remote_aid",
+          "reviewed_command": null,
+          "commitment": {
+            "command": {
+              "actor_id": 2616301,
+              "allocation": {
+                "aid": {
+                  "cash_micros": "0",
+                  "food_quantity": 1
+                }
+              },
+              "authority_id": [
+                177,
+                184,
+                193,
+                27,
+                39,
+                243,
+                222,
+                95,
+                74,
+                49,
+                122,
+                122,
+                95,
+                234,
+                82,
+                60
+              ],
+              "campaign_id": [
+                4,
+                133,
+                159,
+                209,
+                154,
+                53,
+                75,
+                166,
+                178,
+                116,
+                221,
+                175,
+                120,
+                216,
+                212,
+                206
+              ],
+              "choice": "remote_aid",
+              "content_digest": [
+                223,
+                46,
+                123,
+                177,
+                211,
+                82,
+                3,
+                17,
+                89,
+                47,
+                95,
+                19,
+                70,
+                206,
+                141,
+                114,
+                65,
+                202,
+                23,
+                142,
+                53,
+                210,
+                6,
+                49,
+                233,
+                22,
+                2,
+                246,
+                231,
+                21,
+                112,
+                212
+              ],
+              "expected_period": 1,
+              "nonce": [
+                117,
+                11,
+                58,
+                137,
+                49,
+                57,
+                76,
+                24,
+                184,
+                10,
+                193,
+                200,
+                14,
+                99,
+                45,
+                167
+              ],
+              "resource_digest": [
+                149,
+                234,
+                79,
+                242,
+                30,
+                116,
+                140,
+                122,
+                24,
+                73,
+                208,
+                169,
+                242,
+                214,
+                135,
+                222,
+                93,
+                35,
+                56,
+                110,
+                97,
+                234,
+                78,
+                1,
+                89,
+                188,
+                153,
+                175,
+                214,
+                238,
+                145,
+                185
+              ]
+            },
+            "commitment_id": [
+              105,
+              145,
+              92,
+              65,
+              174,
+              192,
+              150,
+              19,
+              164,
+              6,
+              218,
+              4,
+              122,
+              67,
+              249,
+              143,
+              10,
+              48,
+              198,
+              247,
+              157,
+              232,
+              114,
+              174,
+              242,
+              167,
+              28,
+              244,
+              165,
+              106,
+              105,
+              234
+            ],
+            "resolves_period": 2
+          },
+          "selected_allocation": {
+            "aid": {
+              "cash_micros": "0",
+              "food_quantity": 1
+            }
+          }
+        },
+        "ruling-reviewed": {
+          "choice": "remote_aid",
+          "reviewed_command": {
+            "actor_id": 2616301,
+            "allocation": {
+              "aid": {
+                "cash_micros": "0",
+                "food_quantity": 1
+              }
+            },
+            "authority_id": [
+              177,
+              184,
+              193,
+              27,
+              39,
+              243,
+              222,
+              95,
+              74,
+              49,
+              122,
+              122,
+              95,
+              234,
+              82,
+              60
+            ],
+            "campaign_id": [
+              4,
+              133,
+              159,
+              209,
+              154,
+              53,
+              75,
+              166,
+              178,
+              116,
+              221,
+              175,
+              120,
+              216,
+              212,
+              206
+            ],
+            "choice": "remote_aid",
+            "content_digest": [
+              223,
+              46,
+              123,
+              177,
+              211,
+              82,
+              3,
+              17,
+              89,
+              47,
+              95,
+              19,
+              70,
+              206,
+              141,
+              114,
+              65,
+              202,
+              23,
+              142,
+              53,
+              210,
+              6,
+              49,
+              233,
+              22,
+              2,
+              246,
+              231,
+              21,
+              112,
+              212
+            ],
+            "expected_period": 1,
+            "nonce": [
+              117,
+              11,
+              58,
+              137,
+              49,
+              57,
+              76,
+              24,
+              184,
+              10,
+              193,
+              200,
+              14,
+              99,
+              45,
+              167
+            ],
+            "resource_digest": [
+              149,
+              234,
+              79,
+              242,
+              30,
+              116,
+              140,
+              122,
+              24,
+              73,
+              208,
+              169,
+              242,
+              214,
+              135,
+              222,
+              93,
+              35,
+              56,
+              110,
+              97,
+              234,
+              78,
+              1,
+              89,
+              188,
+              153,
+              175,
+              214,
+              238,
+              145,
+              185
+            ]
+          },
+          "commitment": null,
+          "selected_allocation": {
+            "aid": {
+              "cash_micros": "0",
+              "food_quantity": 1
+            }
+          },
+          "preview": {
+            "resolves_period": 2,
+            "refusal": null,
+            "required_hours": 2,
+            "available_hours": 2,
+            "replaces_standing_work": true
+          }
+        },
+        "ruling-selected": {
+          "choice": "remote_aid",
+          "reviewed_command": null,
+          "commitment": null,
+          "selected_allocation": {
+            "aid": {
+              "cash_micros": "0",
+              "food_quantity": 1
+            }
+          }
+        }
+      },
+      "practice_receipts": [
+        {
+          "choice": "hold",
+          "period": 1,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "remote_aid",
+          "period": 2,
+          "standing_work": false,
+          "outcome": "aid_scheduled",
+          "hours_spent": 0,
+          "partner_response": "not_requested",
+          "time_use": [],
+          "made_contact_product": false
+        },
+        {
+          "choice": "remote_aid",
+          "period": 2,
+          "standing_work": false,
+          "outcome": "aid_awaiting_support",
+          "hours_spent": 0,
+          "partner_response": "not_requested",
+          "time_use": [],
+          "made_contact_product": false
+        },
+        {
+          "choice": "remote_aid",
+          "period": 3,
+          "standing_work": false,
+          "outcome": "insufficient_time",
+          "hours_spent": 0,
+          "partner_response": "unable_to_participate",
+          "time_use": [],
+          "made_contact_product": false
+        },
+        {
+          "choice": "hold",
+          "period": 3,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "hold",
+          "period": 4,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        }
+      ],
+      "aid_resolutions": [
+        {
+          "admitted_period": 1,
+          "support": {
+            "dispatch_period": 2,
+            "period": 2,
+            "status": "awaiting_delivery",
+            "material_postings": {
+              "dispatched_quantity": 1,
+              "fulfillment_hours": 2,
+              "payer_cash_granted_micros": "0",
+              "lost_quantity": 0
+            },
+            "cash_status": "not_requested"
+          },
+          "practice": {
+            "choice": "remote_aid",
+            "outcome": "aid_awaiting_support",
+            "partner_response": "not_requested",
+            "hours_spent": 0,
+            "time_use": []
+          }
+        },
+        {
+          "admitted_period": 1,
+          "support": {
+            "dispatch_period": 2,
+            "period": 3,
+            "status": {
+              "granted": {
+                "granted_quantity": 1
+              }
+            },
+            "material_postings": {
+              "dispatched_quantity": 0,
+              "fulfillment_hours": 0,
+              "payer_cash_granted_micros": "0",
+              "lost_quantity": 0
+            },
+            "cash_status": "not_requested"
+          },
+          "practice": {
+            "choice": "remote_aid",
+            "outcome": "insufficient_time",
+            "partner_response": "unable_to_participate",
+            "hours_spent": 0,
+            "time_use": []
+          }
+        }
+      ],
+      "pending_freight": {
+        "2": [
+          {
+            "dispatch_period": 2,
+            "first_response_receipt_id": null,
+            "mandate_id": [
+              170,
+              81,
+              69,
+              51,
+              166,
+              194,
+              92,
+              93,
+              154,
+              78,
+              20,
+              83,
+              46,
+              133,
+              123,
+              188,
+              90,
+              115,
+              144,
+              126,
+              211,
+              112,
+              30,
+              130,
+              220,
+              245,
+              190,
+              144,
+              168,
+              241,
+              249,
+              17
+            ],
+            "material_commitment_id": [
+              175,
+              172,
+              51,
+              95,
+              175,
+              29,
+              153,
+              138,
+              109,
+              149,
+              85,
+              22,
+              202,
+              211,
+              217,
+              208,
+              139,
+              152,
+              205,
+              170,
+              228,
+              6,
+              156,
+              56,
+              96,
+              13,
+              186,
+              230,
+              225,
+              158,
+              90,
+              227
+            ],
+            "original_commitment_id": [
+              105,
+              145,
+              92,
+              65,
+              174,
+              192,
+              150,
+              19,
+              164,
+              6,
+              218,
+              4,
+              122,
+              67,
+              249,
+              143,
+              10,
+              48,
+              198,
+              247,
+              157,
+              232,
+              114,
+              174,
+              242,
+              167,
+              28,
+              244,
+              165,
+              106,
+              105,
+              234
+            ]
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "household": {
+        "1": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 8,
+              "closing_stock": 8,
+              "purchased": 8,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "2": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 8,
+              "closing_stock": 6,
+              "purchased": 7,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 431,
+              "contribution_used": 0
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "3": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 6,
+              "closing_stock": 2,
+              "purchased": 4,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 1,
+              "required": 4,
+              "unmet": 3
+            },
+            "time": {
+              "available_for_contribution": 452,
+              "contribution_used": 0
+            }
+          }
+        },
+        "4": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 2,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 2,
+              "required": 8,
+              "unmet": 6
+            },
+            "time": {
+              "available_for_contribution": 1288,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        }
+      },
+      "player_food_reports": [
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 1,
+          "acquired_period": 1,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 1,
+          "acquired_period": 1,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 2,
+          "acquired_period": 2,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 2,
+          "acquired_period": 2,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 3,
+          "acquired_period": 3,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 3,
+          "acquired_period": 3,
+          "required": 4,
+          "consumed": 1,
+          "unmet": 3,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 4,
+          "acquired_period": 4,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 4,
+          "acquired_period": 4,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        }
+      ],
+      "terminal_reopen": {
+        "resolve_tick": 4,
+        "tick_content_hash": "a0d7d6b891c5176cd512055c3ef200d252db536ac6e827b03170e6cccf9f6e8a",
+        "world_hash": "665c1df3d6ad11260707b305e9b88d1a9e08ab1de06144078e99ca2d719e8bdc"
+      }
+    },
+    "hold": {
+      "decisions": {
+        "ruling-confirmed": {
+          "choice": "hold",
+          "reviewed_command": null,
+          "commitment": {
+            "command": {
+              "actor_id": 2616301,
+              "allocation": "none",
+              "authority_id": [
+                177,
+                184,
+                193,
+                27,
+                39,
+                243,
+                222,
+                95,
+                74,
+                49,
+                122,
+                122,
+                95,
+                234,
+                82,
+                60
+              ],
+              "campaign_id": [
+                4,
+                133,
+                159,
+                209,
+                154,
+                53,
+                75,
+                166,
+                178,
+                116,
+                221,
+                175,
+                120,
+                216,
+                212,
+                206
+              ],
+              "choice": "hold",
+              "content_digest": [
+                223,
+                46,
+                123,
+                177,
+                211,
+                82,
+                3,
+                17,
+                89,
+                47,
+                95,
+                19,
+                70,
+                206,
+                141,
+                114,
+                65,
+                202,
+                23,
+                142,
+                53,
+                210,
+                6,
+                49,
+                233,
+                22,
+                2,
+                246,
+                231,
+                21,
+                112,
+                212
+              ],
+              "expected_period": 1,
+              "nonce": [
+                116,
+                174,
+                233,
+                111,
+                170,
+                49,
+                72,
+                172,
+                142,
+                189,
+                100,
+                191,
+                134,
+                46,
+                199,
+                94
+              ],
+              "resource_digest": [
+                149,
+                234,
+                79,
+                242,
+                30,
+                116,
+                140,
+                122,
+                24,
+                73,
+                208,
+                169,
+                242,
+                214,
+                135,
+                222,
+                93,
+                35,
+                56,
+                110,
+                97,
+                234,
+                78,
+                1,
+                89,
+                188,
+                153,
+                175,
+                214,
+                238,
+                145,
+                185
+              ]
+            },
+            "commitment_id": [
+              155,
+              57,
+              29,
+              148,
+              190,
+              84,
+              28,
+              190,
+              252,
+              41,
+              67,
+              136,
+              213,
+              67,
+              3,
+              249,
+              180,
+              232,
+              195,
+              218,
+              79,
+              148,
+              111,
+              229,
+              13,
+              141,
+              137,
+              69,
+              116,
+              128,
+              204,
+              190
+            ],
+            "resolves_period": 2
+          },
+          "selected_allocation": "none"
+        },
+        "ruling-reviewed": {
+          "choice": "hold",
+          "reviewed_command": {
+            "actor_id": 2616301,
+            "allocation": "none",
+            "authority_id": [
+              177,
+              184,
+              193,
+              27,
+              39,
+              243,
+              222,
+              95,
+              74,
+              49,
+              122,
+              122,
+              95,
+              234,
+              82,
+              60
+            ],
+            "campaign_id": [
+              4,
+              133,
+              159,
+              209,
+              154,
+              53,
+              75,
+              166,
+              178,
+              116,
+              221,
+              175,
+              120,
+              216,
+              212,
+              206
+            ],
+            "choice": "hold",
+            "content_digest": [
+              223,
+              46,
+              123,
+              177,
+              211,
+              82,
+              3,
+              17,
+              89,
+              47,
+              95,
+              19,
+              70,
+              206,
+              141,
+              114,
+              65,
+              202,
+              23,
+              142,
+              53,
+              210,
+              6,
+              49,
+              233,
+              22,
+              2,
+              246,
+              231,
+              21,
+              112,
+              212
+            ],
+            "expected_period": 1,
+            "nonce": [
+              116,
+              174,
+              233,
+              111,
+              170,
+              49,
+              72,
+              172,
+              142,
+              189,
+              100,
+              191,
+              134,
+              46,
+              199,
+              94
+            ],
+            "resource_digest": [
+              149,
+              234,
+              79,
+              242,
+              30,
+              116,
+              140,
+              122,
+              24,
+              73,
+              208,
+              169,
+              242,
+              214,
+              135,
+              222,
+              93,
+              35,
+              56,
+              110,
+              97,
+              234,
+              78,
+              1,
+              89,
+              188,
+              153,
+              175,
+              214,
+              238,
+              145,
+              185
+            ]
+          },
+          "commitment": null,
+          "selected_allocation": "none",
+          "preview": {
+            "resolves_period": 2,
+            "refusal": null,
+            "required_hours": 2,
+            "available_hours": 2,
+            "replaces_standing_work": false
+          }
+        },
+        "ruling-selected": {
+          "choice": "hold",
+          "reviewed_command": null,
+          "commitment": null,
+          "selected_allocation": "none"
+        }
+      },
+      "practice_receipts": [
+        {
+          "choice": "hold",
+          "period": 1,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "hold",
+          "period": 2,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "hold",
+          "period": 3,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        },
+        {
+          "choice": "hold",
+          "period": 4,
+          "standing_work": true,
+          "outcome": "contact_completed",
+          "hours_spent": 2,
+          "partner_response": "participated",
+          "time_use": [
+            {
+              "contributor_id": 2616301,
+              "actor_id": 2616301,
+              "hours": 2
+            },
+            {
+              "contributor_id": 2616302,
+              "actor_id": 13025691298424547645,
+              "hours": 2
+            }
+          ],
+          "made_contact_product": true
+        }
+      ],
+      "aid_resolutions": [],
+      "pending_freight": {
+        "2": [],
+        "3": [],
+        "4": []
+      },
+      "household": {
+        "1": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 8,
+              "closing_stock": 8,
+              "purchased": 8,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "2": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 8,
+              "closing_stock": 7,
+              "purchased": 7,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 431,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "3": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 7,
+              "closing_stock": 3,
+              "purchased": 4,
+              "consumed": 8,
+              "required": 8,
+              "unmet": 0
+            },
+            "time": {
+              "available_for_contribution": 768,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        },
+        "4": {
+          "wayne-aid-donor": {
+            "food": {
+              "opening_stock": 3,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 3,
+              "required": 8,
+              "unmet": 5
+            },
+            "time": {
+              "available_for_contribution": 1308,
+              "contribution_used": 2
+            }
+          },
+          "wayne-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 2
+            }
+          },
+          "cook-aid-recipient": {
+            "food": {
+              "opening_stock": 0,
+              "closing_stock": 0,
+              "purchased": 0,
+              "consumed": 0,
+              "required": 4,
+              "unmet": 4
+            },
+            "time": {
+              "available_for_contribution": 432,
+              "contribution_used": 0
+            }
+          }
+        }
+      },
+      "player_food_reports": [
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 1,
+          "acquired_period": 1,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 1,
+          "acquired_period": 1,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 2,
+          "acquired_period": 2,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 2,
+          "acquired_period": 2,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 3,
+          "acquired_period": 3,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 3,
+          "acquired_period": 3,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 1703101,
+          "observed_period": 4,
+          "acquired_period": 4,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        },
+        {
+          "actor_id": 2616301,
+          "subject_id": 2616302,
+          "observed_period": 4,
+          "acquired_period": 4,
+          "required": 4,
+          "consumed": 0,
+          "unmet": 4,
+          "closing": 0
+        }
+      ],
+      "terminal_reopen": {
+        "resolve_tick": 4,
+        "tick_content_hash": "a76577fe66a8c6b3291adb07ed8cab3bd5f1d510aaec8bdede335133dce50c6a",
+        "world_hash": "d5a556809838f42b292d4b693339045cf682380e63f0df7f743d9fb1785b0b9f"
+      }
+    }
+  }
+}

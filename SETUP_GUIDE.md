@@ -356,6 +356,12 @@ gold pylon marks energy and utilities. Select a symbol or its row in
 Select a named site to open its circuit. The symbols share the county's
 location. A line points back to that location when symbols need room.
 
+After a period closes, open the workplace's **Readings** and choose
+**Accounts**. Compare spendable cash at opening and closing with funds
+set aside for purchases and payroll. Inventory, cargo in transit and
+equipment also have separate balances. Scroll down to see sales, costs,
+taxes, profit and the cash flows for the period.
+
 In the national **Economy network**, a yellow triangle marks a food shortage
 where the game places a household group. Select the warning or the county's
 dated food reading to compare parcels needed and eaten. The symbols keep

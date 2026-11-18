@@ -111,7 +111,59 @@ and a shortfall at the table have different quantities in the same
 period. The [household receipt](economic-flows-qualification-2026-11-14-assets/wayne-food-retailer-receipt-v2.json)
 records its purchases, stocks and consumption.
 
-## Evidence against the original plan on November 16
+## Evidence against the original plan on November 18
+
+The five planned deliveries lead to one observer decision. Starting in a
+county, can the player trace a shortage through a shop, the firms that
+supply it, their labor and their accounts? The national map and the
+restored five-year and twenty-year campaigns support that investigation.
+The regional freight view adds evidence about which truck trips are
+possible.
+
+Which orders did a retailer place this
+period? When do ordinary companies fund investment? How long does the
+player wait to see the result?
+
+The supplier replay below tests a choice with information an owner had
+at the time. It records what happened after the money moved. Turning
+that choice into routine company behavior would change the captured
+investment policy. The organizer currently acts through a different
+decision, choosing whether to send scarce food and time to a partner.
+
+The map warning opens the household receipt and names its retailer.
+The retailer's circuit names possible suppliers from its recipes and
+freight routes. The next player test is to follow a dated order from
+that retailer to the actual supplier and open its accounts at the same
+date. The order needs to show what the buyer funded and what arrived,
+expired or remained in transit.
+
+The observer opened the period 4 Wayne retailer from its blue shop
+symbol and scrolled through its accounts. The store's inventory fell
+from $46,973,437.677416 to $1,920. Sales were $57,555,726, while the
+store lost $48,781,527.717416 after costs. The published statement
+reproduced the balances and loss for the retailer named on the household
+receipt. [Shop accounts on screen](economic-flows-qualification-2026-11-14-assets/wayne-shop-site-accounts-period-four.png) · [Period 4 statement](economic-flows-qualification-2026-11-14-assets/wayne-shop-site-accounts-period-four.json)
+
+### When to expand the game
+
+After the dated supplier link, return to the organizer. Give players
+the same opening and let them choose local aid, freight to Cook or holding
+the parcel. Observe what they expect to happen, which report they trust
+and what they do after the next report. Ask what they learned about who
+ate, what other work the choice cost and what they want to try on a replay.
+
+| What to add | When it earns a place |
+| --- | --- |
+| A wiki entry | A player sees a funded order and expects a meal. Link the term to a short explanation and return to the same decision. Keep the organizer's dated reports within its knowledge. |
+| A new decision or screen | A player has a material choice they cannot express, or loses the thread between the choice and its outcome. Try the existing map, briefing or partner card first. |
+| A new group | A distinct interest, resource or right changes whom the player can approach. Try an existing household cohort, workplace, owner or organization before adding another actor. |
+| A stock market | A change of ownership or access to finance changes a workplace or an organizing choice. A sale of existing shares pays the seller. A new issue can fund the company. Trace one of those effects through to a decision. |
+
+The existing accounts record ownership, distributions and contributions.
+The current national campaign has no share exchange. The proposed play
+tests follow the [player promise](../NORTH_STAR.md#player-promise).
+
+### Local evidence by delivery
 
 | Delivery | What the local project demonstrates | What remains |
 | --- | --- | --- |
@@ -333,6 +385,41 @@ At five years, the cumulative gains from Kern alone and from fully funding selec
 The targeted payment produced extra US food only in period 2 over the twenty-year run. The twenty-year comparison covers ordinary play and the targeted payment. All four branches reopened in fresh processes at periods 13 and 65. Both twenty-year endpoints also reopened. [First-year periods and later annual closes](economic-flows-qualification-2026-11-14-assets/national-food-funding-v10.csv)
 
 ![Food deliveries fell in period 3 and consumption in period 4. After the Kern payment, customers of two retailers ate 11.64 million more parcels through period 13. Other US households ate 5.05 million fewer.](economic-flows-qualification-2026-11-14-assets/national-food-shortage-and-funding-v10.png)
+
+### Choosing suppliers before the shortage
+
+The owners had a signal at the first close. Food producers had funded
+business-service orders that expired, and 185 of their service suppliers
+had asked for electricity and secured none. The replay used only the
+first close to choose recipients. It priced each supplier's requested
+electricity at the newly posted rate. It added the previous wage bill
+and the cash the site had to keep on hand, then subtracted closing cash.
+
+Each parent ranked its sites by expired food-customer orders per dollar
+of estimated need and paid the full estimate while its treasury covered it.
+Ten parents paid 75 sites a total of $10.412 billion in period 2.
+Of those, 63 secured electricity and performed a combined 14,029,920
+units of business services. Twelve still secured no electricity.
+
+| Extra US food parcels compared with ordinary play | Period 2 | Period 3 | Period 4 |
+| --- | ---: | ---: | ---: |
+| Produced | 109,278,000 | 9,848,496 | 6,163,424 |
+| Delivered to households | 0 | 2,761,412 | 21,538,167 |
+| Eaten | 0 | 0 | 2,954,381 |
+
+Across the first year, US households ate 113,336,970 more parcels.
+The ten household groups at two retailers served by the Kern food plant
+together ate 9,632,926 more. Other US households together ate
+103,704,044 more. Across all buyers, US electricity providers admitted
+54,076,232 fewer units over that year.
+
+The earlier experiment, which used period 2 information to select and size
+the payments, gained 130,790,184 over the same year. At the period 13
+close, households still lacked 328,158,779 parcels under the new decision.
+Both branches reopened at period 13. The ordinary branch reproduced all
+twelve closes from period 2 through period 13 on seed 319.
+The one-time owner payment is an experimental choice.
+[Funding decisions, deliveries and household consumption](economic-flows-qualification-2026-11-14-assets/national-prospective-supplier-funding-v10.json)
 
 ### Which existing parts of the economy can connect next
 
@@ -643,7 +730,7 @@ In this capture, the two ends of a labor movement use the locations on the publi
 
 Opening a company showed its legal parent and consolidated statements. Five readings in each view matched the published figures. A separate full report for all 99 companies returned in 213.70 milliseconds. A physical selection on the county site list also opened that site’s three statements.
 
-The native site view summarizes the balance sheet, income and cash flow for a completed period. The financial CLI also exposes stock basis by good, tax and expense detail, individual claims and the opening balance sheet. The native comparison uses the preceding period. The CLI accepts two explicit period ranges.
+In that build, the native site view summarized the balance sheet, income and cash flow for a completed period. The financial CLI also showed stock basis by good, tax and expense detail, individual claims and the opening balance sheet. The native comparison used the preceding period. The CLI accepted two explicit period ranges.
 
 Switching from map to Sankey and back kept the same Household services company and its $829,377,792.00 Wayne payment leg. Both freight layouts showed the complete 64-character ID of the Oakland-to-Wayne corridor. Expanding Wayne’s food industry row showed seven source codes. NAICS 311 had 1,446,647 reported jobs, 1,317 reporting cells and 1,332 suppressed cells in the captured national data.
 
@@ -948,6 +1035,16 @@ reproduced all 35,290 payments and 40,609 labor movements.
 The highest of 37 combined memory samples was 4,304,302,080 bytes.
 The media folder `babylon-recovery/per293-native-player-p1-v10-46eef9a2d5c4`
 holds the screen frames, timing and database settings from this run.
+
+A local database replay timed the six statements that publish labor nodes.
+An empty directory took 5.284–5.416 seconds. With all 34,181 first-period
+descriptors already present, the writes took 1.911–1.971 seconds.
+All eight trials reproduced the same node and balance records. The median
+saving of 3.409 seconds fell short of the 4.321–4.572 seconds the live
+game needed.
+
+The replay used the actual first-period descriptors. How many the
+opening can predict remains unmeasured.
 
 Postgres refreshed statistics on the first period’s territory membership before observers read it. Seven Archive county queries completed in 44–76 milliseconds. An earlier run had two five-second timeouts. Reopening the v9 save reproduced the first-period world from the twenty-year material run.
 

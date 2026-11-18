@@ -1,0 +1,246 @@
+{
+  "experiment": "NationalEconomy national-world-v10, seed 319, P1 closing receipt-based decision",
+  "evidence_class": "Designed",
+  "policy": "Rank expired, funded food producer requests to business-service suppliers with denied P1 electricity. Estimate the contribution as the P1 planned wage bill, protected minimum cash balance and requested electricity bill at the P1 closing posted price, less site closing cash. Fund each full estimated gap in order using parent closing cash available after outstanding contribution commitments.",
+  "scope": "Food production and households are domestic US counties. Food-site use of business services includes all markets. Recipient service and utility figures concern only funded locations.",
+  "comparison_caveat": "Retrospective priority used later accepted demand and actual financing gaps. The difference includes both recipient selection and contribution sizing.",
+  "p1_funding_candidates": {
+    "eligible": 185,
+    "funded_expired_food_customer_service_units": 32852320,
+    "p1_world_sha256": "5e02abad0952cbf7746ce491f36cb38e3f70c8996bb287ed1ad5c3a23aedcb89",
+    "frozen_orders_sha256": "0c686364b54e398b1cd0056fad67d16c1c330a74ff727470e9948f7641ee6a5d"
+  },
+  "result": {
+    "selected_by_prospective_only": 17,
+    "selected_by_retrospective_only": 36,
+    "selected_by_both": 58,
+    "donors_prospective": 10,
+    "prospective_funding": {
+      "sites_paid": 75,
+      "total_paid_nominal_dollars": "10412006378.625",
+      "sites_admitted_utility": 63,
+      "sites_performed_business_services": 63,
+      "utility_units_admitted": 1843499,
+      "utility_units_performed": 1838308,
+      "utility_units_used": 876894,
+      "business_service_units_performed": 14029920,
+      "sites_short_of_full_actual_utility_bill_after_payroll_and_floor": 32
+    },
+    "retrospective_funding": {
+      "sites_paid": 94,
+      "total_paid_nominal_dollars": "10659693539.25",
+      "sites_admitted_utility": 94,
+      "sites_performed_business_services": 94,
+      "utility_units_admitted": 2660240,
+      "utility_units_performed": 2652062,
+      "utility_units_used": 1267426,
+      "business_service_units_performed": 20278120
+    },
+    "periods": {
+      "2": {
+        "ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 334921317,
+          "food_parcels_consumed": 334941090,
+          "food_parcels_unmet": 8,
+          "food_parcels_closing_pantry": 334902718
+        },
+        "prospective_vs_ordinary": {
+          "food_parcels_produced": 109278000,
+          "food_site_business_services_used_all_markets": 6829875,
+          "food_parcels_delivered": 0,
+          "food_parcels_consumed": 0,
+          "food_parcels_unmet": 0,
+          "food_parcels_closing_pantry": 0
+        },
+        "retrospective_vs_ordinary": {
+          "food_parcels_produced": 147055776,
+          "food_site_business_services_used_all_markets": 9190986,
+          "food_parcels_delivered": 0,
+          "food_parcels_consumed": 0,
+          "food_parcels_unmet": 0,
+          "food_parcels_closing_pantry": 0
+        }
+      },
+      "3": {
+        "ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 252950329,
+          "food_parcels_consumed": 334958068,
+          "food_parcels_unmet": 8,
+          "food_parcels_closing_pantry": 252894979
+        },
+        "prospective_vs_ordinary": {
+          "food_parcels_produced": 9848496,
+          "food_site_business_services_used_all_markets": 615531,
+          "food_parcels_delivered": 2761412,
+          "food_parcels_consumed": 0,
+          "food_parcels_unmet": 0,
+          "food_parcels_closing_pantry": 2761412
+        },
+        "retrospective_vs_ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 21044222,
+          "food_parcels_consumed": 0,
+          "food_parcels_unmet": 0,
+          "food_parcels_closing_pantry": 21044222
+        }
+      },
+      "4": {
+        "ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 64132450,
+          "food_parcels_consumed": 254275140,
+          "food_parcels_unmet": 80699366,
+          "food_parcels_closing_pantry": 62752289
+        },
+        "prospective_vs_ordinary": {
+          "food_parcels_produced": 6163424,
+          "food_site_business_services_used_all_markets": 385214,
+          "food_parcels_delivered": 21538167,
+          "food_parcels_consumed": 2954381,
+          "food_parcels_unmet": -2954381,
+          "food_parcels_closing_pantry": 21345198
+        },
+        "retrospective_vs_ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 41551719,
+          "food_parcels_consumed": 20673467,
+          "food_parcels_unmet": -20673467,
+          "food_parcels_closing_pantry": 41922474
+        }
+      },
+      "13": {
+        "ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 3961564,
+          "food_parcels_consumed": 4025611,
+          "food_parcels_unmet": 331071869,
+          "food_parcels_closing_pantry": 25977
+        },
+        "prospective_vs_ordinary": {
+          "food_parcels_produced": 230400,
+          "food_site_business_services_used_all_markets": 14400,
+          "food_parcels_delivered": 2250686,
+          "food_parcels_consumed": 2913090,
+          "food_parcels_unmet": -2913090,
+          "food_parcels_closing_pantry": 1771387
+        },
+        "retrospective_vs_ordinary": {
+          "food_parcels_produced": 0,
+          "food_site_business_services_used_all_markets": 0,
+          "food_parcels_delivered": 322049,
+          "food_parcels_consumed": 1798297,
+          "food_parcels_unmet": -1798297,
+          "food_parcels_closing_pantry": 792964
+        }
+      }
+    },
+    "prospective_vs_ordinary_cumulative_p2_p13": {
+      "food_parcels_produced": 130092352,
+      "food_site_business_services_used_all_markets": 8130772,
+      "food_parcels_delivered": 115108357,
+      "food_parcels_consumed": 113336970,
+      "food_parcels_unmet": -113336970
+    },
+    "retrospective_vs_ordinary_cumulative_p2_p13": {
+      "food_parcels_produced": 147055776,
+      "food_site_business_services_used_all_markets": 9190986,
+      "food_parcels_delivered": 131583148,
+      "food_parcels_consumed": 130790184,
+      "food_parcels_unmet": -130790184
+    },
+    "prospective_household_receipt_subgroups": {
+      "fixed_two_kern_linked_retailers": [
+        "37e1536d4e3c7a0c3bd00127250d0032d9469cb8cc9db2333b447e575bc66399",
+        "847b497289198cebe2a316669ebd792d05ae2ffc59f1f046e42181ded7650ef4"
+      ],
+      "household_budgets_with_more_consumption": 10,
+      "household_budgets_with_less_consumption": 0,
+      "comparison_for_each_household_budget": {
+        "18012e84589d98e3292955087a4a2fdbc47cbf86bfa466756bc33ed5c6e0b236": 78457,
+        "1f24888c51b77aaf669ace9220ed8d9510cb56fb6f8ec2a1ce02aaa03ae17a99": 129300,
+        "3a03804d2e5ec170a04f5adcf8c467d67cff8bd15947cb83e42f3d4b877e5825": 294154,
+        "6f85ea2210edba5d7334af891334ecaf284136d49edaefcfc70370a19c468f81": 26371,
+        "74705caadc7645bee6531bbea2ee6766dee84ec45b6366e3b7bdc00637e7e2f5": 28168,
+        "86d2d627de7c2a580ad3ee5ac9b3b845b1befdf58e7807ccd373567e7047dfc7": 7609534,
+        "9d4df594c4262798412d2957633e4b65a6b4571a7ff6b630faa8244fe49cef95": 204806,
+        "c63e8a0def4293f993302673c43cf3394b97f2e447009d864d0ddcb011fb257e": 1018239,
+        "cdf07f365acd80ba27ce1f100b557accbc29a5ebdb7fdc5e771d8e6c8244c599": 241225,
+        "e24a62d89165aace4b93457463f4b418681ab4fea3b2621be97de12645641749": 2672
+      },
+      "sum_of_named_household_changes": 9632926,
+      "net_change_for_all_other_us_households": 103704044,
+      "scope": "Per-household receipts are retained only for the named retailers and a changing set of Kern routes. Wider distribution follows from domestic aggregate receipts."
+    },
+    "retrospective_household_receipt_subgroups": {
+      "fixed_two_kern_linked_retailers": [
+        "37e1536d4e3c7a0c3bd00127250d0032d9469cb8cc9db2333b447e575bc66399",
+        "847b497289198cebe2a316669ebd792d05ae2ffc59f1f046e42181ded7650ef4"
+      ],
+      "household_budgets_with_more_consumption": 9,
+      "household_budgets_with_less_consumption": 1,
+      "comparison_for_each_household_budget": {
+        "18012e84589d98e3292955087a4a2fdbc47cbf86bfa466756bc33ed5c6e0b236": 97425,
+        "1f24888c51b77aaf669ace9220ed8d9510cb56fb6f8ec2a1ce02aaa03ae17a99": 129300,
+        "3a03804d2e5ec170a04f5adcf8c467d67cff8bd15947cb83e42f3d4b877e5825": 358329,
+        "6f85ea2210edba5d7334af891334ecaf284136d49edaefcfc70370a19c468f81": 26371,
+        "74705caadc7645bee6531bbea2ee6766dee84ec45b6366e3b7bdc00637e7e2f5": 35813,
+        "86d2d627de7c2a580ad3ee5ac9b3b845b1befdf58e7807ccd373567e7047dfc7": 9269735,
+        "9d4df594c4262798412d2957633e4b65a6b4571a7ff6b630faa8244fe49cef95": 249483,
+        "c63e8a0def4293f993302673c43cf3394b97f2e447009d864d0ddcb011fb257e": 1240392,
+        "cdf07f365acd80ba27ce1f100b557accbc29a5ebdb7fdc5e771d8e6c8244c599": 240359,
+        "e24a62d89165aace4b93457463f4b418681ab4fea3b2621be97de12645641749": -103
+      },
+      "sum_of_named_household_changes": 11647104,
+      "net_change_for_all_other_us_households": 119143080,
+      "scope": "Per-household receipts are retained only for the named retailers and a changing set of Kern routes. Wider distribution follows from domestic aggregate receipts."
+    }
+  },
+  "independent_cash_and_power_checks": {
+    "p1_selected_sites_short_of_one_unit_at_service_admission": 75,
+    "p1_selected_sites_that_admitted_no_utility": 75,
+    "p2_selected_sites_short_of_full_utility_bill_after_payroll_and_floor": 32,
+    "p2_selected_sites_that_admitted_no_utility": 12,
+    "p2_selected_sites_summed_invoice_gap_micros": 40465691250000,
+    "p2_receipts_sha256": "b2bd55c0e7258bcf5985773c57f0a190b3786cf968167cf8b7bd83e0c2390558"
+  },
+  "provenance": {
+    "receipt_inputs": {
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/captured-catalog.bin": "63c79b558afb83a63300eda69363e53c1d65a77944270a42224326781e351bf3",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/capture.json": "9d36d52222bbd57baf7c0b3f751920bef9b09665b7746b4857e3b91952923e28",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/period-001.json": "00e7e1901f986c6ae67c894374631e268bce5f2d72bd79c4acc68c42690e150e",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/P1-receipts.bin": "a28c9b21bbed493e6a48e6cd5a5259b7cb47a288f147f28c52e6193ac78af356",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/checkpoint-P1-graph.bin": "d1a4a058db20bdc2102cbb2972e1edacb1a51f047699b6bd288cfa46029ed242",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/checkpoint-P1-graph-registers.bin": "c15f07a12fa129aa735f0723a52ffd682f4fe5eeb04475a0acf6912e027e1725",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/checkpoint-P1-material-rows.bin": "5fe66ff3dfb8392bc4d41ffbcc3dfd8c1ea21e982b86c3c6c1226450fbb0de87",
+      "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/checkpoint-P1-material-control.bin": "536174b4070d3a940c32a84988c5d9e58d7223200b411c573c1c2c3da2a43432"
+    },
+    "capsule": "/media/user/data/babylon-recovery/per293-prospective-supplier-funding-v10-seed319",
+    "prospective_raw_receipt": "/media/user/data/babylon-recovery/per293-prospective-supplier-funding-v10-seed319/prospective/p002-receipts.bin",
+    "matched_control": "Fresh P2 through P13 matched all six recorded identity hashes, including world and receipt. Both new P13 checkpoints reopened in fresh processes.",
+    "reopened_control": {
+      "files_all_rehashed": true,
+      "period": 13,
+      "process_id": 921,
+      "seed": 319,
+      "session": "national-world",
+      "world_sha256": "51de32df7e9170b04940a45eb2fd137afeb39b60e2e1a28cf756a7c55c897eb6"
+    },
+    "reopened_prospective": {
+      "files_all_rehashed": true,
+      "period": 13,
+      "process_id": 1099,
+      "seed": 319,
+      "session": "national-world",
+      "world_sha256": "8e091bc97f386161e33b3bb48846968992a8217cd720f456b6470640e9ae4afc"
+    },
+    "historical_comparator": "/media/user/data/babylon-recovery/per293-food-supplier-funding-v10-seed319/priority"
+  }
+}

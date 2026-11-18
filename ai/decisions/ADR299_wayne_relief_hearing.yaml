@@ -1,0 +1,38 @@
+ADR299_wayne_relief_hearing:
+  title: Give household groups distinct mandates at the Wayne relief hearing
+  date: '2026-11-18'
+  status: accepted
+  issue: PER-293
+  authority: The Director chose representation at a relief hearing and the members' power to delegate limited settlement authority.
+  evidence_class: Designed
+  context: |
+    County support reaches particular household budgets. A shared income source
+    provides no evidence that residents belong to a single political organization.
+    The first Wayne hearing needs two groups with distinct constituents and a
+    reason to disagree about what the county should hear.
+  decision: |
+    Form a claimants' assembly from consenting households in the separately counted
+    Wayne claimant budget. Give it a standing appointment. The local aid partners
+    name their own delegate. The founding record states how many households
+    authorized each office and which terms its holder can accept.
+
+    The county places two speaking turns at the delegations' disposal. A narrow
+    settlement reserves the opening and reply for current claimants. Joint minutes
+    give the opening to claimants and the reply to the aid partners. An attending
+    delegate can enter a demand while referring an offer to members. The county's
+    ordinary fiscal accounts continue to determine payments.
+
+    Use the existing organizer action, independent input authorities and household
+    time budgets. Record testimony from each performed intervention. Consume the
+    settlement in the following period to set the review agenda. The chapter ends
+    when the organization can read that report.
+  verification: |
+    Reconcile the separate claimant budget to the opening population and county
+    fiscal obligation. Compare the same material opening under a standing
+    appointment, each offer, withheld consent and exhausted time. Check actual
+    household charges, the signed minutes and the later review roll after reopen.
+  related:
+    - ADR262_native_organizer_practice
+    - ADR270_household_time_and_material_organizer
+    - ADR293_wayne_resource_allocations
+    - ADR298_national_household_lifecycle

@@ -341,6 +341,24 @@ Other locations with no captured point stay outside the selected area. A site’
 operating county and the catchment it serves have distinct grouping keys.
 Missing classifications appear as a null key when viewing all locations.
 
+### Play the Wayne relief hearing
+
+Choose **New national game**, or launch a fresh local campaign.
+
+```bash
+mise run play -- --new --preset national-world
+```
+
+Open the relief hearing marker in Wayne. The notice names the groups,
+their delegates, how many households authorized them and their demands.
+After period 1 closes, choose the terms to offer. Review the decision,
+confirm it and advance. You can also keep the current routine and see
+what the claimants do with their standing appointment.
+
+The period 2 minutes show who spoke and what the delegates agreed.
+Advance to period 3 and reopen the hearing marker to see who has the
+opening and the reply at the county review. This report ends the chapter.
+
 ### Inspect a company or freight route
 
 Choose **Observer Campaigns** and **Observe national economy** to start a full-observer game, or launch it locally.

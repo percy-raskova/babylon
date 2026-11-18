@@ -70,12 +70,17 @@ population groups a distinct part in play when they can make a decision
 of their own. Residents can share a class position and choose different
 organizations or decline to join one.
 
-The planned Wayne relief hearing asks who gets represented. Each group
-needs the power to make a demand, commit time, choose a delegate or
-withhold consent. The player can build an agreement only with the
-authority that each group grants. Electoral endorsements come after a
-working electoral system that establishes who can vote, what office is at
-stake and what its holder can decide.
+The first Wayne relief hearing asks who gets represented. The claimants'
+assembly holds a standing appointment. The player can invite the aid
+partners to bring a second demand. Members can send someone to speak, grant
+limited settlement rights or withhold consent.
+
+Their households must have time to send someone. The opening and reply at the following
+county review go to the groups that secured those turns. The chapter
+ends when their organization can read the review agenda.
+
+Electoral endorsements come after a working electoral system that
+establishes who can vote, what office is at stake and what its holder can decide.
 
 The future language interface proposes a few concrete first steps for a broad
 intention. The player chooses an approach and confirms a reviewed action.

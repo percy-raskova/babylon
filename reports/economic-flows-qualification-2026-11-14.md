@@ -205,69 +205,64 @@ existing payments at period 30 address different conditions.
 
 ### When to expand the game
 
-The player leads a small political organization. Its members can agree
-that a shortage is urgent and disagree about what to demand, who speaks
-for them and what terms they will accept. The three aid runs below show
-who ate and who had time to meet. Wayne still lacks a member vote
-or a bargain that binds its delegates. [Player role](../NORTH_STAR.md#player-promise) · [Current organizer actions](../rust/crates/babylon-practice-contract/src/organizer/types.rs)
+The player leads the Wayne Organizing Collective. Its first hearing concerns
+who gets represented when the county reviews relief claims. In the earlier
+aid runs, households accepted a gift independently of joint work. The
+hearing gives residents a decision about what their delegate can agree to.
+[Player role](../NORTH_STAR.md#player-promise) · [Hearing rules](../ai/decisions/ADR299_wayne_relief_hearing.yaml)
 
-**Who speaks for Wayne?** The Director chose representation at a relief
-hearing as the first political dispute. The next design work is to give
-more groups of residents the power to act. Endorsements belong after a
-working electoral system. The hearing can proceed through membership
-mandates.
+**Who speaks for Wayne?** Two households from Wayne's existing budget for residents without earnings
+or business ownership form the claimants' assembly. They start with
+two people in the labor reserve and a claim on county income support.
+Their meeting secretary can take their demand to the hearing even if the
+player waits. Three of the four Wayne Local Aid Partners households
+send a different delegate to bring the cases of residents who received
+no county support.
 
-The opening already distinguishes households with and without earnings
-and business ownership, and residents who live in collective quarters.
-Each group has its own budget and a known number of residents. Jobs, cash
-payments, unpaid care and food purchases can change from one period to
-the next. A household can receive wages and support in the same period. A
-committee needs a separate relationship with people who give it the right
-to speak.
+The scenario authors class the county appointment, organizations and
+mandates as Designed. The fiscal accounts show who actually receives money. [National scenario](../content/scenarios/national/defines.toml)
 
-**The dispute.** In the proposed chapter a neighborhood committee has a
-place at a county hearing about relief for current claimants. Its members
-want to use the place while families need food. A second group wants the
-county to hear from residents who received no support. Both groups can
-ask for the same parcel and still disagree about who can speak or settle
-for them.
+The hearing takes place in period 2. Inviting the second delegation costs
+the organizer two hours. Each delegation that speaks must find two hours
+in its own household budgets.
 
-Use the existing Wayne aid household as one possible participant. Give a
-small group of current claimants a meeting of its own. Members can spend
-their free time presenting a claim, or use it to keep an earlier
-commitment. Record which residents joined and what authority they gave
-the group. If some members need a separate household budget, subtract
-their people and resources from its source. Joining a group creates no
-extra people, votes or cash.
+The question is who gets the opening and the reply at the following review.
+A claimant-only agreement preserves
+both turns for people already on the relief roll. Joint minutes give
+those claimants the opening and residents seeking access the reply. The
+aid partners' delegate can accept the joint terms. Each named group can
+bind only its own members.
 
-Wayne already distinguishes assent to a gift from participation in joint
-work. An engine check offered the same two parcels and the same time
-to a partner with two different standing policies. The partner completed
-the joint practice under one policy and declined under the other.
-In the national opening each partner agrees in principle. The hearing
-needs a group that can change its response as its own commitments change.
-[Partner consent check](../rust/crates/babylon-persistence/src/qualification_audit/aid/controls.rs) · [Current opening terms](../content/scenarios/national/defines.toml)
+**Stop at the report back.** The period 2 minutes record the demands the
+delegates actually brought and whether the parties agreed. In period 3
+the county enters the authorized speakers on the review agenda. The map
+marks the county that issued the notice. Players can reopen it to read
+the minutes and the report back. [Play the hearing](../SETUP_GUIDE.md#play-the-wayne-relief-hearing)
 
-Each group needs a choice of its own even when the player holds. A
-claimants' group can keep its appointment or share speaking time. The
-other group can send a delegate, insist on a vote before settlement, or
-decline the invitation. The player can offer a joint demand. Each group
-answers for the people who gave it a mandate.
-[Leadership and membership in the negotiation design](../docs/gameplay/2026-10-26-negotiation-and-party-life-design.md#1-intent-and-the-why)
+In a fresh local campaign the two claimant households received $560 in
+county support in period 1 and ate both food units they needed. The four
+aid-partner households received no county support and ate none of the
+four units they needed. Their case delegate speaks for the three households
+that authorized that office. [Wayne on the map](economic-flows-qualification-2026-11-14-assets/wayne-hearing-and-food-map.png) · [Hearing notice](economic-flows-qualification-2026-11-14-assets/wayne-relief-hearing-notice.png)
 
-Open the chapter on the invitation, the groups' stated demands and the
-deadline. Let players inspect which members authorized each delegate and
-who has yet to reply. Each account the organization receives needs a
-source and a date. The full observer can check the separate household and
-county books.
+Both groups entered demands when the organizer offered claimant-only
+terms. Only the claimants' secretary signed. Each group spent two hours
+to attend. [Period 2 minutes](economic-flows-qualification-2026-11-14-assets/wayne-claimant-only-hearing-minutes.png)
 
-**Stop at the report back.** Replay the same opening with the same food
-delivered. Under a narrow agreement the delegates can speak only for the
-first group. After a joint agreement they can bring the second group's
-claim to the hearing, subject to its members' terms. If that group
-withholds consent, it retains its own time and voice. A player can then
-see whose demand reached the hearing and who still has the power to
-accept the agreement.
+With joint terms, the claimants opened the next review and the aid
+partners held the reply. The two runs had the same opening and the
+same food consumption and county payments at periods 2 and 3. Reopening
+each save showed its own agreed speaking order.
+[Joint county review](economic-flows-qualification-2026-11-14-assets/wayne-joint-county-review.png)
+
+Keeping the routine completed a visit with the Wayne Neighborhood Contact
+Group. The aid-partner household budget supplied two hours for that
+visit. The claimants sent their secretary under their own authority.
+Their demand entered the minutes. The county reserved neither review turn.
+Offering either agreement used the organizer's two hours for the invitation.
+The three saves reopened with the same food and support for each household
+group and three different county agendas.
+[Three choices from the same opening](economic-flows-qualification-2026-11-14-assets/wayne-hearing-three-choices.json)
 
 | What to add | When it earns a place |
 | --- | --- |
@@ -277,8 +272,7 @@ accept the agreement.
 | A stock market | A change of ownership or access to finance changes a workplace or an organizing choice. A sale of existing shares pays the seller. A new issue can fund the company. Trace one of those effects through to a decision. |
 
 The existing accounts record ownership, distributions and contributions.
-The current national campaign has no share exchange. For this chapter,
-the next mechanic gives a second group its own demand, time and right to decline.
+A share exchange earns its place when an ownership change affects what the player or another group can do. Electoral endorsements depend on a working electoral system with an office, a franchise and powers for the officeholder.
 
 ### Local evidence by delivery
 

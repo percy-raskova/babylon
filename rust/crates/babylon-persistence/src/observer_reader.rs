@@ -2,7 +2,12 @@
 
 mod company_decision;
 mod household;
+mod site_procurement;
 pub use household::HouseholdPeriodReport;
+pub use site_procurement::{
+    CommodityOutcome, EarlierOrderDelivery, ProcurementQuantities, SiteProcurementOrder,
+    SiteProcurementReading, StockPosition,
+};
 mod counties;
 
 pub use company_decision::CompanyDecisionReport;

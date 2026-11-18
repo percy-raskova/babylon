@@ -2565,6 +2565,7 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         .set(close, FocusCause::Navigated);
     for section in [
         ProductionReadingSection::Flow,
+        ProductionReadingSection::Orders,
         ProductionReadingSection::Freight,
         ProductionReadingSection::Work,
         ProductionReadingSection::Sources,

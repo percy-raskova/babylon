@@ -191,7 +191,9 @@ impl ProductionControlAvailability {
     ) -> Option<Display> {
         let available = match command {
             ProductionCommand::Reading(
-                ProductionReadingSection::Accounts | ProductionReadingSection::Investment,
+                ProductionReadingSection::Accounts
+                | ProductionReadingSection::Investment
+                | ProductionReadingSection::Orders,
             ) => self.readings && super::accounting::authorized(state),
             ProductionCommand::Back => self.previous_index.is_some() || self.county_back,
             ProductionCommand::Details | ProductionCommand::Reading(_) => self.readings,
@@ -214,9 +216,11 @@ impl ProductionControlAvailability {
     ) -> Option<&'static str> {
         match command {
             ProductionCommand::Reading(
-                ProductionReadingSection::Accounts | ProductionReadingSection::Investment,
+                ProductionReadingSection::Accounts
+                | ProductionReadingSection::Investment
+                | ProductionReadingSection::Orders,
             ) if !super::accounting::authorized(state) => {
-                Some("Financial readings require the full observer.")
+                Some("This reading requires the full observer.")
             }
             ProductionCommand::Back
                 if navigation.household.is_none()

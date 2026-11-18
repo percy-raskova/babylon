@@ -3,7 +3,7 @@
 use super::accounting::AccountsView;
 use super::customers::{CustomerControl, Receipt};
 use super::source_codes::{self, Codes};
-use super::{accounting, customers, navigation};
+use super::{accounting, customers, navigation, orders};
 use babylon_material_circuit::FinalDemandPrincipalId;
 
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
@@ -81,6 +81,7 @@ pub enum ProductionPage {
 pub enum ProductionReadingSection {
     #[default]
     Flow,
+    Orders,
     Freight,
     Work,
     Sources,
@@ -92,6 +93,7 @@ impl ProductionReadingSection {
     fn label(self) -> &'static str {
         match self {
             Self::Flow => "Flow",
+            Self::Orders => "Orders",
             Self::Freight => "Freight",
             Self::Work => "Work",
             Self::Sources => "Sources",
@@ -546,6 +548,7 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
         .with_children(|tabs| {
             for section in [
                 ProductionReadingSection::Flow,
+                ProductionReadingSection::Orders,
                 ProductionReadingSection::Freight,
                 ProductionReadingSection::Work,
                 ProductionReadingSection::Sources,
@@ -575,6 +578,15 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
                 Node {
                     flex_direction: FlexDirection::Column,
                     row_gap: px(4),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+            ));
+            details.spawn((
+                orders::Rows,
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(8),
                     flex_shrink: 0.0,
                     ..default()
                 },
@@ -2047,6 +2059,7 @@ impl Plugin for ProductionPlugin {
                     accounting::update,
                     source_codes::update,
                     customers::rebuild_rows,
+                    orders::rebuild_rows,
                     customers::update,
                     paint_readings,
                     paint_disclosure,

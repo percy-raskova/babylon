@@ -93,6 +93,7 @@ pub(super) fn describe(
                 AccountsView::text,
             )
             .to_owned(),
+        ProductionReadingSection::Orders => String::new(),
         ProductionReadingSection::Flow => describe_flow(site, snapshot),
         ProductionReadingSection::Freight => describe_freight(site, snapshot),
         ProductionReadingSection::Work => describe_work(site, snapshot),

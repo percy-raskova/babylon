@@ -372,6 +372,13 @@ even when a retailer delivered nothing. Choose **Open household receipt**
 to inspect the group with the largest shortfall, or **Trace food retailer**
 to visit its supplier.
 
+At a retailer, choose **Readings** and **Orders**. For a goods order,
+compare what the shop held and already had on order with its stock target.
+Follow the supplier's button to see its own orders or open **Accounts**.
+The selected period stays the same. A delivery from an older order has
+a separate row. For a service, compare the funded quantity with the
+quantity the provider performed and the quantity that expired.
+
 In the organizer's **Places** view, choose **Show aid partners on map**.
 Select the hand and parcel for a local partner or the linked parcels for
 a remote partner. Select the dated food reading beside a symbol to open

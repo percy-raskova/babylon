@@ -151,6 +151,58 @@ zero units. In Accounts, the supplier's spendable cash fell from
 $248,096,350 to $156,808,378. The period statement reproduced both
 balances. [Services on screen](economic-flows-qualification-2026-11-14-assets/wayne-supplier-service-orders.png) · [Service orders](economic-flows-qualification-2026-11-14-assets/wayne-manufacturing-p4-service-orders.json) · [Accounts on screen](economic-flows-qualification-2026-11-14-assets/wayne-manufacturing-p4-accounts.png) · [Supplier statement](economic-flows-qualification-2026-11-14-assets/wayne-manufacturing-p4-accounts.json)
 
+### Who received income and who missed meals in Wayne
+
+At the period 4 close, seven household groups at Wayne had 900,018 unmet
+food parcels. The five large groups each received cash support. The two
+smaller groups came from the existing population when the game opened the
+aid scenario. Neither received a support payment this period.
+
+The table gives Derived counts and payments from the saved campaign.
+Earnings refer to the opening household group. Business ownership
+exposure and the two aid households use Designed opening terms.
+
+| Opening household group | Residents at the start of period 4 | Food parcels unmet | County cash support | Company distributions received |
+| --- | ---: | ---: | ---: | ---: |
+| With earnings, without business ownership | 1,196,610 | 607,574 | $10,874,360 | $0 |
+| With earnings and business ownership | 139,712 | 70,938 | $747,320 | $103,120,510.175926 |
+| Without earnings or business ownership | 375,449 | 190,622 | $7,430,640 | $0 |
+| Without earnings, with business ownership | 41,720 | 21,184 | $825,720 | $39,311,133.713476 |
+| Residents in group quarters | 19,084 | 9,691 | $216,160 | $0 |
+| Wayne aid donor, drawn from the first group | 8 | 5 | $0 | $0 |
+| Wayne aid recipient, drawn from the third group | 4 | 4 | $0 | $0 |
+
+The county pays support into the household account for reserve workers
+counted at the opening. In period 4, the group that opened without
+earnings or business ownership
+received $15,360 in wages. Its opening identity stayed the same.
+
+The largest group received $238,287,024 in wages. It had funds for
+1,804,207 parcels and their shop delivered 23. The two owner groups received all
+$142,431,643.889402 in company distributions to Wayne households.
+[Seven household accounts and source identities](economic-flows-qualification-2026-11-14-assets/wayne-p4-households.json)
+
+In the native game, the food warning opened the largest group's receipt.
+The retailer also opened the business owner group and the named Wayne
+aid recipient at the same close. Each screen showed the opening role and
+the cash that reached the household. All seven reports matched the
+separate period 4 journal and food records. The restricted reader
+received an authority error for the same period.
+[Household with wages](economic-flows-qualification-2026-11-14-assets/wayne-earning-household-income.png) · [Household with company income](economic-flows-qualification-2026-11-14-assets/wayne-owner-household-income.png) · [Named aid household](economic-flows-qualification-2026-11-14-assets/wayne-aid-recipient-income.png)
+
+The first standalone read reached the 100-second timeout after restore.
+Reading the same household again took 9.47 seconds. Reading all seven
+accounts through one shared observer view took 11.95 seconds, including
+opening the view. The saved period and world identity stayed the same.
+
+Wayne paid its full period 4 appropriation of $172,063,950, including
+$20,094,200 in household support. Claims first exceeded available cash
+at period 30. Provider grants absorbed the $149,484,088.567717 then
+available at opening. No household received its recurring support that
+period. A demand to broaden access at period 4 and a demand to protect
+existing payments at period 30 address different conditions.
+[County cash, payments and unfunded claims](economic-flows-qualification-2026-11-14-assets/wayne-public-allocations.json)
+
 ### When to expand the game
 
 The player leads a small political organization. Its members can agree
@@ -159,33 +211,63 @@ for them and what terms they will accept. The three aid runs below show
 who ate and who had time to meet. Wayne still lacks a member vote
 or a bargain that binds its delegates. [Player role](../NORTH_STAR.md#player-promise) · [Current organizer actions](../rust/crates/babylon-practice-contract/src/organizer/types.rs)
 
-**Who speaks for Wayne?** In this proposed chapter, a neighborhood committee
-has a place at a county relief hearing this period. It offers the
-organization a joint appearance to seek more food for families already
-on the relief rolls. Some members want to take that opening while their
-neighbors need food. Families left off the rolls want the county to hear
-their claims too. They want to elect delegates and vote on any settlement.
+**Who speaks for Wayne?** The Director chose representation at a relief
+hearing as the first political dispute. The next design work is to give
+more groups of residents the power to act. Endorsements belong after a
+working electoral system. The hearing can proceed through membership
+mandates.
 
-The neighborhood committee has promised its members that relief will
-come up at this hearing. It has a reason to decline a broader demand if
-changing the agenda costs the slot. Calling a membership meeting also
-takes time. The hearing can pass while members deliberate.
+The opening already distinguishes households with and without earnings
+and business ownership, and residents who live in collective quarters.
+Each group has its own budget and a known number of residents. Jobs, cash
+payments, unpaid care and food purchases can change from one period to
+the next. A household can receive wages and support in the same period. A
+committee needs a separate relationship with people who give it the right
+to speak.
+
+**The dispute.** In the proposed chapter a neighborhood committee has a
+place at a county hearing about relief for current claimants. Its members
+want to use the place while families need food. A second group wants the
+county to hear from residents who received no support. Both groups can
+ask for the same parcel and still disagree about who can speak or settle
+for them.
+
+Use the existing Wayne aid household as one possible participant. Give a
+small group of current claimants a meeting of its own. Members can spend
+their free time presenting a claim, or use it to keep an earlier
+commitment. Record which residents joined and what authority they gave
+the group. If some members need a separate household budget, subtract
+their people and resources from its source. Joining a group creates no
+extra people, votes or cash.
+
+Wayne already distinguishes assent to a gift from participation in joint
+work. An engine check offered the same two parcels and the same time
+to a partner with two different standing policies. The partner completed
+the joint practice under one policy and declined under the other.
+In the national opening each partner agrees in principle. The hearing
+needs a group that can change its response as its own commitments change.
+[Partner consent check](../rust/crates/babylon-persistence/src/qualification_audit/aid/controls.rs) · [Current opening terms](../content/scenarios/national/defines.toml)
+
+Each group needs a choice of its own even when the player holds. A
+claimants' group can keep its appointment or share speaking time. The
+other group can send a delegate, insist on a vote before settlement, or
+decline the invitation. The player can offer a joint demand. Each group
+answers for the people who gave it a mandate.
 [Leadership and membership in the negotiation design](../docs/gameplay/2026-10-26-negotiation-and-party-life-design.md#1-intent-and-the-why)
 
-Open on the committee's offer, the two positions members have voiced and
-the deadline. Identify the source and date of each report. Let the player
-take the hearing within the organization's existing authority, seek a
-member mandate, or propose different terms. Give the delegation the
-exact words of any promise and name who can approve a settlement.
-At the next review, show who turned up, whose agreement
-still matters and what the delegates can do now.
+Open the chapter on the invitation, the groups' stated demands and the
+deadline. Let players inspect which members authorized each delegate and
+who has yet to reply. Each account the organization receives needs a
+source and a date. The full observer can check the separate household and
+county books.
 
-The proposed chapter ends at that review. Replay the same opening with
-the same food transfer. Compare a delegation that can accept the terms
-with one that must take the offer back to members.
-If the session records the same authority and options either way, the
-political decision still needs work. A missed hearing or a refusal can
-be a valid ending. Invite players to try the chapter once that distinction works.
+**Stop at the report back.** Replay the same opening with the same food
+delivered. Under a narrow agreement the delegates can speak only for the
+first group. After a joint agreement they can bring the second group's
+claim to the hearing, subject to its members' terms. If that group
+withholds consent, it retains its own time and voice. A player can then
+see whose demand reached the hearing and who still has the power to
+accept the agreement.
 
 | What to add | When it earns a place |
 | --- | --- |
@@ -196,7 +278,7 @@ be a valid ending. Invite players to try the chapter once that distinction works
 
 The existing accounts record ownership, distributions and contributions.
 The current national campaign has no share exchange. For this chapter,
-the next new mechanic would give members authority over a mandate.
+the next mechanic gives a second group its own demand, time and right to decline.
 
 ### Local evidence by delivery
 
@@ -1198,6 +1280,22 @@ The protected-cash stress raised the existing operating floor for each member in
 At period 2 both seeds recorded demand for 2,843 equipment units. Each seed had 63 member processes without enough spendable cash for one unit. All companies deferred across the first four closes for both seeds. The following closes admitted zero units. With the ordinary operating floors in the matched control, the same seeds bought 15 and 0 units.
 
 The [period records](economic-flows-qualification-2026-11-14-assets/national-company-experiments.jsonl) show the capture identities, world hashes, observed conditions and timing samples. The [portfolio decision table](economic-flows-qualification-2026-11-14-assets/national-company-portfolio-decisions.csv) shows how many companies qualified for each choice, gave it positive weight and selected it. It also records purchases under each preceding choice.
+
+The seed 319 opening assigned all 2,788 member sites, with 121,486,688
+workers, to 99 companies. Each site stayed whole. Together, the nine
+first national companies accounted for 34.98% of eligible employment. The
+nine second national companies accounted for 35.00% and the 81 regional
+companies for 30.01%. The largest departure from any target in a single
+function and division was about 0.70 percentage points.
+
+The Wayne manufacturing site opened with 22,949 workers. It belonged
+to the East North Central manufacturing company. That relationship
+identifies its owner. A workplace committee needs a mandate from actual
+members to represent anyone employed there.
+The comparison recounts each site in its division and function against
+the captured roster. The national v10 catalog has SHA-256
+`63c79b558afb83a63300eda69363e53c1d65a77944270a42224326781e351bf3`.
+[Employment counts, company IDs and achieved shares in all 81 cells](economic-flows-qualification-2026-11-14-assets/national-opening-employment-shares.csv)
 
 ### Repeating the company comparisons with the v9 policy
 

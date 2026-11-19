@@ -157,6 +157,35 @@ fn the_list_is_public_and_ordered_by_rank_then_key() {
     sorted.sort();
     assert_eq!(order, sorted, "with no session the order is the key's");
     assert_eq!((p.relief_micros, p.household_units_payable), (None, None));
+    let text = serde_json::to_string(&p).expect("the projection serializes");
+    assert!(
+        text.contains("\"relief_micros\":null"),
+        "no session, no relief"
+    );
+}
+
+#[test]
+fn relief_is_a_decimal_string_and_round_trips() {
+    let (c, state) = support::state_after_contact();
+    let p = project(&c, &state, &ledger(), &[]);
+    let text = serde_json::to_string(&p).expect("the projection serializes");
+    assert!(
+        text.contains("\"relief_micros\":\"1400000000\""),
+        "relief is a decimal string: {text}"
+    );
+    let back: CountyReviewProjection =
+        serde_json::from_str(&text).expect("the projection deserializes");
+    assert_eq!(back, p);
+    let bare = text.replace(
+        "\"relief_micros\":\"1400000000\"",
+        "\"relief_micros\":1400000000",
+    );
+    assert!(serde_json::from_str::<CountyReviewProjection>(&bare).is_err());
+    let padded = text.replace(
+        "\"relief_micros\":\"1400000000\"",
+        "\"relief_micros\":\"01400000000\"",
+    );
+    assert!(serde_json::from_str::<CountyReviewProjection>(&padded).is_err());
 }
 
 #[test]
@@ -320,6 +349,21 @@ fn a_preview_of_a_household_that_holds_a_unit_asks_for_nothing() {
         .expect("a close has been seen");
     assert!(!pv.asks && !pv.place_open);
     assert_eq!(pv.outcome, ContactOutcome::Reached);
+}
+
+#[test]
+fn a_household_with_no_hours_to_give_does_not_ask_and_the_preview_does_not_say_no_place() {
+    let (c, mut state) = support::state_before_contact();
+    let facts = state.last_facts.as_mut().expect("the facts are held");
+    for group in &mut facts.groups {
+        group.free_hours = 0;
+    }
+    let pv = practice_contract::preview_contact(&c, &state, D)
+        .expect("the preview is made")
+        .expect("a close has been seen");
+    assert_eq!(pv.outcome, ContactOutcome::Reached);
+    assert!(!pv.asks, "the household has no time to ask");
+    assert!(!pv.place_open);
 }
 
 #[test]

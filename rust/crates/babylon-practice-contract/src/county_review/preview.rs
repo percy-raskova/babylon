@@ -21,7 +21,8 @@ pub struct ContactPreview {
     pub basis_period: u64,
     /// What would come of the contact.
     pub outcome: ContactOutcome,
-    /// Whether the household reached would ask for a unit: it holds none.
+    /// Whether the household reached would ask for a unit: it holds none, the unit is worth its
+    /// hours, and its group has hours left to give the session.
     pub asks: bool,
     /// Whether the county's list would pay the household that asks.
     pub place_open: bool,
@@ -75,14 +76,16 @@ pub fn preview_contact(
         .contact
         .map(|(_, outcome)| outcome)
         .ok_or(CountyReviewError::RosterShape)?;
-    let reached = outcome == ContactOutcome::Reached;
-    let place_open =
-        rows_that_rose(&without.record, &with.record, |row| row.asked_paid).contains(&key);
+    let rose = |figure: fn(&SessionRow) -> u64| {
+        rows_that_rose(&without.record, &with.record, figure).contains(&key)
+    };
+    let asks = rose(|row| row.asked);
+    let place_open = rose(|row| row.asked_paid);
     Ok(Some(ContactPreview {
         key,
         basis_period: facts.period,
         outcome,
-        asks: reached && key.units == 0,
+        asks,
         place_open,
         taken_from: rows_that_rose(&without.record, &with.record, |row| row.units_unpaid),
         then_at_stake: rows_that_rose(&without.record, &with.record, |row| row.losers),

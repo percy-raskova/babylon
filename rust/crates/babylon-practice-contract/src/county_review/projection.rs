@@ -177,6 +177,7 @@ pub struct CountyReviewProjection {
     #[serde(with = "super::decimal")]
     pub first_class_micros: i128,
     /// The money for relief at the last session.
+    #[serde(with = "super::decimal::option")]
     pub relief_micros: Option<i128>,
     /// Household units the county could pay at the last session.
     pub household_units_payable: Option<u64>,

@@ -38,7 +38,7 @@ impl ObserverLayout {
         Self {
             world: Rect::new(
                 16.0,
-                100.0,
+                108.0,
                 world_right,
                 if history == HistoryDrawerState::Open {
                     history_top - 12.0
@@ -46,7 +46,7 @@ impl ObserverLayout {
                     world_bottom
                 },
             ),
-            subject: Rect::new(world_right + 16.0, 100.0, size.x - 16.0, size.y - 16.0),
+            subject: Rect::new(world_right + 16.0, 108.0, size.x - 16.0, size.y - 16.0),
             history: Rect::new(16.0, history_top, world_right, world_bottom),
             footer: Rect::new(16.0, size.y - 52.0, world_right, size.y - 12.0),
         }

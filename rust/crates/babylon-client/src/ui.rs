@@ -2,6 +2,7 @@
 
 pub mod dossier_card;
 pub mod dossier_compose;
+pub(crate) mod dossier_navigation;
 
 mod pressable;
 

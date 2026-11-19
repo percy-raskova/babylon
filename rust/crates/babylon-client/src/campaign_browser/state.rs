@@ -2154,7 +2154,7 @@ mod tests {
         assert!(!reading.contains("Inventory on hand: 910"));
         app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::default();
         let reading = painted_comparison(&mut app, text);
-        assert!(reading.contains("Select an exact good and unit in World's material lens"));
+        assert!(reading.contains("Select an exact commodity and unit in World's material lens"));
         assert!(!reading.contains("Delivered to end buyers to date:"));
     }
 

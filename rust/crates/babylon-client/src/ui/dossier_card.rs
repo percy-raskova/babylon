@@ -6,9 +6,13 @@
 //! current-page search or global progress counter fills missing historical data.
 //! Keyboard and pointer controls share admission and are checked again on apply.
 
+use crate::navigation::position::NavigationFocus;
+use crate::navigation::position::ReadingRegion;
+use crate::navigation::NavigationHistory;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::OrganizerView;
 use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+use navigation::ArchiveNavigation;
 
 use bevy::ecs::system::SystemParam;
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -54,6 +58,12 @@ use uuid::Uuid;
 /// campaign the runtime writes by default.
 const DEFAULT_CAMPAIGN_UUID: u128 = 0x2810_0000_0000_0000_0000_0000_0000_0001;
 const CAMPAIGN_ENV: &str = "BABYLON_CAMPAIGN_ID";
+
+use super::dossier_navigation as navigation;
+
+#[cfg(test)]
+#[path = "dossier_navigation_tests.rs"]
+mod navigation_tests;
 
 /// The canonical campaign identity the dossier card reads under:
 /// `BABYLON_CAMPAIGN_ID` when it is a canonical UUID, else the runtime's
@@ -210,10 +220,10 @@ pub enum DossierFetchState {
 }
 
 #[derive(Resource, Default, Debug, PartialEq, Eq)]
-struct DossierPresentation {
-    cursor: Option<ArchiveChangeCursor>,
-    details_open: bool,
-    technical_open: bool,
+pub(super) struct DossierPresentation {
+    pub(super) cursor: Option<ArchiveChangeCursor>,
+    pub(super) details_open: bool,
+    pub(super) technical_open: bool,
 }
 
 impl DossierPresentation {
@@ -359,6 +369,7 @@ fn spawn_dossier_card(mut commands: Commands) {
             Visibility::Hidden,
             DeclaredSurface::new(CARD_SURFACE),
             DossierCardRoot,
+            ReadingRegion::Archive,
             TabGroup::new(20),
         ))
         .with_children(|card| {
@@ -372,6 +383,7 @@ fn spawn_dossier_card(mut commands: Commands) {
                 },
                 ObserverFontRole::Display,
                 zone(DossierZone::Title),
+                NavigationFocus::Reading(ReadingRegion::Archive),
                 ObserverFocusTarget::reading(None),
             ));
             card.spawn((
@@ -487,14 +499,14 @@ fn spawn_sealed_actions(card: &mut ChildSpawnerCommands) {
 }
 
 #[derive(SystemParam)]
-struct DossierReadIdentity<'w> {
-    campaign: Res<'w, DossierCampaignId>,
-    refresh: Res<'w, DossierRefresh>,
-    selected: Res<'w, SelectedCounty>,
-    atlas: Option<Res<'w, CountyAtlas>>,
-    observer: Option<Res<'w, ObserverSession>>,
-    organizer: Option<Res<'w, OrganizerClient>>,
-    frame: Option<Res<'w, ObserverFrame>>,
+pub(super) struct DossierReadIdentity<'w> {
+    pub(super) campaign: Res<'w, DossierCampaignId>,
+    pub(super) refresh: Res<'w, DossierRefresh>,
+    pub(super) selected: Res<'w, SelectedCounty>,
+    pub(super) atlas: Option<Res<'w, CountyAtlas>>,
+    pub(super) observer: Option<Res<'w, ObserverSession>>,
+    pub(super) organizer: Option<Res<'w, OrganizerClient>>,
+    pub(super) frame: Option<Res<'w, ObserverFrame>>,
 }
 
 fn disclosed_organization(view: &OrganizerView, actor_id: u64) -> Option<&str> {
@@ -513,7 +525,7 @@ fn disclosed_organization(view: &OrganizerView, actor_id: u64) -> Option<&str> {
 }
 
 impl DossierReadIdentity<'_> {
-    fn organizer_subject(&self, page: &DossierPageView) -> bool {
+    pub(super) fn organizer_subject(&self, page: &DossierPageView) -> bool {
         let DossierPageView::Subject(request) = page else {
             return false;
         };
@@ -548,7 +560,7 @@ impl DossierReadIdentity<'_> {
             .map(|county| county.fips)
     }
 
-    fn scope(&self, view: &DossierPageView) -> Option<DossierRequestScope> {
+    pub(super) fn scope(&self, view: &DossierPageView) -> Option<DossierRequestScope> {
         let county = self.county()?;
         let session = self.observer.as_ref()?;
         let snapshot = self.frame.as_ref()?.for_session(session)?;
@@ -578,7 +590,7 @@ impl DossierReadIdentity<'_> {
         })
     }
 
-    fn admits(&self, installed: &InstalledDossier, view: &DossierPageView) -> bool {
+    pub(super) fn admits(&self, installed: &InstalledDossier, view: &DossierPageView) -> bool {
         let Some(expected) = self.scope(view) else {
             return false;
         };
@@ -602,7 +614,7 @@ impl DossierReadIdentity<'_> {
 }
 
 impl SubjectPageRequest {
-    fn target(&self) -> Option<ArchivePageRef> {
+    pub(super) fn target(&self) -> Option<ArchivePageRef> {
         let kind = match self.kind.as_str() {
             "county" => ArchiveSubjectKind::County,
             "place" => ArchiveSubjectKind::Place,
@@ -855,7 +867,7 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
 }
 
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
-enum DossierControl {
+pub(super) enum DossierControl {
     Link(SubjectPageRequest),
     Back(DossierRequestScope),
     More(DossierRequestScope, ArchiveChangeCursor),
@@ -878,7 +890,10 @@ impl DossierControl {
     }
 }
 
-fn chip_request(link: &ArchiveDossierLink, scope: &DossierRequestScope) -> SubjectPageRequest {
+pub(super) fn chip_request(
+    link: &ArchiveDossierLink,
+    scope: &DossierRequestScope,
+) -> SubjectPageRequest {
     SubjectPageRequest {
         scope: scope.clone(),
         kind: link.target.kind().as_str().into(),
@@ -887,7 +902,7 @@ fn chip_request(link: &ArchiveDossierLink, scope: &DossierRequestScope) -> Subje
     }
 }
 
-fn navigable_link(link: &ArchiveDossierLink) -> bool {
+pub(super) fn navigable_link(link: &ArchiveDossierLink) -> bool {
     matches!(
         link.target_state,
         ArchiveLinkedPageState::KnownReady | ArchiveLinkedPageState::KnownPending
@@ -923,8 +938,9 @@ fn set_chips(
 }
 
 fn spawn_control(commands: &mut Commands, zone: Entity, label: String, control: DossierControl) {
+    let focus_key = navigation::focus_key(&control);
     commands.entity(zone).with_children(|parent| {
-        parent
+        let entity = parent
             .spawn((
                 Node {
                     padding: UiRect::axes(px(8), px(4)),
@@ -952,7 +968,14 @@ fn spawn_control(commands: &mut Commands, zone: Entity, label: String, control: 
                 },
                 ObserverFontRole::Body,
                 DeclaredSurface::new(CARD_SURFACE),
-            ));
+            ))
+            .id();
+        if let Some(key) = focus_key {
+            parent
+                .commands()
+                .entity(entity)
+                .insert(NavigationFocus::Archive(key));
+        }
     });
 }
 
@@ -1033,9 +1056,9 @@ fn admitted_control(
 }
 
 #[derive(SystemParam)]
-struct DossierRefusal<'w> {
-    feedback: Option<ResMut<'w, ObserverFeedback>>,
-    time: Option<Res<'w, Time>>,
+pub(super) struct DossierRefusal<'w> {
+    pub(super) feedback: Option<ResMut<'w, ObserverFeedback>>,
+    pub(super) time: Option<Res<'w, Time>>,
 }
 impl DossierRefusal<'_> {
     fn reject(&mut self) {
@@ -1338,11 +1361,11 @@ fn on_place_chip_out(out: On<PointerOut>, mut chips: Query<(&mut BorderColor, &P
 }
 
 #[derive(SystemParam)]
-struct DossierWriteState<'w> {
-    view: ResMut<'w, DossierPageView>,
-    projection: ResMut<'w, ActiveCountyDossier>,
-    fetch: ResMut<'w, DossierFetchState>,
-    presentation: ResMut<'w, DossierPresentation>,
+pub(super) struct DossierWriteState<'w> {
+    pub(super) view: ResMut<'w, DossierPageView>,
+    pub(super) projection: ResMut<'w, ActiveCountyDossier>,
+    pub(super) fetch: ResMut<'w, DossierFetchState>,
+    pub(super) presentation: ResMut<'w, DossierPresentation>,
 }
 
 /// An earned organizer subject enters the same reader, period scope, and card pipeline.
@@ -1352,6 +1375,7 @@ fn open_organizer_archive(
     identity: DossierReadIdentity,
     mut outputs: DossierWriteState,
     mut origin: ResMut<OrganizerArchiveOrigin>,
+    mut navigation: Option<ResMut<ArchiveNavigation>>,
 ) {
     let Some(view) = &organizer.view else {
         return;
@@ -1369,6 +1393,9 @@ fn open_organizer_archive(
             *outputs.presentation = DossierPresentation::default();
             outputs.projection.0 = None;
             *outputs.fetch = DossierFetchState::Idle;
+            if let Some(navigation) = navigation.as_deref_mut() {
+                navigation.opened(&outputs.view);
+            }
             return;
         }
         OrganizerArchiveTarget::Collective => (
@@ -1404,6 +1431,9 @@ fn open_organizer_archive(
     *outputs.presentation = DossierPresentation::default();
     outputs.projection.0 = None;
     *outputs.fetch = DossierFetchState::Idle;
+    if let Some(navigation) = navigation.as_deref_mut() {
+        navigation.opened(&outputs.view);
+    }
 }
 
 fn sync_organizer_return(
@@ -1440,6 +1470,13 @@ fn sync_organizer_return(
     }
 }
 
+/// Accepted Archive routes update both the local subject path and shared visit history.
+#[derive(SystemParam)]
+struct DossierNavigationState<'w> {
+    navigation: Option<ResMut<'w, ArchiveNavigation>>,
+    history: Option<ResMut<'w, NavigationHistory>>,
+}
+
 fn apply_page_requests(
     mut requests: MessageReader<DossierControl>,
     identity: DossierReadIdentity,
@@ -1447,7 +1484,12 @@ fn apply_page_requests(
     ui: Option<Res<ObserverUiState>>,
     mut refusal: DossierRefusal,
     mut receipt: Option<ResMut<ArchiveEvidenceReceipt>>,
+    navigation_state: DossierNavigationState,
 ) {
+    let DossierNavigationState {
+        mut navigation,
+        mut history,
+    } = navigation_state;
     let DossierWriteState {
         mut view,
         mut projection,
@@ -1473,6 +1515,9 @@ fn apply_page_requests(
             }
             let result = if admitted && !presentation.details_open {
                 presentation.details_open = true;
+                if let Some(history) = history.as_deref_mut() {
+                    history.accepted();
+                }
                 Ok(())
             } else {
                 refusal.reject();
@@ -1484,6 +1529,16 @@ fn apply_page_requests(
         if !admitted {
             refusal.reject();
             continue;
+        }
+        if let Some(navigation) = navigation.as_deref_mut() {
+            navigation.accepted(control);
+        }
+        if let Some(history) = history.as_deref_mut() {
+            if matches!(control, DossierControl::Back(_)) {
+                history.closed_detail();
+            } else {
+                history.accepted();
+            }
         }
         match control {
             DossierControl::Link(request) => {
@@ -1974,6 +2029,7 @@ pub struct DossierCardPlugin;
 impl Plugin for DossierCardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ObserverFocusPolicy>()
+            .init_resource::<ArchiveNavigation>()
             .add_message::<OpenArchiveEvidence>()
             .init_resource::<ArchiveEvidenceReceipt>()
             .add_message::<SubjectPageRequest>()
@@ -1997,6 +2053,7 @@ impl Plugin for DossierCardPlugin {
             .add_systems(
                 Update,
                 (
+                    navigation::restore,
                     drive_dossier_fetch,
                     collect_dossier_fetch,
                     open_archive_evidence,
@@ -2031,7 +2088,7 @@ pub(crate) mod tests {
         ArchivePageRef::try_new(kind, id.into())
             .expect("the authored fixture satisfies the constructor invariants")
     }
-    fn frame(session: &ObserverSession, hash: &str) -> ObserverFrame {
+    pub(super) fn frame(session: &ObserverSession, hash: &str) -> ObserverFrame {
         ObserverFrame(
             Some(ObserverEconomySnapshot {
                 campaign_id: session.campaign.as_uuid().to_string(),
@@ -2047,7 +2104,7 @@ pub(crate) mod tests {
             None,
         )
     }
-    fn installed(session: &ObserverSession, hash: &str) -> InstalledDossier {
+    pub(super) fn installed(session: &ObserverSession, hash: &str) -> InstalledDossier {
         let read_scope =
             dossier::observation_scope(session.campaign, session.viewed_tick, Some(hash))
                 .expect("the fixture call `observation_scope` succeeds for the authored inputs");
@@ -2105,13 +2162,13 @@ pub(crate) mod tests {
         )
         .expect("the authored fixture satisfies the constructor invariants")
     }
-    fn page_mut(installed: &mut InstalledDossier) -> &mut ArchiveDossierPage {
+    pub(super) fn page_mut(installed: &mut InstalledDossier) -> &mut ArchiveDossierPage {
         match &mut installed.read.state {
             ArchiveDossierState::Ready { page, .. } => page,
             _ => panic!("ready fixture"),
         }
     }
-    fn chip_app() -> (App, Entity, SubjectPageRequest) {
+    pub(super) fn chip_app() -> (App, Entity, SubjectPageRequest) {
         let campaign = CampaignId::from_uuid(Uuid::nil());
         let mut session = ObserverSession::new(campaign);
         session.ready(1, Some("a".repeat(64)));

@@ -1,4 +1,5 @@
 //! Selected report identity, real glyphs and reading continuity.
+use super::OrganizerInspectorRoot;
 use super::Scope;
 use super::{
     tests, ActionButton, Destination, DispatchDestination, OrganizerAction,
@@ -6,6 +7,8 @@ use super::{
 };
 use crate::atlas::CountyAtlas;
 use crate::map::SelectedCounty;
+use crate::navigation::NavigationAction;
+use crate::navigation::NavigationButton;
 use crate::observer::ObserverSession;
 use crate::observer_io::ObserverSet;
 use crate::observer_ui::{ObserverCommand, ObserverFrame};
@@ -128,17 +131,29 @@ fn inquiry_dispatch_opens_its_exact_answer_beside_a_newer_automatic_report() {
 }
 
 fn assert_return_visible(app: &mut App, bounds: Rect) {
-    let label = {
-        let world = app.world_mut();
-        world
-            .query::<(&ActionButton, &Children)>()
-            .iter(world)
-            .find_map(|(button, children)| {
-                (button.0 == OrganizerAction::CloseInspector).then_some(children[0])
-            })
-            .expect("fixed Return control")
-    };
-    tests::assert_glyphs_in(app, label, bounds);
+    for action in [NavigationAction::Back, NavigationAction::Home] {
+        let label = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &NavigationButton, &Children)>()
+                .iter(world)
+                .find_map(|(entity, button, children)| {
+                    if button.0 != action {
+                        return None;
+                    }
+                    let mut cursor = Some(entity);
+                    while let Some(current) = cursor {
+                        if world.get::<OrganizerInspectorRoot>(current).is_some() {
+                            return Some(children[0]);
+                        }
+                        cursor = world.get::<ChildOf>(current).map(ChildOf::parent);
+                    }
+                    None
+                })
+                .expect("fixed native inspector navigation control")
+        };
+        tests::assert_glyphs_in(app, label, bounds);
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

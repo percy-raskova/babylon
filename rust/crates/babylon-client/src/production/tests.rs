@@ -367,9 +367,8 @@ fn merchant_handling_reading_uses_exact_kilograms_without_changing_work_hours() 
     }];
     let reading = readings::describe_work(&snapshot.sites[1], &snapshot);
     assert!(reading.contains("Period 1: 160.001 kg handled · 3 / 8 labor-hours used / needed"));
-    assert!(
-        reading.contains("Handling moves existing goods; it does not create productive output.")
-    );
+    assert!(reading
+        .contains("Handling moves existing commodities; it does not create productive output."));
     assert!(!readings::describe_work(&snapshot.sites[0], &snapshot).contains("MERCHANT HANDLING"));
 }
 

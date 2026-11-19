@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::atlas::CountyAtlas;
+use crate::county_palette;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::map_economy_lens::MapLens;
 use crate::observer::ObserverSession;
@@ -64,7 +65,7 @@ struct MapGeometry {
 /// Camera motion is direct, without inertia or automatic drift. This also
 /// keeps reduced-motion mode free of incidental movement.
 #[derive(Resource, Clone, PartialEq)]
-struct MapOrbit {
+pub(crate) struct MapOrbit {
     target: Vec3,
     yaw: f32,
     pitch: f32,
@@ -225,6 +226,7 @@ fn hover_county(
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
+        || ui.interface_tour_open
     {
         return;
     }
@@ -267,6 +269,7 @@ fn select_county(
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
+        || ui.interface_tour_open
     {
         return;
     }
@@ -315,15 +318,10 @@ fn update_observation(
         if (data_changed || input.view.is_changed()) && transform.scale.y.ne(&target_height) {
             transform.scale.y = target_height;
         }
-        let color = if *input.view == PrimaryView::Organizer {
-            // Ink and ochre distinguish the geographic focus, independent of economic readings.
-            if county.fips == "26163" {
-                Color::srgb_u8(133, 105, 67)
-            } else {
-                Color::srgb_u8(60, 69, 63)
-            }
-        } else if matches!(input.ui.lens, MapLens::Relationships) {
-            theme::LAND
+        let color = if *input.view == PrimaryView::Organizer
+            || matches!(input.ui.lens, MapLens::Relationships)
+        {
+            county_palette::color(&county.fips)
         } else {
             value.map_or(theme::GRAY, |value| {
                 let weight = maximum
@@ -344,6 +342,8 @@ fn update_observation(
                 theme::PAPER
             } else if input.hovered.0 == Some(county.atlas_index) {
                 theme::BLUE
+            } else if county.fips == "26163" {
+                county_palette::WAYNE_OUTLINE
             } else {
                 theme::INK
             };
@@ -474,6 +474,34 @@ pub(crate) fn assert_paper_blocks_navigation(app: &mut App, point: Vec2) {
     assert_eq!(app.world().resource::<MapOrbit>().transform(), before);
 }
 
+#[cfg(test)]
+pub(crate) fn install_pointer_navigation_fixture(app: &mut App) -> Entity {
+    app.insert_resource(MapGeometry {
+        extent: Vec2::splat(200.0),
+        ..default()
+    })
+    .insert_resource(MapOrbit::new(200.0))
+    .insert_resource(ObserverViewport(Some(Rect::from_corners(
+        Vec2::ZERO,
+        Vec2::splat(500.0),
+    ))))
+    .add_systems(
+        Update,
+        navigate
+            .after(ObserverSet::Input)
+            .before(ObserverSet::Paint),
+    )
+    .add_systems(Update, sync_camera.after(ObserverSet::Paint));
+    app.world_mut()
+        .spawn((
+            ObserverMapCamera,
+            Camera::default(),
+            Transform::default(),
+            Projection::default(),
+        ))
+        .id()
+}
+
 #[derive(SystemParam)]
 struct NavigationInput<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
@@ -509,6 +537,7 @@ fn navigate(
         || input.ui.menu_open
         || input.ui.splash_visible
         || input.ui.comparison_open
+        || input.ui.interface_tour_open
         || input.ui.disclosure.is_some()
         || (*input.view == PrimaryView::Organizer
             && (input.ui.history_open
@@ -1032,6 +1061,55 @@ mod tests {
         assert_eq!(app.world().resource::<MapOrbit>().transform(), started);
     }
 
+    #[test]
+    fn raw_map_tour_resets_held_orbit_and_pan_until_a_new_gesture() {
+        for button in [MouseButton::Right, MouseButton::Middle] {
+            let (mut app, _, _) = focused_navigation_app();
+            app.insert_resource(PrimaryView::Organizer);
+            let navigate = app.world_mut().register_system(navigate);
+            let before = app.world().resource::<MapOrbit>().transform();
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .press(button);
+            app.world_mut()
+                .resource_mut::<AccumulatedMouseMotion>()
+                .delta = Vec2::new(40.0, 10.0);
+            app.world_mut()
+                .run_system(navigate)
+                .expect("normal map drag");
+            let started = app.world().resource::<MapOrbit>().transform();
+            assert_ne!(started, before, "positive control: a map drag starts");
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .clear();
+            app.world_mut()
+                .resource_mut::<ObserverUiState>()
+                .interface_tour_open = true;
+            app.world_mut()
+                .run_system(navigate)
+                .expect("tour interrupts map drag");
+            assert_eq!(app.world().resource::<MapOrbit>().transform(), started);
+            app.world_mut()
+                .resource_mut::<ObserverUiState>()
+                .interface_tour_open = false;
+            app.world_mut()
+                .run_system(navigate)
+                .expect("held drag after tour");
+            assert_eq!(
+                app.world().resource::<MapOrbit>().transform(),
+                started,
+                "a pre-tour held gesture cannot resume after closing"
+            );
+            {
+                let mut mouse = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+                mouse.release(button);
+                mouse.press(button);
+            }
+            app.world_mut().run_system(navigate).expect("new map drag");
+            assert_ne!(app.world().resource::<MapOrbit>().transform(), started);
+        }
+    }
+
     #[derive(Resource, Default)]
     struct OrbitChanged(bool);
 
@@ -1178,6 +1256,116 @@ mod tests {
             height(Some(u64::MAX), Some(u64::MAX)).to_bits(),
             (BASE_HEIGHT + DATA_HEIGHT).to_bits()
         );
+    }
+
+    fn geographic_observation() -> (ObserverSession, ObserverEconomySnapshot) {
+        use babylon_persistence::observer_reader::ObserverCountyEconomy;
+
+        let campaign = CampaignId::from_uuid(Uuid::nil());
+        let mut session = ObserverSession::new(campaign);
+        session.ready(4, Some("a".repeat(64)));
+        let snapshot = ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 4,
+            foundation_digest: "f".repeat(64),
+            tick_content_hash: Some("a".repeat(64)),
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: vec![ObserverCountyEconomy {
+                county_geoid: "26163".into(),
+                annual_avg_estabs_count: None,
+                annual_avg_emplvl: Some(10),
+                total_annual_wages: None,
+                annual_avg_wkly_wage: None,
+            }],
+            production: None,
+        };
+        (session, snapshot)
+    }
+
+    #[test]
+    fn geographic_fills_survive_context_changes_without_replacing_metric_colors_or_outlines() {
+        let (session, snapshot) = geographic_observation();
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(session)
+            .insert_resource(ObserverFrame(Some(snapshot), None))
+            .init_resource::<ObserverUiState>()
+            .insert_resource(PrimaryView::Organizer)
+            .init_resource::<SelectedCounty>()
+            .init_resource::<HoveredCounty>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .add_systems(Update, update_observation);
+        let mut handles = Vec::new();
+        for (atlas_index, fips) in ["26163", "26099"].into_iter().enumerate() {
+            let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+            let fill = materials.add(StandardMaterial::default());
+            let outline = materials.add(StandardMaterial::default());
+            app.world_mut().spawn((
+                CountySlab {
+                    atlas_index,
+                    fips: fips.into(),
+                    outline: outline.clone(),
+                },
+                Transform::default(),
+                MeshMaterial3d(fill.clone()),
+            ));
+            handles.push((fill, outline));
+        }
+        let material_color = |app: &App, handle: &Handle<StandardMaterial>| {
+            app.world()
+                .resource::<Assets<StandardMaterial>>()
+                .get(handle)
+                .expect("fixture material")
+                .base_color
+        };
+        app.update();
+        let geographic = [
+            county_palette::color("26163"),
+            county_palette::color("26099"),
+        ];
+        assert_ne!(geographic[0], geographic[1]);
+        for ((fill, _), color) in handles.iter().zip(geographic) {
+            assert_eq!(material_color(&app, fill), color);
+        }
+        assert_eq!(
+            material_color(&app, &handles[0].1),
+            county_palette::WAYNE_OUTLINE
+        );
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(0);
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), geographic[0]);
+        assert_eq!(material_color(&app, &handles[0].1), theme::PAPER);
+        app.world_mut().resource_mut::<SelectedCounty>().0 = None;
+        app.world_mut().resource_mut::<HoveredCounty>().0 = Some(0);
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].1), theme::BLUE);
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), geographic[0]);
+        app.world_mut().resource_mut::<ObserverUiState>().lens =
+            MapLens::Qcew(EconomyMetric::Employment);
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), theme::YELLOW);
+        assert_eq!(material_color(&app, &handles[1].0), theme::GRAY);
+        let world = app.world_mut();
+        for (county, transform) in world.query::<(&CountySlab, &Transform)>().iter(world) {
+            let expected = if county.fips == "26163" {
+                BASE_HEIGHT + DATA_HEIGHT
+            } else {
+                BASE_HEIGHT
+            };
+            assert_eq!(transform.scale.y.to_bits(), expected.to_bits());
+        }
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .viewed_tick = 9;
+        app.update();
+        assert_eq!(material_color(&app, &handles[0].0), geographic[0]);
+        assert_eq!(material_color(&app, &handles[1].0), geographic[1]);
     }
 
     #[test]
@@ -1352,12 +1540,37 @@ mod tests {
         app.world_mut()
             .resource_mut::<ObserverUiState>()
             .comparison_open = false;
+        assert_tour_blocks_county_pointer_events(&mut app, click());
         app.world_mut().trigger(click());
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(42));
         app.world_mut().resource_mut::<SelectedCounty>().0 = None;
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.world_mut().trigger(click());
         assert_eq!(app.world().resource::<SelectedCounty>().0, None);
+    }
+
+    fn assert_tour_blocks_county_pointer_events(app: &mut App, click: PointerClick) {
+        app.init_resource::<HoveredCounty>();
+        app.world_mut()
+            .entity_mut(click.entity)
+            .observe(hover_county);
+        let over = PointerOver {
+            entity: click.entity,
+            pointer: click.pointer.clone(),
+            hit: click.hit.clone(),
+        };
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .interface_tour_open = true;
+        app.world_mut().trigger(over.clone());
+        app.world_mut().trigger(click);
+        assert_eq!(app.world().resource::<SelectedCounty>().0, None);
+        assert_eq!(app.world().resource::<HoveredCounty>().0, None);
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .interface_tour_open = false;
+        app.world_mut().trigger(over);
+        assert_eq!(app.world().resource::<HoveredCounty>().0, Some(42));
     }
 
     #[test]

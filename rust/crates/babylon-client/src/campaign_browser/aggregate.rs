@@ -195,7 +195,7 @@ fn material_principals<'a>(
         }
     }
     if identities.is_empty() {
-        return Err("no account for this exact good and unit");
+        return Err("no account for this exact commodity and unit");
     }
     Ok(identities)
 }
@@ -209,13 +209,13 @@ fn material_total(
         good: Some(good),
     } = lens
     else {
-        return Err("Select an exact good and unit in World's material lens");
+        return Err("Select an exact commodity and unit in World's material lens");
     };
     let choice = map_economy_lens::material_choices(snapshot, *kind)
         .map_err(|_| "inconsistent material identity")?
         .into_iter()
         .find(|choice| choice.key == *good)
-        .ok_or("exact good and unit are not disclosed")?;
+        .ok_or("exact commodity and unit are not disclosed")?;
     let production = snapshot
         .production
         .as_ref()
@@ -228,7 +228,7 @@ fn material_total(
             }
         })?;
     if locations.is_empty() {
-        return Err("no account for this exact good and unit");
+        return Err("no account for this exact commodity and unit");
     }
     let total = locations.values().try_fold(0_u64, |total, row| {
         let value = row.ok_or("no completed production receipt for the selected period")?;
@@ -248,7 +248,7 @@ fn write_material(
         good: Some(good),
     } = lens
     else {
-        return Err("Select an exact good and unit in World's material lens");
+        return Err("Select an exact commodity and unit in World's material lens");
     };
     let left = current
         .production
@@ -326,7 +326,7 @@ fn retail_accounts<'a>(
         validate_listed_orders(row, &retailers, &mut order_ids)?;
     }
     if rows.is_empty() {
-        return Err("no final-demand account for this exact good and unit");
+        return Err("no final-demand account for this exact commodity and unit");
     }
     Ok(rows)
 }
@@ -549,15 +549,16 @@ pub(super) fn write(
         good: Some(good),
     } = lens
     else {
-        output.push_str("Select an exact good and unit in World's material lens to compare physical totals.\n\n");
+        output.push_str("Select an exact commodity and unit in World's material lens to compare physical totals.\n\n");
         return;
     };
     let choice = crate::map_economy_lens::material_choices(current, *kind)
         .ok()
         .and_then(|choices| choices.into_iter().find(|choice| choice.key == *good));
     let Some(choice) = choice else {
-        output
-            .push_str("Selected material unavailable: exact good and unit are not disclosed.\n\n");
+        output.push_str(
+            "Selected material unavailable: exact commodity and unit are not disclosed.\n\n",
+        );
         return;
     };
     writeln!(

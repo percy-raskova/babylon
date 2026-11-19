@@ -1,5 +1,6 @@
 //! Observer navigation, scoped command admission, and production selection.
 
+use crate::navigation::NavigationHistory;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
 use bevy::ecs::system::SystemParam;
@@ -250,15 +251,26 @@ pub(crate) struct ProductionLocation<'w> {
     selected: ResMut<'w, SelectedCounty>,
 }
 
+#[derive(SystemParam)]
+pub(crate) struct NavigationOwners<'w> {
+    view: ResMut<'w, PrimaryView>,
+    navigation: ResMut<'w, ProductionNavigation>,
+    shared_history: Option<ResMut<'w, NavigationHistory>>,
+}
+
 pub(crate) fn navigate(
     mut commands: Commands,
     mut events: MessageReader<ProductionCommand>,
-    mut view: ResMut<PrimaryView>,
-    mut navigation: ResMut<ProductionNavigation>,
+    owners: NavigationOwners,
     observation: ProductionObservation,
     location: ProductionLocation,
     ui: ProductionUi,
 ) {
+    let NavigationOwners {
+        mut view,
+        mut navigation,
+        mut shared_history,
+    } = owners;
     let ProductionLocation {
         atlas,
         mut selected,
@@ -273,7 +285,7 @@ pub(crate) fn navigate(
         .for_session(&state)
         .and_then(|frame| frame.production.as_ref());
     for event in events.read() {
-        if ui.menu_open || ui.splash_visible || ui.comparison_open {
+        if ui.menu_open || ui.splash_visible || ui.comparison_open || ui.interface_tour_open {
             continue;
         }
         if state.organizer_enabled && matches!(event, ProductionCommand::Open) {
@@ -346,13 +358,28 @@ pub(crate) fn navigate(
                 ui.disclosure = None;
             }
         }
-        if matches!(event, ProductionCommand::Open | ProductionCommand::Map) {
-            commands.trigger(ObserverFocusWorld);
-        }
+        accepted_navigation(event, &mut commands, shared_history.as_deref_mut());
         if !sync_county {
             continue;
         }
         sync_selected_county(&navigation, snapshot, &atlas, &mut selected);
+    }
+}
+
+fn accepted_navigation(
+    event: &ProductionCommand,
+    commands: &mut Commands,
+    history: Option<&mut NavigationHistory>,
+) {
+    if matches!(event, ProductionCommand::Open | ProductionCommand::Map) {
+        commands.trigger(ObserverFocusWorld);
+    }
+    if let Some(history) = history {
+        match event {
+            ProductionCommand::Flat => {}
+            ProductionCommand::Back => history.closed_detail(),
+            _ => history.accepted(),
+        }
     }
 }
 

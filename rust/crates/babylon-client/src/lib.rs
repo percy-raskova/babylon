@@ -9,6 +9,7 @@
 pub mod app;
 pub mod atlas;
 pub mod cli;
+mod county_palette;
 pub mod decision_surface;
 pub mod dossier;
 mod economy_status;
@@ -16,6 +17,7 @@ mod human_numbers;
 pub mod logging;
 pub mod map;
 pub mod map_economy_lens;
+pub(crate) mod navigation;
 pub mod observer;
 pub(crate) mod observer_controls;
 pub(crate) mod observer_focus;

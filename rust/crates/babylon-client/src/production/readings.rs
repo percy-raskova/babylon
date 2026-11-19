@@ -282,7 +282,9 @@ pub(super) fn describe_work(site: &ProductionSite, snapshot: &ProductionSnapshot
         } else {
             value.push_str("Foundation; no completed handling work.\n");
         }
-        value.push_str("Handling moves existing goods; it does not create productive output.\n");
+        value.push_str(
+            "Handling moves existing commodities; it does not create productive output.\n",
+        );
     }
     value.trim_start().to_owned()
 }

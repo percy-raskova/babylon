@@ -4,6 +4,7 @@ use super::{
     OrganizerAction, OrganizerChoice, OrganizerInspector, OrganizerInspectorRoot, Overlay, Scope,
     SurfaceId, TextPart,
 };
+use crate::navigation::position::ReadingRegion;
 use crate::observer::ObservationContext;
 use crate::organizer::ui;
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -24,7 +25,7 @@ pub(super) fn spawn(commands: &mut Commands) {
                 position_type: PositionType::Absolute,
                 left: percent(14),
                 right: percent(14),
-                top: px(98),
+                top: px(106),
                 bottom: px(48),
                 padding: UiRect::all(px(20)),
                 border: UiRect::all(px(2)),
@@ -41,11 +42,7 @@ pub(super) fn spawn(commands: &mut Commands) {
         ))
         .with_children(|panel| {
             panel.spawn(ui::row()).with_children(|bar| {
-                ui::button(
-                    bar,
-                    "Return to decision [Esc]",
-                    OrganizerAction::CloseInspector,
-                );
+                crate::navigation::spawn(bar);
                 bar.spawn((
                     ui::text("Evidence", 22.0, theme::YELLOW),
                     TextPart::InspectorTitle,
@@ -56,7 +53,7 @@ pub(super) fn spawn(commands: &mut Commands) {
                 .with_children(|controls| {
                     ui::button(controls, "Confirm ruling", OrganizerAction::Confirm);
                 });
-            ui::spawn_scrolling_reading(panel, |body| {
+            ui::spawn_scrolling_reading(panel, ReadingRegion::OrganizerInspector, |body| {
                 board::all_practices(body);
                 body.spawn((ui::column(), DetailControls(OrganizerInspector::Review)))
                     .with_children(|review| {

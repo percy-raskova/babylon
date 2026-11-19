@@ -109,6 +109,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 .add_plugins(crate::campaign_browser::CampaignBrowserPlugin)
                 .add_plugins(crate::observer_history::ObserverHistoryPlugin)
                 .add_plugins(crate::organizer::OrganizerPlugin)
+                .add_plugins(crate::navigation::NavigationPlugin)
                 .add_plugins(crate::observer_performance::ObserverPerformancePlugin)
                 // The card and telemetry consume the same scoped Archive resources.
                 .add_plugins(ui::dossier_card::DossierCardPlugin)

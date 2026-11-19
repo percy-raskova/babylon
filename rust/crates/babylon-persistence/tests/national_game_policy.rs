@@ -394,3 +394,44 @@ fn venue_log_reader_is_required_and_closed() {
     assert!(NationalGamePolicy::parse(&unknown).is_err());
     assert!(NationalGamePolicy::parse(&missing).is_err());
 }
+
+#[test]
+fn city_pd_terms_are_designed_sourced_and_required_from_schema_7() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("the shipped national policy");
+    let terms = policy.city_pd.as_ref().expect("schema 7 carries [city_pd]");
+    assert_eq!(terms.positions, 3_529);
+    assert_eq!(terms.visits_per_period, 1);
+    assert_eq!(terms.visit_hours, 1);
+    assert!(terms.positions_source.starts_with("City of Detroit"));
+    // The wage is still the shipped wage; only its three jobs are separate.
+    assert_eq!(policy.default_wage.micro_units(), 24_000_000);
+
+    let table = SOURCE
+        .find("\n[city_pd]\n")
+        .expect("the shipped policy names the City PD's books");
+    let without = &SOURCE[..table];
+    assert!(NationalGamePolicy::parse(without).is_err());
+    // An earlier schema has no such table and refuses one.
+    assert!(NationalGamePolicy::parse(&SOURCE.replacen(
+        "schema_version = 7",
+        "schema_version = 6",
+        1
+    ))
+    .is_err());
+    for changed in [
+        SOURCE.replace("positions = 3529", "positions = 0"),
+        SOURCE.replace("visits_per_period = 1", "visits_per_period = 0"),
+        SOURCE.replace("visit_hours = 1\n", "visit_hours = 0\n"),
+        SOURCE.replace(
+            "[city_pd]\nevidence_class = \"Designed\"",
+            "[city_pd]\nevidence_class = \"Observed\"",
+        ),
+        SOURCE.replace(
+            "positions_source = \"City of Detroit",
+            "positions_source = \"\"\n# City of Detroit",
+        ),
+    ] {
+        assert_ne!(changed, SOURCE, "the mutation must change the input");
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
+}

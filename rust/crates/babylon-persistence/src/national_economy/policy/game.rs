@@ -45,6 +45,8 @@ pub struct NationalGamePolicy {
     pub household_enterprise_function: EconomicFunction,
     pub aid: GameAidPolicy,
     pub household_support_claimant: Option<GameHouseholdSupportClaimant>,
+    /// Required from policy schema 7; names the City PD's books, not its engine lines.
+    pub city_pd: Option<GameCityPdPolicy>,
     pub organizer: GameOrganizerPolicy,
     pub financial: GameFinancialPolicy,
     pub households: GameHouseholdPolicy,
@@ -322,6 +324,16 @@ pub struct GameHouseholdSupportClaimant {
     pub county: CountyGeoid,
     pub households: u64,
     pub reserve_persons: u64,
+}
+
+/// Designed City PD terms: its positions, sourced, and the visits its appropriation pays for.
+/// The wage is the scenario's wage and the payroll is worked out from it, never written here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameCityPdPolicy {
+    pub positions: u64,
+    pub positions_source: String,
+    pub visits_per_period: u64,
+    pub visit_hours: u64,
 }
 
 /// Captured Designed gift terms; ordinary market prices remain independent.

@@ -7,7 +7,7 @@ use crate::state_opponent_codec;
 use serde::{Deserialize, Serialize};
 
 /// Current wire schema.
-pub const CITY_PD_SCHEMA_VERSION: u32 = 1;
+pub const CITY_PD_SCHEMA_VERSION: u32 = 2;
 /// Maximum retained case or acquired-fact count.
 pub const CITY_PD_MAX_ROWS: usize = 4096;
 /// Largest exactly rankable Capacity price.
@@ -20,6 +20,7 @@ pub enum CityPdError {
     InvalidId,
     InvalidCounty,
     InvalidPrice,
+    InvalidPayroll,
     Arithmetic,
     InvalidProvenance,
     InvalidTiming,
@@ -63,6 +64,14 @@ pub struct CityPdConfig {
     #[serde(with = "super::state_opponent_decimal")]
     pub appropriation_micros: i128,
     pub appropriation_priority: u32,
+    /// The public workplace that employs the force; its payroll is named, not moved.
+    pub payroll_site_account_id: [u8; 32],
+    pub payroll_positions: u64,
+    pub payroll_hours_per_position: u64,
+    #[serde(with = "super::state_opponent_decimal")]
+    pub payroll_micros: i128,
+    /// Visits allowed in one period; the appropriation pays for exactly these.
+    pub visits_per_period: u64,
     pub content_digest: [u8; 32],
     pub policy_source_digest: [u8; 32],
 }
@@ -175,6 +184,7 @@ pub fn validate_city_pd_config(c: &CityPdConfig) -> Result<(), CityPdError> {
         || [
             c.public_account_id,
             c.agency_account_id,
+            c.payroll_site_account_id,
             c.investigator_household_account_id,
             c.investigator_entitlement_id,
             c.labor_unit_id,
@@ -200,6 +210,24 @@ pub fn validate_city_pd_config(c: &CityPdConfig) -> Result<(), CityPdError> {
         != c.visit_cost_micros
     {
         return Err(CityPdError::InvalidPrice);
+    }
+    if c.visits_per_period == 0
+        || i128::from(c.visits_per_period)
+            .checked_mul(c.visit_cost_micros)
+            .ok_or(CityPdError::Arithmetic)?
+            != c.appropriation_micros
+    {
+        return Err(CityPdError::InvalidPrice);
+    }
+    if c.payroll_positions == 0
+        || c.payroll_hours_per_position == 0
+        || i128::from(c.payroll_positions)
+            .checked_mul(i128::from(c.payroll_hours_per_position))
+            .and_then(|hours| hours.checked_mul(c.hourly_wage_micros))
+            .ok_or(CityPdError::Arithmetic)?
+            != c.payroll_micros
+    {
+        return Err(CityPdError::InvalidPayroll);
     }
     Ok(())
 }

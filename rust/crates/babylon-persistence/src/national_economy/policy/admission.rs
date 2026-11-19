@@ -14,7 +14,7 @@ use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_material_circuit::{CompanyConditionOrder, CompanyPortfolioPolicy};
 
 use super::GameOrganizerPolicy;
-use super::{GameAidPolicy, GameHouseholdSupportClaimant};
+use super::{GameAidPolicy, GameCityPdPolicy, GameHouseholdSupportClaimant};
 use crate::national_economy::companies::{
     CompanyCaptureError, CompanyPolicy, ExperimentalPopulation,
 };
@@ -49,6 +49,7 @@ struct RawPolicy {
     household_lifecycle: Option<RawHouseholdLifecycle>,
     aid: GameAidPolicy,
     household_support_claimant: Option<RawHouseholdSupportClaimant>,
+    city_pd: Option<RawCityPd>,
     organizer: GameOrganizerPolicy,
     markets: RawMarkets,
     equipment: RawEquipment,
@@ -81,6 +82,37 @@ impl RawHouseholdSupportClaimant {
                 .map_err(|_| Error::Location)?,
             households: self.households,
             reserve_persons: self.reserve_persons,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCityPd {
+    evidence_class: String,
+    positions: u64,
+    positions_source: String,
+    visits_per_period: u64,
+    visit_hours: u64,
+}
+
+impl RawCityPd {
+    fn admit(self) -> Result<GameCityPdPolicy, Error> {
+        if self.evidence_class != "Designed" {
+            return Err(Error::Evidence);
+        }
+        if self.positions == 0
+            || self.visits_per_period == 0
+            || self.visit_hours == 0
+            || self.positions_source.trim().is_empty()
+        {
+            return Err(Error::Profile("City PD positions, source or visits".into()));
+        }
+        Ok(GameCityPdPolicy {
+            positions: self.positions,
+            positions_source: self.positions_source,
+            visits_per_period: self.visits_per_period,
+            visit_hours: self.visit_hours,
         })
     }
 }
@@ -293,6 +325,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
             .household_support_claimant
             .map(RawHouseholdSupportClaimant::admit)
             .transpose()?,
+        city_pd: raw.city_pd.map(RawCityPd::admit).transpose()?,
         organizer: raw.organizer,
         financial,
         households,
@@ -539,12 +572,14 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
             raw.schema_version,
             raw.companies.is_some(),
             raw.household_lifecycle.is_some(),
-            raw.household_support_claimant.is_some()
+            raw.household_support_claimant.is_some(),
+            raw.city_pd.is_some()
         ),
-        (2, false, false, false)
-            | (3 | 4, true, false, false)
-            | (5, true, true, false)
-            | (6, true, true, true)
+        (2, false, false, false, false)
+            | (3 | 4, true, false, false, false)
+            | (5, true, true, false, false)
+            | (6, true, true, true, false)
+            | (7, true, true, true, true)
     ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0

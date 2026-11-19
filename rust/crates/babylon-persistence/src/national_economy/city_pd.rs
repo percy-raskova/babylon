@@ -3,26 +3,28 @@
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
 use babylon_material_circuit::{
-    AccountId, CashAccount, InstitutionLocation, OrganizationAccountId, PublicAccountId,
-    PublicAllocation, PublicTransferTreatment,
+    AccountId, CashAccount, InstitutionLocation, LaborCompensation, OrganizationAccountId,
+    PublicAccountId, PublicAllocation, PublicTransferTreatment, SiteId,
 };
 use babylon_practice_contract::PublicVenueHistory;
 use babylon_practice_contract::PublicVenuePolicy;
 use babylon_practice_contract::{CityPdConfig, CITY_PD_SCHEMA_VERSION};
 
 use crate::economic_catalog::{
-    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
+    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSiteSeed,
+    EconomicSiteSource, SourceArtifactKind,
 };
 use crate::national_economy::{
-    NationalAidCapture, NationalGamePolicy, VenueLogReader, NATIONAL_SCENARIO_ID,
+    GameCityPdPolicy, NationalAidCapture, NationalGamePolicy, VenueLogReader, NATIONAL_SCENARIO_ID,
 };
 
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, EconomicCatalogError>;
-const AMOUNT: i128 = 24_000_000;
 
 pub(crate) fn actor_key() -> StableElementKey {
     StableElementKey::Node {
@@ -101,55 +103,42 @@ pub(crate) fn assemble(
         ))?;
     let policy = NationalGamePolicy::from_captured_bytes(source.bytes())
         .map_err(|_| EconomicCatalogError::Identity)?;
-    if campaign == [0; 16] || policy.default_wage.micro_units() != AMOUNT {
+    if campaign == [0; 16] {
         return Err(EconomicCatalogError::Identity);
     }
-    let resident = aid.children.get(1).ok_or(EconomicCatalogError::Identity)?;
+    let terms = policy
+        .city_pd
+        .as_ref()
+        .ok_or(EconomicCatalogError::Opening(
+            "City PD terms need a national policy that carries [city_pd]",
+        ))?;
+    let books = Books::of(&policy, terms)?;
     let county: EconomicLocation = "county:26163"
         .parse()
         .map_err(|_| EconomicCatalogError::Identity)?;
-    if resident.location != county || resident.eligible == 0 {
-        return Err(EconomicCatalogError::Identity);
-    }
-    let household = opening
-        .households
-        .iter()
-        .filter(|row| row.principal_id == resident.principal && row.location == county)
-        .collect::<Vec<_>>();
-    let time = opening
-        .policies
-        .household_time_policy
-        .iter()
-        .filter(|row| row.principal_id == resident.principal)
-        .collect::<Vec<_>>();
-    if household.len() != 1 || time.len() != 1 || time[0].eligible_persons != resident.eligible {
-        return Err(EconomicCatalogError::Identity);
-    }
+    let (principal, labor_unit) = investigator(opening, aid, county)?;
     let actor_digest = content_digest::sha256_of(
         &actor_key()
             .canonical_bytes()
             .map_err(|_| EconomicCatalogError::Identity)?,
     );
-    let actor_id = u64::from_be_bytes(
-        actor_digest[..8]
-            .try_into()
-            .map_err(|_| EconomicCatalogError::Identity)?,
-    );
-    let mut authority_preimage = b"babylon.city-pd-authority.v1\0".to_vec();
-    authority_preimage.extend_from_slice(&campaign);
-    authority_preimage.extend_from_slice(&actor_id.to_be_bytes());
-    let mut authority_id = [0; 16];
-    authority_id.copy_from_slice(&content_digest::sha256_of(&authority_preimage)[..16]);
-    let mut public_preimage = b"NationalPublicProvisioningV1\0".to_vec();
-    public_preimage.extend_from_slice(&county.canonical_bytes());
-    let public_account_id = content_digest::sha256_of(&public_preimage);
+    let actor_id = actor_id()?;
+    let authority_id = authority_id(campaign, actor_id);
+    let public_account_id = public_account_id(county);
+    let payroll_site_account_id = payroll_site(
+        opening,
+        county,
+        PublicAccountId::from_bytes(public_account_id),
+        terms.positions,
+        books.payroll,
+    )?;
     let agency_account_id =
         content_digest::sha256_of(b"babylon.national-wayne-city-pd-account.v1\0");
     let mut entitlement = b"babylon.city-pd-investigator-entitlement.v1\0".to_vec();
-    entitlement.extend_from_slice(&resident.principal.as_bytes());
-    entitlement.extend_from_slice(&time[0].labor_unit_id.as_bytes());
+    entitlement.extend_from_slice(&principal);
+    entitlement.extend_from_slice(&labor_unit);
     let investigator_entitlement_id = content_digest::sha256_of(&entitlement);
-    let mut content = b"babylon.city-pd-national-policy.v1\0".to_vec();
+    let mut content = b"babylon.city-pd-national-policy.v2\0".to_vec();
     let organizer = input
         .organizer
         .as_ref()
@@ -167,9 +156,16 @@ pub(crate) fn assemble(
     content.extend_from_slice(b"wayne-workplace-public-contact-desk\0");
     content.extend_from_slice(&organizer.workplace_id.to_be_bytes());
     content.extend_from_slice(&organizer.workplace_partner.actor_id.to_be_bytes());
-    content.extend_from_slice(&1_u64.to_be_bytes());
-    content.extend_from_slice(&AMOUNT.to_be_bytes());
+    content.extend_from_slice(&terms.visit_hours.to_be_bytes());
+    content.extend_from_slice(&books.wage.to_be_bytes());
+    content.extend_from_slice(&books.visit_cost.to_be_bytes());
+    content.extend_from_slice(&books.appropriation.to_be_bytes());
     content.extend_from_slice(&0_u32.to_be_bytes());
+    content.extend_from_slice(&payroll_site_account_id);
+    content.extend_from_slice(&terms.positions.to_be_bytes());
+    content.extend_from_slice(&policy.work_hours_per_person.to_be_bytes());
+    content.extend_from_slice(&books.payroll.to_be_bytes());
+    content.extend_from_slice(&terms.visits_per_period.to_be_bytes());
     let config = CityPdConfig {
         schema_version: CITY_PD_SCHEMA_VERSION,
         campaign_id: campaign,
@@ -178,20 +174,207 @@ pub(crate) fn assemble(
         county: *b"26163",
         public_account_id,
         agency_account_id,
-        investigator_household_account_id: resident.principal.as_bytes(),
+        investigator_household_account_id: principal,
         investigator_entitlement_id,
-        labor_unit_id: time[0].labor_unit_id.as_bytes(),
-        visit_hours: 1,
-        hourly_wage_micros: AMOUNT,
-        visit_cost_micros: AMOUNT,
-        appropriation_micros: AMOUNT,
+        labor_unit_id: labor_unit,
+        visit_hours: terms.visit_hours,
+        hourly_wage_micros: books.wage,
+        visit_cost_micros: books.visit_cost,
+        appropriation_micros: books.appropriation,
         appropriation_priority: 0,
+        payroll_site_account_id,
+        payroll_positions: terms.positions,
+        payroll_hours_per_position: policy.work_hours_per_person,
+        payroll_micros: books.payroll,
+        visits_per_period: terms.visits_per_period,
         content_digest: content_digest::sha256_of(&content),
         policy_source_digest: source.digest(),
     };
     babylon_practice_contract::validate_city_pd_config(&config)
         .map_err(|_| EconomicCatalogError::Identity)?;
     Ok(config)
+}
+
+fn authority_id(campaign: [u8; 16], actor_id: u64) -> [u8; 16] {
+    let mut preimage = b"babylon.city-pd-authority.v1\0".to_vec();
+    preimage.extend_from_slice(&campaign);
+    preimage.extend_from_slice(&actor_id.to_be_bytes());
+    let mut id = [0; 16];
+    id.copy_from_slice(&content_digest::sha256_of(&preimage)[..16]);
+    id
+}
+
+/// The county-scoped public account that the national opening already holds.
+fn public_account_id(county: EconomicLocation) -> [u8; 32] {
+    let mut preimage = b"NationalPublicProvisioningV1\0".to_vec();
+    preimage.extend_from_slice(&county.canonical_bytes());
+    content_digest::sha256_of(&preimage)
+}
+
+/// The City PD's three numbers and its payroll, each worked out from the scenario's wage.
+struct Books {
+    wage: i128,
+    visit_cost: i128,
+    appropriation: i128,
+    payroll: i128,
+}
+
+impl Books {
+    /// One number used to do three jobs. They are now the scenario's wage, the price of the
+    /// visit hours and the appropriation for the visits allowed in a period; the payroll is the
+    /// positions times a period's hours times the wage.
+    fn of(policy: &NationalGamePolicy, terms: &GameCityPdPolicy) -> Result<Self> {
+        let wage = policy.default_wage.micro_units();
+        let visit_cost = i128::from(terms.visit_hours)
+            .checked_mul(wage)
+            .ok_or(EconomicCatalogError::Arithmetic)?;
+        let appropriation = i128::from(terms.visits_per_period)
+            .checked_mul(visit_cost)
+            .ok_or(EconomicCatalogError::Arithmetic)?;
+        let payroll = i128::from(terms.positions)
+            .checked_mul(i128::from(policy.work_hours_per_person))
+            .and_then(|hours| hours.checked_mul(wage))
+            .ok_or(EconomicCatalogError::Arithmetic)?;
+        Ok(Self {
+            wage,
+            visit_cost,
+            appropriation,
+            payroll,
+        })
+    }
+}
+
+/// The resident investigator household and its labor unit, checked against the opening.
+fn investigator(
+    opening: &EconomicOpening,
+    aid: &NationalAidCapture,
+    county: EconomicLocation,
+) -> Result<([u8; 32], [u8; 32])> {
+    let resident = aid.children.get(1).ok_or(EconomicCatalogError::Identity)?;
+    if resident.location != county || resident.eligible == 0 {
+        return Err(EconomicCatalogError::Identity);
+    }
+    let household = opening
+        .households
+        .iter()
+        .filter(|row| row.principal_id == resident.principal && row.location == county)
+        .count();
+    let time = opening
+        .policies
+        .household_time_policy
+        .iter()
+        .filter(|row| row.principal_id == resident.principal)
+        .collect::<Vec<_>>();
+    if household != 1 || time.len() != 1 || time[0].eligible_persons != resident.eligible {
+        return Err(EconomicCatalogError::Identity);
+    }
+    Ok((
+        resident.principal.as_bytes(),
+        time[0].labor_unit_id.as_bytes(),
+    ))
+}
+
+/// The public workplace that already employs the force: the county's public-provisioning site of
+/// local government with the most employee persons. The opening carries source ownership on a site's
+/// source, so the choice reads that ownership; it never reads an identifier to break a tie.
+fn payroll_site(
+    opening: &EconomicOpening,
+    county: EconomicLocation,
+    public: PublicAccountId,
+    positions: u64,
+    payroll: i128,
+) -> Result<[u8; 32]> {
+    let EconomicLocation::County(geoid) = county else {
+        return Err(EconomicCatalogError::Identity);
+    };
+    let mut best: Option<(u64, &EconomicSiteSeed)> = None;
+    let mut tied = false;
+    for site in &opening.sites {
+        if site.location != county
+            || site.function != EconomicFunction::PublicProvisioning
+            || !is_local_government(&site.source, geoid.geoid())
+        {
+            continue;
+        }
+        let employees = employee_persons(opening, site.site_id)?;
+        match best {
+            Some((most, _)) if employees < most => {}
+            Some((most, _)) if employees == most => tied = true,
+            _ => {
+                best = Some((employees, site));
+                tied = false;
+            }
+        }
+    }
+    let Some((employees, site)) = best else {
+        return Err(EconomicCatalogError::Opening(
+            "City PD payroll site: no local-government public-provisioning site in Wayne",
+        ));
+    };
+    if tied {
+        return Err(EconomicCatalogError::Opening(
+            "City PD payroll site: two sites employ equally many persons",
+        ));
+    }
+    if employees < positions {
+        return Err(EconomicCatalogError::Opening(
+            "City PD payroll site: it employs fewer persons than the City PD has positions",
+        ));
+    }
+    let recipient = AccountId::Site(site.site_id);
+    let mut grant = 0_i128;
+    for row in &opening.institutions.public_allocations {
+        if row.public_account == public
+            && row.recipient == recipient
+            && row.treatment == PublicTransferTreatment::ProviderOperatingGrant
+        {
+            grant = grant
+                .checked_add(row.amount_per_period.micro_units())
+                .ok_or(EconomicCatalogError::Arithmetic)?;
+        }
+    }
+    if grant < payroll {
+        return Err(EconomicCatalogError::Opening(
+            "City PD payroll site: its provider grant is smaller than the payroll",
+        ));
+    }
+    Ok(site.site_id.as_bytes())
+}
+
+fn is_local_government(source: &EconomicSiteSource, county: CountyGeoid) -> bool {
+    match source {
+        EconomicSiteSource::Qcew(key) => {
+            key.county == county && key.ownership == QcewOwnership::LocalGovernment
+        }
+        EconomicSiteSource::Designed {
+            source_ownership, ..
+        } => *source_ownership == Some(QcewOwnership::LocalGovernment),
+        EconomicSiteSource::MichiganSector { .. } => false,
+    }
+}
+
+/// Persons the site employs for a wage: staffing members whose terms there are a wage.
+fn employee_persons(opening: &EconomicOpening, site: SiteId) -> Result<u64> {
+    let mut total = 0_u64;
+    for pool in opening
+        .staffing
+        .iter()
+        .filter(|pool| pool.pool.site_id() == site)
+    {
+        for member in &pool.members {
+            let paid = opening.employment.iter().any(|terms| {
+                terms.site_id == site
+                    && terms.member_id == member.member.member_id()
+                    && matches!(terms.compensation, LaborCompensation::Wage(_))
+            });
+            if paid {
+                total = total
+                    .checked_add(member.employed)
+                    .ok_or(EconomicCatalogError::Arithmetic)?;
+            }
+        }
+    }
+    Ok(total)
 }
 
 pub(crate) fn add_opening(opening: &mut EconomicOpening, config: &CityPdConfig) -> Result<()> {
@@ -237,7 +420,7 @@ pub(crate) fn add_opening(opening: &mut EconomicOpening, config: &CityPdConfig) 
         budget
             .period_cap
             .micro_units()
-            .checked_add(AMOUNT)
+            .checked_add(config.appropriation_micros)
             .ok_or(EconomicCatalogError::Arithmetic)?,
     );
     opening.institutional_cash.push(CashAccount {
@@ -256,7 +439,7 @@ pub(crate) fn add_opening(opening: &mut EconomicOpening, config: &CityPdConfig) 
             recipient: agency,
             treatment: PublicTransferTreatment::AgencyAppropriation,
             priority: 0,
-            amount_per_period: Currency::from_micro_units(AMOUNT),
+            amount_per_period: Currency::from_micro_units(config.appropriation_micros),
         });
     Ok(())
 }

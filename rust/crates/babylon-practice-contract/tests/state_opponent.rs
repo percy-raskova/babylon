@@ -7,7 +7,7 @@ use babylon_practice_contract::{
 
 fn config_fixture() -> CityPdConfig {
     CityPdConfig {
-        schema_version: 1,
+        schema_version: 2,
         campaign_id: [1; 16],
         actor_id: 9,
         authority_id: [2; 16],
@@ -17,11 +17,16 @@ fn config_fixture() -> CityPdConfig {
         investigator_household_account_id: [5; 32],
         investigator_entitlement_id: [6; 32],
         labor_unit_id: [7; 32],
-        visit_hours: 2,
-        hourly_wage_micros: 3,
-        visit_cost_micros: 6,
-        appropriation_micros: 10,
+        visit_hours: 1,
+        hourly_wage_micros: 24_000_000,
+        visit_cost_micros: 24_000_000,
+        appropriation_micros: 24_000_000,
         appropriation_priority: 0,
+        payroll_site_account_id: [10; 32],
+        payroll_positions: 3_529,
+        payroll_hours_per_position: 160,
+        payroll_micros: 13_551_360_000_000,
+        visits_per_period: 1,
         content_digest: [8; 32],
         policy_source_digest: [9; 32],
     }
@@ -29,7 +34,7 @@ fn config_fixture() -> CityPdConfig {
 
 fn config_wire_fixture() -> String {
     let repeated = |n: u8, count: usize| format!("[{}]", vec![n.to_string(); count].join(","));
-    format!("babylon.city-pd-config.v1\0{{\"schema_version\":1,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"county\":[50,54,49,54,51],\"public_account_id\":{},\"agency_account_id\":{},\"investigator_household_account_id\":{},\"investigator_entitlement_id\":{},\"labor_unit_id\":{},\"visit_hours\":2,\"hourly_wage_micros\":\"3\",\"visit_cost_micros\":\"6\",\"appropriation_micros\":\"10\",\"appropriation_priority\":0,\"content_digest\":{},\"policy_source_digest\":{}}}", repeated(1,16), repeated(2,16), repeated(3,32), repeated(4,32), repeated(5,32), repeated(6,32), repeated(7,32), repeated(8,32), repeated(9,32))
+    format!("babylon.city-pd-config.v2\0{{\"schema_version\":2,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"county\":[50,54,49,54,51],\"public_account_id\":{},\"agency_account_id\":{},\"investigator_household_account_id\":{},\"investigator_entitlement_id\":{},\"labor_unit_id\":{},\"visit_hours\":1,\"hourly_wage_micros\":\"24000000\",\"visit_cost_micros\":\"24000000\",\"appropriation_micros\":\"24000000\",\"appropriation_priority\":0,\"payroll_site_account_id\":{},\"payroll_positions\":3529,\"payroll_hours_per_position\":160,\"payroll_micros\":\"13551360000000\",\"visits_per_period\":1,\"content_digest\":{},\"policy_source_digest\":{}}}", repeated(1,16), repeated(2,16), repeated(3,32), repeated(4,32), repeated(5,32), repeated(6,32), repeated(7,32), repeated(10,32), repeated(8,32), repeated(9,32))
 }
 
 #[test]
@@ -41,9 +46,9 @@ fn config_round_trips_and_rejects_a_bad_county() {
     assert_eq!(
         practice_contract::city_pd_config_digest(&config).expect("valid City PD test fixture"),
         [
-            0xe9, 0x88, 0xe4, 0x8b, 0xc0, 0x25, 0x9e, 0x0c, 0x17, 0x1d, 0xf6, 0x5a, 0x78, 0xaf,
-            0xe1, 0x67, 0xc1, 0x79, 0x0c, 0x70, 0x23, 0xdb, 0xc2, 0xa7, 0x5d, 0x0d, 0x02, 0x34,
-            0x12, 0x55, 0x9f, 0x08
+            0x87, 0x46, 0x7e, 0x8c, 0xb5, 0xef, 0xf0, 0x40, 0xb6, 0x07, 0x01, 0xf6, 0xd6, 0xcd,
+            0x3c, 0x07, 0x08, 0xd1, 0xd0, 0x16, 0xf3, 0x82, 0x20, 0x6c, 0xb6, 0x58, 0x87, 0x7c,
+            0x60, 0xfb, 0xc4, 0xff
         ]
     );
     assert_eq!(
@@ -75,7 +80,7 @@ fn case() -> CityPdCase {
 fn intent() -> CityPdIntent {
     let mut i = CityPdIntent {
         intent_id: [0; 32],
-        schema_version: 1,
+        schema_version: 2,
         campaign_id: [1; 16],
         actor_id: 9,
         authority_id: [2; 16],
@@ -216,7 +221,7 @@ fn provenance_and_wire_corruption_refuse() {
     )
     .is_err());
     assert!(practice_contract::decode_city_pd_intent(
-        raw.replace("\"schema_version\":1", "\"schema_version\":2")
+        raw.replace("\"schema_version\":2", "\"schema_version\":3")
             .as_bytes()
     )
     .is_err());
@@ -271,22 +276,22 @@ fn independently_pinned_identity_hashes() {
     assert_eq!(
         intent().intent_id,
         [
-            4, 223, 203, 183, 28, 59, 114, 113, 230, 54, 111, 242, 105, 251, 78, 63, 99, 207, 1,
-            103, 229, 55, 18, 250, 28, 79, 32, 36, 46, 144, 67, 153
+            131, 234, 231, 209, 120, 202, 153, 240, 120, 15, 238, 142, 168, 35, 188, 243, 157, 66,
+            207, 121, 142, 239, 67, 191, 57, 182, 219, 82, 28, 186, 237, 227
         ]
     );
     assert_eq!(
         decision().decision_id,
         [
-            180, 182, 149, 206, 162, 60, 49, 112, 9, 202, 42, 179, 253, 87, 116, 122, 240, 243, 99,
-            235, 148, 160, 235, 83, 93, 36, 46, 236, 193, 49, 140, 36
+            216, 186, 143, 188, 62, 145, 22, 185, 254, 114, 139, 122, 237, 200, 61, 84, 62, 6, 10,
+            159, 201, 9, 61, 6, 132, 159, 41, 119, 250, 60, 105, 192
         ]
     );
     assert_eq!(
         receipt().receipt_id,
         [
-            29, 71, 33, 249, 133, 250, 214, 206, 247, 184, 117, 30, 50, 13, 43, 1, 108, 109, 183,
-            150, 150, 169, 135, 211, 54, 206, 48, 48, 170, 180, 239, 26
+            227, 231, 50, 19, 227, 127, 189, 187, 200, 34, 2, 86, 34, 180, 248, 148, 87, 240, 59,
+            80, 78, 94, 228, 81, 22, 2, 15, 198, 150, 165, 192, 249
         ]
     );
 }
@@ -409,16 +414,16 @@ const CASE_ID: [u8; 32] = [
     231, 86, 168, 100, 113, 107, 222, 27, 18, 34, 44,
 ];
 const INTENT_ID: [u8; 32] = [
-    4, 223, 203, 183, 28, 59, 114, 113, 230, 54, 111, 242, 105, 251, 78, 63, 99, 207, 1, 103, 229,
-    55, 18, 250, 28, 79, 32, 36, 46, 144, 67, 153,
+    131, 234, 231, 209, 120, 202, 153, 240, 120, 15, 238, 142, 168, 35, 188, 243, 157, 66, 207,
+    121, 142, 239, 67, 191, 57, 182, 219, 82, 28, 186, 237, 227,
 ];
 const DECISION_ID: [u8; 32] = [
-    180, 182, 149, 206, 162, 60, 49, 112, 9, 202, 42, 179, 253, 87, 116, 122, 240, 243, 99, 235,
-    148, 160, 235, 83, 93, 36, 46, 236, 193, 49, 140, 36,
+    216, 186, 143, 188, 62, 145, 22, 185, 254, 114, 139, 122, 237, 200, 61, 84, 62, 6, 10, 159,
+    201, 9, 61, 6, 132, 159, 41, 119, 250, 60, 105, 192,
 ];
 const RECEIPT_ID: [u8; 32] = [
-    29, 71, 33, 249, 133, 250, 214, 206, 247, 184, 117, 30, 50, 13, 43, 1, 108, 109, 183, 150, 150,
-    169, 135, 211, 54, 206, 48, 48, 170, 180, 239, 26,
+    227, 231, 50, 19, 227, 127, 189, 187, 200, 34, 2, 86, 34, 180, 248, 148, 87, 240, 59, 80, 78,
+    94, 228, 81, 22, 2, 15, 198, 150, 165, 192, 249,
 ];
 fn wire_array(bytes: &[u8]) -> String {
     format!(
@@ -431,7 +436,7 @@ fn wire_array(bytes: &[u8]) -> String {
     )
 }
 fn intent_wire_fields() -> String {
-    format!("\"intent_id\":{},\"schema_version\":1,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"config_digest\":{},\"decision_basis_digest\":{},\"case_id\":{},\"subject_id\":20,\"source_period\":1,\"resolve_period\":2,\"cost_micros\":\"6\"", wire_array(&INTENT_ID), wire_array(&[1; 16]), wire_array(&[2; 16]), wire_array(&[3; 32]), wire_array(&[4; 32]), wire_array(&CASE_ID))
+    format!("\"intent_id\":{},\"schema_version\":2,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"config_digest\":{},\"decision_basis_digest\":{},\"case_id\":{},\"subject_id\":20,\"source_period\":1,\"resolve_period\":2,\"cost_micros\":\"6\"", wire_array(&INTENT_ID), wire_array(&[1; 16]), wire_array(&[2; 16]), wire_array(&[3; 32]), wire_array(&[4; 32]), wire_array(&CASE_ID))
 }
 #[test]
 fn independent_complete_wire_fixtures_include_ids_and_case_status() {
@@ -533,14 +538,29 @@ fn config_digest_binds_each_valid_field() {
         |c| c.labor_unit_id = [17; 32],
         |c| {
             c.visit_hours = 3;
-            c.visit_cost_micros = 9;
+            c.visit_cost_micros = 72_000_000;
+            c.appropriation_micros = 72_000_000;
         },
         |c| {
-            c.hourly_wage_micros = 4;
-            c.visit_cost_micros = 8;
+            c.hourly_wage_micros = 30_000_000;
+            c.visit_cost_micros = 30_000_000;
+            c.appropriation_micros = 30_000_000;
+            c.payroll_micros = 3_529 * 160 * 30_000_000;
         },
-        |c| c.appropriation_micros = 11,
+        |c| {
+            c.visits_per_period = 2;
+            c.appropriation_micros = 48_000_000;
+        },
         |c| c.appropriation_priority = 1,
+        |c| c.payroll_site_account_id = [20; 32],
+        |c| {
+            c.payroll_positions = 3_530;
+            c.payroll_micros = 3_530 * 160 * 24_000_000;
+        },
+        |c| {
+            c.payroll_hours_per_position = 80;
+            c.payroll_micros = 3_529 * 80 * 24_000_000;
+        },
         |c| c.content_digest = [18; 32],
         |c| c.policy_source_digest = [19; 32],
     ];
@@ -556,16 +576,24 @@ fn config_digest_binds_each_valid_field() {
     // independently specified wire bytes so the derived cost cannot be omitted.
     let mut c = base.clone();
     c.visit_hours = 3;
-    c.visit_cost_micros = 9;
+    c.visit_cost_micros = 72_000_000;
+    c.appropriation_micros = 72_000_000;
     let expected = config_wire_fixture()
-        .replace("\"visit_hours\":2", "\"visit_hours\":3")
-        .replace("\"visit_cost_micros\":\"6\"", "\"visit_cost_micros\":\"9\"");
+        .replace("\"visit_hours\":1", "\"visit_hours\":3")
+        .replace(
+            "\"visit_cost_micros\":\"24000000\"",
+            "\"visit_cost_micros\":\"72000000\"",
+        )
+        .replace(
+            "\"appropriation_micros\":\"24000000\"",
+            "\"appropriation_micros\":\"72000000\"",
+        );
     assert_eq!(
         practice_contract::city_pd_config_digest(&c).expect("changed price"),
         babylon_kernel::content_digest::sha256_of(expected.as_bytes())
     );
     let mut c = base;
-    c.schema_version = 2;
+    c.schema_version = 1;
     assert_eq!(
         practice_contract::city_pd_config_digest(&c),
         Err(CityPdError::UnsupportedSchema)
@@ -686,7 +714,7 @@ fn intent_identity_binds_each_field_and_excludes_own_id() {
         Err(CityPdError::InvalidIdentity)
     );
     let mut unsupported = base.clone();
-    unsupported.schema_version = 2;
+    unsupported.schema_version = 3;
     assert_ne!(
         practice_contract::city_pd_intent_id(&unsupported).expect("body"),
         base.intent_id
@@ -782,5 +810,83 @@ fn receipt_identity_binds_every_field_and_excludes_own_id() {
     assert_eq!(
         practice_contract::validate_city_pd_receipt(&wrong_id),
         Err(CityPdError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn config_carries_a_payroll_worked_out_from_positions_hours_and_wage() {
+    let mut c = config_fixture();
+    c.payroll_positions = 3_529;
+    c.payroll_hours_per_position = 160;
+    c.payroll_micros = 13_551_360_000_000;
+    assert_eq!(practice_contract::validate_city_pd_config(&c), Ok(()));
+    c.payroll_micros += 1;
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::InvalidPayroll)
+    );
+}
+
+#[test]
+fn a_wage_other_than_24_dollars_is_accepted() {
+    let mut c = config_fixture();
+    c.hourly_wage_micros = 30_000_000;
+    c.visit_cost_micros = 30_000_000;
+    c.appropriation_micros = 30_000_000;
+    c.payroll_micros = 3_529 * 160 * 30_000_000;
+    assert_eq!(practice_contract::validate_city_pd_config(&c), Ok(()));
+}
+
+#[test]
+fn the_appropriation_is_the_visits_allowed_times_the_price_of_a_visit() {
+    let mut c = config_fixture();
+    c.appropriation_micros = 2 * c.visit_cost_micros;
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::InvalidPrice)
+    );
+    c.visits_per_period = 2;
+    assert_eq!(practice_contract::validate_city_pd_config(&c), Ok(()));
+}
+
+#[test]
+fn a_config_without_a_site_positions_hours_or_visits_is_refused() {
+    let mut c = config_fixture();
+    c.payroll_site_account_id = [0; 32];
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::InvalidId)
+    );
+    let mut c = config_fixture();
+    c.payroll_positions = 0;
+    c.payroll_micros = 0;
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::InvalidPayroll)
+    );
+    let mut c = config_fixture();
+    c.payroll_hours_per_position = 0;
+    c.payroll_micros = 0;
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::InvalidPayroll)
+    );
+    let mut c = config_fixture();
+    c.visits_per_period = 0;
+    c.appropriation_micros = 0;
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::InvalidPrice)
+    );
+}
+
+#[test]
+fn a_payroll_that_overflows_is_refused_as_arithmetic() {
+    let mut c = config_fixture();
+    c.payroll_positions = u64::MAX;
+    c.payroll_hours_per_position = u64::MAX;
+    assert_eq!(
+        practice_contract::validate_city_pd_config(&c),
+        Err(CityPdError::Arithmetic)
     );
 }

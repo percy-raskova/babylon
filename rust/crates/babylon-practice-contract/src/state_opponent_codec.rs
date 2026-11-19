@@ -7,7 +7,7 @@ use babylon_kernel::content_digest;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 const MAX_BYTES: usize = 1024 * 1024;
-const CONFIG: &[u8] = b"babylon.city-pd-config.v1";
+const CONFIG: &[u8] = b"babylon.city-pd-config.v2";
 const CASE: &[u8] = b"babylon.city-pd-case.v1";
 const INTENT: &[u8] = b"babylon.city-pd-intent.v1";
 const DECISION: &[u8] = b"babylon.city-pd-decision.v1";

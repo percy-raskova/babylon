@@ -384,6 +384,9 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 ("national-world", None) => Ok("national-world-v7"),
                 ("national-world", Some(terms)) if terms.experiment.is_none() => {
                     Ok(match terms.portfolio.condition_order {
+                        CompanyConditionOrder::FirstApplicable if policy.city_pd.is_some() => {
+                            "national-world-v12"
+                        }
                         CompanyConditionOrder::FirstApplicable
                             if policy.household_support_claimant.is_some() =>
                         {

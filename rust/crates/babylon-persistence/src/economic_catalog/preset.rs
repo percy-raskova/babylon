@@ -15,6 +15,7 @@ impl NationalGraph {
                 | "national-world-v9"
                 | "national-world-v10"
                 | "national-world-v11"
+                | "national-world-v12"
                 | "national-company-scale-v1"
                 | "national-company-scale-v2"
                 | "national-company-scale-v3"

@@ -576,13 +576,16 @@ ST-27).** For each demand an organization advances, compute:
 - (c) who holds the leading positions.
 
 The settler pattern shows when gains concentrate in labor-aristocratic cohorts and the costs fall on
-others. **Computable from today's accounts:** only the enforcement channel. The Wayne City PD holds
-an agency appropriation paid from the county budget under the same period cap that funds household
-income support and provider grants, and "Lower captured priority numbers are funded first"
-(national_economy/city_pd.rs; material-circuit/financial/model.rs:77). The superwage channel waits
-on the value term, the labor-supply channel on the legal-status split, and the land channel on a
-claims overlay. The same test applies to oppressed-nation organizations with "bigger piece of the
-pie" programs (FPLmimp p.34; research/06 flip rules 3 and 8).
+others. **Computable from today's accounts:** only the enforcement channel, and it carries no weight
+yet. The Wayne City PD holds an agency appropriation in the county budget, and county lines are paid
+in priority order ("Lower captured priority numbers are funded first",
+material-circuit/financial/model.rs:77). But the appropriation is 24 currency units per period
+(`AMOUNT = 24_000_000` millionths in national_economy/city_pd.rs, one hour at the default wage),
+against a Wayne period cap of about 172 million, and the police code raises the cap by that same
+amount, so the line competes with nothing. The superwage channel waits on the value term, the
+labor-supply channel on the legal-status split, and the land channel on a claims overlay. The same
+test applies to oppressed-nation organizations with "bigger piece of the pie" programs (FPLmimp
+p.34; research/06 flip rules 3 and 8).
 
 **Rivals.** Every line below is described from MIM's texts or from the rival's own documents. The
 criticism column is MIM's view. The last column is an expected trajectory with its source; every
@@ -1244,5 +1247,8 @@ rulings, not the Director's words. The row marked *undecided* needs a ruling.
   already types the MCU kind of rival (§6). Only the enforcement channel of the settler pattern is
   computable from today's accounts (§6). Two errors in the research instructions were corrected (§11
   item 15). The source-standing table was added.
+- **Correction after the design run, 18 Nov 2026.** §6 first said the police appropriation sits
+  under the same cap as relief. It is 24 currency units per period and the cap is raised by that
+  amount, so the enforcement channel carries no weight yet.
 - **Limits.** MIM's numerical claims are unchecked against current data. MIM Theory 1 could not be
   read. Engine negatives rest on searches, not full traces (Appendix B).

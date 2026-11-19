@@ -18,7 +18,7 @@ after the organizer's practice. `babylon-persistence` captures the county's conf
 opening roster, and adds the projection to the organizer snapshot. `babylon-client` shows four views
 and one new organizer choice.
 
-**Tech Stack:** Rust (workspace `rust/crates`, Bevy 0.19 client), BSL rule files, PostgreSQL
+**Tech Stack:** Rust (workspace `rust/crates`, Bevy 0.20 client), BSL rule files, PostgreSQL
 runtime, Python 3 tools, TOML scenario defines.
 
 **Spec:** `docs/superpowers/specs/2026-11-19-county-review-design.md` (sixth draft, amended the same
@@ -27,7 +27,7 @@ to 7.6, 7.11 to 7.13 and Appendix D before any task.
 
 **Build order:** Tasks 1, 2, 3, 4, 5, 6, 8, 7, 9, 10, 11. Task 8 is built before Task 7: the
 operation and its rule exist first, so the county section has a real caller the moment it is built.
-Tasks 6 to 8 were checked against the code before they were built, and their text carries what that
+Tasks 5 to 11 were checked against the code before they were built, and their text carries what that
 check found.
 
 ## Global Constraints
@@ -51,7 +51,7 @@ check found.
   --frozen pytest ...`.
 - Commit one task at a time: `git add <files>` then `PYTHONPATH=src mise exec -- git commit -F -`
   with the message on stdin. Check `git log --oneline -1` moved. The body ends with `Part of
-  PER-366` and `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`. Never commit `uv.lock`.
+  PER-366` and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never commit `uv.lock`.
 - A commit that changes a file under `tests/baselines/` carries the trailer `Baselines:
   blessed(per-366-county-review)`.
 - No rule reads an identifier to settle a tie or to order an outcome. Identifiers order encodings
@@ -1455,16 +1455,33 @@ Spec 7.3, 7.11 and 7.12.
 - Modify: `rust/crates/babylon-persistence/src/economic_catalog/model.rs`, `codec.rs`, `capture.rs`,
   `session.rs` (carry the county opening beside the City PD's), `preset.rs`
   (`national_county_review_rules`: the City PD's rules and `county-review-cycle.bsl`), `national.rs`
-  (the `expected_rules` branch for an input that carries the county)
-- Modify: wherever the runtime builds the register from the catalog (find `with_organizer(` and the
-  City PD's equivalent)
-- Modify: `rust/crates/babylon-persistence/src/organizer_runtime/snapshot.rs`,
-  `organizer_runtime.rs`, `runtime_session/protocol.rs`, and the coordinator's preview handler under
-  `runtime_session/coordinator/`
+  (the `expected_rules` branch for an input that carries the county), `foundation.rs`
+  (`initial_county_review` beside `initial_city_pd`)
+- Modify: `rust/crates/babylon-persistence/src/material_runtime/runtime.rs` (where the register is
+  built with `with_organizer`, `with_public_venue` and `with_city_pd`, in
+  `capture_economic_opening`, and the equality check in `from_parts`)
+- Modify: `rust/crates/babylon-persistence/src/organizer_runtime/snapshot.rs`
+  (`captured_organizer_snapshot`, `review_preview` and
+  `DurableMaterialRuntime::preview_organizer_command`), `organizer_runtime.rs`
+- Modify: `rust/crates/babylon-persistence/src/runtime_session/protocol.rs`:
+  `RUNTIME_SESSION_MAX_LINE_BYTES` from 131,072 to 1,048,576, and re-export from
+  `babylon_practice_contract`, beside the hearing re-exports, the types the client names:
+  `CountyReviewProjection, PositionKey, Band, BandCount, PayMode, GroupKind, ContactPreview,
+  ContactOutcome, LedgerLine, LedgerLineKind, PositionView, PositionEarned`
 - Modify: `rust/crates/babylon-practice-contract/src/organizer/types.rs` (`OrganizerPreview.review`)
-- Modify: `rust/crates/babylon-persistence/src/organizer_archive.rs` (a page and a signal for each
-  session, after `hearing_evidence` and `hearing_signal`)
+- Modify: every struct literal of `OrganizerPreview` (`review: None`) and of `OrganizerSnapshot`
+  (`county_review: None`): `rust/crates/babylon-practice-contract/src/organizer/contract.rs`
+  (`preview_organizer`), `rust/crates/babylon-client/src/organizer.rs`, `organizer/presentation.rs`,
+  `organizer/ui.rs`, `organizer/workspace.rs`, `organizer/playback_tests.rs`,
+  `organizer/qualification_input.rs`, `observer_io/qualification/aid.rs`, and
+  `rust/crates/babylon-persistence/tests/national_aid_accounting.rs`. Text and views stay in Task
+  10.
+- Modify: `rust/crates/babylon-persistence/src/organizer_archive.rs` (a signal for each session,
+  after `hearing_evidence` and `hearing_signal`)
+- Modify: `contracts/economic_catalog_v1.yaml` (a `county_review_footer` beside `city_pd_footer`,
+  written only under `national-world-v12`)
 - Test: `rust/crates/babylon-persistence/tests/national_county_review.rs` (new),
+  `src/organizer_runtime/county_review_tests.rs` (new, crate-internal),
   `tests/national_game_policy.rs`, `tests/captured_national_organizer.rs`
 
 **Interfaces:**
@@ -1478,8 +1495,12 @@ pub struct GameCountyReviewPolicy {
 }
 // national_economy/county_review.rs
 pub(crate) struct CountyReviewOpening { pub config: CountyReviewConfig, pub state: CountyReviewState }
-pub(crate) fn assemble(/* the finished opening, the policy, the City PD and hearing captures */)
+pub(crate) fn assemble(campaign: &CampaignId, opening: /* the finished opening */, policy: &GamePolicy,
+                       aid: /* the aid capture */, claimant: /* the claimant capture */, hearing: /* the hearing capture */)
     -> Result<CountyReviewOpening, /* the module's capture error */>;
+// organizer_runtime/snapshot.rs
+pub(crate) fn review_preview(register: &MaterialWorldRegister, command: &OrganizerCommand)
+    -> Result<Option<ContactPreview>, RuntimeSessionErrorCode>;
 // OrganizerSnapshot gains: #[serde(default, skip_serializing_if = "Option::is_none")] pub county_review: Option<CountyReviewProjection>
 // OrganizerPreview gains:  #[serde(default, skip_serializing_if = "Option::is_none")] pub review: Option<ContactPreview>
 ```
@@ -1500,49 +1521,93 @@ claimants_body_label = "Wayne Relief Claimants Assembly"
 aid_body_label = "Wayne Local Aid Partners"
 ```
 
-  The two body labels must equal the labels the hearing's capture already uses; read them from there
-  if they are captured, and keep the table's values only as a check. Append the table after
-  `[city_pd]`, at the end of the file: the older-schema tests cut the file at a table's heading.
+  The two body labels must equal the labels the hearing's capture already uses: the claimants' is
+  `hearing.claimant_label` and the partner's is `policy.organizer.local_partner_label`. Read them
+  from there, and keep the table's values only as a check. Append the table after `[city_pd]`, at
+  the end of the file: the older-schema tests cut the file at a table's heading.
 
 - *Groups* are the household cohorts located in the county, ordinary and collective, sorted by
   principal id. A group's `roll_units` is its opening support line divided by the unit price; a
-  remainder is a named error. The unit price is the opening's support for one job-seeking person.
-  `has_ownership_income` is true when the opening holds an ownership row for the principal.
-  `receives_mutual_aid` is true for the local aid recipients. Group labels come from the same source
-  the observer's household labels use.
-- *Crews* are the staffing members whose household is one of the groups, sorted by member id, with
-  the pay mode from the member's `EmploymentTerms.compensation` and the workplace label the observer
-  uses for the site. A crew's `crew_id` is its member's `StaffingMemberId` bytes, a group's
-  `group_id` is its household principal's id bytes, and `site_id` and `unit_id` are those of the
-  member's employment row. Task 7 joins the engine's receipts to the config on these ids.
+  remainder is a named error. The unit price is the opening's support for one job-seeking person
+  (280,000,000 in Wayne: every support line is persons times that amount). `going_wage_micros` is
+  the policy's `default_wage_micros_per_hour` (24,000,000). `has_ownership_income` is true when the
+  opening holds an ownership row (`opening.institutions.ownership`) whose beneficiary is the
+  principal. `receives_mutual_aid` is true for the local aid recipients. Group labels are
+  `HouseholdBudgetKey::label()`, which the observer's household labels use.
+- *Crews* are the staffing members whose household is one of the ordinary groups, sorted by member
+  id. A collective-residence group has no crew: its `roll_units` still come from its support line,
+  and Task 7's facts read no staffing receipt for it. Without this, every collective-residence
+  staffing member would be a configured crew with no roster rows, and the first session of a real
+  campaign would refuse the close with `RosterEngineMismatch`. A crew's pay mode is the member's
+  `EmploymentTerms.compensation`, and its workplace label is the site's `EconomicSiteSeed.label`. A
+  crew's `crew_id` is its member's `StaffingMemberId` bytes, a group's `group_id` is its household
+  principal's id bytes, and `site_id` and `unit_id` are those of the member's employment row. Task 7
+  joins the engine's receipts to the config on these ids.
 - *The bands* come from `opening_roster`. `TopBandInLaborForce` and `WageBandOutsideLaborForce`
   become capture errors that name the band and give the households needed and found.
 - *The opening roster* is `opening_roster` on the members' opening `employed` and `reserve`. The
   opening reach is the number of authorizing households of each hearing delegation: the claimants'
   on the claimant group, the partner's on the local aid recipients.
 - *The administration* is a register actor with its own `actor_id` and `authority_id`, made the way
-  the City PD's are in `national_economy/identity.rs`. It is not a graph node in this slice.
+  the City PD's are in `national_economy/city_pd.rs` (`actor_key`, `actor_id`, `authority_id`). It
+  is not a graph node in this slice.
+- *Assembly order.* `county_review::assemble` does not read the City PD's config. It reads only
+  cohorts, staffing, employment, ownership and the household-support lines, which
+  `city_pd::add_opening` leaves unchanged. The county is captured exactly when the City PD is.
+  `capture_national_campaign_with_opponent` assembles the organizer with `review: None`, then the
+  City PD, then the county, and then sets `organizer.review` from the county config (its digest is
+  `county_review_config_digest`). In `capture()`, `source_only.county_review = None` beside the
+  lines that clear `organizer` and `city_pd`, and the organizer check compares against the assembled
+  config with `review` taken from `input.county_review`. The guard of
+  `capture_national_campaign_with_opponent` that refuses an input already carrying a City PD also
+  refuses one already carrying a county. In
+  `tests/captured_national_organizer.rs::assert_no_opponent_route`, compare the two organizer
+  configs with `review` cleared, and assert that the control's `review` is `None`.
 - *The rule set.* A captured national campaign carries the county's rule exactly when it carries the
   county section. Where the capture swaps in `national_city_pd_rules` it swaps in
   `national_county_review_rules` when the county is captured, and `national.rs` expects the same.
   `validate_county_review_cycle` refuses either without the other. The county opening is encoded
-  only under the compiler `national-world-v12`, which Task 1 introduced for this branch; a catalog
-  of an earlier compiler keeps its bytes and has no county. The pins of the captured national rule
-  bytes (`tests/captured_national_organizer.rs`) move in this task.
+  only under the compiler `national-world-v12`, which Task 1 introduced for this branch, as a
+  trailing frame after the City PD's (u8 tag, u32 length, bytes); a catalog of an earlier compiler
+  keeps its bytes and has no county. The pins that move: the captured national rule bytes and the
+  trailing bytes in `tests/captured_national_organizer.rs` (its zero tail and
+  `assert_source_bindings`), and the codec unit vector in `codec.rs`.
 - *The snapshot.* `captured_organizer_snapshot` builds the `LedgerInput` from the register's state
   (the county account's lines in the engine's pay order, its cash and cap, and the City PD's payroll
   from its config) and the `contacted` keys from every `ReviewContactMade` receipt in the organizer
-  journal, and calls `project`.
-- *The preview.* For a `ReviewContact` command the handler fills `OrganizerPreview.review` with
-  `preview_contact` on the committed register. The contract's own `preview_organizer` leaves it
-  `None`.
-- *The archive.* Each held session gets one page, "County review session, period N", whose text is
-  the public record only: the money for relief, units payable and kept back, and for each position
-  its rank and units listed, paid and unpaid.
+  journal (the journal keeps every period), and calls `project`. A `PublicWorkplace` line's label is
+  the `workplace_label` of a configured crew whose `site_id` is the line's recipient, else "County
+  public workplace". The City PD payroll's label is found by the same rule from
+  `CityPdConfig.payroll_site_account_id`, and the capture refuses a campaign whose payroll site
+  employs no configured crew.
+- *The preview.* `review_preview` returns `Some` only for a `ReviewContact(key)` command on a
+  register with a county section: `preview_contact` on the committed register's county config and
+  state. `DurableMaterialRuntime::preview_organizer_command` sets `preview.review` from it. An error
+  from `preview_contact` is a typed refusal, never a silent `None`. The contract's own
+  `preview_organizer` leaves `review` as `None`.
+- *The archive.* Each held session adds one signal, "County review session, period N", to the
+  organization's page, read from the archived tick's register
+  (`county_review().state().last_session` whose period is that tick's). Its text is the public
+  record only and at most 4,096 bytes, the archive's text limit: the money for relief, units payable
+  and kept back, how many positions were paid in full, in part and not at all, and the ranks and
+  units of the first positions on the list up to that bound. No knowledge-grant row is added for it.
+- *The line bound.* The whole snapshot travels in one `OrganizerStatus` line, and the roster can
+  hold hundreds of positions, so `RUNTIME_SESSION_MAX_LINE_BYTES` rises from 131,072 to 1,048,576. A
+  line at or past the bound still fails as it does today. The client and the session read the same
+  constant, and the tests that build an over-long line from it follow it. If Wayne's opening line is
+  not below half of the new bound, report blocked with its size and its number of positions: whether
+  the roster then travels folded or by pages is a design choice, and the bound does not rise again.
 
 - [ ] **Step 1: Write the failing policy and capture tests.** Policy: the shipped file parses to
   `first_session_period == 4`, `session_hours == 2`, `bring_hours == 2`; a schema-7 file without the
-  table is refused. Capture, in `tests/national_county_review.rs` on `national_capture::input()`:
+  table is refused. Capture, in `tests/national_county_review.rs` on `national_capture::input()`,
+  with three helpers written in the test file: `national_opening()` is
+  `CapturedEconomicCatalog::capture_national_campaign(national_capture::input(), campaign)`;
+  `county_review_of(..)` reads `create_foundation(..).initial_register().county_review()`;
+  `snapshot(..)` is
+  `babylon_persistence::qualification_audit::aid::material_disclosure(session.catalog(),
+  session.material(), session.duration())`. The workspace denies `unwrap` in tests: where a sketch
+  says `unwrap`, write `expect` with a reason.
 
 ```rust
 #[test]
@@ -1550,6 +1615,8 @@ fn wayne_is_captured_with_a_roster_that_adds_back() {
     let opening = county_review_of(&national_opening());
     let config = &opening.config;
     assert_eq!((config.county, config.unit_price_micros, config.first_session_period), (*b"26163", 280_000_000, 4));
+    assert_eq!(config.going_wage_micros, 24_000_000);
+    assert!(config.crews.iter().all(|c| config.groups[c.group as usize].kind == GroupKind::Ordinary));
     validate_county_review_config(config).unwrap();
     validate_roster(config, &opening.state.roster).unwrap();
     for (index, group) in config.groups.iter().enumerate() {
@@ -1590,24 +1657,37 @@ fn the_snapshot_at_the_opening_shows_the_ledger_and_hides_every_amount() {
     assert!(view.ledger.iter().any(|l| l.kind == LedgerLineKind::CityPdPayroll && l.amount_micros == 13_551_360_000_000));
     assert_eq!(view.session_period, None);
 }
+
+#[test]
+fn the_wayne_status_line_fits_the_protocol() {
+    /* serialize RuntimeSessionResponse::OrganizerStatus for the opening snapshot of a Wayne campaign, as the
+       session writes it, and assert it is below RUNTIME_SESSION_MAX_LINE_BYTES / 2 */
+}
 ```
 
 Also: `a_snapshot_of_a_register_with_no_county_section_has_no_county_field` (its JSON has no
-`county_review` key, and every committed `*_v20.json` fixture still deserializes), and
-`the_preview_of_a_review_contact_carries_the_county_preview` (the handler's
-`OrganizerPreview.review` is `Some` for a `ReviewContact` and `None` for every other choice).
+`county_review` key, and every committed `*_v20.json` fixture still deserializes);
+`the_largest_session_text_fits_the_archive` (the signal text for the Wayne opening's full roster is
+at most 4,096 bytes); and, in `src/organizer_runtime/county_review_tests.rs` on the register of a
+captured national foundation, `review_preview_answers_only_a_review_contact` (`Some` for a
+`ReviewContact` once a close has been seen, `None` for every other choice and for a register with no
+county section). The preview is tested through `review_preview`, not through the handler, which
+opens PostgreSQL.
 
 - [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-persistence -E
-  'binary(national_county_review) | binary(national_game_policy)'`. Expected: FAIL.
+  'binary(national_county_review) | binary(national_game_policy) | test(county_review_tests)'`.
+  Expected: FAIL.
 - [ ] **Step 3: Implement** the policy table, the capture, the catalog fields, the runtime wiring,
-  the snapshot, the preview and the archive page.
+  the snapshot, the preview, the archive signal and the line bound.
 - [ ] **Step 4: Print the opening for the record.** Add an ignored test `print_wayne_opening_roster`
-  that writes, for each group, its households, its units, its crews and its rows, and the count of
-  who works in each band, to `reports/county-review-2026-11-19/wayne-opening-roster.json`. Run it
+  that writes, for each group, its households, its units, its crews and its rows, the count of who
+  works in each band, the number of positions, and the encoded size in bytes of the opening's
+  `OrganizerStatus` line, to `reports/county-review-2026-11-19/wayne-opening-roster.json`. Run it
   once and keep the file. It replaces the counts the design could not give (spec section 3).
 - [ ] **Step 5: Run** the scoped tests, `mise run rust:test:q -- -p babylon-persistence -E 'not
-  test(live)'` and `mise run rust:check-no-docs`. Raise the catalog pins the new rule file and the
-  new capture move. Existing JSON fixtures must still deserialize unchanged. Expected: PASS.
+  test(live)'`, `-p babylon-client -E 'test(organizer::)'`, and the whole gate (Global Constraints).
+  Raise the catalog pins the new rule file and the new capture move. Existing JSON fixtures must
+  still deserialize unchanged. Expected: PASS.
 - [ ] **Step 6: Commit** as `feat(persistence): capture the county review and project it to the
   organizer`.
 
@@ -1616,22 +1696,43 @@ Also: `a_snapshot_of_a_register_with_no_county_section_has_no_county_field` (its
 Spec 7.10 and 7.11. `organizer/hearing.rs` and `hearing_tests.rs` are the templates.
 
 **Files:**
-- Create: `rust/crates/babylon-client/src/organizer/county.rs` (text builders and the roster page),
-  `county_tests.rs`
-- Modify: `rust/crates/babylon-client/src/organizer.rs`, `organizer/client.rs`
-  (`OrganizerInspector`, `choice_available`, `make_command`, the refresh comparison, a
-  `county_update` notice), `ui.rs` (`OrganizerAction`, `visible`, `enabled`,
-  `history_inspector_allowed`, `paint_text`, `paint_buttons`), `board.rs` (`dispatch_panel`),
-  `presentation.rs` (`choice`, `flavor`, `refusal`, `practice_summary`, `preview_review`, `outcome`,
-  `inspector`), `workspace.rs` (`ALL_PRACTICES`, `availability`), `workspace_copy.rs`
+- Create: `rust/crates/babylon-client/src/organizer/county.rs` (text builders, the roster page and
+  `spawn_roster`), `organizer/county_tests.rs` (declared in `ui.rs` beside `hearing_tests`:
+  `#[cfg(test)] #[path = "county_tests.rs"] mod county_tests;`, so its tests are
+  `organizer::ui::county_tests::*` and reach the `pub(super)` helpers of `organizer::ui::tests`)
+- Modify: `rust/crates/babylon-client/src/organizer.rs` (module list)
+- Modify: `organizer/client.rs`: `OrganizerInspector`; two fields of `OrganizerClient`,
+  `county_review: Option<CountyReviewProjection>` installed in `status()` beside `collection`, and
+  `roster_page: usize`, reset to 0 when the projection's `roster_period` changes;
+  `choice_available`, `make_command`, the refresh comparison, and a `county_update` notice in a
+  helper like `hearing_update`, so `status` stays within Clippy's cognitive-complexity limit of 25
+- Modify: `organizer/ui.rs`: `OrganizerAction`; `TextPart::RosterLine(u8)`; `visible` (the slot and
+  page buttons get their own arm, true when the inspector is `CountyRoster`; today's fall-through
+  shows a button only while the inspector is closed); `enabled` and `perform_action` (both
+  exhaustive on the action); `choose_approach` (it closes `CountyRoster` as it closes `Practices`
+  and `Hearing`); `button_selected`; `history_inspector_allowed`; `paint_text`; `paint_buttons` (the
+  slot and page actions join the list whose Display it toggles)
+- Modify: `organizer/board.rs` (`dispatch_panel`), `organizer/report_view.rs` (call
+  `county::spawn_roster(body)` after `hearing::spawn_choices(body)`), `presentation.rs` (`choice`,
+  `flavor`, `refusal`, `practice_summary`, `preview_review`, `preview_routine`, `outcome`,
+  `inspector`), `workspace.rs` (`availability` only: `ReviewContact(_)` returns
+  `Refused(OrganizerRefusal::ReviewUnavailable)` when `!client.choice_available(choice)`, beside the
+  `InviteToHearing` check; `ALL_PRACTICES` stays nine and gains no card), `workspace_copy.rs`
+- Modify: `rust/crates/babylon-client/src/observer_performance.rs` (four `RenderMode` variants,
+  labelled `organizer-county-ledger`, `organizer-county-roster`, `organizer-county-session` and
+  `organizer-food-run`)
 - Modify: `rust/crates/babylon-client/src/decision_surface.rs` (the `OrganizerWorkspace` row)
 - Modify: `rust/crates/babylon-client/src/organizer/qualification_input.rs` (`Action`,
-  `Action::organizer`)
-- Test: `organizer/county_tests.rs`, `rust/crates/babylon-client/tests/decision_surface_contract.rs`
+  `Action::organizer`, `presentation_applied` and `Pending::new`)
+- Test: `organizer/county_tests.rs`,
+  `rust/crates/babylon-client/tests/decision_surface_contract.rs`, the render-geometry tests
+  (`render_geometry_tests.rs`)
 
 **Interfaces:**
-- Consumes: `OrganizerSnapshot.county_review`, `OrganizerPreview.review`,
-  `OrganizerChoice::ReviewContact`.
+- Consumes: `OrganizerSnapshot.county_review` and `OrganizerPreview.review` (Task 9),
+  `OrganizerChoice::ReviewContact` (Task 6). The client names the county types through
+  `babylon_persistence::runtime_session`, which re-exports them as it re-exports the hearing types
+  (Task 9). babylon-client keeps babylon-practice-contract a dev-dependency.
 - Produces:
 
 ```rust
@@ -1641,14 +1742,16 @@ pub enum OrganizerInspector { /* existing */ CountyLedger, CountyRoster, CountyS
 pub enum OrganizerAction { /* existing */ RosterPage(i8), ChooseRosterSlot(u8) }
 // county.rs
 pub(super) const ROSTER_PAGE_ROWS: usize = 8;
+pub(super) enum CountyUnavailable { NoReview, PastPeriod, BeforeFirstSession { first_session_period: u64 }, AlreadyChosen }
 pub(super) fn ledger(view: &CountyReviewProjection) -> String;
 pub(super) fn who_works(view: &CountyReviewProjection) -> String;
 pub(super) fn roster_page(view: &CountyReviewProjection, page: usize) -> Vec<String>;
 pub(super) fn slot_key(view: &CountyReviewProjection, page: usize, slot: u8) -> Option<PositionKey>;
-pub(super) fn session(view: &CountyReviewProjection) -> String;
+pub(super) fn session(view: &CountyReviewProjection, viewed_tick: u64) -> String;
 pub(super) fn food_run(client: &OrganizerClient) -> String;
-pub(super) fn preview(preview: &ContactPreview, view: &CountyReviewProjection) -> String;
-pub(super) fn unavailable(reason: CountyUnavailable) -> &'static str;
+pub(super) fn preview(preview: Option<&ContactPreview>, view: &CountyReviewProjection) -> String;
+pub(super) fn unavailable(reason: CountyUnavailable) -> String;
+pub(super) fn spawn_roster(body: &mut ChildSpawnerCommands);   // the type `hearing::spawn_choices` takes
 // qualification_input.rs, snake_case on the wire
 pub enum Action { /* existing */ InspectCountyLedger, InspectCountyRoster, InspectCountySession, InspectFoodRun,
                   RosterNextPage, RosterPreviousPage, ChooseRosterSlot { slot: u8 } }
@@ -1657,19 +1760,33 @@ pub enum Action { /* existing */ InspectCountyLedger, InspectCountyRoster, Inspe
 Decisions:
 
 - Four entry buttons in the dispatch panel: "County ledger", "Household roster", "County session",
-  "Food run". Each opens an inspector. The roster shows eight positions a page, with "Previous" and
-  "Next" and one "Reach a household here" button for each slot. Slots are fixed nodes painted each
-  frame, as the rest of the workspace is. Every button has an `ObserverFocusTarget` and an
-  accessibility label that names the position.
-- A slot's button is disabled with a stated reason: the period is not the live one ("Past period:
-  reading only."); the review is not open yet ("The county holds its first session in period N.");
-  the organizer has already chosen this period; the snapshot has no county review ("This campaign
-  has no county review.").
-- Choosing a slot sets the draft to `ReviewContact(key)` and uses the existing Review then Confirm
-  flow. The review text states the cost in hours, the period it lands, and the preview: "A place is
-  open. The unit would come from: <position>." or "No place is open: every unit below this household
-  is held by a household that pays the same or more." or "Nobody is left to reach here." It says
-  which period the preview is based on.
+  "Food run". They sit in one `ui::row()` (it wraps) under the "Wayne hearing" button, and the
+  period dispatch below them keeps at least 60 px of height at the 1366x768 fit; a render-geometry
+  test checks it. Each opens an inspector.
+- The roster shows eight positions a page, with "Previous" and "Next" and one button for each slot,
+  reading "Reach a household here (N)" for N from 1 to 8. The slots are fixed nodes spawned by
+  `county::spawn_roster` and painted each frame through `TextPart::RosterLine(slot)`, as the rest of
+  the workspace is. Buttons are made with `ui::button` and text with `ui::text`, which add the focus
+  target and the `DeclaredSurface` that `tests/decision_surface_contract.rs` requires; never spawn a
+  raw `Text::new`. Each slot button's accessibility label names its position and is updated each
+  frame, as `map_network_peers.rs` updates its labels.
+- A slot's button is disabled with a stated reason. The reason is painted as one line of the roster
+  inspector, above the slots; `unavailable_message` is not changed. The texts: `PastPeriod`, "Past
+  period: reading only. Return Live before changing the organization's commitments.";
+  `BeforeFirstSession`, "The county holds its first session in period N. A contact can be made from
+  period N-1." (with the numbers); `AlreadyChosen`, "A ruling is already accepted for this period.";
+  `NoReview`, "This campaign has no county review."
+- Choosing a slot sets the draft to `ReviewContact(key)` through `choose_approach`, which closes the
+  roster inspector, so "Review choice" and the comparison card show the contact on the board. The
+  existing Review then Confirm flow follows. The review text comes from `presentation::review`
+  through `preview_review`, whose hearing branch is the template, and is painted as the Review text
+  part. It states the cost in hours, the period it lands, the period the preview is based on
+  (`basis_period`), and one of: "A place is open. The unit would come from: <position>."; "No place
+  is open: every unit below this household is held by a household that pays the same or more.";
+  "Nobody is left to reach here." (`NobodyLeft`); "This position is no longer on the roster."
+  (`NoSuchPosition`); "A reached household here would not ask: it already holds its units or a unit
+  is worth less than its time." (`asks == false`); and, when `OrganizerPreview.review` is `None`,
+  "No session has closed yet, so there is nothing to preview."
 - Above the positions the roster shows a block headed "Who works", from `view.bands`: one line for
   each band with its households, those with someone at work, those only looking for work, those with
   nobody in the labor force, its people at work, its people looking for work, and its units. Beside
@@ -1679,33 +1796,50 @@ Decisions:
   but is more likely to receive welfare and to need aid. Does not own a home." The block ends:
   "Bands are set at the opening. Homes and wealth are not in this slice." It is shown whether or not
   the player has contacted anyone.
-- A position's line shows its structure always: its band ("Top 1%", "Next 9%", "Next 40%" or "Bottom
-  50%"), group, workplace and pay mode or "no one in the labor force", people at work, people
-  looking for work, units held, its rank, and its units paid and unpaid at the last session. Amounts
-  are shown when `earned` is present. Otherwise the line ends: "Amounts are earned by contact. Reach
-  a household here."
+- A position's line starts with its band ("Top 1%", "Next 9%", "Next 40%" or "Bottom 50%") and shows
+  its structure always: its group, its workplace and pay mode or, with no crew, "no wage · no one in
+  the labor force", people at work, people looking for work, units held, its rank, and its units
+  paid and unpaid at the last session. Amounts are shown when `earned` is present. Otherwise the
+  line ends: "Amounts are earned by contact. Reach a household here."
 - Beside each income source the class reading of spec 7.10 is shown word for word, marked
   "Designed". Nation shows "pending". Every one of the four inspectors ends with the standing line
   of the Global Constraints.
 - The session inspector shows the county's money for relief, units payable and kept back, the list
   in rank order, each body's roll, and for contacted positions one reason for every reached
-  household that stayed home.
+  household that stayed home. It shows a session only when `session_period <= viewed_tick`.
+- On a past period (`viewed_tick != durable_tick`) each county view opens with the line "These
+  figures are period P, the live period. Past sessions are in the Archive." (P is `roster_period`).
+  The client holds only the live period's projection, so the line is what keeps a past period's
+  heading honest.
 - The food run inspector shows what the client already holds: parcels the organization's households
   can spare, parcels delivered and eaten at the last run, and the hours each side was charged.
 - When a new session record arrives, playback pauses with "The county's session record arrived." as
   the hearing's notices do.
 - The `OrganizerWorkspace` manifest row gains the action `review-contact`, the signals and
   uncertainty of the four views, their receipts and their Archive subjects.
+- Scripted input. `Action::organizer` maps `ChooseRosterSlot { slot }` to
+  `OrganizerAction::ChooseRosterSlot(slot)` and the two page actions to `RosterPage(1)` and
+  `RosterPage(-1)`. `presentation_applied` treats a slot action as applied when `client.choice() ==
+  OrganizerChoice::ReviewContact(k)`, where `k` is the `slot_key` that `Pending::new` captured
+  before the action ran, and a page action as applied when `client.roster_page` equals the page
+  `Pending::new` captured, moved by one step. Without this the scripted run answers
+  "ordinary_handler_refused" for actions the handler applied.
 
-- [ ] **Step 1: Write the failing tests** in `county_tests.rs`, on `tests::ready()` with a
-  projection fixture built in the test from the kernel's `world()` (enable the kernel's test support
-  behind a `test-support` feature of `babylon-practice-contract` if the client needs it):
+- [ ] **Step 1: Write the failing tests** in `county_tests.rs`, on `tests::admitted_scene_fixture()`
+  with `client.county_review = Some(fixture())`. `fixture()` is a `CountyReviewProjection` struct
+  literal written in the test file (every field is public): at least one position with no crew, one
+  contacted position with `earned: Some(..)`, four `bands` rows and `first_session_period = 4`. Add
+  no feature to any crate. Write the helpers `app_with_roster`, `assert_preview_request`,
+  `feed_preview` (it takes `tests::preview_for(&command)`, sets `review: Some(..)` and calls
+  `client.previewed`) and `assert_submit_request` in `county_tests.rs`, after the steps of
+  `hearing_tests.rs`'s `review_and_confirm_invitation`. The workspace denies `unwrap` in tests too:
+  use `expect` with a reason.
 
 ```rust
 #[test]
 fn an_uncontacted_position_shows_structure_and_hides_amounts() {
     let lines = roster_page(&fixture(), 0);
-    let line = lines.iter().find(|l| l.contains("no wage")).unwrap();
+    let line = lines.iter().find(|l| l.contains("no wage")).expect("the fixture has a position with no wage");
     assert!(line.contains("Amounts are earned by contact"));
     assert!(!line.contains('$'));
 }
@@ -1713,14 +1847,14 @@ fn an_uncontacted_position_shows_structure_and_hides_amounts() {
 #[test]
 fn choosing_a_slot_reviews_and_confirms_a_review_contact() {
     let (mut app, key) = app_with_roster();
-    press_named(&mut app, "Household roster");
-    press_named(&mut app, "Reach a household here (1)");
-    press_named(&mut app, "Review choice");
-    assert_preview_request(&app, OrganizerChoice::ReviewContact(key));
+    tests::press_named(&mut app, "Household roster");
+    tests::press_named(&mut app, "Reach a household here (1)");
+    tests::press_named(&mut app, "Review choice");
+    assert_preview_request(&mut app, OrganizerChoice::ReviewContact(key));
     feed_preview(&mut app, place_open_preview(key));
-    assert!(painted_text(&app, OrganizerInspector::CountyRoster).contains("A place is open."));
-    press_named(&mut app, "Confirm ruling");
-    assert_submit_request(&app, OrganizerChoice::ReviewContact(key));
+    assert!(tests::painted_text(&mut app, false).contains("A place is open."));
+    tests::press_named(&mut app, "Confirm ruling");
+    assert_submit_request(&mut app, OrganizerChoice::ReviewContact(key));
 }
 
 #[test]
@@ -1732,7 +1866,10 @@ fn the_roster_counts_who_works_in_each_band_and_names_each_positions_band() {
 }
 
 #[test]
-fn a_past_period_disables_the_slots_with_a_reason() { /* viewed_tick != durable_tick */ }
+fn a_past_period_disables_the_slots_with_a_reason() {
+    /* viewed_tick != durable_tick: the slots are disabled, the roster shows the PastPeriod line,
+       and every county view opens with "These figures are period 3, the live period." */
+}
 
 #[test]
 fn a_campaign_with_no_county_review_says_so_in_all_four_views() { /* county_review: None */ }
@@ -1742,15 +1879,21 @@ fn every_county_view_ends_with_the_standing_line() { /* ledger, roster, session,
 
 #[test]
 fn no_county_text_names_a_class() { /* no "workers", "proletariat", "the base" in any builder's output */ }
+
+#[test]
+fn every_contact_preview_has_its_own_text() {
+    /* Reached with a place, Reached with no place, NobodyLeft, NoSuchPosition, asks == false, and None */
+}
 ```
 
-- [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-client -E 'test(organizer::county)'`.
-  Expected: compile failure.
+- [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-client -E
+  'test(organizer::ui::county_tests)'`. Expected: compile failure. (A filter that selects nothing
+  makes nextest exit 4, not 0.)
 - [ ] **Step 3: Implement** the builders, the inspectors, the actions, the manifest row and the
   scripted actions.
 - [ ] **Step 4: Run** the scoped tests, `mise run rust:test:q -- -p babylon-client -E
-  'test(organizer::) | binary(decision_surface_contract)'` and the scoped gate (Global Constraints).
-  Expected: PASS.
+  'test(organizer::) | binary(decision_surface_contract) | test(render_geometry)'` and the scoped
+  gate (Global Constraints). Expected: PASS.
 - [ ] **Step 5: Commit** as `feat(client): the county ledger, roster, session and food run views`.
 
 ### Task 11: Scripted input, recorded playthroughs and the how-to
@@ -1758,32 +1901,87 @@ fn no_county_text_names_a_class() { /* no "workers", "proletariat", "the base" i
 Spec section 9 ("Play proof").
 
 **Files:**
-- Modify: `tools/devtools/national_windowed_qualification.py` (the new actions and a review-contact
-  choice that names a roster page and slot),
-  `tests/unit/tools/test_national_windowed_qualification.py`
-- Create: `rust/crates/babylon-persistence/tests/county_review_playthroughs.rs` (ignored; needs the
-  task-owned PostgreSQL of `mise run test:rust-postgres`), using
-  `tests/support/national_playable.rs`
+- Modify: `tools/devtools/national_windowed_qualification.py` and
+  `tests/unit/tools/test_national_windowed_qualification.py`: the seven new `UnitAction` names of
+  Task 10, with `{"choose_roster_slot": {"slot": n}}` as a record in `Action`; a
+  `ReviewContactChoice` (`review_contact`: group, band, crew, at_work, seeking and units, with the
+  exact serde names of Task 3's `PositionKey` and `Band`) in `Choice`; a `ContactPreview` model and
+  `review: ContactPreview | None` on `Preview`; `"review_contact"` with `page` and `slot` in
+  `PlannedChoice`, its validator branch and the driver's action map. Every model is a `FrozenRecord`
+  (`extra="forbid"`), so a reply the Rust client emits after a slot is chosen fails to parse until
+  these exist. The unit tests check each model against a reply the Rust client emits.
+- Modify: `tools/run_rust_postgres.sh`: a new live focus `county_review`, added to the focus `case`
+  and as a branch of the per-focus `case` that runs `run_phase county_review_playthroughs 3600 cargo
+  test -p babylon-persistence --test observer_material_live county_review_playthroughs:: --locked --
+  --ignored --nocapture --test-threads=1`. It is local only, so `tools/ci_scope.py` and its test do
+  not change.
+- Create:
+  `rust/crates/babylon-persistence/tests/observer_material_live/county_review_playthroughs.rs`
+  (ignored; declared in `observer_material_live.rs`; it uses that binary's
+  `support::DisposableTarget` and its runtime-session support)
+- Modify, if the driver is shared:
+  `rust/crates/babylon-persistence/tests/support/national_playable.rs` (see the driver decision
+  below)
 - Create: `reports/county-review-2026-11-19/README.md` and one JSON record for each playthrough
-- Modify: `docs/how-to/organize-in-wayne.rst` (a section "Take a household to the county review")
+- Modify: `docs/how-to/organize-in-wayne.rst` (a section "Take a household to the county review";
+  rstcheck and doc8 with lines of at most 100)
 - Modify: `docs/superpowers/specs/2026-11-19-county-review-design.md` (section 3 and 7.7 take the
   recorded figures)
 - Test: the files above
 
 **Interfaces:**
 - Consumes: everything.
-- Produces: four recorded playthroughs, each a seed (the campaign's foundation digest), an action
-  log and a result, from one opening, each run to period 34 or two periods past the first period in
-  which the county is short, whichever is later: no contact; one position (the first position in
-  list order whose households have a wage and no unit, contacted in period 3 and never again); two
-  positions (the same, and from period 10 the next such position in another crew); food runs only (a
-  local aid run every period).
+- Produces: four recorded playthroughs from one opening, each a seed, an action log and a result: no
+  contact; one position, contacted in period 3 and never again; two positions, the same and from
+  period 10 a second; food runs only, a local aid run every period.
 
-- [ ] **Step 1: Write the failing playthrough test.** It drives the runtime session with the
-  requests the client sends (`OrganizerStatus`, `PreviewOrganizer`, `SubmitOrganizer`, `Advance`),
-  writes each period's snapshot projection to the report directory, and asserts:
+Decisions:
 
-  - no contact: every period's household lines equal the roll's own until the county is short, and
+- *One opening.* Every run, and the replay, uses the same `CampaignId`, each in its own disposable
+  database (`DisposableTarget::create()`), as `national_city_pd_matched_budget_controls_commit` in
+  `tests/observer_material_live/organizer.rs` does. The campaign id is bound into the organizer's
+  and the county's configs, so four `New` campaigns in one database would be four openings. The seed
+  is the `Ready` foundation digest, which must be equal in all five. To share work, the opening may
+  be persisted once and its database cloned for each run (`CREATE DATABASE ... TEMPLATE`).
+- *The driver.* The runs send the requests the client sends (`OrganizerStatus`, `PreviewOrganizer`,
+  `SubmitOrganizer`, `Advance`) through a runtime session, as `national_playable.rs`'s `Session`
+  does (start, status, accept with a nonce, advance, stop). That module belongs to another binary
+  and needs that binary's environment, and its `Session::accept` panics on a choice it does not
+  schedule. Either move `Session` into a shared file that both binaries use whole, or write a driver
+  in the new module with only what it uses. A shared item one binary leaves unused fails `-D
+  warnings`: do not add `allow(dead_code)`. Submit a review contact with the nonce path, not
+  `accept`.
+- *What the snapshot does not carry.* Tax rates, the wage tax collected, the lines paid and each
+  period's county state are read through the full observer
+  (`observer_reader::provision_observer_role` and an `ObserverEconomyReader` login, as
+  `organizer.rs` does): `committed_material_receipts(campaign, tick)` for `TaxReceipt.rate_bps` and
+  `.collected` and the `PublicBudgetReceipt`s, and the observer cursor's `current_register()` then
+  `.county_review()` for `last_facts`, `last_session` and `roster`. Each period's register digest is
+  the committed `RuntimeSessionTail` (`tick_content_hash` and `world_hash`).
+- *The positions.* The first position is the first entry of the period-3 snapshot's
+  `county_review.positions` (key order, since no session has been held) with `has_wages`, `key.units
+  == 0` and, in the register's roster, more households than reached. The second is the first such
+  entry of the period-10 snapshot (list order) whose `key.crew` differs from the first's.
+- *How long.* "Short" means a session with `relief_micros < roll_total_micros`. Each run stops at
+  period 34 or two periods after its first short session, whichever is later, and never past period
+  40. If the county is not short by period 40, the record says so. (In the recorded run of 14
+  November relief was full through period 29 and nothing from period 30.)
+- *Food runs.* When a period's `LocalAid` preview is refused, the record logs the refusal and that
+  period runs the standing routine.
+- *Time.* Each session advances without waiting for Archive catch-up and without a cold reopen each
+  period; one reopen at the end of the one-position run is enough. Expect about 7 to 10 s a close
+  and 1 to 2 minutes an opening, so about 40 minutes for the five sessions under the 3,600 s phase
+  limit. Run the sessions one at a time: a national runtime peaks near 4 GB.
+- *The records.* A record holds, for each period, a summary: the county's cash, the money for relief
+  and the roll's total, units payable and kept back, the four bands' counts of who works, the hour
+  charges, the contacted positions' own rows, the register digest, and `last_facts` with the contact
+  keys (Step 4 replays from them). It does not hold each period's full projection. Each record file
+  stays under 1 MiB (the repository's blob limit) and ends with a newline.
+
+- [ ] **Step 1: Write the failing playthrough test.** It drives the four runs and the replay, writes
+  the records, and asserts:
+
+  - no contact: until the county is short, every period's household lines equal the roll's own and
     no hour is charged;
   - one position: a unit moves in the first session after the contact; the number of households that
     came doubles each session until the position is full or no unit is left below it; after the
@@ -1797,13 +1995,15 @@ Spec section 9 ("Play proof").
     receipts between the first two;
   - replaying the "one position" run gives the same register digest in every period.
 
-- [ ] **Step 2: Run it.** `mise run test:rust-postgres -- -E 'binary(county_review_playthroughs)'
-  --run-ignored all`, or the form that task documents for an ignored binary. Expected: FAIL before
-  the test is complete, PASS after. Record each turn's wall time in the README.
-- [ ] **Step 3: One windowed run.** Extend the windowed qualification with the new actions and run
-  one smoke through the real client: open the roster, choose slot 1, review, confirm, step, open the
-  county session. Keep its `native-controls.json` in the report directory. If the windowed harness
-  cannot run on this machine, say so in the README with the error.
+- [ ] **Step 2: Run it.** `BABYLON_POSTGRES_LIVE_FOCUS=county_review mise run test:rust-postgres`.
+  Expected: FAIL before the test is complete, PASS after. Record each turn's wall time in the
+  README.
+- [ ] **Step 3: The windowed models.** Extend the windowed models and their unit tests (Files). The
+  windowed run itself needs a released native profile that reaches the close of period 4 with a
+  review contact in period 3. Neither `smoke-01` (2 periods) nor `walk-01` (10 periods, pinned
+  decisions) does, and `--wayne-native-pair` refuses outside the released checkout. Record the
+  refusal text of `tools/run_rust_postgres.sh --wayne-native-pair smoke-01` run from this worktree
+  in the README, and do not promise a `native-controls.json`.
 - [ ] **Step 4: The other bounds.** From the "one position" run's recorded opening roster and its
   recorded facts for each period, replay the sessions in the kernel under `Placement::HoldersFirst`
   and `Placement::HoldersLast`, and write to the README, for each period, the units held by
@@ -1816,7 +2016,8 @@ Spec section 9 ("Play proof").
 - [ ] **Step 6: Put the recorded figures into the design** in place of the withdrawn tables of
   sections 3 and 7.7, and in place of the worked "Who works" table of section 3, wrap it at 100
   columns, and run the markdown hooks.
-- [ ] **Step 7: Run every gate.** `mise run rust:check-no-docs`, `mise run rust:test`, `mise run
-  check`, `mise run check:ceremony`. Expected: PASS. A failure that this branch did not cause is
-  listed in the README with its evidence and is not fixed here.
+- [ ] **Step 7: Run every gate.** `mise run rust:check-no-docs` (in the background, logged, as the
+  Global Constraints say), then `mise run check` and `mise run check:ceremony`. Expected: PASS. A
+  failure that this branch did not cause is listed in the README with its evidence and is not fixed
+  here.
 - [ ] **Step 8: Commit** as `test(county-review): recorded playthroughs and the how-to`.

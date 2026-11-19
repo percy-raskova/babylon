@@ -1062,6 +1062,39 @@ fn spawn_notes(body: &mut ChildSpawnerCommands) {
         });
 }
 
+/// Whether `choice` is offered by the organizer's current inspector.
+fn choice_visible(
+    choice: OrganizerChoice,
+    client: &OrganizerClient,
+    session: &ObserverSession,
+) -> bool {
+    match client.inspector {
+        OrganizerInspector::Practices => !matches!(choice, OrganizerChoice::InviteToHearing(_)),
+        OrganizerInspector::Hearing => {
+            matches!(choice, OrganizerChoice::InviteToHearing(_))
+                && session.viewed_tick == session.durable_tick
+                && client
+                    .view
+                    .as_ref()
+                    .and_then(super::hearing::invitation)
+                    .is_some()
+        }
+        OrganizerInspector::Direction => matches!(
+            choice,
+            OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
+        ),
+        OrganizerInspector::Closed => {
+            workspace::comparison(client, session).is_some_and(|comparison| {
+                comparison
+                    .alternatives
+                    .iter()
+                    .any(|term| term.choice == choice)
+            })
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn visible(
     action: OrganizerAction,
     client: &OrganizerClient,
@@ -1122,34 +1155,7 @@ pub(super) fn visible(
         return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Review;
     }
     if let OrganizerAction::Choose(choice) = action {
-        return view == PrimaryView::Organizer
-            && match client.inspector {
-                OrganizerInspector::Practices => {
-                    !matches!(choice, OrganizerChoice::InviteToHearing(_))
-                }
-                OrganizerInspector::Hearing => {
-                    matches!(choice, OrganizerChoice::InviteToHearing(_))
-                        && session.viewed_tick == session.durable_tick
-                        && client
-                            .view
-                            .as_ref()
-                            .and_then(super::hearing::invitation)
-                            .is_some()
-                }
-                OrganizerInspector::Direction => matches!(
-                    choice,
-                    OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
-                ),
-                OrganizerInspector::Closed => {
-                    workspace::comparison(client, session).is_some_and(|comparison| {
-                        comparison
-                            .alternatives
-                            .iter()
-                            .any(|term| term.choice == choice)
-                    })
-                }
-                _ => false,
-            };
+        return view == PrimaryView::Organizer && choice_visible(choice, client, session);
     }
     if matches!(action, OrganizerAction::OpenReferences) {
         return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Notes;

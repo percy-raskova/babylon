@@ -628,18 +628,13 @@ impl OrganizerClient {
             .ok_or_else(|| "Organizer request disappeared.".into())
     }
 
-    pub(crate) fn status(
-        &mut self,
-        request_id: u64,
-        snapshot: OrganizerSnapshot,
-        session: &mut ObserverSession,
-    ) -> Result<StatusDisposition, String> {
-        use std::fmt::Write as _;
-
-        let pending = self.take_response(request_id, RequestKind::Status)?;
-        let context = pending
-            .status_context
-            .ok_or("Organizer status has no requested context.")?;
+    /// Rejects a status snapshot that does not match its request, campaign or period.
+    fn validate_status(
+        &self,
+        context: &StatusContext,
+        snapshot: &OrganizerSnapshot,
+        session: &ObserverSession,
+    ) -> Result<(), String> {
         if context.observation.campaign != session.campaign
             || context.durable_tick != session.durable_tick
             || session.runtime_scope() != Some(&context.scope)
@@ -670,17 +665,33 @@ impl OrganizerClient {
                 "Organizer situation changed its identity within the committed period.".into(),
             );
         }
-        if !pending_matches(&snapshot, session) {
+        if !pending_matches(snapshot, session) {
             return Err("Pending organizer ruling does not match the opened campaign's authority and period.".into());
         }
-        if !encounters_match(&snapshot, *session.campaign.as_uuid().as_bytes()) {
+        if !encounters_match(snapshot, *session.campaign.as_uuid().as_bytes()) {
             return Err(
                 "Organizer encounter disclosure does not match the opened situation.".into(),
             );
         }
-        if !body_matches(&snapshot, session) {
+        if !body_matches(snapshot, session) {
             return Err("Organizer body disclosure does not match the committed situation.".into());
         }
+        Ok(())
+    }
+
+    pub(crate) fn status(
+        &mut self,
+        request_id: u64,
+        snapshot: OrganizerSnapshot,
+        session: &mut ObserverSession,
+    ) -> Result<StatusDisposition, String> {
+        use std::fmt::Write as _;
+
+        let pending = self.take_response(request_id, RequestKind::Status)?;
+        let context = pending
+            .status_context
+            .ok_or("Organizer status has no requested context.")?;
+        self.validate_status(&context, &snapshot, session)?;
         // History and perspective can change while a valid status is in flight.
         // Reconcile from the new context instead of treating that local change
         // as a transport failure. Invalid child data was rejected above.

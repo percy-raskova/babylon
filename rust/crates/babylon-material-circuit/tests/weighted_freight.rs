@@ -496,5 +496,17 @@ fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
         MaterialCircuitError::try_from(34),
         Ok(MaterialCircuitError::CollectionInvariant)
     );
-    assert!(MaterialCircuitError::try_from(35).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(35),
+        Ok(MaterialCircuitError::CompanyPortfolioEvidence)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(36),
+        Ok(MaterialCircuitError::CompanyPortfolioSelection)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(37),
+        Ok(MaterialCircuitError::HouseholdLifecycleInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(38).is_err());
 }

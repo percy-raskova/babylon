@@ -287,13 +287,23 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
             .iter()
             .filter(|c| c.parent == principal)
             .collect();
+        // The relief claimants are carved from their parent budget like aid children.
+        let claimant = opening
+            .support_claimant
+            .as_ref()
+            .filter(|c| c.parent == principal)
+            .map(|c| c.margins);
         assert_eq!(
-            row.persons + children.iter().map(|c| c.persons).sum::<u64>(),
+            row.persons
+                + children.iter().map(|c| c.persons).sum::<u64>()
+                + claimant.map_or(0, |m| m.persons),
             persons,
             "person pushforward"
         );
         assert_eq!(
-            row.households + children.iter().map(|c| c.households).sum::<u64>(),
+            row.households
+                + children.iter().map(|c| c.households).sum::<u64>()
+                + claimant.map_or(0, |m| m.households),
             count,
             "household pushforward"
         );
@@ -305,7 +315,9 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
             .find(|t| t.principal_id == principal)
             .expect("time");
         assert_eq!(
-            time.eligible_persons + children.iter().map(|c| c.eligible).sum::<u64>(),
+            time.eligible_persons
+                + children.iter().map(|c| c.eligible).sum::<u64>()
+                + claimant.map_or(0, |m| m.eligible_16_plus),
             eligible,
             "explicit eligibility avoids hub-population inference"
         );
@@ -316,6 +328,14 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
             "protected child identity"
         );
     }
+    let claimant = opening
+        .support_claimant
+        .as_ref()
+        .expect("the national policy authors a Wayne relief claimant");
+    assert_eq!(
+        households[&claimant.principal].persons, claimant.margins.persons,
+        "protected claimant identity"
+    );
     let taxes: BTreeMap<_, _> = opening
         .opening
         .institutions

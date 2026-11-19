@@ -537,6 +537,9 @@ error_codes:
   household_time_invariant: 31
   aid_invariant: 32
   aid_authority: 33
+  collection_invariant: 34
+  company_portfolio_evidence: 35
+  company_portfolio_selection: 36
   household_lifecycle_invariant: 37
 
 monetary_accounting:

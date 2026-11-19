@@ -1,7 +1,8 @@
 # The County Review: design
 
-**Status:** Draft for the Director's approval, 19 November 2026. The Director chose this approach on
-18 November 2026 ("Option A is decided"). Nothing is built until this document is approved.
+**Status:** Draft under revision, 19 November 2026. **Not ready for approval.** A review on the same
+day found the problems listed in "Review of this draft" below. The Director chose the approach on 18
+November 2026 ("Option A is decided"). Nothing is built until a revised document is approved.
 
 **Scope:** PER-366, the first playable slice of the class-agents lane. Wayne County only (county
 geoid 26163).
@@ -10,6 +11,85 @@ geoid 26163).
 the author made that the Director can overrule. **[Ruling needed]** is a choice only the Director
 can make; section 7 lists them with a recommended answer. Money is in game currency units and is
 written with a dollar sign.
+
+## Review of this draft (19 November 2026)
+
+Four reviewers read this draft: a builder check, an engine-facts check, a project-law check, and a
+check of MIM's line and of play. A second reader challenged each serious finding. The findings below
+held. The rest of this document is unchanged, and it is wrong wherever it conflicts with them.
+
+**Facts that were wrong**
+
+- The player's organization has 2 organizer hours a period, from one contributor, not 8.
+  `contributor_hours_cap = 8` only limits what a contributor may promise. Organizer hours reach one
+  household a period, not four (sections 2, 6.7 and 11).
+- No existing operation contacts a household. `contact_hours` pays for contact with partner
+  organizations (section 6.7).
+- Collective residence has persons but no households, by an engine invariant. It cannot take part in
+  cells, units or motions (sections 2 and 6.5).
+- "Pay first" cannot be built on today's budget table. A group has one support row, and inside a pay
+  class every site row is paid before any household row (section 6.4).
+- A player's campaign carries the City PD's $24 line in the first class, so its limit is
+  $172,063,974. The recorded run in section 2 has no City PD and no claimant group. The claimant
+  figures come from a second recorded campaign (`e841f4b2`).
+- Provider grants go to every public administration site in the county, including state and federal
+  ones (section 2).
+- The county's ruling needs a new native operation, not only a thin rule entry (section 6.12).
+- Group persons and households are a Designed allocation of observed county totals (ADR269, ADR298).
+  They are not Observed (section 6.12).
+
+**Rules that do not work as written**
+
+- Units only ever grow. A household that wins a unit has nothing more at stake and stops coming, so
+  a session never holds more than that period's new contacts, and no rule ever removes a unit. The
+  ruling should set a level that lasts while households keep coming (sections 6.1 and 6.8).
+- The stake is defined twice: as what the motion asks (section 6.6) and as the preview's difference
+  in money actually paid (section 6.5). The two part company when the county runs short.
+- Objectors are previewed against one session's increment only. A draw spread across every grant is
+  therefore never opposed, and is always the best choice (sections 6.6 and 6.8).
+- "It affects how many households are counted, never how much money moves" is false, because the
+  units moved are a count of households (section 6.5). The stake-cell argument shows that signs
+  survive splitting. It does not show that outcomes do, so it is not the invariance proof Article II
+  requires.
+- Restore is circular, and the non-player bodies' choices come down to identifier order (sections
+  6.4 and 6.7).
+- No rule reads the membership roll (section 6.9).
+
+**Project law**
+
+- The county administration is a new state actor. It needs its own Director ruling. ADR291 says a
+  state opponent "must have its own authority, objective, resources, and partial knowledge", and
+  ADR184 puts budgets in the hands of organizations. A county with no interest of its own does not
+  meet that.
+- The $48 floor is a fixed step on the stake. AGENTS.md says "A rule cannot impose a sigmoid or a
+  second fixed response curve." The floor is Designed, not Derived, and needs an explicit ruling.
+- A new organizer choice needs a Director ceremony, schema and conformance updates and a recording
+  ADR. It does not need a constitutional amendment.
+- The preview shows a site's cash position before any contact. ADR182 R2 does not allow that.
+- The build plan lacks the tests that sever causal links, the direct-write audit, the baseline
+  ceremonies, the decision-surface contracts and the archived playthroughs that the Constitution and
+  the Game Design Standard require.
+
+**MIM's line**
+
+- The reason section 5 gives for withdrawing tax weighting is wrong. MIM says "The ballot power of
+  the oppressed is not greater than the financial power of the capitalists." (finding
+  mim-on-other-lines F10). A county that weighs those who pay in is defensible on MIM's own texts.
+- Appendix B turns "The majority of white Amerikans" into "the majority", and drops "In some ways"
+  from the quotation about the government sector.
+- A county that always concedes to a head count makes reform always work. MIM says "more often our
+  work on reform battles further confirms that reforms do not work" (finding mim-practice F18).
+- Only the county session writes membership. A player who builds independent institutions, which MIM
+  calls the principal task, cannot grow a roll (finding mim-practice F01).
+- With nation absent, no line in this slice can be called MIM's base line. "The principal
+  contradiction inside the U$A is nation." (finding mim F09)
+- "Labor aristocracy" is too narrow a reading for the owner groups. MIM's phrase is
+  "labor-aristocracy or higher" (finding mim-class-structure MC-02).
+
+**Before the rewrite.** Four questions go to the Director: what the county does when households turn
+up, how organizing spreads beyond one contact a period, what makes a household come, and whether the
+independent road belongs in this slice. The full review is in the workflow journal
+`wf_f30fdb94-a47`.
 
 ## 1. What this slice is for
 

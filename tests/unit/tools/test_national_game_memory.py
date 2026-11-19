@@ -200,6 +200,20 @@ def test_age_requires_actual_committed_content_marker(age: object, digest: objec
         memory.AgeMarker(campaign_age_ticks=age, tick_content_hash=digest)
 
 
+@pytest.fixture(autouse=True)
+def unmodeled_docker_fails_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep the host Docker service, and how long it takes to answer, out of every test."""
+    reached: list[str] = []
+
+    def unmodeled(arguments: list[str], *, timeout: float) -> bytes:
+        reached.append(arguments[0])
+        raise memory.CaptureRefusal("owned Docker operation unavailable or timed out")
+
+    monkeypatch.setattr(memory, "docker_command", unmodeled)
+    yield
+    assert not reached, f"test reached the unmodeled Docker seam: {reached}"
+
+
 @pytest.fixture
 def owned_children() -> Iterator[tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]]]:
     """Real disposable children, with a secondary live thread in each child."""
@@ -1816,6 +1830,13 @@ def test_worker_start_refusal_exits_and_preserves_the_original_failure(
     errors: list[BaseException] = []
     refusal = RuntimeError("cannot start owned sampler thread")
 
+    def no_such_container(arguments: list[str], *, timeout: float) -> bytes:
+        # The modeled admission names no container. Refuse at once, as the
+        # service would, so cleanup never waits on the host Docker deadline.
+        raise memory.DockerOperationRefusal(arguments[0], 1, b"")
+
+    monkeypatch.setattr(memory, "docker_command", no_such_container)
+
     def exercise() -> None:
         admitted.wait(2)
         try:
@@ -1844,6 +1865,7 @@ def test_worker_start_refusal_exits_and_preserves_the_original_failure(
         observer.join(2)
     assert not observer.is_alive()
     assert refusal in leaf_errors(errors[0])
+    assert any(isinstance(leaf, memory.DockerOperationRefusal) for leaf in leaf_errors(errors[0]))
     assert all(child.poll() is None for child in owned_children)
     assert capture._native is not None and not capture._native._pidfds
 

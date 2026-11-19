@@ -1,6 +1,7 @@
 //! One source-derived national organizer producer; no fixed-time fallback.
 use crate::economic_catalog::{
-    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
+    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSiteSeed,
+    SourceArtifactKind,
 };
 use crate::national_economy::AidChildCapture;
 use crate::national_economy::NationalSupportClaimant;
@@ -56,6 +57,30 @@ fn authority(campaign: [u8; 16], actor: u64) -> [u8; 16] {
     result.copy_from_slice(&content_digest::sha256_of(&bytes)[..16]);
     result
 }
+/// The donor's one employing site, which must run exactly one process.
+fn donor_workplace<'a>(
+    opening: &'a EconomicOpening,
+    donor: &AidChildCapture,
+) -> Result<&'a EconomicSiteSeed> {
+    let employed = opening
+        .employment
+        .iter()
+        .filter(|e| e.payee == donor.principal)
+        .collect::<Vec<_>>();
+    if employed.len() != 1 {
+        return Err(EconomicCatalogError::Identity);
+    }
+    let site = opening
+        .sites
+        .iter()
+        .find(|s| s.site_id == employed[0].site_id)
+        .ok_or(EconomicCatalogError::Identity)?;
+    if site.processes.len() != 1 {
+        return Err(EconomicCatalogError::Identity);
+    }
+    Ok(site)
+}
+
 pub(crate) fn assemble(
     campaign: [u8; 16],
     source_basis: NationalOrganizerSourceBasis,
@@ -80,22 +105,7 @@ pub(crate) fn assemble(
     let policy = NationalGamePolicy::from_captured_bytes(source.bytes())
         .map_err(|_| EconomicCatalogError::Source(SourceArtifactKind::NationalGamePolicy))?;
     let donor = &aid.children[0];
-    let employed = opening
-        .employment
-        .iter()
-        .filter(|e| e.payee == donor.principal)
-        .collect::<Vec<_>>();
-    if employed.len() != 1 {
-        return Err(EconomicCatalogError::Identity);
-    }
-    let site = opening
-        .sites
-        .iter()
-        .find(|s| s.site_id == employed[0].site_id)
-        .ok_or(EconomicCatalogError::Identity)?;
-    if site.processes.len() != 1 {
-        return Err(EconomicCatalogError::Identity);
-    }
+    let site = donor_workplace(opening, donor)?;
     let workplace_actor = actor(&key("wayne-workplace-committee"))?;
     let neighborhood_actor = actor(&key("wayne-neighborhood-contact-group"))?;
     let ordinary_partner = |actor_id, label: String, partner_policy| OrganizerPartner {

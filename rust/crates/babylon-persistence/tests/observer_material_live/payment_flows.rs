@@ -255,6 +255,23 @@ fn unknown_industry(source: &EconomicPaymentPeriod, moves: &[MoneyMovement], pag
     );
 }
 
+/// Settled money moved, excluding reservations and their refunds or cancellations.
+fn gross_settled_micros(moves: &[MoneyMovement]) -> i128 {
+    moves
+        .iter()
+        .filter(|m| {
+            !matches!(
+                m.purpose,
+                MoneyPurpose::PurchaseReservation
+                    | MoneyPurpose::PurchaseRefund
+                    | MoneyPurpose::ShiftReservation
+                    | MoneyPurpose::ShiftCancellation
+            )
+        })
+        .map(|m| micros(&m.amount_micros))
+        .sum()
+}
+
 pub(super) fn national(
     observer: &ObserverEconomyReader,
     config: &Config,
@@ -277,9 +294,8 @@ pub(super) fn national(
         .admission_handle()
         .expect("admitted economic catalog");
     let claimant = foundation
-        .content_bundle()
         .economic_catalog()
-        .and_then(|catalog| catalog.national_support_claimant())
+        .national_support_claimant()
         .expect("independent Wayne claimant in the closed campaign");
     check_household_period(
         config,
@@ -310,19 +326,7 @@ pub(super) fn national(
         "same-period change"
     );
     assert_eq!(page.total.current.net_micros, "0");
-    let gross: i128 = moves
-        .iter()
-        .filter(|m| {
-            !matches!(
-                m.purpose,
-                MoneyPurpose::PurchaseReservation
-                    | MoneyPurpose::PurchaseRefund
-                    | MoneyPurpose::ShiftReservation
-                    | MoneyPurpose::ShiftCancellation
-            )
-        })
-        .map(|m| micros(&m.amount_micros))
-        .sum();
+    let gross = gross_settled_micros(moves);
     assert_eq!(
         gross,
         micros(&page.total.current.inflow_micros) + micros(&page.total.current.internal_micros)

@@ -114,16 +114,8 @@ fn check_claimant_support(receipts: &MaterialTickReceipts, policy_claim: &Public
     }));
 }
 
-#[test]
-fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
-    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x2616_3024));
-    let capture = CapturedEconomicCatalog::capture_national_campaign(
-        economic_catalog::national_catalog_input(),
-        campaign,
-    )
-    .expect("playable national world, organizer and City PD");
-    assert_eq!(capture.compiler_version(), "national-world-v11");
-    check_opening(&capture);
+/// The Wayne claimant's own recurring income-support allocation.
+fn claimant_allocation(capture: &CapturedEconomicCatalog) -> PublicAllocation {
     let claimant = capture
         .national_support_claimant()
         .expect("independent Wayne claimant");
@@ -141,6 +133,20 @@ fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
         PublicTransferTreatment::HouseholdIncomeSupport
     );
     assert!(policy_claim.amount_per_period.micro_units() > 0);
+    policy_claim
+}
+
+#[test]
+fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x2616_3024));
+    let capture = CapturedEconomicCatalog::capture_national_campaign(
+        economic_catalog::national_catalog_input(),
+        campaign,
+    )
+    .expect("playable national world, organizer and City PD");
+    assert_eq!(capture.compiler_version(), "national-world-v11");
+    check_opening(&capture);
+    let policy_claim = claimant_allocation(&capture);
     let wayne =
         EconomicLocation::domestic_county(CountyGeoid::try_from("26163").expect("Wayne County"))
             .expect("domestic county");

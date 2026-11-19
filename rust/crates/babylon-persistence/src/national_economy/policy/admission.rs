@@ -271,34 +271,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     if grain_identity_policy_digest == [0; 32] {
         return Err(Error::Shape);
     }
-    let companies = raw
-        .companies
-        .map(|c| {
-            let mut terms = CompanyPolicy::try_new(
-                c.opening_employment_bps,
-                c.opening_treasury_bps,
-                CompanyPortfolioPolicy {
-                    condition_order: if raw.schema_version == 3 {
-                        CompanyConditionOrder::HighDemandBeforeSpare
-                    } else {
-                        CompanyConditionOrder::FirstApplicable
-                    },
-                    rows: c.portfolio_weights,
-                    high_utilization_bps: c.high_utilization_bps,
-                    history_periods: c.history_periods,
-                    modest_expansion_bps: c.modest_expansion_bps,
-                },
-            )?;
-            terms.experiment = c
-                .experiment_controller_count
-                .map(|n| {
-                    ExperimentalPopulation::from_count(n).ok_or(CompanyCaptureError::InvalidTargets)
-                })
-                .transpose()?;
-            Ok::<_, CompanyCaptureError>(terms)
-        })
-        .transpose()
-        .map_err(|_| Error::Shape)?;
+    let companies = companies(raw.companies, raw.schema_version)?;
     Ok(NationalGamePolicy {
         companies,
         grain,
@@ -336,6 +309,40 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         counterparts,
         dependency,
     })
+}
+
+/// Admit the optional company policy; schema 3 orders high demand before spare capacity.
+fn companies(
+    companies: Option<RawCompanies>,
+    schema_version: u16,
+) -> Result<Option<CompanyPolicy>, Error> {
+    companies
+        .map(|c| {
+            let mut terms = CompanyPolicy::try_new(
+                c.opening_employment_bps,
+                c.opening_treasury_bps,
+                CompanyPortfolioPolicy {
+                    condition_order: if schema_version == 3 {
+                        CompanyConditionOrder::HighDemandBeforeSpare
+                    } else {
+                        CompanyConditionOrder::FirstApplicable
+                    },
+                    rows: c.portfolio_weights,
+                    high_utilization_bps: c.high_utilization_bps,
+                    history_periods: c.history_periods,
+                    modest_expansion_bps: c.modest_expansion_bps,
+                },
+            )?;
+            terms.experiment = c
+                .experiment_controller_count
+                .map(|n| {
+                    ExperimentalPopulation::from_count(n).ok_or(CompanyCaptureError::InvalidTargets)
+                })
+                .transpose()?;
+            Ok::<_, CompanyCaptureError>(terms)
+        })
+        .transpose()
+        .map_err(|_| Error::Shape)
 }
 
 fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {

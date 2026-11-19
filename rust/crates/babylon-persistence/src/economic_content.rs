@@ -1,6 +1,6 @@
 //! Immutable current campaign admission shared by material readers and projections.
 
-use crate::economic_catalog::EconomicProjectionView;
+use crate::economic_catalog::{CapturedEconomicCatalog, EconomicProjectionView};
 use crate::identity::CampaignId;
 use babylon_graph::stable_element::StableElementResolver;
 
@@ -99,12 +99,18 @@ impl EconomicContentAdmission {
     /// Panics only if the private constructor invariant is violated.
     #[must_use]
     pub fn view(&self) -> EconomicProjectionView<'_> {
+        self.economic_catalog().view()
+    }
+    /// The captured economic catalog this admission was built from.
+    /// # Panics
+    /// Panics only if the private constructor invariant is violated.
+    #[must_use]
+    pub fn economic_catalog(&self) -> &CapturedEconomicCatalog {
         self.foundation
             .graph_foundation()
             .content_bundle()
             .economic_catalog()
             .expect("economic source admitted at construction")
-            .view()
     }
     #[must_use]
     pub fn initial_register(&self) -> &MaterialWorldRegister {

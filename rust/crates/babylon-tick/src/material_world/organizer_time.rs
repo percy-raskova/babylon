@@ -177,7 +177,6 @@ pub(super) fn uses(
                     return Err(MaterialWorldError::Wire);
                 }
             }
-            continue;
         }
     }
     let uses = entries

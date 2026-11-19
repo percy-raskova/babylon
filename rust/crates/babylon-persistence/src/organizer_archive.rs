@@ -31,6 +31,7 @@ use postgres::IsolationLevel;
 use postgres::Row;
 use postgres::{GenericClient, NoTls};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -1022,21 +1023,25 @@ fn hearing_signal(
             .find(|seat| seat.actor_id == statement.actor_id)
             .ok_or(SemanticArchiveError::StoredPageMismatch)?;
         minutes.push(' ');
-        minutes.push_str(&format!(
+        write!(
+            minutes,
             "{} spoke for {} households in {}. Their demand was “{}”",
             statement.delegate_label,
             seat.delegation.authorizing_households,
             seat.label,
             statement.claim
-        ));
+        )
+        .expect("writing to a String cannot fail");
     }
     if let [first, reply] = hearing.review_access_actor_ids.as_slice() {
-        minutes.push_str(&format!(
+        write!(
+            minutes,
             " The agreement reserves the opening for {} and the reply for {} at the period {} review.",
             hearing_actor_label(hearing, *first)?,
             hearing_actor_label(hearing, *reply)?,
             hearing.review_period,
-        ));
+        )
+        .expect("writing to a String cannot fail");
     }
     let evidence = HearingEvidence::Minutes(hearing);
     ArchiveSignal::try_new(

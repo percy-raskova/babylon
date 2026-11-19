@@ -265,6 +265,7 @@ pub(super) fn household_identity(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 pub(super) enum HouseholdEndowment {
     Transfer,
     RetainAtParent,

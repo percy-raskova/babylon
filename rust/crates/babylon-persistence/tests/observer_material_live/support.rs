@@ -1941,7 +1941,7 @@ mod current_authority {
         // Join both initial attempts before a refused contender can retry. One
         // attempt must have succeeded; an unrelated failure never becomes a retry.
         let attempts = std::thread::scope(|scope| {
-            let handles = [first, second]
+            let handles = vec![first, second]
                 .into_iter()
                 .map(|mut runtime| {
                     let barrier = &barrier;

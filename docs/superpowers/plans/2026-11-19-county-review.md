@@ -25,6 +25,11 @@ runtime, Python 3 tools, TOML scenario defines.
 day for the Director's direction on who works). Section numbers below refer to it. Read sections 7.1
 to 7.6, 7.11 to 7.13 and Appendix D before any task.
 
+**Build order:** Tasks 1, 2, 3, 4, 5, 6, 8, 7, 9, 10, 11. Task 8 is built before Task 7: the
+operation and its rule exist first, so the county section has a real caller the moment it is built.
+Tasks 6 to 8 were checked against the code before they were built, and their text carries what that
+check found.
+
 ## Global Constraints
 
 - Work only in `/media/user/dev-ssd/worktrees/PER-366/babylon`, branch
@@ -962,24 +967,28 @@ the size limit is 8 MiB.
 ### Task 6: The review contact
 
 Spec 7.6 and section 8, record 7. A tenth organizer choice. Commit `9406851c6` (the relief hearing)
-is the template: it touched every list this task must touch.
+and its two lint follow-ups `cd002aef1` and `13044e13e` are the template.
 
 **Files:**
 - Modify: `rust/crates/babylon-practice-contract/src/organizer/types.rs`, `contract.rs`,
   `transition.rs`, `time_resources.rs`, `src/intent.rs`
-- Modify: `contracts/organizer_practice_v1.yaml`, `contracts/practice_intent.yaml`,
-  `contracts/practice_intent_vectors.jsonl` if the vectors enumerate parameter values
-- Modify: `rust/crates/babylon-persistence/src/organizer_archive.rs` (`receipt_text` and the signal
-  for the new outcome), `rust/crates/babylon-persistence/src/national_economy/organizer.rs`,
-  `runtime_session/protocol.rs`
-- Modify: `rust/crates/babylon-tick/src/material_world/organizer_time.rs`, `organizer_support.rs`,
-  `tick_runner.rs` wherever a `match` on the choice must stay exhaustive
-- Modify: `rust/crates/babylon-client/src/organizer/` wherever a `match` on the choice must stay
-  exhaustive (text only in this task; the views are Task 10)
-- Modify: `tools/run_observer_session.py`, `tools/devtools/national_native_pair.py` and their unit
-  tests for the version and domain pins
+- Modify: `contracts/organizer_practice_v1.yaml`, `contracts/practice_intent.yaml`
+- Modify: `rust/crates/babylon-persistence/src/organizer_archive.rs` (`receipt_text`: the practice
+  line "County review contact", and for `ReviewContactMade` the result "Reached out to one household
+  for the county review."), `runtime_session/protocol.rs`
+- Modify: every struct literal of `OrganizerConfig`, which gains `review: None`:
+  `rust/crates/babylon-persistence/src/organizer_content.rs`, `national_economy/organizer.rs`,
+  `rust/crates/babylon-tick/tests/organizer_replay.rs`, `tests/support/organizer_aid_fixture.rs`,
+  `rust/crates/babylon-practice-contract/tests/organizer/support.rs`
+- Modify: `rust/crates/babylon-client/src/organizer/` wherever a `match` on the choice, the outcome
+  or the refusal must stay exhaustive (`presentation.rs`, `workspace.rs`, `client.rs`,
+  `amount_editor.rs`, `qualification_input.rs`). Text only in this task; the views are Task 10.
+  `ALL_PRACTICES` leaves the review contact out, as it leaves the hearing out.
+- Modify: `tools/run_observer_session.py` and `tests/unit/tools/test_run_observer_session.py`
+  (protocol 22), `tools/devtools/national_windowed_qualification.py` (`"review_unavailable"` in
+  `Preview.refusal`)
 - Test: `rust/crates/babylon-practice-contract/tests/organizer/review.rs` (new, added to
-  `tests/organizer.rs`), `tests/organizer_intent.rs`
+  `tests/organizer.rs`)
 
 **Interfaces:**
 - Consumes: `PositionKey`, `county_review_config_digest`.
@@ -991,18 +1000,40 @@ pub enum OrganizerChoice { /* existing nine */ ReviewContact(PositionKey) }
 pub enum OrganizerOutcome { /* existing */ ReviewContactMade }
 pub enum OrganizerRefusal { /* existing */ ReviewUnavailable }
 pub struct OrganizerReviewConfig { pub county_geoid: String, pub first_session_period: u64, pub county_config_digest: [u8; 32] }
-// OrganizerConfig gains, with serde default and skip-if-none: pub review: Option<OrganizerReviewConfig>
+// OrganizerConfig gains, after `hearing`, with serde default and skip-if-none: pub review: Option<OrganizerReviewConfig>
+// transition.rs
+fn position_target_identity(key: PositionKey) -> [u8; 32];
 ```
 
-`ORGANIZER_SCHEMA_VERSION` becomes 13 and every domain string that the hearing commit raised is
-raised again. `RUNTIME_SESSION_PROTOCOL_VERSION` becomes 22. The contact costs
-`config.contact_hours`, allocated the way `allocate_hearing_hours` allocates a single actor's hours.
-Its intent is the hearing's tuple with the domain `babylon.organizer-review-position.v1` over the
-key's canonical bytes and control parameter 9, named `review_contact` in `practice_intent.yaml`. A
-preview is refused with `ReviewUnavailable` when `config.review` is `None` or when `state.period + 1
-< first_session_period`. The receipt's outcome is `ReviewContactMade`, or `InsufficientTime` as for
-the hearing invitation. The contract does not know the roster: whether a household was reached is
-the session's record (Task 7).
+`ORGANIZER_SCHEMA_VERSION` stays 12 and no organizer domain string changes. `review` is added the
+way the hearing commit added `hearing`, with `#[serde(default, skip_serializing_if =
+"Option::is_none")]`, so every existing config, state, journal and fixture keeps its bytes, and no
+fixture file is added or renamed. Only `RUNTIME_SESSION_PROTOCOL_VERSION` is raised, from 21 to 22.
+
+The contact costs `config.contact_hours`, allocated the way `allocate_hearing_hours` allocates a
+single actor's hours. Like the hearing invitation it replaces the standing routine for its period:
+add `OrganizerChoice::ReviewContact(_)` to the `replaces_standing_work` list in `preview_organizer`,
+to the `None` arm of `partner_for_choice` and to the `InvalidCommitment` arm of `execute_practice`,
+and resolve it in its own branch beside the `InviteToHearing` branch, before the `committed_hours`
+check. `validate_organizer_receipt` refuses `ReviewContactMade` on any other choice.
+
+Its intent is the hearing's tuple, `PracticeId::Organize` with `PracticeTargetTag::Organization`,
+and control parameter 9, named `review_contact` in `practice_intent.yaml`. `Organize` is the wire
+name of mobilize by canvass (`contracts/practice_budget_topology.yaml`), the cell ADR301 gives the
+contact. The target id is the SHA-256 of the domain `babylon.organizer-review-position.v1` followed
+by the key's 16 fixed bytes, hashed the way `target_identity` hashes a domain and an id: `group` as
+u32 big-endian; `band` as one byte (Bottom50 0, Next40 1, Next9 2, Top1 3); `crew` as one tag byte
+(0 for `None`, 1 for `Some`) and then the u32 big-endian (zero when `None`); then `at_work`,
+`seeking` and `units`, each as u16 big-endian. In `intent.rs` widen the admitted control values from
+`[1..=8]` to `[1..=9]` and re-pin `PRACTICE_INTENT_SOURCE_SHA256` to the SHA-256 of the edited
+`contracts/practice_intent.yaml`.
+
+A preview is refused with `ReviewUnavailable` when `config.review` is `None` or when `state.period +
+1 < first_session_period`. Put that test in a helper `fn review_open(config: &OrganizerConfig,
+resolves_period: u64) -> bool` beside `hearing_resolves_in` and call it from one condition in
+`preview_organizer`, so that function stays within Clippy's cognitive-complexity limit of 25. The
+receipt's outcome is `ReviewContactMade`, or `InsufficientTime` as for the hearing invitation. The
+contract does not know the roster: whether a household was reached is the session's record (Task 7).
 
 - [ ] **Step 1: Write the failing tests** in `tests/organizer/review.rs`, on `aid::captured()` with
   `review: Some(..)` and `first_session_period = 4`:
@@ -1029,44 +1060,68 @@ fn a_contact_that_would_land_before_the_first_session_is_refused() {
 
 #[test]
 fn a_campaign_with_no_review_refuses_the_choice() { /* review: None gives ReviewUnavailable */ }
+
+#[test]
+fn a_review_contact_intent_carries_control_parameter_nine() {
+    /* organizer_practice_intent on the admitted commitment: PracticeId::Organize, PracticeTargetTag::Organization,
+       one parameter with key 2, kind 1, length 1 and value [9] */
+}
+
+#[test]
+fn two_keys_give_two_target_ids() { /* and the same key gives the same id twice */ }
+
+#[test]
+fn a_review_contact_replaces_the_standing_routine() { /* as the hearing invitation's preview and receipt say it does */ }
+
+#[test]
+fn a_review_contact_made_on_another_choice_is_refused() { /* validate_organizer_receipt */ }
 ```
 
-Add to `tests/organizer_intent.rs`: the intent of a review contact carries control parameter 9, and
-two different keys give two different target ids.
-
-- [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-practice-contract -E 'binary(organizer) |
-  binary(organizer_intent)'`. Expected: compile failure.
+- [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-practice-contract -E
+  'binary(organizer)'`. Expected: compile failure.
 - [ ] **Step 3: Implement the contract side.** Then fix every exhaustive `match` in the workspace.
-  In `organizer_archive.rs` the receipt text is "Reached out to one household for the county
-  review." Client text for the choice is "County review contact"; its preview and receipt wording is
-  finished in Task 10.
-- [ ] **Step 4: Raise the pins** in Rust tests, contracts and the Python mirrors, following the
-  hearing commit's diff for the same lines.
-- [ ] **Step 5: Run.** The scoped tests above, then `mise run rust:check-no-docs`, then `mise run
-  rust:test:q -- -p babylon-practice-contract`, `-p babylon-tick -E 'test(organizer)'`, `-p
-  babylon-persistence -E 'test(organizer) & not test(live)'`, `-p babylon-client -E
-  'test(organizer::)'`, and the Python unit tests `tests/unit/tools/test_run_observer_session.py
-  tests/unit/tools/test_national_native_pair.py`. Expected: PASS.
+  Client text for the choice is "County review contact"; its preview and receipt wording is finished
+  in Task 10.
+- [ ] **Step 4: Raise the protocol pins:** `runtime_session/protocol.rs` (the constant and its
+  test), `runtime_session/coordinator/tests/lifecycle.rs`, `contracts/organizer_practice_v1.yaml`
+  (`runtime_session_protocol_version`), `tools/run_observer_session.py` and
+  `tests/unit/tools/test_run_observer_session.py` (the admitted version moves to 22 and the refused
+  versions follow, as the hearing commit moved them). `contracts/practice_intent_vectors.jsonl`
+  holds no organizer control value and does not change.
+- [ ] **Step 5: Run.** The scoped tests above, then `mise run rust:test:q -- -p
+  babylon-practice-contract`, `-p babylon-tick -E 'test(organizer)'`, `-p babylon-persistence -E
+  'test(organizer) & not test(live)'`, `-p babylon-client -E 'test(organizer::)'`, the Python unit
+  tests `tests/unit/tools/test_run_observer_session.py
+  tests/unit/tools/test_national_windowed_qualification.py`, and then the whole gate (Global
+  Constraints). Expected: PASS.
 - [ ] **Step 6: Commit** as `feat(organizer): the review contact choice`.
 
 ### Task 7: Tick: labor facts, the county section and the write-back
 
-Spec 7.12. `material_world/city_pd.rs` and `city_pd_execution.rs` are the templates.
+Spec 7.12. `material_world/city_pd.rs` and `city_pd_execution.rs` are the templates. This task is
+built after Task 8: the operation, its rule and the session check already exist, and this task gives
+them a county section to run on. Nothing here is added before something calls it.
 
 **Files:**
 - Create: `rust/crates/babylon-tick/src/material_world/county_review.rs` (register section, facts),
   `county_review_execution.rs` (one period)
 - Modify: `rust/crates/babylon-tick/src/material_world/register.rs` (`PreparedMaterialWorld`,
   `prepare_transition`, `RegisterSections`, `assemble`, `decode_canonical`, `rebuild_binding`,
-  `register_version`), `material_world.rs` or the module list that declares the files
-- Modify: `contracts/material_world_register_v7.yaml`
-- Modify: `rust/crates/babylon-persistence/src/state_storage/register.rs`, `runtime.rs` where
-  register domains or versions are listed
+  `register_version`, `take_company_frame` and its four callers, and every `set_*` rebuild),
+  `material_world.rs` (the module list)
+- Modify: `rust/crates/babylon-tick/src/tick_runner.rs` (the operation's arm now runs the period),
+  `material_replay.rs` (the session check reads the section)
+- Modify: `contracts/material_world_register_v7.yaml`, `contracts/committed_material_tick_v3.yaml`
+  (the payload's name admits version 9)
+- Modify: `rust/crates/babylon-persistence/src/state_storage/schema.rs` (`sections` admits a version
+  9 register)
 - Test: `rust/crates/babylon-tick/src/material_world/county_review_tests.rs` (declared
-  `#[cfg(test)]`), `rust/crates/babylon-tick/tests/county_review_replay.rs`
+  `#[cfg(test)]`), `rust/crates/babylon-tick/tests/county_review_replay.rs` (created by Task 8,
+  extended here), and a unit test beside the version 8 test of `sections` in
+  `state_storage/schema.rs`
 
 **Interfaces:**
-- Consumes: Tasks 3 to 6.
+- Consumes: Tasks 3 to 6 and Task 8.
 - Produces:
 
 ```rust
@@ -1087,71 +1142,109 @@ impl MaterialWorldRegister {
 }
 impl PreparedMaterialWorld {
     pub fn county_labor_facts(&self) -> Option<&CountyLaborFacts>;
+    pub(crate) fn county_review_opening(&self) -> Option<&CountyReviewRegister>;   // the section as the period opened
     pub(crate) fn set_county_review(&mut self, catalog: &MaterialCatalog, next: CountyReviewState,
         lines: &[SupportLine], collective_lines: &[SupportLine], hours: &[HourCharge],
         write_lines: bool, resolver: &StableElementResolver) -> Result<(), MaterialWorldError>;
 }
 
 // county_review_execution.rs
-pub(crate) struct CountyReviewPeriod { pub session_held: bool, pub contact: Option<(PositionKey, ContactOutcome)> }
 pub(crate) fn resolve(candidate: &mut PreparedMaterialWorld, catalog: &MaterialCatalog,
-                      resolver: &StableElementResolver) -> Result<CountyReviewPeriod, MaterialWorldError>;
+                      resolver: &StableElementResolver) -> Result<(), MaterialWorldError>;
 ```
+
+`MaterialWorldError` is a closed `Copy` enum. Give it fieldless variants for the county's refusals,
+or one variant that carries a small `Copy` code. Do not change its derives.
 
 Decisions:
 
+- *The section across a close.* `prepare_transition` rebuilds the register from the candidate and
+  keeps only the company portfolios; the City PD survives the close through `city_pd_opening`. Do
+  the same: `PreparedMaterialWorld` carries `county_review_opening`, filled in `prepare_transition`
+  from the opening register's section, and `resolve` starts from it. `RegisterSections` gains
+  `county_review`. `set_organizer_with_household_time`, `set_organizer`, `set_public_venue` and
+  `set_city_pd` carry the candidate register's county section unchanged. Only `set_county_review`
+  writes it.
 - *The facts.* `prepare_transition` builds `CountyLaborFacts` only when the register has a county
-  section. Before relying on the order of removal and hiring stated below, confirm it in
-  `material_staffing/composition.rs` (`apply_resident_attrition`); the kernel's
-  `RosterEngineMismatch` check catches a wrong reading. For each staffing member of a configured
-  crew it keeps: `accrued_wages` from `transition.member_labor_use`; `hires`, `separations`, and the
-  closing counts from `transition.staffing_members`; `employed_removed` and `reserve_removed` from
-  `transition.resident_workforce_attrition`. The opening counts are the staffing receipt's opening
-  counts plus the people removed (the engine removes people first, then hires or lays off). For each
-  configured household principal it keeps: `taxable_amount` and `collected` from its `TaxReceipt`
-  with `TaxBasis::WageIncome`; ownership, support and aid income from its `IncomeReceipt` statement,
-  zero where the statement has no such figure; and `closing_households` from its lifecycle receipt,
-  or the cohort's households when there is none. A crew with no staffing receipt in the period keeps
-  its counts and has no wages.
+  section. A crew is the staffing member whose `StaffingMemberId` bytes equal `crew_id`. Its group
+  is the principal whose id bytes equal `group_id`: the member binding's `household_id()`, and the
+  `payee` of its `EmploymentTerms`. For each staffing member of a configured crew the facts keep:
+  `accrued_wages` from `transition.member_labor_use`; `hires`, `separations`, and the closing counts
+  from `transition.staffing_members`; `employed_removed` and `reserve_removed` from
+  `transition.resident_workforce_attrition`. The engine removes people before it hires or lays off
+  (`material_staffing/composition.rs`: `apply_resident_attrition` runs before `advance_staffing`),
+  so a staffing receipt's opening counts are the counts after the removal. The kernel's opening
+  counts are the counts before it: the staffing receipt's opening counts plus the people removed,
+  which `ResidentWorkforceAttrition` also carries. The kernel's `RosterEngineMismatch` check catches
+  a wrong reading. For each configured household principal the facts keep: `taxable_amount` and
+  `collected` from its `TaxReceipt` with `TaxBasis::WageIncome`; from its `IncomeReceipt` statement,
+  ownership income (`distribution_income`), support income (`public_transfer_income`) and aid income
+  (`gift_income`); and `closing_households` from its lifecycle receipt, or the cohort's households
+  when there is none. A crew with no staffing receipt in the period keeps its counts and has no
+  wages. A principal with no receipt of a kind has zero for that figure.
 - *The rest of the facts* is read from the candidate's state when `resolve` runs: the public
   account's cash, its `PublicBudget` cap and floor, the sum of its lines that are not
-  `HouseholdIncomeSupport`, and each group's free hours: `contribution_available_hours` of its
-  `HouseholdTimeReceipt` less the hours already in the book's contributions for that principal. No
+  `HouseholdIncomeSupport`, and each group's free hours. Free hours are
+  `contribution_available_hours` of the group's `HouseholdTimeReceipt` less the hours of the book's
+  contributions for that principal whose `actor_id` is not the county's `config.actor_id`. Leaving
+  the county's own charges out makes a second resolve of the same period read the same facts. No
   time receipt means zero hours.
 - *The contact* is the `ReviewContact` key of this period's organizer receipt whose outcome is
-  `ReviewContactMade`, read from the register's organizer journal.
+  `ReviewContactMade`, read from the latest period of the register's organizer journal.
 - *One period.* If the completed period is at least `first_session_period`: `hold_session`, then
   `roll_forward` on the outcome's roster, then `set_county_review` with `write_lines = true`. Before
   that period: only `roll_forward`, and `write_lines = false`. Both keep `last_facts`. A period with
   no session keeps `last_session` as it was.
-- *The write-back* follows `set_organizer_with_household_time` (`register.rs:998-1052`): clone the
-  state; replace the public account's `HouseholdIncomeSupport` rows for the configured groups with
-  the given lines at priority 1 (a group with no line has no row); call
+- *The arm.* Task 8 left the operation's arm in `execute_prepared_rules` refusing every run. It now
+  refuses with "County review must run once after organizer practice" when the operation has already
+  run this period or the organizer's practice has not; refuses with "County review needs a captured
+  county administration" when `county_review_opening()` is `None`; and otherwise calls
+  `county_review_execution::resolve` and pushes one audit receipt with
+  `EffectSignature::CountyReview`. `MaterialReplaySession::new` now passes
+  `material.county_review().is_some()` to `validate_county_review_cycle`. If the arm takes
+  `execute_prepared_rules` over Clippy's cognitive-complexity limit of 25, move the arm into a
+  helper.
+- *The write-back* follows `set_organizer_with_household_time`: clone the state; replace the public
+  account's `HouseholdIncomeSupport` rows for the configured groups with the given lines at priority
+  1 (a group with no line has no row, because every amount must be above zero); call
   `babylon_material_circuit::consume_household_contributions` with one use for each charge, whose
   `use_id` is the SHA-256 of `babylon.county-review-hours.v1`, the campaign, the period and the
   group id, with `actor_id = config.actor_id` and a non-zero `contributor_id` taken from the group's
   index plus one; rebuild the register. No other row of the state changes.
-- *The section* is encoded like `city_pd::encode`: one zero byte when absent. It is framed so that a
-  register with no county section has the bytes it has today: add the section in a new frame after
-  the company frame, under its own domain `babylon.material-world-register.county-review.v1\0`, and
-  raise the leading version to 9 only when the frame is present. Document the frame in
-  `contracts/material_world_register_v7.yaml`.
+- *The section's bytes.* When the county is absent no frame is written, and a register of version 7
+  or 8 keeps its bytes. When it is present, the leading domain is
+  `babylon.material-world-register.v9\0`, the same length as the version 7 and 8 domains, with
+  version 9. After the City PD frame comes the company frame exactly when
+  `catalog.company_portfolios.is_some() && completed_tick > 0`, as today, and then a length-prefixed
+  county frame: the domain `babylon.material-world-register.county-review.v1\0`, then the
+  length-prefixed bytes of `encode_county_review_config` and of `encode_county_review_state`. The
+  county frame has no presence byte. `register_version` and `take_company_frame` change so that
+  `decode_canonical`, `validate_city_pd_resolver`, `decode_material_organizer_evidence` and
+  `decode_city_pd_attempt_evidence` all accept version 9. In `babylon-persistence`, `sections` in
+  `state_storage/schema.rs` admits the version 9 domain and version, reads the optional company
+  frame by its domain prefix and then the county frame by its domain, and keeps both inside the
+  section the company frame is in today. Document the frame in
+  `contracts/material_world_register_v7.yaml` and name version 9 in
+  `contracts/committed_material_tick_v3.yaml`. If a contract file's digest is pinned, re-pin it.
 - *Validation* against the world, at `with_county_review` and at every rebuild: the public account
   exists; every configured ordinary group is a household cohort whose households equal the roster's;
-  every crew is an employment row of its group; at period 0 each group's opening support line equals
-  `roll_units * unit_price_micros`.
+  every crew is an employment row of its group (an entry of `MonetaryCircuit.employment` with the
+  crew's member, site and unit and the group as payee); at period 0 each group's opening support
+  line equals `roll_units * unit_price_micros`.
 
 - [ ] **Step 1: Write the failing section tests** in `county_review_tests.rs`, on the hand-built
-  world of `material_world/tests.rs` extended with two household groups, two crews and a public
-  account with one grant and two support lines. Build its roster with `opening_roster`: neither
-  group has ownership income, and at least four ninths of the households must be in the labor force,
-  or the opening is refused (Task 3):
+  monetary world `agency_control`
+  (`rust/crates/babylon-material-circuit/tests/support/organizer_funding_control.rs`, which
+  `material_world/tests.rs` already includes), extended as needed to two household groups, two crews
+  and a public account with one grant and two support lines. Build its roster with `opening_roster`:
+  neither group has ownership income, and at least four ninths of the households must be in the
+  labor force, or the opening is refused (Task 3):
 
 ```rust
 #[test]
 fn a_register_without_a_county_section_keeps_its_bytes() {
     let before = register().canonical_bytes().to_vec();          // built as today
-    let decoded = MaterialWorldRegister::decode(&catalog(), &before).unwrap();
+    let decoded = MaterialWorldRegister::decode_external(&catalog(), before.clone()).unwrap();
     assert_eq!(decoded.canonical_bytes(), before.as_slice());
     assert!(decoded.county_review().is_none());
 }
@@ -1160,23 +1253,45 @@ fn a_register_without_a_county_section_keeps_its_bytes() {
 fn a_county_section_round_trips_and_changes_the_digest() {
     let with = register().with_county_review(&catalog(), county(), None).unwrap();
     assert_ne!(with.digest(), register().digest());
-    let decoded = MaterialWorldRegister::decode(&catalog(), with.canonical_bytes()).unwrap();
+    let decoded = MaterialWorldRegister::decode_external(&catalog(), with.canonical_bytes().to_vec()).unwrap();
     assert_eq!(decoded.county_review().unwrap().state(), county().state());
+    /* and the leading domain and version are the version 9 ones */
 }
 
 #[test]
 fn a_roster_that_disagrees_with_the_cohorts_is_refused() { /* households off by one */ }
-```
 
-Use the real names of the decode and bytes accessors in `register.rs`.
+#[test]
+fn a_county_register_carries_the_company_frame_only_when_a_register_today_would() {
+    /* a catalog with company portfolios: no company frame at tick 0, one after it; both decode with the county section */
+}
+
+#[test]
+fn every_other_writer_carries_the_county_section() {
+    /* after set_organizer, set_public_venue and set_city_pd on a prepared world whose register has the section, it is still there and equal */
+}
+
+#[test]
+fn cutting_the_tax_receipt_changes_the_list() {
+    /* the sever test: with the gaining group's wage-tax entry zeroed in the labor facts no unit moves; with it in place one moves */
+}
+
+#[test]
+fn resolving_a_period_twice_changes_nothing() { /* resolve twice on one prepared world: the same register digest, one use for each charge */ }
+```
 
 - [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-tick -E 'test(county_review)'`. Expected:
   compile failure.
-- [ ] **Step 3: Implement the section and the facts.** Run. Expected: PASS.
-- [ ] **Step 4: Write the failing period tests** in `tests/county_review_replay.rs`, modelled on
-  `tests/organizer_replay.rs` (hand-built catalog, `MaterialReplaySession`,
-  `prepare_advance_with_organizer`, `commit_prepared_and_publish`), calling
-  `county_review_execution::resolve` through a test-only entry until Task 8 wires the rule:
+- [ ] **Step 3: Implement the section, its bytes and the facts.** Run. Expected: the section tests
+  PASS.
+- [ ] **Step 4: Write the failing period tests** in `tests/county_review_replay.rs`, through the
+  real rule: a hand-built world with an organizer section and the county section, whose session
+  rules are the organizer's rules and `county-review-cycle.bsl`, driven with
+  `prepare_advance_with_organizer` and `commit_prepared_and_publish` as `tests/organizer_replay.rs`
+  drives its world. The world must be staffed, because staffing and attrition receipts exist only on
+  the staffed path, with wage income, a wage-tax receipt, household time receipts and a public
+  account with household support lines. Start from the richest world the organizer replay tests
+  build (`tests/support/organizer_aid_fixture.rs`) and say which you used.
 
   - `before_the_first_session_only_the_roster_moves`: lines and hours are untouched; the roster's
     period advanced; `last_facts` is set.
@@ -1193,48 +1308,60 @@ Use the real names of the decode and bytes accessors in `register.rs`.
     the state still validates.
   - `the_first_class_and_the_limit_are_never_written`: after every period the grant rows, the agency
     row and the `PublicBudget` are byte-equal to the opening's.
-  - `hours_are_charged_to_the_households_group_and_never_twice`: the book's contributions hold one
-    use for each charged group; resolving the same period again is idempotent.
+  - `hours_are_charged_to_the_households_group`: the book's contributions hold one use for each
+    charged group, under the county's actor.
+  - `the_rule_runs_once_after_the_organizers_practice`: in the period's audit receipts the county's
+    receipt follows the organizer practice's, and the City PD's when the world has one.
   - `replay_gives_the_same_bytes`: run three periods twice from the same opening; the registers'
     digests are equal period by period.
-  - `cutting_the_tax_receipt_changes_the_list`: a sever test. With the wage-tax receipt of the
-    gaining group zeroed in the facts, no unit moves.
 
-- [ ] **Step 5: Implement `county_review_execution.rs` and `set_county_review`.** Run. Expected:
-  PASS.
-- [ ] **Step 6: Run** `mise run rust:test:q -- -p babylon-tick` and `mise run rust:check-no-docs`.
-  Expected: PASS, and no existing test changed.
+- [ ] **Step 5: Implement `county_review_execution.rs`, `set_county_review` and the arm.** Run.
+  Expected: PASS.
+- [ ] **Step 6: Run** `mise run rust:test:q -- -p babylon-tick`, `mise run rust:test:q -- -p
+  babylon-persistence -E 'test(state_storage) | test(schema)'`, and the whole gate (Global
+  Constraints). Expected: PASS, and no existing test changed.
 - [ ] **Step 7: Commit** as `feat(tick): the county section, its labor facts and the support-line
   write-back`.
 
 ### Task 8: The native operation and the rule
 
-Spec 7.12 ("Where the rules live"). The City PD's operation is the template in every file.
+Spec 7.12 ("Where the rules live"). The City PD's operation `city-pd-observe` is the template in
+every file, and commit `ac649361d` shows every list it touched. This task is built before Task 7.
+After it the operation and its rule exist, and a campaign that carries the rule is refused, because
+no register can carry a county section yet.
 
 **Files:**
 - Create: `content/scenarios/national/county-review-cycle.bsl`
 - Modify: `rust/crates/babylon-bsl/src/rule_pipeline.rs` (`RuleExecution::CountyReview`),
-  `native_cycle.rs`, `tick.rs`, `causal_contract.rs` (`EffectSignature`, `AllowedEffect`, the
-  footprint walker, one allowance row, one attribution row, the counts 8 to 9 and 74 to 75),
-  `identity_codec.rs` (the next free byte tag), `sfs_profile.rs`, `error_identity.rs`
-- Modify: `rust/crates/babylon-persistence/src/simulation_experiment/report/wiring/manifest.rs`,
-  `economic_catalog/preset.rs` (a `national_county_review_rules` include, composed after the City PD
-  rules)
-- Modify: `rust/crates/babylon-tick/src/tick_runner.rs` (a branch after the City PD branch),
-  `replay_session.rs` (a `validate_county_review_cycle`), `material_replay.rs` (call it)
-- Modify: the tests that pin the closed lists:
-  `rust/crates/babylon-tick/tests/causal_contract_conformance.rs`,
-  `rust/crates/babylon-bsl/tests/organizer_cycle.rs`, `tick_identity_contract.rs`,
-  `content_corpus_digests.rs`,
-  `rust/crates/babylon-persistence/tests/captured_national_organizer.rs`
-- Test: the files above, and `rust/crates/babylon-tick/tests/county_review_replay.rs`
+  `native_cycle.rs` (the classify match and the `find_operation` pattern), `tick.rs`,
+  `causal_contract.rs` (`EffectSignature`, `AllowedEffect`, `AllowedEffect::matches`, the footprint
+  walker, one allowance row, one attribution row in sorted rule-id position), `identity_codec.rs`
+  (the tag `0x0a`), `sfs_profile.rs` (`effect_row`), `error_identity.rs`
+- Modify: the four pins that follow the source of `sfs_profile.rs`, as commit `ac649361d` moved
+  them: `rust/crates/babylon-bsl/tests/fixtures/sfs_profile/sfs_audit_source_manifest_v1.txt` (the
+  new SHA-256 of `sfs_profile.rs`), `rust/crates/babylon-bsl/tests/sfs_profile_contract.rs`
+  (`AUDIT_SOURCE_MANIFEST_HEX`), `rust/crates/babylon-evidence/tests/synthetic_proof_harness.rs`
+  (the same value) and `rust/crates/babylon-evidence/tests/fixtures/sfs_synthetic_profile.txt` (the
+  proof-profile line, from the value `assert_profile_fixture` prints)
+- Modify: `rust/crates/babylon-persistence/src/simulation_experiment/report/wiring/manifest.rs`
+  (`effect_name`)
+- Modify: `rust/crates/babylon-tick/src/tick_runner.rs` (an arm for the operation in
+  `execute_prepared_rules`), `replay_session.rs` (`validate_county_review_cycle`),
+  `material_replay.rs` (call it)
+- Modify: the tests that pin the closed lists: `rust/crates/babylon-bsl/src/causal_contract.rs` (its
+  tests), `rust/crates/babylon-tick/tests/causal_contract_conformance.rs`,
+  `rust/crates/babylon-bsl/tests/organizer_cycle.rs`, `tick_identity_contract.rs`
+- Test: the files above, unit tests in `replay_session.rs`, and
+  `rust/crates/babylon-tick/tests/county_review_replay.rs` (new)
 
 **Interfaces:**
-- Consumes: `county_review_execution::resolve` (Task 7), `ADR301` (Task 2).
-- Produces: the operation name `county-review`; the rule
+- Consumes: `ADR301` (Task 2).
+- Produces: the operation name `county-review`; `RuleExecution::CountyReview`;
+  `EffectSignature::CountyReview`, with identity tag `0x0a`; `AllowedEffect::CountyReview`;
+  `validate_county_review_cycle(active: bool)` beside `validate_city_pd_cycle`; and the rule
 
 ```
-(rule county/review-session
+(rule welfare/county-review-session
   :role intent
   :evidence designed
   :material-basis "After the organizer's practice, rank the county's household positions by the wage tax each paid, pay next period's relief units down that list, record who came and whom each brought, and bring the roster up to date."
@@ -1243,27 +1370,60 @@ Spec 7.12 ("Where the rules live"). The City PD's operation is the template in e
   (county-review))
 ```
 
+Rules at one anchor run in the byte order of their ids (`babylon-tick/src/phase_order.rs`). The
+order of files, and of rules in a file, is never observable. The county's session must follow
+`organizer/organizer-practice` and `state-opponent/observe-public-activity`, so its id sorts after
+both: `welfare/county-review-session`.
+
 The attribution row is `Intent`, `Designed`, owner `Director`, date `2026-11-19`, `ADR301`. The
 allowance row is `AllowedEffect::CountyReview`, `AllowanceKind::NextWeekIntent`, reason "set next
 period's household support lines from the county's list and record who came". These rows are the
-direct-write audit of spec section 9: no other rule is allowed this effect. The runner refuses with
-"County review must run once after organizer practice" when the operation runs twice or before the
-organizer's practice, and with "County review needs a captured county administration" when the
-register has no county section. It pushes one audit receipt with `EffectSignature::CountyReview`.
+direct-write audit of spec section 9: no other rule is allowed this effect.
 
-- [ ] **Step 1: Write the failing tests.** In `causal_contract.rs` tests: the two counts, and that
-  `county/review-session` is governed with the row above. In `organizer_cycle.rs`: the operation
-  classifies as `(CountyReview, Some("intent"), "after", "ooda")`. In
-  `tests/county_review_replay.rs`: replace the test-only entry with the real rule and add
-  `the_rule_runs_once_after_the_organizers_practice` and
-  `a_campaign_with_the_rule_and_no_county_section_is_refused_by_name`.
+`validate_county_review_cycle(active)` follows `validate_city_pd_cycle`. With `active` false the
+rule must be absent, and its presence is refused with "County review needs a captured county
+administration". With `active` true there must be exactly one such rule, placed after the
+organizer's practice, and after the City PD's observation when that is present, or the session is
+refused with "County review must run once after organizer practice". `MaterialReplaySession::new`
+calls it with `false` in this task: no register can carry a county section until Task 7. The
+operation's arm in `execute_prepared_rules` refuses every run with "County review needs a captured
+county administration" in this task; Task 7 gives it the period to run. The national capture does
+not select the rule until Task 9, so no captured campaign changes here.
+
+- [ ] **Step 1: Write the failing tests.**
+
+  - In the tests of `causal_contract.rs`: the counts (allowances 8 to 9, attributions 74 to 75,
+    Intent 2 to 3, Mechanic stays 69, Recognizer stays 3); `welfare/county-review-session` is
+    governed with the rows above; and the rule's own branch (Designed, 2026-11-19, ADR301,
+    `AllowedEffect::CountyReview`) in
+    `effect_allowances_name_matching_pinned_restricted_assignments`,
+    `governed_allowance_rows_carry_the_required_provenance` and
+    `governed_attribution_rows_carry_the_required_provenance`.
+  - In `causal_contract_conformance.rs`: `national.join("county-review-cycle.bsl")` in the
+    production file list, and a `CountyReview` arm in `StaticEffect`, `footprint_effect` and
+    `allowed_effect`.
+  - In `organizer_cycle.rs`: the operation classifies as `(CountyReview, Some("intent"), "after",
+    "ooda")`.
+  - In `tick_identity_contract.rs`: `EffectSignature::CountyReview` encodes as `0x0a`.
+  - In `replay_session.rs`, beside
+    `city_pd_host_refuses_a_missing_rule_but_inactive_host_accepts_none`:
+    `a_county_rule_without_a_county_section_is_refused_by_name`, and
+    `an_active_county_needs_one_rule_after_the_organizers_practice` (the check called with `true` on
+    a rule set with no county rule, on one with the rule, and on one whose county rule has an id
+    that sorts before `organizer/`).
+  - In `tests/county_review_replay.rs`:
+    `a_campaign_with_the_rule_and_no_county_section_is_refused_by_name`, on the hand-built organizer
+    world of `tests/organizer_replay.rs` with `county-review-cycle.bsl` added to its rules by
+    `include_str!`: `MaterialReplaySession::new` refuses with that text.
+
 - [ ] **Step 2: Run.** `mise run rust:test:q -- -p babylon-bsl -E 'test(causal) |
   binary(organizer_cycle) | binary(tick_identity_contract)'`. Expected: FAIL.
-- [ ] **Step 3: Implement** the operation in every listed file, the rule file and the runner branch.
-- [ ] **Step 4: Run** the scoped tests, then `mise run rust:test:q -- -p babylon-bsl`, `-p
-  babylon-tick`, and `mise run rust:check-no-docs`. Update the content corpus digest pin with the
-  value the failing test prints. Expected: PASS.
-- [ ] **Step 5: Commit** as `feat(bsl): the county-review native operation and its rule`.
+- [ ] **Step 3: Implement** the operation in every closed list, the rule file, the session check and
+  the runner's arm. The operation's row in `sfs_profile.rs` is `county-review`.
+- [ ] **Step 4: Move the four source pins** of `sfs_profile.rs`.
+- [ ] **Step 5: Run** the scoped tests, then `mise run rust:test:q -- -p babylon-bsl`, `-p
+  babylon-evidence`, `-p babylon-tick`, and the whole gate (Global Constraints). Expected: PASS.
+- [ ] **Step 6: Commit** as `feat(bsl): the county-review native operation and its rule`.
 
 ### Task 9: Persistence: capture, runtime, snapshot, preview and archive
 
@@ -1277,7 +1437,9 @@ Spec 7.3, 7.11 and 7.12.
   (fill `OrganizerConfig.review`)
 - Modify: `content/scenarios/national/defines.toml`
 - Modify: `rust/crates/babylon-persistence/src/economic_catalog/model.rs`, `codec.rs`, `capture.rs`,
-  `session.rs` (carry the county opening beside the City PD's)
+  `session.rs` (carry the county opening beside the City PD's), `preset.rs`
+  (`national_county_review_rules`: the City PD's rules and `county-review-cycle.bsl`), `national.rs`
+  (the `expected_rules` branch for an input that carries the county)
 - Modify: wherever the runtime builds the register from the catalog (find `with_organizer(` and the
   City PD's equivalent)
 - Modify: `rust/crates/babylon-persistence/src/organizer_runtime/snapshot.rs`,
@@ -1323,7 +1485,8 @@ aid_body_label = "Wayne Local Aid Partners"
 ```
 
   The two body labels must equal the labels the hearing's capture already uses; read them from there
-  if they are captured, and keep the table's values only as a check.
+  if they are captured, and keep the table's values only as a check. Append the table after
+  `[city_pd]`, at the end of the file: the older-schema tests cut the file at a table's heading.
 
 - *Groups* are the household cohorts located in the county, ordinary and collective, sorted by
   principal id. A group's `roll_units` is its opening support line divided by the unit price; a
@@ -1333,7 +1496,9 @@ aid_body_label = "Wayne Local Aid Partners"
   the observer's household labels use.
 - *Crews* are the staffing members whose household is one of the groups, sorted by member id, with
   the pay mode from the member's `EmploymentTerms.compensation` and the workplace label the observer
-  uses for the site.
+  uses for the site. A crew's `crew_id` is its member's `StaffingMemberId` bytes, a group's
+  `group_id` is its household principal's id bytes, and `site_id` and `unit_id` are those of the
+  member's employment row. Task 7 joins the engine's receipts to the config on these ids.
 - *The bands* come from `opening_roster`. `TopBandInLaborForce` and `WageBandOutsideLaborForce`
   become capture errors that name the band and give the households needed and found.
 - *The opening roster* is `opening_roster` on the members' opening `employed` and `reserve`. The
@@ -1341,6 +1506,13 @@ aid_body_label = "Wayne Local Aid Partners"
   on the claimant group, the partner's on the local aid recipients.
 - *The administration* is a register actor with its own `actor_id` and `authority_id`, made the way
   the City PD's are in `national_economy/identity.rs`. It is not a graph node in this slice.
+- *The rule set.* A captured national campaign carries the county's rule exactly when it carries the
+  county section. Where the capture swaps in `national_city_pd_rules` it swaps in
+  `national_county_review_rules` when the county is captured, and `national.rs` expects the same.
+  `validate_county_review_cycle` refuses either without the other. The county opening is encoded
+  only under the compiler `national-world-v12`, which Task 1 introduced for this branch; a catalog
+  of an earlier compiler keeps its bytes and has no county. The pins of the captured national rule
+  bytes (`tests/captured_national_organizer.rs`) move in this task.
 - *The snapshot.* `captured_organizer_snapshot` builds the `LedgerInput` from the register's state
   (the county account's lines in the engine's pay order, its cash and cap, and the City PD's payroll
   from its config) and the `contacted` keys from every `ReviewContactMade` receipt in the organizer

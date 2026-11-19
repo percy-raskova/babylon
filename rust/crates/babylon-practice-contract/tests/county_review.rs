@@ -1,3 +1,9 @@
+#[path = "county_review/codec.rs"]
+mod codec;
+
+#[path = "county_review/projection.rs"]
+mod projection;
+
 #[path = "county_review/roster.rs"]
 mod roster;
 

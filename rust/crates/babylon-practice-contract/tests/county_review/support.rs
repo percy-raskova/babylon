@@ -2,8 +2,9 @@
 use babylon_practice_contract as practice_contract;
 use babylon_practice_contract::{
     Band, CountyPeriodFacts, CountyReviewConfig, CountyReviewCrew, CountyReviewGroup,
-    CrewPeriodFacts, GroupKind, GroupPeriodFacts, OpeningCrew, PayMode, PlacedRow, PositionKey,
-    Roster, RosterGroup, RosterRow, SessionRecord, SessionRow, COUNTY_REVIEW_SCHEMA_VERSION,
+    CountyReviewState, CrewPeriodFacts, GroupKind, GroupPeriodFacts, OpeningCrew, PayMode,
+    PlacedRow, PositionKey, Roster, RosterGroup, RosterRow, SessionRecord, SessionRow,
+    COUNTY_REVIEW_SCHEMA_VERSION,
 };
 
 pub const T1: Band = Band::Top1;
@@ -512,4 +513,34 @@ pub fn balanced(record: &SessionRecord) {
         );
     }
     money_balanced(record);
+}
+
+/// `world()` with the county able to pay exactly five units, as the state a campaign holds before
+/// any session: the roster, the last close's facts and no session.
+pub fn state_before_contact() -> (CountyReviewConfig, CountyReviewState) {
+    let (c, r, mut f) = world();
+    short(&mut f, 5);
+    let state = CountyReviewState {
+        schema_version: COUNTY_REVIEW_SCHEMA_VERSION,
+        roster: r,
+        last_facts: Some(f),
+        last_session: None,
+    };
+    (c, state)
+}
+
+/// The state after a session in which `D` was contacted: the outcome's roster and record, and the
+/// facts the session was held from.
+pub fn state_after_contact() -> (CountyReviewConfig, CountyReviewState) {
+    let (c, before) = state_before_contact();
+    let facts = before.last_facts.expect("the facts are held");
+    let outcome = practice_contract::hold_session(&c, &before.roster, &facts, Some(D))
+        .expect("the session is held");
+    let state = CountyReviewState {
+        schema_version: COUNTY_REVIEW_SCHEMA_VERSION,
+        roster: outcome.roster,
+        last_facts: Some(facts),
+        last_session: Some(outcome.record),
+    };
+    (c, state)
 }

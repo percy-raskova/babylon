@@ -31,6 +31,16 @@ impl Place {
     pub fn is_zero(&self) -> bool {
         self.numerator == 0
     }
+
+    /// The place in whole micro-dollars, rounded down. It is for display only: places are ranked
+    /// by comparison, never by this figure.
+    ///
+    /// # Errors
+    ///
+    /// `Arithmetic` when the figure does not fit an `i128`.
+    pub fn floor_micros(&self) -> Result<i128, CountyReviewError> {
+        i128::try_from(self.numerator / self.denominator).map_err(|_| CountyReviewError::Arithmetic)
+    }
 }
 
 /// The 256-bit product of two `u128`, as `(high, low)`.

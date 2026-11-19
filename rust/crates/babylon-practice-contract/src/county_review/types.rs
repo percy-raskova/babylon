@@ -63,6 +63,10 @@ pub enum CountyReviewError {
     FactsShape,
     /// A group lost more households than the ones with nobody in the labor force.
     HouseholdsBelowLaborHouseholds,
+    /// The state holds a session without the facts it was held from.
+    StateShape,
+    /// The City PD's payroll names no public workplace line that can hold it.
+    LedgerPayrollNotInWorkplace,
     /// An exact sum or product left its range.
     Arithmetic,
     /// A value could not be written or read as canonical JSON.

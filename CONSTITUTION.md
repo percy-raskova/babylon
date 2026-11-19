@@ -4,7 +4,7 @@
 <!-- vale ste.NounClusters = NO -->
 <!-- vale Vale.Spelling = NO -->
 
-**Version 4.2.0**
+**Version 4.4.0**
 
 **Ratified:** 2026-08-22
 
@@ -77,6 +77,11 @@ coefficient, or hidden branch can guarantee a victory, collapse, political
 alignment, historical path, or terminal pattern. Governed recognizers can name
 outcome patterns, but recognition only describes a world state. Recognition
 does not force that state to occur.
+
+No functional form — sigmoid included — may be imposed on mechanics;
+sigmoid-shaped behavior must emerge from P(revolution)/P(acquiescence)
+dynamics and the algebraic Lawverian operations. Amendment AM records this
+rule and states how it is applied.
 
 Player and non-player actors act through the same declared causal machinery.
 Actions must have an eligible actor, a target, and a cost or constraint. They
@@ -380,10 +385,75 @@ AK advances the Constitution from v4.1.0 to v4.2.0. Its behavioral contract is
 `contracts/simulation_interval_v1.yaml`; its transition record is
 `ai/decisions/ADR257_four_week_simulation_interval.yaml`.
 
+### Amendment AM — No Imposed Functional Form
+
+On 2026-07-29 the Director ruled, as ruling (5) of
+`ai/decisions/ADR172_amendment_ae_refoundation_ratified.yaml`:
+
+> NO functional form — sigmoid included — may be IMPOSED on mechanics;
+> sigmoid-shaped behavior must EMERGE from P(revolution)/P(acquiescence)
+> dynamics and the algebraic Lawverian operations.
+
+The v4 text did not carry that sentence. Agent guidance carried a narrower
+form that named only a sigmoid and a fixed response curve. On 2026-11-19 the
+Director ruled that ruling (5) survives as written and directed that the
+Constitution be modified. Amendment AM adds the ruling to Article III in its
+own words, and states how the rule is applied.
+
+In this rule a functional form is a response shape that a designer
+stipulates: a curve, or a constant placed to set where or how steeply a
+response turns. Accounting identities, conservation, and the declared
+Designed quantities of Article IV, such as a price, a tax rate, a recipe, or
+the cost of an act, are not response shapes. Article IV stays in force. It
+already forbids historical data to silently set a mechanic's response shape.
+
+A response shape is lawful only as a result. ADR173 ruling (1) set the
+construct for the survival curve: the response of a class is the measure of
+its members whose wealth clears subsistence, and the steepness of the curve
+is the class's actual wealth dispersion. ADR175 ruling (1) extended that
+treatment to every confirmed imposed-form site. Amendment AM states the
+construct in general. A rule decides for one member of a population by
+comparing material amounts that the causal circuit holds for that member:
+what it has, what it needs, what it stands to gain or lose, and what an act
+costs it. The response of the population is the measure of its members that
+the rule admits. The shape of that response then follows from how those
+amounts are spread across the members.
+
+Three forms stay prohibited. A rule must not compare a member's amount with a
+constant placed to set where the response turns. A rule must not apply a
+comparison, a curve, or a shape parameter to the mean or another bare summary
+of a population. A rule must not carry a parameter whose only role is the
+steepness, midpoint, or curvature of a response. ADR176 ruling (17) already
+requires coarse carriers to hold dispersion, and it stays in force.
+
+Amendment AM settles one point that ruling (5) left open. A comparison of
+material amounts for one member is one of the algebraic operations from which
+a response can emerge. It is not an imposed form. This amendment adds no
+mathematical primitive.
+
+The compact in `AGENTS.md` and the restatement in `NORTH_STAR.md` take the
+ruling's wording. Article IV and Amendment AJ are unchanged. Historical
+records keep their bytes. The dispositions of ADR173 and the posture of
+ADR175 stand. The derivations that ADR175 requires for each family remain
+owed, and each is presented to the Director before it lands. No campaign
+format, state, or stored data changes.
+
+A design that claims an emergent response must show the rule for one member,
+the amounts that the rule compares, and the population that the rule is
+measured over. It must include a mutation test in which removing the
+dispersion changes the response. Review must refuse a rule that takes a
+prohibited form. The Constitution header and footer, the live pins of its
+version, and the governance tests state v4.4.0. This amendment records the
+law. It is not a report that existing rules were audited again.
+
+AM advances the Constitution from v4.2.0 to v4.4.0. Amendment AL and v4.3.0
+name a change that ADR289 repealed, and they are not reused. The transition
+record is `ai/decisions/ADR300_amendment_am_no_imposed_functional_form.yaml`.
+
 ---
 
-**Version:** 4.2.0
+**Version:** 4.4.0
 
 **Originally ratified:** 2026-01-30
 
-**Last amended:** 2026-09-06
+**Last amended:** 2026-11-19

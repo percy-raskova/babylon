@@ -1,7 +1,7 @@
 # North Star
 
 This page explains the live game direction. It does not make law.
-[`CONSTITUTION.md`](CONSTITUTION.md) v4.2.0 governs Babylon. ADR221 records how
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.4.0 governs Babylon. ADR221 records how
 the prior constitution moved into v4 without a rewrite of history.
 [`ai/mantras.yaml`](ai/mantras.yaml) carries the same orientation as structured
 data for repository tools.
@@ -268,7 +268,7 @@ The formal surface stays closed. The dialectic, constructor families, level
 lattices, adjunctions, and boundary operator supply the licensed algebra. BSL
 expresses that algebra and does not create a new mathematical primitive.
 
-No game rule can impose a sigmoid or other fixed response curve. The world
+No game rule can impose a functional form, sigmoid included. The world
 population and the licensed operations must produce curve shapes.
 
 ## Political-economy circuit

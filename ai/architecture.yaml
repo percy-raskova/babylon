@@ -4,7 +4,7 @@ meta:
   version: "4.4.0"
   updated: "2026-09-13"
   role: current_and_planned_architecture
-  authority: CONSTITUTION.md v4.2.0
+  authority: CONSTITUTION.md v4.4.0
   interpretation: >-
     Entries marked implemented_current describe evidence in this checkout.
     Entries marked planned describe acceptance-gated work, not shipped behavior.

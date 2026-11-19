@@ -1,0 +1,140 @@
+ADR300_amendment_am_no_imposed_functional_form:
+  status: proposed
+  date: '2026-11-19'
+  issue: PER-366
+  title: Amendment AM writes the no-imposed-functional-form ruling into the Constitution
+  evidence_class: Designed
+  authority:
+    - >-
+      Director, 2026-11-19, on reading the fourth draft of the PER-366 County
+      Review design (verbatim, spelling corrected): "ruling 5 also survives as
+      written about laws, modify the constitution"
+    - Director rulings of 2026-07-29 recorded as ADR172 ruling (5), ADR173 ruling (1) and ADR175 ruling (1)
+    - Constitution Article VIII
+    - >-
+      The Director has not yet read the wording of Amendment AM or of this
+      record. The status stays proposed until the Director accepts that
+      wording. The amendment must not merge to dev or main while this record
+      is proposed.
+  context: |
+    ADR172 ruling (5) says: "NO functional form — sigmoid included — may be
+    IMPOSED on mechanics; sigmoid-shaped behavior must EMERGE from
+    P(revolution)/P(acquiescence) dynamics and the algebraic Lawverian
+    operations." Constitution v4.2.0 does not carry the sentence. AGENTS.md
+    carried "A rule cannot impose a sigmoid or a second fixed response curve."
+    and NORTH_STAR.md carried a like form. Both name less than the ruling.
+
+    The fourth draft of the PER-366 County Review design put a question to the
+    Director. The Director had ruled that a household comes to a county
+    session only when its own stake is at least two hours at the wage. The
+    draft said that a decision record was enough for that comparison if the
+    narrower agent guidance governed, and that "If the Director holds that
+    ruling 5 binds as written, the floor needs a constitutional amendment
+    under Article VIII before it is built." The Director answered with the
+    sentence quoted under authority.
+
+    The author reads the answer as two instructions. Ruling (5) is live law
+    as written, so the Constitution must carry it. And the amendment that the
+    draft said the comparison needs must be made. Amendment AM does both. The
+    same draft had applied the comparison to the average loss of a group of
+    households. ADR173 ruling (1) had already replaced that form for the
+    survival curve: the confirmed fault was a rule applied to the class mean
+    with a free steepness knob. The design now decides for each household
+    from that household's own amounts.
+
+    The proscription audit that ADR172 ruling (5) chartered
+    (reports/p27-proscription-audit-2026-07-29.md, section 2.1) describes the
+    construct that ADR173 ruling (1) adopted as a pushforward of an individual
+    threshold-crossing indicator along a population measure, where the
+    indicator opposes two material quantities of the member. Its section 4.2
+    lists thresholds placed to guarantee a branch among the proscribed forms.
+    Amendment AM takes its construct and its prohibitions from those two
+    places.
+  decision: |
+    R1. TEXT. Amendment AM adds ruling (5) to Article III in its own words,
+    with the emphasis capitals set in sentence case. The amendment section
+    quotes the ruling as ADR172 records it. AM advances the Constitution from
+    v4.2.0 to v4.4.0.
+
+    R2. SCOPE. In the rule a functional form is a response shape that a
+    designer stipulates: a curve, or a constant placed to set where or how
+    steeply a response turns. Accounting identities, conservation and the
+    declared Designed quantities of Article IV are not response shapes. This
+    sentence is the author's reading. It keeps Article III from contradicting
+    Article IV.
+
+    R3. CONSTRUCT. A response shape is lawful only as a result. A rule
+    decides for one member of a population by comparing material amounts that
+    the causal circuit holds for that member. The response of the population
+    is the measure of its members that the rule admits. This generalizes
+    ADR173 ruling (1). The generalization is the author's wording.
+
+    R4. PROHIBITIONS. A rule must not compare a member's amount with a
+    constant placed to set where the response turns. A rule must not apply a
+    comparison, a curve or a shape parameter to the mean or another bare
+    summary of a population. A rule must not carry a parameter whose only role
+    is the steepness, midpoint or curvature of a response. ADR176 ruling (17)
+    stays in force.
+
+    R5. THE POINT SETTLED. A comparison of material amounts for one member is
+    one of the algebraic operations from which a response can emerge, and is
+    not an imposed form. This is new constitutional text. It is what makes
+    the household comparison of the PER-366 design lawful under ruling (5) as
+    written.
+
+    R6. RESTATEMENTS. The compact in AGENTS.md and the restatement in
+    NORTH_STAR.md take the ruling's wording. The theory constraint
+    survival_is_a_heterogeneous_aggregate keeps its text.
+
+    R7. NUMBERING. The amendment is lettered AM and the version is 4.4.0.
+    ADR287 used Amendment AL and v4.3.0, and ADR289 repealed them. Neither
+    name is reused, so that no citation of AL or v4.3.0 can mean two texts.
+
+    R8. HISTORY. ADR172, ADR173, ADR175 and every other historical record keep
+    their bytes. The dispositions of ADR173 and the posture of ADR175 stand.
+    The per-family derivations that ADR175 requires remain owed, and each is
+    presented to the Director before it lands. The three tier-2 audit findings
+    that ADR173 left open remain open.
+  alternatives_rejected:
+    - >-
+      The ruling's sentence alone, with no statement of how it is applied.
+      The sentence would then stand against Article IV's Designed mechanics,
+      and the household comparison would still need its own ruling.
+    - >-
+      An amendment that names one comparison as an exception to ruling (5).
+      It would write one slice's rule into the Constitution.
+    - A decision record alone, with ruling (5) left outside the Constitution.
+    - Reusing Amendment AL or v4.3.0.
+  consequences:
+    - >-
+      A design that claims an emergent response owes the rule for one member,
+      the amounts that the rule compares, the population it is measured over,
+      and a mutation test in which removing the dispersion changes the
+      response.
+    - Review refuses a rule that takes one of the three prohibited forms.
+    - >-
+      The PER-366 design withdraws its rule on a group's average loss and
+      decides for each household from that household's own stake and its own
+      cost of time.
+    - >-
+      This record does not audit existing rules again. The proscription audit
+      of 2026-07-29 covered the rules of that date.
+    - No campaign format, state or stored data changes.
+  transition:
+    previous_constitution:
+      version: '4.2.0'
+      git_blob: 87b77e665f5457ad3b02504d6e74f6e684d02b4a
+    new_constitution_version: '4.4.0'
+    amendment: AM
+  verification: |
+    The Constitution header, footer and Amendment AM state v4.4.0. The live
+    pins of the Constitution version state v4.4.0, and the governance tests
+    pass. `mise run check:adr-catalog` passes with this record in the index.
+    Historical records and contracts that cite earlier versions are
+    unchanged. This record is not a report that any existing rule was audited.
+  related:
+    - ADR172_amendment_ae_refoundation_ratified
+    - ADR173_audit_and_stops_dispositions
+    - ADR175_emergence_extension_logging_phi_sign
+    - ADR176_director_rulings_batch_gds_dispositions
+    - ADR289_retain_postgresql_campaign_owner_and_retire_sqlite_experiment

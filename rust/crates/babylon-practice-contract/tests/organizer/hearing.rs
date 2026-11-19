@@ -4,7 +4,7 @@ use babylon_practice_contract::{
     OrganizerHearingDelegation, OrganizerHearingMandate, OrganizerHearingOffer,
     OrganizerHearingOutcome, OrganizerHearingResponse, OrganizerHouseholdBinding,
     OrganizerMaterialSupport, OrganizerParticipant, OrganizerPeriodJournal, OrganizerRefusal,
-    OrganizerTimeBindingMode, ResolvedOrganizerPeriod,
+    OrganizerTimeBindingMode, OrganizerTimeUse, ResolvedOrganizerPeriod,
 };
 
 use OrganizerHearingMandate::{EitherProceduralOffer, Settle, SpeakOnly, Withhold};
@@ -123,7 +123,7 @@ fn hold_still_resolves_the_independent_home_seat_and_no_offer() {
     assert_eq!(receipt.claimant.response, Attended);
     assert_eq!(receipt.partner.response, NotInvited);
     assert_eq!(receipt.outcome, NoOffer);
-    assert!(receipt.review_access_actor_ids.is_empty());
+    assert_eq!(receipt.review_access_actor_ids, [] as [u64; 0]);
     assert_eq!(receipt.time_use.len(), 1);
     assert_eq!(receipt.time_use[0].actor_id, CLAIMANT);
     assert_eq!(receipt.time_use[0].hours, 2);
@@ -153,7 +153,7 @@ fn joint_offer_requires_both_exact_mandates_and_both_actual_debits() {
     assert_eq!(report.outcome, Settled);
     assert_eq!(report.review_period, 2);
     assert_eq!(report.review_access_actor_ids, [CLAIMANT, PARTNER]);
-    assert!(report.time_use.is_empty());
+    assert_eq!(report.time_use, [] as [OrganizerTimeUse; 0]);
     let debits: Vec<_> = decoded.periods[0]
         .hearing
         .as_ref()
@@ -200,7 +200,7 @@ fn joint_offer_requires_both_exact_mandates_and_both_actual_debits() {
     assert_eq!(short.partner.response, NoTime);
     assert_eq!(short.outcome, NoQuorum);
     assert_eq!(short.time_use.len(), 1);
-    assert!(short.review_access_actor_ids.is_empty());
+    assert_eq!(short.review_access_actor_ids, [] as [u64; 0]);
 
     for (mandate, response, outcome) in [
         (SpeakOnly, Attended, ReferredToMembers),
@@ -213,7 +213,7 @@ fn joint_offer_requires_both_exact_mandates_and_both_actual_debits() {
             .expect("limited hearing");
         assert_eq!(hearing.partner.response, response);
         assert_eq!(hearing.outcome, outcome);
-        assert!(hearing.review_access_actor_ids.is_empty());
+        assert_eq!(hearing.review_access_actor_ids, [] as [u64; 0]);
     }
 
     let mut forged = decoded;
@@ -369,18 +369,26 @@ fn review_period_uses_the_prior_settlement_once_even_across_reopen() {
                 .speaker_actor_ids,
             expected
         );
-        let mut forged = journal;
-        let agenda = forged.periods[1]
-            .hearing_review
-            .as_mut()
-            .expect("dated agenda");
-        agenda.speaker_actor_ids = if expected.is_empty() {
-            vec![CLAIMANT, PARTNER]
-        } else {
-            vec![]
-        };
-        assert!(babylon_practice_contract::encode_organizer_journal(&config, &forged).is_err());
+        assert_forged_agenda_refused(&config, journal, &expected);
     }
+}
+
+/// A saved journal whose dated review agenda was altered must not re-authenticate.
+fn assert_forged_agenda_refused(
+    config: &OrganizerConfig,
+    mut forged: OrganizerPeriodJournal,
+    expected: &[u64],
+) {
+    let agenda = forged.periods[1]
+        .hearing_review
+        .as_mut()
+        .expect("dated agenda");
+    agenda.speaker_actor_ids = if expected.is_empty() {
+        vec![CLAIMANT, PARTNER]
+    } else {
+        vec![]
+    };
+    assert!(babylon_practice_contract::encode_organizer_journal(config, &forged).is_err());
 }
 
 #[test]
@@ -410,5 +418,5 @@ fn funded_claimant_contributor_can_stand_in_and_testify_after_first_budget_exhau
     assert_eq!(receipt.testimony[0].period, 1);
     assert_eq!(receipt.testimony[0].delegate_label, "Assembly secretary");
     assert_eq!(receipt.testimony[0].claim, receipt.claimant.claim);
-    assert!(receipt.review_access_actor_ids.is_empty());
+    assert_eq!(receipt.review_access_actor_ids, [] as [u64; 0]);
 }

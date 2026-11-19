@@ -1239,6 +1239,14 @@ pub(super) fn required_hours(
     }
 }
 
+/// Whether the configured hearing meets in the period this command resolves.
+fn hearing_resolves_in(config: &OrganizerConfig, resolves_period: u64) -> bool {
+    config
+        .hearing
+        .as_ref()
+        .is_some_and(|hearing| hearing.period == resolves_period)
+}
+
 /// Preview one command without admitting it.
 ///
 /// A rule refusal is a successful preview carrying a refusal reason, not an
@@ -1276,10 +1284,7 @@ pub fn preview_organizer(
     } else if !command.allocation.matches_choice(command.choice) {
         Some(OrganizerRefusal::InvalidCommand)
     } else if matches!(command.choice, OrganizerChoice::InviteToHearing(_))
-        && !config
-            .hearing
-            .as_ref()
-            .is_some_and(|hearing| hearing.period == resolves_period)
+        && !hearing_resolves_in(config, resolves_period)
     {
         Some(OrganizerRefusal::HearingUnavailable)
     } else if state

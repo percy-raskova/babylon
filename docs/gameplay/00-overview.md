@@ -91,6 +91,7 @@ feels, reads, and takes away. Engine internals appear only as they surface.
 - `36-may-design-threads-behemoth.md` — May 2026: the month the aesthetic was enforced, not invented — the topology graph demoted then made static, two canons in force at once, and where May contradicts the current two-tier exposure doctrine.
 - `37-june-design-threads-behemoth.md` — June 2026: the month with no design record — an empty window proved rather than merely unindexed, bracketed by what the record says immediately before and after so the absence can be used.
 - `38-august-design-threads-behemoth.md` — August design threads: the Behemoth, the map room and the mask — Director verbatim (V) separated from recorded ruling (R) and agent interpretation (I), including what the Director did not say.
+- `40-class-agents-on-mims-line.md` — PER-366 research brief, 18 Nov 2026: population groups as class agents on MIM's line. Class read from accounts (covered US wage cohorts read labor aristocracy by default; a signed wage-versus-value balance and legal-status coverage are the required axes), nation as a separate first-class axis, bounded group choices by rank order under budgets, rival lines as organizations judged by accounts, membership as attributed hyperedge incidences, a labor-status ledger, the electorate and first office, a source-standing table and 19 Director questions. The 488 fact-checked findings behind it are in `40-class-agents-evidence.jsonl` (one finding per line).
 
 ## Open threads (parked as separate future lines)
 

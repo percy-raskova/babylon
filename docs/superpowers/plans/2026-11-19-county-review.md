@@ -32,8 +32,16 @@ to 7.6, 7.11 to 7.13 and Appendix D before any task.
   open a pull request.
 - The disk is unencrypted: no secrets, no `.env`, no `babylon-data` there.
 - Cargo runs at most 4 jobs. Never pass `-j`. One cargo or pytest process at a time. Use `mise exec
-  -- cargo ...`, `mise run rust:test:q -- -p <crate> -E '<filter>'` for scoped tests and `mise run
-  rust:check-no-docs` as the Rust gate.
+  -- cargo ...` and `mise run rust:test:q -- -p <crate> -E '<filter>'` for scoped tests.
+- The Rust gate has two forms. The whole gate is `mise run rust:check-no-docs`. It rebuilds and runs
+  every crate's tests and takes over half an hour, so it is started in the background with its
+  output in a log file, and nothing else uses cargo until it ends. The scoped gate is four legs, run
+  one at a time: from `rust/`, `mise exec -- cargo fmt --all -- --check` and `mise exec -- cargo
+  clippy --workspace --all-targets --locked -- -D warnings -D clippy::cognitive_complexity`; then
+  `mise run rust:test:q -- -p <crate>` for each crate the task changed; then `mise run
+  check:bsl-sentinels`. Tasks 3, 4, 5 and 10 change one crate and no type that another crate already
+  uses, so they run the scoped gate, and the lead runs the whole gate when their phase ends. Every
+  other task runs the whole gate.
 - Python runs as `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONPATH="$PWD/src" mise exec -- uv run
   --frozen pytest ...`.
 - Commit one task at a time: `git add <files>` then `PYTHONPATH=src mise exec -- git commit -F -`
@@ -636,7 +644,7 @@ Write the commented tests in full with the same helpers, one assertion for each 
   `sum(reached) ` unchanged, `group_units + departed_units == roll units placed at the opening`,
   each band's households unchanged except by the households that left, and no `Top1` row with a
   crew.
-- [ ] **Step 8: Run.** Expected: PASS. Then `mise run rust:check-no-docs`.
+- [ ] **Step 8: Run.** Expected: PASS. Then the scoped gate (Global Constraints).
 - [ ] **Step 9: Commit** as `feat(county-review): exact splits and the household roster`.
 
 ### Task 4: Kernel: places, the list and the session
@@ -811,7 +819,7 @@ cuts.
   `place(1, 11_520_000_000, 3, 2_016_000_000, 13_440_000_000)` equals `place(2, 576_000_000, 1, 1,
   2)` and is above `place(1, 1_920_000_000, 1, 2_016_000_000, 13_440_000_000)`.
 - [ ] **Step 4: Implement `session.rs`.** One function for each numbered step.
-- [ ] **Step 5: Run.** Expected: PASS. Then `mise run rust:check-no-docs`.
+- [ ] **Step 5: Run.** Expected: PASS. Then the scoped gate (Global Constraints).
 - [ ] **Step 6: Add a property test** `every_session_balances`: 300 random small worlds from the
   generator of Task 3, random reach and random cash; assert `balanced`, `sum(lines) +
   sum(collective_lines) <= relief_micros`, and that no hour charge exceeds its group's `free_hours`.
@@ -948,7 +956,7 @@ the size limit is 8 MiB.
 - [ ] **Step 2: Run.** Expected: compile failure.
 - [ ] **Step 3: Implement** the three files, following `state_opponent_codec.rs` for the
   domain-framed canonical JSON.
-- [ ] **Step 4: Run.** Expected: PASS. Then `mise run rust:check-no-docs`.
+- [ ] **Step 4: Run.** Expected: PASS. Then the scoped gate (Global Constraints).
 - [ ] **Step 5: Commit** as `feat(county-review): preview, fogged projection and codec`.
 
 ### Task 6: The review contact
@@ -1553,7 +1561,7 @@ fn no_county_text_names_a_class() { /* no "workers", "proletariat", "the base" i
 - [ ] **Step 3: Implement** the builders, the inspectors, the actions, the manifest row and the
   scripted actions.
 - [ ] **Step 4: Run** the scoped tests, `mise run rust:test:q -- -p babylon-client -E
-  'test(organizer::) | binary(decision_surface_contract)'` and `mise run rust:check-no-docs`.
+  'test(organizer::) | binary(decision_surface_contract)'` and the scoped gate (Global Constraints).
   Expected: PASS.
 - [ ] **Step 5: Commit** as `feat(client): the county ledger, roster, session and food run views`.
 

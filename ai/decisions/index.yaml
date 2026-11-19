@@ -32,7 +32,7 @@ decisions:
     file: ADR299_wayne_relief_hearing.yaml
   ADR298_national_household_lifecycle:
     title: Connect national household reproduction to demographic stocks and the next economic period
-    status: proposed
+    status: accepted
     date: '2026-11-15'
     file: ADR298_national_household_lifecycle.yaml
   ADR297_national_company_accounts_and_investment:

@@ -1,7 +1,7 @@
 ADR298_national_household_lifecycle:
   title: Connect national household reproduction to demographic stocks and the next economic period
   date: '2026-11-15'
-  status: proposed
+  status: accepted
   authority: Director chose births, aging and deaths alongside household reproduction, followed by a trade crossing comparison
   evidence_class: Designed
   context: |

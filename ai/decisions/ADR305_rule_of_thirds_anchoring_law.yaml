@@ -25,7 +25,8 @@ ADR305_rule_of_thirds_anchoring_law:
     wealth. The next nine hundredths hold a third. The next two fifths hold a
     third. The lower half holds nothing net.
 
-    R2. WHAT IT BINDS. It binds no rule of the County Review slice. Nothing in
+    R2. WHAT IT BINDS. The author holds the law back from this slice (see calls).
+    It binds no rule of the County Review slice. Nothing in
     that slice reads or writes household wealth. It binds the opening split of a
     county's household wealth in the next slice, when positions hold accounts of
     their own. The split is a declared split with its source named.
@@ -43,6 +44,7 @@ ADR305_rule_of_thirds_anchoring_law:
     set beside the two thirds the law gives the top tenth. That measurement is
     the first task of the next slice. It is the author's call.
   calls:
+    - 'The law changes nothing in this slice and binds the opening split of wealth in the next (design section 2, call 23; section 11).'
     - 'The measurement in R4 as the first task of the next slice (design 11).'
     - 'Reading "net zero wealth" as a lower half that holds nothing net.'
   alternatives_rejected:

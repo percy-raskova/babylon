@@ -48,10 +48,14 @@ ADR301_county_review_session:
     costs the same and the yield is the wage tax. A unit moves only to a household
     that pays strictly more. An exact tie moves nothing. Positions at one place
     lose in proportion to the units they hold. A household that asks comes only
-    when a place is open. Relief won lasts one period. A ranking by yield with no
-    threshold is not a fixed political-response curve.
+    when a place is open. Relief won lasts one period. The wage the City PD pays for an
+    agency shift is in the group's taxed wages and gives no household a place. A
+    ranking by yield with no threshold is not a fixed political-response curve.
 
-    R3. THE HOUSEHOLD'S RULE. A household reads only its own money and hours. The
+    R3. THE HOUSEHOLD'S RULE. A household reads only its own money and hours. A
+    reached household that holds no unit asks only if its budget group has two
+    free hours to set aside, and hours are set aside in order of place. A
+    household left without them is recorded "no time" and does not ask. The
     number that come is the count of reached households whose own stake is at
     least their own cost of time: two session hours at the wage. A stake is a
     whole unit or nothing. Unpaid units fall on reached and unreached households
@@ -80,8 +84,10 @@ ADR301_county_review_session:
     contact, that names a position by its answers. It is new content vocabulary
     and needs the Director's ceremony, schema and conformance updates. It adds no
     verb and moves none, because ADR177 makes moving a verb a Director ruling.
-    The build maps the contact to an existing cell of the matrix and reports
-    the mapping to the Director. That mapping is the author's call. Any
+    The author reads the contact as a sub-mode of mobilize (Project-power by
+    Population), beside the shipped canvass, following the ratified table in
+    reports/article-v-3x3-draft-2026-08-10.md. That placement is the author's
+    call and the Director has not confirmed the cell (see open_questions). Any
     organization may make the choice. In this slice none but the player does.
 
     R8. ARTICLE III READING. Money moves one period later: a session sets lines
@@ -108,6 +114,12 @@ ADR301_county_review_session:
     - 'A household that came spends 2 more hours to bring one (7.6).'
     - 'Relief won is a level and lasts one period (7.1).'
     - 'Collective residence is outside the review (7.1).'
+    - 'A household asks only if its budget group has two free hours, set aside in order of place; otherwise it is recorded "no time" (7.4 step 5, 7.5).'
+    - 'The City PD agency-shift wage gives no household a place (7.4).'
+    - 'A household that is brought has the same five answers as the one that brought it (7.6).'
+    - 'The two claims stand for the whole run (7.3).'
+    - 'The opening reach is 2 claimant households and 3 of the aid partners'' 4 (7.3).'
+    - 'The review contact sits in mobilize (Project-power by Population), beside canvass; no verb is added or moved (7.6; reports/article-v-3x3-draft-2026-08-10.md).'
     - 'The first session is in period 4 and the contact opens in period 3 (7.6).'
     - 'Nothing starts at the county unless the player starts it (7.3).'
   alternatives_rejected:
@@ -118,6 +130,9 @@ ADR301_county_review_session:
     - 'Stretching the ADR299 hearing to many seats (6, What kind of proceeding).'
     - 'Organizer-only spread of one household a period (6, Spread).'
   open_questions:
+    - >-
+      Does the Director confirm the review contact as a sub-mode of mobilize
+      (Project-power by Population), or name another cell of the ADR177 matrix?
     - >-
       Is an exact table of counts a lawful way to carry a group's spread under
       ADR176 ruling 17, which named moments or a fixed-size sketch? The author

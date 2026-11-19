@@ -1,95 +1,15 @@
 # The County Review: design
 
-**Status:** Draft under revision, 19 November 2026. **Not ready for approval.** A review on the same
-day found the problems listed in "Review of this draft" below. The Director chose the approach on 18
-November 2026 ("Option A is decided"). Nothing is built until a revised document is approved.
+**Status:** Third draft, 19 November 2026, for the Director's approval. It replaces the draft that
+failed review earlier the same day. Nothing is built until this document is approved.
 
 **Scope:** PER-366, the first playable slice of the class-agents lane. Wayne County only (county
 geoid 26163).
 
-**How to read the marks.** **[Director]** records a decision already made. **[Call]** is a choice
-the author made that the Director can overrule. **[Ruling needed]** is a choice only the Director
-can make; section 7 lists them with a recommended answer. Money is in game currency units and is
-written with a dollar sign.
-
-## Review of this draft (19 November 2026)
-
-Four reviewers read this draft: a builder check, an engine-facts check, a project-law check, and a
-check of MIM's line and of play. A second reader challenged each serious finding. The findings below
-held. The rest of this document is unchanged, and it is wrong wherever it conflicts with them.
-
-**Facts that were wrong**
-
-- The player's organization has 2 organizer hours a period, from one contributor, not 8.
-  `contributor_hours_cap = 8` only limits what a contributor may promise. Organizer hours reach one
-  household a period, not four (sections 2, 6.7 and 11).
-- No existing operation contacts a household. `contact_hours` pays for contact with partner
-  organizations (section 6.7).
-- Collective residence has persons but no households, by an engine invariant. It cannot take part in
-  cells, units or motions (sections 2 and 6.5).
-- "Pay first" cannot be built on today's budget table. A group has one support row, and inside a pay
-  class every site row is paid before any household row (section 6.4).
-- A player's campaign carries the City PD's $24 line in the first class, so its limit is
-  $172,063,974. The recorded run in section 2 has no City PD and no claimant group. The claimant
-  figures come from a second recorded campaign (`e841f4b2`).
-- Provider grants go to every public administration site in the county, including state and federal
-  ones (section 2).
-- The county's ruling needs a new native operation, not only a thin rule entry (section 6.12).
-- Group persons and households are a Designed allocation of observed county totals (ADR269, ADR298).
-  They are not Observed (section 6.12).
-
-**Rules that do not work as written**
-
-- Units only ever grow. A household that wins a unit has nothing more at stake and stops coming, so
-  a session never holds more than that period's new contacts, and no rule ever removes a unit. The
-  ruling should set a level that lasts while households keep coming (sections 6.1 and 6.8).
-- The stake is defined twice: as what the motion asks (section 6.6) and as the preview's difference
-  in money actually paid (section 6.5). The two part company when the county runs short.
-- Objectors are previewed against one session's increment only. A draw spread across every grant is
-  therefore never opposed, and is always the best choice (sections 6.6 and 6.8).
-- "It affects how many households are counted, never how much money moves" is false, because the
-  units moved are a count of households (section 6.5). The stake-cell argument shows that signs
-  survive splitting. It does not show that outcomes do, so it is not the invariance proof Article II
-  requires.
-- Restore is circular, and the non-player bodies' choices come down to identifier order (sections
-  6.4 and 6.7).
-- No rule reads the membership roll (section 6.9).
-
-**Project law**
-
-- The county administration is a new state actor. It needs its own Director ruling. ADR291 says a
-  state opponent "must have its own authority, objective, resources, and partial knowledge", and
-  ADR184 puts budgets in the hands of organizations. A county with no interest of its own does not
-  meet that.
-- The $48 floor is a fixed step on the stake. AGENTS.md says "A rule cannot impose a sigmoid or a
-  second fixed response curve." The floor is Designed, not Derived, and needs an explicit ruling.
-- A new organizer choice needs a Director ceremony, schema and conformance updates and a recording
-  ADR. It does not need a constitutional amendment.
-- The preview shows a site's cash position before any contact. ADR182 R2 does not allow that.
-- The build plan lacks the tests that sever causal links, the direct-write audit, the baseline
-  ceremonies, the decision-surface contracts and the archived playthroughs that the Constitution and
-  the Game Design Standard require.
-
-**MIM's line**
-
-- The reason section 5 gives for withdrawing tax weighting is wrong. MIM says "The ballot power of
-  the oppressed is not greater than the financial power of the capitalists." (finding
-  mim-on-other-lines F10). A county that weighs those who pay in is defensible on MIM's own texts.
-- Appendix B turns "The majority of white Amerikans" into "the majority", and drops "In some ways"
-  from the quotation about the government sector.
-- A county that always concedes to a head count makes reform always work. MIM says "more often our
-  work on reform battles further confirms that reforms do not work" (finding mim-practice F18).
-- Only the county session writes membership. A player who builds independent institutions, which MIM
-  calls the principal task, cannot grow a roll (finding mim-practice F01).
-- With nation absent, no line in this slice can be called MIM's base line. "The principal
-  contradiction inside the U$A is nation." (finding mim F09)
-- "Labor aristocracy" is too narrow a reading for the owner groups. MIM's phrase is
-  "labor-aristocracy or higher" (finding mim-class-structure MC-02).
-
-**Before the rewrite.** Four questions go to the Director: what the county does when households turn
-up, how organizing spreads beyond one contact a period, what makes a household come, and whether the
-independent road belongs in this slice. The full review is in the workflow journal
-`wf_f30fdb94-a47`.
+**How to read the marks.** **[Director]** records a decision the Director has made. **[Call]** is a
+choice the author made that the Director can overrule. **[Record needed]** marks a choice that must
+be written into a decision record before it is built; section 8 lists them. Money is in game
+currency units and is written with a dollar sign.
 
 ## 1. What this slice is for
 
@@ -99,653 +19,999 @@ entertaining, turn it into a game". Three rulings frame the work. The game is a 
 built on an economic base. It is a class-based game. Its ideology sides with MIM.
 
 Today nobody in Wayne County decides anything. The engine facts behind that sentence are in Appendix
-A:
+A.
 
 - The relief hearing of ADR299 happens once per campaign and has two fixed seats.
 - The number of households behind each delegate is written into the scenario file. It is printed in
   the minutes and changes nothing.
 - The county review in the following period only writes a record. No money moves.
 - Nothing changes a county budget line after the opening.
-- Only households the player's organizer has bound can spend hours on politics.
+- No action reaches a household. The organizer's contact hours go to partner organizations.
 - Only the player's organization decides. The partners follow a fixed script.
 
 The County Review makes the county's relief roll the stake. Each four-week period the county reviews
-its roll in open session. Organizations bring motions. Each household that an organization has
-reached works out from its own accounts whether the matter is worth its time, and comes or stays
-home. The county then moves one household's worth of relief for each household that came, less those
-who came to object, as far as its books allow. The next period's receipts show who gained, who paid,
-who joined and who left.
+its roll in open session. A household that has been reached works out from its own accounts whether
+the matter is worth its time, and comes or stays home. The county counts each household in the room
+by the wage tax it pays, and moves relief inside a fixed pot. Every household that comes brings one
+more. Outside the county's room, the aid partners run food with their own hours. The next period's
+receipts show who gained, who paid, who gave hours to which body, and who was in the room and not
+counted.
 
-## 2. One period at the table
+## 2. What the Director has decided
 
-### The county's books today
-
-These figures come from the recorded run with seed 319. Appendix A names the files.
-
-| Line | Per period | Paid |
+| Date | Subject | Decision |
 |---|---|---|
-| Provider grants (county-funded public administration sites) | $151,969,750 | First |
-| Household support | $20,094,200 | Second |
-| Spending limit (the sum of the two) | $172,063,950 | |
+| 18 Nov | The first slice | The County Review: "Option A is decided" |
+| 19 Nov | The county | "Defends its own, weighs by tax". Office and police money is off the table. The review moves relief only inside a fixed pot. A household counts by the wage tax it pays the county, not as one head |
+| 19 Nov | Spread | "Each one brings one". A household that came brings one more household in the same position to the next session |
+| 19 Nov | Why a household comes | "Own money, if worth the time". It comes when the matter changes its own income by at least two hours at the wage ($48 today), and never for someone else's gain |
+| 19 Nov | The second road | "Both roads". A household that gives its own hours to the aid partners' work also goes on that body's roll. Receiving aid never does |
 
-Household support is one **unit** for each job-seeking person. A unit is $280 a period: one period
-of food at the opening price. That run pays 71,765 units.
+The Director also ruled that the game's ideology sides with MIM, and that MCU and FRSO are settler
+organizations opposed to MIM's line. Neither is a source for method here.
 
-In that run the county first runs short of cash in period 30. From then on household support is paid
-nothing and the grants are only partly paid. Nothing scripts this.
+**What changed since the last draft**
 
-### Wayne's household groups today
+- The county no longer counts heads, and no claim can reach the money for its offices or its police.
+- Relief won lasts one period. It is paid again only if the households come again.
+- The organizer has 2 hours a period, which is one contact. Growth comes from each household that
+  came bringing one more.
+- "Pay first", "Restore" and the public-payroll council are gone.
+- A household's stake is always money it would actually be paid, or actually lose.
+- The aid partners have a roll of their own, written by hours given on food runs.
+- Collective residence takes no part, because the engine gives it no households.
 
-| Group (engine budget key) | Persons | Units of support | County support per period | Wages per period |
+**The author's calls, for the Director to check while reading**
+
+1. How "weighs by tax" becomes a rule: a household's count is its wage tax divided by the average
+   household's (sections 6 and 7.4). On 19 November the author told the Director a different rule.
+   Section 6 says why it changed.
+2. A household that pays no wage tax still comes when the matter costs it $48, and is in the room
+   uncounted (section 7.5).
+3. When the county cannot pay the whole pot, every unit is cut by the same share (section 7.1).
+4. Neither body has an organizer of its own. Nothing starts at the county unless the player starts
+   it, and nothing the player starts can be called back (sections 7.3 and 7.6).
+5. Each household that came spends 2 more hours to bring the next one, the same cost as the
+   organizer's contact (section 7.6).
+6. The second road is the smallest true version: at most four households a period (section 7.8).
+7. The county publishes its cash balance at each session (section 7.11).
+8. Job-seekers are placed one to a household when positions are counted (section 7.2).
+
+## 3. One period at the table
+
+### The county's books
+
+These figures come from the recorded run with seed 319. Appendix A names the files. A campaign that
+a player starts also carries the City PD's $24 line in the first class.
+
+| Line | Per period | In this slice |
+|---|---|---|
+| First class: grants to public administration sites | $151,969,750 | Off the table. No claim can touch it |
+| Relief pot: household support | $20,094,200 | The only money the review can move |
+| Spending limit (the sum of the two) | $172,063,950 | Unchanged |
+
+Household support is one **unit** for each job-seeking person at the opening. A unit is $280 a
+period: one period of food at the opening price. The recorded run pays 71,765 units. This document
+calls that list of units the **old roll**.
+
+The county's cash in that run starts at $344 million and peaks near $1,151 million after period 3.
+From period 4 the county takes in less than it pays out. Its cash falls by $18 million in period 4,
+$34 million in period 10 and $56 million in period 29. At the close of period 29 it holds $149.5
+million, which is less than its first class. From period 30 it pays its offices in part and pays no
+relief at all. Nothing scripts this.
+
+### Wayne's households
+
+| Group (engine budget key) | Persons | Households | Units on the old roll | Wage tax per household, period 4 |
 |---|---|---|---|---|
-| Earning, nonowner | 1,196,610 | 38,837 | $10,874,360 | $238.3M |
-| Earning, owner | 139,712 | 2,669 | $747,320 | $43.3M |
-| No earner, nonowner | 375,449 | 26,538 | $7,430,640 | $0.02M |
-| No earner, owner | 41,720 | 2,949 | $825,720 | $0 |
-| Collective residence | 19,084 | 772 | $216,160 | $16.0M |
+| With earnings, no business ownership | 1,196,610 | 456,528 | 38,837 | $78.29 |
+| With earnings, with business ownership | 139,712 | held by the engine, not in the recorded files | 2,669 | about $122, if households are the size of the first group's |
+| No earner, no business ownership | 375,449 | as above | 26,538 | about one cent |
+| No earner, with business ownership | 41,720 | as above | 2,949 | $0 |
+| Collective residence | 19,084 | none, by an engine rule | 772 | takes no part |
 
-Persons, support and wages are recorded at period 4. Units are Derived here by dividing recorded
-support by $280. The two earning groups receive 58% of the relief line.
+Persons, support and wages are recorded at period 4. Units are recorded support divided by $280.
+Wage tax is 15% of recorded wages, computed by the author; the engine's own tax receipts are not in
+the recorded files.
 
-The hearing scenario carves three small named groups out of these: relief claimants (2 households, 2
-units, $560 a period), aid recipients (4 households, no county support) and aid donors (8 persons).
+The scenario also carves out three small named groups: relief claimants (2 households, 2 units), the
+aid partners' households (4 households, no unit, no wages, no cash), and the organization's own
+households (4 households, 4 of 8 persons employed, no unit).
+
+A household's **count** at the county is its wage tax divided by the average Wayne household's wage
+tax. On the figures above a household in the first group counts as about 1.2 and one in the second
+as about 1.9. Both figures rest on the household-size assumption in the table. A household in either
+no-earner group counts as nothing.
 
 ### What the player does in a period
 
-1. **Reads the ledger and the roster.** The ledger shows the county's lines in the order they are
-   paid, with what went unpaid last period. The roster shows the household groups.
-2. **Chooses review work** as this period's practice, in place of aid or inquiry.
-3. **Proposes a motion to the Claimants' Assembly.** A motion says which households it speaks for,
-   what each of them asks, and where the money comes from. For example: "a unit for each no-earner
-   household that has none, taken from all provider grants in proportion".
-4. **Reads the preview.** For any number of households it shows who would gain, which lines would
-   pay, which sites' staff would lose wages, and how much each household would lose.
-5. **Spends organizer hours contacting households**: 2 hours each, out of 8.
-6. **Advances the period.** Other bodies do the same by rule. Each reached household decides whether
-   its stake is worth the time.
-7. **Reads the ruling.** It gives the households for, the households against, the units moved, and a
-   reason for every reached household that did not come.
-8. **Reads next period's receipts.** They show which lines moved, which groups gained, which paid,
-   and who joined, stayed or left each body.
+1. **Reads the county ledger.** It shows the pot the county has announced for next period, the
+   county's cash, and what went unpaid last period.
+2. **Reads the roster and the rolls.** The roster shows each household position: how it makes a
+   living, whether it is on the old roll, and what it counts for if the player has a contact there.
+   The rolls show who gave hours to each body last period.
+3. **Chooses one practice,** as today. The new choice is a **review contact**: the organizer spends
+   the period's two hours to reach one household in a named position. The existing choices remain:
+   run food to the aid partners, collect, inquire, hold.
+4. **Reads the preview** before choosing. For a position where the player already has a contact, it
+   shows what the next session would do if one more household there were reached.
+5. **Advances the period.** The accounts close and the county holds its session.
+6. **Reads the session record.** It gives who came for and against, what each counted for, what the
+   county granted and refused, and a reason for every reached household that stayed home.
+7. **Reads next period's receipts.** They show which lines were paid, which positions gained and
+   which paid.
 
-The player's real choices are four. Whom to organize decides who gains. Where the money comes from
-decides who pays, and whether the cost is spread thinly or lands on one office. When the county runs
-short, the choice is whether to ask that the organized be paid first. Every period spent on review
-work is a period not spent on aid.
+### What the first two years look like on the recorded figures
+
+This is a calculation from the recorded figures under the rules of section 7. It is not a recorded
+result.
+
+Suppose the player reaches one household "with earnings, no business ownership, no job-seeker" in
+period 3, and does nothing else at the county. Such a household counts as more than 1 on the figures
+above, so each asks for a whole unit.
+
+| Session | Households in the room for the claim | Relief moved to them, per period | What each unit on the old roll loses |
+|---|---|---|---|
+| 4 | 1 | $280 | less than a cent |
+| 10 | 64 | $17,920 | $0.25 |
+| 14 | 1,024 | $286,720 | $4.00 |
+| 17 | 8,192 | $2,293,760 | $31.96 |
+| 18 | 16,384 | $4,587,520 | $63.92 |
+| 20 | 65,536 | $18,350,080 | $255.70 |
+| 21 | 131,072 | $20,094,200, the whole pot | $280, all of it |
+| 23 to 28 | 417,691, every such household | $20,094,200 | $280 |
+| 29 | The county announces no relief for period 30 | | |
+
+- Through session 17 nobody on the old roll loses as much as $48, so nobody comes to defend it.
+- At session 18 each unit would lose $63.92. Households on the old roll that have been reached start
+  to come. Those with no wage are in the room and count as nothing.
+- From session 21 there are more households in the room than the roll has units, and they share the
+  pot. At session 23 each of 417,691 households is paid $48.11 a period. The job-seekers the pot was
+  for are paid nothing.
+- At session 29 the county holds less cash than its first class costs. It announces a pot of zero.
+  Nobody has anything at stake, and the room empties.
+
+The player can change this course in three ways: by never opening that position, by opening a
+different one, or by reaching households on the old roll before the claim grows. Section 7.7 shows
+how little the third can do once the claim is large.
 
 ### What a new player notices within ten minutes
 
-- The county pays its own offices first and relief second.
-- 58% of relief goes to groups that also have wages.
-- A household comes only when the matter is worth its time, and every absence has a reason: not
-  contacted, nothing at stake, not worth the time, no time, or a better offer.
-- A cost spread thinly brings nobody out to object. A cost that lands on one office brings out its
-  staff.
+- The county pays its own offices and police first, and no claim can touch that money.
+- The county counts a household by the wage tax it pays. A household with no wage counts as nothing,
+  whether it is in the room or not.
+- A household comes only when the matter is worth its time, and every absence has a reason.
+- Relief won lasts only while the households keep coming.
+- One contact becomes two households, then four, then eight.
+- The aid partners can feed four households a period, and the ones who turn out for the food are on
+  its roll.
 
-## 3. Goals, non-goals and anti-goals
+## 4. Goals, non-goals and anti-goals
 
 **Goals**
 
-1. Any Wayne household that a body reaches makes a real decision from its own accounts, and a
-   receipt explains it. Households nobody reaches are counted as such.
+1. Any Wayne household that has been reached makes a real decision from its own accounts, and a
+   receipt explains it. Households nobody has reached are counted as such.
 2. The player has one consequential decision each period and sees the answer the next period.
-3. Other organizations act on the same rules as the body the player leads. None is weakened or
-   strengthened by hand.
-4. Class position is read from accounts. MIM's reading is shown as a reading.
-5. Membership becomes a record that only a household's own act can write.
-6. Every rule is exact and repeatable: whole numbers, no random draws, no tuned cut-offs.
+3. The county is an actor with an interest of its own. It protects its first class, and it counts
+   those who pay in.
+4. Class position is read from accounts. MIM's reading is shown as a reading. With nation absent,
+   nothing in this slice is presented as MIM's base.
+5. A body's roll is written only by a household's own hours: at the county's session, or on a food
+   run.
+6. Every rule is exact and repeatable: whole numbers and exact fractions, and no random draws.
 
 **Non-goals for this slice**
 
-- Mass turnout. Organizing spreads only as fast as organizer hours allow. Section 6.7 gives the
-  reason.
-- Labor-force choices (keep looking, stop, start). Slice 2.
-- Nation, legal status and the wage-against-value term on household groups. Slice 2.
-- Solidarity, consciousness, hardening of class position, and the failure-mode readings.
-- Tax motions, elections, other counties, coalition motions between bodies.
+- Rival organizers. Only the player's organizer opens a new position.
+- Production by an organization: a kitchen or garden staffed by members' hours.
+- Labor-force choices (keep looking, stop, start).
+- Nation, legal status and the wage-against-value term on household groups.
+- Solidarity, consciousness, hardening of class position, and the failure-mode readings. No
+  household acts for another's gain.
+- Businesses as a body at the county, tax motions, elections, other counties.
 
 **Anti-goals: the slice has failed if it contains any of these**
 
 - An approval bar, a mood meter or a heat map standing in for a decision.
 - A class label that is assigned by hand and then drives behavior.
-- Membership, agreement or consciousness inferred from aid, service use or a shared income source.
+- Membership, agreement or consciousness inferred from receiving aid, from service use or from a
+  shared income source.
 - An individual person simulated as an agent.
-- An outcome decided by a label, or a rival made weaker or stronger by hand.
+- An outcome decided by a label or by the order of identifiers.
+- A claim that reaches the money for the county's offices or police.
 - A county that is only a scorekeeper with no accounts of its own.
 - The game commenting on the player's line while play is under way.
-- A rival that carries a real organization's name.
+- A body that carries a real organization's name.
 
-## 4. Rules this design must obey
+## 5. Rules this design must obey
 
 | Rule | Source |
 |---|---|
-| Households are the smallest deciding unit. Groups are counted budget cohorts, "not source household counts or person agents" | ADR269 |
+| Households are the smallest deciding unit. Budget groups are a Designed allocation of county totals. They are not counts taken from a source, and not person agents | ADR269; ADR298 |
 | "Partitions such as class position, core and periphery, or political alignment must emerge from composed material relations at a declared scale. Any claimed partition must include an invariance proof under its declared coarse-graining." | Constitution Article II |
-| "An actor's material position and conceived interest remain distinct dimensions." | Constitution Article II |
-| "aid itself creates no agreement, membership, consciousness or worker-hours." Agreement is "a separate explicit relation" | ADR270 |
+| "An actor's material position and conceived interest remain distinct dimensions. Their gap is a terrain of political struggle." | Constitution Article II |
+| "All material effects become next-period intents and enter only the next four-week causal interval." | Constitution Article III |
+| "aid itself creates no agreement, membership, consciousness or worker-hours." | ADR270 |
 | "A shared income source provides no evidence that residents belong to a single political organization." | ADR299 |
 | The player is not the state and cannot legislate | Game Design Standard §2 |
-| The player's choices are a closed list. ADR299 added the hearing invitation by ruling. One practice executes per organization per period, and old formats get no compatibility path | ADR262; ADR299 |
-| Choices are a rank order under a budget. No threshold constant and no response curve | ADR184; AGENTS.md |
+| "One practice executes per organization per period." Old formats get no compatibility path | ADR262 |
+| An organization owns its budget. It ranks what it could do "by yield per unit spent" and funds "down the list until the money runs out". What it declines is recorded with the shortfall | ADR184 |
+| "The first state opponent must have its own authority, objective, resources, and partial knowledge". A state actor gets no "heat scalar, primitive or fixed political-response curve" | ADR291 |
+| "A rule cannot impose a sigmoid or a second fixed response curve." | AGENTS.md; ADR172 ruling 5 |
+| New content vocabulary needs "the applicable Director ceremony, schema and conformance updates, and a recording ADR". It needs no amendment | Constitution Article VIII |
 | Counts are split exactly, by largest remainder with a fixed tie order | staffing precedent (`proportional_shares`) |
 | Random draws only through a finite kernel with a receipt | ADR248 |
 | Sums are preserved when counts are pushed to a coarser scale | ADR296 |
-| Attributed membership is ratified, but its payload is "Carried, empty, unhashed" and adding fields is a separate Director act | ADR189; ADR198 R4 |
-| "Structure is the premise; magnitudes are earned." What the player knows never enters the turn's hash | ADR182 R2 |
-| Every value is Observed, Derived, Calibrated or Designed, and says which | Game Design Standard, v4 addendum |
+| Attributed membership is ratified, but its payload is empty, unhashed and unread, and filling it is a separate Director act | ADR189; ADR198 R4; PER-44 |
+| "STRUCTURE IS THE PREMISE; MAGNITUDES ARE EARNED". What the player knows never enters the turn's hash | ADR182 R2 |
+| Every value is Observed, Derived, Calibrated or Designed, and says which | Constitution Article IV |
 | "Any line is playable — including wrong ones — and the sim never editorializes mid-run." | Game Design Standard §2 |
-| The game is proved by play, and every construct has a writer, a reader and a witness | Game Design Standard §6 and §9 |
-| New decision rules get a rule entry with a role, an evidence class and an attribution row | AGENTS.md; `GOVERNED_RULE_ATTRIBUTIONS` |
+| Every construct has a writer, a reader and a sentinel. A construct that lacks one gets a recorded disposition | Game Design Standard W.1, W.2 |
+| Every view states its decision question, signals, fog, actions, receipts and Archive links | Constitution Article VII |
+| Claims of emergence are proved with "control and shock twins, counterfactuals, and mutation tests that sever causal links", "deterministic replay, and a direct-write audit" | Constitution Article VIII |
+| The game is proved by play: recorded playthroughs kept as seed, action log and result | Game Design Standard §6 |
 
-## 5. Approaches considered
+## 6. Approaches considered
 
 ### The first slice
 
-- **A. The County Review (chosen).** **[Director]** Who pays for relief. It gives the player a
-  decision in one period and an answer in the next.
+- **A. The County Review (chosen).** **[Director]** Who gets relief, and who decides. It gives the
+  player a decision in one period and an answer in the next.
 - **B. The Labor Ledger.** Who can afford to stop looking for work. It is needed and honest, but no
   organization competes for a group, results build over years, and it adds work to every county's
-  turn. It becomes part of slice 2.
+  turn.
 - **An election first.** Dropped as a first slice. Most groups would have nothing at stake and would
-  abstain, and the repository holds no citizenship data to build the electorate. It becomes slice 4.
+  abstain, and the repository holds no citizenship data to build the electorate.
 
-### Four choices inside A that the engine forced
+### The county's rule
 
-Reading the engine after the Director's choice changed four things. Each is listed with what was
-rejected.
+The Director was shown three rules on 19 November and chose the second. **[Director]**
 
-**How the county decides.**
+- *Defends its own, counts heads.* The author's recommendation. Not chosen.
+- *Defends its own, weighs by tax (chosen).* A household counts by the wage tax it pays. Households
+  that pay nothing in cannot move the county. This is the closest of the three to MIM's "The ballot
+  power of the oppressed is not greater than the financial power of the capitalists." (Appendix B).
+- *Counts heads, with office grants on the table.* The first draft. The county had no interest of
+  its own, and reform always worked.
 
-- *Each household present moves one unit, less the households present against, within what the
-  county's books can carry (recommended).* **[Ruling needed]**
-- *The side with more households present wins a motion for a named amount.* Rejected. The player's
-  organizer reaches about four households a period. Four households could then move a million
-  dollars. Stopping that would need a quorum, which is a tuned cut-off.
-- *Weigh each side by the taxes its backers pay.* The author proposed this on 18 November and
-  withdraws it. MIM's argument is that the majority supports the system because it represents the
-  majority's interests (Appendix B). A tax-weighted county would say the majority wins because the
-  scale is rigged, which is the position MIM rejects.
-- *Move no money in this slice.* Smallest, but the player's decision would have no price.
+### How "weighs by tax" becomes a rule
 
-**Which households have a stake.**
+The ruling says a household counts by its wage tax. It does not say how a count turns into relief.
+Three readings were worked through. **[Call]** **[Record needed]**
 
-- *Treat each of the five large groups as one bloc.* Rejected. Every household in a group would get
-  the group's average. The earning nonowner group has 38,837 units among 1,196,610 persons.
-  Averaging would make the whole group act as if it were on relief. The sign of the average is not
-  the sign for the households concerned, so the grouping fails Article II.
-- *Count stake cells inside each group from the lines that pay its people (recommended).* **[Call]**
-- *Split Wayne's five budgets into real sub-budgets.* Sounder, and the likely home of nation and
-  legal status. It changes the opening economy and needs a rule for splitting every stock. It is
-  slice 2.
+- **Count by share of tax (chosen by the author).** A household's count is its wage tax divided by
+  the average Wayne household's wage tax. A household that pays the average counts as one head.
+  Everything else is the head-count rule the Director was shown: each household in the room moves
+  one unit, less those against. If every household paid the same tax, this would be the head-count
+  rule exactly. It depends on shares of tax, not on amounts, so it still works when wages fall.
+- **Refund.** Each household in the room gets back the wage tax it paid, up to one unit. On 19
+  November the author told the Director the rule would be this one. Worked through, it fails. In the
+  recorded run the largest group's wage tax per household is $401 in period 2, $78 in period 4 and
+  $42 in period 14. Below $48 nobody comes. The review would empty within about a year, with a few
+  thousand households in the room and about 1% of the pot moved. It also ties a relief dollar to a
+  tax dollar, which the ruling did not say.
+- **Rank.** The county fills the roll in order of wage tax paid. Rejected. A household that pays one
+  cent would outrank every household that is absent, and the engine's pooled averages give the
+  no-earner group about a cent a household.
 
-**What kind of proceeding.**
+### Spread
+
+- *Each one brings one (chosen).* **[Director]** The rate is Designed.
+- *Organizer only.* One new household a period. Not chosen.
+
+### Why a household comes
+
+- *Its own money, if worth the time (chosen).* **[Director]**
+- *Its own money, either way.* The author's recommendation. Not chosen.
+- *Not until consciousness is ruled.* It would stop the lane. Not chosen.
+
+### The second road
+
+- *Both roads (chosen).* **[Director]**
+- *County review only, labelled as the reform road.* Not chosen.
+
+### Two choices the engine forced
+
+**Which households have a stake.** **[Call]**
+
+- *Treat each large group as one bloc.* Rejected. Every household in a group would get the group's
+  average. The first group has 38,837 units among 456,528 households. Averaging would make every
+  household in it act as if it held a twelfth of a unit, when in fact some hold a unit and can only
+  lose, and the rest hold none and can only gain.
+- *Count positions inside each group (chosen).* A group's households are split by whether they are
+  on the old roll. Section 7.2.
+- *Split Wayne's budgets into real sub-budgets.* Sounder, and the likely home of nation and legal
+  status. It changes the opening economy and needs a rule for splitting every stock. It belongs to a
+  later slice.
+
+**What kind of proceeding.** **[Call]**
 
 - *Stretch the ADR299 hearing to many seats.* Rejected. The two seats are fixed in ten places in the
-  contract (Appendix A), and the hearing happens once.
-- *Keep the founding hearing as it is and add a recurring review session (recommended).* **[Call]**
+  contract, and the hearing happens once.
+- *Keep the founding hearing as it is and add a recurring session (chosen).*
 
-**How far organizing reaches.**
+## 7. The design
 
-- *Only organizer hours reach households (recommended for this slice).* **[Ruling needed]**
-- *A member household also brings in the households it shares a workplace with.* Truer to how
-  concentrated workers combine, and it would put thousands of households in the room. Section 6.7
-  explains why it should wait.
-
-## 6. The design
-
-### 6.1 The unit and the roll
+### 7.1 The unit, the old roll and the pot
 
 - A **unit** is the county's support for one person for one period. It is one period of food at the
   opening price, which is $280 in Wayne. The engine's own formula sets it. This design adds no
   amount of its own.
-- The **roll** is the set of units the county pays. A **formula unit** is the one the opening gives
-  each job-seeking person. A **won unit** is one a session adds.
-- A household holds at most one won unit, and none if it already holds a formula unit. **[Call]**
-- A motion never names an amount. The households present decide how many units move.
-- County support is paid into a group's pooled budget, as it is today. The engine counts a group's
-  won units. It does not track which household holds one.
+- The **old roll** is the list of units the opening gives each group: one for each job-seeking
+  person. The county keeps this list for the whole run. Every session starts from it.
+- The **first class** is every line on the county's account that is not household support: the
+  provider grants and, in a player's campaign, the City PD's line. No claim, ruling or record in
+  this slice changes a first-class line, the spending limit or a tax. **[Director]**
+- The **pot** is the total of the old roll: $20,094,200 on the recorded figures. The review moves
+  money only inside it. One household's gain is another household's loss. **[Director]**
+- **When the county is short.** After each close the county knows its cash. What it can pay in
+  relief next period is its cash, or its spending limit if that is lower, less its first class. That
+  figure is never below zero and never above the pot. If it is less than the pot, every unit is cut
+  by the same share. **[Call]** Today the engine would pay the support lines one after another in
+  identifier order and leave one of them part-paid. This rule replaces that order for household
+  support only. On the recorded figures the pot is whole through period 29 and zero from period 30,
+  with no period in between.
+- **Relief won is a level, not an addition.** A grant lasts one period. It is paid again only if the
+  households come again. **[Call]**
+- County support is paid into a group's pooled budget, as it is today. The engine counts households.
+  It does not know which household holds a unit.
 
-### 6.2 Sessions
+### 7.2 Positions
 
-- The founding hearing of period 2 stays exactly as ADR299 built it, authored counts included.
-  **[Call]** Rebuilding its two seats on the rules below would touch the contract in ten places for
-  a number that changes nothing in play.
-- The households the scenario records as authorizing each delegate (2 and 3 today) open as members
-  of those two bodies. This is a Designed opening condition. No rule below reads the authored
-  numbers again.
-- Period 3 holds the first review session. Only the bodies that the signed minutes name as speakers
-  may bring a motion to it, as ADR299 requires. If no minutes were signed, the first session is in
-  period 4.
-- From period 4 the county holds one session every period, and any body may bring one motion.
-- A motion stands until its sponsor withdraws it.
+A **position** is the set of households in one budget group that stand the same way toward the roll.
+Each group has two: households **on the roll**, which hold a unit of the old roll, and households
+**off the roll**, which hold none.
 
-### 6.3 Bodies and the county
+- **Counting.** A group has a number of households and a number of units, both held by the engine.
+  Households on the roll are the smaller of the two numbers. The rest are off the roll. This places
+  one job-seeker in each household until households run out. **[Record needed]** The placement is
+  Designed. It decides how many households can defend the roll and how many can claim, so it changes
+  outcomes. The other bound is to stack job-seekers into as few households as possible.
+- The three small named groups are positions of their own: the claimants (2 households, on the
+  roll), the aid partners' households (4, off the roll) and the organization's own households (4,
+  off the roll). Their households do not spill into the large groups they were carved from.
+  **[Call]**
+- Collective residence has persons and no households, by an engine rule. It has no position. Its 772
+  units stay on the old roll and are cut like the rest.
 
-A **body** is an organization that households can stand behind at a session.
-
-| Body | Exists today | In this slice |
+| Position | In plain words | Who stands for it at the county |
 |---|---|---|
-| Wayne Relief Claimants Assembly | Yes, a fixed actor with a captured mandate | The mass body the player leads. The player proposes its motion; reached households decide whether to stand behind it |
-| The aid partners' delegation | Yes, a fixed script | Decides by rule. Its program is its existing claim: "Hear the cases of residents who received no county support." |
-| A public-payroll council | No | A generic body, added in build piece 3. Its program is to object to motions that cost its members wages, and to ask for grants to be restored when they have lost wages. It carries no real organization's name |
-| Wayne City PD | Yes, the state opponent | Unchanged. Its $24 line is not on the motion menu |
-| Wayne County administration | No | New state actor. It rules on motions and pays by its books. It follows the City PD's pattern of configuration, decision receipt and outcome receipt |
+| With earnings, on the roll | A household with a wage and a job-seeker | Claimants' Assembly |
+| With earnings, off the roll | A household with a wage and no job-seeker | Aid partners |
+| No earner, on the roll | A household with no wage and a job-seeker | Claimants' Assembly |
+| No earner, off the roll | A household with no wage and no job-seeker, for example retired or disabled people | Aid partners |
 
-**The player's seat does not change.** The player's organization, the Wayne Organizing Collective,
-is not a body at the session. It leads the assembly: it proposes the assembly's motion and spends
-its own organizer hours on contact. Households join the assembly, which is a mass body. Nobody
-becomes a member of the player's own organization in this slice.
+Each of the four appears twice in the engine, with and without business ownership.
 
-**The player never legislates.** The player proposes to a body, households decide whether to come,
-and the county rules.
+### 7.3 Bodies and the county
 
-**Each body holds at most one motion and one standing objection**, and may not sponsor a motion that
-its own objection covers.
+A **body** is an organization that households can give hours to.
 
-### 6.4 Motions
+| Body | Today | In this slice |
+|---|---|---|
+| Wayne Relief Claimants Assembly | A fixed actor with a captured mandate. Its claim: "Keep current claimants on the relief roll while the county reviews their cases." | Carries the defense of the old roll at every session. Households on the roll stand behind it |
+| Wayne Local Aid Partners | Four households and a fixed script. Its claim: "Hear the cases of residents who received no county support." | Carries the claim at every session. Households off the roll stand behind it. It also runs food with its own hours (section 7.8) |
+| Wayne County administration | Does not exist | New state actor. It announces the pot, counts the room and rules |
+| Wayne City PD | The state opponent | Unchanged. Its line is in the first class |
+| Wayne Organizing Collective | The player's organization | Not a body at the session. Its organizer reaches households |
 
-A motion names three things: the households it speaks for, what each of them asks, and the lines the
-money comes from. The menu is generated from the county's own table of lines.
+- **The two claims stand for the whole run.** No body withdraws or changes its claim in this slice.
+  **[Call]**
+- **Neither body has an organizer of its own.** Only the player's organizer opens a position.
+  **[Call]** So nothing starts at the county unless the player starts it. Section 12 lists this as a
+  risk.
+- **The player never legislates.** The player reaches a household. The household decides whether to
+  come. The county rules.
+- **Nobody joins the player's own organization in this slice.** Households give hours to the two
+  bodies.
+- **Opening reach.** The households the scenario records as authorizing each delegate start as
+  reached: the 2 claimant households, and 3 of the aid partners' 4. **[Call]** This is a Designed
+  opening. No rule reads the authored numbers again.
 
-| Form | Speaks for | Each household that comes asks | Money comes from |
-|---|---|---|---|
-| Enroll | Households of a named group that hold no unit | One unit added to the group's support line | All provider grants in proportion, one named grant, or all household support lines in proportion |
-| Pay first | Households of a named group that hold a unit | Its unit paid in the county's first class, beside its offices | No line changes. When cash is short the cost falls on whatever the county then pays last |
-| Restore | Households with a person employed at a grant-funded site that paid short last period | One unit returned to that site's grant | A named support line |
-| Object (standing) | Households a motion would cost | Nothing. It comes to cancel | |
+**The county administration.** **[Record needed]** It follows the form ADR291 set for the City PD.
 
-Two limits apply. No line may be reduced to zero or below, because the engine requires positive
-amounts. The City PD's line is left alone, because the engine checks that exact row every period.
+| | |
+|---|---|
+| Authority | It rules on the household support lines of Wayne's county-scoped public account. It cannot change a first-class line, the spending limit or a tax |
+| Objective | Pay its first class in full. Keep relief inside the pot. Among households, count those in the room by what they pay in |
+| Resources | The account's cash. Holding a session costs it nothing in this slice **[Call]** |
+| Knowledge | Its own account, the old roll, the wage tax each group paid it, and who is in the room, by position. It does not see who was reached and stayed home, what the organizer chose, or anything hidden |
+| What it cannot do | Arrest, coerce, close a session, change its own rule, or act on anything it has not seen in its own room or its own books |
+| Receipts | A statement of the pot and its cash, a ruling, and the payment receipts the engine already writes |
 
-### 6.5 Who has a stake, and the preview
+The county's rule is fixed for this slice. A county board that can change it is later work.
 
-**The preview.** The preview takes a motion and a number of households. It replays the last closed
-period's county payments, and the payroll of every site whose grant would change, with the motion in
-force at that size. The difference from what really happened is each group's stake in money. It is
-exact for the rules that exist: the county pays its lines in order until its limit or its cash runs
-out, and a site pays each wage member only for the whole hours its cash covers.
+### 7.4 A session, step by step
 
-Four limits are declared on screen. **[Call]**
+The county holds one session each period, after the period's accounts close. Every step runs on
+counts of households and exact fractions.
 
-- It looks at one period.
-- It takes each motion alone.
-- It counts money income only. It does not count county services a household would lose if an office
-  cut its hours.
-- The player sees the preview for the last period the player has seen close. Households decide on
-  the period that has just closed when the session meets. The two agree unless the county's cash
-  position changed in between.
+1. **The county announces its pot** for next period (section 7.1). If the pot is zero nobody has
+   anything at stake, and nothing below happens.
+2. **The county works out each household's count.** For each group it divides the wage tax the group
+   paid this period by the group's households. A household's **count** is that figure divided by the
+   same figure for all Wayne households together. A household that pays the average counts as 1. A
+   household that pays no wage tax counts as 0. If no household paid wage tax, every count is 0.
+3. **The claim.** Households off the roll that have been reached may stand behind the aid partners'
+   claim. Each asks for one unit, or for its count of a unit if its count is below 1. Its stake is
+   the money that would pay it next period. It comes if that is at least the floor of section 7.5.
+4. **The defense.** The county adds up the units asked. If they were granted in full, every unit on
+   the old roll would be cut by the same share. That cut is the stake of a household on the roll.
+   Those that have been reached come behind the Claimants' Assembly if the cut is at least the
+   floor.
+5. **The ruling.** The county adds the counts of the households for, and the counts of the
+   households against. It grants units equal to the difference: never fewer than zero, and never
+   more than were asked. Every line of the old roll is cut by the same share to pay for what is
+   granted. The total does not change.
+6. **The record.** The county publishes the ruling: households for and against in each position,
+   what they counted for, units asked, units granted, and what was refused and why.
+7. **Payment.** The amended lines are paid at the next period's close, by the engine's existing
+   payment step. They hold for that period only. The next session starts again from the old roll.
+8. **The roll and the spread.** Every household that came is on its body's roll for the period. Each
+   brings one more household of its own position, who is reached from the next session (section
+   7.6).
 
-The preview is something the player knows. It is never part of the turn's hash. No estimate is used:
-a grant cut that a site's cash can absorb costs its staff nothing, and the preview says so.
+Three details complete the rule.
 
-**Stake cells.** A group's money stake is exact, but households inside a group differ in which
-county line pays them. The engine holds, for each group, its households, its job-seeking persons,
-and its persons employed through each staffing record. Each session sorts a group's households into
-cells by two questions. Does the household hold a formula unit, a won unit or none? Is one of its
-people employed at a grant-funded site, and which?
+- **Only wage tax counts.** The engine does not tax ownership income. The tax that sites pay gives
+  no household a count. **[Call]**
+- **When the roll cannot hold everyone who asks.** Positions are served in order of count, highest
+  first. In the last position served, only as many households come as can each be paid the floor,
+  and they share what is left equally. Positions with the same count share in proportion to their
+  households. No result depends on the order of identifiers.
+- **When the county grants fewer units than were asked,** the position with the lowest count loses
+  first, and households with the same count lose equally. The receipt records the shortfall for each
+  position.
 
-**The placement rule.** The engine counts persons, not which household each person lives in. This
-slice places one such person per household until households run out, so two of them share a
-household only when they must. This is Designed and declared on screen. It affects how many
-households are counted, never how much money moves. **[Ruling needed]**
-
-**Why this survives merging and splitting.** A cell contains only households paid by the same lines,
-so every household in it has the same sign of stake. Splitting a cell changes no sign. Two cells
-with different signs are never merged.
-
-### 6.6 What a household does
+### 7.5 What a household does
 
 Every rule below runs on counts of households, never on individuals.
 
-| Step | What it reads | What happens | Rule |
-|---|---|---|---|
-| Is it reached? | Section 6.7 | An unreached household does nothing | Bodies decide whom to reach |
-| What is at stake? | The motion, or the preview for its cell | For a sponsor's motion: what the motion asks for the household. For an objection: what the motion would cost the household, previewed at the size the sponsor's own supporters ask | Exact money |
-| Is it worth the time? | The attendance hours and the wage | The household comes only if its stake is at least the attendance hours valued at the wage: 2 hours at $24, or $48 a period today | Derived from two existing numbers |
-| Whom does it stand behind? | The stake under every body that reached it | The body whose position is worth most. On a tie, the body it stood behind last; failing that, the lower body identifier | Rank order |
-| Can it come? | Its group's free hours from the period just closed | Each household present spends the attendance hours. If a group's hours run short, places are shared out and the rest are recorded "no time" | Exact largest-remainder split |
-
-A household that does not come is recorded with one reason: not contacted, nothing at stake, not
-worth the time, no time, or a better offer.
-
-Four limits are declared, and each is the Director's to rule on.
-
-- **A reached household does not free-ride.** A household gains from a motion whether or not it
-  comes. This slice assumes that a household a body has reached treats the matter as its own.
-  **[Ruling needed]**
-- **A household reads only its own money and hours.** No rule here reads solidarity, consciousness,
-  nation or a class label. Nobody comes for someone else's gain. Article II calls the gap between
-  material position and conceived interest "a terrain of political struggle"; this slice models only
-  the first of the two. **[Ruling needed]**
-- **An hour is valued at the going wage for every household**, including a household that cannot
-  sell one. **[Ruling needed]**
-- **A household's own choice is the agreement ADR270 requires** before its hours are consumed.
-  Charging any Wayne household on its own recorded choice needs a new path, because today only
-  households bound to the player's organizer can be charged. **[Ruling needed]**
-
-On the recorded run time is not scarce. The earning nonowner group has 128 million free hours in
-period 2, and the two claimant households have 256. Reach is the scarce thing.
-
-### 6.7 Reach
-
-- **Contact.** A body spends organizer hours to contact households of a named cell. Each contact
-  costs 2 hours, the scenario's existing contact cost.
-- **Standing.** A household that stood behind a body at the last session is reached again at no
-  cost.
-- **Hours.** The player's organization has at most 8 hours a period from each contributor, as it
-  does today. Each non-player body has 8 hours a period. **[Call]**
-- **Non-player bodies choose by rank.** Each ranks the cells it could contact by what its position
-  is worth to a household there, and contacts them in that order until its hours run out. Ties go to
-  the lower identifier.
-
-**What this means for scale.** A body reaches about four new households a period. A session in the
-first year has tens of households in the room and moves thousands of dollars a period, out of a
-county budget of $172 million. The five large groups are on the roster and in the ledger. Their
-households act as they are reached. This slice is small on purpose.
-
-**Why organizing does not spread through workplaces yet.** **[Ruling needed]** The alternative rule
-is that a member household brings in the households it shares a workplace with. That is how
-concentrated workers combine, and it would fill the room. It should wait for two reasons.
-
-- A household here reads only its own money income for one period. At mass scale that rule would
-  have the majority vote the county's office grants into payments to itself, because nothing in this
-  slice counts what households would lose in county services.
-- The county here has no interest of its own. It concedes whatever its books can carry. A county
-  that defends its offices is slice 3 and slice 4 work.
-
-At the scale of organizer hours neither gap can do damage. At mass scale both would decide the game.
-
-### 6.8 How the county rules
-
-At the end of the period the county administration rules on every motion on the table.
-
-1. **It counts the households for.** These are the households present behind the sponsor that the
-   motion speaks for.
-2. **It previews the motion at that size.** That fixes what the motion would cost each cell, and so
-   which reached households come to object.
-3. **It counts the households against.** These are the households present behind a body whose
-   standing objection covers the motion.
-4. **It moves the difference.** If more came for than against, the county moves one unit for each
-   household of the difference, as far as its books allow. If its books allow fewer, the receipt
-   says how many and why. If no more came for than against, nothing moves.
-5. **It takes motions in order of that difference,** larger first, with ties going to the lower
-   motion identifier. Each is ruled on the table as the earlier ones left it.
-
-When cash is short the county pays in its own order, exactly as the engine does today. There is no
-special shortfall rule.
-
-Changes rewrite the table at the end of the period and are paid from the next period's close.
-
-This rule is Designed and provisional until the county board office arrives in slice 4. **[Ruling
-needed]**
-
-### 6.9 Membership
-
-- A household becomes a member of a body by standing behind it at a session and spending the hours.
-  Nothing else writes membership: not aid, not service use, not a shared income source. The two
-  authored opening rolls of section 6.2 are the one exception.
-- A member household that stands behind a different body at a later session moves to that body.
-- A member household that does not come stays on the roll and is shown as absent. No timer expires
-  membership, so there is no lapse threshold.
-- The record for each group and body holds: member households, households present this session,
-  hours spent, periods since joining, and the period's movement (joined, stayed, moved away,
-  absent).
-- A body's strength at a session is the households present, never the size of its roll.
-
-**Where the record lives.** The session receipts are the first home of the roll. They are hashed
-with the rest of the turn's records. Writing the same counts onto the membership links in the graph
-is the hypergraph step the Director asked for. It is its own build piece, because it needs a
-Director act (ADR198 R4 calls adding payload fields "a SEPARATE, LATER CEREMONY") and an accessor in
-the upstream graph library (hypergraph-rs issue 2). **[Ruling needed]**
-
-### 6.10 Class reading
-
-- Each group shows a **livelihood profile**, Derived from its accounts: wages, ownership income,
-  public support, mutual aid, and hours sold, protected, unpaid and free.
-- Each group shows **MIM's reading** as a reading, marked Designed and never shown as Derived. A
-  wage-earning group reads "labor aristocracy (MIM reading; value term pending)". A group with no
-  earner shows its labor counts and is never called "workers". The owner split stays a provenance
-  note, as ADR269 requires.
-- Nation shows as "pending" on every group. **[Ruling needed]**
-- The class reading is displayed. No rule in this slice takes it as an input.
-
-### 6.11 What the player sees
-
-Four views, none of which exists in the client today.
-
-| View | Answers | Source |
+| Step | What it reads | What happens |
 |---|---|---|
-| County ledger | Which lines are paid first, and what went unpaid? | Public budget receipts, which exist |
-| Group roster | Who lives here, how do they make a living, how many units do they hold? | Household period reports, which exist |
-| Who gains, who pays | What would this motion do at this size, and to whom? | The new preview |
-| Session record and membership roll | Who came, for whom, who did not and why, what did the county move, who joined and left? | The new session receipts |
+| Is it reached? | Section 7.6 | An unreached household does nothing |
+| What is at stake? | Its position, the pot and the claim | Off the roll: the money that would pay it next period. On the roll: the money its unit would lose if the claim were granted in full |
+| Is it worth the time? | The session's hours and the wage | It comes only if its stake is at least the **floor**: 2 hours at $24, which is $48 today |
+| Can it come? | Its group's free hours from the period just closed | Each household in the room spends 2 hours. If a group's hours run short, the places are shared between its positions in proportion, and the rest are recorded "no time" |
 
-**Structure is public; magnitudes are earned** (ADR182 R2). The county's lines, the motions and the
-ruling are public record. For a cell the player's organization has not contacted, the views show
-which side of a motion the cell is on but not the amounts or the hours, and state the remedy:
-contact them. **[Call]**
+A reached household that does not come is recorded with one reason: nothing at stake, not worth the
+time, or no time.
 
-### 6.12 State, order in the turn, and where the rules live
+Five things about this rule are stated on screen and in the record. **[Record needed]**
 
-**New records**, all hashed with the turn except the preview:
+- **A household reads only its own money and hours.** No rule reads solidarity, consciousness,
+  nation or a class label. Nobody comes for someone else's gain. **[Director]** Article II calls the
+  gap between material position and conceived interest "a terrain of political struggle". This slice
+  models only the first of the two.
+- **The floor is a step.** **[Director]** It compares two amounts the engine already holds, and has
+  no coefficient of its own. Project law forbids a rule from imposing a second fixed response curve,
+  so the record must name it as a Designed step that the Director chose.
+- **Households in the same position move together.** **[Director]** A household comes because the
+  matter changes its own income, not because its own attendance tips the result. So a household on
+  the roll comes to defend its unit even when it is one of thousands.
+- **A household that counts as nothing still comes.** **[Call]** A household on the roll with no
+  wage loses the same $48 as one with a wage. By the ruling it comes. The county does not count it.
+  The record shows it as "in the room, not counted". The other reading is that it stays home because
+  its coming changes nothing; then the poorest would never appear at the county at all.
+- **An hour is valued at the going wage for every household,** including one that cannot sell an
+  hour. **[Director]**
 
-- the session: motions on the table, each with its sponsor, and each body's standing objection;
-- each body's contacts and the organizer hours spent;
-- each cell's choice: reached, standing behind which body, present, or the reason it did not come,
-  with hours charged;
-- the county's ruling: households for and against each motion, units moved, and what the books
-  refused;
-- the amended table and each group's won units. The engine already stores the table in the turn's
-  state and has room for it to change; nothing writes it today.
+On the recorded run time is not scarce. The first group has 128 million free hours in period 2, and
+the two claimant households have 256.
 
-**Order in the turn.** Posting, contact, choices and attendance run in the organizer step, where the
-hearing runs today, after the period's financial close. The ruling runs in the schedule's reserved
-policy slot, which nothing uses yet. Payment under the amended table happens in the next period's
-close.
+### 7.6 Reach
 
-**Where the rules live.** Each new rule is a thin rule entry that calls a native operation, as the
-organizer and City PD rules do today, with its role, evidence class and attribution row. The numbers
-stay in the scenario's defines file.
+- **The organizer's contact.** The new choice, a review contact, spends the period's two organizer
+  hours to reach one household in a position the player names. It is the same two hours the
+  organizer spends today on a partner organization. Like every practice it is chosen in one period
+  and takes effect in the next. **[Record needed]**
+- **Each one brings one.** **[Director]** Every household that came to a session brings one more
+  household of its own position, who is reached from the next session on.
+- **Bringing one costs two hours.** **[Call]** The household that brings spends 2 hours of its own
+  on it, the same as the organizer's contact. So a household that comes gives 4 hours in the period:
+  2 in the room and 2 bringing the next. The floor still compares the stake with the 2 hours in the
+  room, as the Director ruled.
+- **A reached household stays reached.** It decides afresh each period whether to come. Only
+  households that came bring another. If a group's free hours do not cover the bringing, fewer are
+  brought, and the record says so.
+- **A position cannot grow past its households.** When every household in it has been reached,
+  nobody is brought and no hours are spent on it.
+- **Nothing can be called back.** **[Call]** The player can reach households in another position.
+  The player cannot un-reach a household or stop it bringing the next.
+
+The rate is Designed. The engine's time accounts show far more free hours than organizing uses, so
+they cannot fix how fast it spreads. One contact for two hours is the only rate the scenario already
+has, and this design applies it to every household that came.
+
+### 7.7 The county's count: worked numbers
+
+All three cases use the recorded period-4 figures and a count of 1.24 for a household with earnings
+and no business ownership. That count rests on the household-size assumption in section 3. A
+household with no wage counts 0.
+
+**A small room.** 1,024 households with earnings, off the roll, are in the room for the claim. They
+ask for 1,024 units. Granted in full, that would cut each unit on the old roll by $4.00, which is
+below the floor, so nobody defends. They count 1,270 for and nobody counts against. The county
+grants 1,024 units: $286,720 a period. The first group's line rises from $10,874,360 to $11,005,916.
+The no-earner group's line falls from $7,430,640 to $7,324,614.
+
+**A room with a defense.** 16,384 households ask for 16,384 units. That would cut each unit by
+$63.92, so reached households on the roll come. Suppose 6,000 with earnings and 5,000 with no wage
+are in the room against. The 5,000 count nothing. The 6,000 count 7,440. The claim's side counts
+20,316. The difference is 12,876, so the county grants 12,876 units of the 16,384 asked, and records
+3,508 refused. Had only 2,000 with earnings come against, they would have counted 2,480, the
+difference would have been 17,836, and the claim would have been granted in full: a household that
+counts more than 1 has count to spare.
+
+**A full room.** 131,072 households ask. The roll has 71,765 units. They count 162,529. Every
+household on the roll with earnings, all 38,837, would count 48,158 against. The difference is
+larger than the whole roll, so the county grants all 71,765 units and the old roll is paid nothing.
+Each household in the room is paid $153. When all 417,691 such households are in the room, each is
+paid $48.11.
+
+**What this shows.** Households with a wage and no job-seeker outnumber households with a wage and a
+job-seeker by ten to one. Once the first position moves, the second cannot stop it. Households with
+no wage cannot slow it at all.
+
+### 7.8 The second road: food runs
+
+The Director ruled that a household which gives its own hours to the aid partners' work goes on that
+body's roll, and that receiving aid never does. **[Director]**
+
+**What exists today.** A local aid run moves up to 4 food parcels in a period from the
+organization's own households to the aid partners' 4 households. The giving side spends 2 hours a
+parcel. If the aid partners eat any of the food, the run counts as complete and each side is charged
+2 hours for meeting. Nothing records who took part.
+
+**What this slice adds.** **[Call]**
+
+- On a local aid run, a household of the aid partners may turn out to receive the food and share it
+  out. It gives 2 hours. One household may turn out for each parcel delivered. The 2 hours the aid
+  partners are charged today become the first household's.
+- It turns out only if the parcel is worth those hours to it: the parcel, at the current food price,
+  is worth at least 2 hours at the wage. This is the Director's rule for the county session, applied
+  to food. At the opening price a parcel is $280.
+- A household that turned out is on the aid partners' roll for that period. A household that only
+  received is not. If nobody turns out, the run still delivers, as it does today, and nobody joins.
+- Any of the aid partners' 4 households may turn out. They need no contact, because the body is
+  their own. So this roll cannot pass 4, and each one brings one has nowhere to go on this road
+  until a later slice widens it.
+
+**What limits it.** Food, not hours. The engine moves at most four parcels a run, one run a period,
+and only food the organization's own households have left after they have eaten. In the recorded run
+those households bought 8, 7, 4 and then 0 parcels in the first four periods, and from period 4 the
+shops are empty for everyone. Food runs would stop there. That is the economy running down, not a
+rule of this slice (section 12). The view states how many parcels there are and how many households
+would turn out.
+
+**Why it is this small.** A household in this slice acts only for its own gain, so nobody gives food
+away. The aid partners' road can hand out only what the organization's own four households can
+spare. MIM says the same of charity as a strategy (Appendix B). What would let this road grow is
+production: a kitchen or a garden staffed by members' own hours, whose output goes to those who
+worked. The engine has no site owned by an organization today. Section 11 puts that first among the
+next slices.
+
+**The aid partners' roll has two parts,** shown apart: households that came to the county session
+behind its claim, and households that turned out on a food run. On the recorded figures the first
+part can reach hundreds of thousands of households with a wage. The second cannot pass four
+households with none. The view shows both numbers and says nothing more.
+
+### 7.9 Rolls
+
+- A household is on a body's roll for a period if it gave its own hours to that body's work in that
+  period: 2 hours in the county's room behind the body's claim, or 2 hours on a food run. Nothing
+  else writes a roll: not receiving aid, not service use, not a shared income source, not being
+  reached. **[Director]** **[Record needed]**
+- A roll is a level. It is written afresh every period, from that period's hours.
+- Three things read the session's part of it. The spread reads who came, to reach the next
+  households. The county's count reads who is in the room. The views show it. The food run's part is
+  read by the hours charged for the run and by the food run view.
+- For each body, position and period the record holds: households on the roll, how they came to be
+  on it (session or food run), hours given, what the county counted them for, and households
+  brought.
+- A body's strength in the county's room is the count of the households in the room. The size of its
+  roll is not its strength.
+
+**Where the record lives.** The session records are the first home of the rolls. They are hashed
+with the rest of the turn's records. Writing the same counts onto membership links in the graph is
+the hypergraph step the Director asked for: a body is one link over many positions, with the
+households and hours on it. That step waits on two things outside this slice: the Director's act to
+fill the membership payload (ADR198 R4; PER-44) and an accessor in the upstream graph library
+(hypergraph-rs issue 2). Until then the graph payload is recorded as blocked on those two, which is
+the disposition the Game Design Standard requires. **[Record needed]**
+
+### 7.10 Class reading
+
+- Each position shows a **livelihood profile**, Derived from its group's accounts: wages, ownership
+  income, county support, mutual aid, and hours sold, owed at home and free.
+- Each position shows **MIM's reading** as a reading, marked Designed and never shown as Derived.
+  **[Record needed]**
+  - With earnings: "labor-aristocracy or higher (MIM's default reading; value and legal-status terms
+    pending)".
+  - With business ownership: the same line, with "holds business ownership" and the ownership income
+    shown beside it.
+  - No earner: "no earner in the household; includes retired, disabled and dependent people. MIM's
+    reading needs nation and legal status, which are pending."
+- No position is called "workers", "proletariat" or "the base".
+- Nation shows as "pending" on every position.
+- One line is on screen in every view of this slice: "This slice has no nation, no solidarity and no
+  consciousness. Households act on their own money only." **[Director]**
+- The class reading is displayed. No rule in this slice takes it as an input.
+- Nothing in this slice is presented as MIM's base. MIM holds that "The principal contradiction
+  inside the U$A is nation.", and nation is not in the slice.
+
+### 7.11 What the player sees
+
+Each view is a decision surface and carries the contract Article VII requires.
+
+| View | The question it answers | What it shows | What the player can do from it | What comes back |
+|---|---|---|---|---|
+| County ledger | Is there relief money to move, and for how long? | The lines in pay order, the pot announced for next period, the county's cash, what went unpaid | Nothing directly | Next period's payment receipts |
+| Roster | Who lives here, how do they make a living, and where do they stand toward the roll? | Each position's livelihood profile, class reading, units, and, where earned, its count and how many are reached | Choose a position for a review contact | The contact's receipt |
+| Preview | What would the next session do if I reached one more household here? | Who would come, for and against, what they would count for, what the county would grant, who would pay | Confirm or cancel the contact | The session record |
+| Session record and rolls | Who came, who was counted, who stayed home and why, and what did the county do? | The ruling, each position's choice and reason, each body's roll in its two parts | Nothing directly | Next period's receipts |
+| Food run | How many parcels are there, and who would turn out? | Parcels the organization can spare, households that would turn out, last run's roll | Choose a local aid run | The run's receipt |
+
+**What is public and what is earned** (ADR182 R2). **[Call]**
+
+- Public record: the county's lines, the pot, the county's cash balance, the two claims, the old
+  roll by group, and every ruling.
+- Earned: a position's count, its stake and how many of its households are reached. The player sees
+  these only for a position where the player has made a contact. For any other position the views
+  show its name and its profile, and state the remedy: reach a household there.
+- The preview is something the player knows. It is never part of the turn's hash. It uses the last
+  period the player has seen close, and says so. The session itself uses the period that has just
+  closed, so the two can differ if wages or the county's cash moved in between.
+
+### 7.12 State, order in the turn, and where the rules live
+
+**New records,** all hashed with the turn except the preview:
+
+- the county administration's configuration and the old roll it keeps;
+- for each position and each side: households reached;
+- for each session: the pot, each group's count, each position's choice with its reason and hours,
+  the ruling, and what was refused;
+- the amended support lines for the next period;
+- each body's roll for the period, in its two parts;
+- the organizer's review contact and its receipt.
+
+**Order in the turn.** The period's accounts close. The organizer's practice resolves, which is
+where a review contact lands and a food run completes. Then the session runs: household choices,
+hours, the count and the ruling. The amended lines are paid in the next period's close. The engine
+already stores the support lines in the turn's state and accepts new and changed lines; nothing
+writes them today.
+
+**Where the rules live.** Each new rule is a rule entry that calls a native operation, as the
+organizer and City PD rules do, with its role, its evidence class and its attribution row. The
+engine's list of native operations is closed, so the session needs a new one. Its allowance and
+attribution rows arrive with the code, not before. The numbers stay in the scenario's defines file.
 
 **Evidence classes.**
 
-- Observed: group persons and households.
-- Derived: the unit ($280), the worth-the-time floor ($48), stakes, cells, the livelihood profile,
-  counts present.
-- Designed: one session each period; the unit as the measure of what the county concedes; one won
-  unit per household; valuing an hour at the wage; no free riding; the placement rule; non-player
-  bodies' 8 hours; tie orders; the county's ruling rule; the two opening rolls; the MIM reading
-  text. The attendance hours and the contact hours are existing Designed values.
-- Calibrated: none.
+- Existing Designed values that this slice reuses: the unit ($280), the session's 2 hours, the
+  contact's 2 hours, the $24 wage, the 15% wage tax, the budget groups themselves.
+- Derived: wage tax per household, the count, the pot, stakes, the cut to the old roll, rolls.
+- New Designed rules, each needing a record (section 8): the fixed pot; counting by share of wage
+  tax; one unit at most for a household; netting those for against those against; cutting the old
+  roll by one share; one session a period; the floor; households in a position moving together; each
+  one brings one, at 2 hours; one job-seeker to a household; the equal cut when the pot is short;
+  rolls by own hours; turning out on a food run; the opening reach; the class text.
+- Observed: none directly. Calibrated: none.
 
-### 6.13 Quantities that must balance
+### 7.13 Quantities that must balance
 
-- For each group and session: households reached = households standing behind some body + households
-  that declined, each with a reason. Standing behind = present + no time. Unreached households are
-  untouched.
-- Hours charged = households present x attendance hours, and never more than the group's free hours.
-- For each motion: for and against are sums of households present, never written-in numbers.
-- Units moved = the smaller of (for less against, or zero) and what the books allow.
-- Money: units moved x the unit leaves the source lines and enters the target line, to the last
-  millionth. The total of the table does not change.
-- Every line stays above zero, and the total is no higher than the spending limit.
-- A group's won units are never more than its households that hold no formula unit.
-- For each body: members next session = members + joined - moved away, and never more than the
-  households in the group.
+- For each position and session: households reached = households that came + households that stayed
+  home, each with a reason. Unreached households are untouched.
+- Hours charged = 2 for each household that came, plus 2 for each household brought. They are never
+  more than the group's free hours.
+- Counts for and against are sums over households in the room. No number is written in.
+- Units granted = the difference of the counts, held between zero and the units asked. Units asked
+  are never more than the old roll holds.
+- Money: what is granted leaves the old roll's lines by one common share and enters the lines of the
+  positions that asked. The lines sum to the pot the county announced, to the last millionth.
+- The pot the county announces equals the support it then pays. No first-class line, limit or tax
+  differs from a run with no sessions.
+- Households reached in a position are never more than its households. Positions of a group sum to
+  the group's households.
+- A roll is never more than the households that gave hours that period.
 - Persons, employment and the household lifecycle are untouched.
 - No random draw anywhere. The same inputs give the same receipts and the same hash.
 
-## 7. Rulings needed
+### 7.14 Why the grouping survives splitting and merging
 
-Each needs a decision record. The recommended answer is the author's.
+Article II asks for a proof that a grouping does not change the result. The declared scale is the
+county. The declared grouping is the position: budget group by whether a household is on the old
+roll.
 
-| # | Question | Recommended answer |
-|---|---|---|
-| 1 | By what rule does the county decide? | Each household present moves one unit, less the households present against, within what its books can carry. Provisional until the county board office |
-| 2 | May a county review session change the county's budget lines? ADR299 says "The county's ordinary fiscal accounts continue to determine payments." | Yes, through a record that partly supersedes ADR299: only the county administration's ruling changes a line, only within the spending limit, only through a motion on the table |
-| 3 | What does a household's choice read? | Only its own money and its own hours. No solidarity, consciousness, nation or class term in this slice |
-| 4 | When does a reached household come? | When its stake is worth at least the attendance hours at the going wage ($48 today). It does not free-ride |
-| 5 | How far does organizing reach? | Organizer hours only in this slice. Spread through workplaces waits until households count lost services and the county defends its offices |
-| 6 | May any Wayne household be charged attendance hours on its own recorded choice? | Yes. The choice receipt is the independent agreement ADR270 requires |
-| 7 | May the organizer gain one new choice, review work? | Yes, by a record in the manner of ADR299. It is one practice in the period, in place of aid or inquiry |
-| 8 | May a household's own act write membership, and will the Director open the payload ceremony in this lane? | Yes to both. Fields: member households, households present, hours, periods since joining, movement |
-| 9 | How are persons placed into households when cells are counted? | One per household until households run out, declared on screen. Stacking them into as few households as possible is the other bound |
-| 10 | What class text and nation text appear on screen? | "labor aristocracy (MIM reading; value term pending)", marked as a reading; nation "pending". Naming the settler nation (ADR171 open question 8) can wait for slice 2 |
-| 11 | Approve the Designed values of section 6.12 and the generic public-payroll council | As listed |
+- **Splitting changes nothing.** Every figure a rule uses is the same for each household in a
+  position: its count, what it asks, what it would lose. Every total is a sum over households. So if
+  a position is split into parts in any way, each part makes the same choice, the sums are the same,
+  and the ruling, the lines and the rolls are the same. Money is rounded once, for each support
+  line, after the sums.
+- **Merging two positions changes the result.** Households on the roll can only lose from the claim,
+  and households off it can only gain. Averaged together they would act on a stake neither has. That
+  is why the grouping cannot be coarser.
+- **Relabeling changes nothing.** No rule orders positions or groups by identifier.
+- **The limit of the proof.** It holds for the accounts the engine has. A budget group is itself a
+  Designed allocation, and households inside it may differ in ways the accounts do not show. Finer
+  groups are later work.
 
-## 8. Build order and proof
+Section 9 turns these four statements into tests.
 
-The slice is larger than the sketch the Director chose from. The engine has no recurring proceeding,
-no attendance by households the organizer has not bound, no change to a budget line after the
-opening, and no organization that decides besides the player. Each piece below can be played or
+## 8. Decision records needed
+
+The Director has made the five decisions in section 2. Project law requires each to be written into
+a decision record before it is built, and several of the author's calls need the same. The plan will
+say how many records these become. The list is what must be decided and written down.
+
+| # | Subject | What the record must say | Why it needs a record |
+|---|---|---|---|
+| 1 | The county administration, a second state actor | Its authority, objective, resources and knowledge, as in section 7.3. Only its ruling changes a household support line. The first class, the spending limit and taxes are closed to it. This partly supersedes ADR299's sentence "The county's ordinary fiscal accounts continue to determine payments." | ADR291 approved the City PD as "the first state opponent" by name. ADR184 requires a budget to have an owner |
+| 2 | Whether the county's rule is a response curve | The rule is a Designed rule of an institution. It is a sum and a difference with no coefficient. The record must say whether the Director holds it to be outside the ban on a "fixed political-response curve", or grants it as an exception | ADR291; AGENTS.md. Only the Director can say |
+| 3 | How the count is computed | Count by share of wage tax. One unit at most for a household. Those for less those against. The old roll cut by one share. The order when the roll is full | The ruling of 19 November left it open. Section 6 gives the three readings |
+| 4 | The pot when the county is short | Every unit cut by the same share. The county publishes its cash at each session | It replaces the engine's identifier order for household support |
+| 5 | The household's rule | Own money only. The floor, named as a Designed step that the Director chose, with no coefficient. Households in a position move together. A household that counts as nothing still comes. An hour valued at the wage for every household | AGENTS.md: "A rule cannot impose a sigmoid or a second fixed response curve." It also touches the reserved theory line |
+| 6 | Each one brings one | A Designed rate, the Director's. Two hours for each household brought. Nothing can be called back | The same |
+| 7 | Rolls by own hours | A household's own hours, at the session or on a food run, put it on a body's roll for that period. Any Wayne household may be charged hours on its own recorded choice. This amends, for these two acts only, ADR262's "Neither operation writes solidarity, membership" and ADR270's rule on what creates membership | ADR270; ADR262 |
+| 8 | The review contact | A new organizer choice. It is new content vocabulary, so it needs the Director's ceremony, schema and conformance updates and a recording record. The record says how it sits with the nine verbs of ADR177 | Constitution Article VIII |
+| 9 | Placing job-seekers into households | One to a household until households run out, declared on screen | It is Designed and changes outcomes |
+| 10 | The class and nation text on screen | As in section 7.10 | The ideological line is the Director's |
+| 11 | The graph payload | Either "blocked on PER-44 and hypergraph-rs issue 2", or the Director opens the payload ceremony in this lane | ADR198 R4; Game Design Standard W.2 |
+| 12 | Opening conditions | The opening reach of 2 and 3 households. The two standing claims. No organizer for either body | They are Designed |
+
+## 9. Build order and proof
+
+The engine has no recurring proceeding, no action that reaches a household, no change to a budget
+line after the opening, and no state actor that rules on anything. Each piece below can be played or
 checked on its own.
 
 | Piece | What it adds | How it is proven |
 |---|---|---|
-| 1. The ledger and the preview | The county ledger, the group roster, and "who gains, who pays" for motions that draw on support lines. Read-only: no rule and no stored state changes | The preview for a motion at a given size equals the difference between two real closes of the same period, one with the amended table and one without |
-| 2. Review sessions | Recurring sessions, Enroll motions that draw on support lines, contact, household choices, the county's ruling, the amended table, the roll. Bodies: the assembly and the aid partners | The balances of section 6.13 as property tests. Three witness openings that differ only in starting conditions: units moved in full, units cut back by the books, units cancelled by objectors. Replay and reopen give the same hash |
-| 3. Grants on the table | Motions that draw on provider grants, the payroll preview, Pay first, Restore, and the public-payroll council | A draw spread across every grant costs no household $48 and brings no objector. The same draw on one small office does. Nothing in the council's rules differs from the assembly's |
-| 4. Membership in the graph | The roll written onto membership links, with its hash section | The graph counts equal the session receipts every period. The new hash section is absent when empty, so no existing hash moves |
+| 1. The ledger and the roster | The county ledger with the pot and the county's cash. The roster of positions with their counts. Read-only: no rule and no stored state changes | Every figure equals the engine's own receipts. Positions sum to each group's households. No existing hash moves |
+| 2. The session | The review contact, household choices, the count, the ruling, the amended lines, the rolls, the spread, the session record and the preview | The proof list below |
+| 3. Food runs | Turning out, its hours, and the aid partners' second roll | A household that only received is never on the roll. With no food to spare, nobody turns out and the receipt says why |
+| 4. Rolls in the graph | The rolls written onto membership links, with their hash section. Only after record 11 opens it | The graph counts equal the session records every period. The new hash section is absent when empty, so no existing hash moves |
 
-**Play proof for the whole slice.** Three recorded playthroughs from the same seed, each run past
-the period in which the county runs short. They differ only in the player's line: organizing
-no-earner households that hold no unit, organizing earning households, and aid with no motions. They
-must produce three different records that the receipts explain. The tutorial chapter that walks a
-new player through the first session is the acceptance script.
+**The proof list for piece 2.** Each line is a test or a recorded run, written before the code it
+proves.
 
-## 9. Left to the builder
+- **Balances.** Every line of section 7.13 as a property test.
+- **Twins.** The same opening run twice: once with the player's first contact and once without.
+  Without it, every payment equals today's run, and the session records are empty.
+- **The fixed pot.** In every run, with or without sessions, every first-class line, the spending
+  limit and every tax receipt are identical.
+- **The county keeps its word.** In every period the pot the county announced equals the support it
+  paid.
+- **Counterfactuals.** Count every household as 1, and the no-earner positions are granted units:
+  the real count must refuse them. Set the stake one dollar under the floor and one dollar over: the
+  household stays home, then comes. Set the pot to zero: nobody comes.
+- **Sever tests.** Each of these links is cut in turn by a deliberate fault, and a test must fail:
+  wage tax to count; who is in the room to the ruling; the ruling to next period's lines; the lines
+  to the payments; the payment to the stake; coming to the roll; the roll to who is reached next;
+  the contact to who is reached.
+- **Direct-write audit.** Only the county's ruling writes a household support line. Only a
+  household's recorded choice charges its hours. Only the session and the food run write a roll. The
+  scenario writes none of the results.
+- **Replay.** Replaying and reopening a campaign gives the same receipts and the same hash, byte for
+  byte.
+- **The grouping.** Split any position into parts, and every result is the same. Merge the two
+  positions of a group, and the result differs. Relabel every identifier, and every result is the
+  same.
+- **A witness for every outcome.** Each outcome the records can name is reached in at least one
+  committed opening, by changing opening conditions only: granted in full; cut back by the defense;
+  refused outright; shared out because the roll is full; in the room and not counted; not worth the
+  time; no time; no pot; a position with nobody left to reach.
+- **Ceremonies.** Baseline changes carry the required trailer. Schema and conformance contracts
+  change with the code. The allowance and attribution rows for the new operation arrive with it.
 
-- The names and shapes of the new records and of the review-work practice, within ADR262's rule of
-  one practice per period.
-- Whether the county administration is a graph node like the City PD or a register only.
-- How the preview is factored out of the public funding loop and the payroll rule, and whether it
-  replays a whole close or only the parts a motion touches. The proof in section 8 holds either way.
-- How a Pay first unit is stored as a line in the county's first class.
-- Where the four views sit in the client, and the projection that feeds them. Single Wayne reads
-  take 9 to 12 seconds today, so the views need their own projection.
-- Version bumps for the organizer formats.
-- The exact wording of on-screen text, within section 6.10.
+**Play proof for the whole slice.** Four recorded playthroughs from the same seed, each run past the
+period in which the county runs short, each driven through the real client with no screen, and each
+kept as seed, action log and result. They differ only in the player's line: no contact at all;
+opening the claim; opening the claim and then the defense; food runs only. They must give four
+different records that the receipts explain. The tutorial chapter that walks a new player through
+the first session is the acceptance script.
 
-## 10. After this slice
+**Views.** Each view of section 7.11 ships with its decision-surface contract and its links into the
+Archive.
 
-- **Slice 2: who can show up.** Wayne's budgets split into real sub-budgets, so that a cell has
-  accounts of its own. Labor status as a group decision. Nation, legal status and the
-  wage-against-value term on groups.
-- **Slice 3: masses and rivals.** Organizing that spreads through workplaces. Households that count
-  the county services they would lose. Tax motions, where a ratepayers' body can offer the majority
-  a gain paid for by claimants. Opening rolls from observed union membership. The settler reading
-  taken from each organization's record. Coalition motions.
-- **Slice 4: the county board.** An office whose decisions are these same budget lines, a county
-  with an interest of its own, an electorate with its exclusions counted, and "Don't vote, organize"
-  as a playable stance.
-- **Slice 5: beyond Wayne.**
+## 10. Left to the builder
 
-## 11. Known risks
+- The names and shapes of the new records and of the review contact, within ADR262's rule of one
+  practice a period.
+- Whether the county administration is a graph node, as the City PD's agency is, or a register only.
+  ADR184 requires the pot to have an organization as its owner.
+- Whether the order of grants when the roll is full uses the existing allocator, which funds whole
+  candidates, or a version beside it that can divide a position. Either way no result may depend on
+  identifier order.
+- Whether the session is one native operation or two: the households' choices, and the county's
+  ruling.
+- How the county's figure for the pot is made to match the engine's payment step exactly. Section 9
+  holds the proof.
+- How a support line that falls to zero is left out and restored. The engine requires positive
+  amounts.
+- How the 2 hours for turning out on a food run replace the flat 2 hours the aid partners are
+  charged today.
+- Where the views sit in the client, and the projection that feeds them. Single Wayne reads take 9
+  to 12 seconds today, so the views need their own projection.
+- Version bumps. The organizer format is version 12 today and has no compatibility path.
+- The exact wording of on-screen text, within section 7.10.
 
-- **The slice may feel small.** Tens of households and thousands of dollars, beside groups of a
-  million. That is the honest scale of 8 organizer hours. The large groups show on the roster and
-  ledger; they do not yet move as masses.
-- **Rivalry is thin while the county is flush.** Two bodies can offer the same unit, and a household
-  then stays with whoever reached it first. The staff of county offices have no stake until a motion
-  costs them wages worth the time. Opposition appears when a cost is concentrated, and when the
-  county runs short.
-- **Every body opens with almost no members.** That is even-handed and unlike life, where public
-  payroll is already organized. Opening rolls from observed union data are slice 3.
-- **Money is pooled, and may not buy food.** A won unit is paid into the group's pooled budget. In
-  the recorded run about half of every group's food need goes unmet in period 4, in the same
-  proportion in every group, so that shortage is not one that relief money alone would fix. This
-  slice changes who is paid. What the money buys depends on the rest of the economy, and the
-  receipts must report it without flattering the player.
-- **Stakes are short-sighted.** A grant cut that a site's cash absorbs this period may cost wages
-  some periods later, and the one-period preview will not show it.
-- **The cash-short pay order is arbitrary.** When the county is short it pays grant-funded sites in
-  identifier order, each in full, until the cash runs out. Which site's staff lose wages therefore
-  depends on an identifier. This slice previews that rule faithfully and does not change it.
-- **Household counts rest on the placement rule.** Money is exact. Counts of households in a cell
-  are Designed until slice 2.
+## 11. After this slice
+
+- **The kitchen.** A site owned by an organization, staffed by members' own hours, whose output goes
+  to those who worked. This is what lets the independent road grow past four households. It needs a
+  production rule and the Director's rulings on it.
+- **Who can show up.** Wayne's budgets split into real sub-budgets, so that a position has accounts
+  of its own. Labor status as a group decision. Nation, legal status and the wage-against-value
+  term.
+- **Rivals and masses.** A second organizer that opens positions for itself. Businesses as a body at
+  the county, counted by the tax their sites pay. Organizing that spreads through workplaces.
+  Opening rolls from observed union membership.
+- **The county board.** An office that can change the county's rule, an electorate with its
+  exclusions counted, and "Don't vote, organize" as a playable stance.
+- **Beyond Wayne.**
+
+## 12. Known risks
+
+- **The recorded economy runs down.** In the recorded run food is off the shelves from period 4.
+  Wages in the largest group fall from $1,221 million in period 2 to $238 million in period 4 and
+  $129 million in period 14. The county is short from period 30. This slice reads the engine's
+  accounts and will be only as alive as the economy is. Relief money moves, but from period 4 it
+  buys little, and food runs stop when the organization's households have nothing to spare.
+  Repairing the economy is outside this slice.
+- **Nothing starts unless the player starts it.** No rival opens a position. A player who leaves the
+  county alone sees the old roll paid unchanged until period 30. The harm the claim does to the old
+  roll is harm the player chose.
+- **Once large, the claim cannot be stopped.** Section 7.7. The defense matters in a narrow window.
+  This follows from the Director's rulings and the sizes of the groups, and it is what the slice
+  shows. It also leaves the player one large decision at the county, not a contest every period.
+- **The first year is slow.** One household becomes 8,192 over fourteen sessions. The player can
+  watch the room double each period, but little money moves until late.
+- **The second road is capped at four households,** and in the recorded run it ends by period 4
+  (section 7.8).
+- **Households that count as nothing keep coming.** By the rule they come every period that the
+  matter costs them $48, and it changes nothing for them. Section 7.5 gives the other reading.
+- **Counts rest on a placement rule and on household numbers the recorded files lack.** The worked
+  figures use an assumption for three of the four large groups. The engine holds the real numbers.
+- **Money is pooled.** A grant is paid into a group's budget. The engine cannot say which household
+  received it. Every figure for a household is a figure by count.
+- **The preview can be one period stale.**
+- **The county's rule may be read as a response curve.** Record 2 in section 8 must settle it before
+  anything is built.
 - **Turn time.** A national turn already takes 7 to 19 seconds, with a budget of 30. The Wayne-only
   work is small, but it has not been measured.
-- **The recorded figures come from one seed.**
+- **The recorded figures come from one seed and an older world format.** That run has no City PD and
+  no claimant group. A player's campaign has both.
 - **The format has no compatibility path.** Changing the organizer records resets saved campaigns,
   as ADR262 intends.
 
 ## Appendix A: Engine facts
 
-Verified by the author by reading the code or the recorded data:
+**Read by the author in the code or the recorded data.**
 
-- County payments: for each public account the limit is the lower of the spending limit and cash
-  above the floor, and each line is paid the lower of its amount and what remains, in list order
-  (`rust/crates/babylon-material-circuit/src/financial/close.rs:100-134`).
-- Payroll under scarce cash: a wage member attends the lower of planned hours and the whole hours
-  the site's cash covers, and is paid at once
-  (`rust/crates/babylon-material-circuit/src/payments/attendance.rs:365-388`).
+- County payments: for each public account the amount available is the lower of the spending limit
+  and the cash above the floor. Each line is paid the lower of its amount and what remains, in list
+  order (`rust/crates/babylon-material-circuit/src/financial/close.rs:100-134`).
 - Household support is job-seeking persons times one period of food at the opening price
   (`rust/crates/babylon-persistence/src/national_economy/opening/financial.rs:126-145`).
-- A staffing member is a part of a household group with a labor force that is the sum of its
-  employed and job-seeking persons
-  (`rust/crates/babylon-material-circuit/src/staffing/members.rs:15-116`).
-- The household flow holds opening and closing households for each group
-  (`rust/crates/babylon-persistence/src/observer_reader/household.rs:82-83`).
-- Scenario numbers (`content/scenarios/national/defines.toml`): wage $24 an hour; wage tax and
-  operating-income tax 15%; `contributor_hours_cap = 8`; `contact_hours = 2`; the hearing's
-  `attendance_hours = 2`, period 2, review period 3, authorizing households 2 and 3.
+- The engine's state holds households and persons for every budget group. An ordinary group must
+  have at least one household. A collective residence must have none
+  (`rust/crates/babylon-material-circuit/src/recurring/model.rs:23-45`).
+- The allocator of ADR184 ranks whole candidates by yield per unit of cost and records each one it
+  could not afford with what was left (`rust/crates/babylon-graph/src/capacity.rs`).
+- Scenario numbers (`content/scenarios/national/defines.toml`): wage $24 an hour; wage tax 15%; one
+  period of food support; `contact_hours = 2`; `contributor_hours_cap = 8`; aid of at most 4 parcels
+  at 2 hours each; the hearing in period 2, the review in period 3, `attendance_hours = 2`,
+  authorizing households 2 and 3; the two claims quoted in section 7.3.
 - The player's choices are `Inquiry`, `Collect`, `LocalAid`, `RemoteAid`, `Reinforce`, `Hold`,
   `PauseStanding`, `ResumeStanding` and `InviteToHearing`
-  (`rust/crates/babylon-practice-contract/src/organizer/types.rs:121-131`).
-- The City PD line is `AMOUNT = 24_000_000` millionths, in the first class, and raises the limit of
-  the public account it is attached to by the same amount
-  (`rust/crates/babylon-persistence/src/national_economy/city_pd.rs:25`, `:197-258`). The recorded
-  limit above is exactly the sum of the two lines shown, so it does not include that line.
-- The Game Design Standard's v4 addendum lists "Article V vocabulary authority status: superseded"
-  (`docs/superpowers/specs/2026-07-29-game-design-standard-design.md:34`).
-- Recorded data, all from campaign `5efafb84`, seed 319, in
-  `reports/economic-flows-qualification-2026-11-14-assets/`: the county's figures
-  (`wayne-public-allocations.json`); group persons, support, wages and unmet food at period 4
-  (`wayne-p4-households.json`); free hours of the earning nonowner group at period 2
-  (`wayne-household-period-2-v10.json`). Units were computed with `python3 -I` as
-  `household_income_support_micros / 280000000`; every quotient is a whole number and they sum to
-  71,765. Unmet food is 50.8% of persons in each of the five large groups.
-- The claimant and aid-recipient figures come from `wayne-hearing-three-choices.json` in the same
-  directory, which names no campaign.
+  (`rust/crates/babylon-practice-contract/src/organizer/types.rs:121-131`). The organizer format is
+  version 12.
+- Recorded data, campaign `5efafb84`, seed 319, in
+  `reports/economic-flows-qualification-2026-11-14-assets/`: the county's lines, cash and first
+  unfunded period (`wayne-public-allocations.json`); group persons, support and wages at period 4
+  (`wayne-p4-households.json`); the first group's households and its wages at periods 2 and 14
+  (`wayne-household-period-2-v10.json`, `national-demographic-financial-horizons-v10.json`). Units,
+  wage tax and every figure in sections 3 and 7.7 were computed from these with `python3 -I`.
+- The claimant and aid figures come from a second recorded campaign, `e841f4b2`.
 
-Reported by five read-only readers on 18 November 2026 and not all re-read by the author:
+**Reported by read-only readers on 18 and 19 November 2026, and not all re-read by the author.**
 
-- The hearing's two seats are fixed in ten places in
-  `rust/crates/babylon-practice-contract/src/organizer/hearing.rs` and its callers. One hearing per
-  campaign. The review only writes a record.
-- Only a household bound to the organizer and listed in a participant's commitments can be charged
-  hours (`rust/crates/babylon-tick/src/material_world/organizer_time.rs`).
-- The organizer contract has one controlled actor and fixed partners with scripted responses.
-- Provider grants go only to public administration sites, are set once at the opening, and reach a
-  site before payroll in the same close.
-- No code changes a budget line after the opening. The City PD check requires its exact row every
-  period.
-- The only state actor today is the City PD. No county administration exists.
-- The schedule has reserved slots named electoral and policy that no rule uses
-  (`rust/crates/babylon-tick/src/phase_order.rs`). The organizer step runs after the period's
-  financial close.
+- The organizer has 2 committed hours a period. No existing operation contacts a household.
+- Every household group pays wage tax at 15% on wages accrued in the period, out of the cash it has
+  left. Ownership income is not taxed. Sites pay a separate tax on operating income. All of it goes
+  into the one county account that pays grants, support and the City PD.
+- Tax receipts are written each period and can be read by an operation that runs after the close in
+  the same turn. They are not kept in the turn's state afterwards.
+- The engine accepts a new household support line, and a changed amount on an existing one, as long
+  as the amount is positive. Nothing checks support against job-seekers after the opening. A changed
+  line takes effect at the next close.
+- When cash is short, lines are paid one after another in list order and one is part-paid. In the
+  recorded run the grants take all the cash from period 30 and household support is paid nothing.
+- The City PD's contract, its native operation and its allowance and attribution rows, as the form
+  for a second state actor. No record bars a second one.
+- The engine's native operations are a closed list of four.
+- Local aid: food comes from the giving households' own surplus, at most 4 parcels a run and one run
+  a period, at 2 hours a parcel. The aid partners in the engine are four households with a script.
+  They have no site, no stock and no roll.
+- The food shortage from period 4 is a shortage on the shelves. The largest group had money for
+  every parcel it asked for, and the shop delivered 23.
+- The hearing's two seats are fixed in ten places. One hearing per campaign. The review only writes
+  a record.
 - The membership payload is an empty marker. The upstream gap is hypergraph-rs issue 2.
-- The client has no ledger, roster or membership view.
-- Turn times and Wayne read times are in `reports/economic-flows-qualification-2026-11-14.md`.
+- The client has no ledger, roster or roll view.
 
 ## Appendix B: MIM's line on the points this design leans on
 
-All from the fact-checked findings in `docs/gameplay/research/40-class-agents-evidence.jsonl`.
+All from the fact-checked findings in `docs/gameplay/research/40-class-agents-evidence.jsonl`. Each
+quotation is exact.
 
-- The majority backs the system because it pays them: "The majority of white Amerikans support or
-  participate in the electoral system." (finding mim F15)
+- Money outweighs numbers: "The ballot power of the oppressed is not greater than the financial
+  power of the capitalists." (mim-on-other-lines F10). This is the ground for a county that counts
+  by what a household pays in. The capitalists themselves are not a body in this slice; section 11
+  names that gap.
+- On the white majority and elections: "The majority of white Amerikans support or participate in
+  the electoral system." (mim F15). MIM is speaking of the white majority, not of all households.
 - Small local wins are possible: "It is possible that in elections to city hall, some small battles
   can be won locally" (mim F14).
-- Public payroll anchors the labor aristocracy: "the government sector is the ultimate expression of
-  the imperialists' loyalty to the oppressor nation working class" (mim-class-structure MC-21).
+- On public payroll: "In some ways, the government sector is the ultimate expression of the
+  imperialists' loyalty to the oppressor nation working class, since it is difficult to ship
+  government service jobs overseas." (mim-class-structure MC-21). This is the ground for a county
+  that pays its own offices first.
+- Who counts as labor aristocracy: "salary and wage-receiving people within U$ borders are
+  labor-aristocracy or higher, unless they are undocumented." (mim-class-structure MC-02). Legal
+  status is not in this slice, so the text on screen says the term is pending.
+- Which way they go: "Conditions determine which way they go as a group, and in imperialist
+  countries today their material interests are allied with the bourgeoisie" (mim-practice F09).
 - What the majority wants back: "They just want their goodies back like in the old days of
-  imperialism." (mim-on-other-lines F05)
-- Reform at its most effective: "it turns the oppressed into oppressor instead of abolishing both"
-  (mim-class-structure MC-24).
-- The main danger: "This 'right opportunism' is the main danger in the party-building process in the
+  imperialism." (mim-on-other-lines F05).
+- Reform at its most effective: "The work of social-democrats never succeeds, but when it is most
+  effective it turns the oppressed into oppressor instead of abolishing both" (mim-class-structure
+  MC-24).
+- What reform work teaches: "Revolutionaries work on reforms because some do improve the lives of
+  people on a small scale, yet more often our work on reform battles further confirms that reforms
+  do not work" (mim-practice F18).
+- The main danger: "This "right opportunism" is the main danger in the party-building process in the
   world." and "if you're an organization in the First World and have a large following you stand for
-  bourgeois ideals." (mim-practice F21)
-- Relief is subordinate: MIM "believes that as a strategy charity can never provide more than
-  temporary and limited relief." (mim-practice F07)
-- People nobody has organized do not act: "They cannot represent themselves, they must be
-  represented." (Marx, Eighteenth Brumaire ch. 7, quoted in research note 40, section 4)
+  bourgeois ideals." (mim-practice F21).
+- The principal task: "The principal task is to "create public opinion and the independent
+  institutions of the oppressed to seize power." That means discrediting the state as it exists."
+  (mim-practice F01). This is the ground for the second road.
+- Relief is limited: MIM "believes that as a strategy charity can never provide more than temporary
+  and limited relief." (mim-practice F07).
+- Nation comes first: "7. The principal contradiction inside the U$A is nation." (mim F09). Nation
+  is not in this slice, so nothing in it is presented as MIM's base.
+
+## Appendix C: What the review found, and where this draft answers it
+
+The second draft was reviewed on 19 November 2026 by four readers, and a second reader challenged
+each serious finding. The full review is in the workflow journal `wf_f30fdb94-a47`.
+
+| Finding | Answer |
+|---|---|
+| The organizer has 2 hours a period, not 8, and no operation contacts a household | Section 7.6: one review contact a period, as a new choice |
+| Collective residence has no households | Section 7.2: it has no position |
+| "Pay first" cannot be built | Removed |
+| The recorded run has no City PD and no claimant group | Sections 3 and 12 say so |
+| Provider grants go to every public administration site | Section 7.1: the whole first class is off the table |
+| The ruling needs a new native operation | Section 7.12 |
+| Group persons and households are Designed, not Observed | Sections 5 and 7.12 |
+| Units only ever grow | Section 7.1: relief won is a level that lasts one period |
+| The stake was defined twice | Section 7.5: always money actually paid or lost |
+| Objectors saw only one session's increment | Section 7.4: the defense reads the whole claim |
+| The placement rule was said not to move money | Section 7.2 says it changes outcomes, and it needs a record |
+| The grouping proof showed signs, not outcomes | Section 7.14 and the tests in section 9 |
+| "Restore" was circular, and choices came down to identifier order | "Restore" is removed. No result depends on identifier order (sections 7.4 and 9) |
+| No rule read the membership roll | Section 7.9: the spread and the count read it |
+| The county had no interest of its own | Sections 7.1 and 7.3, by the Director's ruling |
+| The $48 floor is a step and needs a ruling | Sections 7.5 and 8 |
+| A new organizer choice needs a ceremony and a record | Section 8, record 8 |
+| The preview showed a site's cash before any contact | Section 7.11: no site figures are shown, and a position's figures are earned by contact |
+| The build plan lacked sever tests, the direct-write audit, ceremonies, decision-surface contracts and archived playthroughs | Section 9 |
+| The reason for withdrawing tax weighting was wrong | Section 6 and Appendix B |
+| Two quotations were bent | Appendix B gives them exactly |
+| A county that always concedes makes reform always work | Sections 7.1 and 7.7: the county gives up nothing of its own, and relief ends when its cash does |
+| Only the county session wrote membership | Sections 7.8 and 7.9 |
+| No line here can be called MIM's base | Sections 4 and 7.10 |
+| "Labor aristocracy" was too narrow for owner groups | Section 7.10 |

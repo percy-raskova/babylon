@@ -1,0 +1,78 @@
+ADR304_city_pd_payroll:
+  title: Name the City PD's payroll in the county's books and separate its three numbers
+  date: '2026-11-19'
+  status: accepted
+  issue: PER-366
+  evidence_class: Designed
+  authority:
+    - >-
+      Director, 2026-11-19, on reading the fourth draft: "the police having a $24
+      budget is ridiculous and not at all realistic".
+    - ADR291 (the City PD appropriation is a Designed fiscal proxy)
+    - ADR184 R4
+  context: |
+    One number, $24, is the hourly wage, the price of one visit and the whole City
+    PD appropriation. It pays for one investigator-hour a period. It was never the
+    cost of the police. The engine builds the county's public workplaces from
+    every government job in the county, police included. The force is already
+    employed and paid inside the $151,969,750 that the county grants those
+    workplaces. ADR291 left the size of the proxy to named sourced wage or
+    service data.
+  decision: |
+    R1. THREE NUMBERS. The wage is the scenario's wage. The price of a visit is
+    one hour at that wage. The appropriation for visits is the price of the visits
+    allowed in a period, which is one. The build no longer refuses a campaign
+    whose wage is not $24.
+
+    R2. THE PAYROLL. The City PD's record names the public workplace that employs
+    the force, its positions, and its payroll. The payroll is worked out as the
+    engine works out every public workplace's payroll: positions, times a period's
+    hours, times the wage. The county ledger shows it as the City PD's and shows
+    the workplace's grant less the payroll. The engine's lines and the opening
+    economy do not change. Nobody is employed twice.
+
+    R3. THE SIZE. The position count is 3,529, from the City of Detroit's adopted
+    budget for its 2025 fiscal year (council budget analysis of 21 March 2025).
+    The department's budget there was $441.9 million. At the engine's 160 hours
+    and $24 wage the payroll is $13,551,360 a period. The department's whole
+    budget is about $34 million a period, two and a half times that wage bill.
+    The engine pays every worker $24 an hour, so the first figure is used. The
+    count is Designed, with its source named, until the reference pipeline
+    captures it. The repository holds no police figure. The federal files on the
+    data drive report local police inside general government.
+
+    R4. REFUSALS. The build refuses a campaign in which the named workplace has
+    fewer people than the positions, or a grant smaller than the payroll.
+
+    R5. WHAT STAYS. The City PD still makes at most one visit a period. It adds no
+    arrest, coercion or seizure. This record amends ADR291's sizing of the proxy
+    and leaves the rest of that record standing.
+  calls:
+    - 'Size the payroll at the engine''s hours and wage, from a named count (design 7.3).'
+    - 'Carry the payroll on the existing public workplace. No workplace is carved out.'
+    - 'The body keeps the name City PD.'
+  alternatives_rejected:
+    - >-
+      Real pay added on top. It would pay the same jobs twice and pay police two
+      and a half times what the engine pays any other worker.
+    - >-
+      A workplace of its own for the force. It moves 3,529 people at the opening and
+      changes the whole opening economy. It belongs to the opponent's lane, PER-355.
+    - >-
+      A share of the public grants set by a federal count of police jobs. The
+      federal files do not show local police.
+  consequences:
+    - >-
+      A payroll on the books does not make the City PD do more. A player may read a
+      $13.6 million line as a force that acts on that scale.
+    - >-
+      The $24 is pinned in the City PD's row check, in the practice contract and in
+      tests. Those pins are updated with the code.
+  verification: |
+    Check that the county's first class is unchanged, that the ledger shows the
+    payroll and the grant less the payroll, that a campaign with another wage
+    builds, and that each refusal of R4 fires.
+  related:
+    - ADR184_capacity_belongs_to_organizations
+    - ADR291_first_state_opponent_observation
+    - ADR301_county_review_session

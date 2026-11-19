@@ -1,5 +1,5 @@
 meta:
-  version: 1.97.0
+  version: 1.98.0
   updated: '2026-11-19'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,31 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR305_rule_of_thirds_anchoring_law:
+    title: Adopt the rule of thirds as the anchoring law for the opening split of household wealth
+    status: accepted
+    date: '2026-11-19'
+    file: ADR305_rule_of_thirds_anchoring_law.yaml
+  ADR304_city_pd_payroll:
+    title: 'Name the City PD''s payroll in the county''s books and separate its three numbers'
+    status: accepted
+    date: '2026-11-19'
+    file: ADR304_city_pd_payroll.yaml
+  ADR303_county_review_dispositions:
+    title: Fix what the County Review shows of class and nation, and the dispositions of the aid roll and graph payload
+    status: accepted
+    date: '2026-11-19'
+    file: ADR303_county_review_dispositions.yaml
+  ADR302_household_roster_and_counting:
+    title: Count Wayne households into positions by workplace, with declared exact splits
+    status: accepted
+    date: '2026-11-19'
+    file: ADR302_household_roster_and_counting.yaml
+  ADR301_county_review_session:
+    title: Hold a recurring County Review session in which Wayne households act on their own money
+    status: accepted
+    date: '2026-11-19'
+    file: ADR301_county_review_session.yaml
   ADR300_amendment_am_no_imposed_functional_form:
     title: Amendment AM writes the no-imposed-functional-form ruling into the Constitution
     status: proposed

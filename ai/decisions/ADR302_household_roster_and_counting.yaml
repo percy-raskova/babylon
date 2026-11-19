@@ -1,0 +1,93 @@
+ADR302_household_roster_and_counting:
+  title: Count Wayne households into positions by workplace, with declared exact splits
+  date: '2026-11-19'
+  status: accepted
+  issue: PER-366
+  evidence_class: Designed
+  authority:
+    - >-
+      Director, 2026-11-19, on reading the fourth draft: "we should use Lawvere's to
+      aggregate/deaggregate the agent-populations in a principled way".
+    - >-
+      Director ruling of 2026-07-29 recorded as ADR173 ruling (1): a rule decides
+      for a member from that member's own figures, not from a class mean.
+    - ADR176 ruling 17 and ADR194 ruling R1 on how a group carries its spread.
+  context: |
+    The engine holds people by workplace and holds no household. Its finest real
+    figures are one budget group's people at one workplace. The fourth draft
+    gave every household its budget group's average. In period 4 that ranked six
+    of every seven households in the largest group, who had no wage, as if each
+    had paid $78. The design replaces it with a roster of exact counts.
+  decision: |
+    R1. FOUR RULES. Every count in the slice follows these. Totals add, exactly,
+    at every level. A rate is one total divided by another, and the rate of a
+    group is never the average of its parts' rates. A split of a group is a
+    declared, Designed rule, made in whole numbers, that adds back to the total
+    exactly. A rule decides for a household from that household's own figures.
+    The first three are Lawvere's account of quantities. The fourth is ADR173.
+    Nothing here is called an adjunction.
+
+    R2. POSITIONS BY WORKPLACE. A position is one budget group's households bound
+    to one crew, with a count of people at work, a count looking for work, and a
+    count of units held. A crew is one budget group's people at one workplace,
+    paid in one way. All of a household's people in the labor force belong to
+    one crew. That is declared. It is not true of Wayne. One crew's workers are
+    taken as paid alike, which is the floor of the grain.
+
+    R3. THE ROSTER. A table of whole-number counts: for each position, its
+    households and the reached ones. It adds back to the engine's counts every
+    period. The positions of a group sum to its households. The people at work
+    and looking for work in a crew's positions equal the engine's counts. The
+    units in a group's positions equal its roll less units that left with a
+    household. The roster is a table of counts. It is not a new kind of field.
+
+    R4. SIX PLACEMENTS. Each is Designed and changes who holds a unit or who can
+    ask. (1) Households are bound to crews by their people. (2) People at work
+    are spread evenly. (3) Job-seekers at the opening go to the households with
+    the fewest at work, one each, round by round. (4) A hire takes a job-seeker
+    from households with the fewest at work. (5) A layoff falls first on the
+    households with the most at work. (6) A departure from the labor force is
+    taken from the households with the most people of that kind. Among equals a
+    rule falls in proportion, and inside a position on reached and unreached
+    households in proportion.
+
+    R5. EXACT SPLITS AND TIES. Each split is by largest remainder on whole
+    numbers. An exact tie between positions is settled by fewer units, then fewer
+    job-seekers, then fewer at work. Between reached and unreached households it
+    goes to the unreached. No split reads an identifier.
+
+    R6. UNPAID TAX. A household's place is the wage tax on its own wage times the
+    share of its group's taxed wages that the county in fact collected. Tax a
+    group could not pay is shared among its households in proportion to wages.
+
+    R7. NO KERNEL RECEIPT. An exact split with no draw owes no kernel receipt.
+  calls:
+    - 'Positions by workplace, with the floor of the grain (design 7.2).'
+    - 'All of a household''s people in the labor force belong to one crew (7.2).'
+    - 'The six placements, each with its other bound (7.2, Appendix D.3).'
+    - 'Spread people evenly, because the other bound needs a cap on household size (7.2).'
+    - 'Unpaid tax is shared in proportion to wages (7.4).'
+    - 'Collective residence has no position (7.2).'
+  alternatives_rejected:
+    - 'Every household takes its budget group''s average (design 6, How households are counted).'
+    - 'Each group split into has-a-wage and has-no-wage only.'
+    - 'A summary of the spread. The engine holds exact counts, so nothing is summarized.'
+    - >-
+      Real sub-budgets, each position with its own cash and stock. It belongs to a
+      later slice.
+  open_questions:
+    - >-
+      Whether an exact table of counts is lawful under ADR176 ruling 17 is open and
+      is recorded in ADR301.
+  verification: |
+    Prove the sums of R3 every period. Run each placement at its other bound and
+    report the difference. Check that regrouping the same households into
+    coarser or finer positions leaves every total and the county's list
+    unchanged (design 7.14).
+  related:
+    - ADR173_audit_and_stops_dispositions
+    - ADR176_director_rulings_batch_gds_dispositions
+    - ADR194_director_rulings_batch2_2026_08_11
+    - ADR269_sparse_household_budgets
+    - ADR296_national_game_grain
+    - ADR301_county_review_session

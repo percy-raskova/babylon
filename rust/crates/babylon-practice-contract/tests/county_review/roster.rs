@@ -1,23 +1,15 @@
 use babylon_practice_contract as practice_contract;
 use babylon_practice_contract::{
-    Band, CountyReviewConfig, CountyReviewError, GroupKind, OpeningCrew, Placement, Roster,
+    Band, CountyReviewConfig, CountyReviewError, GroupKind, Placement, Roster,
 };
 
 use super::support;
-use super::support::{Changes, RowTuple, B50, N40, N9, T1};
-
-fn open(crew: u32, at_work: u64, seeking: u64) -> OpeningCrew {
-    OpeningCrew {
-        crew,
-        at_work,
-        seeking,
-    }
-}
+use super::support::{Changes, Rng, RowTuple, B50, N40, N9, T1};
 
 #[test]
 fn fewer_people_than_households_gives_each_person_a_household() {
     let c = support::config(&[(10, 2, false)], &[0]);
-    let p = practice_contract::opening_placement(&c, &[open(0, 3, 2)]).expect("places");
+    let p = practice_contract::opening_placement(&c, &[support::open(0, 3, 2)]).expect("places");
     assert_eq!(
         support::placed(&p),
         vec![
@@ -31,7 +23,7 @@ fn fewer_people_than_households_gives_each_person_a_household() {
 #[test]
 fn more_people_than_households_spreads_work_evenly_and_seekers_to_the_fewest_at_work() {
     let c = support::config(&[(4, 3, false)], &[0]);
-    let p = practice_contract::opening_placement(&c, &[open(0, 6, 3)]).expect("places");
+    let p = practice_contract::opening_placement(&c, &[support::open(0, 6, 3)]).expect("places");
     assert_eq!(
         support::placed(&p),
         vec![
@@ -46,7 +38,8 @@ fn more_people_than_households_spreads_work_evenly_and_seekers_to_the_fewest_at_
 fn two_crews_with_equal_claims_leave_the_tied_household_with_no_crew() {
     let c = support::config(&[(5, 2, false)], &[0, 0]);
     let p =
-        practice_contract::opening_placement(&c, &[open(0, 4, 0), open(1, 2, 2)]).expect("places");
+        practice_contract::opening_placement(&c, &[support::open(0, 4, 0), support::open(1, 2, 2)])
+            .expect("places");
     assert_eq!(
         support::placed(&p),
         vec![
@@ -60,7 +53,7 @@ fn two_crews_with_equal_claims_leave_the_tied_household_with_no_crew() {
 #[test]
 fn more_seekers_than_households_gives_a_household_two_or_three_units() {
     let c = support::config(&[(2, 5, false)], &[0]);
-    let p = practice_contract::opening_placement(&c, &[open(0, 1, 5)]).expect("places");
+    let p = practice_contract::opening_placement(&c, &[support::open(0, 1, 5)]).expect("places");
     assert_eq!(
         support::placed(&p),
         vec![((0, Some(0), 0, 3, 3), 1), ((0, Some(0), 1, 2, 2), 1)]
@@ -71,7 +64,7 @@ fn more_seekers_than_households_gives_a_household_two_or_three_units() {
 fn more_crews_than_households_is_refused() {
     let c = support::config(&[(1, 0, false)], &[0, 0]);
     assert_eq!(
-        practice_contract::opening_placement(&c, &[open(0, 1, 0), open(1, 1, 0)]),
+        practice_contract::opening_placement(&c, &[support::open(0, 1, 0), support::open(1, 1, 0)]),
         Err(CountyReviewError::MoreCrewsThanHouseholds)
     );
 }
@@ -80,7 +73,7 @@ fn more_crews_than_households_is_refused() {
 fn units_placed_must_equal_the_roll() {
     let c = support::config(&[(10, 3, false)], &[0]);
     assert_eq!(
-        practice_contract::opening_placement(&c, &[open(0, 3, 2)]),
+        practice_contract::opening_placement(&c, &[support::open(0, 3, 2)]),
         Err(CountyReviewError::RollMismatch)
     );
 }
@@ -89,11 +82,11 @@ fn units_placed_must_equal_the_roll() {
 fn a_crew_named_twice_or_not_at_all_is_refused() {
     let c = support::config(&[(10, 0, false)], &[0]);
     assert_eq!(
-        practice_contract::opening_placement(&c, &[open(0, 1, 0), open(0, 1, 0)]),
+        practice_contract::opening_placement(&c, &[support::open(0, 1, 0), support::open(0, 1, 0)]),
         Err(CountyReviewError::DuplicateCrew)
     );
     assert_eq!(
-        practice_contract::opening_placement(&c, &[open(7, 1, 0)]),
+        practice_contract::opening_placement(&c, &[support::open(7, 1, 0)]),
         Err(CountyReviewError::UnknownCrew)
     );
 }
@@ -102,7 +95,7 @@ fn a_crew_named_twice_or_not_at_all_is_refused() {
 fn a_collective_residence_has_no_rows() {
     let mut c = support::config(&[(10, 2, false), (0, 772, false)], &[0]);
     c.groups[1].kind = GroupKind::CollectiveResidence;
-    let r = practice_contract::opening_roster(&c, &[open(0, 3, 2)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 3, 2)], &[]).expect("opens");
     assert!(
         r.rows.iter().all(|row| row.key.group == 0),
         "no row belongs to the collective residence"
@@ -142,7 +135,7 @@ fn a_configuration_that_cannot_be_read_is_refused_by_name() {
 #[test]
 fn the_next_forty_are_taken_by_the_number_at_work_and_bring_their_seekers() {
     let c = support::config(&[(9, 2, false)], &[0]); // the next 40% needs 4 of the 9
-    let r = practice_contract::opening_roster(&c, &[open(0, 10, 2)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 10, 2)], &[]).expect("opens");
     // the household with 2 at work first; then 3 of the 8 with 1 at work, in proportion 6 : 2,
     // so one of them has a job-seeker and a unit
     assert_eq!(
@@ -160,7 +153,7 @@ fn the_next_forty_are_taken_by_the_number_at_work_and_bring_their_seekers() {
 #[test]
 fn a_unit_does_not_keep_a_household_out_of_the_next_forty() {
     let c = support::config(&[(4, 3, false)], &[0]); // the next 40% needs 2 of the 4: the two households with 2 at work
-    let r = practice_contract::opening_roster(&c, &[open(0, 6, 3)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 6, 3)], &[]).expect("opens");
     assert_eq!(
         support::rows(&r),
         vec![
@@ -174,7 +167,7 @@ fn a_unit_does_not_keep_a_household_out_of_the_next_forty() {
 #[test]
 fn households_only_looking_for_work_come_last_and_those_outside_the_labor_force_never() {
     let c = support::config(&[(9, 3, false)], &[0]); // the next 40% needs 4: 2 at work, then 2 of the 3 only looking
-    let r = practice_contract::opening_roster(&c, &[open(0, 2, 3)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 2, 3)], &[]).expect("opens");
     assert_eq!(
         support::rows(&r),
         vec![
@@ -189,7 +182,7 @@ fn households_only_looking_for_work_come_last_and_those_outside_the_labor_force_
 #[test]
 fn the_top_hundredth_has_nobody_in_the_labor_force() {
     let c = support::config(&[(20, 2, true)], &[0]); // owners: the top 1% needs 2 of the 20
-    let r = practice_contract::opening_roster(&c, &[open(0, 5, 2)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 5, 2)], &[]).expect("opens");
     assert_eq!(
         support::rows(&r),
         vec![
@@ -204,8 +197,12 @@ fn the_top_hundredth_has_nobody_in_the_labor_force() {
 #[test]
 fn an_exact_tie_at_a_bands_line_stays_in_the_lower_band() {
     let c = support::config(&[(16, 0, false)], &[0, 0]); // the next 40% needs 7; two equal crews tie for the seventh
-    let r =
-        practice_contract::opening_roster(&c, &[open(0, 8, 0), open(1, 8, 0)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(
+        &c,
+        &[support::open(0, 8, 0), support::open(1, 8, 0)],
+        &[],
+    )
+    .expect("opens");
     assert_eq!(
         support::rows(&r),
         vec![
@@ -221,12 +218,12 @@ fn an_exact_tie_at_a_bands_line_stays_in_the_lower_band() {
 fn an_opening_that_cannot_obey_the_law_is_refused_by_name() {
     let owners = support::config(&[(10, 0, true)], &[0]); // every owner household has someone at work
     assert_eq!(
-        practice_contract::opening_roster(&owners, &[open(0, 10, 0)], &[]),
+        practice_contract::opening_roster(&owners, &[support::open(0, 10, 0)], &[]),
         Err(CountyReviewError::TopBandInLaborForce)
     );
     let others = support::config(&[(9, 0, false)], &[0]); // the next 40% needs 4 households in the labor force; there are 2
     assert_eq!(
-        practice_contract::opening_roster(&others, &[open(0, 2, 0)], &[]),
+        practice_contract::opening_roster(&others, &[support::open(0, 2, 0)], &[]),
         Err(CountyReviewError::WageBandOutsideLaborForce)
     );
 }
@@ -236,7 +233,8 @@ fn opening_reach_is_placed_on_the_groups_rows_in_proportion() {
     let c = support::config(&[(4, 3, false)], &[0]);
     // rows (B50, 1, 1, 1) x2, (N40, 2, 0, 0) x1 and (N40, 2, 1, 1) x1: three reached of four
     // are 1.5, 0.75 and 0.75 by weight, and the two larger remainders take the odd ones
-    let r = practice_contract::opening_roster(&c, &[open(0, 6, 3)], &[(0, 3)]).expect("opens");
+    let r =
+        practice_contract::opening_roster(&c, &[support::open(0, 6, 3)], &[(0, 3)]).expect("opens");
     assert_eq!(
         support::rows(&r),
         vec![
@@ -251,16 +249,16 @@ fn opening_reach_is_placed_on_the_groups_rows_in_proportion() {
 fn opening_reach_that_cannot_be_placed_is_refused() {
     let c = support::config(&[(4, 3, false)], &[0]);
     assert_eq!(
-        practice_contract::opening_roster(&c, &[open(0, 6, 3)], &[(0, 5)]),
+        practice_contract::opening_roster(&c, &[support::open(0, 6, 3)], &[(0, 5)]),
         Err(CountyReviewError::OpeningReachNotPlaceable)
     );
     assert_eq!(
-        practice_contract::opening_roster(&c, &[open(0, 6, 3)], &[(0, 2)]),
+        practice_contract::opening_roster(&c, &[support::open(0, 6, 3)], &[(0, 2)]),
         Err(CountyReviewError::OpeningReachNotPlaceable),
         "two of four leave an exact tie at the cut, and a tie is withheld"
     );
     assert_eq!(
-        practice_contract::opening_roster(&c, &[open(0, 6, 3)], &[(3, 1)]),
+        practice_contract::opening_roster(&c, &[support::open(0, 6, 3)], &[(3, 1)]),
         Err(CountyReviewError::UnknownGroup)
     );
 }
@@ -268,7 +266,7 @@ fn opening_reach_that_cannot_be_placed_is_refused() {
 /// The banded roster of the second band test: 4 households, `E = 6`, `S = 3`.
 fn base() -> (CountyReviewConfig, Roster) {
     let c = support::config(&[(4, 3, false)], &[0]);
-    let r = practice_contract::opening_roster(&c, &[open(0, 6, 3)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 6, 3)], &[]).expect("opens");
     (c, r)
 }
 
@@ -403,7 +401,7 @@ fn a_household_keeps_its_band_and_an_exact_tie_between_bands_falls_on_the_lower(
 /// `(B50, Some(0), 0, 1, 1) x 2` and `(N40, Some(0), 1, 0, 0) x 4`.
 fn nine() -> (CountyReviewConfig, Roster) {
     let c = support::config(&[(9, 2, false)], &[0]);
-    let r = practice_contract::opening_roster(&c, &[open(0, 4, 2)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 4, 2)], &[]).expect("opens");
     assert_eq!(
         support::rows(&r),
         vec![
@@ -633,7 +631,7 @@ fn a_roster_that_breaks_a_rule_is_refused_by_name() {
 #[test]
 fn band_counts_show_who_works_in_each_band_top_first() {
     let c = support::config(&[(20, 2, true)], &[0]);
-    let r = practice_contract::opening_roster(&c, &[open(0, 5, 2)], &[]).expect("opens");
+    let r = practice_contract::opening_roster(&c, &[support::open(0, 5, 2)], &[]).expect("opens");
     let counts = r.band_counts();
     assert_eq!(
         counts.iter().map(|b| b.band).collect::<Vec<Band>>(),
@@ -661,61 +659,6 @@ fn band_counts_show_who_works_in_each_band_top_first() {
     assert_eq!(r.crew_at_work(0), 5);
     assert_eq!(r.crew_seeking(0), 2);
     assert_eq!(r.group_units(0), 2);
-}
-
-/// A small xorshift generator: the tests need no dependency.
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-    fn up_to(&mut self, bound: u64) -> u64 {
-        self.next() % (bound + 1)
-    }
-}
-
-/// A random county the law accepts, and its opening roster.
-fn random_opening(rng: &mut Rng) -> Option<(CountyReviewConfig, Vec<OpeningCrew>, Roster)> {
-    let group_count = usize::try_from(1 + rng.up_to(2)).expect("small");
-    let crew_count = 1 + rng.up_to(3);
-    let crew_groups: Vec<u32> = (0..crew_count)
-        .map(|_| {
-            u32::try_from(rng.up_to(u64::try_from(group_count).expect("small") - 1)).expect("small")
-        })
-        .collect();
-    let crews: Vec<OpeningCrew> = (0..crew_count)
-        .map(|i| {
-            open(
-                u32::try_from(i).expect("small"),
-                rng.up_to(15),
-                rng.up_to(8),
-            )
-        })
-        .collect();
-    let groups: Vec<(u64, u64, bool)> = (0..group_count)
-        .map(|g| {
-            let seekers: u64 = crews
-                .iter()
-                .zip(&crew_groups)
-                .filter(|(_, group)| usize::try_from(**group).expect("small") == g)
-                .map(|(c, _)| c.seeking)
-                .sum();
-            (1 + rng.up_to(39), seekers, rng.up_to(2) == 0)
-        })
-        .collect();
-    let c = support::config(&groups, &crew_groups);
-    let reach: Vec<(u32, u64)> = groups
-        .iter()
-        .enumerate()
-        .map(|(g, (households, _, _))| {
-            (u32::try_from(g).expect("small"), rng.up_to(households / 4))
-        })
-        .collect();
-    let roster = practice_contract::opening_roster(&c, &crews, &reach).ok()?;
-    Some((c, crews, roster))
 }
 
 /// One random period that the sums allow.
@@ -784,7 +727,7 @@ fn rolling_forward_keeps_every_total() {
             attempts < 200_000,
             "the law accepted too few random openings"
         );
-        let Some((c, _, mut roster)) = random_opening(&mut rng) else {
+        let Some((c, _, mut roster)) = support::random_opening(&mut rng) else {
             continue;
         };
         accepted += 1;

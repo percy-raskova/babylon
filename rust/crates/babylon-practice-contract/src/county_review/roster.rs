@@ -943,7 +943,7 @@ fn shrink_group(
     Ok(())
 }
 
-fn check_facts_shape(
+pub(super) fn check_facts_shape(
     config: &CountyReviewConfig,
     facts: &CountyPeriodFacts,
 ) -> Result<(), CountyReviewError> {

@@ -320,6 +320,8 @@ class NativeRun:
         self.observer_dsn = os.environ["BABYLON_NATIONAL_STORAGE_OBSERVER_DSN"]
         self.runtime = root / "rust/target/debug/babylon-runtime"
         self.client = root / "rust/target/debug/babylon-client"
+        self.publisher = self.runtime.with_name("babylon-economic-projections")
+        self.publisher_process: subprocess.Popen[bytes] | None = None
         self.operator = root / "rust/target/debug/babylon-material-audit"
         self.binaries = {
             p: memory.executable_digest(p)
@@ -327,6 +329,7 @@ class NativeRun:
                 self.runtime,
                 self.client,
                 self.operator,
+                self.publisher,
             )
         }
         # Operational patience is distinct from the evaluator's phase budgets.
@@ -599,6 +602,35 @@ class NativeRun:
                 },
             )
 
+    def wait_for_economic_period(self, tick: int) -> None:
+        """Wait outside the UI interval for the actual session publisher to finish this close."""
+        deadline = time.monotonic() + self.timeout
+        with self.operation_lock:
+            connection = psycopg.connect(
+                self.observer_dsn,
+                autocommit=True,
+                connect_timeout=5,
+                options="-c default_transaction_read_only=on -c statement_timeout=5000",
+            )
+        try:
+            while time.monotonic() < deadline:
+                self.owned_publisher()
+                with self.operation_lock:
+                    published = connection.execute(
+                        """SELECT 1 FROM public.v_observer_money_journal_period_v1
+                           WHERE campaign_id = %s::uuid AND resolve_tick = %s""",
+                        (self.campaign, tick),
+                    ).fetchone()
+                if published is not None:
+                    return
+                time.sleep(0.1)
+        finally:
+            with self.operation_lock:
+                connection.close()
+        raise NativeRunRefusal(
+            f"economic publisher did not cover period {tick} before the snapshot"
+        )
+
     def snapshot(self, stage: str) -> Snapshot:
         with self.operation_lock:
             return self._snapshot_locked(stage)
@@ -783,6 +815,7 @@ class NativeRun:
                 "version": 1,
                 "roles": {
                     "engine-runtime": [self.binaries[self.runtime]],
+                    "economic-projections": [self.binaries[self.publisher]],
                     "native-client": [self.binaries[self.client]],
                     "game-postgresql": [admission.executable_sha256],
                 },
@@ -808,6 +841,7 @@ class NativeRun:
             foundation_sha256=self._foundation,
             runtime_sha256=self.binaries[self.runtime],
             client_sha256=self.binaries[self.client],
+            publisher=self.owned_publisher,
             postgres=memory.OwnedPostgresScope(
                 admission, self._verify_physical_owner, self._verify_capture_authority
             ),
@@ -1056,6 +1090,8 @@ class NativeRun:
         )
         self.progress(record.tick, "archive", archive.model_dump(mode="json"))
         self.progress(record.tick, "accounting", record.aid.model_dump(mode="json"))
+        with self.verification_span("economic-journal-publication"):
+            self.wait_for_economic_period(record.tick)
         snapshot = self.snapshot(f"tick-{record.tick:02}")
         marker = snapshot.marker_and_encoded_package_hashes[-1]
         if marker[:3] != (record.tick, record.tick_content_hash, record.facts.envelope_digest):
@@ -1344,6 +1380,19 @@ class NativeRun:
             raise NativeRunRefusal("new owned child differs from the admitted executable")
         return process.pid, start, self.binaries[binary]
 
+    def bind_publisher(self, process: subprocess.Popen[bytes]) -> tuple[int, int, str]:
+        identity = self.process_identity(process, self.publisher)
+        self.publisher_process = process
+        return identity
+
+    def publisher_started(self, process: subprocess.Popen[bytes]) -> None:
+        self.bind_publisher(process)
+
+    def owned_publisher(self) -> tuple[subprocess.Popen[bytes], str]:
+        if self.publisher_process is None or self.publisher_process.poll() is not None:
+            raise NativeRunRefusal("qualified session lost its owned economic publisher")
+        return self.publisher_process, self.binaries[self.publisher]
+
     def record_processes(self, segment: str) -> None:
         pg = self.postgres_admission()
         publish(
@@ -1353,6 +1402,7 @@ class NativeRun:
                 "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
                 "runtime": self.pair_identity[0],
                 "client": self.pair_identity[1],
+                "publisher": self.process_identity(self.owned_publisher()[0], self.publisher),
                 "postgres": [pg.host_pid, pg.start_time_ticks, pg.executable_sha256],
                 "container": pg.container_id,
                 "owner_sha256": hashlib.sha256(self.ownership).hexdigest(),
@@ -1499,6 +1549,7 @@ class NativeRun:
             directory=self.directory,
             operation_timeout=self.timeout,
             on_started=started,
+            on_publisher_started=self.publisher_started,
             cold_window=ColdControlWindow(cold_start, self.cold_seconds()),
             on_opened=opened_smoke,
             on_observed=observed_smoke if self.mode == "normal_play" else None,
@@ -1594,6 +1645,7 @@ class WayneWalk:
         self.segment_capture: memory.RunningMemoryCapture | None = None
         self.failed_frame: tuple[Path, str, int, int] | None = None
         self.attempted: list[tuple[str, int]] = []
+        self.authenticated_publisher: tuple[int, int, str] | None = None
         self.launch_stage = ""
 
     def draft_path(self) -> Path:
@@ -2322,6 +2374,7 @@ class WayneWalk:
         self.run.segment = stage
         self.run.pair_identity = []
         self.attempted = []
+        self.authenticated_publisher = None
         self.launch_stage = "prepare-segment"
         self.first_observed = self.latest_observed = None
         main = stage == "walk"
@@ -2379,6 +2432,9 @@ class WayneWalk:
             self.launch_stage = "spawn-runtime"
             self.drive_segment(tick, target, closes, writer, reader, directory, started, main)
         except BaseException:
+            authenticated = self.run.pair_identity.copy()
+            if self.authenticated_publisher is not None:
+                authenticated.append(self.authenticated_publisher)
             self.run.failed_pair = self.evidence.publish_json(
                 "pair-incomplete-" + stage + ".json",
                 {
@@ -2388,7 +2444,7 @@ class WayneWalk:
                     "elapsed_ns": time.monotonic_ns() - self.process_start,
                     "launch_stage": self.launch_stage,
                     "attempted_processes": self.attempted,
-                    "authenticated_processes": self.run.pair_identity,
+                    "authenticated_processes": authenticated,
                     "first_observation": self.first_observed.model_dump(mode="json")
                     if self.first_observed
                     else None,
@@ -2407,7 +2463,13 @@ class WayneWalk:
 
     def spawned(self, role: Literal["runtime", "client"], process: subprocess.Popen[bytes]) -> None:
         self.attempted.append((role, process.pid))
-        self.launch_stage = "spawn-client" if role == "runtime" else "admit-pair"
+        self.launch_stage = "spawn-client" if role == "runtime" else "spawn-publisher"
+
+    def publisher_started(self, process: subprocess.Popen[bytes]) -> None:
+        self.attempted.append(("publisher", process.pid))
+        self.launch_stage = "authenticate-publisher"
+        self.authenticated_publisher = self.run.bind_publisher(process)
+        self.launch_stage = "admit-pair"
 
     def drive_segment(
         self,
@@ -2433,6 +2495,7 @@ class WayneWalk:
             directory=directory,
             operation_timeout=self.run.timeout,
             on_started=started,
+            on_publisher_started=self.publisher_started,
             on_spawned=self.spawned,
             on_stopped=self.retain_stopped_frame,
             on_boundary=self.committed if main else lambda _state: None,
@@ -2545,6 +2608,7 @@ class OrdinaryWarmPrefix:
             directory=self.run.directory,
             operation_timeout=self.run.timeout,
             on_started=on_started,
+            on_publisher_started=self.run.publisher_started,
             on_boundary=lambda _state: None,
             on_recovery=lambda _state: None,
             choices=(),
@@ -2659,6 +2723,10 @@ class OrdinaryWarmPrefix:
                     )
                 )
                 accepted = following
+            # Keep the next acceptance timestamp as the timing endpoint. Charge
+            # the independently running publisher before retaining terminal data.
+            self.run.wait_for_economic_period(3)
+            self.run.snapshot("ordinary-p3-published")
             if any(sample.usable_elapsed_ns > 30_000_000_000 for sample in samples):
                 raise NativeRunRefusal("ordinary warm usable endpoint exceeded thirty seconds")
         except BaseException as error:

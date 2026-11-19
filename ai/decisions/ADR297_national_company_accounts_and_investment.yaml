@@ -1,0 +1,44 @@
+ADR297_national_company_accounts_and_investment:
+  title: Capture national company ownership, treasury and investment choices
+  date: '2026-11-14'
+  status: proposed
+  issue: PER-293
+  authority: Director design for national companies, consolidated accounts and investment portfolios
+  evidence_class: Designed
+  context: |
+    ADR296 generates operating sites and their workers at the national game
+    grain. The Director specified whole-site company membership, central
+    treasuries, separate legal and group accounts, and four investment
+    alternatives. Company membership does not locate a headquarters.
+  decision: |
+    A company-enabled national capture binds stable member sites to a separate
+    company principal. Original beneficiary shares and opening capital determine
+    the claims on the parent. The opening sweep transfers spendable cash above
+    the captured site floor. The parent carries its controlling investments
+    at the subsidiaries' post-sweep opening equity. Consolidation removes each
+    internal holding against that equity and retains actual cash and assets.
+    Subsequent group reports must distinguish external settlement from internal
+    transfers and follow unrealized internal margins until actual disposition.
+    A subsidiary distribution and a parent payout each require their own
+    authorized transfer and recipient evidence.
+  investment: |
+    The material close supplies company-specific evidence and checks portfolio
+    feasibility against actual resources. The native company/portfolio-evidence
+    mechanic records its four feasible weights and evidence period as Derived
+    graph writes. The company/portfolio-investment BSL rule alone records
+    the selected portfolio and selection period. The Director's Designed weights
+    govern Defer, Replacement Only, Modest Expansion and Larger Expansion.
+    The ADR248 finite kernel takes one replay-keyed draw per current company
+    evidence row. Its choice receipt records the carrier, rule, sample, stable
+    slot, alternatives, allocation and selected outcome. The chosen portfolio
+    becomes eligible for the next opening. Funding, reservations and installed
+    capacity change only through native material settlement receipts.
+  qualification: |
+    The v8 capture, parent accounts, all four alternatives, replay identity,
+    next-opening settlement and internal-margin realization require executable
+    evidence. This decision records the proposed architecture. Qualification
+    and default activation are separate decisions.
+  references:
+    - ADR248
+    - ADR296
+    - CONSTITUTION.md Amendment AJ

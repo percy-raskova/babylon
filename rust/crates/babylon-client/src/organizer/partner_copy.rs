@@ -2,9 +2,143 @@
 use crate::human_numbers;
 use crate::observer_ui;
 use babylon_persistence::runtime_session::{
-    OrganizerObservation, OrganizerPartnerFacts, OrganizerReport, OrganizerReportCommodity,
-    OrganizerView,
+    OrganizerMaterialAidPreview, OrganizerObservation, OrganizerPartnerFacts, OrganizerReport,
+    OrganizerReportCommodity, OrganizerView,
 };
+
+pub(super) fn parcel_label(quantity: u64) -> &'static str {
+    if quantity == 1 {
+        "parcel"
+    } else {
+        "parcels"
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum FoodMeasure {
+    Opening {
+        opening_stock: u64,
+        required: u64,
+    },
+    Completed {
+        consumed: u64,
+        required: u64,
+        unmet: u64,
+    },
+}
+
+pub(super) struct FoodReading<'a> {
+    pub row: &'a OrganizerObservation,
+    pub commodity: &'a OrganizerReportCommodity,
+    pub measure: FoodMeasure,
+}
+
+pub(super) fn latest_food_report(
+    view: &OrganizerView,
+    period: u64,
+    actor: u64,
+    matches_commodity: impl Fn(&OrganizerReportCommodity) -> bool,
+) -> Option<FoodReading<'_>> {
+    super::evidence::disclosed_reports(view, period)
+        .filter(|row| row.subject_id == actor)
+        .filter_map(|row| {
+            let OrganizerReport::Partner { facts, .. } = &row.report else {
+                return None;
+            };
+            let (commodity, measure) = match facts {
+                OrganizerPartnerFacts::OpeningAssessment {
+                    commodity,
+                    opening_stock,
+                    required,
+                } => (
+                    commodity,
+                    FoodMeasure::Opening {
+                        opening_stock: *opening_stock,
+                        required: *required,
+                    },
+                ),
+                OrganizerPartnerFacts::FoodProvision {
+                    commodity,
+                    consumed,
+                    required,
+                    unmet,
+                    ..
+                } => (
+                    commodity,
+                    FoodMeasure::Completed {
+                        consumed: *consumed,
+                        required: *required,
+                        unmet: *unmet,
+                    },
+                ),
+                _ => return None,
+            };
+            matches_commodity(commodity).then_some(FoodReading {
+                row,
+                commodity,
+                measure,
+            })
+        })
+        .max_by_key(|r| {
+            (
+                r.row.observed_period,
+                r.row.acquired_period,
+                r.row.observation_id,
+            )
+        })
+}
+
+pub(super) fn aid_food_report(view: &OrganizerView, aid: &OrganizerMaterialAidPreview) -> String {
+    let latest = latest_food_report(view, view.period, aid.recipient_actor_id, |commodity| {
+        commodity.good_id == aid.good_id && commodity.unit_id == aid.unit_id
+    });
+    let heading = |row: &OrganizerObservation, topic: &str| {
+        let observed = row.observed_period;
+        if observed == row.acquired_period {
+            format!("P{observed} {topic} report")
+        } else {
+            format!(
+                "P{observed} {topic} report (received P{})",
+                row.acquired_period
+            )
+        }
+    };
+    match latest {
+        Some(FoodReading {
+            row,
+            measure:
+                FoodMeasure::Opening {
+                    opening_stock,
+                    required,
+                },
+            ..
+        }) => {
+            let stock = observer_ui::grouped(opening_stock);
+            let parcels = parcel_label(opening_stock);
+            format!(
+                "{} · {stock} {parcels} on hand, {} needed",
+                heading(row, "pantry"),
+                observer_ui::grouped(required)
+            )
+        }
+        Some(FoodReading {
+            row,
+            measure: FoodMeasure::Completed {
+                consumed, required, ..
+            },
+            ..
+        }) => {
+            let parcels = parcel_label(required);
+            format!(
+                "{} · ate {} of {} {parcels} needed",
+                heading(row, "food"),
+                observer_ui::grouped(consumed),
+                observer_ui::grouped(required)
+            )
+        }
+        _ => "No food report available.".into(),
+    }
+}
 
 pub(super) fn comparable(left: &OrganizerPartnerFacts, right: &OrganizerPartnerFacts) -> bool {
     use OrganizerPartnerFacts::{

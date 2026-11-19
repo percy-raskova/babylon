@@ -1,6 +1,9 @@
 //! Exact textual readings from one disclosed production snapshot.
 
+use super::accounting::AccountsView;
+use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
+use babylon_persistence::ProductionHouseholdAccount;
 
 use std::fmt::Write as _;
 
@@ -13,12 +16,84 @@ use babylon_persistence::production_observation::PhysicalRouteIndex;
 use babylon_persistence::production_observation::ProductionSiteRole;
 use std::collections::BTreeSet;
 
+/// Name the operating function without rewriting the source classification.
+fn function_label(site: &ProductionSite) -> &str {
+    EconomicFunction::from_source_key(&site.function)
+        .map_or(site.function.as_str(), |function| function.label())
+}
+
+/// Recognize only the two national source label forms carrying a named economic function.
+fn national_site_name(name: &str) -> Option<(EconomicFunction, String)> {
+    if let Some((key, suffix)) = name
+        .strip_prefix("representative ")
+        .and_then(|value| value.split_once(" — "))
+    {
+        let function = EconomicFunction::from_source_key(key)?;
+        let suffix = suffix
+            .rsplit_once('/')
+            .and_then(|(county, position)| {
+                let reserve = match position {
+                    "BelowCellReserveRate" => "below the cell reserve rate",
+                    "AtCellReserveRate" => "at the cell reserve rate",
+                    "AboveCellReserveRate" => "above the cell reserve rate",
+                    "NoLaborForce" => "no labor force",
+                    _ => return None,
+                };
+                Some(format!("{county} · {reserve}"))
+            })
+            .unwrap_or_else(|| suffix.to_owned());
+        return Some((
+            function,
+            format!("representative {} — {suffix}", function.label()),
+        ));
+    }
+    let (county, token) = name.rsplit_once(": ")?;
+    let (key, ownership) = token.rsplit_once(" (")?;
+    if !matches!(ownership, "1)" | "2)" | "3)" | "5)") {
+        return None;
+    }
+    let function = EconomicFunction::from_source_key(key)?;
+    Some((
+        function,
+        format!("{county}: {} ({ownership}", function.label()),
+    ))
+}
+
+pub(crate) fn retailer_name(captured: &str) -> String {
+    national_site_name(captured.trim_end_matches(" cohort"))
+        .map_or_else(|| captured.to_owned(), |(_, label)| label)
+}
+
+pub(crate) fn site_subject(site: &ProductionSite) -> String {
+    let name = site.name.trim_end_matches(" cohort");
+    let Some(function) = EconomicFunction::from_source_key(&site.function) else {
+        return name.to_owned();
+    };
+    if let Some((_, label)) = national_site_name(name).filter(|(found, _)| *found == function) {
+        return label;
+    }
+    let label = function.label();
+    if name == label {
+        name.to_owned()
+    } else {
+        format!("{name} · {label}")
+    }
+}
+
 pub(super) fn describe(
     site: &ProductionSite,
     snapshot: &ProductionSnapshot,
     section: ProductionReadingSection,
+    accounts: Option<&AccountsView>,
 ) -> String {
     match section {
+        ProductionReadingSection::Accounts | ProductionReadingSection::Investment => accounts
+            .map_or(
+                "Waiting for the selected site’s financial reading.",
+                AccountsView::text,
+            )
+            .to_owned(),
+        ProductionReadingSection::Orders => String::new(),
         ProductionReadingSection::Flow => describe_flow(site, snapshot),
         ProductionReadingSection::Freight => describe_freight(site, snapshot),
         ProductionReadingSection::Work => describe_work(site, snapshot),
@@ -289,11 +364,20 @@ pub(super) fn describe_work(site: &ProductionSite, snapshot: &ProductionSnapshot
 
 fn describe_sources(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
     let mut value = format!(
-        "WORKPLACE / {}\n{} · {:?}\n",
+        "WORKPLACE / {}\n{} · {:?}\nSite name: {}\nSite ID: {}\nFunction code: {}\n",
         site.location,
-        site.industry_code.as_deref().unwrap_or(&site.function),
-        site.roles
+        function_label(site),
+        site.roles,
+        site.name,
+        site.id,
+        site.function
     );
+    if let Some(code) = &site.industry_code {
+        writeln!(value, "Industry / NAICS: {code}").expect("String write");
+    }
+    if let Some(code) = &site.sector_code {
+        writeln!(value, "Sector / NAICS: {code}").expect("String write");
+    }
     if site.county_geoid().is_some() {
         value.push_str("\nRegional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.\n");
     }
@@ -551,6 +635,15 @@ fn describe_staffing_accounts(
                 grouped(completed.retained_hours),
             )
             .expect("String write");
+            if completed.employed_removed > 0 || completed.reserve_removed > 0 {
+                writeln!(
+                    value,
+                    "Resident losses before staffing · {} employed · {} reserve",
+                    grouped(completed.employed_removed),
+                    grouped(completed.reserve_removed)
+                )
+                .expect("String write");
+            }
         } else {
             value.push_str("Opening workforce; no completed staffing period.\n");
         }
@@ -637,6 +730,35 @@ fn describe_labor_accounts(
     }
 }
 
+pub(super) fn customer_summary(row: &ProductionHouseholdAccount) -> String {
+    let mut value = String::new();
+    writeln!(
+        value,
+        "HOUSEHOLD GOODS / {} / {}\n{} households · {} persons · {} {} needed each period",
+        row.location,
+        row.good,
+        grouped(row.household_count),
+        grouped(row.person_count),
+        grouped(row.required_per_period),
+        row.unit
+    )
+    .expect("String write");
+    if let Some(done) = &row.completed {
+        writeln!(
+                value,
+                "{} purchased · {} support received · {} support sent · {} consumed · {} unmet · {} in pantry",
+                grouped(done.received),
+                grouped(done.support_granted),
+                grouped(done.support_dispatched),
+                grouped(done.consumed),
+                grouped(done.unmet),
+                grouped(done.closing_stock)
+            )
+            .expect("String write");
+    }
+    value.trim_end().to_owned()
+}
+
 fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &ProductionSnapshot) {
     let has_households = snapshot
         .household_accounts
@@ -648,36 +770,6 @@ fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &Pro
             .any(|row| row.provider_site_ids.contains(&site.id));
     if site.county_geoid().is_some() && has_households {
         value.push_str("Regional accounts can cover more than one county in a regional catchment, shown at its hub county. Detailed accounts keep their county scope. Game totals are separate from observed county data.\n");
-    }
-    for row in snapshot
-        .household_accounts
-        .iter()
-        .filter(|r| r.retailer_site_id == site.id)
-    {
-        writeln!(
-            value,
-            "HOUSEHOLD GOODS / {} / {}\n{} households · {} persons · {} {} needed each period",
-            row.location,
-            row.good,
-            grouped(row.household_count),
-            grouped(row.person_count),
-            grouped(row.required_per_period),
-            row.unit
-        )
-        .expect("String write");
-        if let Some(done) = &row.completed {
-            writeln!(
-                value,
-                "{} purchased · {} support received · {} support sent · {} consumed · {} unmet · {} in pantry",
-                grouped(done.received),
-                grouped(done.support_granted),
-                grouped(done.support_dispatched),
-                grouped(done.consumed),
-                grouped(done.unmet),
-                grouped(done.closing_stock)
-            )
-            .expect("String write");
-        }
     }
     for row in snapshot
         .household_service_accounts
@@ -776,7 +868,7 @@ mod aid_reading_tests {
             ProductionReadingSection::Sources,
             ProductionReadingSection::Flow,
         ] {
-            let reading = super::describe(site, &snapshot, section);
+            let reading = super::describe(site, &snapshot, section, None);
             assert!(reading.contains("regional catchment"), "{reading}");
             assert!(reading.contains("hub county"));
             assert!(reading.contains("Detailed accounts keep their county scope"));
@@ -789,6 +881,7 @@ mod aid_reading_tests {
         let mut snapshot = crate::production_freight::tests::aid_fixture();
         snapshot.household_accounts[0].completed =
             Some(babylon_persistence::CompletedHouseholdBalance {
+                population_basis: None,
                 period: 1,
                 opening_stock: 5,
                 received: 3,
@@ -809,8 +902,8 @@ mod aid_reading_tests {
             .iter()
             .find(|s| s.id == "panels")
             .expect("the fixture holds the searched element");
-        let mut text = String::new();
-        describe_households(&mut text, site, &snapshot);
+        assert_eq!(snapshot.household_accounts[0].retailer_site_id, site.id);
+        let text = customer_summary(&snapshot.household_accounts[0]);
         assert!(text.contains("3 purchased · 2 support received · 4 support sent · 4 consumed · 0 unmet · 2 in pantry"));
         assert!(text.contains("4 households · 4 persons"));
     }

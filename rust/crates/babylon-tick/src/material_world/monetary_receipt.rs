@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CashTransferPurpose, FinalDemandPrincipalId, LaborUseReceipt, MoneyLocation,
-    MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt, OrderId, OrganizationAccountId,
-    OutboundOrderId, PublicAccountId, ShiftId, SiteId, UnitId, WageAccrualReceipt,
+    AccountId, CashTransferPurpose, LaborUseReceipt, MoneyLocation, MoneyPosting,
+    MoneyTransferPurpose, MoneyTransferReceipt, OrderId, OutboundOrderId, ShiftId, SiteId, UnitId,
+    WageAccrualReceipt,
 };
 
 use super::MaterialWorldError;
@@ -31,24 +31,11 @@ pub(super) fn validate_order(
 }
 
 pub(super) fn account_parts(account: AccountId) -> (u8, [u8; 32]) {
-    match account {
-        AccountId::Site(id) => (1, id.as_bytes()),
-        AccountId::Household(id) => (2, id.as_bytes()),
-        AccountId::Organization(id) => (3, id.as_bytes()),
-        AccountId::Public(id) => (4, id.as_bytes()),
-    }
+    account.wire_parts()
 }
 
 pub(super) fn account(tag: u8, id: [u8; 32]) -> Result<AccountId, MaterialWorldError> {
-    match tag {
-        1 => Ok(AccountId::Site(SiteId::from_bytes(id))),
-        2 => Ok(AccountId::Household(FinalDemandPrincipalId::from_bytes(id))),
-        3 => Ok(AccountId::Organization(OrganizationAccountId::from_bytes(
-            id,
-        ))),
-        4 => Ok(AccountId::Public(PublicAccountId::from_bytes(id))),
-        _ => Err(MaterialWorldError::Wire),
-    }
+    AccountId::from_wire_parts(tag, id).ok_or(MaterialWorldError::Wire)
 }
 
 fn order_parts(order: OutboundOrderId) -> (u8, [u8; 32]) {

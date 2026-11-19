@@ -34,7 +34,7 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
     let raw = CapturedEconomicCatalog::capture(national_capture::input(), None)
         .expect("the fixture captures the authored state");
-    assert_eq!(raw.compiler_version(), "national-world-v7");
+    assert_eq!(raw.compiler_version(), "national-world-v11");
     assert_eq!(
         &raw.canonical_bytes()[raw.canonical_bytes().len() - 5..],
         &[0; 5]
@@ -42,6 +42,11 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let material_rules = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/material-cycle.bsl"
+    ));
+    let mut material_rules = material_rules.to_vec();
+    material_rules.push(b'\n');
+    material_rules.extend_from_slice(include_bytes!(
+        "../../../../content/scenarios/national/company-portfolio.bsl"
     ));
     let organizer_rules = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -87,7 +92,7 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let raw_frame_size = raw.canonical_bytes().len();
     drop(raw);
     assert_no_opponent_route(&playable, campaign);
-    let mut rules = material_rules.to_vec();
+    let mut rules = material_rules;
     rules.push(b'\n');
     rules.extend_from_slice(organizer_rules);
     rules.push(b'\n');
@@ -255,9 +260,32 @@ fn assert_admitted_inputs(
         .organizer_state()
         .expect("the fixture register carries organizer state");
     assert_eq!(config.campaign_id, *campaign.canonical_bytes());
-    assert!(
-        matches!(&config.time_binding, OrganizerTimeBindingMode::Household{bindings} if bindings.len()==3)
-    );
+    let OrganizerTimeBindingMode::Household { bindings } = &config.time_binding else {
+        panic!("the national organizer uses actual household time")
+    };
+    assert_eq!(bindings.len(), 4);
+    let hearing = config.hearing.as_ref().expect("Wayne relief hearing");
+    let claimants = config
+        .participants
+        .iter()
+        .find(|body| {
+            body.commitments
+                .iter()
+                .any(|entry| entry.actor_id == hearing.claimant_actor_id)
+        })
+        .expect("claimants authorize their own participant body");
+    assert_ne!(hearing.claimant_actor_id, config.controlled_actor_id);
+    let budget = bindings
+        .iter()
+        .find(|binding| binding.contributor_id == claimants.contributor_id)
+        .expect("claimant members furnish hours from their own budget");
+    assert!(config
+        .aid_bindings
+        .iter()
+        .all(|aid| aid.recipient_principal_id != budget.principal_id
+            && aid.donor_principal_id != budget.principal_id));
+    assert_eq!(hearing.claimant_delegation.authorizing_households, 2);
+    assert_eq!(hearing.partner_delegation.authorizing_households, 3);
     assert_eq!(config.aid_bindings.len(), 2);
     let collection = config
         .collection
@@ -381,6 +409,7 @@ fn assert_native_bindings(
         "wayne-organizing-collective",
         "wayne-workplace-committee",
         "wayne-neighborhood-contact-group",
+        "wayne-relief-claimants-assembly",
         "wayne-local-aid-partners",
         "cook-independent-solidarity-partners",
     ] {
@@ -396,7 +425,7 @@ fn assert_native_bindings(
             .iter()
             .filter(|(_, kind)| kind == "PARTICIPANT_BODY")
             .count(),
-        3
+        4
     );
     for target in targets {
         assert!(nodes
@@ -406,6 +435,11 @@ fn assert_native_bindings(
     let bodies = admitted.foundation_graph().rows().hyperedges();
     for actor in [
         expected_config.controlled_actor_id,
+        expected_config
+            .hearing
+            .as_ref()
+            .expect("captured Wayne hearing")
+            .claimant_actor_id,
         expected_config.workplace_partner.actor_id,
         expected_config.neighborhood_partner.actor_id,
         expected_config.aid_bindings[0].partner.actor_id,

@@ -1,0 +1,126 @@
+{
+  "campaign": "5efafb84-10df-41ea-9451-51b8c7e2020d",
+  "preset": "national-economy",
+  "seed": 319,
+  "compiler": "national-world-v10",
+  "county": "county:26163",
+  "public_account_id": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+  "amount_unit": "integer millionths of one game currency unit",
+  "period": 4,
+  "identity": {
+    "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+    "material_register_sha256": "7c70d22608417a7671e8a6cea4c4ed0bd6780ef40a394b040569f79c6456874b",
+    "prior_world_sha256": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25",
+    "receipts_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58",
+    "tick_sha256": "2cbbf44bed8df70384b6aeb0ea5c6e441339c05e365d131956a8a9a468507996",
+    "world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629"
+  },
+  "source": {
+    "cash": {
+      "path": "/media/user/data/babylon-recovery/per293-food-household-native-v10-5efafb84/p4-authority/campaign.pgdump",
+      "sha256": "0139947179e47bee1f5b150ff1c8f8c25f391c607213be263db7663d1144e01c",
+      "account_table": "economic_flow_account_v1",
+      "movement_table": "money_movement_block_v1"
+    },
+    "food": {
+      "path": "/media/user/data/babylon-recovery/per293-native-shortage-2v53qij4/independent-hubs.json",
+      "sha256": "8cca6918943e6c3c64a6b5bb694096b372f3e48a53ed9752fac6b81aee803d5b",
+      "selector": ".map_hubs[\"26163\"].cohorts"
+    },
+    "label_rule": "NationalHouseholdV2 or NationalAidHouseholdV1 digest matched to the actual principal",
+    "population_rule": "Food is one parcel per opening person. The household population receipt independently verifies this equality for 27e21622\u2026 at P4."
+  },
+  "totals": {
+    "period_opening_persons": 1772587,
+    "food_unmet_parcels": 900018,
+    "household_income_support_micros": "20094200000000",
+    "site_ownership_distribution_micros": "0",
+    "company_ownership_distribution_micros": "142431643889402"
+  },
+  "cohorts": [
+    {
+      "principal_id": "3e2788448c4676d1468036aec970c2eb5aa5ecaebaa0cba1f7905f1153d1c867",
+      "budget": "earning-nonowner",
+      "leaf": null,
+      "period_opening_persons": 1196610,
+      "food_unmet_parcels": 607574,
+      "household_income_support_micros": "10874360000000",
+      "household_income_support_payment_present": true,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "0",
+      "wage_payment_micros": "238287024000000"
+    },
+    {
+      "principal_id": "6ee3f4a9c155d2b04b18ab8f8486d967dd71c464827b71ca8839266fdc5874bb",
+      "budget": "earning-owner",
+      "leaf": null,
+      "period_opening_persons": 139712,
+      "food_unmet_parcels": 70938,
+      "household_income_support_micros": "747320000000",
+      "household_income_support_payment_present": true,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "103120510175926",
+      "wage_payment_micros": "43348608000000"
+    },
+    {
+      "principal_id": "8a251a09195e6e1690505a1d7e52d40efa12377fa74d8e154ad271b7b721bcff",
+      "budget": "no-earner-nonowner",
+      "leaf": null,
+      "period_opening_persons": 375449,
+      "food_unmet_parcels": 190622,
+      "household_income_support_micros": "7430640000000",
+      "household_income_support_payment_present": true,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "0",
+      "wage_payment_micros": "15360000000"
+    },
+    {
+      "principal_id": "27e21622a0782bb9bf5fb73ff58b5e47d6da986eb1576b65548fba68e84817f4",
+      "budget": "no-earner-owner",
+      "leaf": null,
+      "period_opening_persons": 41720,
+      "food_unmet_parcels": 21184,
+      "household_income_support_micros": "825720000000",
+      "household_income_support_payment_present": true,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "39311133713476",
+      "wage_payment_micros": "0"
+    },
+    {
+      "principal_id": "800275c90a6f49ff491c8ab8abedf41635897461e147e9f45fd4b4a1dcd752d7",
+      "budget": "collective-residence",
+      "leaf": null,
+      "period_opening_persons": 19084,
+      "food_unmet_parcels": 9691,
+      "household_income_support_micros": "216160000000",
+      "household_income_support_payment_present": true,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "0",
+      "wage_payment_micros": "16008960000000"
+    },
+    {
+      "principal_id": "85e6cef4f8b6cdf360089aaad408cde8c6c644f6587d6fe67b28e1bb8407d48d",
+      "budget": "earning-nonowner",
+      "leaf": "wayne-aid-donor",
+      "period_opening_persons": 8,
+      "food_unmet_parcels": 5,
+      "household_income_support_micros": "0",
+      "household_income_support_payment_present": false,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "0",
+      "wage_payment_micros": "0"
+    },
+    {
+      "principal_id": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+      "budget": "no-earner-nonowner",
+      "leaf": "wayne-aid-recipient",
+      "period_opening_persons": 4,
+      "food_unmet_parcels": 4,
+      "household_income_support_micros": "0",
+      "household_income_support_payment_present": false,
+      "site_ownership_distribution_micros": "0",
+      "company_ownership_distribution_micros": "0",
+      "wage_payment_micros": "0"
+    }
+  ]
+}

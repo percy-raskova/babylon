@@ -333,11 +333,11 @@ mod tests {
         );
         assert_eq!(
             MAX_COMMITTED_MATERIAL_TICK_BYTES,
-            1_000_000_000 + 134_217_728 + 5 * 67_108_864 + 925_434_745 + FIXED_FRAMING_BYTES
+            1_000_000_000 + 134_217_728 + 5 * 67_108_864 + 947_585_922 + FIXED_FRAMING_BYTES
         );
-        assert!(material_component_lengths(1_000_000_000, 925_434_745).is_ok());
+        assert!(material_component_lengths(1_000_000_000, 947_585_922).is_ok());
         assert!(material_component_lengths(1_000_000_001, 0).is_err());
-        assert!(material_component_lengths(0, 925_434_746).is_err());
+        assert!(material_component_lengths(0, 947_585_923).is_err());
         for index in 0..6 {
             let mut counts = [0; 6];
             let mut bodies = [0; 6];

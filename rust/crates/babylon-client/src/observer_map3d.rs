@@ -3,6 +3,7 @@
 //! simulated buildings. All economic bytes come from the installed frame.
 
 use crate::map::CountyMapScope;
+use babylon_kernel::geography::CountyGeoid;
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::Viewport;
 use bevy::ecs::system::SystemParam;
@@ -23,6 +24,10 @@ use crate::observer_ui::{grouped, ObserverFrame, ObserverUiState, ObserverViewpo
 use crate::organizer::{OrganizerClient, OrganizerInspector, OrganizerOverlay};
 use crate::production::PrimaryView;
 
+#[path = "money_map.rs"]
+pub(crate) mod money_map;
+use self::money_map::MoneyView;
+
 #[path = "map_relationships.rs"]
 mod relationships;
 #[path = "map_scene.rs"]
@@ -32,7 +37,10 @@ use crate::observer::ObservationContext;
 use crate::tessellate::Tessellation;
 use crate::ui::Interaction;
 use bevy::ui_widgets::Button;
-use relationships::CountyAnchors;
+pub(crate) use relationships::CountyAnchors;
+#[path = "map_symbols.rs"]
+pub(crate) mod symbols;
+use symbols::MapLabelExclusions;
 
 const MAP_LAYER: usize = 2;
 const METRES_TO_SCENE: f32 = 0.001;
@@ -70,6 +78,7 @@ struct MapOrbit {
     pitch: f32,
     distance: f32,
     fitted_distance: f32,
+    organizer_extent: Option<Vec2>,
 }
 
 impl Default for MapOrbit {
@@ -87,6 +96,7 @@ impl MapOrbit {
             pitch: 0.88,
             distance,
             fitted_distance: distance,
+            organizer_extent: None,
         }
     }
 
@@ -322,7 +332,7 @@ fn update_observation(
             } else {
                 Color::srgb_u8(60, 69, 63)
             }
-        } else if matches!(input.ui.lens, MapLens::Relationships) {
+        } else if matches!(input.ui.lens, MapLens::Money | MapLens::Relationships) {
             theme::LAND
         } else {
             value.map_or(theme::GRAY, |value| {
@@ -350,7 +360,7 @@ fn update_observation(
         }
     }
     for mut text in &mut legend {
-        if matches!(input.ui.lens, MapLens::Relationships) {
+        if matches!(input.ui.lens, MapLens::Money | MapLens::Relationships) {
             text.set_if_neq(Text::new(
                 "County geography | schematic supply relationships",
             ));
@@ -389,7 +399,7 @@ fn place_legend(
         && !ui.splash_visible
         && !ui.comparison_open
         && ui.disclosure.is_none()
-        && !matches!(ui.lens, MapLens::Relationships);
+        && !matches!(ui.lens, MapLens::Money | MapLens::Relationships);
     for (computed, mut node, mut visibility) in &mut legends {
         let placement = viewport
             .0
@@ -479,6 +489,7 @@ struct NavigationInput<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     overlays: OrganizerOverlays<'w, 's>,
     organizer: Option<Res<'w, OrganizerClient>>,
+    money: Option<Res<'w, MoneyView>>,
     viewport: Res<'w, ObserverViewport>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
@@ -505,7 +516,10 @@ fn navigate(
     mut orbit: ResMut<MapOrbit>,
     mut drag: Local<OrganizerDrag>,
 ) {
-    if !matches!(*input.view, PrimaryView::Map | PrimaryView::Organizer)
+    if (*input.view == PrimaryView::Map
+        && input.ui.lens == MapLens::Money
+        && input.money.as_deref().is_some_and(MoneyView::shows_sankey))
+        || !matches!(*input.view, PrimaryView::Map | PrimaryView::Organizer)
         || input.ui.menu_open
         || input.ui.splash_visible
         || input.ui.comparison_open
@@ -572,6 +586,7 @@ fn navigate(
                 if let Some((target, extent, _)) = wayne_focus(atlas, scope, &geometry) {
                     *orbit = MapOrbit::new(extent.max_element());
                     orbit.target = target;
+                    orbit.organizer_extent = Some(extent);
                 }
             }
         } else {
@@ -679,6 +694,43 @@ fn wayne_focus(
     Some((scene_point(center, geometry.origin, 0.0), extent, index))
 }
 
+/// Fit the player map to counties disclosed for the selected aid recipient or comparison.
+#[derive(Event)]
+pub(crate) struct FrameOrganizerCounties(pub(crate) Vec<CountyGeoid>);
+
+fn frame_organizer_counties(
+    event: On<FrameOrganizerCounties>,
+    view: Res<PrimaryView>,
+    atlas: Res<CountyAtlas>,
+    scope: Res<CountyMapScope>,
+    geometry: Res<MapGeometry>,
+    mut orbit: ResMut<MapOrbit>,
+) {
+    if *view != PrimaryView::Organizer {
+        return;
+    }
+    let mut bounds: Option<Rect> = None;
+    for county in &event.0 {
+        let Some(index) = atlas
+            .index_of_fips(county.as_str())
+            .filter(|i| scope.contains(*i))
+        else {
+            return;
+        };
+        let Some(county) = atlas.county(index) else {
+            return;
+        };
+        let rect = Rect::from_corners(county.bbox.min, county.bbox.max);
+        bounds = Some(bounds.map_or(rect, |area| area.union(rect)));
+    }
+    let Some(bounds) = bounds else { return };
+    let margin = if event.0.len() == 1 { 4.0 } else { 1.5 };
+    let extent = bounds.size() * METRES_TO_SCENE * margin;
+    orbit.target = scene_point(bounds.center(), geometry.origin, 0.0);
+    orbit.distance = orbit.fitted_distance;
+    orbit.organizer_extent = Some(extent);
+}
+
 #[derive(SystemParam)]
 struct CameraView<'w> {
     geometry: Res<'w, MapGeometry>,
@@ -699,7 +751,6 @@ fn sync_camera(
     input: CameraView,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut saved: Local<Option<MapOrbit>>,
-    mut organizer_extent: Local<Option<Vec2>>,
     mut cameras: Query<(&mut Camera, &mut Transform, &mut Projection), With<ObserverMapCamera>>,
 ) {
     let CameraView {
@@ -714,7 +765,7 @@ fn sync_camera(
         if let (Some(atlas), Some(scope)) = (atlas.as_ref(), scope.as_ref()) {
             if let Some((target, extent, index)) = wayne_focus(atlas, scope, &geometry) {
                 *saved = Some(orbit.clone());
-                *organizer_extent = Some(extent);
+                orbit.organizer_extent = Some(extent);
                 orbit.target = target;
                 orbit.distance = extent.max_element() * 1.7;
                 orbit.fitted_distance = orbit.distance;
@@ -727,7 +778,6 @@ fn sync_camera(
         if let Some(old) = saved.take() {
             *orbit = old;
         }
-        *organizer_extent = None;
     }
     let Ok((mut camera, mut transform, mut projection)) = cameras.single_mut() else {
         return;
@@ -740,7 +790,7 @@ fn sync_camera(
         let mut fitted = orbit.clone();
         scene::fit_orbit(
             &mut fitted,
-            organizer_extent.unwrap_or(geometry.extent),
+            orbit.organizer_extent.unwrap_or(geometry.extent),
             rect.width() / rect.height(),
         );
         orbit.set_if_neq(fitted);
@@ -776,6 +826,7 @@ impl Plugin for ObserverMap3dPlugin {
             .init_resource::<MapGeometry>()
             .init_resource::<MapOrbit>()
             .init_resource::<CountyAnchors>()
+            .add_observer(frame_organizer_counties)
             .add_systems(
                 Update,
                 scene::setup_map
@@ -788,8 +839,14 @@ impl Plugin for ObserverMap3dPlugin {
                 Update,
                 (sync_camera, place_legend).after(ObserverSet::Paint),
             );
-        app.add_systems(Update, scene::place_geographic_labels.after(sync_camera));
+        app.init_resource::<MapLabelExclusions>().add_systems(
+            Update,
+            (symbols::place, scene::place_geographic_labels)
+                .chain()
+                .after(sync_camera),
+        );
         relationships::install(app);
+        money_map::install(app);
     }
 }
 

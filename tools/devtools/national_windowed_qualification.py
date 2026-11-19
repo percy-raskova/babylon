@@ -69,6 +69,7 @@ UnitAction = Literal[
     "open_organizer",
     "open_direction",
     "inspect_practices",
+    "inspect_hearing",
     "inspect_receipts",
     "open_relationships",
     "scene_places",
@@ -93,6 +94,8 @@ UnitAction = Literal[
     "choose_inquiry_maintenance_received",
     "choose_reinforce",
     "choose_hold",
+    "choose_hearing_claimants",
+    "choose_hearing_joint",
     "choose_pause_standing",
     "choose_resume_standing",
     "review",
@@ -289,12 +292,16 @@ class InquiryChoice(FrozenRecord):
     inquiry: Literal["work_lost", "maintenance_received"]
 
 
+class HearingChoice(FrozenRecord):
+    invite_to_hearing: Literal["claimant_only", "joint_minutes"]
+
+
 UnitChoice = Literal[
     "collect", "local_aid", "remote_aid", "reinforce", "hold", "pause_standing", "resume_standing"
 ]
 
 
-Choice = UnitChoice | InquiryChoice
+Choice = UnitChoice | InquiryChoice | HearingChoice
 Byte = Annotated[StrictInt, Field(ge=0, le=255)]
 Bytes16 = Annotated[tuple[Byte, ...], Field(min_length=16, max_length=16)]
 Bytes32 = Annotated[tuple[Byte, ...], Field(min_length=32, max_length=32)]
@@ -486,6 +493,7 @@ class Preview(SelectedAllocation):
             "collection_unavailable",
             "collection_cash_refused",
             "aid_unavailable",
+            "hearing_unavailable",
             "aid_receiving_refused",
             "pending_aid_conflict",
             "household_time_already_spent",
@@ -756,6 +764,8 @@ class PlannedChoice(FrozenRecord):
         "local_aid",
         "inquiry_work_lost",
         "inquiry_maintenance_received",
+        "hearing_claimants",
+        "hearing_joint",
         "reinforce",
         "hold",
         "pause_standing",
@@ -764,9 +774,9 @@ class PlannedChoice(FrozenRecord):
 
     @model_validator(mode="after")
     def offered_amount(self) -> Self:
-        if self.choice.startswith("inquiry_"):
+        if self.choice.startswith(("inquiry_", "hearing_")):
             if self.allocation != "none":
-                raise ValueError("inquiry cannot authorize an allocation")
+                raise ValueError("this practice does not authorize a material allocation")
         else:
             SelectedAllocation.model_validate(
                 {"choice": self.choice, "allocation": self.allocation}
@@ -1282,6 +1292,8 @@ class ControlChannel:
             raise self._refuse("native period was not completely installed")
         if action == "inspect_practices" and reply.state.inspector != "Practices":
             raise self._refuse("native practice list did not open")
+        if action == "inspect_hearing" and reply.state.inspector != "Hearing":
+            raise self._refuse("native hearing notice or minutes did not open")
         choice = (
             {
                 "choose_collect": "collect",
@@ -1293,6 +1305,8 @@ class ControlChannel:
                 ),
                 "choose_reinforce": "reinforce",
                 "choose_hold": "hold",
+                "choose_hearing_claimants": HearingChoice(invite_to_hearing="claimant_only"),
+                "choose_hearing_joint": HearingChoice(invite_to_hearing="joint_minutes"),
                 "choose_pause_standing": "pause_standing",
                 "choose_resume_standing": "resume_standing",
             }.get(action)
@@ -1464,8 +1478,13 @@ def submit_choice(
             "inquiry_maintenance_received": "choose_inquiry_maintenance_received",
             "reinforce": "choose_reinforce",
             "hold": "choose_hold",
+            "hearing_claimants": "choose_hearing_claimants",
+            "hearing_joint": "choose_hearing_joint",
         }
-        channel.perform("inspect_practices", timeout)
+        channel.perform(
+            "inspect_hearing" if choice.choice.startswith("hearing_") else "inspect_practices",
+            timeout,
+        )
         channel.perform(actions[choice.choice], timeout)
     selected = channel.state
     if selected is None:
@@ -1595,6 +1614,8 @@ def drive_pair(
     on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
     | None = None,
     on_stopped: Callable[[], None] | None = None,
+    organizer_view: bool = True,
+    on_publisher_started: Callable[[subprocess.Popen[bytes]], None] | None = None,
     capture_lifecycle: Callable[
         [subprocess.Popen[bytes], subprocess.Popen[bytes]],
         AbstractContextManager[CaptureMonitor | None],
@@ -1813,11 +1834,14 @@ def drive_pair(
                                 "native opening navigation deadline exceeded",
                                 reason="navigation_deadline",
                             )
-                    if current.primary_view != "Organizer":
+                    if organizer_view and current.primary_view != "Organizer":
                         channel.perform("open_organizer", opening_timeout())
                     phase = "organizer_readiness"
                     current = wait_ready(
-                        channel, opening_timeout(), organizer=True, cold=on_opened is not None
+                        channel,
+                        opening_timeout(),
+                        organizer=organizer_view,
+                        cold=on_opened is not None,
                     )
                     phase = "opening_boundary"
                     if on_opened is not None:
@@ -1934,6 +1958,10 @@ def drive_pair(
                 client_environment,
                 defines_path=defines_path,
                 initial_target=initial_target,
+                analytics_binary=runtime_binary.with_name("babylon-economic-projections")
+                if on_publisher_started is not None
+                else None,
+                on_publisher_started=on_publisher_started,
                 qualification_control=endpoint,
                 on_started=started,
                 on_spawned=spawned if on_spawned is not None or on_stopped is not None else None,

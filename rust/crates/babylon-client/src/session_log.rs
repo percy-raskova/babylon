@@ -74,6 +74,7 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
     match command {
         ObserverCommand::NewOrganizerCampaign => "new_organizer_campaign",
         ObserverCommand::NewNationalCampaign => "new_national_campaign",
+        ObserverCommand::NewNationalEconomyCampaign => "new_national_economy_campaign",
         ObserverCommand::TogglePlay => "toggle_play",
         ObserverCommand::Step => "step",
         ObserverCommand::Speed => "speed",
@@ -125,6 +126,7 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
         ObserverCommand::Disclosure(ObserverDisclosure::Lens) => "lens_controls",
         ObserverCommand::Evidence => "evidence",
         ObserverCommand::EconomicDetails => "economic_details",
+        ObserverCommand::Money => "money_flows",
         ObserverCommand::Relationships => "relationships",
         ObserverCommand::NetworkSector(_) => "network_sector",
         ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork) => "economy_network",
@@ -168,6 +170,8 @@ fn log_requests(
             ProductionCommand::Focus { .. } => "production_focus",
             ProductionCommand::Page { .. } => "production_page",
             ProductionCommand::Process { .. } => "production_process",
+            ProductionCommand::ResidentReceipt { .. } => "resident_food_receipt",
+            ProductionCommand::Household { .. } => "production_household",
         };
         scoped_info!(session, command = name, "observer command requested");
     }

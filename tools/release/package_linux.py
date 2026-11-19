@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-BINARIES = ("babylon-client", "babylon-runtime")
+BINARIES = ("babylon-client", "babylon-runtime", "babylon-economic-projections")
 LAUNCHER_DEPENDENCIES = ("psycopg", "typing-extensions")
 VERSION_PATTERN = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 
@@ -309,6 +309,8 @@ def main() -> int:
                     "babylon-persistence",
                     "--bin",
                     "babylon-runtime",
+                    "--bin",
+                    "babylon-economic-projections",
                     "-p",
                     "babylon-client",
                     "--bin",

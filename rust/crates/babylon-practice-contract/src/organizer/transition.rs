@@ -43,7 +43,7 @@ use crate::{
 };
 use babylon_kernel::replay::ReplaySessionId;
 
-fn target_identity(domain: &[u8], id: u64) -> [u8; 32] {
+pub(super) fn target_identity(domain: &[u8], id: u64) -> [u8; 32] {
     let mut bytes = Vec::from(domain);
     bytes.extend_from_slice(&id.to_be_bytes());
     content_digest::sha256_of(&bytes)
@@ -163,6 +163,19 @@ pub(super) fn intent_for_authorized_commitment(
                 }],
             }],
         ),
+        OrganizerChoice::InviteToHearing(offer) => (
+            PracticeId::Organize,
+            PracticeTargetTag::Organization,
+            target_identity(
+                b"babylon.organizer-hearing-venue.v1",
+                config
+                    .hearing
+                    .as_ref()
+                    .ok_or(OrganizerError::InvalidCommitment)?
+                    .claimant_actor_id,
+            ),
+            control_parameter(offer.parameter()),
+        ),
         OrganizerChoice::Reinforce => (
             PracticeId::Organize,
             PracticeTargetTag::Organization,
@@ -239,7 +252,7 @@ pub(super) fn intent_for_authorized_commitment(
     Ok(value)
 }
 
-fn control_parameter(value: u8) -> Vec<PracticeParameter> {
+pub(super) fn control_parameter(value: u8) -> Vec<PracticeParameter> {
     vec![PracticeParameter {
         key_u8: 2,
         value_kind_u8: 1,
@@ -513,7 +526,9 @@ fn partner_for_choice(
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
             super::aid::aid_binding(config, choice).map(|row| &row.partner)
         }
-        OrganizerChoice::PauseStanding | OrganizerChoice::Collect => None,
+        OrganizerChoice::PauseStanding
+        | OrganizerChoice::Collect
+        | OrganizerChoice::InviteToHearing(_) => None,
     }
 }
 
@@ -602,6 +617,13 @@ pub fn organizer_input_authority_ledger(
             PracticeAuthorityKind::DeterministicPolicy,
         )
     }));
+    if let Some(hearing) = &config.hearing {
+        actors.push((
+            hearing.claimant_actor_id,
+            hearing.claimant_authority_id,
+            PracticeAuthorityKind::DeterministicPolicy,
+        ));
+    }
     for (actor_id, authority_id, authority_kind) in actors {
         rows.push(crate::PracticeInputAuthority {
             schema_version: 2,
@@ -659,6 +681,21 @@ pub fn organizer_resolved_action_batch(
         intents.push(intent);
     }
 
+    if config
+        .hearing
+        .as_ref()
+        .is_some_and(|hearing| state.period.checked_add(1) == Some(hearing.period))
+    {
+        let base =
+            intent_for_authorized_commitment(config, state.period, commitment, accepted.is_none())?;
+        intents.extend(super::hearing::attendance_intents(
+            config,
+            state.period,
+            commitment,
+            &base,
+            true,
+        )?);
+    }
     intents.sort_by_key(crate::practice_proposal_key);
     let items = intents
         .into_iter()
@@ -864,6 +901,17 @@ pub fn resolve_organizer_practice_with_time(
         // The original accepted gift replaces ordinary work once, without
         // dispatch being mislabeled as performed mutual-aid practice.
         receipt.outcome = OrganizerOutcome::AidScheduled;
+    } else if matches!(choice, OrganizerChoice::InviteToHearing(_)) {
+        let intent = practice_intent_with_origin(config, opening, commitment, false)?;
+        if let Some(time_use) =
+            super::time_resources::allocate_hearing_hours(config, &intent, required, resources)?
+        {
+            receipt.time_use = time_use;
+            receipt.hours_spent = required;
+            receipt.outcome = OrganizerOutcome::HearingInvitationIssued;
+        } else {
+            receipt.outcome = OrganizerOutcome::InsufficientTime;
+        }
     } else if choice == OrganizerChoice::PauseStanding {
         next.standing.authorized = false;
         next.standing.paused_reason = Some(OrganizerPauseReason::Explicit);
@@ -898,6 +946,20 @@ pub fn resolve_organizer_practice_with_time(
         aid_support,
         &mut entries,
     )?;
+    if config
+        .hearing
+        .as_ref()
+        .is_some_and(|hearing| hearing.period == facts.period)
+    {
+        let base = intent_for_authorized_commitment(
+            config,
+            opening.period,
+            commitment,
+            accepted.is_none(),
+        )?;
+        super::hearing::resolve(config, commitment, &base, resources, &mut entries)?;
+    }
+    super::hearing::advance_review(config, opening, &mut next, &mut entries)?;
     set_time_witness(config, &mut next, &entries)?;
     super::contract::validate_organizer_pair(config, &next)?;
     super::contract::validate_organizer_period_entries(config, &entries)?;
@@ -990,7 +1052,7 @@ fn execute_practice(
     receipt.hours_spent = required;
     match choice {
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
-            return Err(OrganizerError::AidSupportMissing)
+            return Err(OrganizerError::AidSupportMissing);
         }
         OrganizerChoice::Inquiry(question) => {
             let allowed = match question {
@@ -1038,9 +1100,9 @@ fn execute_practice(
                 receipt.outcome = OrganizerOutcome::ContactUncompleted;
             }
         }
-        OrganizerChoice::PauseStanding | OrganizerChoice::Collect => {
-            return Err(OrganizerError::InvalidCommitment)
-        }
+        OrganizerChoice::PauseStanding
+        | OrganizerChoice::Collect
+        | OrganizerChoice::InviteToHearing(_) => return Err(OrganizerError::InvalidCommitment),
     }
     Ok(())
 }

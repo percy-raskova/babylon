@@ -3,10 +3,12 @@
 //! The catalog is canonicalized, validated and hashed once. Every period borrows
 //! it; no definition is cloned into [`crate::MaterialCircuitState`].
 
+use crate::CompanyPortfolioPolicy;
 use std::collections::BTreeSet;
 
 use babylon_kernel::content_digest;
 
+use crate::CompanyPayoutPolicy;
 use crate::GoodId;
 use crate::LogisticsNodeId;
 use crate::RouteId;
@@ -25,6 +27,8 @@ use std::collections::BTreeMap;
 /// Mutable authored input for admission as a campaign catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCatalogDefinition {
+    pub company_portfolios: Option<CompanyPortfolioPolicy>,
+    pub company_payouts: Vec<CompanyPayoutPolicy>,
     pub capacity_policy: CapacitySupply,
     pub site_logistics_nodes: Vec<SiteLogisticsNode>,
     pub process_outputs: Vec<ProcessOutput>,
@@ -152,6 +156,13 @@ impl MaterialCatalogDefinition {
                 || rows.shared.len() > MAX_MATERIAL_CIRCUIT_ROWS
             {
                 return Err(MaterialCircuitError::RowLimit);
+            }
+        }
+        crate::financial::validate_company_policy(&self.company_payouts)?;
+        if let Some(policy) = self.company_portfolios {
+            policy.validate()?;
+            if self.company_payouts.is_empty() {
+                return Err(MaterialCircuitError::FinancialInvariant);
             }
         }
         self.validate_unique()?;
@@ -387,6 +398,10 @@ pub(crate) fn digest(
 
 impl MaterialCatalogDefinition {
     fn canonicalize(&mut self) {
+        self.company_payouts.sort_by_key(|r| r.company);
+        for row in &mut self.company_payouts {
+            row.claims.sort_unstable_by_key(|c| c.0);
+        }
         self.site_logistics_nodes.sort();
         self.process_outputs.sort();
         self.input_coefficients.sort();

@@ -60,7 +60,7 @@ pub(super) fn domestic(
                 source_ownership: Some(target.ownership),
                 key: format!(
                     "representative-{}",
-                    national_economy::identity::base32(&target.site_id.as_bytes())
+                    content_digest::base32(&target.site_id.as_bytes())
                 ),
             },
             ResidentWorkplaceSource::HouseholdEnterprise => EconomicSiteSource::Designed {
@@ -262,6 +262,72 @@ pub(super) fn household_identity(
         opening_stock: stock,
         opening_cash: super::amount(builder.policy.working_capital_periods, period_needs_cost)?,
     });
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum HouseholdEndowment {
+    Transfer,
+    RetainAtParent,
+}
+
+/// Debit the most recently appended child from its source parent.
+pub(super) fn debit_household_parent(
+    builder: &mut Builder<'_>,
+    parent_principal: FinalDemandPrincipalId,
+    endowment: HouseholdEndowment,
+) -> Result<()> {
+    let (child, preceding) = builder
+        .opening
+        .households
+        .split_last_mut()
+        .ok_or(NationalOpeningError::Identity)?;
+    let parent = preceding
+        .iter_mut()
+        .find(|row| row.principal_id == parent_principal && row.location == child.location)
+        .ok_or(NationalOpeningError::Identity)?;
+    parent.persons = parent
+        .persons
+        .checked_sub(child.persons)
+        .ok_or(NationalOpeningError::SourceScope)?;
+    parent.households = parent
+        .households
+        .checked_sub(child.households)
+        .ok_or(NationalOpeningError::SourceScope)?;
+    if !parent.kind.admits_counts(parent.persons, parent.households) {
+        return Err(NationalOpeningError::SourceScope);
+    }
+    if matches!(endowment, HouseholdEndowment::Transfer) {
+        parent.opening_cash = parent
+            .opening_cash
+            .checked_sub(child.opening_cash)
+            .map_err(|_| NationalOpeningError::Arithmetic)?;
+        for stock in &child.opening_stock {
+            let target = parent
+                .opening_stock
+                .iter_mut()
+                .find(|s| {
+                    s.amount.good_id == stock.amount.good_id
+                        && s.amount.unit_id == stock.amount.unit_id
+                })
+                .ok_or(NationalOpeningError::Identity)?;
+            target.amount.quantity = target
+                .amount
+                .quantity
+                .checked_sub(stock.amount.quantity)
+                .ok_or(NationalOpeningError::Arithmetic)?;
+            target.total_cost = target
+                .total_cost
+                .checked_sub(stock.total_cost)
+                .map_err(|_| NationalOpeningError::Arithmetic)?;
+        }
+    } else {
+        child.opening_cash = Currency::from_micro_units(0);
+        for stock in &mut child.opening_stock {
+            stock.amount.quantity = 0;
+            stock.total_cost = Currency::from_micro_units(0);
+        }
+    }
     Ok(())
 }
 

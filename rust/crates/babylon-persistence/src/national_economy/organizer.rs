@@ -1,9 +1,13 @@
 //! One source-derived national organizer producer; no fixed-time fallback.
 use crate::economic_catalog::{
-    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
+    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSiteSeed,
+    SourceArtifactKind,
 };
+use crate::national_economy::AidChildCapture;
+use crate::national_economy::NationalSupportClaimant;
 use crate::national_economy::{NationalAidCapture, NationalGamePolicy, NATIONAL_SCENARIO_ID};
 use babylon_material_circuit::AidMandate;
+use babylon_practice_contract::OrganizerHearingConfig;
 use babylon_practice_contract::OrganizerObservation;
 use babylon_practice_contract::OrganizerReportSharing;
 
@@ -23,6 +27,7 @@ type Result<T> = StdResult<T, EconomicCatalogError>;
 /// The final catalog digest additionally authenticates the complete organizer config.
 #[derive(Clone, Copy)]
 pub(crate) struct NationalOrganizerSourceBasis(pub(crate) [u8; 32]);
+pub(crate) const CLAIMANTS_ASSEMBLY: &str = "wayne-relief-claimants-assembly";
 fn key(name: &str) -> StableElementKey {
     StableElementKey::Node {
         scenario: NATIONAL_SCENARIO_ID.into(),
@@ -52,11 +57,36 @@ fn authority(campaign: [u8; 16], actor: u64) -> [u8; 16] {
     result.copy_from_slice(&content_digest::sha256_of(&bytes)[..16]);
     result
 }
+/// The donor's one employing site, which must run exactly one process.
+fn donor_workplace<'a>(
+    opening: &'a EconomicOpening,
+    donor: &AidChildCapture,
+) -> Result<&'a EconomicSiteSeed> {
+    let employed = opening
+        .employment
+        .iter()
+        .filter(|e| e.payee == donor.principal)
+        .collect::<Vec<_>>();
+    if employed.len() != 1 {
+        return Err(EconomicCatalogError::Identity);
+    }
+    let site = opening
+        .sites
+        .iter()
+        .find(|s| s.site_id == employed[0].site_id)
+        .ok_or(EconomicCatalogError::Identity)?;
+    if site.processes.len() != 1 {
+        return Err(EconomicCatalogError::Identity);
+    }
+    Ok(site)
+}
+
 pub(crate) fn assemble(
     campaign: [u8; 16],
     source_basis: NationalOrganizerSourceBasis,
     opening: &EconomicOpening,
     aid: &NationalAidCapture,
+    claimant: Option<&NationalSupportClaimant>,
     input: &EconomicCatalogInput,
 ) -> Result<OrganizerConfig> {
     if campaign == [0; 16] || aid.children.len() != 3 || aid.mandates.len() != 2 {
@@ -75,22 +105,7 @@ pub(crate) fn assemble(
     let policy = NationalGamePolicy::from_captured_bytes(source.bytes())
         .map_err(|_| EconomicCatalogError::Source(SourceArtifactKind::NationalGamePolicy))?;
     let donor = &aid.children[0];
-    let employed = opening
-        .employment
-        .iter()
-        .filter(|e| e.payee == donor.principal)
-        .collect::<Vec<_>>();
-    if employed.len() != 1 {
-        return Err(EconomicCatalogError::Identity);
-    }
-    let site = opening
-        .sites
-        .iter()
-        .find(|s| s.site_id == employed[0].site_id)
-        .ok_or(EconomicCatalogError::Identity)?;
-    if site.processes.len() != 1 {
-        return Err(EconomicCatalogError::Identity);
-    }
+    let site = donor_workplace(opening, donor)?;
     let workplace_actor = actor(&key("wayne-workplace-committee"))?;
     let neighborhood_actor = actor(&key("wayne-neighborhood-contact-group"))?;
     let ordinary_partner = |actor_id, label: String, partner_policy| OrganizerPartner {
@@ -112,7 +127,7 @@ pub(crate) fn assemble(
         d.neighborhood_partner_label.clone(),
         d.neighborhood_policy,
     );
-    let participants = participants(aid, &policy, workplace_actor, neighborhood_actor);
+    let mut participants = participants(aid, &policy, workplace_actor, neighborhood_actor);
     let mut bindings = aid
         .children
         .iter()
@@ -121,6 +136,15 @@ pub(crate) fn assemble(
             principal_id: child.principal.as_bytes(),
         })
         .collect::<Vec<_>>();
+    let hearing = hearing(
+        campaign,
+        &policy,
+        claimant,
+        &aid.children[1],
+        &mut participants,
+        &mut bindings,
+    )?;
+    participants.sort_unstable_by_key(|p| p.contributor_id);
     bindings.sort_unstable_by_key(|b| b.contributor_id);
     let aid_bindings = aid_bindings(campaign, aid, &policy)?;
     let collection = collection_mandate(campaign, source.digest(), aid, &policy)?;
@@ -130,6 +154,7 @@ pub(crate) fn assemble(
         controlled_actor_id: donor.actor,
         input_authority_id: authority(campaign, donor.actor),
         organization_label: d.organization_label.clone(),
+        hearing,
         workplace_id: actor(&site.subject)?,
         workplace_process_id: site.processes[0].process_id.as_bytes(),
         workplace_label: site.label.clone(),
@@ -151,6 +176,64 @@ pub(crate) fn assemble(
     babylon_practice_contract::initial_organizer_state(&config)
         .map_err(|_| EconomicCatalogError::Identity)?;
     Ok(config)
+}
+
+fn hearing(
+    campaign: [u8; 16],
+    policy: &NationalGamePolicy,
+    claimant: Option<&NationalSupportClaimant>,
+    local_partner: &AidChildCapture,
+    participants: &mut Vec<OrganizerParticipant>,
+    bindings: &mut Vec<OrganizerHouseholdBinding>,
+) -> Result<Option<OrganizerHearingConfig>> {
+    let Some(terms) = &policy.organizer.hearing else {
+        return Ok(None);
+    };
+    let claimant = claimant.ok_or(EconomicCatalogError::Identity)?;
+    if !matches!(claimant.location, babylon_kernel::economic_location::EconomicLocation::County(county) if county.geoid().as_str() == terms.county_geoid)
+        || local_partner.location != claimant.location
+        || terms.claimant_delegation.authorizing_households > claimant.margins.households
+        || terms.partner_delegation.authorizing_households > local_partner.households
+    {
+        return Err(EconomicCatalogError::Identity);
+    }
+    let claimant_actor_id = actor(&key(CLAIMANTS_ASSEMBLY))?;
+    let contributor_id = actor(&claimant.subject)?;
+    let participant = OrganizerParticipant {
+        contributor_id,
+        label: format!("{} members", terms.claimant_label),
+        available_hours: policy.organizer.contributor_hours_cap,
+        commitments: vec![OrganizerContribution {
+            actor_id: claimant_actor_id,
+            hours: terms.attendance_hours,
+        }],
+        concern: terms.claimant_claim.clone(),
+        objection: "Only the members can extend a delegate's mandate.".into(),
+        review_condition: format!(
+            "Read the hearing minutes before review in period {}.",
+            terms.review_period
+        ),
+    };
+    participants.push(participant);
+    bindings.push(OrganizerHouseholdBinding {
+        contributor_id,
+        principal_id: claimant.principal.as_bytes(),
+    });
+    Ok(Some(OrganizerHearingConfig {
+        county_geoid: terms.county_geoid.clone(),
+        period: terms.period,
+        review_period: terms.review_period,
+        claimant_actor_id,
+        claimant_authority_id: authority(campaign, claimant_actor_id),
+        claimant_label: terms.claimant_label.clone(),
+        claimant_claim: terms.claimant_claim.clone(),
+        partner_claim: terms.partner_claim.clone(),
+        attendance_hours: terms.attendance_hours,
+        claimant_mandate: terms.claimant_mandate,
+        partner_mandate: terms.partner_mandate,
+        claimant_delegation: terms.claimant_delegation.clone(),
+        partner_delegation: terms.partner_delegation.clone(),
+    }))
 }
 fn collection_mandate(
     campaign: [u8; 16],

@@ -154,8 +154,8 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "version=$(python3 tools/release_version.py --release-version)" >> "$GITHUB_OUTPUT"
-          echo "artifact-name=native-linux-x86_64" >> "$GITHUB_OUTPUT"
+          version="$(python3 tools/release_version.py --release-version)"
+          printf '%s\n' "version=$version" "artifact-name=native-linux-x86_64" >> "$GITHUB_OUTPUT"
       - name: Install native build and clean-unpack runtime dependencies
         run: >-
           tools/install_ci_apt_packages.sh
@@ -165,13 +165,13 @@ jobs:
         run: |
           CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
           rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
-      - name: Build both native executables with locked dependencies
+      - name: Build native executables with locked dependencies
         working-directory: rust
         run: |
           cargo fetch --locked --target x86_64-unknown-linux-gnu
           cargo build --locked --release \
             -p babylon-client --bin babylon-client \
-            -p babylon-persistence --bin babylon-runtime
+            -p babylon-persistence --bin babylon-runtime --bin babylon-economic-projections
       - name: Assemble the versioned download
         env:
           RELEASE_VERSION: ${{ steps.identity.outputs.version }}

@@ -7,7 +7,8 @@ use babylon_graph::stable_element::StableElementKey;
 use babylon_graph::stable_state::StableGraphState;
 
 use babylon_material_circuit::{
-    CircuitAccounting, EmploymentTerms, LaborCompensation, StaffingMemberId, StaffingMemberReceipt,
+    CircuitAccounting, EmploymentTerms, LaborCompensation, ResidentWorkforceAttrition,
+    StaffingMemberId, StaffingMemberReceipt,
 };
 use babylon_tick::material_staffing::{
     StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS,
@@ -110,7 +111,10 @@ impl<'a> StaffingGraph<'a> {
         let name = self.node(binding.subject(), "SOCIAL_CLASS")?;
         let employed = self.field(name, EMPLOYED_POPULATION)?;
         let reserve = self.field(name, RESERVE_POPULATION)?;
-        if employed.checked_add(reserve) != Some(binding.member().labor_force()) {
+        if employed
+            .checked_add(reserve)
+            .is_none_or(|count| count > binding.member().labor_force())
+        {
             return Err(ProductionProjectionError::State);
         }
         Ok((employed, reserve))
@@ -133,7 +137,11 @@ impl<'a> StaffingGraph<'a> {
                 .checked_add(reserve)
                 .ok_or(ProductionProjectionError::Arithmetic)?;
         }
-        if stocks.employed.checked_add(stocks.reserve) != Some(binding.pool().labor_force()) {
+        if stocks
+            .employed
+            .checked_add(stocks.reserve)
+            .is_none_or(|count| count > binding.pool().labor_force())
+        {
             return Err(ProductionProjectionError::State);
         }
         Ok(stocks)
@@ -143,6 +151,7 @@ impl<'a> StaffingGraph<'a> {
 pub(super) struct StaffingWitnesses<'a> {
     register: &'a MaterialWorldRegister,
     receipts: BTreeMap<StaffingMemberId, &'a StaffingMemberReceipt>,
+    attrition: BTreeMap<StaffingMemberId, &'a ResidentWorkforceAttrition>,
     terms: Option<BTreeMap<StaffingMemberId, &'a EmploymentTerms>>,
     hours: BTreeMap<StaffingMemberId, u64>,
     residences: BTreeMap<FinalDemandPrincipalId, EconomicLocation>,
@@ -155,6 +164,11 @@ impl<'a> StaffingWitnesses<'a> {
         let rows = receipts.map_or(&[][..], |r| r.staffing_members.as_slice());
         let receipt_map: BTreeMap<_, _> = rows.iter().map(|r| (r.member.member_id(), r)).collect();
         if receipt_map.len() != rows.len() {
+            return Err(ProductionProjectionError::History);
+        }
+        let losses = receipts.map_or(&[][..], |r| r.resident_workforce_attrition.as_slice());
+        let attrition: BTreeMap<_, _> = losses.iter().map(|r| (r.member_id, r)).collect();
+        if attrition.len() != losses.len() {
             return Err(ProductionProjectionError::History);
         }
         let (terms, hours) = match &register.state().accounting {
@@ -183,6 +197,7 @@ impl<'a> StaffingWitnesses<'a> {
         Ok(Self {
             register,
             receipts: receipt_map,
+            attrition,
             terms,
             hours,
             residences: register
@@ -204,6 +219,38 @@ impl<'a> StaffingWitnesses<'a> {
             .map(|binding| self.project_member(pool, binding, current, prior))
             .collect()
     }
+    fn has_lifecycle(&self, household: FinalDemandPrincipalId) -> bool {
+        self.register.completed_tick() > 0
+            && self
+                .register
+                .state()
+                .household_lifecycle()
+                .and_then(|life| life.position(household))
+                .is_some()
+    }
+
+    fn population_removals(
+        &mut self,
+        pool: &StaffingNodeBinding,
+        binding: &StaffingMemberNodeBinding,
+        opening: (u64, u64),
+    ) -> Result<(u64, u64)> {
+        let member = binding.member();
+        let Some(loss) = self.attrition.remove(&member.member_id()) else {
+            return Ok((0, 0));
+        };
+        if !self.has_lifecycle(member.household_id())
+            || loss.principal_id != member.household_id()
+            || loss.pool_id != pool.pool().pool_id()
+            || (loss.opening_employed, loss.opening_reserve) != opening
+        {
+            return Err(ProductionProjectionError::History);
+        }
+        loss.validate()
+            .map_err(|_| ProductionProjectionError::History)?;
+        Ok((loss.employed_removed, loss.reserve_removed))
+    }
+
     fn project_member(
         &mut self,
         pool: &'a StaffingNodeBinding,
@@ -214,19 +261,45 @@ impl<'a> StaffingWitnesses<'a> {
         let member = binding.member();
         let id = member.member_id();
         let (employed, reserve) = current.member(binding)?;
+        let living = employed
+            .checked_add(reserve)
+            .ok_or(ProductionProjectionError::Arithmetic)?;
+        let modeled = self.has_lifecycle(member.household_id());
+        if !modeled && living != member.labor_force() {
+            return Err(ProductionProjectionError::State);
+        }
         let next_hours = employed
             .checked_mul(pool.pool().policy().hours_per_person())
             .ok_or(ProductionProjectionError::Arithmetic)?;
         let compensation = self.compensation(pool, binding, next_hours)?;
         let completed = if let Some(prior) = prior {
             let (opening_employed, opening_reserve) = prior.member(binding)?;
+            let original_total = opening_employed
+                .checked_add(opening_reserve)
+                .ok_or(ProductionProjectionError::Arithmetic)?;
+            if (!modeled || self.register.completed_tick() == 1)
+                && original_total != member.labor_force()
+            {
+                return Err(ProductionProjectionError::State);
+            }
+            let (employed_removed, reserve_removed) =
+                self.population_removals(pool, binding, (opening_employed, opening_reserve))?;
+            let staffed_employed = opening_employed
+                .checked_sub(employed_removed)
+                .ok_or(ProductionProjectionError::History)?;
+            let staffed_reserve = opening_reserve
+                .checked_sub(reserve_removed)
+                .ok_or(ProductionProjectionError::History)?;
             let row = self
                 .receipts
                 .remove(&id)
                 .ok_or(ProductionProjectionError::History)?;
             row.validate()
                 .map_err(|_| ProductionProjectionError::History)?;
-            if row.member != *member
+            let expected = member
+                .with_living_force(living)
+                .map_err(|_| ProductionProjectionError::History)?;
+            if row.member != expected
                 || row.pool_id != pool.pool().pool_id()
                 || row.site_id != pool.pool().site_id()
                 || row.unit_id != pool.pool().unit_id()
@@ -239,8 +312,8 @@ impl<'a> StaffingWitnesses<'a> {
                     row.closing_reserve,
                     row.next_opening_hours,
                 ) != (
-                    opening_employed,
-                    opening_reserve,
+                    staffed_employed,
+                    staffed_reserve,
                     employed,
                     reserve,
                     next_hours,
@@ -252,6 +325,8 @@ impl<'a> StaffingWitnesses<'a> {
                 period: row.period,
                 opening_employed,
                 opening_reserve,
+                employed_removed,
+                reserve_removed,
                 hires: row.hires,
                 separations: row.separations,
             })
@@ -273,7 +348,7 @@ impl<'a> StaffingWitnesses<'a> {
                 scenario: scenario.clone(),
                 local_name: local_name.clone(),
             },
-            labor_force: member.labor_force(),
+            labor_force: living,
             employed,
             reserve,
             next_opening_hours: next_hours,
@@ -314,7 +389,8 @@ impl<'a> StaffingWitnesses<'a> {
         }))
     }
     pub(super) fn finish(self) -> Result<()> {
-        if !self.receipts.is_empty()
+        if !self.attrition.is_empty()
+            || !self.receipts.is_empty()
             || !self.hours.is_empty()
             || self.terms.is_some_and(|r| !r.is_empty())
         {

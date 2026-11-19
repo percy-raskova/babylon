@@ -1,4 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use crate::national_economy::companies::CompanyPolicy;
 use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::NationalGrainPolicy;
 
@@ -8,11 +9,16 @@ use babylon_practice_contract::OrganizerSharingBasis;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
+use babylon_kernel::geography::CountyGeoid;
 
-use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, UnitId};
+use babylon_material_circuit::{
+    CommodityKind, GoodId, HouseholdLifecycleRates, HouseholdNeedBasis, UnitId,
+};
 
 use crate::national_transport::CargoClass;
 use babylon_practice_contract::OrganizerGiftConsent;
+use babylon_practice_contract::OrganizerHearingDelegation;
+use babylon_practice_contract::OrganizerHearingMandate;
 use babylon_practice_contract::OrganizerPartnerPolicy;
 use std::collections::BTreeMap;
 use std::fmt::Formatter;
@@ -22,7 +28,10 @@ use std::fmt::Result as FmtResult;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NationalGamePolicy {
     pub grain: NationalGrainPolicy,
+    pub companies: Option<CompanyPolicy>,
     pub source_digest: [u8; 32],
+    /// Retained geographic identity basis, independent of new company policy parameters.
+    pub grain_identity_policy_digest: [u8; 32],
     pub period_days: u64,
     pub work_hours_per_person: u64,
     pub default_wage: Currency,
@@ -35,10 +44,12 @@ pub struct NationalGamePolicy {
     pub missing_peer_weight_per_establishment: u64,
     pub household_enterprise_function: EconomicFunction,
     pub aid: GameAidPolicy,
+    pub household_support_claimant: Option<GameHouseholdSupportClaimant>,
     pub organizer: GameOrganizerPolicy,
     pub financial: GameFinancialPolicy,
     pub households: GameHouseholdPolicy,
     pub household_time: GameHouseholdTimePolicy,
+    pub household_lifecycle: Option<GameHouseholdLifecyclePolicy>,
     pub markets: GameMarketPolicy,
     pub equipment: GameEquipmentPolicy,
     pub commodities: BTreeMap<String, GameCommodity>,
@@ -46,6 +57,21 @@ pub struct NationalGamePolicy {
     pub household_needs: Vec<GameNeed>,
     pub counterparts: BTreeMap<ForeignCounterpart, GameProfile>,
     pub dependency: GameDependencyProfile,
+}
+
+/// Designed allocation of the initially mixed ages within each published band.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InitialAgeDistribution {
+    UniformRemainingBirthdays,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameHouseholdLifecyclePolicy {
+    pub rates: HouseholdLifecycleRates,
+    pub initial_age_distribution: InitialAgeDistribution,
+    /// Designed within the preexisting 16+ count in foreign and dependency markets.
+    pub external_eligible_age_bps: [u16; 3],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -290,6 +316,14 @@ pub enum GameServiceReach {
     SameStateOrOwnCounterpart,
 }
 
+/// Designed counted subset of Wayne's no-earner nonowner households.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameHouseholdSupportClaimant {
+    pub county: CountyGeoid,
+    pub households: u64,
+    pub reserve_persons: u64,
+}
+
 /// Captured Designed gift terms; ordinary market prices remain independent.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -323,6 +357,7 @@ pub enum VenueLogReader {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameOrganizerPolicy {
+    pub hearing: Option<GameHearingPolicy>,
     pub local_report_sharing: GamePartnerReportSharing,
     pub remote_report_sharing: GamePartnerReportSharing,
     pub evidence_class: String,
@@ -350,6 +385,24 @@ pub struct GameOrganizerPolicy {
     pub neighborhood_policy: OrganizerPartnerPolicy,
     pub local_policy: OrganizerPartnerPolicy,
     pub remote_policy: OrganizerPartnerPolicy,
+}
+
+/// Designed membership instructions for one relief hearing. Settlement grants review access.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GameHearingPolicy {
+    pub evidence_class: String,
+    pub county_geoid: String,
+    pub period: u64,
+    pub review_period: u64,
+    pub claimant_label: String,
+    pub claimant_claim: String,
+    pub partner_claim: String,
+    pub attendance_hours: u64,
+    pub claimant_mandate: OrganizerHearingMandate,
+    pub partner_mandate: OrganizerHearingMandate,
+    pub claimant_delegation: OrganizerHearingDelegation,
+    pub partner_delegation: OrganizerHearingDelegation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]

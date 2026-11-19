@@ -1,4 +1,5 @@
 //! Source-conserving, Designed opening refinements for real household gifts.
+use super::actors::HouseholdEndowment;
 use super::{actors, routes, Builder, NationalOpeningError as Error, Result};
 use crate::national_economy::NATIONAL_SCENARIO_ID;
 use crate::national_household_allocation::{
@@ -314,33 +315,13 @@ fn retarget(
     .map_err(|_| Error::Workforce(AllocationError::PopulationControl))?;
     moved.seed.employed = child.employed;
     moved.seed.reserve = 0;
-    moved.seed.subject = subject(&format!("member-{}", base32(&id)));
+    moved.seed.subject = subject(&format!("member-{}", content_digest::base32(&id)));
     child.class_subject = moved.seed.subject.clone();
     workplace.members.push(moved);
     workplace
         .members
         .sort_unstable_by_key(|m| m.seed.member.member_id());
     Ok(())
-}
-fn base32(bytes: &[u8; 32]) -> String {
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let mut result = String::with_capacity(52);
-    let mut bits = 0_u16;
-    let mut count = 0;
-    for byte in bytes {
-        bits = (bits << 8) | u16::from(*byte);
-        count += 8;
-        while count >= 5 {
-            count -= 5;
-            result.push(char::from(ALPHABET[usize::from((bits >> count) & 31)]));
-        }
-    }
-    if count > 0 {
-        result.push(char::from(
-            ALPHABET[usize::from((bits << (5 - count)) & 31)],
-        ));
-    }
-    result
 }
 pub(super) fn households(
     builder: &mut Builder<'_>,
@@ -368,70 +349,12 @@ pub(super) fn households(
             scale,
             (child.principal, child.subject.clone()),
         )?;
-        let donated = builder
-            .opening
-            .households
-            .last()
-            .ok_or(Error::Identity)?
-            .clone();
-        let parent = builder
-            .opening
-            .households
-            .iter_mut()
-            .find(|h| h.principal_id == child.parent)
-            .ok_or(Error::Identity)?;
-        parent.persons = parent
-            .persons
-            .checked_sub(child.persons)
-            .ok_or(Error::Arithmetic)?;
-        parent.households = parent
-            .households
-            .checked_sub(child.households)
-            .ok_or(Error::Arithmetic)?;
-        if child.employed > 0 {
-            parent.opening_cash = Currency::from_micro_units(
-                parent
-                    .opening_cash
-                    .micro_units()
-                    .checked_sub(donated.opening_cash.micro_units())
-                    .ok_or(Error::Arithmetic)?,
-            );
-            for stock in &donated.opening_stock {
-                let target = parent
-                    .opening_stock
-                    .iter_mut()
-                    .find(|s| {
-                        s.amount.good_id == stock.amount.good_id
-                            && s.amount.unit_id == stock.amount.unit_id
-                    })
-                    .ok_or(Error::Identity)?;
-                target.amount.quantity = target
-                    .amount
-                    .quantity
-                    .checked_sub(stock.amount.quantity)
-                    .ok_or(Error::Arithmetic)?;
-                target.total_cost = Currency::from_micro_units(
-                    target
-                        .total_cost
-                        .micro_units()
-                        .checked_sub(stock.total_cost.micro_units())
-                        .ok_or(Error::Arithmetic)?,
-                );
-            }
+        let endowment = if child.employed > 0 {
+            HouseholdEndowment::Transfer
         } else {
-            // Child initially receives zero. Its share remains with the source remainder.
-            let recipient = builder
-                .opening
-                .households
-                .iter_mut()
-                .find(|h| h.principal_id == child.principal)
-                .ok_or(Error::Identity)?;
-            recipient.opening_cash = Currency::from_micro_units(0);
-            for stock in &mut recipient.opening_stock {
-                stock.amount.quantity = 0;
-                stock.total_cost = Currency::from_micro_units(0);
-            }
-        }
+            HouseholdEndowment::RetainAtParent
+        };
+        actors::debit_household_parent(builder, child.parent, endowment)?;
     }
     Ok(())
 }
@@ -517,12 +440,34 @@ mod tests {
             crate::national_transport::national_transport_reference()
                 .expect("the transport reference fixture loads"),
             crate::national_economy::NationalOpeningPolicy {
+                ages: Some(
+                    crate::national_ages::national_age_reference().expect("county age margins"),
+                ),
                 policy: &policy,
                 source_hash: content_digest::sha256_of(bytes),
             },
         )
         .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
         assert_eq!(captured.aid.children.len(), 3);
+        let claimant = captured
+            .opening
+            .households
+            .iter()
+            .find(|h| h.subject == subject("wayne-household-support-claimants"))
+            .expect("the independently accounted Wayne claimant cohort");
+        assert_eq!((claimant.persons, claimant.households), (2, 2));
+        assert!(!captured
+            .aid
+            .children
+            .iter()
+            .any(|c| c.principal == claimant.principal_id));
+        assert!(captured.opening.institutions.public_allocations.iter().any(
+            |allocation| allocation.recipient == AccountId::Household(claimant.principal_id)
+                && allocation.treatment
+                    == babylon_material_circuit::PublicTransferTreatment::HouseholdIncomeSupport
+                && allocation.amount_per_period.micro_units() > 0
+        ));
+
         assert_refined_children(&captured, &policy, &budgets, &time);
         assert_organization_and_route(&captured, &policy);
     }
@@ -556,14 +501,44 @@ mod tests {
                 .iter()
                 .find(|h| h.principal_id == child.principal)
                 .expect("the fixture holds the searched element");
-            assert_eq!(parent.persons + refined.persons, source.persons);
-            assert_eq!(parent.households + refined.households, source.households);
+            let claimant = captured
+                .support_claimant
+                .as_ref()
+                .filter(|row| row.parent == child.parent);
+            if let Some(claimant) = claimant {
+                let claimant_seed = captured
+                    .opening
+                    .households
+                    .iter()
+                    .find(|h| h.principal_id == claimant.principal)
+                    .expect("exact claimant opening endowment");
+                assert_claimant_endowment(
+                    policy,
+                    source.persons,
+                    source.households,
+                    [parent, refined, claimant_seed],
+                );
+            }
+            let claimant_people = claimant.map_or(0, |row| row.margins.persons);
+            let claimant_households = claimant.map_or(0, |row| row.margins.households);
+            assert_eq!(
+                parent.persons + refined.persons + claimant_people,
+                source.persons
+            );
+            assert_eq!(
+                parent.households + refined.households + claimant_households,
+                source.households
+            );
             let grouped: Vec<_> = captured
                 .opening
                 .staffing
                 .iter()
                 .flat_map(|p| &p.members)
-                .filter(|m| [child.parent, child.principal].contains(&m.member.household_id()))
+                .filter(|m| {
+                    let principal = m.member.household_id();
+                    [child.parent, child.principal].contains(&principal)
+                        || claimant.is_some_and(|row| row.principal == principal)
+                })
                 .collect();
             assert_eq!(
                 grouped.iter().map(|m| m.employed).sum::<u64>(),
@@ -589,6 +564,63 @@ mod tests {
             assert_eq!(child.persons, child.eligible + child.under16);
             assert_child_endowments(captured, policy, child, refined, &grouped);
         }
+    }
+
+    fn assert_claimant_endowment(
+        policy: &NationalGamePolicy,
+        source_persons: u64,
+        source_households: u64,
+        seeds: [&EconomicHouseholdSeed; 3],
+    ) {
+        let mut expected_cash = 0_i128;
+        for need in &policy.household_needs {
+            let commodity = &policy.commodities[&need.key];
+            let source_basis = match need.basis {
+                HouseholdNeedBasis::Persons => source_persons,
+                HouseholdNeedBasis::Households => source_households,
+            };
+            let units = source_basis * need.units_per_basis;
+            let price = commodity
+                .price
+                .as_ref()
+                .expect("household need price")
+                .opening;
+            expected_cash +=
+                i128::from(units * policy.working_capital_periods) * price.micro_units();
+            if matches!(
+                commodity.kind,
+                babylon_material_circuit::CommodityKind::Storable { .. }
+            ) {
+                let stock: Vec<_> = seeds
+                    .iter()
+                    .flat_map(|seed| &seed.opening_stock)
+                    .filter(|row| {
+                        row.amount.good_id == commodity.good_id
+                            && row.amount.unit_id == commodity.unit_id
+                    })
+                    .collect();
+                let expected_stock = units * policy.opening_pantry_periods;
+                assert_eq!(
+                    stock.iter().map(|row| row.amount.quantity).sum::<u64>(),
+                    expected_stock
+                );
+                assert_eq!(
+                    stock
+                        .iter()
+                        .map(|row| row.total_cost.micro_units())
+                        .sum::<i128>(),
+                    i128::from(expected_stock) * price.micro_units()
+                );
+            }
+        }
+        assert_eq!(
+            seeds
+                .iter()
+                .map(|seed| seed.opening_cash.micro_units())
+                .sum::<i128>(),
+            expected_cash
+        );
+        assert!(seeds[2].opening_cash.micro_units() > 0);
     }
 
     fn assert_child_endowments(

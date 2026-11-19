@@ -11,6 +11,7 @@ use std::path::{Component, PathBuf};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::{RuntimeSessionPreset, RuntimeSessionTarget};
 
+use babylon_material_circuit::SiteId;
 use fmt::Formatter;
 use fmt::Result as FmtResult;
 use uuid::Uuid;
@@ -81,7 +82,7 @@ options:
   --campaign    open an existing canonical campaign UUID; falls back to BABYLON_CAMPAIGN_ID.
   --new-campaign create an absent campaign with this canonical UUID.
   --preset      new campaign scenario: standard (default), delayed,
-                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne or national-world.
+                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne, national-world or national-economy.
   Open the connected window with `mise run play`.
 ";
 
@@ -152,6 +153,16 @@ the restricted tick-status reader; it grants no writer or organizer authority.
 
 usage:
   babylon-client --headless --campaign <uuid> economy status
+  babylon-client --headless --campaign <uuid> economy sites
+  babylon-client --headless --campaign <uuid> economy site <64-digit-hex-site-id> <period>
+
+The site commands require only BABYLON_OBSERVER_DSN. `economy sites` lists the
+fixed campaign foundation's site IDs and readable labels at period zero.
+`economy site` reads the exact period;
+period zero has a foundation balance sheet with no period income or cash flow.
+All amounts are exact decimal strings in micro-currency. Cash excludes reserves;
+named reserve movements are a separate reconciled component. Planning control
+is unavailable unless captured. Physical-control campaigns refuse monetary books.
 ";
 
 const CHANGELOG_HELP: &str = "\
@@ -192,6 +203,10 @@ pub enum CliCommand {
     TickStatus,
     /// `economy status` — authenticated full-observer snapshot scope and identity.
     EconomyStatus,
+    /// `economy sites` — discover the authenticated campaign site identities.
+    EconomySites,
+    /// `economy site <hex-id> <period>` — exact connected site statements.
+    EconomySite { site: SiteId, period: u64 },
     /// `changelog <geoid>` — the supersession feed for one county.
     Changelog {
         /// Five-digit county GEOID.
@@ -461,6 +476,7 @@ fn windowed_target(
             None | Some("standard") => RuntimeSessionPreset::Standard,
             Some("delayed") => RuntimeSessionPreset::Delayed,
             Some("national-world") => RuntimeSessionPreset::NationalWorld,
+            Some("national-economy") => RuntimeSessionPreset::NationalEconomy,
             Some("organize-in-wayne") => RuntimeSessionPreset::OrganizeInWayne,
             Some("statewide-baseline") => RuntimeSessionPreset::StatewideBaseline,
             Some("statewide-freight-constraint") => RuntimeSessionPreset::StatewideFreightConstraint,
@@ -475,7 +491,7 @@ fn windowed_target(
             Some(_) => {
                 return Err(CliError::at(
                     concat!(file!(), ":", line!()),
-                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne or national-world".into(),
+                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne, national-world or national-economy".into(),
                 ))
             }
         };
@@ -533,6 +549,39 @@ fn resolve_campaign(flag: Option<String>) -> Result<CampaignId, CliError> {
     Ok(CampaignId::from_uuid(uuid))
 }
 
+fn parse_site_identity(value: &str) -> Result<[u8; 32], CliError> {
+    identity_bytes(value).ok_or_else(|| {
+        CliError::at(
+            concat!(file!(), ":", line!()),
+            "site identity must be 64 lowercase hexadecimal digits; discover it with economy sites"
+                .into(),
+        )
+    })
+}
+
+/// Decode a canonical lowercase 32-byte identifier or digest.
+pub(crate) fn identity_bytes(value: &str) -> Option<[u8; 32]> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return None;
+    }
+    let mut result = [0; 32];
+    for (output, pair) in result.iter_mut().zip(value.as_bytes().as_chunks::<2>().0) {
+        let digit = |byte: u8| {
+            if byte.is_ascii_digit() {
+                byte - b'0'
+            } else {
+                byte - b'a' + 10
+            }
+        };
+        *output = digit(pair[0]) * 16 + digit(pair[1]);
+    }
+    Some(result)
+}
+
 fn parse_command(words: &[String]) -> Result<CliCommand, CliError> {
     let Some((first, tail)) = words.split_first() else {
         return Err(CliError::at(
@@ -544,9 +593,15 @@ fn parse_command(words: &[String]) -> Result<CliCommand, CliError> {
         "dossier" => parse_dossier(tail),
         "economy" => match tail {
             [status] if status == "status" => Ok(CliCommand::EconomyStatus),
+            [sites] if sites == "sites" => Ok(CliCommand::EconomySites),
+            [command, site, period] if command == "site" => {
+                let bytes = parse_site_identity(site)?;
+                let period = period.parse::<u64>().map_err(|_| CliError::at(concat!(file!(), ":", line!()), "site statement period must be an unsigned integer".into()))?;
+                Ok(CliCommand::EconomySite { site: SiteId::from_bytes(bytes), period })
+            },
             _ => Err(CliError::at(
                 concat!(file!(), ":", line!()),
-                "expected 'economy status'".into(),
+                "expected economy status, economy sites, or economy site <64-digit lowercase hex-id> <period>".into(),
             )),
         },
         "tick" => match tail {
@@ -1014,6 +1069,38 @@ mod tests {
     }
 
     #[test]
+    fn site_statements_parse_exact_identity_period_and_discovery() {
+        let identity = "01".repeat(32);
+        let command = parse_command(&[
+            "economy".into(),
+            "site".into(),
+            identity.clone(),
+            "0".into(),
+        ])
+        .expect("foundation command");
+        assert_eq!(
+            command,
+            CliCommand::EconomySite {
+                site: SiteId::from_bytes([1; 32]),
+                period: 0
+            }
+        );
+        assert_eq!(
+            parse_command(&["economy".into(), "sites".into()]).expect("site discovery"),
+            CliCommand::EconomySites
+        );
+        for (id, period) in [
+            ("bad".into(), "1"),
+            ("AA".repeat(32), "1"),
+            (identity.clone(), "-1"),
+            (identity, "18446744073709551616"),
+        ] {
+            assert!(parse_command(&["economy".into(), "site".into(), id, period.into()]).is_err());
+        }
+        assert!(render_help(HelpTopic::Economy).contains("economy sites"));
+    }
+
+    #[test]
     fn economic_summary_requires_an_explicit_headless_campaign_and_exact_command() {
         let env = EnvVarGuard::lock(CAMPAIGN_ENV);
         env.remove();
@@ -1051,32 +1138,24 @@ mod tests {
     }
 
     #[test]
-    fn national_world_is_an_explicit_new_selection_and_never_an_open_override() {
-        let request = parse(os(&[
-            NEW_CAMPAIGN_FLAG,
-            CAMPAIGN,
-            PRESET_FLAG,
-            "national-world",
-        ]))
-        .expect("the captured national economy is an explicit New choice");
-        let CliRequest::Windowed {
-            initial_target,
-            qualification_control: None,
-        } = request
-        else {
-            panic!("national New must retain the connected window path")
-        };
-        assert_eq!(
-            serde_json::to_value(initial_target).expect("the value serializes to JSON")["preset"],
-            "national-world"
-        );
-        assert!(parse(os(&[
-            CAMPAIGN_FLAG,
-            CAMPAIGN,
-            PRESET_FLAG,
-            "national-world"
-        ]))
-        .is_err());
+    fn national_presets_are_explicit_new_selections_and_never_open_overrides() {
+        for preset in ["national-world", "national-economy"] {
+            let request = parse(os(&[NEW_CAMPAIGN_FLAG, CAMPAIGN, PRESET_FLAG, preset]))
+                .expect("the national preset is an explicit New choice");
+            let CliRequest::Windowed {
+                initial_target,
+                qualification_control: None,
+            } = request
+            else {
+                panic!("national New must retain the connected window path")
+            };
+            assert_eq!(
+                serde_json::to_value(initial_target).expect("the target serializes")["preset"],
+                preset
+            );
+            assert!(parse(os(&[CAMPAIGN_FLAG, CAMPAIGN, PRESET_FLAG, preset])).is_err());
+            assert!(render_help(HelpTopic::Root).contains(preset));
+        }
         for invalid in [
             "national",
             "National-world",

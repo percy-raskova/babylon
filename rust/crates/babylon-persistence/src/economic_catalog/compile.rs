@@ -1,6 +1,7 @@
 //! One initialization compiler. It creates current engine rows; it does not
 //! adjudicate a period or retain another mutable state owner.
 use super::{CatalogAccounting, CatalogCapacity, EconomicCatalogError, EconomicOpening};
+use babylon_kernel::currency::Currency;
 use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::HouseholdTimeAccounting;
@@ -29,6 +30,15 @@ pub struct CompiledEconomicOpening {
     pub staffing: StaffingComposition,
 }
 impl EconomicOpening {
+    /// Capture historical-cost capital on the same terms used by the runtime compiler.
+    pub(crate) fn opening_capital(&self) -> Result<BTreeMap<AccountId, Currency>> {
+        let (_, costs) = opening_books(self)?;
+        Ok(costs
+            .capital_accounts()
+            .map(|c| (c.account, c.opening_capital))
+            .collect())
+    }
+
     /// Compile exact input rows into their catalog and opening state.
     /// # Errors
     /// Refuses ambiguous identities, inconsistent principals, overflow or an
@@ -37,6 +47,10 @@ impl EconomicOpening {
         let mut catalog = empty_catalog();
         let mut state = empty_state();
         state.capacity_reservations.equipment = self.equipment_position.clone();
+        catalog.company_portfolios = self.policies.company_portfolios;
+        catalog
+            .company_payouts
+            .clone_from(&self.policies.company_payouts);
         catalog.commodities.clone_from(&self.commodities);
         append_sites(self, &mut catalog, &mut state)?;
         append_households(self, &mut state)?;
@@ -69,6 +83,8 @@ fn empty_catalog() -> MaterialCatalogDefinition {
         route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],
@@ -434,11 +450,12 @@ fn compile_accounting(
     }
 }
 fn opening_books(opening: &EconomicOpening) -> Result<(MonetaryBook, HistoricalCostBook)> {
-    if opening
-        .institutional_cash
-        .iter()
-        .any(|r| !matches!(r.id, AccountId::Organization(_) | AccountId::Public(_)))
-    {
+    if opening.institutional_cash.iter().any(|r| {
+        !matches!(
+            r.id,
+            AccountId::Organization(_) | AccountId::Public(_) | AccountId::Company(_)
+        )
+    }) {
         return Err(EconomicCatalogError::Opening(
             "institutional cash namespace",
         ));

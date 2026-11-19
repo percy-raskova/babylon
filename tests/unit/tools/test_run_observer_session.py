@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -396,6 +398,79 @@ def test_two_anonymous_pipes_connect_children_without_parent_forwarding(
     for fd in fds:
         with pytest.raises(OSError):
             os.fstat(fd)
+
+
+@pytest.mark.parametrize("preset", [None, "national-world", "national-economy", "delayed"])
+def test_local_auto_publication_uses_separate_credentials_and_reaps_its_child(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, preset: str | None
+) -> None:
+    children = []
+
+    class Child:
+        def __init__(self, args, **kwargs):
+            self.args, self.options = args, kwargs
+            self.returncode = None
+            self.stdin = io.BytesIO() if kwargs["stdin"] == subprocess.PIPE else None
+            children.append(self)
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", Child)
+    writer, reader = launcher.child_environments(
+        {
+            "BABYLON_RUNTIME_DSN": "owner",
+            "BABYLON_REOPEN_CAMPAIGN": "untrusted ambient campaign",
+            "BABYLON_NEW_CAMPAIGN": "untrusted ambient campaign",
+            "PGPASSWORD": "unwanted",
+        },
+        launcher.ReaderCredentials("observer", "known"),
+    )
+    code = launcher.run_pair(
+        tmp_path / "runtime",
+        tmp_path / "client",
+        tmp_path,
+        writer,
+        reader,
+        defines_path=tmp_path / "defines",
+        initial_target=(
+            launcher.OpenCampaignTarget(CAMPAIGN)
+            if preset is None
+            else launcher.NewCampaignTarget(CAMPAIGN, preset)
+        ),
+        analytics_binary=tmp_path / "babylon-economic-projections",
+    )
+    assert code == 0
+    runtime, client, worker = children
+    assert worker.args == [
+        str(tmp_path / "babylon-economic-projections"),
+        "watch-database",
+        "--session-stdin",
+    ]
+    assert worker.options["env"].get("BABYLON_REOPEN_CAMPAIGN") == (
+        str(CAMPAIGN) if preset is None else None
+    )
+    assert worker.options["env"].get("BABYLON_NEW_CAMPAIGN") == (
+        str(CAMPAIGN) if preset in {"national-world", "national-economy"} else None
+    )
+    assert "BABYLON_NEW_CAMPAIGN" not in runtime.options["env"]
+    assert "BABYLON_NEW_CAMPAIGN" not in client.options["env"]
+    assert "BABYLON_REOPEN_CAMPAIGN" not in runtime.options["env"]
+    assert "BABYLON_REOPEN_CAMPAIGN" not in client.options["env"]
+    assert worker.options["env"]["BABYLON_RUNTIME_DSN"] == "owner"
+    assert worker.options["env"]["BABYLON_OBSERVER_DSN"] == "observer"
+    assert (
+        not {"PGPASSWORD", "BABYLON_READER_DSN", "BABYLON_SESSION_STDIO"}
+        & worker.options["env"].keys()
+    )
+    assert worker.options["stdout"] == subprocess.DEVNULL and worker.options["close_fds"] is True
+    assert "BABYLON_OBSERVER_DSN" not in runtime.options["env"]
+    assert "BABYLON_RUNTIME_DSN" not in client.options["env"]
+    assert worker.returncode == 0 and worker.stdin.closed
 
 
 def test_windowed_qualification_binds_owned_children_after_closing_parent_pipes(
@@ -852,6 +927,8 @@ def test_prepare_builds_with_native_rustup_from_the_pinned_workspace(
         "babylon-persistence",
         "--bin",
         "babylon-runtime",
+        "--bin",
+        "babylon-economic-projections",
         "-p",
         "babylon-client",
         "--bin",
@@ -867,7 +944,7 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
-    protocol_version: int | float = 19,
+    protocol_version: int | float = 21,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
     ready_changes: dict[str, object] | None = None,
@@ -1003,6 +1080,7 @@ def _smoke_transcript_children(
         "statewide-maintenance-both",
         "organize-in-wayne",
         "national-world",
+        "national-economy",
     ],
 )
 def test_smoke_request_preserves_selected_preset_through_new_restart_and_readback(
@@ -1124,13 +1202,15 @@ def _national_snapshot_report() -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize("preset", ["national-world", "national-economy"])
 def test_national_smoke_requires_the_authenticated_economic_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    preset: str,
 ) -> None:
     _smoke_transcript_children(monkeypatch, tmp_path)
-    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 0
+    assert launcher.main(["--smoke", "--no-build", "--preset", preset]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["economy_snapshot"] == _national_snapshot_report()
     assert set(report["lifecycle_timings_us"]) == {"opening", "advance_commit_ack", "reopen"}
@@ -1200,7 +1280,7 @@ def test_national_smoke_refuses_numeric_hash_evidence(
 def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
-    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=19)
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=21)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
     for index in (1, 2):
         requests = [
@@ -1208,7 +1288,7 @@ def test_installation_check_admits_current_protocol_and_exact_progress_stream(
             for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
         ]
         assert all(
-            type(row["protocol_version"]) is int and row["protocol_version"] == 19
+            type(row["protocol_version"]) is int and row["protocol_version"] == 21
             for row in requests
         )
         assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
@@ -1338,8 +1418,12 @@ def test_lifecycle_requires_committed_world_hash(monkeypatch, tmp_path, world_ha
         17.0,
         18,
         18.0,
+        19,
         19.0,
         20,
+        20.0,
+        21.0,
+        22,
     ],
 )
 def test_installation_check_refuses_unsupported_or_untyped_version(
@@ -1347,7 +1431,7 @@ def test_installation_check_refuses_unsupported_or_untyped_version(
 ):
     _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
-    assert "requires runtime session protocol 19" in capsys.readouterr().err
+    assert "requires runtime session protocol 21" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

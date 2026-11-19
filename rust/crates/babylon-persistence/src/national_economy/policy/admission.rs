@@ -1,8 +1,8 @@
 use super::{
     GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
-    GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
-    NationalGamePolicyError,
+    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming,
+    GameMarketPolicy, GameNeed, GamePrice, GameProfile, GameRecipe, GameServiceReach,
+    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError,
 };
 use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::NationalGrainGeneration;
@@ -11,11 +11,15 @@ use crate::national_transport::CargoClass;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::ForeignCounterpart;
+use babylon_material_circuit::{CompanyConditionOrder, CompanyPortfolioPolicy};
 
-use super::GameAidPolicy;
 use super::GameOrganizerPolicy;
+use super::{GameAidPolicy, GameHouseholdSupportClaimant};
+use crate::national_economy::companies::{
+    CompanyCaptureError, CompanyPolicy, ExperimentalPopulation,
+};
 use babylon_kernel::content_digest;
-use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, ServiceStage, UnitId};
+use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage, UnitId};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -24,6 +28,7 @@ type Error = NationalGamePolicyError;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPolicy {
+    companies: Option<RawCompanies>,
     grain: RawGrain,
     schema_version: u16,
     evidence_class: String,
@@ -41,7 +46,9 @@ struct RawPolicy {
     financial: RawFinancial,
     households: RawHouseholds,
     household_time: RawHouseholdTime,
+    household_lifecycle: Option<RawHouseholdLifecycle>,
     aid: GameAidPolicy,
+    household_support_claimant: Option<RawHouseholdSupportClaimant>,
     organizer: GameOrganizerPolicy,
     markets: RawMarkets,
     equipment: RawEquipment,
@@ -50,6 +57,84 @@ struct RawPolicy {
     household_needs: Vec<RawNeed>,
     counterpart: BTreeMap<String, RawProfile>,
     dependency: RawDependency,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawHouseholdSupportClaimant {
+    evidence_class: String,
+    county: String,
+    households: u64,
+    reserve_persons: u64,
+}
+
+impl RawHouseholdSupportClaimant {
+    fn admit(self) -> Result<GameHouseholdSupportClaimant, Error> {
+        if self.evidence_class != "Designed" {
+            return Err(Error::Evidence);
+        }
+        if self.county != "26163" || self.households == 0 || self.households > self.reserve_persons
+        {
+            return Err(Error::Profile("Wayne household support claimant".into()));
+        }
+        Ok(GameHouseholdSupportClaimant {
+            county: babylon_kernel::geography::CountyGeoid::try_from(self.county.as_str())
+                .map_err(|_| Error::Location)?,
+            households: self.households,
+            reserve_persons: self.reserve_persons,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawHouseholdLifecycle {
+    initial_age_distribution: InitialAgeDistribution,
+    births_per_million_working_age_per_period: u32,
+    deaths_per_million_per_period: [u32; 4],
+    external_eligible_age_bps: [u16; 3],
+}
+
+impl RawHouseholdLifecycle {
+    fn admit(self) -> Result<GameHouseholdLifecyclePolicy, Error> {
+        if self
+            .external_eligible_age_bps
+            .into_iter()
+            .map(u32::from)
+            .sum::<u32>()
+            != 10_000
+            || self.births_per_million_working_age_per_period > 1_000_000
+            || self
+                .deaths_per_million_per_period
+                .iter()
+                .any(|rate| *rate > 1_000_000)
+        {
+            return Err(Error::Profile(
+                "household lifecycle rates or external age mix".into(),
+            ));
+        }
+        Ok(GameHouseholdLifecyclePolicy {
+            initial_age_distribution: self.initial_age_distribution,
+            rates: babylon_material_circuit::HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: self
+                    .births_per_million_working_age_per_period,
+                deaths_per_million_per_period: self.deaths_per_million_per_period,
+            },
+            external_eligible_age_bps: self.external_eligible_age_bps,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCompanies {
+    experiment_controller_count: Option<u16>,
+    inherited_grain_policy_sha256: [u8; 32],
+    opening_employment_bps: [u16; 3],
+    opening_treasury_bps: u16,
+    portfolio_weights: [[u16; 4]; 4],
+    high_utilization_bps: u16,
+    history_periods: u8,
+    modest_expansion_bps: u16,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -178,9 +263,20 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     )?;
     let markets = markets(&raw.markets)?;
     let equipment = equipment(raw.equipment, &commodities)?;
+    let source_digest = content_digest::sha256_of(source.as_bytes());
+    let grain_identity_policy_digest = raw
+        .companies
+        .as_ref()
+        .map_or(source_digest, |c| c.inherited_grain_policy_sha256);
+    if grain_identity_policy_digest == [0; 32] {
+        return Err(Error::Shape);
+    }
+    let companies = companies(raw.companies, raw.schema_version)?;
     Ok(NationalGamePolicy {
+        companies,
         grain,
-        source_digest: content_digest::sha256_of(source.as_bytes()),
+        source_digest,
+        grain_identity_policy_digest,
         period_days: raw.period_days,
         work_hours_per_person: raw.work_hours_per_person,
         default_wage: Currency::from_micro_units(raw.default_wage_micros_per_hour),
@@ -193,10 +289,18 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         missing_peer_weight_per_establishment: raw.missing_peer_weight_per_establishment,
         household_enterprise_function: EconomicFunction::HouseholdServices,
         aid: raw.aid,
+        household_support_claimant: raw
+            .household_support_claimant
+            .map(RawHouseholdSupportClaimant::admit)
+            .transpose()?,
         organizer: raw.organizer,
         financial,
         households,
         household_time,
+        household_lifecycle: raw
+            .household_lifecycle
+            .map(RawHouseholdLifecycle::admit)
+            .transpose()?,
         markets,
         equipment,
         commodities,
@@ -207,7 +311,59 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     })
 }
 
+/// Admit the optional company policy; schema 3 orders high demand before spare capacity.
+fn companies(
+    companies: Option<RawCompanies>,
+    schema_version: u16,
+) -> Result<Option<CompanyPolicy>, Error> {
+    companies
+        .map(|c| {
+            let mut terms = CompanyPolicy::try_new(
+                c.opening_employment_bps,
+                c.opening_treasury_bps,
+                CompanyPortfolioPolicy {
+                    condition_order: if schema_version == 3 {
+                        CompanyConditionOrder::HighDemandBeforeSpare
+                    } else {
+                        CompanyConditionOrder::FirstApplicable
+                    },
+                    rows: c.portfolio_weights,
+                    high_utilization_bps: c.high_utilization_bps,
+                    history_periods: c.history_periods,
+                    modest_expansion_bps: c.modest_expansion_bps,
+                },
+            )?;
+            terms.experiment = c
+                .experiment_controller_count
+                .map(|n| {
+                    ExperimentalPopulation::from_count(n).ok_or(CompanyCaptureError::InvalidTargets)
+                })
+                .transpose()?;
+            Ok::<_, CompanyCaptureError>(terms)
+        })
+        .transpose()
+        .map_err(|_| Error::Shape)
+}
+
 fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {
+    if let Some(hearing) = &organizer.hearing {
+        if hearing.evidence_class != "Designed"
+            || babylon_kernel::geography::CountyGeoid::try_from(hearing.county_geoid.as_str())
+                .is_err()
+            || hearing.period == 0
+            || hearing.period.checked_add(1) != Some(hearing.review_period)
+            || !(1..=organizer.contributor_hours_cap).contains(&hearing.attendance_hours)
+            || [
+                &hearing.claimant_label,
+                &hearing.claimant_claim,
+                &hearing.partner_claim,
+            ]
+            .iter()
+            .any(|text| text.trim().is_empty() || text.len() > 128 || text.contains('\0'))
+        {
+            return Err(Error::Profile("Wayne relief hearing terms".into()));
+        }
+    }
     if organizer.collection_maximum_cash_micros <= 0
         || organizer.collection_initial_cash_micros <= 0
         || organizer.collection_initial_cash_micros > organizer.collection_maximum_cash_micros
@@ -378,8 +534,18 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
     if raw.evidence_class != "Designed" {
         return Err(Error::Evidence);
     }
-    if raw.schema_version != 2
-        || raw.period_days != 28
+    if !matches!(
+        (
+            raw.schema_version,
+            raw.companies.is_some(),
+            raw.household_lifecycle.is_some(),
+            raw.household_support_claimant.is_some()
+        ),
+        (2, false, false, false)
+            | (3 | 4, true, false, false)
+            | (5, true, true, false)
+            | (6, true, true, true)
+    ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0
         || raw
@@ -471,12 +637,10 @@ fn commodity(key: &str, raw: RawCommodity) -> Result<GameCommodity, Error> {
     if cargo.is_some() != (matches!(kind, CommodityKind::Storable { .. }) && price.is_some()) {
         return Err(fail());
     }
-    let mut good_bytes = b"NationalGoodV1\0".to_vec();
-    good_bytes.extend_from_slice(key.as_bytes());
     let mut unit_bytes = b"NationalUnitV1\0".to_vec();
     unit_bytes.extend_from_slice(raw.unit_label.as_bytes());
     Ok(GameCommodity {
-        good_id: GoodId::from_bytes(content_digest::sha256_of(&good_bytes)),
+        good_id: crate::national_economy::commodity_good_id(key),
         unit_id: UnitId::from_bytes(content_digest::sha256_of(&unit_bytes)),
         label: raw.label,
         unit_label: raw.unit_label,

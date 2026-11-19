@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CityPdAttendance;
+use crate::HouseholdLifecycleBook;
 use crate::MaterialCatalog;
 use crate::MonetaryCircuit;
 use crate::{
@@ -115,6 +116,7 @@ pub struct HouseholdContributionReceipt {
 /// Receipts and uses describe exactly the last completed period.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HouseholdTimeBook {
+    pub lifecycle: Option<HouseholdLifecycleBook>,
     pub receipts: Vec<HouseholdTimeReceipt>,
     pub contributions: Vec<HouseholdContributionReceipt>,
 }
@@ -233,6 +235,45 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
     if cohorts.len() != recurring.households.len() || needs.len() != catalog.household_needs.len() {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }
+    if let Some(life) = &book.lifecycle {
+        life.rates.validate()?;
+        if life.positions.is_empty()
+            || life.positions.len() > MAX_MATERIAL_CIRCUIT_ROWS
+            || life
+                .positions
+                .windows(2)
+                .any(|p| p[0].principal_id >= p[1].principal_id)
+        {
+            return Err(MaterialCircuitError::HouseholdLifecycleInvariant);
+        }
+        for position in &life.positions {
+            position.validate(state.period)?;
+            let principal = position.principal_id;
+            let home = cohorts
+                .get(&principal)
+                .ok_or(MaterialCircuitError::HouseholdLifecycleInvariant)?;
+            let policy = policies
+                .get(&principal)
+                .ok_or(MaterialCircuitError::HouseholdLifecycleInvariant)?;
+            if position.ages.persons()? != home.persons
+                || (state.period == 1
+                    && (position.ages.eligible()? != policy.eligible_persons
+                        || position.previous != position.ages
+                        || position.previous_households != 0
+                        || !position.birthdays.is_empty()
+                        || position.death_remainders != [0; 4]
+                        || position.initial
+                            != [
+                                position.ages.under_16,
+                                position.ages.age_16_17,
+                                position.ages.age_18_64,
+                            ]
+                        || position.birth_remainder != 0))
+            {
+                return Err(MaterialCircuitError::HouseholdLifecycleInvariant);
+            }
+        }
+    }
     validate_policies(catalog, state, economy, &cohorts, &needs, &policies)?;
     validate_receipts(state.period, book, &cohorts, &needs, &policies)
 }
@@ -279,10 +320,11 @@ fn validate_policies(
         let cohort = cohorts
             .get(&policy.principal_id)
             .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;
-        if policy.eligible_persons > cohort.persons
+        let eligible = live_eligible(state, policy)?;
+        if eligible > cohort.persons
             || !time_units.contains(&policy.labor_unit_id)
             || capacities.get(&policy.principal_id).copied().unwrap_or(0)
-                > multiply(policy.eligible_persons, policy.hours_per_eligible_person)?
+                > multiply(eligible, policy.hours_per_eligible_person)?
             || policy
                 .unmet_burdens
                 .iter()
@@ -318,6 +360,18 @@ fn validate_receipts(
         let cohort = cohorts
             .get(&row.principal_id)
             .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;
+        let mut previous_cohort = (**cohort).clone();
+        let mut eligible = policy.eligible_persons;
+        if let Some(position) = book
+            .lifecycle
+            .as_ref()
+            .and_then(|b| b.position(policy.principal_id))
+        {
+            previous_cohort.persons = position.previous.persons()?;
+            previous_cohort.households = position.previous_households;
+            eligible = position.previous.eligible()?;
+        }
+        let cohort = &previous_cohort;
         let after_attendance = row
             .endowment_hours
             .checked_sub(row.attended_hours)
@@ -338,8 +392,7 @@ fn validate_receipts(
         }
         if row.period != previous
             || row.labor_unit_id != policy.labor_unit_id
-            || row.endowment_hours
-                != multiply(policy.eligible_persons, policy.hours_per_eligible_person)?
+            || row.endowment_hours != multiply(eligible, policy.hours_per_eligible_person)?
             || sum(&[row.protected_hours, row.protected_unresolved_hours])? != protected_request
             || row.protected_hours != protected_request.min(after_attendance)
             || row.unpaid_allocated_hours != row.unpaid_requested_hours.min(after_protected)
@@ -467,7 +520,14 @@ fn preview_with_paid(
         let attendance = attended
             .remove(&policy.principal_id)
             .unwrap_or((policy.labor_unit_id, 0));
-        let receipt = close_household(policy, cohort, state.period, attendance, &unmet)?;
+        let receipt = close_household(
+            policy,
+            cohort,
+            state.period,
+            attendance,
+            &unmet,
+            live_eligible(state, policy)?,
+        )?;
         result.push(receipt);
     }
     if !attended.is_empty() {
@@ -476,14 +536,21 @@ fn preview_with_paid(
     Ok(result)
 }
 
+fn live_eligible(state: &MaterialCircuitState, policy: &HouseholdTimePolicy) -> Result<u64> {
+    state
+        .household_lifecycle()
+        .and_then(|b| b.position(policy.principal_id))
+        .map_or(Ok(policy.eligible_persons), |p| p.ages.eligible())
+}
 fn close_household(
     policy: &HouseholdTimePolicy,
     cohort: &HouseholdCohort,
     period: u64,
     (unit, attendance): (UnitId, u64),
     unmet: &BTreeMap<(FinalDemandPrincipalId, GoodId, UnitId), u64>,
+    eligible: u64,
 ) -> Result<HouseholdTimeReceipt> {
-    let endowment = multiply(policy.eligible_persons, policy.hours_per_eligible_person)?;
+    let endowment = multiply(eligible, policy.hours_per_eligible_person)?;
     if unit != policy.labor_unit_id {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }

@@ -6,36 +6,18 @@ use super::Cursor;
 use crate::{
     AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipalId,
     FundedShift, LaborCompensation, MaterialCircuitError, MemberLaborCapacityRow, MonetaryBook,
-    MonetaryBookSnapshot, MonetaryCircuit, OrderId, OrganizationAccountId, OutboundOrderId,
-    PublicAccountId, PurchaseEscrow, ShiftId, ShiftState, SiteId, StaffingMemberId, UnitId,
-    MAX_STAFFING_MEMBERS,
+    MonetaryBookSnapshot, MonetaryCircuit, OrderId, OutboundOrderId, PurchaseEscrow, ShiftId,
+    ShiftState, SiteId, StaffingMemberId, UnitId, MAX_STAFFING_MEMBERS,
 };
 
 pub(super) fn append_account(output: &mut Vec<u8>, account: AccountId) {
-    let (tag, identity) = match account {
-        AccountId::Site(id) => (1, id.as_bytes()),
-        AccountId::Household(id) => (2, id.as_bytes()),
-        AccountId::Organization(id) => (3, id.as_bytes()),
-        AccountId::Public(id) => (4, id.as_bytes()),
-    };
+    let (tag, identity) = account.wire_parts();
     output.push(tag);
     output.extend_from_slice(&identity);
 }
 
 pub(super) fn decode_account(cursor: &mut Cursor<'_>) -> Result<AccountId, MaterialCircuitError> {
-    match cursor.u8()? {
-        1 => Ok(AccountId::Site(SiteId::from_bytes(cursor.array()?))),
-        2 => Ok(AccountId::Household(FinalDemandPrincipalId::from_bytes(
-            cursor.array()?,
-        ))),
-        3 => Ok(AccountId::Organization(OrganizationAccountId::from_bytes(
-            cursor.array()?,
-        ))),
-        4 => Ok(AccountId::Public(PublicAccountId::from_bytes(
-            cursor.array()?,
-        ))),
-        _ => Err(MaterialCircuitError::WireEnum),
-    }
+    AccountId::from_wire_parts(cursor.u8()?, cursor.array()?).ok_or(MaterialCircuitError::WireEnum)
 }
 
 fn append_order(output: &mut Vec<u8>, order: OutboundOrderId) {

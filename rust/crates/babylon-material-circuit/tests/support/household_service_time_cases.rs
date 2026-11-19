@@ -14,7 +14,6 @@ use babylon_material_circuit::HouseholdTimeCommitment;
 use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_material_circuit::HouseholdUnmetTimeBurden;
 use babylon_material_circuit::MaterialCatalog;
-use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
 use babylon_material_circuit::OrderId;
 use babylon_material_circuit::PricePolicy;
@@ -23,6 +22,7 @@ use babylon_material_circuit::RecurringEconomy;
 use babylon_material_circuit::SellerOffer;
 use babylon_material_circuit::ServiceConnection;
 use babylon_material_circuit::ServiceOrder;
+use babylon_material_circuit::{MaterialCircuitState, MaterialCircuitTransition};
 
 #[allow(
     clippy::too_many_lines,
@@ -201,4 +201,56 @@ fn housing_service_improvement_without_a_captured_housing_burden_adds_no_hours()
         (1, 0)
     );
     assert_eq!(supplied.household_time, interrupted.household_time);
+}
+
+#[test]
+fn national_service_purchase_envelope_uses_the_next_resident_count() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    let (catalog, mut state) = time_service_opening(1);
+    let mut definition = catalog.into_definition();
+    definition.household_needs[0].basis = HouseholdNeedBasis::Persons;
+    let catalog = MaterialCatalog::try_new(definition).expect("admitted material policy");
+    let CircuitAccounting::Monetary(e) = &mut state.accounting else {
+        panic!("monetary")
+    };
+    let recurring = e.recurring.as_mut().expect("recurring household economy");
+    recurring.household_purchases[0].maximum_purchase = 4;
+    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+        panic!("time")
+    };
+    let mut life = HouseholdLifecycleBook::new(
+        HouseholdLifecycleRates {
+            births_per_million_working_age_per_period: 1_000_000,
+            deaths_per_million_per_period: [0; 4],
+        },
+        vec![(
+            crate::household(),
+            ResidentAges {
+                age_18_64: 4,
+                ..ResidentAges::default()
+            },
+        )],
+    )
+    .expect("valid captured age exposure");
+    life.purchase_buffer_periods = Some(1);
+    time.lifecycle = Some(life);
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("valid recurring economic close");
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+        .expect("valid recurring economic close");
+    let requests = |close: &MaterialCircuitTransition| {
+        close
+            .service_performance
+            .iter()
+            .filter(|r| {
+                r.buyer == AccountId::Household(crate::household()) && r.good_id == crate::good(2)
+            })
+            .map(|r| r.requested_quantity)
+            .sum::<u64>()
+    };
+    assert_eq!(requests(&first), 4);
+    assert_eq!(requests(&next), 8);
+    let delivered = &next.household_services[0];
+    assert_eq!(delivered.required_quantity, 8);
+    assert_eq!(delivered.satisfied_quantity + delivered.unmet_quantity, 8);
 }

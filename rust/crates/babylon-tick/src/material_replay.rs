@@ -3,6 +3,8 @@
 //! Physical closing and admitted staffing join the detached graph transaction
 //! before identity finalization. One acknowledgement publishes both owners.
 
+#[path = "company_portfolio_bridge.rs"]
+pub(crate) mod portfolios;
 use crate::material_staffing::{
     MaterialStaffingError, StaffingComposition, StaffingEffectContext, StaffingEffects,
 };
@@ -13,9 +15,11 @@ use crate::replay_session::{
     IdentifiedTickReport, PreparedReplayCommitError, PreparedReplayTick, ReplayCommitDisposition,
     ReplayTickError, ReplayTickSession,
 };
+use babylon_bsl::causal_contract::AuditReceipt;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_kernel::currency::Currency;
 use babylon_practice_contract::PublicVenueHistory;
+pub use portfolios::CompanyGraphError;
 use std::collections::BTreeSet;
 
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -50,6 +54,11 @@ pub const TICK_IDENTITY_BYTES: usize = TICK_DOMAIN.len() + 12 + 7 * 32;
 pub enum MaterialBaseError {
     World(MaterialWorldError),
     Staffing(MaterialStaffingError),
+    Company(CompanyGraphError),
+    CompanyFieldOwner {
+        rule_id: String,
+        field: String,
+    },
     /// A BSL rule could overwrite a graph field owned by native staffing.
     StaffingFieldOwner {
         rule_id: String,
@@ -90,6 +99,12 @@ impl From<MaterialStaffingError> for MaterialBaseError {
     fn from(error: MaterialStaffingError) -> Self {
         Self::Staffing(error)
     }
+}
+
+pub(crate) struct MaterialBaseClose {
+    pub(crate) world: PreparedMaterialWorld,
+    pub(crate) staffing: StaffingEffects,
+    pub(crate) company_writes: Vec<AuditReceipt>,
 }
 
 pub(crate) struct MaterialBaseInputs<'a> {
@@ -274,7 +289,7 @@ impl MaterialBaseInputs<'_> {
         graph: &mut impl GraphSubstrate,
         context: StaffingEffectContext<'_>,
         tick: i64,
-    ) -> Result<(PreparedMaterialWorld, Option<StaffingEffects>), MaterialBaseError> {
+    ) -> Result<MaterialBaseClose, MaterialBaseError> {
         if u64::try_from(tick).ok() != self.opening.completed_tick().checked_add(1) {
             return Err(MaterialBaseError::Period);
         }
@@ -304,12 +319,20 @@ impl MaterialBaseInputs<'_> {
                 (None, None) if self.commitment.is_none() => vec![],
                 _ => return Err(MaterialWorldError::Wire.into()),
             };
-            let closed = babylon_material_circuit::close_material_period_with_support(
+            let previous = self.opening.company_portfolios();
+            let selections = previous
+                .map(|register| portfolios::selections(graph, context, register))
+                .transpose()
+                .map_err(MaterialBaseError::Company)?
+                .unwrap_or_default();
+            let closed = babylon_material_circuit::close_material_period_with_portfolios(
                 self.catalog,
                 self.opening.state(),
                 &aid_inputs,
                 &collection_inputs,
                 &agency_inputs,
+                previous,
+                &selections,
             )?;
             let bindings = composition
                 .bindings()
@@ -323,6 +346,7 @@ impl MaterialBaseInputs<'_> {
                 composition,
                 closed.closing_period(),
                 &requests,
+                closed.household_lifecycle(),
             )?;
             let mut transition = closed.finish_with_workforce(
                 self.catalog,
@@ -330,15 +354,27 @@ impl MaterialBaseInputs<'_> {
                 effects.next_member_labor().to_vec(),
             )?;
             transition.staffing_members = effects.member_receipts().to_vec();
-            Ok((
-                self.opening.prepare_transition(
-                    self.catalog,
-                    transition,
-                    self.commitment,
-                    self.venue_sources,
-                )?,
-                Some(effects),
-            ))
+            transition
+                .resident_workforce_attrition
+                .clone_from(&effects.attrition);
+            let world = self.opening.prepare_transition(
+                self.catalog,
+                transition,
+                self.commitment,
+                self.venue_sources,
+            )?;
+            let company_writes = world
+                .register()
+                .company_portfolios()
+                .map(|register| portfolios::publish(graph, context, register))
+                .transpose()
+                .map_err(MaterialBaseError::Company)?
+                .unwrap_or_default();
+            Ok(MaterialBaseClose {
+                world,
+                staffing: effects,
+                company_writes,
+            })
         }
     }
 }
@@ -582,7 +618,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         graph.validate_material_cycle()?;
         graph.validate_organizer_cycle(material.organizer_state().is_some())?;
         graph.validate_city_pd_cycle(material.city_pd().is_some())?;
-        graph.validate_staffing_ownership()?;
+        graph.validate_material_field_ownership(catalog.company_portfolios.is_some())?;
         let venue_sources = match material.public_venue() {
             Some(history) => vec![crate::public_venue::admit_public_venue_source(
                 history,

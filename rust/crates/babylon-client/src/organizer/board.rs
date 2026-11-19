@@ -194,7 +194,7 @@ fn dossier(root: &mut ChildSpawnerCommands) {
         BorderColor::all(theme::COPPER),
     ))
     .with_children(|panel| {
-        kicker(panel, "FIELD DOSSIER   /   WAYNE", theme::COPPER);
+        kicker(panel, "FIELD DOSSIER", theme::COPPER);
         ui::spawn_scrolling_reading(panel, |panel| {
             panel.spawn((
                 ImageNode::default(),
@@ -216,6 +216,11 @@ fn dossier(root: &mut ChildSpawnerCommands) {
                 TextPart::Situation,
                 ObserverFocusTarget::reading(None),
             ));
+            ui::button(
+                panel,
+                "Prepare aid offer",
+                OrganizerAction::PreparePartnerOffer,
+            );
             panel
                 .spawn((ui::row(), SceneEvidence))
                 .with_children(|links| {
@@ -462,6 +467,11 @@ fn dispatch_panel(root: &mut ChildSpawnerCommands) {
         panel
             .spawn((ui::text("", 23.0, theme::PAPER), PeriodTitle))
             .insert(ObserverFontRole::Display);
+        ui::button(
+            panel,
+            "Wayne hearing",
+            OrganizerAction::Inspect(OrganizerInspector::Hearing),
+        );
         ui::spawn_scrolling_reading(panel, |reading| {
             reading.spawn((
                 ui::text("", 15.0, theme::PAPER),
@@ -530,8 +540,9 @@ fn paint_cards(
             }));
         }
     }
+    let deck = choices.as_ref().zip(scope.client.view.as_ref());
     for (field, mut value) in &mut texts {
-        let next = choices.as_ref().map_or_else(
+        let next = deck.map_or_else(
             || match field.field {
                 CardField::Status => "UNAVAILABLE".into(),
                 CardField::Title => {
@@ -543,11 +554,11 @@ fn paint_cards(
                 }
                 CardField::Terms => String::new(),
             },
-            |choices| {
+            |(choices, view)| {
                 let term = &choices.alternatives[field.slot];
                 match field.field {
                     CardField::Title => term.title.into(),
-                    CardField::Terms => copy::terms(term),
+                    CardField::Terms => copy::terms(view, term),
                     CardField::Status => {
                         let status = if term.choice == choices.draft_choice {
                             "DRAFT"

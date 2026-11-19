@@ -919,7 +919,10 @@ def test_native_handoff_binary_admission_refuses_before_process_pair(tmp_path, f
         "    (args[2] / 'pair-called').write_text('existing-only')\n"
         "    return 0\n"
     )
-    names = [binaries / "babylon-runtime", binaries / "babylon-client"]
+    names = [
+        binaries / name
+        for name in ("babylon-runtime", "babylon-client", "babylon-economic-projections")
+    ]
     for name in names:
         name.write_bytes(b"owned executable preimage")
     manifest = tmp_path / "native-executables.sha256"

@@ -10,6 +10,7 @@ use crate::economic_catalog::EconomicOpening;
 use crate::economic_catalog::EconomicSiteSeed;
 use crate::economic_catalog::EconomicSiteSource;
 use crate::economic_catalog::OpeningCommodityStock;
+use crate::economic_catalog::{self, CapturedEconomicCatalog};
 use crate::national_cohorts;
 use crate::national_cohorts::WorkplaceCohortKey;
 use crate::national_counties;
@@ -29,18 +30,15 @@ use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_kernel::economic_location::UsDependency;
 use babylon_kernel::geography::CountyGeoid;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit;
 use babylon_material_circuit::AidTransport;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::FinalDemandOrder;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::GoodId;
-use babylon_material_circuit::HouseholdCohort;
 use babylon_material_circuit::HouseholdContributionUse;
-use babylon_material_circuit::HouseholdKind;
-use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdTimeAccounting;
-use babylon_material_circuit::HouseholdTimeCommitment;
 use babylon_material_circuit::HouseholdTimeReceipt;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
@@ -51,6 +49,7 @@ use babylon_material_circuit::RouteId;
 use babylon_material_circuit::SellerOffer;
 use babylon_material_circuit::SiteId;
 use babylon_material_circuit::UnitId;
+use babylon_practice_contract::OrderedPracticeActionBatch;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
@@ -219,6 +218,9 @@ fn national_fixture() -> &'static NationalFixture {
             world,
             transport,
             national_economy::NationalOpeningPolicy {
+                ages: Some(
+                    crate::national_ages::national_age_reference().expect("county age margins"),
+                ),
                 policy: &policy,
                 source_hash: babylon_kernel::content_digest::sha256_of(include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
@@ -660,77 +662,40 @@ fn wealthy_owner_cannot_pay_a_wage_dependent_cohorts_unmet_food_need() {
     );
 }
 
-fn commitment_hours(commitment: &HouseholdTimeCommitment, cohort: &HouseholdCohort) -> u64 {
-    let basis = match commitment.basis {
-        HouseholdNeedBasis::Persons => cohort.persons,
-        HouseholdNeedBasis::Households => cohort.households,
-    };
-    basis
-        .checked_mul(commitment.hours_per_basis)
-        .expect("the fixture arithmetic stays in range")
+fn first_closed_period() -> &'static (MaterialCatalog, MaterialCircuitState) {
+    static CLOSED: OnceLock<(MaterialCatalog, MaterialCircuitState)> = OnceLock::new();
+    CLOSED.get_or_init(|| {
+        let session =
+            ReplaySessionId::try_from("national-household-refinement").expect("session identity");
+        let capture =
+            CapturedEconomicCatalog::capture(economic_catalog::national_catalog_input(), None)
+                .expect("capture the national full-observer opening");
+        let live = capture
+            .create_foundation(session.clone(), ReplaySeed::new(319))
+            .expect("the captured national foundation")
+            .into_session()
+            .expect("national replay session");
+        let actions = OrderedPracticeActionBatch::empty(session, 1).expect("first national period");
+        let first = live
+            .prepare_advance(&actions)
+            .expect("the graph-staffed national close");
+        (
+            live.catalog().clone(),
+            first.material().register().state().clone(),
+        )
+    })
 }
-fn install_opening_receipts(
-    catalog: &MaterialCatalog,
-    state: &mut MaterialCircuitState,
-) -> (FinalDemandPrincipalId, u64) {
-    state.period = 2;
-    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+
+fn closed_household_hours(state: &MaterialCircuitState) -> &[HouseholdTimeReceipt] {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
         panic!("the national opening uses the monetary circuit")
     };
-    let cohorts: BTreeMap<_, _> = economy
-        .recurring
-        .as_ref()
-        .expect("the national opening has recurring household demand")
-        .households
-        .iter()
-        .map(|row| (row.principal_id, (row.persons, row.households)))
-        .collect();
-    let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
+    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
         panic!("the national opening models household time")
     };
-    let mut receipts = Vec::with_capacity(catalog.household_time_policy.len());
-    for policy in &catalog.household_time_policy {
-        let (persons, households) = cohorts[&policy.principal_id];
-        let cohort = HouseholdCohort {
-            kind: HouseholdKind::Ordinary,
-            principal_id: policy.principal_id,
-            households,
-            persons,
-        };
-        let endowment = policy
-            .eligible_persons
-            .checked_mul(policy.hours_per_eligible_person)
-            .expect("the fixture arithmetic stays in range");
-        let protected = commitment_hours(&policy.protected, &cohort);
-        let protected_hours = protected.min(endowment);
-        let protected_unresolved_hours = protected - protected_hours;
-        let after_protected = endowment - protected_hours;
-        let unpaid_requested_hours = commitment_hours(&policy.routine_provisioning, &cohort);
-        let unpaid_allocated_hours = unpaid_requested_hours.min(after_protected);
-        let unpaid_unresolved_hours = unpaid_requested_hours - unpaid_allocated_hours;
-        receipts.push(HouseholdTimeReceipt {
-            principal_id: policy.principal_id,
-            period: 1,
-            labor_unit_id: policy.labor_unit_id,
-            endowment_hours: endowment,
-            attended_hours: 0,
-            protected_hours,
-            protected_unresolved_hours,
-            unpaid_requested_hours,
-            unpaid_allocated_hours,
-            unpaid_unresolved_hours,
-            contribution_available_hours: after_protected - unpaid_allocated_hours,
-        });
-    }
-    book.receipts = receipts;
-    book.contributions.clear();
-    let receipt = book
-        .receipts
-        .iter()
-        .find(|row| row.contribution_available_hours > 1)
-        .expect("the opening retains at least one spendable household hour");
-    (receipt.principal_id, receipt.contribution_available_hours)
+    &book.receipts
 }
+
 fn contribution(
     use_id: [u8; 32],
     principal: FinalDemandPrincipalId,
@@ -757,17 +722,7 @@ fn household_endowment_is_gross_not_the_receipts_spendable_remainder() {
         .expect("the national opening retains a background household endowment");
     let principal = cohort.key.principal;
     let gross = cohort.counts.endowment_hours;
-    let compiled = compiled_fixture();
-    let mut state = compiled.state.clone();
-    install_opening_receipts(&compiled.catalog, &mut state);
-    let CircuitAccounting::Monetary(economy) = &state.accounting else {
-        panic!("the national opening uses the monetary circuit")
-    };
-    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
-        panic!("the national opening models household time")
-    };
-    let receipt = book
-        .receipts
+    let receipt = closed_household_hours(&first_closed_period().1)
         .iter()
         .find(|receipt| receipt.principal_id == principal)
         .expect("every modeled background household closes one receipt");
@@ -783,20 +738,19 @@ fn household_endowment_is_gross_not_the_receipts_spendable_remainder() {
 
 #[test]
 fn two_organizations_cannot_spend_the_same_household_contribution_hour() {
-    let compiled = compiled_fixture();
-    let mut state = compiled.state.clone();
-    let (principal, available) = install_opening_receipts(&compiled.catalog, &mut state);
+    let (catalog, opening) = first_closed_period();
+    let mut state = opening.clone();
+    let receipt = closed_household_hours(&state)
+        .iter()
+        .find(|row| row.contribution_available_hours > 1)
+        .expect("the first national close leaves spendable household hours");
+    let (principal, available) = (receipt.principal_id, receipt.contribution_available_hours);
     let both = [
         contribution([21; 32], principal, 101, 201, available),
         contribution([22; 32], principal, 102, 202, 1),
     ];
     assert_eq!(
-        babylon_material_circuit::consume_household_contributions(
-            &compiled.catalog,
-            &mut state,
-            1,
-            &both
-        ),
+        babylon_material_circuit::consume_household_contributions(catalog, &mut state, 1, &both),
         Err(MaterialCircuitError::HouseholdTimeInvariant),
         "two organizations cannot jointly spend more than the cohort's closed hours"
     );
@@ -804,19 +758,15 @@ fn two_organizations_cannot_spend_the_same_household_contribution_hour() {
         contribution([21; 32], principal, 101, 201, available - 1),
         contribution([22; 32], principal, 102, 202, 1),
     ];
-    let exact_result = babylon_material_circuit::consume_household_contributions(
-        &compiled.catalog,
-        &mut state,
-        1,
-        &exact,
-    );
+    let exact_result =
+        babylon_material_circuit::consume_household_contributions(catalog, &mut state, 1, &exact);
     assert!(
         exact_result.is_ok(),
         "distinct organizations may spend distinct hours from the one account: {exact_result:?}"
     );
     assert_eq!(
         babylon_material_circuit::consume_household_contributions(
-            &compiled.catalog,
+            catalog,
             &mut state,
             1,
             &[contribution([21; 32], principal, 101, 201, 1)]

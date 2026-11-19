@@ -63,6 +63,25 @@ differences in income, ownership and needs that change play. Cohort accounts
 track people, workers and finite time. The economy does not simulate
 individual agents.
 
+Class position concerns how people make a living, who controls their work
+and who receives its returns. One household can draw wages and ownership
+income, support a dependent and have someone seeking work. Give
+population groups a distinct part in play when they can make a decision
+of their own. Residents can share a class position and choose different
+organizations or decline to join one.
+
+The first Wayne relief hearing asks who gets represented. The claimants'
+assembly holds a standing appointment. The player can invite the aid
+partners to bring a second demand. Members can send someone to speak, grant
+limited settlement rights or withhold consent.
+
+Their households must have time to send someone. The opening and reply at the following
+county review go to the groups that secured those turns. The chapter
+ends when their organization can read the review agenda.
+
+Electoral endorsements come after a working electoral system that
+establishes who can vote, what office is at stake and what its holder can decide.
+
 The future language interface proposes a few concrete first steps for a broad
 intention. The player chooses an approach and confirms a reviewed action.
 Pinned plans preserve intentions. They do not silently execute them. G5 owns

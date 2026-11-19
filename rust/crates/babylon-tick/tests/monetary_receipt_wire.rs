@@ -160,7 +160,8 @@ fn money_postings_refuse_unbalanced_zero_reversed_and_overflowing_signs() {
 
 #[test]
 fn money_postings_refuse_wrong_reserve_and_unknown_tags() {
-    for (offset, value) in [(0, 11), (1, 3), (34, 5), (35, 5), (84, 3), (86, 9)] {
+    // Account tags 1-5 are site, household, organization, public and company.
+    for (offset, value) in [(0, 11), (1, 3), (34, 5), (35, 6), (84, 3), (86, 9)] {
         let mut row = transfer(-30, 30);
         row[offset] = value;
         assert_eq!(

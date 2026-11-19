@@ -1,0 +1,49 @@
+ADR298_national_household_lifecycle:
+  title: Connect national household reproduction to demographic stocks and the next economic period
+  date: '2026-11-15'
+  status: accepted
+  authority: Director chose births, aging and deaths alongside household reproduction, followed by a trade crossing comparison
+  evidence_class: Designed
+  context: |
+    The D–P–D′ county fixture tracks fractional lifecycle phases. National
+    budgets consume whole parcels, people furnish hours, and each person in a
+    workforce belongs to an identified member. The national scenario needs
+    demographic change in these same accounts. Fixed opening counts left
+    twenty years of need and time eligibility anchored to the original population.
+  decision: |
+    Capture domestic county age estimates and partition the existing resident
+    budgets with exact county person and age-16-plus controls. Preserve group
+    quarters and disjoint foreign and dependency populations. Use whole resident
+    counts under 16, aged 16–17, aged 18–64 and aged 65 or more. These are age
+    proxies for D, P and D′. Employment, unpaid work and public support have
+    their own evidence.
+
+    Resolve births, deaths and aging once each four-week period. Carry fractional
+    birth and death entitlements. Spread initial ages across the remaining birthdays
+    in each age band. Record the next age crossings of the surviving residents
+    who reach a birthday, and of cohorts born during play.
+    The next period consumes the closing counts. Record transfers between ages
+    and reconcile both sides of each transfer. Keep cash, wages, service
+    performance, provisioning time and unmet household needs separately traceable.
+    A change in eligibility creates no paid position. When the living workforce
+    can no longer back all counted workers, remove the excess from the same
+    identified member stocks before hiring and separation.
+  evidence: |
+    ACS B01001 provides US county age and sex estimates. The split at age 16
+    also uses B23025 and B01003. Domestic budget-level composition is a
+    Designed allocation of the county controls. Foreign and dependency opening
+    age mixes, age progression of mixed initial cohorts and four-week vital
+    rates are Designed. Source ownership and game-grain identity follow ADR296.
+    The existing pension and inheritance design does not assign an entitlement
+    to every recipient of a generic public transfer.
+  verification: |
+    Check exact domestic controls, source admission, whole-person movements,
+    period order, funded household purchases, work eligibility, member attrition,
+    restart at five and twenty model years and the full observer's receipt.
+    Compare the changed national opening with its fixed-population control.
+  related:
+    - ADR257_four_week_simulation_interval
+    - ADR267_resident_workplace_staffing
+    - ADR269_sparse_household_budgets
+    - ADR270_household_time_and_material_organizer
+    - ADR296_national_game_grain

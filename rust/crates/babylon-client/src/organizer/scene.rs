@@ -1,5 +1,6 @@
 //! Presentation derived solely from the admitted organizer projection.
 
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_persistence::runtime_session::{
     OrganizerBodyDisclosure, OrganizerPosition, OrganizerView,
 };
@@ -93,6 +94,7 @@ pub(crate) enum BodyShape {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct OrganizerScene {
     pub nodes: Vec<SceneNode>,
+    pub mapped_aid_partners: usize,
     pub relations: Vec<SceneRelation>,
     pub body_shape: Option<BodyShape>,
     pub body_members: Vec<OrganizerSubject>,
@@ -141,22 +143,22 @@ fn subjects(view: &OrganizerView) -> Vec<SceneNode> {
     nodes
 }
 
+fn contact_partner(view: &OrganizerView, actor_id: u64) -> Option<OrganizerSubject> {
+    if actor_id == view.workplace_partner_id {
+        Some(OrganizerSubject::WorkplaceCommittee(actor_id))
+    } else if actor_id == view.neighborhood_partner_id {
+        Some(OrganizerSubject::NeighborhoodGroup(actor_id))
+    } else {
+        None
+    }
+}
+
 impl OrganizerScene {
     pub fn from_disclosure(view: &OrganizerView, body: &OrganizerBodyDisclosure) -> Self {
         let collective = OrganizerSubject::Collective(view.actor_id);
-        let committee = OrganizerSubject::WorkplaceCommittee(view.workplace_partner_id);
-        let neighborhood = OrganizerSubject::NeighborhoodGroup(view.neighborhood_partner_id);
         let nodes = subjects(view);
         let positions = ordered_positions(view);
-        let partner = |id| {
-            if id == view.workplace_partner_id {
-                Some(committee)
-            } else if id == view.neighborhood_partner_id {
-                Some(neighborhood)
-            } else {
-                None
-            }
-        };
+        let partner = |id| contact_partner(view, id);
         let mut relations = Vec::new();
         for agreement in &view.agreements {
             if agreement.actor_id == view.actor_id {
@@ -237,6 +239,11 @@ impl OrganizerScene {
         relations.sort_by(|a, b| (a.from, a.to, &a.label).cmp(&(b.from, b.to, &b.label)));
         Self {
             nodes,
+            mapped_aid_partners: view
+                .aid_partners
+                .iter()
+                .filter(|partner| matches!(partner.location, Some(EconomicLocation::County(_))))
+                .count(),
             relations,
             body_shape,
             body_members,
@@ -282,6 +289,9 @@ mod tests {
             receipts: vec![],
             positions: vec![],
             aid_partners: vec![],
+            hearing: None,
+            hearing_receipt: None,
+            hearing_review: None,
             aid_options: vec![],
         }
     }

@@ -4,7 +4,7 @@ use crate::national_counties::{CountyReference, NationalCountyReference};
 use crate::national_economy::GameCommodity;
 use crate::national_economy::GameRecipe;
 use crate::national_economy::{
-    self, NationalAidCapture, NationalGamePolicy, ResidentWorkplaceSource,
+    self, NationalAidCapture, NationalGamePolicy, NationalSupportClaimant, ResidentWorkplaceSource,
 };
 use crate::national_household_allocation::{
     CountyHouseholdAllocation, HouseholdBudgetAllocation, HouseholdBudgetKey,
@@ -486,6 +486,9 @@ pub fn capture_membership(
         }
     }
     let mut protected = policy.grain.protected_counties.clone();
+    if let Some(claimant) = policy.household_support_claimant {
+        protected.insert(claimant.county);
+    }
     for child in &aid.children {
         let EconomicLocation::County(county) = child.location else {
             return Err(NationalGrainError::SourceIncidenceMismatch);
@@ -571,7 +574,7 @@ pub fn capture_membership(
                 zone,
                 capacity,
                 reason,
-                policy.source_digest,
+                policy.grain_identity_policy_digest,
                 (labor, output, mass),
             )?);
         } else {
@@ -596,7 +599,7 @@ pub fn capture_membership(
                 zone,
                 Some(capacity),
                 reason,
-                policy.source_digest,
+                policy.grain_identity_policy_digest,
                 (labor, output, mass),
             )?);
         }
@@ -973,6 +976,7 @@ pub(crate) fn coarsen_source_allocation(
     households: &NationalHouseholdAllocation,
     time: &NationalHouseholdTimeAllocation,
     aid: &NationalAidCapture,
+    claimant: Option<&NationalSupportClaimant>,
     policy: &NationalGamePolicy,
     membership: &CapturedNationalMembership,
 ) -> Result<NationalOpeningRoster> {
@@ -1045,22 +1049,25 @@ pub(crate) fn coarsen_source_allocation(
             }
         }
     }
-    for child in &aid.children {
-        let EconomicLocation::County(county) = child.location else {
+    let protected_leaves = aid
+        .children
+        .iter()
+        .map(|child| (child.location, child.parent, child.principal))
+        .chain(claimant.map(|child| (child.location, child.parent, child.principal)));
+    for (location, parent, principal) in protected_leaves {
+        let EconomicLocation::County(county) = location else {
             return Err(NationalGrainError::SourceIncidenceMismatch);
         };
-        if destinations.get(&county.geoid())
-            != Some(&ContributionDestination::Detailed(county.geoid()))
-            || principal_map.get(&child.parent) != Some(&child.parent)
+        let county = county.geoid();
+        if destinations.get(&county) != Some(&ContributionDestination::Detailed(county))
+            || principal_map.get(&parent) != Some(&parent)
+            || principal_map.insert(principal, principal).is_some()
         {
-            return Err(NationalGrainError::ProtectedContributionOverlap(
-                county.geoid(),
-            ));
+            return Err(NationalGrainError::ProtectedContributionOverlap(county));
         }
-        principal_map.insert(child.principal, child.principal);
         domains.insert(
-            AccountId::Household(child.principal),
-            FinancialDomainId::detailed(child.location),
+            AccountId::Household(principal),
+            FinancialDomainId::detailed(location),
         );
     }
     let mut endowments = BTreeMap::<SiteId, OpeningProductiveEndowment>::new();

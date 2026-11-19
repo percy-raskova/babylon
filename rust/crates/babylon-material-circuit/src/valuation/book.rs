@@ -34,6 +34,11 @@ pub struct HistoricalCostBook {
 }
 
 impl HistoricalCostBook {
+    /// Account capital in canonical order without copying stock or equity positions.
+    pub fn capital_accounts(&self) -> impl Iterator<Item = &CapitalAccount> {
+        self.accounts.values()
+    }
+
     /// Capture explicit opening carrying amounts and derive initial book capital.
     /// Physical stock/lot identity and zero-quantity validation occurs when the
     /// containing material state is admitted. This is never a period balancing plug.

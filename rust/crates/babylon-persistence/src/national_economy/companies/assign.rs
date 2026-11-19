@@ -1,0 +1,156 @@
+//! Deterministic largest-deficit assignment with a feasibility check on remaining whole sites.
+use super::model::{
+    CensusDivision, CompanyBand, CompanyCapture, CompanyCaptureError, CompanyKey, CompanyMember,
+    CompanyPopulation, DivisionPopulation, EmploymentTargets,
+};
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::geography::CountyGeoid;
+use babylon_material_circuit::SiteId;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Site {
+    pub id: SiteId,
+    pub function: EconomicFunction,
+    pub county: CountyGeoid,
+    pub employed: u64,
+}
+
+pub(super) fn for_function(
+    function: EconomicFunction,
+    sites: &[Site],
+    targets: EmploymentTargets,
+) -> Result<CompanyCapture, CompanyCaptureError> {
+    let mut divisions = BTreeMap::<CensusDivision, Vec<Site>>::new();
+    let mut ids = BTreeSet::new();
+    for site in sites {
+        if site.function != function {
+            return Err(CompanyCaptureError::InvalidSource(site.id));
+        }
+        if !ids.insert(site.id) {
+            return Err(CompanyCaptureError::DuplicateSite(site.id));
+        }
+        divisions
+            .entry(CensusDivision::from_county(site.county)?)
+            .or_default()
+            .push(*site);
+    }
+    let mut remaining = sites.iter().filter(|s| s.employed > 0).count();
+    let mut vacant = CensusDivision::ALL.len() + 2;
+    let mut populations = BTreeMap::<CompanyKey, CompanyPopulation>::new();
+    let mut members = Vec::with_capacity(sites.len());
+    let mut cells = Vec::with_capacity(CensusDivision::ALL.len());
+    for division in CensusDivision::ALL {
+        let mut local = divisions.remove(&division).unwrap_or_default();
+        local.sort_unstable_by_key(|s| (Reverse(s.employed), s.id));
+        let mut local_remaining = local.partition_point(|s| s.employed > 0);
+        if local_remaining == 0 {
+            return Err(CompanyCaptureError::NoOperatingSite { function, division });
+        }
+        if remaining < vacant {
+            return Err(CompanyCaptureError::TooFewOperatingSites(function));
+        }
+        let total = local.iter().try_fold(0_u64, |n, s| {
+            n.checked_add(s.employed)
+                .ok_or(CompanyCaptureError::Arithmetic)
+        })?;
+        let mut cell = DivisionPopulation {
+            function,
+            division,
+            eligible_employed: total,
+            assigned_employed: [0; 3],
+            assigned_sites: [0; 3],
+        };
+        for site in local {
+            let constraint =
+                if site.employed > 0 && local_remaining == 1 && cell.assigned_employed[2] == 0 {
+                    Occupancy::RemainingRegionalSite
+                } else if site.employed > 0 && remaining == vacant {
+                    Occupancy::UnoccupiedCompany
+                } else {
+                    Occupancy::Open
+                };
+            let (i, key) = choose(&cell, targets, &populations, constraint)?;
+            let company = populations.entry(key).or_insert(CompanyPopulation {
+                key,
+                employed: 0,
+                sites: 0,
+            });
+            if site.employed > 0 {
+                if company.employed == 0 {
+                    vacant -= 1;
+                }
+                remaining -= 1;
+                local_remaining -= 1;
+            }
+            company.employed = company
+                .employed
+                .checked_add(site.employed)
+                .ok_or(CompanyCaptureError::Arithmetic)?;
+            company.sites += 1;
+            cell.assigned_employed[i] += site.employed;
+            cell.assigned_sites[i] += 1;
+            members.push(CompanyMember {
+                site: site.id,
+                company: key,
+                county: site.county,
+                employed: site.employed,
+            });
+        }
+        cells.push(cell);
+    }
+    if vacant != 0 {
+        return Err(CompanyCaptureError::TooFewOperatingSites(function));
+    }
+    members.sort_unstable_by_key(|member| member.site);
+    Ok(CompanyCapture {
+        targets,
+        companies: populations.into_values().collect(),
+        members,
+        cells,
+    })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Occupancy {
+    Open,
+    UnoccupiedCompany,
+    RemainingRegionalSite,
+}
+
+/// When positive sites run short, preserve one for each still-empty company and one
+/// in each remaining regional company's own division. Other sites follow employment deficits.
+fn choose(
+    cell: &DivisionPopulation,
+    targets: EmploymentTargets,
+    populations: &BTreeMap<CompanyKey, CompanyPopulation>,
+    constraint: Occupancy,
+) -> Result<(usize, CompanyKey), CompanyCaptureError> {
+    let bands = [
+        CompanyBand::FirstNational,
+        CompanyBand::SecondNational,
+        CompanyBand::Regional(cell.division),
+    ];
+    let mut best = None;
+    for (i, band) in bands.into_iter().enumerate() {
+        let key = CompanyKey {
+            function: cell.function,
+            band,
+            experiment_partition: None,
+        };
+        if (constraint == Occupancy::RemainingRegionalSite && i != 2)
+            || (constraint == Occupancy::UnoccupiedCompany
+                && populations.get(&key).is_some_and(|p| p.employed > 0))
+        {
+            continue;
+        }
+        let deficit = i128::from(targets.basis_points()[i]) * i128::from(cell.eligible_employed)
+            - 10_000 * i128::from(cell.assigned_employed[i]);
+        if best.is_none_or(|(_, _, prior)| deficit > prior) {
+            best = Some((i, key, deficit));
+        }
+    }
+    best.map(|(i, key, _)| (i, key))
+        .ok_or(CompanyCaptureError::TooFewOperatingSites(cell.function))
+}

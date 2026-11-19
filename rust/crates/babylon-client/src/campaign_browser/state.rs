@@ -1487,6 +1487,8 @@ mod tests {
                         period: tick,
                         opening_employed,
                         opening_reserve: 10 - opening_employed,
+                        employed_removed: 0,
+                        reserve_removed: 0,
                         previous_unretained_hours: 0,
                         current_unretained_hours: 0,
                         retained_hours: employed * 40,

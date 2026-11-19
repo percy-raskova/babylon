@@ -10,7 +10,7 @@ use babylon_persistence::ArchiveEvidenceClass;
 use babylon_persistence::runtime_session::{
     CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerBodyDisclosure,
     OrganizerBodyScope, OrganizerBodySource, OrganizerChoice, OrganizerCollectionPreview,
-    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerKnownAidPartner,
     OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
     RuntimeSessionRequest, RuntimeSessionScope, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
     RUNTIME_SESSION_PROTOCOL_VERSION,
@@ -42,6 +42,7 @@ pub(crate) enum OrganizerInspector {
     Notes,
     Review,
     Practices,
+    Hearing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +188,31 @@ fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool
     }
 }
 
+pub(super) fn hearing_update(
+    previous: Option<&OrganizerView>,
+    view: &OrganizerView,
+) -> Option<&'static str> {
+    if let Some(review) = super::hearing::committed_review(view, view.period) {
+        if review.period == view.period
+            && previous.is_none_or(|last| last.hearing_review.as_ref() != Some(review))
+        {
+            return Some("The county review report arrived. Read the period dispatch.");
+        }
+    }
+    if let Some(receipt) = &view.hearing_receipt {
+        if receipt.period == view.period
+            && previous.is_none_or(|last| last.hearing_receipt.as_ref() != Some(receipt))
+        {
+            return Some("Wayne hearing minutes arrived. Read the period dispatch.");
+        }
+    }
+    let hearing = super::hearing::invitation(view)?;
+    if previous.and_then(super::hearing::invitation) == Some(hearing) {
+        return None;
+    }
+    Some("Invitation window open. Read the Wayne hearing notice before advancing.")
+}
+
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
 #[derive(Resource, Default)]
 pub(crate) struct OrganizerClient {
@@ -230,6 +256,32 @@ pub(crate) struct OrganizerClient {
 }
 
 impl OrganizerClient {
+    /// Known recipients in the authenticated organizer projection for this period.
+    pub(super) fn known_aid_partners(
+        &self,
+        session: &ObserverSession,
+    ) -> &[OrganizerKnownAidPartner] {
+        self.view
+            .as_ref()
+            .filter(|view| {
+                self.body_for(session).is_some_and(|(_, scope)| {
+                    scope.period == session.viewed_tick && view.period == scope.period
+                })
+            })
+            .map_or(&[], |view| view.aid_partners.as_slice())
+    }
+
+    pub(super) fn selected_aid_partner(
+        &self,
+        session: &ObserverSession,
+    ) -> Option<&OrganizerKnownAidPartner> {
+        let OrganizerSubject::AidPartner(actor) = self.selected_subject? else {
+            return None;
+        };
+        self.known_aid_partners(session)
+            .iter()
+            .find(|partner| partner.actor_id == actor)
+    }
     /// Derive a scene only from the authenticated view for this period.
     pub(crate) fn scene_for(&self, session: &ObserverSession) -> Option<OrganizerScene> {
         let view = self.view.as_ref()?;
@@ -399,6 +451,13 @@ impl OrganizerClient {
     }
 
     pub(super) fn choice_available(&self, choice: OrganizerChoice) -> bool {
+        if matches!(choice, OrganizerChoice::InviteToHearing(_)) {
+            return self
+                .view
+                .as_ref()
+                .and_then(super::hearing::invitation)
+                .is_some();
+        }
         if choice == OrganizerChoice::Collect {
             return self
                 .collection_preview()
@@ -569,18 +628,13 @@ impl OrganizerClient {
             .ok_or_else(|| "Organizer request disappeared.".into())
     }
 
-    pub(crate) fn status(
-        &mut self,
-        request_id: u64,
-        snapshot: OrganizerSnapshot,
-        session: &mut ObserverSession,
-    ) -> Result<StatusDisposition, String> {
-        use std::fmt::Write as _;
-
-        let pending = self.take_response(request_id, RequestKind::Status)?;
-        let context = pending
-            .status_context
-            .ok_or("Organizer status has no requested context.")?;
+    /// Rejects a status snapshot that does not match its request, campaign or period.
+    fn validate_status(
+        &self,
+        context: &StatusContext,
+        snapshot: &OrganizerSnapshot,
+        session: &ObserverSession,
+    ) -> Result<(), String> {
         if context.observation.campaign != session.campaign
             || context.durable_tick != session.durable_tick
             || session.runtime_scope() != Some(&context.scope)
@@ -600,6 +654,9 @@ impl OrganizerClient {
                 && (previous.actor_id != snapshot.view.actor_id
                     || previous.authority_id != snapshot.view.authority_id
                     || previous.aid_partners != snapshot.view.aid_partners
+                    || previous.hearing != snapshot.view.hearing
+                    || previous.hearing_receipt != snapshot.view.hearing_receipt
+                    || previous.hearing_review != snapshot.view.hearing_review
                     || previous.workplace_id != snapshot.view.workplace_id
                     || previous.content_digest != snapshot.view.content_digest
                     || previous.resource_digest != snapshot.view.resource_digest)
@@ -608,17 +665,33 @@ impl OrganizerClient {
                 "Organizer situation changed its identity within the committed period.".into(),
             );
         }
-        if !pending_matches(&snapshot, session) {
+        if !pending_matches(snapshot, session) {
             return Err("Pending organizer ruling does not match the opened campaign's authority and period.".into());
         }
-        if !encounters_match(&snapshot, *session.campaign.as_uuid().as_bytes()) {
+        if !encounters_match(snapshot, *session.campaign.as_uuid().as_bytes()) {
             return Err(
                 "Organizer encounter disclosure does not match the opened situation.".into(),
             );
         }
-        if !body_matches(&snapshot, session) {
+        if !body_matches(snapshot, session) {
             return Err("Organizer body disclosure does not match the committed situation.".into());
         }
+        Ok(())
+    }
+
+    pub(crate) fn status(
+        &mut self,
+        request_id: u64,
+        snapshot: OrganizerSnapshot,
+        session: &mut ObserverSession,
+    ) -> Result<StatusDisposition, String> {
+        use std::fmt::Write as _;
+
+        let pending = self.take_response(request_id, RequestKind::Status)?;
+        let context = pending
+            .status_context
+            .ok_or("Organizer status has no requested context.")?;
+        self.validate_status(&context, &snapshot, session)?;
         // History and perspective can change while a valid status is in flight.
         // Reconcile from the new context instead of treating that local change
         // as a transport failure. Invalid child data was rejected above.
@@ -638,6 +711,9 @@ impl OrganizerClient {
             session.complete();
         }
         let new_city_pd_notice = self.new_city_pd_notice(&snapshot, &context);
+        let hearing_notice = (context.observation.tick == context.durable_tick)
+            .then(|| hearing_update(self.view.as_ref(), &snapshot.view))
+            .flatten();
         let development = if context.observation.tick == context.durable_tick {
             self.developments.install(
                 &snapshot.view,
@@ -662,13 +738,18 @@ impl OrganizerClient {
         // new developments, pending operations and actionable failures.
         if new_city_pd_notice {
             self.pause_for_city_pd_notice(session);
-            if development.is_some() {
+            if let Some(hearing_notice) = hearing_notice {
+                let _ = write!(self.message, " · {hearing_notice}");
+            } else if development.is_some() {
                 let _ = write!(
                     self.message,
                     " · P{} dispatch updated. Read the period dispatch.",
                     session.durable_tick
                 );
             }
+        } else if let Some(hearing_notice) = hearing_notice {
+            session.pause_playback();
+            self.message = hearing_notice.into();
         } else if development.is_some() {
             session.pause_playback();
             self.message = format!(

@@ -7,6 +7,7 @@ use super::ProcessId;
 use super::ProductiveEquipment;
 use super::Result;
 use crate::inventory::InventoryLedger;
+use crate::portfolio::CompanyInvestment;
 use crate::valuation::CostClose;
 use crate::{
     AccountId, CircuitAccounting, EquipmentPosition, MaterialCatalog, MonetaryBook,
@@ -42,6 +43,7 @@ fn add<K: Ord>(map: &mut BTreeMap<K, u64>, key: K, value: u64) -> Result<()> {
     Ok(())
 }
 struct Evidence {
+    period: u64,
     stock: InventoryLedger,
     observed_stock: InventoryLedger,
     inbound: InventoryLedger,
@@ -67,6 +69,7 @@ impl Evidence {
             return Err(MaterialCircuitError::EquipmentInvariant);
         };
         let mut result = Self {
+            period: state.period,
             observed_stock: stock.clone(),
             stock,
             inbound: BTreeMap::new(),
@@ -167,10 +170,10 @@ fn decision(
     content: &ProductiveEquipment,
     position: &EquipmentPosition,
     p: &InvestmentPolicy,
-    period: u64,
     evidence: &mut Evidence,
     book: &MonetaryBook,
     costs: &CostClose,
+    portfolios: &CompanyInvestment,
 ) -> Result<InvestmentReceipt> {
     let (b, d) = content.definition(p.process_id)?;
     let price = *evidence
@@ -215,9 +218,7 @@ fn decision(
         .micro_units()
         .saturating_sub(p.cash_floor.micro_units())
         .max(0);
-    let desired = replacement
-        .checked_add(expansion)
-        .ok_or(MaterialCircuitError::Arithmetic)?;
+    let desired = portfolios.desired(b.site_id, p.process_id, replacement, expansion, price)?;
     let admitted = u64::try_from((cash / price.micro_units()).min(i128::from(desired)))
         .map_err(|_| MaterialCircuitError::Arithmetic)?;
     *available = available
@@ -228,8 +229,8 @@ fn decision(
         )
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let row = InvestmentReceipt {
-        period,
-        order_id: equipment_purchase_order_id(period, p.process_id),
+        period: evidence.period,
+        order_id: equipment_purchase_order_id(evidence.period, p.process_id),
         process_id: p.process_id,
         site_id: b.site_id,
         supplier_site_id: p.supplier_site_id,
@@ -256,6 +257,7 @@ pub(crate) fn invest(
     state: &mut MaterialCircuitState,
     costs: &CostClose,
     transfers: &mut Vec<MoneyTransferReceipt>,
+    portfolios: &CompanyInvestment,
 ) -> Result<Vec<InvestmentReceipt>> {
     let Some(content) = catalog.equipment_content() else {
         return Ok(vec![]);
@@ -274,10 +276,10 @@ pub(crate) fn invest(
             content,
             &position,
             p,
-            state.period,
             &mut evidence,
             &m.book,
             costs,
+            portfolios,
         )?;
         if row.admitted_units > 0 {
             crate::transition::check_order_principal_limits(

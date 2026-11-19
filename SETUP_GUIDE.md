@@ -94,8 +94,8 @@ From the repository root, open or continue a campaign:
 mise run play
 ```
 
-The launcher builds `babylon-runtime` and `babylon-client` with native Cargo
-from `rust/`. It reuses a reachable local database. If the default
+The launcher builds `babylon-runtime`, `babylon-economic-projections` and
+`babylon-client` with native Cargo from `rust/`. It reuses a reachable local database. If the default
 database is
 unavailable, it starts the repository database with `db:up` and checks again.
 By default, the launcher connects to `babylon_test` on `127.0.0.1:5433`.
@@ -113,7 +113,7 @@ card. The Liberty start menu follows:
 - **Continue** enters the campaign the launcher prepared or reopened, once ready.
 - **New Game** starts the Wayne organizer campaign and preserves existing saves.
 - **Load Game** lists saved campaigns, with **Open** and **Compare** controls.
-- **Observer Campaigns** offers the regional, statewide, and Wayne maintenance presets.
+- **Observer Campaigns** offers the national economy, regional, statewide, and Wayne maintenance presets.
 - **Settings** controls audio, interface size, and reduced motion.
 - **Quit** closes the game.
 
@@ -178,6 +178,396 @@ BABYLON_RUNTIME_DSN = "host=127.0.0.1 port=5433 dbname=babylon_play user=test pa
 
 Replace the database and credentials with those of your dedicated database.
 The local file stays outside Git.
+
+### Query committed money movements
+
+The local observer launcher starts a separate publisher for its selected database.
+It fills missing committed periods at startup, including gaps below the latest
+period, and listens for new commits while the session runs. Campaign switches
+use the same database. Each publication uses the stored campaign identity.
+The worker uses its own connections and the game can advance while it works.
+
+To recover up to eight periods of one campaign, run the following command from
+`rust/` with the writer and full-observer credentials described below.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- sweep \
+  --campaign 28100000-0000-0000-0000-000000000001
+```
+
+The `babylon-money-journal` operator publishes derived facts for an existing
+campaign in a database with the current schema. It does not create campaigns or
+advance periods. Set `BABYLON_OBSERVER_DSN` to a confined login with the
+installed `babylon_observer` role. Publication also needs `BABYLON_RUNTIME_DSN`
+with the database owner's credentials. Both connections must use the same host,
+port and database. The observer credential remains read only.
+
+From `rust/`, publish a committed period, read its movements, or total its
+payments over a published interval. Replace the UUID with the existing campaign
+identity:
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- publish \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 1
+cargo run -p babylon-persistence --bin babylon-money-journal -- details \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 1
+cargo run -p babylon-persistence --bin babylon-money-journal -- totals \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 1 --last 13
+```
+
+Publish every period in an interval before querying its totals. The `publish`
+command accepts `--last` for this purpose. Missing coverage produces a refusal,
+including when adjacent published periods contain no transfers. Each period
+publishes atomically. Repeating publication verifies the same source and facts.
+
+Amounts are exact currency micro-units, returned as decimal strings. A
+movement's debit is minus its positive amount and its credit is plus that
+amount. Cash accounts, order reserves and payroll reserves have separate typed
+identities. A reserve identity identifies stored money rather than its owner.
+Only `delivery_settlement` records a sale payment. Reservations, refunds and
+cancellations remain separate in SQL totals.
+
+Detailed rows cover the latest 13 committed source periods as of publication.
+Period identity, coverage and purpose totals remain stored for older periods.
+The `details` command reconstructs older movements from authenticated source
+receipts. Use `rebuild` with the same period flags as `publish` to replace
+derived facts from those receipts. Retention still applies.
+
+Warm detail and total queries use the SQL facts directly. The full observer can
+also sum `public.v_observer_money_movement_total_v1` or inspect
+`public.v_observer_money_movement_v1` with SQL.
+
+### Read a campaign from the earlier schema
+
+For a campaign from the Postgres schema at `2824cf38e`, `dccef45d6`,
+`3db768eeb` or `bfa871b08`, copy the
+recorded history to a second database. Prepare the destination with the new schema,
+the same reference data and no campaigns. Set `BABYLON_PRE293_SOURCE_DSN`
+to the source owner connection and `BABYLON_INSPECTION_TARGET_DSN` to the
+destination owner connection.
+
+From `rust/`, run the copy for one campaign.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-inspection-copy -- \
+  --campaign "$CAMPAIGN_ID"
+```
+
+The command reads the source in a read-only transaction. It checks the copied
+foundation and committed periods before it saves the destination. The report
+identifies the source schema, foundation and latest committed tick. Use the destination
+observer and runtime connections to publish the financial history there.
+
+The six-period Philadelphia and Kodiak archive uses the schema at `bfa871b08`.
+Its bundled README gives the direct-restore procedure for that revision.
+For the current schema, restore its dump to the source database, then run the
+copy above with campaign `11be3a5e-366e-42c8-9461-479e914ff9ad`. Point
+`BABYLON_RUNTIME_DSN` and `BABYLON_OBSERVER_DSN` at the destination.
+Publish all six periods there, then run the company report commands in the README.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- \
+  sweep --campaign 11be3a5e-366e-42c8-9461-479e914ff9ad
+```
+
+### Read site accounts and stock history
+
+In **Circuit**, select a site and open **Accounts** to see its cash change, profit
+and retained earnings for the selected period.
+
+Use the site ID from the native `economy sites` command. With the full observer
+login, read one published period or an inclusive range from `rust/`.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- site-history \
+  --campaign "$CAMPAIGN_ID" --site "$SITE_ID" --first 1 --last 13
+```
+
+Each period includes opening and closing balances, income, signed cash flows and
+stock positions by good and unit. Amounts use decimal strings in currency micros.
+Quantities use decimal strings in the recorded unit.
+
+A physical campaign has a null statement and null stock costs. A null opening or
+closing means that the books had no stock row at that boundary. An unpublished
+period or an unknown site returns an error. Site history stays available after
+the 13-period limit for individual money movements. Use native `economy site`
+to read the source receipts and claims.
+
+### Follow settled payments
+
+Open a campaign in the full observer and select a county on the map. The
+**Settled payments** panel shows who paid that county and whom it paid in the
+selected period. Select a map arrow or its entry in the list to see both
+endpoints and the amount. Choose `Open counterparty county` to
+follow a payment to another mapped county. The list also includes payments
+with no mapped endpoint.
+
+Choose **Frame connections on map** to show the payer and recipient on the map.
+Choose **County site accounts** to read the change in cash, profit and retained
+earnings for all sites that operate in the county. Select a site to open its **Accounts**
+for the same period.
+
+From period two, choose **Compare with period** to see the county's net amount
+and how it changed from the period before it. The ribbons show the selected period.
+In Labor mode, the list includes transfers with unknown earlier hours.
+
+From `rust/`, use the full observer login to rank payments in a published
+campaign. The movement journal records each reserve posting. The flow report
+counts the settlement from its economic payer to its credited recipient once.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- flows \
+  --campaign 28100000-0000-0000-0000-000000000001 --first 5 --last 8 \
+  --compare-first 1 --compare-last 4 --group location
+```
+
+Choose `location`, `catchment`, `industry`, `account`, `company` or `counterparty` for `--group`.
+With `--group location --focus county:26163`, each row identifies a location
+that exchanged payments with Wayne County, Michigan. Its inflow is money Wayne
+paid that location. Its outflow is money the location paid Wayne.
+
+Each page returns twenty groups ranked by the sum of inflow, outflow, and internal
+payments. Internal payments count once. If two distinct accounts both lack a
+grouping key, the unknown group shows an inflow and an outflow for that payment.
+Its net effect is zero.
+
+Net equals inflow minus outflow. The comparison reports the change in that net amount.
+The `remainder` field sums every group outside the page. Use `--offset 20` for the
+next twenty. The report uses signed decimal strings in currency micros.
+
+An optional `--bbox-4269 WEST,SOUTH,EAST,NORTH` filters visible endpoints with
+NAD83 longitude and latitude. A county uses its captured TIGER internal point.
+Other locations with no captured point stay outside the selected area. A site’s
+operating county and the catchment it serves have distinct grouping keys.
+Missing classifications appear as a null key when viewing all locations.
+
+### Play the Wayne relief hearing
+
+Choose **New national game**, or launch a fresh local campaign.
+
+```bash
+mise run play -- --new --preset national-world
+```
+
+Open the relief hearing marker in Wayne. The notice names the groups,
+their delegates, how many households authorized them and their demands.
+After period 1 closes, choose the terms to offer. Review the decision,
+confirm it and advance. You can also keep the current routine and see
+what the claimants do with their standing appointment.
+
+The period 2 minutes show who spoke and what the delegates agreed.
+Advance to period 3 and reopen the hearing marker to see who has the
+opening and the reply at the county review. This report ends the chapter.
+
+### Inspect a company or freight route
+
+Choose **Observer Campaigns** and **Observe national economy** to start a full-observer game, or launch it locally.
+
+```bash
+mise run play -- --new --preset national-economy
+```
+
+Choose a county, open **Map lens +**, then choose **Economy network**.
+An orange factory marks producers, a blue-and-white awning marks shops, and a
+gold pylon marks energy and utilities. Select a symbol or its row in
+**County workplaces** to see the sites it represents.
+Select a named site to open its circuit. The symbols share the county's
+location. A line points back to that location when symbols need room.
+
+After a period closes, open the workplace's **Readings** and choose
+**Accounts**. Compare spendable cash at opening and closing with funds
+set aside for purchases and payroll. Inventory, cargo in transit and
+equipment also have separate balances. Scroll down to see sales, costs,
+taxes, profit and the cash flows for the period.
+
+In the national **Economy network**, a yellow triangle marks a food shortage
+where the game places a household group. Select the warning or the county's
+dated food reading to compare parcels needed and eaten. The symbols keep
+their size as you zoom. A regional group appears at its hub.
+
+The pantry balance shows what residents ate
+even when a retailer delivered nothing. Choose **Open household receipt**
+to inspect the group with the largest shortfall, or **Trace food retailer**
+to visit its supplier.
+
+The household receipt names the group at the start of the campaign.
+Income received shows the wages, business ownership payments, public
+support and cash aid that reached its account in the selected period.
+Compare the food order and pantry to see what the household actually ate.
+
+At a retailer, choose **Readings** and **Orders**. For a goods order,
+compare what the shop held and already had on order with its stock target.
+Follow the supplier's button to see its own orders or open **Accounts**.
+The selected period stays the same. A delivery from an older order has
+a separate row. For a service, compare the funded quantity with the
+quantity the provider performed and the quantity that expired.
+
+In the organizer's **Places** view, choose **Show aid partners on map**.
+Select the hand and parcel for a local partner or the linked parcels for
+a remote partner. Select the dated food reading beside a symbol to open
+the partner's report. An opening pantry count shows food on hand. A later
+report shows how many parcels the household needed and how many it ate.
+Select the partner symbol itself to open its dossier and prepare an aid offer.
+
+After the first period closes, select a county. Open **Money flows** from
+**Map lens +** and choose **By Company**.
+Select a named company in the ranked list and open **Company accounts**.
+The legal parent shows the treasury, claims and payments on its own books.
+Choose **Show consolidated company** to include its operating sites and see
+the adjustments for internal sales, contributions, dividends and margins.
+A campaign captured before companies existed retains its original owners.
+
+In **Company accounts**, choose **Investment decision** to see what the
+company chose at this close and how likely each alternative was. To see
+what that choice authorized at one workplace, open the site's **Circuit**,
+choose **Readings**, then **Investment**. A producer's reading also shows
+how much it produced and how much accepted demand went unfilled. The
+following period's accounts show how much money changed hands.
+
+To follow a household, choose **By Account**, select its household cash
+account and open **Household period receipt**. You can also choose a retailer
+in **Circuit**, open **Readings**, choose **Flow** and open a customer’s
+household receipt. This route works even when the retailer sold that group
+nothing. **Back to retailer** returns to the customer list.
+
+For each good, compare the quantities requested, affordable and bought.
+The expired quantity shows how much of the funded order the retailer failed
+to deliver. Opening and closing pantry stocks show what the household had
+left to eat when deliveries fell.
+The same receipt records population, wages, services, public support and
+unpaid provisioning hours.
+
+From `rust/`, use the household account's 64-character ID to read that close.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- household-period \
+  --campaign "$CAMPAIGN_ID" --period 2 --household "$HOUSEHOLD_ID"
+```
+
+To inspect an industry, choose **By Industry**, select a row, then choose
+**Show or hide industry sources**. The national source table groups captured
+QCEW records by NAICS code. It lists reported jobs and counts suppressed
+records. The diagram shows flows for the selected county and period.
+
+To follow a payment or recorded labor movement, select a ranked company,
+industry or counterparty. The locations below the selection show the counties
+that contributed to that connection and the amount for each. Choose **Open**
+beside a county to inspect its flows. You can also focus the county with Tab
+and press Enter. Switching between the map and Sankey keeps the selection.
+
+From `rust/`, read the published company statements for a completed period.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- company-period \
+  --campaign "$CAMPAIGN_ID" --period 2 --published
+```
+
+Copy the `company` value from the statements into `COMPANY_ID`. To inspect its
+investment decision at that close, use the full observer login.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- company-decision \
+  --campaign "$CAMPAIGN_ID" --period 2 --company "$COMPANY_ID"
+```
+
+The report lists each portfolio's original weight, weight after checking
+feasibility, and next-period limits. It identifies the selected portfolio
+and the draw ticket. The company measures profitability by adding its member
+sites’ operating income over up to three completed periods. The report gives
+those period totals in currency micros, oldest first.
+
+In a new national campaign, a profitable company checks replacement needs
+first. If it needs no replacement and used eight of ten available batches,
+it uses the spare-capacity weights even if orders went unfilled. If it used
+all ten batches and still has unfilled accepted orders, it uses the
+high-demand weights. Each saved campaign keeps its captured policy.
+
+Choose **Freight access** to inspect Wayne’s captured corridors and compare truck routes. Switch between
+**Outbound from origin** and **Inbound to origin** to inspect each direction.
+Select an endpoint, then choose **Geographic map** or **Terminal network**.
+The compass marks your origin. A terminal shows its county and its attachment
+to the road network when known. Select the plane symbol to read the airport's
+name, position and source date.
+
+<!-- vale Vale.Spelling = NO -->
+The game includes the shortest permitted road distances between Michigan's
+83 county terminals. From Wayne, select Ingham and switch directions to
+compare the two routes. The game shows a terminal's attachment to the road
+separately. A solid arrow marks a corridor captured by the campaign. A dashed
+connection shows road access. For an external copy of the original full
+matrix, set `BABYLON_MICHIGAN_ROAD_MATRIX` to its path before launch.
+<!-- vale Vale.Spelling = YES -->
+
+### Follow recorded labor
+
+Select a county in the full observer. In the **Settled payments** panel, choose
+**Labor hours**. The panel shows transfers to and from accounts in the county,
+including connections to entries with no known location. Choose **Map** or
+**Sankey** to follow the same connection.
+
+The Sankey shows the hours held in the
+county at the opening and close of the period. Each balance includes a count of
+positions with unknown earlier labor. The arrows between the balances show
+transfers during the period. One recorded hour can move more than once.
+
+The list includes movements with unknown earlier labor. The diagram sizes
+each connection by its recorded hours. A movement with zero recorded hours
+and unknown earlier labor stays in the list.
+
+From `rust/`, rank movements for the same county and compare two periods.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-money-journal -- flows \
+  --campaign "$CAMPAIGN_ID" --measure labor --group location --focus county:26163 \
+  --first 2 --compare-first 1
+```
+
+Each direction reports millionths of an hour, the number of movements, and the
+number with unknown earlier labor. Labor flow version 3 counts consumption and
+service use at the household, service expiry at the holder, and maintenance
+expiry at its consumer process. The receipt identifies where each use occurred.
+A freight loss has no recorded point along its route. `Unlocated ledger endpoint`
+identifies an entry with no known place. The same hours can appear in production,
+freight and consumption. To see how many hours
+people added and how much remained at each boundary, read the period ledger.
+
+```bash
+cargo run -p babylon-persistence --bin babylon-economic-projections -- labor-trace \
+  --campaign "$CAMPAIGN_ID" --first 2 --last 4
+```
+
+The command writes one JSON object for each period and a `labor_trace_complete`
+record. Each period identifies its foundation, committed tick and receipts.
+Opening hours plus hours worked equal closing hours plus released hours.
+
+### Read a site's financial statements
+
+Set `BABYLON_OBSERVER_DSN` to the confined observer login described above.
+The site commands need only this credential. From `rust/`, list the captured
+campaign's sites. Set `SITE_ID` to a returned ID to read its first committed period.
+
+```bash
+cargo run -p babylon-client -- --headless \
+  --campaign 28100000-0000-0000-0000-000000000001 economy sites
+cargo run -p babylon-client -- --headless \
+  --campaign 28100000-0000-0000-0000-000000000001 economy site "$SITE_ID" 1
+```
+
+The directory uses the fixed campaign foundation at period zero. At that period
+the command returns the opening balance sheet. For each committed period it
+returns opening and closing balances, income, and cash flows.
+
+Amounts are exact decimal strings in currency micros. Spendable cash excludes
+order and payroll reserves. The cash-flow statement shows reserve movements
+that lack a documented operating, investing, or financing purpose on their own line.
+
+To test the reports locally, run the disposable database check from the
+project root. Set `BABYLON_SITE_STATEMENTS_CLIENT_EXE` to the absolute path of
+a built `babylon-client` to include the native command checks.
+
+```bash
+BABYLON_POSTGRES_LIVE_FOCUS=money_journal mise run test:rust-postgres
+```
 
 ## 5. Run the repository check
 

@@ -8,7 +8,7 @@ use crate::{
     AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MoneyTransferReceipt,
 };
 
-use crate::MaterialCircuitError;
+use crate::{CompanyDistributionReceipt, MaterialCatalog, MaterialCircuitError};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
@@ -16,6 +16,7 @@ pub(crate) struct FinancialClose {
     pub public_budgets: Vec<PublicBudgetReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
+    pub company_distributions: Vec<CompanyDistributionReceipt>,
     pub contributions: Vec<CapitalContributionReceipt>,
 }
 impl FinancialClose {
@@ -28,6 +29,7 @@ impl FinancialClose {
             public_budgets: vec![],
             taxes: vec![],
             distributions: vec![],
+            company_distributions: vec![],
             contributions: vec![],
         };
         result.contribute(state, costs, movements)?;
@@ -179,6 +181,7 @@ impl FinancialClose {
     }
     pub(crate) fn distribute(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         costs: &mut CostClose,
         movements: &mut Vec<MoneyTransferReceipt>,
@@ -202,6 +205,8 @@ impl FinancialClose {
                 Ok((r.issuer_site_id, earnings, declared))
             })
             .collect::<Result<Vec<_>>>()?;
+        self.company_distributions =
+            super::company::pay(catalog, state.period, e, costs, movements)?;
         for (issuer, earnings, declared) in budgets {
             let start = e
                 .financial
@@ -234,7 +239,7 @@ impl FinancialClose {
                         paid,
                         CashTransferPurpose::OwnershipDistribution,
                     )?);
-                    costs.distribution(issuer, r.beneficiary, paid)?;
+                    costs.distribution(AccountId::Site(issuer), r.beneficiary, paid)?;
                 }
                 self.distributions.push(DistributionReceipt {
                     period: state.period,

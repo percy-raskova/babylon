@@ -295,6 +295,7 @@ pub(super) fn kind(field: Field, row: &[u8]) -> Result<K, StorageError> {
             Some(2) => Ok(K::FinalDemandPrincipal),
             Some(3) => Ok(K::OrganizationAccount),
             Some(4) => Ok(K::PublicAccount),
+            Some(5) => Ok(K::CompanyAccount),
             _ => Err(StorageError::IdentityKind),
         },
         EquipmentAsset => match row.get(field.offset.checked_sub(1).ok_or(StorageError::Layout)?) {

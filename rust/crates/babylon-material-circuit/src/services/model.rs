@@ -177,7 +177,6 @@ impl HouseholdServiceReceipt {
     /// Refuses impossible or unpartitioned current-period quantities.
     pub fn validate(&self) -> Result<(), MaterialCircuitError> {
         if self.period == 0
-            || self.required_quantity == 0
             || self.satisfied_quantity != self.required_quantity.min(self.performed_quantity)
             || self.satisfied_quantity.checked_add(self.unmet_quantity)
                 != Some(self.required_quantity)

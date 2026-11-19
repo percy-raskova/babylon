@@ -24,6 +24,7 @@
 )]
 
 pub mod choice_receipt;
+pub mod company_graph;
 
 pub mod committed_event;
 

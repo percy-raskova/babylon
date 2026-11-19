@@ -5,14 +5,20 @@ use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::OpeningProductiveEndowment;
 use babylon_material_circuit::AccountId;
 
-use super::{actors, aid, external, financial, household_time, markets, routes, templates};
+use super::{
+    actors, aid, claimant, external, financial, household_time, markets, routes, templates,
+};
 
 use super::super::{GameCommodity, NationalGamePolicy};
+use crate::national_economy::companies::{
+    self, CompanyCapture, CompanyCaptureError, CompanyFinances, TreasuryError,
+};
 
 use crate::economic_catalog::{
     CatalogAccounting, CatalogCapacity, CatalogLogistics, CatalogOpeningOrders, CatalogPolicies,
     EconomicOpening, EconomicSiteSeed,
 };
+use crate::national_ages::NationalAgeReference;
 use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
 use crate::national_household_allocation::{HouseholdAllocationError, HouseholdBudgetKey};
@@ -46,6 +52,7 @@ use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::MaterialCircuitError;
+use claimant::NationalSupportClaimant;
 use std::collections::BTreeMap;
 use std::fmt::Formatter;
 
@@ -53,6 +60,8 @@ use std::fmt::Formatter;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NationalOpeningError {
     SourceScope,
+    Companies(CompanyCaptureError),
+    Treasury(TreasuryError),
     Grain(NationalGrainError),
     MissingObservation,
     Policy,
@@ -112,6 +121,7 @@ pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) endowments: BTreeMap<SiteId, OpeningProductiveEndowment>,
     pub(in crate::national_economy) financial_domains: BTreeMap<AccountId, FinancialDomainId>,
     pub(in crate::national_economy) aid: NationalAidCapture,
+    pub(in crate::national_economy) support_claimant: Option<NationalSupportClaimant>,
     pub(in crate::national_economy) eligible_overrides: BTreeMap<FinalDemandPrincipalId, u64>,
     pub(in crate::national_economy) household_keys:
         BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
@@ -129,6 +139,7 @@ pub(in crate::national_economy) struct Builder<'a> {
 #[derive(Clone, Copy)]
 pub struct NationalOpeningPolicy<'a> {
     pub policy: &'a NationalGamePolicy,
+    pub ages: Option<&'a NationalAgeReference>,
     pub source_hash: [u8; 32],
 }
 
@@ -149,6 +160,7 @@ pub fn build_national_opening(
     let NationalOpeningPolicy {
         policy,
         source_hash: policy_source_hash,
+        ages,
     } = captured_policy;
     if u64::from(transport.period_days()) != policy.period_days {
         return Err(NationalOpeningError::Policy);
@@ -163,12 +175,12 @@ pub fn build_national_opening(
     let time_controls =
         national_household_time_allocation::allocate_household_time(counties, &household_budgets)
             .map_err(NationalOpeningError::HouseholdTime)?;
-    let leaf_roster = crate::national_household_refinement::refine_households(
+    let (leaf_roster, support_claimant) = claimant::refine(
         &household_budgets,
         &time_controls,
-        &[],
-    )
-    .map_err(NationalOpeningError::HouseholdRefinement)?;
+        policy.household_support_claimant,
+        policy_source_hash,
+    )?;
     let mut allocation = national_resident_allocation::allocate_home_county(
         counties,
         cohorts,
@@ -178,7 +190,7 @@ pub fn build_national_opening(
         policy,
     )
     .map_err(NationalOpeningError::Workforce)?;
-    let mut builder = Builder::new(policy, transport)?;
+    let mut builder = Builder::new(policy, transport, support_claimant)?;
     aid::prepare(
         &mut builder,
         &household_budgets,
@@ -186,13 +198,24 @@ pub fn build_national_opening(
         &mut allocation,
         policy_source_hash,
     )?;
-    builder.finish(
+    let mut opening = builder.finish(
         counties,
         world,
         allocation,
         &household_budgets,
         &time_controls,
-    )
+    )?;
+    match (&policy.household_lifecycle, ages) {
+        (Some(terms), Some(reference)) => super::lifecycle::wire(
+            &mut opening,
+            reference,
+            terms,
+            policy.retailer_buffer_periods,
+        )?,
+        (None, None) => {}
+        _ => return Err(NationalOpeningError::SourceScope),
+    }
+    Ok(opening)
 }
 
 impl<'a> Builder<'a> {
@@ -221,10 +244,23 @@ impl<'a> Builder<'a> {
             household_budgets,
             time_controls,
             &builder.aid,
+            builder.support_claimant.as_ref(),
             policy,
             &membership,
         )
         .map_err(NationalOpeningError::Grain)?;
+        let companies = policy
+            .companies
+            .map(|targets| {
+                let base =
+                    companies::from_workplaces(&roster.workplaces.workplaces, targets.employment)?;
+                match targets.experiment {
+                    Some(population) => companies::partition(base, population),
+                    None => Ok(base),
+                }
+            })
+            .transpose()
+            .map_err(NationalOpeningError::Companies)?;
         builder.endowments = roster.workplace_endowments;
         builder.financial_domains = roster.financial_domains;
         actors::domestic(
@@ -233,6 +269,7 @@ impl<'a> Builder<'a> {
             &roster.workplaces,
             &roster.households,
         )?;
+        claimant::household(&mut builder)?;
         aid::fund(&mut builder)?;
         external::world(&mut builder, world)?;
         markets::wire(&mut builder)?;
@@ -246,10 +283,29 @@ impl<'a> Builder<'a> {
             .policies
             .aid_mandates
             .clone_from(&builder.aid.mandates);
+        let finances = companies
+            .as_ref()
+            .zip(policy.companies)
+            .map(|(roster, terms)| {
+                builder.opening.policies.company_portfolios = Some(terms.portfolio);
+                companies::fund(
+                    &mut builder.opening,
+                    roster,
+                    terms.treasury_bps,
+                    policy.financial.private_distribution_bps,
+                )
+            })
+            .transpose()
+            .map_err(NationalOpeningError::Treasury)?;
+        // The background workplace rows report each site's cash after its opening transfer.
         let detail = super::detail::partition(&builder, &builder.aid)?;
         Ok(NationalOpening {
+            finances,
+            companies,
             opening: builder.opening,
+            household_keys: builder.household_keys,
             aid: builder.aid,
+            support_claimant: builder.support_claimant,
             detail,
             representation: roster.representation,
         })
@@ -275,6 +331,7 @@ impl<'a> Builder<'a> {
     pub(super) fn new(
         policy: &'a NationalGamePolicy,
         transport: &'a NationalTransportReference,
+        support_claimant: Option<NationalSupportClaimant>,
     ) -> Result<Self> {
         let labor_unit = UnitId::from_bytes(babylon_kernel::content_digest::sha256_of(
             b"NationalLaborHourV1\0",
@@ -286,6 +343,7 @@ impl<'a> Builder<'a> {
             endowments: BTreeMap::new(),
             financial_domains: BTreeMap::new(),
             aid: NationalAidCapture::default(),
+            support_claimant,
             eligible_overrides: BTreeMap::new(),
             household_keys: BTreeMap::new(),
             transport,
@@ -324,6 +382,8 @@ impl<'a> Builder<'a> {
                 equipment_position: EquipmentPosition::default(),
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
+                    company_portfolios: None,
+                    company_payouts: vec![],
                     aid_mandates: Vec::new(),
                     household_time: HouseholdTimeAccounting::NotModeled,
                     household_time_policy: Vec::new(),
@@ -440,9 +500,14 @@ pub(in crate::national_economy) fn sum_amount(left: Currency, right: Currency) -
 /// One current complete national capture; aid metadata must be installed by admission.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalOpening {
+    pub companies: Option<CompanyCapture>,
+    pub finances: Option<CompanyFinances>,
     pub representation: NationalGenerationWitness,
     pub opening: EconomicOpening,
+    /// Opening budget identity by exact admitted household principal.
+    pub(crate) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub aid: NationalAidCapture,
+    pub support_claimant: Option<NationalSupportClaimant>,
     /// Authored foreground identities and conserved counted background cohorts.
     pub detail: NationalDetailPartition,
 }

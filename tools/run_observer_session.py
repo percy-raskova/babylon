@@ -30,7 +30,7 @@ OBSERVER_CAPTURE_FILTER = "session=debug,babylon_client=debug"
 # The runtime's database statement timeout is 120 seconds. EOF/Stop gets time
 # to finish a transaction before any exact-child termination is attempted.
 RUNTIME_SHUTDOWN_GRACE_SECONDS = 150
-RUNTIME_SESSION_PROTOCOL_VERSION: int = 19
+RUNTIME_SESSION_PROTOCOL_VERSION: int = 21
 ADVANCE_STAGES = (
     "preparing_commitments",
     "resolving_economy",
@@ -210,6 +210,7 @@ class NewCampaignTarget:
         "statewide-maintenance-both",
         "organize-in-wayne",
         "national-world",
+        "national-economy",
     ]
 
 
@@ -223,6 +224,8 @@ class OpenCampaignTarget:
 def _new_target(campaign: UUID, preset: str | None) -> NewCampaignTarget:
     if preset is None or preset == "standard":
         return NewCampaignTarget(campaign, "standard")
+    if preset == "national-economy":
+        return NewCampaignTarget(campaign, "national-economy")
     if preset == "national-world":
         return NewCampaignTarget(campaign, "national-world")
     if preset == "delayed":
@@ -295,6 +298,8 @@ def _clean_environment(environment: Mapping[str, str]) -> dict[str, str]:
             "BABYLON_READER_DSN",
             "BABYLON_SESSION_STDIO",
             "BABYLON_CAMPAIGN_ID",
+            "BABYLON_REOPEN_CAMPAIGN",
+            "BABYLON_NEW_CAMPAIGN",
             "BABYLON_DOSSIER_DEMO_PASSWORD",
         }
     }
@@ -436,6 +441,8 @@ def prepare(
                 "babylon-persistence",
                 "--bin",
                 "babylon-runtime",
+                "--bin",
+                "babylon-economic-projections",
                 "-p",
                 "babylon-client",
                 "--bin",
@@ -473,6 +480,62 @@ def _stop(child: subprocess.Popen[bytes]) -> None:
                     "observer child did not exit after bounded shutdown; "
                     "reopen the campaign to reconcile committed progress"
                 ) from error
+
+
+def _start_projections(
+    binary: Path,
+    root: Path,
+    writer: Mapping[str, str],
+    reader: Mapping[str, str],
+    target: NewCampaignTarget | OpenCampaignTarget,
+) -> subprocess.Popen[bytes] | None:
+    """Pass the initial campaign nomination to the independent publisher for idle warmup."""
+    environment = {
+        "BABYLON_RUNTIME_DSN": writer["BABYLON_RUNTIME_DSN"],
+        "BABYLON_OBSERVER_DSN": reader["BABYLON_OBSERVER_DSN"],
+    }
+    if isinstance(target, OpenCampaignTarget):
+        environment["BABYLON_REOPEN_CAMPAIGN"] = str(target.campaign)
+    elif target.preset in {"national-world", "national-economy"}:
+        environment["BABYLON_NEW_CAMPAIGN"] = str(target.campaign)
+    try:
+        return subprocess.Popen(
+            [str(binary), "watch-database", "--session-stdin"],
+            cwd=root,
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=None,
+            close_fds=True,
+        )
+    except OSError:
+        print(
+            "Economic projections could not start. A later session can catch up.", file=sys.stderr
+        )
+        return None
+
+
+def _finish_projections(child: subprocess.Popen[bytes]) -> None:
+    """Allow final committed periods to publish, then reap this exact owned child."""
+    try:
+        assert child.stdin is not None
+        try:
+            child.stdin.write(b"Q")
+            child.stdin.flush()
+        except BrokenPipeError:
+            pass
+        finally:
+            try:
+                child.stdin.close()
+            except BrokenPipeError:
+                pass
+        code = child.wait(timeout=15)
+        if code:
+            print(f"Economic projections stopped with code {code}.", file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("Economic projections will resume from committed periods on launch.", file=sys.stderr)
+    finally:
+        _stop(child)
 
 
 def _finish_runtime(child: subprocess.Popen[bytes]) -> int:
@@ -803,7 +866,7 @@ def check_installation(
         )
     economy_snapshot = (
         _national_economy_status(client, root, reader, campaign, first)
-        if target.preset == "national-world"
+        if target.preset in ("national-world", "national-economy")
         else None
     )
     print(
@@ -833,6 +896,8 @@ def run_pair(
     *,
     defines_path: Path,
     initial_target: NewCampaignTarget | OpenCampaignTarget,
+    analytics_binary: Path | None = None,
+    on_publisher_started: Callable[[subprocess.Popen[bytes]], None] | None = None,
     qualification_control: Path | None = None,
     on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None] | None = None,
     on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
@@ -849,6 +914,7 @@ def run_pair(
     if qualification_control is not None and not qualification_control.is_absolute():
         raise ObserverLaunchError("qualification control socket must be absolute")
     descriptors: list[int] = []
+    publisher: subprocess.Popen[bytes] | None = None
     runtime: subprocess.Popen[bytes] | None = None
     client: subprocess.Popen[bytes] | None = None
     runtime_shutdown_started = False
@@ -894,6 +960,18 @@ def run_pair(
         for descriptor in descriptors:
             os.close(descriptor)
         descriptors.clear()
+        if analytics_binary is not None:
+            publisher = _start_projections(
+                analytics_binary,
+                root,
+                runtime_environment,
+                client_environment,
+                initial_target,
+            )
+        if on_publisher_started is not None:
+            if publisher is None:
+                raise ObserverLaunchError("qualified session cannot start its economic publisher")
+            on_publisher_started(publisher)
         if on_started is not None:
             # Bind these actual owned children only after parent pipe ends are
             # closed. A failed observation follows the same exact-child cleanup.
@@ -924,6 +1002,8 @@ def run_pair(
                 if runtime is not None and not runtime_shutdown_started:
                     _finish_runtime(runtime)
         finally:
+            if publisher is not None:
+                _finish_projections(publisher)
             if on_stopped is not None and all(
                 child is None or child.poll() is not None for child in (client, runtime)
             ):
@@ -970,6 +1050,7 @@ def main(argv: list[str] | None = None) -> int:
             "statewide-maintenance-both",
             "organize-in-wayne",
             "national-world",
+            "national-economy",
         ),
         help="choose a new world's material preset; requires New rather than Open",
     )
@@ -1026,6 +1107,7 @@ def main(argv: list[str] | None = None) -> int:
             reader_environment,
             defines_path=args.defines.expanduser().resolve(),
             initial_target=initial_target,
+            analytics_binary=runtime.with_name("babylon-economic-projections"),
         )
     except (ObserverLaunchError, OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"Observer launch refused: {error}", file=sys.stderr)

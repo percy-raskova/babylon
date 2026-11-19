@@ -4,6 +4,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::{DurableMaterialRuntime, MaterialRuntimeFoundation};
+use babylon_persistence::money_journal::MoneyJournalWriter;
 use std::collections::BTreeSet;
 
 use postgres::{Config, NoTls};
@@ -327,6 +328,11 @@ fn actual_encoded_national_tick_measures_postgresql_growth_and_recovery() {
         national_playable::qualify(&config, campaign, periods, run_started);
         return;
     }
+    babylon_persistence::observer_reader::provision_observer_role(&config)
+        .expect("grant the full observer its confined views");
+    let observer = national_playable::accounting_reader();
+    let publisher = MoneyJournalWriter::connect(&config).expect("owned projection publisher");
+    let mut cursor = None;
     let (foundation, foundation_digest) = capture_foundation();
     let started = Instant::now();
     let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
@@ -366,6 +372,9 @@ fn actual_encoded_national_tick_measures_postgresql_growth_and_recovery() {
             world
         );
         eprintln!("authoritative national tick={tick} parity_elapsed={parity_elapsed:?}");
+        publisher
+            .publish_with_cursor(&observer, campaign, tick, &mut cursor)
+            .expect("all source-bound economic facts published before storage measurement");
         snapshot(&format!("tick-{tick:02}"), campaign);
         drop(runtime);
         let started = Instant::now();

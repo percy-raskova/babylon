@@ -1,6 +1,6 @@
 meta:
-  version: 1.93.0
-  updated: '2026-11-10'
+  version: 1.96.0
+  updated: '2026-11-18'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,21 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR299_wayne_relief_hearing:
+    title: Give household groups distinct mandates at the Wayne relief hearing
+    status: accepted
+    date: '2026-11-18'
+    file: ADR299_wayne_relief_hearing.yaml
+  ADR298_national_household_lifecycle:
+    title: Connect national household reproduction to demographic stocks and the next economic period
+    status: accepted
+    date: '2026-11-15'
+    file: ADR298_national_household_lifecycle.yaml
+  ADR297_national_company_accounts_and_investment:
+    title: Capture national company ownership, treasury and investment choices
+    status: proposed
+    date: '2026-11-14'
+    file: ADR297_national_company_accounts_and_investment.yaml
   ADR296_national_game_grain:
     title: Generate a Designed national economy before live economic expansion
     status: accepted

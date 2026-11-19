@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 #[derive(Component, Clone, Copy)]
 pub(crate) enum ObserverRegion {
+    World,
     Context,
     Log,
     History,
@@ -54,6 +55,7 @@ impl ObserverLayout {
 
     pub fn region(&self, region: ObserverRegion) -> Rect {
         match region {
+            ObserverRegion::World => self.world,
             ObserverRegion::Context | ObserverRegion::Log => self.subject,
             ObserverRegion::History => self.history,
             ObserverRegion::Footer => self.footer,

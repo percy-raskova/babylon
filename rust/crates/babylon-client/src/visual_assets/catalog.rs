@@ -11,6 +11,8 @@ pub enum VisualAssetId {
     InterfaceAtlas,
     /// The six-cell map-marker atlas.
     MarkerAtlas,
+    /// Artist-replaceable economic and organizer map symbols.
+    EconomicMapAtlas,
     /// The four-cell projection-provenance atlas.
     ProvenanceAtlas,
     /// The four-cell frame atlas.
@@ -62,7 +64,7 @@ pub struct VisualAssetDescriptor {
 }
 
 /// The fixed, manifest-ordered catalog of all embedded visual images.
-pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 20] = [
+pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 21] = [
     VisualAssetDescriptor {
         id: VisualAssetId::TitleMark,
         label: "Title mark",
@@ -110,6 +112,14 @@ pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 20] = [
         height: 128,
         columns: 3,
         rows: 1,
+    },
+    VisualAssetDescriptor {
+        id: VisualAssetId::EconomicMapAtlas,
+        label: "Economic map symbols",
+        width: 512,
+        height: 384,
+        columns: 4,
+        rows: 3,
     },
     VisualAssetDescriptor {
         id: VisualAssetId::HeroRedApparatus,

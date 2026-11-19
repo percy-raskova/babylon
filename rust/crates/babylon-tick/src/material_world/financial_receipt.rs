@@ -5,9 +5,10 @@ use super::ReceiptCursor;
 use super::monetary_receipt;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CapitalContributionReceipt, CashTransferPurpose, ContributionId,
-    DistributionReceipt, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
-    PublicAccountId, PublicBudgetReceipt, PublicTransferTreatment, SiteId, TaxBasis, TaxReceipt,
+    AccountId, CapitalContributionReceipt, CashTransferPurpose, CompanyDistributionReceipt,
+    CompanyId, ContributionId, DistributionReceipt, MoneyLocation, MoneyTransferPurpose,
+    MoneyTransferReceipt, PublicAccountId, PublicBudgetReceipt, PublicTransferTreatment, SiteId,
+    TaxBasis, TaxReceipt,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
@@ -25,6 +26,53 @@ fn money(c: &mut ReceiptCursor<'_>) -> Result<Currency> {
     Ok(Currency::from_micro_units(i128::from_be_bytes(c.take()?)))
 }
 
+pub(super) const COMPANY_BYTES: usize = 8 + 32 + 33 + 2 * 16 + 4 * 16;
+pub(super) fn encode_companies(
+    rows: &[CompanyDistributionReceipt],
+    tick: u64,
+    out: &mut Vec<u8>,
+) -> Result<()> {
+    for row in rows {
+        if row.period != tick {
+            return Err(MaterialWorldError::Wire);
+        }
+        out.extend_from_slice(&row.period.to_be_bytes());
+        out.extend_from_slice(&row.company.as_bytes());
+        write_account(out, row.beneficiary);
+        for value in [row.weight, row.total_weight] {
+            out.extend_from_slice(&value.to_be_bytes());
+        }
+        for amount in [
+            row.eligible_earnings,
+            row.protected_contributions,
+            row.declared,
+            row.paid,
+        ] {
+            out.extend_from_slice(&amount.micro_units().to_be_bytes());
+        }
+    }
+    Ok(())
+}
+pub(super) fn decode_company(
+    c: &mut ReceiptCursor<'_>,
+    tick: u64,
+) -> Result<CompanyDistributionReceipt> {
+    let period = c.u64()?;
+    if period != tick {
+        return Err(MaterialWorldError::Wire);
+    }
+    Ok(CompanyDistributionReceipt {
+        period,
+        company: CompanyId::from_bytes(c.take()?),
+        beneficiary: read_account(c)?,
+        weight: u128::from_be_bytes(c.take()?),
+        total_weight: u128::from_be_bytes(c.take()?),
+        eligible_earnings: money(c)?,
+        protected_contributions: money(c)?,
+        declared: money(c)?,
+        paid: money(c)?,
+    })
+}
 pub(super) const PUBLIC_BUDGETS_BYTES: usize = 126;
 pub(super) fn encode_public_budgets(
     rows: &[PublicBudgetReceipt],
@@ -225,6 +273,7 @@ pub(super) fn validate(
     taxes: &[TaxReceipt],
     distributions: &[DistributionReceipt],
     contributions: &[CapitalContributionReceipt],
+    companies: &[CompanyDistributionReceipt],
     money: &[MoneyTransferReceipt],
 ) -> Result<()> {
     ordered(public, |r| {
@@ -241,7 +290,16 @@ pub(super) fn validate(
     ordered(contributions, |r| r.id)?;
     babylon_material_circuit::validate_distribution_receipts(distributions)
         .map_err(|_| MaterialWorldError::Wire)?;
+    babylon_material_circuit::validate_company_distributions(companies)
+        .map_err(|_| MaterialWorldError::Wire)?;
     let mut expected = PostingTotals::new();
+    for row in companies {
+        accumulate(
+            &mut expected,
+            (3, AccountId::Company(row.company), row.beneficiary),
+            row.paid,
+        )?;
+    }
     for r in public {
         accumulate(
             &mut expected,

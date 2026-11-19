@@ -131,7 +131,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage | organizer_allocation_atomic) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | money_journal | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage | organizer_allocation_atomic) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -557,7 +557,7 @@ if [ "$status" -eq 0 ]; then
           wayne_media pin-binaries --container "$CONTAINER_ID" || die "prebuilt native source/executable admission refused"
         fi
         BLAS=1 cargo build -p babylon-persistence -p babylon-client \
-          --bin babylon-runtime --bin babylon-client --bin babylon-material-audit \
+          --bin babylon-runtime --bin babylon-client --bin babylon-material-audit --bin babylon-economic-projections \
           --locked || status=$?
         if [ "$status" -eq 0 ]; then
           cd "$REPO_ROOT"
@@ -684,6 +684,20 @@ if [ "$status" -eq 0 ]; then
           --test "$archive_producer" --locked -- --nocapture --ignored --test-threads=1 || status=$?
       done
       ;;
+    money_journal)
+      run_phase money_journal 1800 cargo test -p babylon-persistence \
+        --test observer_material_live money_journal:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      if [ "$status" -eq 0 ]; then
+        run_phase inspection_copy 600 cargo test -p babylon-persistence \
+          --test observer_material_live inspection_copy:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        # The ordinary organizer submits and advances with a live financial foreign-key check.
+        run_phase financial_writer_concurrency 600 cargo test -p babylon-persistence \
+          --test observer_material_live organizer::organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
+      ;;
     reader_recovery)
       # Bounded repairs and receipt authentication use the same owned roles,
       # template and cleanup as the full reader gate. Keep its default intact.
@@ -704,7 +718,7 @@ if [ "$status" -eq 0 ]; then
         [ "$reader_suite" != observer_material_live ] || reader_threads=4
         run_phase "$reader_suite" 600 cargo test -p babylon-persistence --test "$reader_suite" \
           --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
-          --skip staffing_history::production_history --skip organizer:: \
+          --skip staffing_history::production_history --skip organizer:: --skip money_journal:: --skip inspection_copy:: \
           --skip state_opponent_history:: --skip state_opponent_nonwitness:: \
           --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break

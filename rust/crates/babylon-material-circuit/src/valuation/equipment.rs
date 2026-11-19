@@ -7,6 +7,7 @@ use crate::{
     AccountId, EquipmentAssetId, EquipmentCohortId, EquipmentWearReceipt, InstallationId,
     MaterialCatalog, MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, UnitId,
 };
+use crate::{CompanyBasisAsset, CompanyBasisMovement};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 impl CostClose {
@@ -76,6 +77,14 @@ impl CostClose {
                 carried_to_output: taken,
                 closing_carrying: retained,
             };
+            active.transfer(&CompanyBasisMovement {
+                source: CompanyBasisAsset::Equipment(site, cohort.id),
+                destination: Some(CompanyBasisAsset::Process(site, process)),
+                sale: None,
+                available: cohort.remaining_service_batches,
+                quantity: used,
+                opening,
+            })?;
             row.validate()?;
             self.wear_receipts.push(row);
             cohort.remaining_service_batches -= used;
@@ -164,6 +173,11 @@ impl CostClose {
             .equipment
             .remove(&EquipmentAssetId::Installation(id))
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        a.entire(
+            CompanyBasisAsset::Installation(value.0, id),
+            CompanyBasisAsset::Equipment(value.0, cohort),
+            value.1,
+        )?;
         if a.book
             .equipment
             .insert(EquipmentAssetId::Installed(cohort), value)

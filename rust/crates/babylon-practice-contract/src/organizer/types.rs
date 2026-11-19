@@ -8,6 +8,10 @@ use super::{
     OrganizerCollectionFact, OrganizerCollectionMandate, OrganizerCollectionResolution,
     OrganizerPendingAidPractice,
 };
+use super::{
+    OrganizerHearingConfig, OrganizerHearingNotice, OrganizerHearingOffer, OrganizerHearingReceipt,
+    OrganizerHearingReview,
+};
 
 use super::collection;
 
@@ -94,6 +98,8 @@ pub struct OrganizerConfig {
     #[serde(deserialize_with = "collection::required_terms")]
     pub collection: Option<OrganizerCollectionMandate>,
     pub aid_bindings: Vec<OrganizerAidBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hearing: Option<OrganizerHearingConfig>,
     pub inquiry_hours: u64,
     pub contact_hours: u64,
     pub partner_response_hours: u64,
@@ -121,6 +127,7 @@ pub enum OrganizerChoice {
     Hold,
     PauseStanding,
     ResumeStanding,
+    InviteToHearing(OrganizerHearingOffer),
 }
 
 /// Exact selected material request, authenticated with its practice kind.
@@ -200,6 +207,7 @@ pub enum OrganizerRefusal {
     CollectionUnavailable,
     CollectionCashRefused,
     AidUnavailable,
+    HearingUnavailable,
     AidReceivingRefused,
     PendingAidConflict,
     /// This household hour identity was already debited in the witnessed period.
@@ -324,6 +332,7 @@ pub enum OrganizerOutcome {
     InsufficientTime,
     StandingPaused,
     StandingResumed,
+    HearingInvitationIssued,
     NoAuthorizedPractice,
 }
 
@@ -440,6 +449,8 @@ pub struct OrganizerState {
     pub last_workplace_facts: Option<OrganizerWorkplaceFacts>,
     pub learned_authority_index: Vec<OrganizerLearnedAuthority>,
     pub last_period_time_witness: Option<OrganizerPeriodTimeWitness>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_hearing_review: Option<OrganizerHearingReview>,
 }
 
 /// Exact evidence produced by one resolved organizer period.
@@ -451,6 +462,10 @@ pub struct OrganizerPeriodJournalEntries {
     pub receipts: Vec<OrganizerReceipt>,
     pub collection_receipts: Vec<OrganizerCollectionResolution>,
     pub aid_receipts: Vec<OrganizerAidResolutionReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hearing: Option<OrganizerHearingReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hearing_review: Option<OrganizerHearingReview>,
 }
 
 impl OrganizerPeriodJournalEntries {
@@ -463,6 +478,8 @@ impl OrganizerPeriodJournalEntries {
             receipts: vec![],
             collection_receipts: vec![],
             aid_receipts: vec![],
+            hearing: None,
+            hearing_review: None,
         }
     }
 
@@ -480,6 +497,8 @@ impl OrganizerPeriodJournalEntries {
             && self.receipts.is_empty()
             && self.collection_receipts.is_empty()
             && self.aid_receipts.is_empty()
+            && self.hearing.is_none()
+            && self.hearing_review.is_none()
     }
 
     /// Merge two evidence sets for the same period in causal execution order.
@@ -488,13 +507,18 @@ impl OrganizerPeriodJournalEntries {
     ///
     /// Returns [`OrganizerError::PeriodMismatch`] when the periods differ.
     pub fn extend(&mut self, other: Self) -> Result<(), OrganizerError> {
-        if self.period != other.period {
+        if self.period != other.period
+            || (self.hearing.is_some() && other.hearing.is_some())
+            || (self.hearing_review.is_some() && other.hearing_review.is_some())
+        {
             return Err(OrganizerError::PeriodMismatch);
         }
         self.observations.extend(other.observations);
         self.receipts.extend(other.receipts);
         self.collection_receipts.extend(other.collection_receipts);
         self.aid_receipts.extend(other.aid_receipts);
+        self.hearing = self.hearing.take().or(other.hearing);
+        self.hearing_review = self.hearing_review.take().or(other.hearing_review);
         Ok(())
     }
 }
@@ -591,6 +615,12 @@ pub struct OrganizerView {
     pub positions: Vec<OrganizerPosition>,
     pub aid_partners: Vec<OrganizerKnownAidPartner>,
     pub aid_options: Vec<OrganizerAidOption>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hearing: Option<OrganizerHearingNotice>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hearing_receipt: Option<OrganizerHearingReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hearing_review: Option<OrganizerHearingReview>,
 }
 
 impl OrganizerView {

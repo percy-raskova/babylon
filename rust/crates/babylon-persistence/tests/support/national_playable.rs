@@ -2,6 +2,7 @@
 use super::{NativeRunTiming, NativeTimingEvidence, NativeTimingSample};
 use crate::elapsed_ns;
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::money_journal::MoneyJournalWriter;
 use babylon_persistence::runtime_session::{
     OrganizerAidKind, OrganizerAidTransportPreview, OrganizerChoice, OrganizerCommand,
     OrganizerCommitment, OrganizerFoodDelivery, OrganizerGiftConsent, OrganizerInquiry,
@@ -43,7 +44,7 @@ use serde_json::Value;
 use std::fs::File;
 use uuid::Uuid;
 
-fn accounting_reader() -> ObserverEconomyReader {
+pub(super) fn accounting_reader() -> ObserverEconomyReader {
     let config: Config = std::env::var("BABYLON_NATIONAL_STORAGE_OBSERVER_DSN")
         .expect("the fixture variable is bound")
         .parse()
@@ -539,7 +540,14 @@ fn replay_wayne_p4_for_commit_diagnostic() {
     let actual: Option<String> = row.get(0);
     assert_eq!(actual.as_deref(), Some(canary.as_str()));
     assert_eq!(row.get::<_, String>(1), "test");
-    eprintln!("fixture settings user={} work_mem={} shared_buffers={} effective_cache_size={} synchronous_commit={}", row.get::<_, String>(1), row.get::<_, String>(2), row.get::<_, String>(3), row.get::<_, String>(4), row.get::<_, String>(5));
+    eprintln!(
+        "fixture settings user={} work_mem={} shared_buffers={} effective_cache_size={} synchronous_commit={}",
+        row.get::<_, String>(1),
+        row.get::<_, String>(2),
+        row.get::<_, String>(3),
+        row.get::<_, String>(4),
+        row.get::<_, String>(5)
+    );
     drop(connection);
     let bootstrap = babylon_persistence::bootstrap_current_runtime(&config)
         .expect("fixture current runtime bootstrap");
@@ -904,6 +912,7 @@ struct AccountedBoundary {
     production_timing: NativeTimingSample,
 }
 
+#[derive(Default)]
 struct QualificationAccounting {
     aid: national_aid_accounting::Audit,
     trade: national_trade_accounting::Audit,
@@ -1310,16 +1319,12 @@ fn scheduled_admission(
 pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_started: Instant) {
     let run = QualificationRun::start(config, campaign, periods, run_started);
     let mut session = Session::start(config, campaign, true);
+    let observer = accounting_reader();
+    let publisher = MoneyJournalWriter::connect(config).expect("owned projection publisher");
+    let mut journal_cursor = None;
     assert_eq!(session.tail.resolve_tick, 0);
     super::snapshot("opening-created", campaign);
-    let mut accounting = QualificationAccounting {
-        aid: national_aid_accounting::Audit::default(),
-        trade: national_trade_accounting::Audit::default(),
-        economic: national_economic_accounting::Audit::default(),
-        production_renewal: None,
-        production_renewal_evidence: None,
-        production_cursor: None,
-    };
+    let mut accounting = QualificationAccounting::default();
     let foundation = session.foundation.clone();
     let mut advances = Vec::new();
     let mut cold_reopens = Vec::new();
@@ -1360,6 +1365,9 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         }
         let world = boundary.world;
         boundaries.push(boundary.proof);
+        publisher
+            .publish_with_cursor(&observer, campaign, tick, &mut journal_cursor)
+            .expect("all source-bound economic facts published before storage measurement");
         super::snapshot(&format!("tick-{tick:02}"), campaign);
         let hashes = identity_rows(config, campaign);
         assert_eq!(

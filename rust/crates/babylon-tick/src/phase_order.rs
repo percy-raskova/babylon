@@ -744,6 +744,21 @@ mod tests {
     }
 
     #[test]
+    fn company_portfolio_is_scheduled_after_the_authored_material_close() {
+        let material = include_str!("../../../../content/scenarios/national/material-cycle.bsl");
+        let company = include_str!("../../../../content/scenarios/national/company-portfolio.bsl");
+        let rules = [
+            ("company/portfolio-investment".to_owned(), form(company)),
+            ("material/period".to_owned(), form(material)),
+        ];
+        let plan = compile(&rules).expect("combine governed graph and material rules");
+        assert_eq!(
+            ids(&plan),
+            ["material/period", "company/portfolio-investment"]
+        );
+    }
+
+    #[test]
     fn registry_matches_the_frozen_34_slot_spine() {
         let names: Vec<&str> = SYSTEM_SLOTS.iter().map(|slot| slot.name).collect();
         assert_eq!(

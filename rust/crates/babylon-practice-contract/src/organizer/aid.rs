@@ -15,6 +15,7 @@ use super::OrganizerRefusal;
 use super::OrganizerReportSharing;
 use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
+use babylon_kernel::economic_location::EconomicLocation;
 use serde::{Deserialize, Serialize};
 
 use crate::CampaignId;
@@ -79,6 +80,20 @@ pub struct OrganizerKnownAidPartner {
     pub kind: OrganizerAidKind,
     pub actor_id: u64,
     pub label: String,
+    /// Recipient county when the material host can locate the disclosed aid mandate.
+    #[serde(deserialize_with = "recipient_county")]
+    pub location: Option<EconomicLocation>,
+}
+
+fn recipient_county<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<EconomicLocation>, D::Error> {
+    use serde::de::Error;
+
+    match Option::<EconomicLocation>::deserialize(deserializer)? {
+        location @ (Some(EconomicLocation::County(_)) | None) => Ok(location),
+        Some(_) => Err(D::Error::custom("aid recipient location must be a county")),
+    }
 }
 
 /// Pre-material commitment. Receiving a gift does not authorize later partner practice.
@@ -896,45 +911,34 @@ pub(super) fn validate_period_allocations(
 ) -> Result<(), OrganizerError> {
     let mut promised = BTreeMap::<(u64, u64), u64>::new();
     let mut total = BTreeMap::<u64, u64>::new();
-    for receipt in entries.receipts() {
-        if receipt.period != entries.period {
+    let uses = entries
+        .receipts()
+        .flat_map(|receipt| &receipt.time_use)
+        .chain(entries.hearing.iter().flat_map(|hearing| &hearing.time_use));
+    for row in uses {
+        let p = config
+            .participants
+            .iter()
+            .find(|p| p.contributor_id == row.contributor_id)
+            .ok_or(OrganizerError::InvalidState)?;
+        let bound = p
+            .commitments
+            .iter()
+            .find(|p| p.actor_id == row.actor_id)
+            .ok_or(OrganizerError::InvalidState)?
+            .hours;
+        let spent = promised
+            .entry((row.contributor_id, row.actor_id))
+            .or_default();
+        *spent = spent
+            .checked_add(row.hours)
+            .ok_or(OrganizerError::Arithmetic)?;
+        let all = total.entry(row.contributor_id).or_default();
+        *all = all
+            .checked_add(row.hours)
+            .ok_or(OrganizerError::Arithmetic)?;
+        if *spent > bound || *all > p.available_hours {
             return Err(OrganizerError::InvalidState);
-        }
-        if receipt.time_use.iter().any(|row| {
-            !config.participants.iter().any(|participant| {
-                participant.contributor_id == row.contributor_id
-                    && participant.commitments.iter().any(|commitment| {
-                        commitment.actor_id == row.actor_id && commitment.hours >= row.hours
-                    })
-            })
-        }) {
-            return Err(OrganizerError::InvalidState);
-        }
-        for row in &receipt.time_use {
-            let p = config
-                .participants
-                .iter()
-                .find(|p| p.contributor_id == row.contributor_id)
-                .ok_or(OrganizerError::InvalidState)?;
-            let bound = p
-                .commitments
-                .iter()
-                .find(|p| p.actor_id == row.actor_id)
-                .ok_or(OrganizerError::InvalidState)?
-                .hours;
-            let spent = promised
-                .entry((row.contributor_id, row.actor_id))
-                .or_default();
-            *spent = spent
-                .checked_add(row.hours)
-                .ok_or(OrganizerError::Arithmetic)?;
-            let all = total.entry(row.contributor_id).or_default();
-            *all = all
-                .checked_add(row.hours)
-                .ok_or(OrganizerError::Arithmetic)?;
-            if *spent > bound || *all > p.available_hours {
-                return Err(OrganizerError::InvalidState);
-            }
         }
     }
     Ok(())

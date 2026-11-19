@@ -25,6 +25,7 @@ pub(super) fn choice(value: OrganizerChoice) -> &'static str {
         OrganizerChoice::Collect => "Collect a voluntary contribution",
         OrganizerChoice::LocalAid => "Organize local aid",
         OrganizerChoice::RemoteAid => "Organize remote solidarity",
+        OrganizerChoice::InviteToHearing(offer) => super::hearing::label(offer),
         OrganizerChoice::Hold => "Keep current routine",
         OrganizerChoice::PauseStanding => "Pause neighborhood work",
         OrganizerChoice::ResumeStanding => "Resume neighborhood work",
@@ -46,6 +47,7 @@ pub(super) fn flavor(view: &OrganizerView, choice: OrganizerChoice) -> &'static 
         OrganizerChoice::RemoteAid => {
             "Send support across the distance; the route still has to carry it."
         }
+        OrganizerChoice::InviteToHearing(offer) => super::hearing::terms(offer),
         OrganizerChoice::Hold if view.standing.authorized => {
             "Keep showing up for the neighborhood contact work."
         }
@@ -78,6 +80,7 @@ pub(super) fn refusal(value: OrganizerRefusal) -> &'static str {
         OrganizerRefusal::CollectionCashRefused => {
             "The household has declined this cash contribution."
         }
+        OrganizerRefusal::HearingUnavailable => "No invitation can be issued for the next period.",
         OrganizerRefusal::AidUnavailable => "No captured aid mandate is offered here.",
         OrganizerRefusal::AidReceivingRefused => {
             "The recipient has not consented to receive this gift."
@@ -302,6 +305,9 @@ fn practice_hours(view: &OrganizerView, choice: OrganizerChoice) -> u64 {
         }
         // Authenticated collection hours are carried by the snapshot.
         OrganizerChoice::Collect | OrganizerChoice::Hold | OrganizerChoice::PauseStanding => 0,
+        OrganizerChoice::InviteToHearing(_) => {
+            super::hearing::invitation(view).map_or(0, |hearing| hearing.attendance_hours)
+        }
     }
 }
 
@@ -368,7 +374,13 @@ fn approach_terms(
     let recipient = aid_recipient(view, preview);
     let mut text = recipient.map_or_else(
         || "UNAVAILABLE · Recipient attribution unavailable. Refresh before choosing aid.\n".into(),
-        |option| format!("Recipient: {}\n", option.partner_label),
+        |option| {
+            format!(
+                "Recipient: {}\n{}\n",
+                option.partner_label,
+                super::partner_copy::aid_food_report(view, preview)
+            )
+        },
     );
     let _ = writeln!(text, "Material preview: period {}.", preview.period);
     if let Some(period) = preview.period.checked_add(1) {
@@ -398,7 +410,7 @@ fn approach_terms(
     text
 }
 
-fn aid_recipient<'a>(
+pub(super) fn aid_recipient<'a>(
     view: &'a OrganizerView,
     preview: &OrganizerMaterialAidPreview,
 ) -> Option<&'a OrganizerAidOption> {
@@ -646,6 +658,7 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
         "Neighborhood routine stays paused"
     };
     match choice {
+        OrganizerChoice::InviteToHearing(offer) => format!("{}\n{displacement}\nHearing in period {resolves} · {hours} organizer-hours", super::hearing::terms(offer)),
         OrganizerChoice::Collect => "Captured collection terms require the current runtime snapshot.".into(),
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid =>
             "Gift delivery and later mutual-aid practice require separate evidence. Review the captured material terms before admission.".into(),
@@ -746,6 +759,7 @@ fn aid_stage_order(outcome: OrganizerOutcome) -> u8 {
         | OrganizerOutcome::CollectionRefused
         | OrganizerOutcome::StandingPaused
         | OrganizerOutcome::StandingResumed
+        | OrganizerOutcome::HearingInvitationIssued
         | OrganizerOutcome::NoAuthorizedPractice => 4,
     }
 }
@@ -777,6 +791,7 @@ fn aid_commitment_summary(rows: &[&DispatchPractice]) -> String {
             | OrganizerOutcome::CollectionRefused
             | OrganizerOutcome::StandingPaused
             | OrganizerOutcome::StandingResumed
+            | OrganizerOutcome::HearingInvitationIssued
             | OrganizerOutcome::NoAuthorizedPractice => "Resolution",
         };
         let _ = write!(text, "\n{stage} · {}", outcome(receipt.outcome));
@@ -824,6 +839,14 @@ fn practice_summary(row: &DispatchPractice) -> String {
     } else {
         "saved routine"
     };
+    if matches!(receipt.choice, OrganizerChoice::InviteToHearing(_)) {
+        return format!(
+            "Period {} · {origin}\n{}\n{}. Read Wayne hearing for attendance, authority and minutes.",
+            receipt.period,
+            choice(receipt.choice),
+            outcome(receipt.outcome)
+        );
+    }
     if receipt.choice == OrganizerChoice::Collect {
         let actual = row.collection;
         return actual.map_or_else(
@@ -1052,6 +1075,23 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
         let _ = write!(text, "\n{REINFORCE_PURPOSE}");
     }
     match preview.choice {
+        OrganizerChoice::InviteToHearing(_) => {
+            if let Some((hearing, partner)) = client.view.as_ref().and_then(|view| {
+                super::hearing::invitation(view).zip(super::hearing::invitee(view))
+            }) {
+                let _ = write!(
+                    text,
+                    "\nStanding claimant: {}\nInvite: {}\nHearing in period {} · next review in period {}\nCost to issue the invitation: {} of {} organizer-hours. Each attending group needs {} hours of its own time. Aid decisions remain with the ordinary accounts.",
+                    hearing.claimant_label,
+                    partner.label,
+                    hearing.period,
+                    hearing.review_period,
+                    preview.required_hours,
+                    preview.available_hours,
+                    hearing.attendance_hours
+                );
+            }
+        }
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
             let _ = write!(
                 text,
@@ -1120,6 +1160,7 @@ fn preview_routine(preview: &OrganizerPreview) -> &'static str {
         | OrganizerChoice::RemoteAid
         | OrganizerChoice::Inquiry(_)
         | OrganizerChoice::Reinforce
+        | OrganizerChoice::InviteToHearing(_)
             if preview.replaces_standing_work =>
         {
             "Replaces neighborhood work once; later work remains subject to eligibility."
@@ -1128,7 +1169,8 @@ fn preview_routine(preview: &OrganizerPreview) -> &'static str {
         | OrganizerChoice::LocalAid
         | OrganizerChoice::RemoteAid
         | OrganizerChoice::Inquiry(_)
-        | OrganizerChoice::Reinforce => "The neighborhood routine remains paused.",
+        | OrganizerChoice::Reinforce
+        | OrganizerChoice::InviteToHearing(_) => "The neighborhood routine remains paused.",
         OrganizerChoice::PauseStanding => {
             "Pauses the saved routine until you explicitly resume it."
         }
@@ -1234,6 +1276,7 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
 
 pub(super) fn outcome(value: OrganizerOutcome) -> &'static str {
     match value {
+        OrganizerOutcome::HearingInvitationIssued => "Invitation issued",
         OrganizerOutcome::CollectionCompleted => {
             "Voluntary contribution collected; funds available for later aid"
         }
@@ -1355,6 +1398,7 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
         );
     };
     match client.inspector {
+        OrganizerInspector::Hearing => ("Wayne representation hearing".into(), String::new()),
         OrganizerInspector::Practices => ("All practices".into(), String::new()),
         OrganizerInspector::Review => ("Review the ruling".into(), String::new()),
         OrganizerInspector::Closed => (String::new(), String::new()),
@@ -2609,6 +2653,9 @@ mod tests {
             receipts: vec![],
             positions: vec![],
             aid_partners: vec![],
+            hearing: None,
+            hearing_receipt: None,
+            hearing_review: None,
             aid_options: vec![],
         }
     }

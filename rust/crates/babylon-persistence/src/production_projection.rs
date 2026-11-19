@@ -6,7 +6,7 @@ pub(crate) mod diagnostics;
 mod equipment;
 
 #[cfg(test)]
-mod equipment_fixture;
+pub(crate) mod equipment_fixture;
 
 mod events;
 
@@ -70,3 +70,5 @@ mod projection;
 #[cfg(test)]
 pub(crate) use projection::project_material_observation;
 pub(crate) use projection::{project_economic_current, ProductionProjectionError};
+
+pub(crate) use labor::validate_completed_labor;

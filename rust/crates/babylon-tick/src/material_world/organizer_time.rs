@@ -177,27 +177,41 @@ pub(super) fn uses(
                     return Err(MaterialWorldError::Wire);
                 }
             }
-            continue;
         }
-        for usage in &receipt.time_use {
-            let principal_id =
-                *principals
-                    .get(&usage.contributor_id)
-                    .ok_or(MaterialWorldError::Organizer(
-                        OrganizerError::TimeBindingMismatch,
-                    ))?;
-            result.push(HouseholdContributionUse {
-                use_id: babylon_practice_contract::household_contribution_use_id(
-                    &receipt.receipt_id,
-                    usage.actor_id,
-                    usage.contributor_id,
-                ),
-                principal_id,
-                actor_id: usage.actor_id,
-                contributor_id: usage.contributor_id,
-                hours: usage.hours,
-            });
-        }
+    }
+    let uses = entries
+        .receipts()
+        .filter(|receipt| receipt.choice != OrganizerChoice::Collect)
+        .flat_map(|receipt| {
+            receipt
+                .time_use
+                .iter()
+                .map(|usage| (&receipt.receipt_id, usage))
+        })
+        .chain(entries.hearing.iter().flat_map(|hearing| {
+            hearing
+                .time_use
+                .iter()
+                .map(|usage| (&hearing.receipt_id, usage))
+        }));
+    for (receipt_id, usage) in uses {
+        let principal_id =
+            *principals
+                .get(&usage.contributor_id)
+                .ok_or(MaterialWorldError::Organizer(
+                    OrganizerError::TimeBindingMismatch,
+                ))?;
+        result.push(HouseholdContributionUse {
+            use_id: babylon_practice_contract::household_contribution_use_id(
+                receipt_id,
+                usage.actor_id,
+                usage.contributor_id,
+            ),
+            principal_id,
+            actor_id: usage.actor_id,
+            contributor_id: usage.contributor_id,
+            hours: usage.hours,
+        });
     }
     result.sort_by_key(|usage| usage.use_id);
     // The witness is independent evidence that the period's household hours

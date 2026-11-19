@@ -25,12 +25,7 @@ pub fn recurring_service_order_id(
     good: GoodId,
     unit: UnitId,
 ) -> OrderId {
-    let (tag, id) = match buyer {
-        AccountId::Site(id) => (1, id.as_bytes()),
-        AccountId::Household(id) => (2, id.as_bytes()),
-        AccountId::Organization(id) => (3, id.as_bytes()),
-        AccountId::Public(id) => (4, id.as_bytes()),
-    };
+    let (tag, id) = buyer.wire_parts();
     let mut bytes = b"babylon.recurring-service-order.v1\0".to_vec();
     bytes.extend_from_slice(&period.to_be_bytes());
     bytes.push(tag);

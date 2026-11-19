@@ -4,5 +4,8 @@ mod aid;
 #[path = "organizer/compact.rs"]
 mod compact;
 
+#[path = "organizer/hearing.rs"]
+mod hearing;
+
 #[path = "organizer/support.rs"]
 mod support;

@@ -12,6 +12,7 @@ use super::ProductiveEquipment;
 use super::Result;
 use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
+use crate::CompanyBasisAsset;
 use crate::{AccountId, EquipmentPosition, MaterialCatalog, SiteId, StaffingWorkSource, UnitId};
 use babylon_kernel::currency::Currency;
 
@@ -101,6 +102,7 @@ fn start_projects(
                 (AccountId::Site(binding.site_id), good, unit),
                 available,
                 quantity,
+                CompanyBasisAsset::Installation(binding.site_id, id),
             )?;
             inventory::debit_inventory(
                 eligible,

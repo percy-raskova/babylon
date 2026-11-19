@@ -1,6 +1,6 @@
 //! Personal report references resolved only through the current lawful projection.
 
-use babylon_persistence::runtime_session::OrganizerObservation;
+use babylon_persistence::runtime_session::{OrganizerObservation, OrganizerView};
 
 use crate::observer::{ObserverSession, SessionPhase};
 
@@ -21,6 +21,18 @@ pub(super) struct EvidenceInspection {
     selected_report: Option<[u8; 32]>,
 }
 
+pub(super) fn disclosed_reports(
+    view: &OrganizerView,
+    period: u64,
+) -> impl Iterator<Item = &OrganizerObservation> {
+    view.observations.iter().filter(move |item| {
+        item.actor_id == view.actor_id
+            && view.knows_report_subject(item)
+            && item.observed_period <= period
+            && item.acquired_period <= period
+    })
+}
+
 impl OrganizerClient {
     pub(super) fn lawful_evidence(
         &self,
@@ -28,13 +40,7 @@ impl OrganizerClient {
         period: u64,
     ) -> Option<&OrganizerObservation> {
         let view = self.view.as_ref()?;
-        view.observations.iter().find(|item| {
-            item.observation_id == id
-                && item.actor_id == view.actor_id
-                && view.knows_report_subject(item)
-                && item.observed_period <= period
-                && item.acquired_period <= period
-        })
+        disclosed_reports(view, period).find(|item| item.observation_id == id)
     }
 
     pub(super) fn report_aid_choice(
@@ -72,16 +78,8 @@ impl OrganizerClient {
         let Some(view) = &self.view else {
             return Vec::new();
         };
-        let mut reports = view
-            .observations
-            .iter()
-            .filter(|item| {
-                item.actor_id == view.actor_id
-                    && !matches!(self.evidence.mode,EvidenceMode::Subject(id) if item.subject_id!=id)
-                    && view.knows_report_subject(item)
-                    && item.observed_period <= period
-                    && item.acquired_period <= period
-            })
+        let mut reports = disclosed_reports(view, period)
+            .filter(|item| !matches!(self.evidence.mode, EvidenceMode::Subject(id) if item.subject_id != id))
             .collect::<Vec<_>>();
         reports.sort_by_key(|item| {
             (

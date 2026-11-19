@@ -316,6 +316,9 @@ pub struct CompletedProductionStaffingMember {
     pub period: u64,
     pub opening_employed: u64,
     pub opening_reserve: u64,
+    /// Residents removed from the employed and reserve stocks before staffing.
+    pub employed_removed: u64,
+    pub reserve_removed: u64,
     pub hires: u64,
     pub separations: u64,
 }
@@ -327,6 +330,9 @@ pub struct CompletedProductionStaffing {
     pub period: u64,
     pub opening_employed: u64,
     pub opening_reserve: u64,
+    /// Residents removed from the employed and reserve stocks before staffing.
+    pub employed_removed: u64,
+    pub reserve_removed: u64,
     pub previous_unretained_hours: u64,
     pub current_unretained_hours: u64,
     pub retained_hours: u64,

@@ -5,6 +5,7 @@ use super::HistoricalCostBook;
 use super::IncomeReceipt;
 use super::IncomeStatement;
 use super::Result;
+use super::{CompanyBasisAsset, CompanyBasisMovement, CompanySale};
 use crate::payments::AttendanceLedger;
 use crate::payments::LaborUse;
 use crate::AgencyAttendanceOutcome;
@@ -38,6 +39,7 @@ pub(crate) struct CostClose {
     pub(super) goods: GoodsCostLedger,
 }
 pub(super) struct ActiveCosts {
+    pub(super) company_basis: Option<Vec<CompanyBasisMovement>>,
     pub(super) book: HistoricalCostBook,
     pub(super) income: BTreeMap<AccountId, IncomeStatement>,
     pub(super) contributions: BTreeMap<AccountId, Currency>,
@@ -48,11 +50,12 @@ impl CostClose {
     pub(crate) fn attendance_members(&self) -> &[MemberLaborUseReceipt] {
         self.attendance.members()
     }
-    pub(crate) fn new(state: &MaterialCircuitState) -> Self {
+    pub(crate) fn new(state: &MaterialCircuitState, catalog: &MaterialCatalog) -> Self {
         let active = match &state.accounting {
             CircuitAccounting::PhysicalControl => None,
             CircuitAccounting::Monetary(economy) => Some(ActiveCosts {
                 book: economy.costs.clone(),
+                company_basis: (!catalog.company_payouts.is_empty()).then(Vec::new),
                 contributions: BTreeMap::new(),
                 distributions: BTreeMap::new(),
                 income: economy
@@ -71,6 +74,12 @@ impl CostClose {
         }
     }
 
+    pub(crate) fn take_company_basis(&mut self) -> Vec<CompanyBasisMovement> {
+        self.active
+            .as_mut()
+            .and_then(|a| a.company_basis.take())
+            .unwrap_or_default()
+    }
     pub(crate) fn admit_attendance(&mut self, attendance: AttendanceLedger) {
         self.attendance = attendance;
     }
@@ -87,9 +96,10 @@ impl CostClose {
         key: StockKey,
         available: u64,
         quantity: u64,
+        destination: CompanyBasisAsset,
     ) -> Result<Currency> {
         self.active.as_mut().map_or(Ok(super::zero()), |a| {
-            a.book.take_stock(key, available, quantity)
+            a.withdraw(key, available, quantity, Some(destination), None)
         })
     }
 
@@ -124,6 +134,11 @@ impl CostClose {
             output.unit_id,
         );
         let carrying = super::add(inputs, wages)?;
+        active.entire(
+            CompanyBasisAsset::Process(output.site_id, output.process_id),
+            CompanyBasisAsset::Stock(output.site_id, output.good_id, output.unit_id),
+            inputs,
+        )?;
         active.book.credit_stock(key, carrying)?;
         let quantity = output
             .quantity_per_batch
@@ -158,12 +173,23 @@ impl CostClose {
             return Err(MaterialCircuitError::MonetaryInvariant);
         };
         let owner = AccountId::Site(row.provider_site_id);
-        let cost = active.book.take_stock(
+        let payment = super::amount(row.performed_quantity, row.unit_price)?;
+        let order = OutboundOrderId::Service(row.order_id);
+        let destination = match row.buyer {
+            AccountId::Site(site) => Some(CompanyBasisAsset::Handoff(site, order)),
+            _ => None,
+        };
+        let cost = active.withdraw(
             (owner, row.good_id, row.unit_id),
             available,
             row.performed_quantity,
+            destination,
+            Some(CompanySale {
+                order,
+                buyer: row.buyer,
+                proceeds: payment,
+            }),
         )?;
-        let payment = super::amount(row.performed_quantity, row.unit_price)?;
         active.sale(owner, payment, cost)
     }
     pub(crate) fn receive_service(&mut self, row: &ServicePerformanceReceipt) -> Result<()> {
@@ -174,10 +200,17 @@ impl CostClose {
             .active
             .as_mut()
             .ok_or(MaterialCircuitError::MonetaryInvariant)?;
-        active.book.credit_stock(
-            (row.buyer, row.good_id, row.unit_id),
-            super::amount(row.performed_quantity, row.unit_price)?,
-        )
+        let payment = super::amount(row.performed_quantity, row.unit_price)?;
+        if let AccountId::Site(site) = row.buyer {
+            active.entire(
+                CompanyBasisAsset::Handoff(site, OutboundOrderId::Service(row.order_id)),
+                CompanyBasisAsset::Stock(site, row.good_id, row.unit_id),
+                payment,
+            )?;
+        }
+        active
+            .book
+            .credit_stock((row.buyer, row.good_id, row.unit_id), payment)
     }
     pub(crate) fn consume_service(
         &mut self,
@@ -189,7 +222,7 @@ impl CostClose {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
-        let cost = active.book.take_stock(key, available, quantity)?;
+        let cost = active.withdraw(key, available, quantity, None, None)?;
         let statement = active.statement(key.0)?;
         if finite_sink {
             statement.final_demand_outlay = super::add(statement.final_demand_outlay, cost)?;
@@ -202,7 +235,7 @@ impl CostClose {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
-        let cost = active.book.take_stock(key, quantity, quantity)?;
+        let cost = active.withdraw(key, quantity, quantity, None, None)?;
         let statement = active.statement(key.0)?;
         statement.unused_service_expense = super::add(statement.unused_service_expense, cost)?;
         Ok(())
@@ -242,7 +275,13 @@ impl CostClose {
         if active.book.freight.len() >= MAX_MATERIAL_CIRCUIT_ROWS {
             return Err(MaterialCircuitError::RowLimit);
         }
-        let cost = active.book.take_stock(key, available, quantity)?;
+        let cost = active.withdraw(
+            key,
+            available,
+            quantity,
+            Some(CompanyBasisAsset::Freight(owner, lot)),
+            None,
+        )?;
         if active
             .book
             .freight
@@ -275,6 +314,15 @@ impl CostClose {
             .checked_sub(lost_quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
         let retained = super::sub(opening, lost_cost)?;
+        let source = CompanyBasisAsset::Freight(lot.source_site_id, lot.lot_id);
+        active.transfer(&CompanyBasisMovement {
+            source,
+            destination: None,
+            sale: None,
+            available: lot.quantity,
+            quantity: lost_quantity,
+            opening,
+        })?;
         let statement = active.statement(owner)?;
         statement.freight_loss_expense = super::add(statement.freight_loss_expense, lost_cost)?;
         if remaining == 0 || final_arrival {
@@ -288,6 +336,22 @@ impl CostClose {
             if owner != AccountId::Site(lot.source_site_id) {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
+            active.transfer(&CompanyBasisMovement {
+                source,
+                destination: Some(CompanyBasisAsset::Stock(
+                    lot.destination_site_id,
+                    lot.good_id,
+                    lot.unit_id,
+                )),
+                sale: Some(CompanySale {
+                    order: OutboundOrderId::Delivery(lot.order_id),
+                    buyer: AccountId::Site(lot.destination_site_id),
+                    proceeds: payment,
+                }),
+                available: remaining,
+                quantity: remaining,
+                opening: retained,
+            })?;
             active.sale(owner, payment, retained)?;
             active.book.credit_stock(
                 (
@@ -436,15 +500,20 @@ impl CostClose {
             return Ok(());
         };
         let owner = AccountId::Site(order.supplier_site_id);
-        let cost =
-            active
-                .book
-                .take_stock((owner, order.good_id, order.unit_id), available, quantity)?;
-        active.sale(
-            owner,
-            purchase_amount(state, OutboundOrderId::Delivery(order.order_id), quantity)?,
-            cost,
+        let id = OutboundOrderId::Delivery(order.order_id);
+        let proceeds = purchase_amount(state, id, quantity)?;
+        let cost = active.withdraw(
+            (owner, order.good_id, order.unit_id),
+            available,
+            quantity,
+            Some(CompanyBasisAsset::Handoff(order.buyer_site_id, id)),
+            Some(CompanySale {
+                order: id,
+                buyer: AccountId::Site(order.buyer_site_id),
+                proceeds,
+            }),
         )?;
+        active.sale(owner, proceeds, cost)?;
         self.goods.released(
             (order.supplier_site_id, order.good_id, order.unit_id),
             quantity,
@@ -464,6 +533,14 @@ impl CostClose {
             state,
             OutboundOrderId::Delivery(receipt.order_id),
             receipt.quantity,
+        )?;
+        active.entire(
+            CompanyBasisAsset::Handoff(
+                receipt.buyer_site_id,
+                OutboundOrderId::Delivery(receipt.order_id),
+            ),
+            CompanyBasisAsset::Stock(receipt.buyer_site_id, receipt.good_id, receipt.unit_id),
+            paid,
         )?;
         active.book.credit_stock(
             (
@@ -486,14 +563,22 @@ impl CostClose {
             return Ok(());
         };
         let seller = AccountId::Site(order.retailer_site_id);
-        let cost =
-            active
-                .book
-                .take_stock((seller, order.good_id, order.unit_id), available, quantity)?;
+        let buyer = AccountId::Household(order.demand_principal_id);
         let payment = purchase_amount(
             state,
             OutboundOrderId::LocalFinalDemand(order.order_id),
             quantity,
+        )?;
+        let cost = active.withdraw(
+            (seller, order.good_id, order.unit_id),
+            available,
+            quantity,
+            None,
+            Some(CompanySale {
+                order: OutboundOrderId::LocalFinalDemand(order.order_id),
+                buyer,
+                proceeds: payment,
+            }),
         )?;
         active.sale(seller, payment, cost)?;
         self.goods.released(
@@ -501,7 +586,6 @@ impl CostClose {
             quantity,
             cost,
         )?;
-        let buyer = AccountId::Household(order.demand_principal_id);
         let key = (buyer, order.good_id, order.unit_id);
         if active.book.stocks.contains_key(&key) {
             active.book.credit_stock(key, payment)?;
@@ -556,10 +640,12 @@ impl CostClose {
         };
         let binding = &receipt.binding;
         let owner = AccountId::Site(binding.provider_site_id);
-        let materials = active.book.take_stock(
+        let materials = active.withdraw(
             (owner, binding.spare_good_id, binding.spare_unit_id),
             receipt.available_spare_parts,
             receipt.consumed_spare_parts,
+            None,
+            None,
         )?;
         let wages = self.attendance.consume(
             binding.provider_site_id,

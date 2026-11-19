@@ -89,6 +89,7 @@ class ProcessPair(NativeRecord):
     boot_id: StrictStr
     runtime: Process
     client: Process
+    publisher: Process
     postgres: Process
     container: Sha256
     owner_sha256: Sha256
@@ -710,7 +711,7 @@ def evaluate_member(base: Path) -> CompletedMember:
         if (
             pair.segment != segment
             or pair.postgres[0] != postmaster
-            or len({pair.runtime[0], pair.client[0], pair.postgres[0]}) != 3
+            or len({pair.runtime[0], pair.client[0], pair.publisher[0], pair.postgres[0]}) != 4
             or cold.processes != (pair.runtime, pair.client)
             or pair.boot_id != boot
             or pair.container != owner[4]
@@ -745,6 +746,7 @@ def evaluate_member(base: Path) -> CompletedMember:
             or cold.state.durable_tick != (10 if segment == "completed" else 0)
             or pair.runtime[2] != products["babylon-runtime"].sha256
             or pair.client[2] != products["babylon-client"].sha256
+            or pair.publisher[2] != products["babylon-economic-projections"].sha256
             or (not captured and cold.elapsed_ns >= policy.maximum_cold_open_seconds * 10**9)
         ):
             raise ValueError(
@@ -785,7 +787,11 @@ def evaluate_member(base: Path) -> CompletedMember:
                 if (
                     interval.boot_id != boot
                     or native_processes
-                    != {("native-client", *pair.client), ("engine-runtime", *pair.runtime)}
+                    != {
+                        ("native-client", *pair.client),
+                        ("engine-runtime", *pair.runtime),
+                        ("economic-projections", *pair.publisher),
+                    }
                     or ("game-postgresql", *pair.postgres) not in observed
                     or any(
                         row[3] != pair.postgres[2]
@@ -830,8 +836,14 @@ def evaluate_member(base: Path) -> CompletedMember:
                 confirmed.append(c)
                 recipients.append(recipient)
     if (
-        len({(p[0], p[1]) for pair in processes for p in (pair.client, pair.runtime)})
-        != 2 * len(segments)
+        len(
+            {
+                (p[0], p[1])
+                for pair in processes
+                for p in (pair.client, pair.runtime, pair.publisher)
+            }
+        )
+        != 3 * len(segments)
         or len({p.postgres for p in processes}) != 1
     ):
         raise ValueError("cold launches reused a native process or changed the fixture")
@@ -1021,7 +1033,7 @@ def join_members(
         return {
             (p.boot_id, role[0], role[1])
             for p in member.processes
-            for role in (p.client, p.runtime, p.postgres)
+            for role in (p.client, p.runtime, p.publisher, p.postgres)
         }
 
     if (
@@ -1034,8 +1046,11 @@ def join_members(
     ):
         raise ValueError("pair reused its actual fixture owner or process incarnation")
 
-    def roles(member: CompletedMember) -> list[tuple[str, str, str, str]]:
-        return [(p.segment, p.runtime[2], p.client[2], p.postgres[2]) for p in member.processes]
+    def roles(member: CompletedMember) -> list[tuple[str, str, str, str, str]]:
+        return [
+            (p.segment, p.runtime[2], p.client[2], p.publisher[2], p.postgres[2])
+            for p in member.processes
+        ]
 
     if (normal.foundation, normal.graph_foundation, normal.decisions, roles(normal)) != (
         captured.foundation,

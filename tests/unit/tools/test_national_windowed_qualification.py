@@ -2294,7 +2294,15 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
     sock, peer = socket.socketpair()
     standin = OrdinaryPrefixPeer(peer, frames, pixels, fault)
     calls, peer_failures = standin.calls, standin.failures
-    companion = runner.OrdinaryWarmPrefix(SimpleNamespace(directory=evidence, timeout=1))
+    closed_boundaries = []
+    companion = runner.OrdinaryWarmPrefix(
+        SimpleNamespace(
+            directory=evidence,
+            timeout=1,
+            wait_for_economic_period=closed_boundaries.append,
+            snapshot=closed_boundaries.append,
+        )
+    )
     thread = threading.Thread(target=standin.serve)
     thread.start()
     channel = windowed.ControlChannel(sock, CAMPAIGN, 0)
@@ -2332,6 +2340,7 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
     assert "await_period_proof" not in calls and "reopen" not in calls
     assert all(record["state"]["period_proof"] is None for record in saved["actions"])
     if fault in (None, "late"):
+        assert closed_boundaries == [3, "ordinary-p3-published"]
         assert calls.count("step") == 3 and calls.count("confirm") == 4
         assert [sample["period"] for sample in saved["samples"]] == [1, 2, 3]
         for sample in saved["samples"]:

@@ -1,0 +1,1518 @@
+{
+  "branches": {
+    "hearing_claimants": {
+      "aid_books": {
+        "1": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 0,
+            "available_at_open": 896,
+            "available_for_contribution": 432,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        },
+        "2": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 1,
+            "available_at_open": 896,
+            "available_for_contribution": 431,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        },
+        "3": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 0,
+            "available_at_open": 896,
+            "available_for_contribution": 432,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        }
+      },
+      "claimant_books": {
+        "1": {
+          "food": {
+            "closing_stock": 2,
+            "consumed": 2,
+            "opening_stock": 2,
+            "purchased": 2,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 0,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        },
+        "2": {
+          "food": {
+            "closing_stock": 1,
+            "consumed": 2,
+            "opening_stock": 2,
+            "purchased": 1,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 2,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        },
+        "3": {
+          "food": {
+            "closing_stock": 2,
+            "consumed": 2,
+            "opening_stock": 1,
+            "purchased": 3,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 0,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        }
+      },
+      "foundation_sha256": "f111a36dc90c58d98c6dbaa4eeb58487b8d44aab8b635163df09464ab92616d3",
+      "hearing_minutes": {
+        "claimant": {
+          "actor_id": 9973943012806083981,
+          "authority_id": [
+            118,
+            60,
+            63,
+            41,
+            39,
+            200,
+            68,
+            207,
+            225,
+            191,
+            172,
+            150,
+            226,
+            151,
+            9,
+            55
+          ],
+          "claim": "Keep current claimants on the relief roll while the county reviews their cases.",
+          "delegation": {
+            "authorizing_households": 2,
+            "delegate_label": "Claimants' meeting secretary"
+          },
+          "label": "Wayne Relief Claimants Assembly",
+          "mandate": "either_procedural_offer",
+          "response": "attended"
+        },
+        "county_geoid": "26163",
+        "invitation_commitment_id": [
+          137,
+          208,
+          120,
+          16,
+          63,
+          130,
+          50,
+          4,
+          53,
+          254,
+          31,
+          174,
+          16,
+          2,
+          31,
+          24,
+          145,
+          77,
+          132,
+          42,
+          157,
+          240,
+          57,
+          88,
+          10,
+          245,
+          146,
+          64,
+          143,
+          206,
+          92,
+          193
+        ],
+        "offer": "claimant_only",
+        "outcome": "settled",
+        "partner": {
+          "actor_id": 2616302,
+          "authority_id": [
+            178,
+            36,
+            59,
+            179,
+            249,
+            137,
+            66,
+            66,
+            119,
+            148,
+            24,
+            238,
+            36,
+            187,
+            70,
+            189
+          ],
+          "claim": "Hear the cases of residents who received no county support.",
+          "delegation": {
+            "authorizing_households": 3,
+            "delegate_label": "Case delegate for the aid partners"
+          },
+          "label": "Wayne Local Aid Partners",
+          "mandate": {
+            "settle": "joint_minutes"
+          },
+          "response": "attended"
+        },
+        "period": 2,
+        "receipt_id": [
+          222,
+          148,
+          56,
+          113,
+          41,
+          45,
+          62,
+          25,
+          105,
+          253,
+          155,
+          134,
+          156,
+          62,
+          235,
+          220,
+          85,
+          243,
+          201,
+          45,
+          142,
+          244,
+          58,
+          231,
+          82,
+          92,
+          227,
+          84,
+          100,
+          78,
+          39,
+          45
+        ],
+        "review_access_actor_ids": [
+          9973943012806083981,
+          9973943012806083981
+        ],
+        "review_period": 3,
+        "testimony": [
+          {
+            "actor_id": 9973943012806083981,
+            "claim": "Keep current claimants on the relief roll while the county reviews their cases.",
+            "delegate_label": "Claimants' meeting secretary",
+            "period": 2
+          },
+          {
+            "actor_id": 2616302,
+            "claim": "Hear the cases of residents who received no county support.",
+            "delegate_label": "Case delegate for the aid partners",
+            "period": 2
+          }
+        ],
+        "time_use": []
+      },
+      "p3_reopen": {
+        "resolve_tick": 3,
+        "tick_content_hash": "8cae7c5ba41465876d43a4b628fe797b3ed4769055eb0c73e1cf8d01df6ed5d8",
+        "world_hash": "d926defbef77dacc507cd29e86d2885f25d551c1604d0596730d752f01c25ba6"
+      },
+      "report_back": {
+        "county_geoid": "26163",
+        "hearing_receipt_id": [
+          222,
+          148,
+          56,
+          113,
+          41,
+          45,
+          62,
+          25,
+          105,
+          253,
+          155,
+          134,
+          156,
+          62,
+          235,
+          220,
+          85,
+          243,
+          201,
+          45,
+          142,
+          244,
+          58,
+          231,
+          82,
+          92,
+          227,
+          84,
+          100,
+          78,
+          39,
+          45
+        ],
+        "period": 3,
+        "speaker_actor_ids": [
+          9973943012806083981,
+          9973943012806083981
+        ]
+      },
+      "restricted_archive": {
+        "2": {
+          "archive_processed_tick": 0,
+          "scope": 2,
+          "state": "organization_page_pending"
+        },
+        "3": {
+          "archive_processed_tick": 0,
+          "scope": 3,
+          "state": "organization_page_pending"
+        }
+      },
+      "reviewed_offer": {
+        "actor_id": 2616301,
+        "choice": {
+          "invite_to_hearing": "claimant_only"
+        },
+        "commitment_id": [
+          137,
+          208,
+          120,
+          16,
+          63,
+          130,
+          50,
+          4,
+          53,
+          254,
+          31,
+          174,
+          16,
+          2,
+          31,
+          24,
+          145,
+          77,
+          132,
+          42,
+          157,
+          240,
+          57,
+          88,
+          10,
+          245,
+          146,
+          64,
+          143,
+          206,
+          92,
+          193
+        ],
+        "contact_product_id": null,
+        "hours_spent": 2,
+        "observation_ids": [],
+        "outcome": "hearing_invitation_issued",
+        "partner_actor_id": null,
+        "partner_response": "not_requested",
+        "period": 2,
+        "receipt_id": [
+          155,
+          84,
+          214,
+          4,
+          7,
+          182,
+          158,
+          165,
+          115,
+          42,
+          80,
+          72,
+          92,
+          130,
+          183,
+          10,
+          147,
+          40,
+          101,
+          66,
+          109,
+          225,
+          148,
+          76,
+          97,
+          173,
+          144,
+          83,
+          212,
+          83,
+          150,
+          148
+        ],
+        "standing_work": false,
+        "time_use": [
+          {
+            "actor_id": 2616301,
+            "contributor_id": 2616301,
+            "hours": 2
+          }
+        ]
+      }
+    },
+    "hearing_joint": {
+      "aid_books": {
+        "1": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 0,
+            "available_at_open": 896,
+            "available_for_contribution": 432,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        },
+        "2": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 1,
+            "available_at_open": 896,
+            "available_for_contribution": 431,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        },
+        "3": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 0,
+            "available_at_open": 896,
+            "available_for_contribution": 432,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        }
+      },
+      "claimant_books": {
+        "1": {
+          "food": {
+            "closing_stock": 2,
+            "consumed": 2,
+            "opening_stock": 2,
+            "purchased": 2,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 0,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        },
+        "2": {
+          "food": {
+            "closing_stock": 1,
+            "consumed": 2,
+            "opening_stock": 2,
+            "purchased": 1,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 2,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        },
+        "3": {
+          "food": {
+            "closing_stock": 2,
+            "consumed": 2,
+            "opening_stock": 1,
+            "purchased": 3,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 0,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        }
+      },
+      "foundation_sha256": "f111a36dc90c58d98c6dbaa4eeb58487b8d44aab8b635163df09464ab92616d3",
+      "hearing_minutes": {
+        "claimant": {
+          "actor_id": 9973943012806083981,
+          "authority_id": [
+            118,
+            60,
+            63,
+            41,
+            39,
+            200,
+            68,
+            207,
+            225,
+            191,
+            172,
+            150,
+            226,
+            151,
+            9,
+            55
+          ],
+          "claim": "Keep current claimants on the relief roll while the county reviews their cases.",
+          "delegation": {
+            "authorizing_households": 2,
+            "delegate_label": "Claimants' meeting secretary"
+          },
+          "label": "Wayne Relief Claimants Assembly",
+          "mandate": "either_procedural_offer",
+          "response": "attended"
+        },
+        "county_geoid": "26163",
+        "invitation_commitment_id": [
+          255,
+          79,
+          94,
+          33,
+          250,
+          198,
+          37,
+          207,
+          248,
+          217,
+          141,
+          175,
+          217,
+          63,
+          252,
+          125,
+          166,
+          34,
+          0,
+          49,
+          184,
+          64,
+          59,
+          166,
+          106,
+          100,
+          115,
+          71,
+          220,
+          198,
+          7,
+          203
+        ],
+        "offer": "joint_minutes",
+        "outcome": "settled",
+        "partner": {
+          "actor_id": 2616302,
+          "authority_id": [
+            178,
+            36,
+            59,
+            179,
+            249,
+            137,
+            66,
+            66,
+            119,
+            148,
+            24,
+            238,
+            36,
+            187,
+            70,
+            189
+          ],
+          "claim": "Hear the cases of residents who received no county support.",
+          "delegation": {
+            "authorizing_households": 3,
+            "delegate_label": "Case delegate for the aid partners"
+          },
+          "label": "Wayne Local Aid Partners",
+          "mandate": {
+            "settle": "joint_minutes"
+          },
+          "response": "attended"
+        },
+        "period": 2,
+        "receipt_id": [
+          34,
+          36,
+          233,
+          8,
+          65,
+          109,
+          239,
+          107,
+          34,
+          162,
+          195,
+          109,
+          250,
+          239,
+          118,
+          160,
+          63,
+          58,
+          14,
+          238,
+          78,
+          3,
+          35,
+          99,
+          172,
+          134,
+          231,
+          106,
+          191,
+          249,
+          0,
+          152
+        ],
+        "review_access_actor_ids": [
+          9973943012806083981,
+          2616302
+        ],
+        "review_period": 3,
+        "testimony": [
+          {
+            "actor_id": 9973943012806083981,
+            "claim": "Keep current claimants on the relief roll while the county reviews their cases.",
+            "delegate_label": "Claimants' meeting secretary",
+            "period": 2
+          },
+          {
+            "actor_id": 2616302,
+            "claim": "Hear the cases of residents who received no county support.",
+            "delegate_label": "Case delegate for the aid partners",
+            "period": 2
+          }
+        ],
+        "time_use": []
+      },
+      "p3_reopen": {
+        "resolve_tick": 3,
+        "tick_content_hash": "4ce68155c2f8ad941aaecb8fe57cf87bcdcec65fe13d5b2c90ed58ef467ca4a0",
+        "world_hash": "0ade7d7471a92f79b0d2c417feb913b80ef8d41cfb8f130a7a52440cfabeadd0"
+      },
+      "report_back": {
+        "county_geoid": "26163",
+        "hearing_receipt_id": [
+          34,
+          36,
+          233,
+          8,
+          65,
+          109,
+          239,
+          107,
+          34,
+          162,
+          195,
+          109,
+          250,
+          239,
+          118,
+          160,
+          63,
+          58,
+          14,
+          238,
+          78,
+          3,
+          35,
+          99,
+          172,
+          134,
+          231,
+          106,
+          191,
+          249,
+          0,
+          152
+        ],
+        "period": 3,
+        "speaker_actor_ids": [
+          9973943012806083981,
+          2616302
+        ]
+      },
+      "restricted_archive": {
+        "2": {
+          "archive_processed_tick": 0,
+          "scope": 2,
+          "state": "organization_page_pending"
+        },
+        "3": {
+          "archive_processed_tick": 0,
+          "scope": 3,
+          "state": "organization_page_pending"
+        }
+      },
+      "reviewed_offer": {
+        "actor_id": 2616301,
+        "choice": {
+          "invite_to_hearing": "joint_minutes"
+        },
+        "commitment_id": [
+          255,
+          79,
+          94,
+          33,
+          250,
+          198,
+          37,
+          207,
+          248,
+          217,
+          141,
+          175,
+          217,
+          63,
+          252,
+          125,
+          166,
+          34,
+          0,
+          49,
+          184,
+          64,
+          59,
+          166,
+          106,
+          100,
+          115,
+          71,
+          220,
+          198,
+          7,
+          203
+        ],
+        "contact_product_id": null,
+        "hours_spent": 2,
+        "observation_ids": [],
+        "outcome": "hearing_invitation_issued",
+        "partner_actor_id": null,
+        "partner_response": "not_requested",
+        "period": 2,
+        "receipt_id": [
+          175,
+          30,
+          19,
+          165,
+          139,
+          170,
+          48,
+          80,
+          38,
+          221,
+          2,
+          156,
+          181,
+          194,
+          254,
+          70,
+          66,
+          225,
+          16,
+          197,
+          144,
+          164,
+          81,
+          216,
+          1,
+          17,
+          173,
+          68,
+          208,
+          18,
+          12,
+          137
+        ],
+        "standing_work": false,
+        "time_use": [
+          {
+            "actor_id": 2616301,
+            "contributor_id": 2616301,
+            "hours": 2
+          }
+        ]
+      }
+    },
+    "hold": {
+      "aid_books": {
+        "1": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 0,
+            "available_at_open": 896,
+            "available_for_contribution": 432,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        },
+        "2": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 1,
+            "available_at_open": 896,
+            "available_for_contribution": 431,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        },
+        "3": {
+          "food": {
+            "closing_stock": 0,
+            "consumed": 0,
+            "opening_stock": 0,
+            "purchased": 0,
+            "required": 4,
+            "unmet": 4
+          },
+          "households": 4,
+          "identity": "8c33ef0b03fcf4438e0ac6286c1c35647b96199e5afe32bd71db5a8275b6f1a0",
+          "persons": 4,
+          "role": {
+            "authored_subject": "wayne-aid-recipient",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "0",
+          "support_claims": [],
+          "time": {
+            "attended": 0,
+            "available_at_open": 896,
+            "available_for_contribution": 432,
+            "contribution_used": 2,
+            "protected": 128,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 336,
+            "unpaid_requested": 336,
+            "unpaid_unresolved": 0
+          }
+        }
+      },
+      "claimant_books": {
+        "1": {
+          "food": {
+            "closing_stock": 2,
+            "consumed": 2,
+            "opening_stock": 2,
+            "purchased": 2,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 0,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        },
+        "2": {
+          "food": {
+            "closing_stock": 1,
+            "consumed": 2,
+            "opening_stock": 2,
+            "purchased": 1,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 2,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        },
+        "3": {
+          "food": {
+            "closing_stock": 2,
+            "consumed": 2,
+            "opening_stock": 1,
+            "purchased": 3,
+            "required": 2,
+            "unmet": 0
+          },
+          "households": 2,
+          "identity": "3fe8da51adee85d0018fe14eec85f2486523a8d224fadf66095018269bbc0522",
+          "persons": 2,
+          "role": {
+            "authored_subject": "wayne-household-support-claimants",
+            "budget": "no-earner-nonowner"
+          },
+          "settled_public_support_micros": "560000000",
+          "support_claims": [
+            {
+              "paid_micros": "560000000",
+              "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+              "requested_micros": "560000000",
+              "unfunded_micros": "0"
+            }
+          ],
+          "time": {
+            "attended": 0,
+            "available_at_open": 448,
+            "available_for_contribution": 256,
+            "contribution_used": 0,
+            "protected": 64,
+            "protected_unresolved": 0,
+            "unpaid_allocated": 128,
+            "unpaid_requested": 128,
+            "unpaid_unresolved": 0
+          }
+        }
+      },
+      "foundation_sha256": "f111a36dc90c58d98c6dbaa4eeb58487b8d44aab8b635163df09464ab92616d3",
+      "hearing_minutes": {
+        "claimant": {
+          "actor_id": 9973943012806083981,
+          "authority_id": [
+            118,
+            60,
+            63,
+            41,
+            39,
+            200,
+            68,
+            207,
+            225,
+            191,
+            172,
+            150,
+            226,
+            151,
+            9,
+            55
+          ],
+          "claim": "Keep current claimants on the relief roll while the county reviews their cases.",
+          "delegation": {
+            "authorizing_households": 2,
+            "delegate_label": "Claimants' meeting secretary"
+          },
+          "label": "Wayne Relief Claimants Assembly",
+          "mandate": "either_procedural_offer",
+          "response": "attended"
+        },
+        "county_geoid": "26163",
+        "invitation_commitment_id": null,
+        "offer": null,
+        "outcome": "no_offer",
+        "partner": {
+          "actor_id": 2616302,
+          "authority_id": [
+            178,
+            36,
+            59,
+            179,
+            249,
+            137,
+            66,
+            66,
+            119,
+            148,
+            24,
+            238,
+            36,
+            187,
+            70,
+            189
+          ],
+          "claim": "Hear the cases of residents who received no county support.",
+          "delegation": {
+            "authorizing_households": 3,
+            "delegate_label": "Case delegate for the aid partners"
+          },
+          "label": "Wayne Local Aid Partners",
+          "mandate": null,
+          "response": "not_invited"
+        },
+        "period": 2,
+        "receipt_id": [
+          146,
+          155,
+          106,
+          205,
+          76,
+          129,
+          33,
+          196,
+          241,
+          110,
+          108,
+          86,
+          246,
+          144,
+          169,
+          123,
+          204,
+          62,
+          205,
+          246,
+          13,
+          239,
+          239,
+          120,
+          73,
+          28,
+          56,
+          4,
+          161,
+          184,
+          201,
+          10
+        ],
+        "review_access_actor_ids": [],
+        "review_period": 3,
+        "testimony": [
+          {
+            "actor_id": 9973943012806083981,
+            "claim": "Keep current claimants on the relief roll while the county reviews their cases.",
+            "delegate_label": "Claimants' meeting secretary",
+            "period": 2
+          }
+        ],
+        "time_use": []
+      },
+      "p3_reopen": {
+        "resolve_tick": 3,
+        "tick_content_hash": "124b40ea3555f489275719d6fb46abe6f6460e9af455cac0442500703337676f",
+        "world_hash": "217556b43f063d976174d37adc32e6e66f2d956eac7fdb81d619a118d87e51f1"
+      },
+      "report_back": {
+        "county_geoid": "26163",
+        "hearing_receipt_id": [
+          146,
+          155,
+          106,
+          205,
+          76,
+          129,
+          33,
+          196,
+          241,
+          110,
+          108,
+          86,
+          246,
+          144,
+          169,
+          123,
+          204,
+          62,
+          205,
+          246,
+          13,
+          239,
+          239,
+          120,
+          73,
+          28,
+          56,
+          4,
+          161,
+          184,
+          201,
+          10
+        ],
+        "period": 3,
+        "speaker_actor_ids": []
+      },
+      "reviewed_offer": {
+        "actor_id": 2616301,
+        "choice": "hold",
+        "commitment_id": [
+          1,
+          14,
+          223,
+          154,
+          172,
+          164,
+          185,
+          188,
+          98,
+          223,
+          29,
+          188,
+          63,
+          129,
+          50,
+          14,
+          19,
+          91,
+          67,
+          208,
+          118,
+          238,
+          10,
+          225,
+          180,
+          200,
+          223,
+          129,
+          66,
+          130,
+          9,
+          178
+        ],
+        "contact_product_id": [
+          32,
+          189,
+          216,
+          193,
+          22,
+          141,
+          18,
+          119,
+          39,
+          37,
+          210,
+          151,
+          34,
+          110,
+          86,
+          111,
+          54,
+          102,
+          20,
+          45,
+          42,
+          164,
+          15,
+          199,
+          184,
+          245,
+          170,
+          234,
+          123,
+          75,
+          210,
+          17
+        ],
+        "hours_spent": 2,
+        "observation_ids": [],
+        "outcome": "contact_completed",
+        "partner_actor_id": 13025691298424547645,
+        "partner_response": "participated",
+        "period": 2,
+        "receipt_id": [
+          214,
+          79,
+          156,
+          38,
+          0,
+          6,
+          60,
+          174,
+          176,
+          140,
+          157,
+          182,
+          25,
+          40,
+          86,
+          207,
+          171,
+          147,
+          18,
+          77,
+          208,
+          129,
+          67,
+          73,
+          103,
+          225,
+          155,
+          225,
+          116,
+          173,
+          220,
+          169
+        ],
+        "standing_work": true,
+        "time_use": [
+          {
+            "actor_id": 2616301,
+            "contributor_id": 2616301,
+            "hours": 2
+          },
+          {
+            "actor_id": 13025691298424547645,
+            "contributor_id": 2616302,
+            "hours": 2
+          }
+        ]
+      }
+    }
+  },
+  "material_differences": [],
+  "same_period_one": {
+    "campaign_id": "e841f4b2-ef2a-4f01-9ec2-2dc7c74ac3e9",
+    "foundation_sha256": "f111a36dc90c58d98c6dbaa4eeb58487b8d44aab8b635163df09464ab92616d3",
+    "tick_content_hash": "70ab7730c55b52a142cd80a7039b4cb789504dce7ec800bf877f5a67d343b9f2",
+    "world_hash": "00eb12df7f87bde1306e5586fdd523af517be83f0a3dcb1a98e9eae6c13643ba"
+  }
+}

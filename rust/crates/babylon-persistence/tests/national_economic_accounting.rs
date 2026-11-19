@@ -21,6 +21,8 @@ fn receipts(period: u64) -> MaterialTickReceipts {
     MaterialTickReceipts {
         agency_paid: vec![],
         household_time: vec![],
+        household_lifecycle: vec![],
+        resident_workforce_attrition: vec![],
         aid: vec![],
         collections: vec![],
         installation: vec![],
@@ -32,6 +34,8 @@ fn receipts(period: u64) -> MaterialTickReceipts {
         public_budgets: vec![],
         taxes: vec![],
         distributions: vec![],
+        company_basis: vec![],
+        company_distributions: vec![],
         contributions: vec![],
         service_performance: vec![],
         household_services: vec![],

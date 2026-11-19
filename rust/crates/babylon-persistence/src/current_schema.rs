@@ -443,7 +443,9 @@ pub(crate) fn require_current_schema_timed(
     Ok(CurrentSchemaIdentity(expected))
 }
 
-fn verify_owner_and_server(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
+pub(crate) fn verify_owner_and_server(
+    client: &mut impl GenericClient,
+) -> Result<(), CurrentSchemaError> {
     let row = client
         .query_one(OWNER_SQL, &[])
         .map_err(|error| database(CurrentSchemaOperation::VerifyOwner, &error))?;
@@ -471,7 +473,7 @@ fn verify_owner_and_server(client: &mut impl GenericClient) -> Result<(), Curren
     }
     Ok(())
 }
-fn verify_sentinels(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
+pub(crate) fn verify_sentinels(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
     let row = client
         .query_one(SENTINELS_SQL, &[])
         .map_err(|error| database(CurrentSchemaOperation::VerifySentinels, &error))?;
@@ -652,6 +654,15 @@ mod live_tests {
         let installed =
             install_current_schema(&config).expect("the test database installs the current schema");
         assert_eq!(installed.disposition, CurrentSchemaDisposition::Installed);
+        // A heap rewrite materializes missing defaults just as a logical restore does.
+        config
+            .connect(NoTls)
+            .expect("the test database accepts the owner")
+            .batch_execute(
+                "VACUUM (FULL) babylon_state.economic_flow_account_v1, \
+                 babylon_state.economic_flow_location_v1",
+            )
+            .expect("the test database rewrites both economic directories");
         assert_eq!(
             install_current_schema(&config)
                 .expect("the test database installs the current schema")

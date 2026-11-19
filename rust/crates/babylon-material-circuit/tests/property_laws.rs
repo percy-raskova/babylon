@@ -76,6 +76,8 @@ fn allocation_catalog(
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         site_logistics_nodes: vec![
             SiteLogisticsNode {
@@ -243,6 +245,8 @@ fn production_catalog(
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         site_logistics_nodes: vec![],
         commodities: vec![

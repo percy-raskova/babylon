@@ -98,6 +98,8 @@ pub struct MaterialGoodChoice {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MapLens {
+    /// Settled monetary connections of the selected county.
+    Money,
     /// Schematic relationships, without a numeric county encoding.
     Relationships,
     Workforce(WorkforceMetric),
@@ -152,6 +154,7 @@ impl MapLens {
     #[must_use]
     pub fn label_for_log(&self, snapshot: Option<&ObserverEconomySnapshot>) -> String {
         match self {
+            Self::Money => "Settled payments".to_owned(),
             Self::Relationships => "Supply relationships".to_owned(),
             Self::Workforce(metric) => metric.label().to_owned(),
             Self::Qcew(metric) => metric.label().to_owned(),
@@ -402,7 +405,7 @@ pub fn project_map_lens(
         metric.unit().clone_into(&mut result.unit);
         result.evidence = "OBSERVED | BLS QCEW | 2024 annual baseline";
     }
-    if matches!(lens, MapLens::Relationships) {
+    if matches!(lens, MapLens::Money | MapLens::Relationships) {
         result.evidence = "SCHEMATIC | county aggregates; no physical route geometry";
         result.unavailable = if snapshot.is_some() {
             LensUnavailable::NotModeled

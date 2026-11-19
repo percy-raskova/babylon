@@ -824,9 +824,14 @@ fn pinned_read_sql_stays_read_only_and_scope_exact() {
     assert!(ARCHIVE_COUNTY_MAP_READ_SQL.contains("county_geoid"));
     assert!(ARCHIVE_COUNTY_MAP_READ_SQL.contains("ORDER BY county_geoid"));
 
-    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("babylon_state.territory_state_v1"));
+    assert!(
+        !ARCHIVE_COUNTY_FIELD_READ_SQL.contains("babylon_state.territory_state_v1"),
+        "the committed field view already binds period membership and territory identity"
+    );
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("babylon_state.territory_state_field_v1"));
+    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("campaign_id = $1::uuid"));
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("resolve_tick = $2"));
+    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("ORDER BY f.territory_id, f.position"));
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("'median-wage'"));
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL.contains("'phi-hour'"));
 

@@ -4,6 +4,9 @@
 //! workplace jobs are not distinct resident persons. Eligibility here allocates
 //! no game firms, labor, recipes, stocks, capacities or monetary balances.
 
+mod composition;
+pub use composition::{IndustrySourceComposition, IndustrySourceRow};
+
 mod mapping;
 
 mod model;

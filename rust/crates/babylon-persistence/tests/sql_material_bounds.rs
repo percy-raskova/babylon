@@ -1,4 +1,5 @@
 //! Database blob admission must follow each independently bounded native component.
+use babylon_tick::material_world::MaterialReceiptFormat;
 use babylon_tick::material_world::{
     MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES,
 };
@@ -70,8 +71,29 @@ fn collection_adds_only_one_bounded_receipt_row_and_its_storage_frame() {
     assert_eq!(receipt_row_limit(RECEIPT_FAMILY_COUNT - 1), 1);
     // Previous complete storage bound + collection envelope/row/frame, attendance
     // widening and family, then two more independent-leg aid rows per material row.
+    let site_storage = 872_614_379 + 9 + 317 + 59 + 16 * 131_072 + 9 + 192 + 59 + 2 * 65_536 * 387;
+    assert_eq!(site_storage, 925_437_040);
+    // Company payouts added 131,072 possible rows and one stored frame.
     assert_eq!(
         babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES,
-        872_614_379 + 9 + 317 + 59 + 16 * 131_072 + 9 + 192 + 59 + 2 * 65_536 * 387
+        site_storage + 9 + 169 * 131_072 + 59
     );
+    let company = MaterialReceiptFormat::Company;
+    let families = company.widths().len();
+    // All 39 tags fit even with incompressible raw bodies. Canonical family headers
+    // are replaced by storage headers, not copied into the stored payload.
+    let largest_body = company.maximum_bytes() - (company.domain().len() + 12 + families * 9);
+    let raw_package = b"BabylonReceiptStorageV4\0".len() + 88 + families * 59 + largest_body;
+    assert!(raw_package <= babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES);
+}
+
+#[test]
+fn active_household_families_fit_the_physical_receipt_budget_without_compression() {
+    let frame = MaterialReceiptFormat::HouseholdLifecycle;
+    assert_eq!(frame.version(), 22);
+    assert_eq!(&frame.widths()[39..], &[176, 128]);
+    let n = frame.widths().len();
+    let payload = frame.maximum_bytes() - (frame.domain().len() + 12 + n * 9);
+    let stored = b"BabylonReceiptStorageV5\0".len() + 88 + n * 59 + payload;
+    assert!(stored <= babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES);
 }

@@ -52,8 +52,22 @@ fn geographic_map_point([longitude, latitude]: [i64; 2]) -> Option<Vec2> {
     {
         return None;
     }
-    let longitude = (longitude as f64 / 10_000_000.0).to_radians();
-    let latitude = (latitude as f64 / 10_000_000.0).to_radians();
+    continental_point(
+        longitude as f64 / 10_000_000.0,
+        latitude as f64 / 10_000_000.0,
+    )
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Finite projected display coordinates are stored in the atlas's f32 scene units."
+)]
+fn continental_point(longitude: f64, latitude: f64) -> Option<Vec2> {
+    if !(-180.0..=180.0).contains(&longitude) || !(-90.0..=90.0).contains(&latitude) {
+        return None;
+    }
+    let longitude = longitude.to_radians();
+    let latitude = latitude.to_radians();
     let flattening = 1.0 / 298.257_222_101;
     let eccentricity: f64 = (flattening * (2.0_f64 - flattening)).sqrt();
     let e2 = eccentricity * eccentricity;
@@ -155,7 +169,7 @@ struct CountyAnchor {
 }
 
 #[derive(Resource, Default)]
-pub(super) struct CountyAnchors(BTreeMap<String, CountyAnchor>, Vec2);
+pub(crate) struct CountyAnchors(BTreeMap<String, CountyAnchor>, Vec2);
 
 impl CountyAnchors {
     pub(super) fn from_atlas(atlas: &CountyAtlas, indices: &[usize], origin: Vec2) -> Self {
@@ -180,6 +194,26 @@ impl CountyAnchors {
                 .collect(),
             origin,
         )
+    }
+
+    pub(crate) fn county_position(&self, geoid: &str) -> Option<Vec3> {
+        self.0
+            .get(geoid)
+            .map(|anchor| Vec3::new(anchor.position.x, BASE_HEIGHT + 5.0, anchor.position.z))
+    }
+
+    pub(super) fn facility_position(
+        &self,
+        county: &str,
+        longitude: &str,
+        latitude: &str,
+    ) -> Option<Vec3> {
+        // The inset regions use different projections and relocation transforms.
+        if county.starts_with("02") || county.starts_with("15") || !self.0.contains_key(county) {
+            return None;
+        }
+        let point = continental_point(longitude.parse().ok()?, latitude.parse().ok()?)?;
+        Some(super::scene_point(point, self.1, BASE_HEIGHT + 5.0))
     }
 
     fn selected(&self, index: Option<usize>) -> Option<&str> {
@@ -525,6 +559,34 @@ fn connection_points(from: Vec3, to: Vec3) -> [Vec3; 5] {
     ]
 }
 
+pub(super) fn payment_ribbon(from: Vec3, to: Vec3, width: f32) -> Option<Mesh> {
+    freight_ribbon(from, to, width, false)
+}
+
+pub(super) fn freight_ribbon(from: Vec3, to: Vec3, width: f32, dashed: bool) -> Option<Mesh> {
+    let points = connection_points(from, to);
+    let mut pieces = RoadSegments::new();
+    for (i, pair) in (0_i64..).zip(points.windows(2)) {
+        if dashed {
+            for (j, (from, to)) in (0_i64..).zip(dashed_segments(pair[0], pair[1])) {
+                pieces.insert(RoadSegment([[i, j], [i, j + 1]]), [from, to]);
+            }
+        } else {
+            pieces.insert(RoadSegment([[i, 0], [i, 1]]), [pair[0], pair[1]]);
+        }
+    }
+    let forward = (points[4] - points[3]).normalize_or_zero();
+    let tip = points[3].lerp(points[4], 0.7);
+    let side = forward.cross(Vec3::Y).normalize_or_zero() * (3.0 + width);
+    for (i, wing) in [(4, side), (5, -side)] {
+        pieces.insert(
+            RoadSegment([[i, 0], [i, 1]]),
+            [tip - forward * (6.0 + 2.0 * width) + wing, tip],
+        );
+    }
+    road_mesh(&pieces, width)
+}
+
 fn segment(
     commands: &mut Commands,
     assets: &RelationshipAssets,
@@ -623,6 +685,7 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
 
 #[derive(SystemParam)]
 struct RelationshipObservation<'w> {
+    atlas: Option<Res<'w, CountyAtlas>>,
     frame: Res<'w, ObserverFrame>,
     session: Res<'w, ObserverSession>,
     selected: Res<'w, SelectedCounty>,
@@ -633,6 +696,21 @@ struct RelationshipObservation<'w> {
 }
 
 impl RelationshipObservation<'_> {
+    fn selected_place(&self) -> Option<(&str, &str)> {
+        self.selected.0.and_then(|index| {
+            self.atlas
+                .as_ref()
+                .and_then(|atlas| atlas.county(index))
+                .map(|county| (county.fips, county.name))
+                .or_else(|| {
+                    self.anchors
+                        .0
+                        .iter()
+                        .find(|(_, a)| a.index == index)
+                        .map(|(fips, a)| (fips.as_str(), a.name.as_str()))
+                })
+        })
+    }
     fn changed(&self) -> bool {
         self.anchors.is_changed()
             || self.frame.is_changed()
@@ -661,6 +739,7 @@ fn rebuild(
         commands.entity(entity).despawn();
     }
     if *observation.view != PrimaryView::Map
+        || matches!(observation.ui.lens, crate::map_economy_lens::MapLens::Money)
         || observation.ui.road_layer == RoadLayer::EconomyNetwork
     {
         return;
@@ -1009,6 +1088,7 @@ mod tests {
     use crate::map_economy_lens::MaterialLensKind;
     use crate::observer::Perspective;
     use crate::observer::SessionPhase;
+    use crate::observer_map3d::MapOrbit;
     use crate::observer_ui::ObserverDisclosure;
     use crate::production::ProductionNavigation;
     use babylon_persistence::identity::CampaignId;
@@ -1429,6 +1509,7 @@ mod tests {
         snapshot.physical_routes = vec![physical, other_physical];
         snapshot.routes = vec![route, other];
         let mut app = App::new();
+        crate::visual_assets::install_test_assets(&mut app);
         app.insert_resource(session)
             .insert_resource(frame)
             .insert_resource(anchors)
@@ -1457,8 +1538,11 @@ mod tests {
             .resource_mut::<ProductionNavigation>()
             .selected_site = Some("a".into());
         network::install(&mut app);
-        app.init_resource::<ObserverViewport>()
+        app.init_resource::<MapOrbit>()
+            .init_resource::<ObserverViewport>()
             .init_resource::<UiScale>();
+        app.finish();
+        app.cleanup();
         app
     }
 

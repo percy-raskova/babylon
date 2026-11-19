@@ -4,6 +4,8 @@
 //! belong to the runtime. No practice changes factory production or staffing.
 
 mod aid;
+mod hearing;
+pub use hearing::*;
 
 mod collection;
 mod partner_reports;

@@ -48,6 +48,8 @@ fn shared_opening() -> Parts {
         route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],

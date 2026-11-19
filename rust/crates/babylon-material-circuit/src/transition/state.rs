@@ -11,6 +11,11 @@ pub(crate) struct MaterialContext<'a> {
 
 use super::merchant_admission;
 use super::outbound;
+use crate::portfolio::CompanyInvestment;
+use crate::CompanyBasisMovement;
+use crate::CompanyPortfolioRegister;
+use crate::CompanyPortfolioSelection;
+use crate::HouseholdLifecycleReceipt;
 
 use crate::agency_attendance::PendingAgency;
 use crate::valuation::CostClose;
@@ -600,6 +605,12 @@ pub struct ClosedMaterialPeriod {
 }
 
 impl ClosedMaterialPeriod {
+    /// Whole-person transitions after current work, available to the next staffing close.
+    #[must_use]
+    pub fn household_lifecycle(&self) -> &[HouseholdLifecycleReceipt] {
+        &self.transition.household_lifecycle
+    }
+
     /// The interval whose arrivals, production and dispatch have completed.
     #[must_use]
     pub const fn closing_period(&self) -> u64 {
@@ -1373,7 +1384,7 @@ pub(crate) fn close_household_finance(
             aid: support.aid,
         },
     )?;
-    finance.distribute(state, costs, money_transfers)?;
+    finance.distribute(catalog, state, costs, money_transfers)?;
     Ok((households, collections))
 }
 
@@ -1398,10 +1409,12 @@ fn close_support_parts(
     aid_inputs: &[AidResolveInput],
     collection_inputs: &[CollectionResolveInput],
     agency_inputs: &[AgencyAttendanceInput],
+    portfolios: &mut CompanyInvestment,
 ) -> Result<SupportClose, MaterialCircuitError> {
     crate::agency_attendance::validate_input(catalog, opening, agency_inputs)?;
     let close = begin_close(catalog, opening)?;
     let (mut state, mut costs) = (close.state, close.costs);
+    portfolios.apply_funding(&mut state)?;
     let (mut aid_receipts, mut money_transfers) = (close.aid_receipts, close.money_transfers);
     let (mut dispatches, mut wage_accruals) = (Vec::new(), Vec::new());
     let mut funded = close_funded_production(
@@ -1472,12 +1485,37 @@ pub fn close_material_period_with_support(
     collection_inputs: &[CollectionResolveInput],
     agency_inputs: &[AgencyAttendanceInput],
 ) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    close_material_period_with_portfolios(
+        catalog,
+        opening,
+        aid_inputs,
+        collection_inputs,
+        agency_inputs,
+        None,
+        &[],
+    )
+}
+
+/// Close using the prior authenticated company evidence and finite-kernel outcomes.
+/// # Errors
+/// Refuses incomplete, duplicated, stale or ineligible company choices.
+pub fn close_material_period_with_portfolios(
+    catalog: &MaterialCatalog,
+    opening: &MaterialCircuitState,
+    aid_inputs: &[AidResolveInput],
+    collection_inputs: &[CollectionResolveInput],
+    agency_inputs: &[AgencyAttendanceInput],
+    previous: Option<&CompanyPortfolioRegister>,
+    selections: &[CompanyPortfolioSelection],
+) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    let mut portfolios = CompanyInvestment::prepare(catalog, opening, previous, selections)?;
     let mut close = close_support_parts(
         catalog,
         opening,
         aid_inputs,
         collection_inputs,
         agency_inputs,
+        &mut portfolios,
     )?;
     let next_period = following_period(&close.state)?;
     let investment = crate::equipment::invest(
@@ -1485,6 +1523,7 @@ pub fn close_material_period_with_support(
         &mut close.state,
         &close.costs,
         &mut close.money_transfers,
+        &portfolios,
     )?;
     close
         .funded
@@ -1511,9 +1550,12 @@ pub fn close_material_period_with_support(
         &mut close.outbound,
         &mut close.dispatches,
     )?;
+    let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            household_lifecycle,
+            resident_workforce_attrition: Vec::new(),
             agency_attendance: close.households.agency.into_iter().collect(),
             collections: close.collections,
             aid: close.aid_receipts,
@@ -1521,11 +1563,13 @@ pub fn close_material_period_with_support(
             household_time: close.households.time,
             installation: close.funded.production.installation,
             installation_decisions: close.funded.production.installation_decisions,
+            company_basis: settled.company_basis,
             equipment_wear: settled.equipment_wear,
             investment,
             public_budgets: close.funded.finance.public_budgets,
             taxes: close.funded.finance.taxes,
             distributions: close.funded.finance.distributions,
+            company_distributions: close.funded.finance.company_distributions,
             contributions: close.funded.finance.contributions,
             staffing_members: vec![],
             member_labor_use: close.households.member_labor_use,
@@ -1565,6 +1609,7 @@ pub(crate) fn following_period(state: &MaterialCircuitState) -> Result<u64, Mate
 }
 
 pub(crate) struct FinalAccountingReceipts {
+    company_basis: Vec<CompanyBasisMovement>,
     equipment_wear: Vec<EquipmentWearReceipt>,
     income: Vec<IncomeReceipt>,
     aid_contributions: Vec<HouseholdContributionUse>,
@@ -1582,6 +1627,7 @@ pub(crate) fn finish_close_accounting(
     crate::recurring::firms::retire_resolved_purchases(state)?;
     canonicalize_outbound_receipts(outbound, dispatches);
     crate::payments::conserved(opening, state)?;
+    let company_basis = costs.take_company_basis();
     let mut equipment_wear = std::mem::take(&mut costs.wear_receipts);
     equipment_wear.sort_by_key(|r| (r.process_id, r.cohort_id));
     aid_receipts.sort_by_key(|r| (r.commitment_id, r.outcome as u8));
@@ -1589,6 +1635,7 @@ pub(crate) fn finish_close_accounting(
     let income = costs.finish(catalog, state)?;
     let aid_contributions = crate::aid::contribution_uses(catalog, state, aid_receipts)?;
     Ok(FinalAccountingReceipts {
+        company_basis,
         equipment_wear,
         income,
         aid_contributions,
@@ -1700,7 +1747,7 @@ pub(crate) fn begin_close(
     opening: &MaterialCircuitState,
 ) -> Result<CloseOpening, MaterialCircuitError> {
     let mut state = canonical_state(catalog, opening)?;
-    let mut costs = CostClose::new(&state);
+    let mut costs = CostClose::new(&state, catalog);
     let mut aid_receipts = Vec::new();
     let money_transfers = Vec::new();
     close_due_aid(catalog, &mut state, &mut costs, &mut aid_receipts)?;

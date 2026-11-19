@@ -209,13 +209,20 @@ fn malformed_and_wrong_context_period_tables_refuse_without_seed_mutation() {
     let original = register::lookup_identity(opening.lookup())
         .expect("the fixture call `lookup_identity` succeeds for the authored inputs");
     let extra = IdentityEntry {
-        kind: IdentityKind::Site,
+        kind: IdentityKind::CompanyAccount,
         bytes: [254; 32],
     };
     let c0 = register::initial_lookup_chain(&opening)
         .expect("the opening register builds its first lookup chain");
     let (good, _) = register::encode_period_lookup(&opening, 52, c0, &[extra])
         .expect("the authored lookup table encodes");
+    assert_eq!(IdentityKind::from_tag(21), Ok(IdentityKind::CompanyAccount));
+    let decoded = register::read_period_lookup(&opening, 52, &good, LookupAnchor::Previous(c0))
+        .expect("the company account is a distinct admitted storage identity");
+    assert_eq!(
+        &decoded.lookup.entries()[opening.lookup().entries().len()..],
+        &[extra]
+    );
     assert_eq!(
         register::read_period_lookup(&opening, 0, &good, LookupAnchor::Previous(c0))
             .expect_err("the malformed lookup request is refused"),
@@ -265,7 +272,8 @@ fn malformed_and_wrong_context_period_tables_refuse_without_seed_mutation() {
     );
     let mut unknown_kind = good[..LOOKUP_DOMAIN.len() + 2 + 32 + 8 + 32].to_vec();
     let mut packed = 1_u32.to_be_bytes().to_vec();
-    packed.push(21);
+    // Literal identity tags occupy the lower half of the descriptor byte.
+    packed.push(127);
     packed.extend_from_slice(&[0; 32]);
     let compressed = storage_compression::compress_exact(&packed, MAX_LOOKUP_BYTES)
         .expect("the body fits the exact compressed bound");

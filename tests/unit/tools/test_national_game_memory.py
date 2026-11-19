@@ -245,6 +245,28 @@ def pair(
     )
 
 
+def test_actual_publisher_is_quiesced_and_charged_with_the_windowed_pair(owned_children):
+    with subprocess.Popen(
+        [sys.executable, "-c", "import sys; sys.stdin.buffer.read()"], stdin=subprocess.PIPE
+    ) as publisher:
+        try:
+            with (
+                memory.OwnedNativePair(
+                    *owned_children,
+                    runtime_sha256=executable_sha(owned_children[0]),
+                    client_sha256=executable_sha(owned_children[1]),
+                    publisher=(publisher, executable_sha(publisher)),
+                ) as scope,
+                scope.quiescent(timeout=3) as frozen,
+            ):
+                workers = [p for p in frozen.observe() if p.role == "economic-projections"]
+                assert len(workers) == 1 and workers[0].pid == publisher.pid
+                assert workers[0].rss_bytes > 0
+        finally:
+            assert publisher.stdin is not None
+            publisher.stdin.close()
+
+
 def test_exact_owned_pair_stops_every_thread_and_restores_after_read_failure(
     owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
 ) -> None:

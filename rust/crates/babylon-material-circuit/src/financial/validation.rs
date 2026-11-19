@@ -76,6 +76,29 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             .ok_or(MaterialCircuitError::Arithmetic)?;
         claims.insert((r.beneficiary, r.issuer_site_id));
     }
+    let companies: BTreeSet<_> = snapshot
+        .accounts
+        .iter()
+        .filter_map(|r| match r.id {
+            AccountId::Company(id) => Some(id),
+            _ => None,
+        })
+        .collect();
+    let mut subsidiaries = BTreeSet::new();
+    let mut parents = BTreeSet::new();
+    for claim in &f.ownership {
+        if let AccountId::Company(id) = claim.beneficiary {
+            if shares[&claim.issuer_site_id] != claim.shares
+                || !subsidiaries.insert(claim.issuer_site_id)
+            {
+                return Err(MaterialCircuitError::FinancialInvariant);
+            }
+            parents.insert(id);
+        }
+    }
+    if parents != companies {
+        return Err(MaterialCircuitError::FinancialInvariant);
+    }
     if claims
         != e.costs
             .snapshot()

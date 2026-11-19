@@ -1,0 +1,179 @@
+{
+  "seed": 319,
+  "scenario": "ordinary national",
+  "source_manifest": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/SHA256SUMS",
+  "source_manifest_sha256": "9588bdf45465e75230fdd7eea7a5eb8e9abb217a9c40bc249a6951c6b1b50c47",
+  "site_labels_source": "/media/user/data/worktrees/e87c/babylon/.superpowers/sdd/national-household-lifecycle/.per293-food-raw-drilldown/control/site-names.json",
+  "site_labels_sha256": "faa60dc4e955c6a430ca7f058dfc81aa7b63373d57e439ea68bdfa3212735ecb",
+  "native_order": [
+    "materials",
+    "food"
+  ],
+  "national_good_ids": {
+    "food": "b4b68f6711342fe0404992407fdcd85226a9c77678eca0e7607f66cdf6d53d33",
+    "materials": "0ddc0628b7d5be4ac60f083a7b27ef9f850f5e2dc94c2a0d7e038936ffb7ab73"
+  },
+  "money_unit": "1,000,000 integer micros per dollar",
+  "materials_unit": "supplies bundle",
+  "food_unit": "person-period food parcel",
+  "measure": "Household-level cash comparison at initial order admission. For each domestic principal take only admitted materials above current need net of its recorded stock at admission. Multiply units by its materials quote, floor-divide by its food quote, and cap at both unreserved food requested and food needed after stock and admitted orders. Sum whole parcels after rounding each budget separately.",
+  "boundaries": "Reserves are available only by forgoing the original reservation, counted once. Excludes refunds, delivery proceeds, opening cash remainder and new income. Uses actual stock at admission, which can include aid already received. Household service orders follow goods reservation and can also compete for money. This calculation encompasses the two storable goods only. It measures potential food purchasing power; a changed-policy replay is required to measure delivery, final consumption, materials and services.",
+  "source_code": [
+    "rust/crates/babylon-material-circuit/src/recurring/households.rs:104",
+    "rust/crates/babylon-material-circuit/src/recurring/households.rs:181",
+    "rust/crates/babylon-material-circuit/src/recurring/households.rs:431",
+    "rust/crates/babylon-material-circuit/src/transition/state.rs:1325",
+    "rust/crates/babylon-persistence/src/national_economy/policy/admission.rs:579",
+    "content/scenarios/national/defines.toml:211"
+  ],
+  "periods": [
+    {
+      "period": 2,
+      "source": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/P2-control-receipts.bin",
+      "reference": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/period-002.json",
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "tick_sha256": "f04238e75909adcaa522a4970789699d0b8c70983dd55ea36448db29496a65fa",
+        "world_sha256": "a65f74c7f00cb003237bd1ae84c84db597c8317393cd4e895f55b1332cad7e67",
+        "receipts_sha256": "be3b62e17b38d0a08bb6b51c0a2d5c415c0fd50007f87567d01b109e599ac272"
+      },
+      "domestic_food_budgets": 1583,
+      "domestic_budgets_with_both_goods": 1267,
+      "budgets_with_at_least_one_additional_food_parcel": 0,
+      "additional_food_affordable_from_buffer_cash_alone": 0,
+      "largest_example": null
+    },
+    {
+      "period": 3,
+      "source": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/corridor-raw/P3-control-receipts.bin",
+      "reference": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/period-003.json",
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "tick_sha256": "5c5a61a7d4fc099282f9a592ee24f22e52f0fb938fb875b731b866d14fc7a34e",
+        "world_sha256": "4d2454bb8f3fcc646bd3127d2b8bf8a3168a0efa5c57ad017950a9e05dd3ad25",
+        "receipts_sha256": "907bf75ad6e22b11d41a8b8479d2e9ffa235df038a8d5f985bee56dcb0951a53"
+      },
+      "domestic_food_budgets": 1583,
+      "domestic_budgets_with_both_goods": 1267,
+      "budgets_with_at_least_one_additional_food_parcel": 0,
+      "additional_food_affordable_from_buffer_cash_alone": 0,
+      "largest_example": null
+    },
+    {
+      "period": 4,
+      "source": "/media/user/data/worktrees/e87c/babylon/.superpowers/sdd/national-household-lifecycle/.per293-food-raw-drilldown/control/p004-receipts.bin",
+      "reference": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/period-004.json",
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "tick_sha256": "2cbbf44bed8df70384b6aeb0ea5c6e441339c05e365d131956a8a9a468507996",
+        "world_sha256": "f50d6c4efed75588545b47ddcf0463eab1f4fb44f5b7dec4f04fce6e51a28629",
+        "receipts_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58"
+      },
+      "domestic_food_budgets": 1583,
+      "domestic_budgets_with_both_goods": 1267,
+      "budgets_with_at_least_one_additional_food_parcel": 59,
+      "additional_food_affordable_from_buffer_cash_alone": 561245,
+      "largest_example": {
+        "principal": "57924e18a3c79f662a8a676f525fecb6fd906a62062f307027fb3ad0050b59d3",
+        "retailer": "b5998787a500bf985333163001578500b72e659768e7e9bd3ce4e6931548afc5",
+        "retailer_description": {
+          "label": "representative distribution_transport \u2014 Allegheny County/BelowCellReserveRate",
+          "location": "county:42003"
+        },
+        "materials": {
+          "retailer": "b5998787a500bf985333163001578500b72e659768e7e9bd3ce4e6931548afc5",
+          "stock_at_admission": 210481,
+          "period_need": 210481,
+          "requested": 210481,
+          "admitted": 210481,
+          "delivered": 210481,
+          "expired": 0,
+          "price_micros": 144000000
+        },
+        "food": {
+          "retailer": "b5998787a500bf985333163001578500b72e659768e7e9bd3ce4e6931548afc5",
+          "stock_at_admission": 205263,
+          "period_need": 390268,
+          "requested": 575273,
+          "admitted": 116521,
+          "delivered": 1,
+          "expired": 116520,
+          "price_micros": 311000000
+        },
+        "baseline_consumption": {
+          "materials": {
+            "required": 210481,
+            "consumed": 210481,
+            "unmet": 0
+          },
+          "food": {
+            "required": 390268,
+            "consumed": 205264,
+            "unmet": 185004
+          }
+        },
+        "materials_buffer_reserved_units": 210481,
+        "materials_buffer_reserved_micros": 30309264000000,
+        "additional_food_affordable_from_buffer_cash_alone": 68484
+      }
+    },
+    {
+      "period": 5,
+      "source": "/media/user/data/worktrees/e87c/babylon/.superpowers/sdd/national-household-lifecycle/.per293-food-raw-drilldown/control/p005-receipts.bin",
+      "reference": "/media/user/data/babylon-recovery/per293-household-lifecycle-v10-seed319/period-005.json",
+      "identity": {
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "tick_sha256": "06865379bcd247a27543961d63d3c01ac4216867c09d3cbfd8fa29040ae0f214",
+        "world_sha256": "71db8d316f3974a1f9e78a594ab5b4b2089efbb114da08044de52e7884da8176",
+        "receipts_sha256": "3e82eaa3329ac92b4e10a36410363883ea9306e71f9e1dbd9eb8e541718c95bc"
+      },
+      "domestic_food_budgets": 1583,
+      "domestic_budgets_with_both_goods": 1267,
+      "budgets_with_at_least_one_additional_food_parcel": 217,
+      "additional_food_affordable_from_buffer_cash_alone": 6313761,
+      "largest_example": {
+        "principal": "689103562fc275bebda9fde06c9cf42bb0b0eac2de94d6769084f2650c7550df",
+        "retailer": "d59b7d12c9c19d0bcab4dbef83cc0ff7d673f5dcd7be33f6bcade741889692bf",
+        "retailer_description": {
+          "label": "representative distribution_transport \u2014 Los Angeles County/AtCellReserveRate",
+          "location": "county:06037"
+        },
+        "materials": {
+          "retailer": "d59b7d12c9c19d0bcab4dbef83cc0ff7d673f5dcd7be33f6bcade741889692bf",
+          "stock_at_admission": 366936,
+          "period_need": 537930,
+          "requested": 708924,
+          "admitted": 708924,
+          "delivered": 11,
+          "expired": 708913,
+          "price_micros": 150000000
+        },
+        "food": {
+          "retailer": "d59b7d12c9c19d0bcab4dbef83cc0ff7d673f5dcd7be33f6bcade741889692bf",
+          "stock_at_admission": 0,
+          "period_need": 1213608,
+          "requested": 2427216,
+          "admitted": 574991,
+          "delivered": 4,
+          "expired": 574987,
+          "price_micros": 325000000
+        },
+        "baseline_consumption": {
+          "materials": {
+            "required": 537930,
+            "consumed": 366947,
+            "unmet": 170983
+          },
+          "food": {
+            "required": 1213608,
+            "consumed": 4,
+            "unmet": 1213604
+          }
+        },
+        "materials_buffer_reserved_units": 537930,
+        "materials_buffer_reserved_micros": 80689500000000,
+        "additional_food_affordable_from_buffer_cash_alone": 248275
+      }
+    }
+  ]
+}

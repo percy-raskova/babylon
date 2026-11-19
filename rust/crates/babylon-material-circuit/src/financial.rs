@@ -1,5 +1,8 @@
 //! Designed, cash-funded public/ownership policy in the existing atomic close.
 mod close;
+mod company;
+pub use company::validate_company_distributions;
+pub(crate) use company::{validate_company_accounts, validate_company_policy};
 
 mod model;
 

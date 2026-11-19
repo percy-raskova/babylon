@@ -24,6 +24,12 @@ rule    = "struggle/spark-mechanic"
 sample  = "struggle/spark"
 slot    = 0
 
+[[kernel_slot]]
+ordinal = 1
+rule    = "company/portfolio-investment"
+sample  = "company/investment-portfolio"
+slot    = 0
+
 [[set]]
 id        = "carceral/arc"
 scenario  = "scenarios/carceral-arc-conformance.bscn"

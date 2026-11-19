@@ -910,19 +910,27 @@ pub(crate) fn validate_account_rows(rows: &ProductionSnapshot) -> Result<()> {
 
 pub(crate) fn validate_households(rows: &ProductionSnapshot, period: u64) -> Result<()> {
     for row in &rows.household_accounts {
-        if !row
+        let occupied = row
             .kind
             .admits_counts(row.person_count, row.household_count)
-            || row.required_per_period == 0
-        {
-            return Err(ProductionEvidenceError::InvalidIdentity);
-        }
+            && row.required_per_period > 0;
         match (&row.completed, period) {
-            (None, 0) => {}
+            (None, 0) if occupied => {}
             (Some(done), period)
                 if period > 0
                     && done.period == period
-                    && done.required == row.required_per_period
+                    && done.population_basis.as_ref().map_or(
+                        occupied && done.required == row.required_per_period,
+                        |change| {
+                            change.validates(
+                                row.kind,
+                                row.person_count,
+                                row.household_count,
+                                done.required,
+                                row.required_per_period,
+                            )
+                        },
+                    )
                     && done.closing_stock == row.stock_on_hand
                     && u128::from(done.opening_stock)
                         + u128::from(done.received)
@@ -950,19 +958,27 @@ pub(crate) fn validate_household_services(rows: &ProductionSnapshot, period: u64
     )?;
     for row in &rows.household_service_accounts {
         unique("household_service_provider_ids", &row.provider_site_ids)?;
-        if !row
+        let occupied = row
             .kind
             .admits_counts(row.person_count, row.household_count)
-            || row.required_per_period == 0
-        {
-            return Err(ProductionEvidenceError::InvalidIdentity);
-        }
+            && row.required_per_period > 0;
         match (&row.completed, period) {
-            (None, 0) => {}
+            (None, 0) if occupied => {}
             (Some(done), period)
                 if period > 0
                     && done.period == period
-                    && done.required == row.required_per_period
+                    && done.population_basis.as_ref().map_or(
+                        occupied && done.required == row.required_per_period,
+                        |change| {
+                            change.validates(
+                                row.kind,
+                                row.person_count,
+                                row.household_count,
+                                done.required,
+                                row.required_per_period,
+                            )
+                        },
+                    )
                     && done.satisfied == done.required.min(done.performed)
                     && done.satisfied.checked_add(done.unmet) == Some(done.required)
                     && done.satisfied.checked_add(done.unused) == Some(done.performed)

@@ -103,7 +103,7 @@ pub(crate) const READER_PRIVILEGE_CENSUS_SQL: &str = "WITH RECURSIVE role_closur
     'v_observer_tick_event_field_v2', 'v_observer_tick_choice_receipt_v1', \
     'v_observer_tick_choice_receipt_branch_v1', 'v_observer_tick_choice_receipt_carrier_element_v1', \
     'v_observer_checkpoint_manifest', 'v_observer_checkpoint_section_v1', \
-    'v_observer_archive_dirty_receipt_v1', 'v_observer_tick_action_batch_v1'))), \
+    'v_observer_archive_dirty_receipt_v1', 'v_observer_tick_action_batch_v1','v_observer_money_journal_period_v1','v_observer_money_movement_v1','v_observer_money_movement_total_v1','v_observer_economic_flow_location_v1','v_observer_economic_flow_account_v1','v_observer_economic_company_v1','v_observer_economic_company_member_v1','v_observer_economic_company_claim_v1','v_observer_economic_company_claim_source_v1','v_observer_economic_flow_account_v2','v_observer_economic_payment_v1','v_observer_site_statement_v1','v_observer_site_stock_balance_v1','v_observer_company_accounting_period_v1','v_observer_company_accounting_checkpoint_v1','v_observer_company_statement_balance_v1','v_observer_company_statement_income_v1','v_observer_company_statement_cash_flow_v1','v_observer_company_elimination_v1','v_observer_company_realization_entry_v1','v_observer_labor_period_v1','v_observer_labor_checkpoint_v1','v_observer_labor_node_v1','v_observer_labor_movement_v1','v_observer_labor_position_v1'))), \
     held AS (\
     SELECT restricted.nspname || '.' || restricted.relname || ':' || acl.privilege_type || \
     CASE WHEN acl.is_grantable THEN ' (grantable)' ELSE '' END AS entry \

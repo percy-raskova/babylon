@@ -1,0 +1,338 @@
+[
+  {
+    "period": 1,
+    "hashes": {
+      "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+      "material_register_sha256": "260b1af47fc42f94c21cfd50f697f8570dc076590b275c79b61f6abe1f096f15",
+      "prior_world_sha256": "9cbd3cab5291ce2acade9095235aa5f16c06eb3be4f799a82abf1934babd768b",
+      "receipts_sha256": "bb51e9a3c35cf56b1bbf8fb817c9c46e14bc75b1e0fe167fbaafb0e30a70604e",
+      "tick_sha256": "3b3ea395192228a4920eb22f3e9b9d03498d78ae0077946933b01de006eac2c0",
+      "world_sha256": "a151241e45e38869de8806d51555881de45d4a7dfc26c0ee8159b36fe92ae999"
+    },
+    "sha256_raw": "b9e90591e8a45ac83b962e1b38baf93f220308c9fed1cf7048cc31dfe06add31",
+    "business_sites_with_accepted_customer_orders": 204,
+    "accepted_business_units": 12954991610,
+    "with_positive_utility_policy": 204,
+    "with_positive": {
+      "requested": 204,
+      "admitted": 18,
+      "performed": 18,
+      "used": 18
+    },
+    "utility_for_those_business_sites": {
+      "requested": 327662516,
+      "admitted": 308073172,
+      "performed": 308073172,
+      "used": 308073172,
+      "expired": 0
+    },
+    "utility_all": {
+      "requested": 31281374050,
+      "admitted": 31210945111,
+      "performed": 31122447042,
+      "used": 16486778801,
+      "expired": 88498069
+    },
+    "utility_market": {
+      "requested": 31281374050,
+      "admitted": 31210945111,
+      "performed": 31122447042,
+      "available_capacity": 273784268800,
+      "next_period_plan": 31281374050
+    },
+    "utility_output": {
+      "produced": 31122457760,
+      "allocated": 31122447042,
+      "expired": 10718
+    },
+    "utility_by_buyer": {
+      "business_service_site": {
+        "requested": 334816641,
+        "admitted": 308480997,
+        "performed": 308440897,
+        "used": 308073172,
+        "expired": 40100
+      },
+      "household": {
+        "requested": 8151468554,
+        "admitted": 8151468546,
+        "performed": 8112078371,
+        "used": 8112078371,
+        "expired": 39390175
+      },
+      "other_site": {
+        "requested": 22795088855,
+        "admitted": 22750995568,
+        "performed": 22701927774,
+        "used": 8066627258,
+        "expired": 49067794
+      }
+    },
+    "named": {
+      "business_accepted": 2788210,
+      "business_site": "4658f46b14a81be845c0b977bde644d094723b88b7866d217eb789a5899bc73f",
+      "name": "representative business_services \u2014 Los Angeles County/AtCellReserveRate",
+      "utility_orders": [
+        {
+          "admitted": 0,
+          "cash_floor_micros": "3338860800000000",
+          "order": "408e709e94bf84285e40deed9e8f1c8ddb0b40325cd3bae5b9d928c7009b3487",
+          "performed": 0,
+          "policy_quantity_cap": 950331,
+          "purchase_cap": 950331,
+          "requested": 869495,
+          "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+          "seller_name": "representative energy_utilities \u2014 Los Angeles County/AtCellReserveRate",
+          "unit_price_micros": "75000000",
+          "used": 0
+        }
+      ],
+      "utility_policy_count": 1
+    },
+    "named_utility_suppliers": [
+      {
+        "market": {
+          "admitted": 18142908,
+          "available_capacity": 25600000,
+          "name": "representative energy_utilities \u2014 Los Angeles County/AtCellReserveRate",
+          "next_period_plan": 20477496,
+          "performed": 18142908,
+          "process": "0d5343878e67e02790c0c2cf44b51b0ede826cf0422a7049f5116140c3b859cf",
+          "requested": 20477496,
+          "site": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a"
+        },
+        "output": {
+          "allocated": 18142908,
+          "expired": 132,
+          "name": "representative energy_utilities \u2014 Los Angeles County/AtCellReserveRate",
+          "process": "0d5343878e67e02790c0c2cf44b51b0ede826cf0422a7049f5116140c3b859cf",
+          "produced": 18143040,
+          "site": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a"
+        },
+        "who_received_limited_utility": {
+          "business_service_site": {
+            "requested": 875211,
+            "admitted": 5716,
+            "performed": 5716,
+            "used": 0,
+            "expired": 0
+          },
+          "household": {
+            "requested": 9808667,
+            "admitted": 9808667,
+            "performed": 9808667,
+            "used": 9808667,
+            "expired": 0
+          },
+          "other_site": {
+            "requested": 9793618,
+            "admitted": 8328525,
+            "performed": 8328525,
+            "used": 274834,
+            "expired": 0
+          }
+        },
+        "three_largest_performed": [
+          {
+            "admitted": 7106226,
+            "buyer": "13c8099ad2dc3b599169c2bb006149613a132bc8b9b99ee0829b17995205536f",
+            "buyer_kind": "household",
+            "expired": 0,
+            "performed": 7106226,
+            "requested": 7106226,
+            "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+            "used": 7106226
+          },
+          {
+            "admitted": 2726560,
+            "buyer": "32a26bdb712188d40b9e2a5a281e53e827e0be79efb3bb6216b4ab20b4f4feae",
+            "buyer_kind": "other_site",
+            "expired": 0,
+            "performed": 2726560,
+            "requested": 2726560,
+            "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+            "used": 0
+          },
+          {
+            "admitted": 1964300,
+            "buyer": "40df0c74ae213fa3c4036b6596f5d9f8dbf45ccad991ad3886fdeae503edc590",
+            "buyer_kind": "other_site",
+            "expired": 0,
+            "performed": 1964300,
+            "requested": 1964300,
+            "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+            "used": 213529
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "period": 2,
+    "hashes": {
+      "foundation_sha256": "60a356ec97ace3aafd543b2819f7e636748bfce0f3b068536172125ba40f457a",
+      "material_register_sha256": "c01bab37c7b72cee93a859caeb9eb9d82b2efdaa70f2feaacf1e10f90e77f0dd",
+      "prior_world_sha256": "a151241e45e38869de8806d51555881de45d4a7dfc26c0ee8159b36fe92ae999",
+      "receipts_sha256": "4517450f65785c95eb22416ace5b14f4276eb10533ab4495b47dabd599d143c6",
+      "tick_sha256": "21fda1a8bfec240f19426d937612b28cdcef56134c6d2e4f087129fad5ff809f",
+      "world_sha256": "49b38c737c1cfa82490d3746e0b4211e61fd98ac11b6e9e4bafd2a8c291ab7bf"
+    },
+    "sha256_raw": "978a8dc805c07d80af1a6c5921d4a505b7b275a70d6a9481412c52f5160a44c5",
+    "business_sites_with_accepted_customer_orders": 204,
+    "accepted_business_units": 3114594519,
+    "with_positive_utility_policy": 204,
+    "with_positive": {
+      "requested": 204,
+      "admitted": 0,
+      "performed": 0,
+      "used": 0
+    },
+    "utility_for_those_business_sites": {
+      "requested": 316278166,
+      "admitted": 0,
+      "performed": 0,
+      "used": 0,
+      "expired": 0
+    },
+    "utility_all": {
+      "requested": 13245777604,
+      "admitted": 12898573449,
+      "performed": 12895607149,
+      "used": 8996914133,
+      "expired": 2966300
+    },
+    "utility_market": {
+      "requested": 13245777604,
+      "admitted": 12898573449,
+      "performed": 12895607149,
+      "available_capacity": 273784268800,
+      "next_period_plan": 13245777604
+    },
+    "utility_output": {
+      "produced": 12895621600,
+      "allocated": 12895607149,
+      "expired": 14451
+    },
+    "utility_by_buyer": {
+      "business_service_site": {
+        "requested": 316278166,
+        "admitted": 0,
+        "performed": 0,
+        "used": 0,
+        "expired": 0
+      },
+      "household": {
+        "requested": 8151468554,
+        "admitted": 8151468546,
+        "performed": 8149100241,
+        "used": 8149100241,
+        "expired": 2368305
+      },
+      "other_site": {
+        "requested": 4778030884,
+        "admitted": 4747104903,
+        "performed": 4746506908,
+        "used": 847813892,
+        "expired": 597995
+      }
+    },
+    "named": {
+      "business_accepted": 1805346,
+      "business_site": "4658f46b14a81be845c0b977bde644d094723b88b7866d217eb789a5899bc73f",
+      "name": "representative business_services \u2014 Los Angeles County/AtCellReserveRate",
+      "utility_orders": [
+        {
+          "admitted": 0,
+          "cash_floor_micros": "3338860800000000",
+          "order": "b79bf7aff32878c51f2a1931156995d70f6186e7a7607d64bc95acb3726efe2d",
+          "performed": 0,
+          "policy_quantity_cap": 950331,
+          "purchase_cap": 950331,
+          "requested": 174264,
+          "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+          "seller_name": "representative energy_utilities \u2014 Los Angeles County/AtCellReserveRate",
+          "unit_price_micros": "73125000",
+          "used": 0
+        }
+      ],
+      "utility_policy_count": 1
+    },
+    "named_utility_suppliers": [
+      {
+        "market": {
+          "admitted": 13259501,
+          "available_capacity": 25600000,
+          "name": "representative energy_utilities \u2014 Los Angeles County/AtCellReserveRate",
+          "next_period_plan": 14659849,
+          "performed": 13259501,
+          "process": "0d5343878e67e02790c0c2cf44b51b0ede826cf0422a7049f5116140c3b859cf",
+          "requested": 14659849,
+          "site": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a"
+        },
+        "output": {
+          "allocated": 13259501,
+          "expired": 19,
+          "name": "representative energy_utilities \u2014 Los Angeles County/AtCellReserveRate",
+          "process": "0d5343878e67e02790c0c2cf44b51b0ede826cf0422a7049f5116140c3b859cf",
+          "produced": 13259520,
+          "site": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a"
+        },
+        "who_received_limited_utility": {
+          "business_service_site": {
+            "requested": 174264,
+            "admitted": 0,
+            "performed": 0,
+            "used": 0,
+            "expired": 0
+          },
+          "household": {
+            "requested": 9808667,
+            "admitted": 9808667,
+            "performed": 9808667,
+            "used": 9808667,
+            "expired": 0
+          },
+          "other_site": {
+            "requested": 4676918,
+            "admitted": 3450834,
+            "performed": 3450834,
+            "used": 274834,
+            "expired": 0
+          }
+        },
+        "three_largest_performed": [
+          {
+            "admitted": 7106226,
+            "buyer": "13c8099ad2dc3b599169c2bb006149613a132bc8b9b99ee0829b17995205536f",
+            "buyer_kind": "household",
+            "expired": 0,
+            "performed": 7106226,
+            "requested": 7106226,
+            "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+            "used": 7106226
+          },
+          {
+            "admitted": 2726560,
+            "buyer": "32a26bdb712188d40b9e2a5a281e53e827e0be79efb3bb6216b4ab20b4f4feae",
+            "buyer_kind": "other_site",
+            "expired": 0,
+            "performed": 2726560,
+            "requested": 2726560,
+            "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+            "used": 0
+          },
+          {
+            "admitted": 1213051,
+            "buyer": "689103562fc275bebda9fde06c9cf42bb0b0eac2de94d6769084f2650c7550df",
+            "buyer_kind": "household",
+            "expired": 0,
+            "performed": 1213051,
+            "requested": 1213051,
+            "seller": "a8b6defae1c132292c76299a5ad0d9cde219436ab745d8e0a97ce201a3d1711a",
+            "used": 1213051
+          }
+        ]
+      }
+    ]
+  }
+]

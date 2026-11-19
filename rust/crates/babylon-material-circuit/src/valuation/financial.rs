@@ -56,17 +56,14 @@ impl CostClose {
     }
     pub(crate) fn distribution(
         &mut self,
-        issuer: SiteId,
+        issuer: AccountId,
         beneficiary: AccountId,
         amount: Currency,
     ) -> Result<()> {
         let Some(a) = &mut self.active else {
             return Ok(());
         };
-        let total = a
-            .distributions
-            .entry(AccountId::Site(issuer))
-            .or_insert_with(super::zero);
+        let total = a.distributions.entry(issuer).or_insert_with(super::zero);
         *total = super::add(*total, amount)?;
         let statement = a.statement(beneficiary)?;
         statement.distribution_income = super::add(statement.distribution_income, amount)?;

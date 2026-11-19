@@ -293,6 +293,10 @@ impl CatalogObjectKey {
 }
 
 impl CatalogCensusEntry {
+    pub(crate) fn digest_hex(&self) -> &str {
+        &self.digest_hex
+    }
+
     /// Create one validated census entry.
     ///
     /// # Errors

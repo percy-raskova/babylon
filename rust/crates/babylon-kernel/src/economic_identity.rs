@@ -43,6 +43,23 @@ impl EconomicFunction {
             _ => None,
         }
     }
+    /// Readable name from the captured `NationalQcewFunctionMappingV1` contract.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BusinessServices => "Business services",
+            Self::CapitalGoods => "Capital goods",
+            Self::ConstructionHousing => "Construction/housing",
+            Self::DistributionTransport => "Distribution/transport",
+            Self::EnergyUtilities => "Energy/utilities",
+            Self::Extraction => "Extraction",
+            Self::Food => "Food",
+            Self::HouseholdServices => "Household services",
+            Self::Manufacturing => "Manufacturing",
+            Self::PublicProvisioning => "Public provisioning",
+        }
+    }
+
     /// Exact source mapping key, not a claim about product end-use.
     #[must_use]
     pub const fn source_key(self) -> &'static str {

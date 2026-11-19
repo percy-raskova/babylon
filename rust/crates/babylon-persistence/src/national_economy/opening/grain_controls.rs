@@ -6,7 +6,6 @@ use crate::national_economy;
 use crate::national_economy::grain::{CatchmentReason, ContributionDestination};
 use crate::national_economy::{NationalGamePolicy, ResidentWorkplaceSource};
 use crate::national_household_allocation::{self, HouseholdBudgetKey, NationalHouseholdAllocation};
-use crate::national_household_refinement;
 use crate::national_household_time_allocation::{self, NationalHouseholdTimeAllocation};
 use crate::national_households;
 use crate::national_resident_allocation::{self, ResidentWorkplaceAllocation};
@@ -47,8 +46,13 @@ fn prepared(
     .expect("household allocation");
     let time = national_household_time_allocation::allocate_household_time(counties, &budgets)
         .expect("time");
-    let leaves = national_household_refinement::refine_households(&budgets, &time, &[])
-        .expect("source leaves");
+    let (leaves, claimant) = super::claimant::refine(
+        &budgets,
+        &time,
+        policy.household_support_claimant,
+        policy.source_digest,
+    )
+    .expect("source leaves");
     let mut allocation = national_resident_allocation::allocate_home_county(
         counties,
         national_cohorts::national_cohort_reference().expect("cohorts"),
@@ -61,6 +65,7 @@ fn prepared(
     let mut builder = Builder::new(
         policy,
         national_transport::national_transport_reference().expect("transport"),
+        claimant,
     )
     .expect("builder");
     aid::prepare(
@@ -495,6 +500,25 @@ fn live_household_accounting(
             .expect("actual protected parent")
             .accumulate(actual);
     }
+    if let Some(claimant) = &opening.support_claimant {
+        let expected = claimant.margins;
+        let actual = live
+            .remove(&claimant.principal)
+            .expect("actual protected claimant");
+        assert_eq!(
+            actual,
+            HouseholdAccountingMargins {
+                persons: expected.persons,
+                households: expected.households,
+                employed: expected.employed,
+                reserve: expected.reserve,
+                eligible: expected.eligible_16_plus,
+            },
+        );
+        live.get_mut(&claimant.parent)
+            .expect("actual claimant parent")
+            .accumulate(actual);
+    }
     live.retain(|principal, _| {
         matches!(households[principal].location, EconomicLocation::County(_))
     });
@@ -520,6 +544,7 @@ fn actual_household_accounting_bins(
         .children
         .iter()
         .map(|row| row.principal)
+        .chain(opening.support_claimant.iter().map(|row| row.principal))
         .collect();
     let mut bins = BTreeMap::new();
     for household in &opening.opening.households {

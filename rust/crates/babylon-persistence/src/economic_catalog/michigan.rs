@@ -132,6 +132,8 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         equipment_position: EquipmentPosition::default(),
         capacity,
         policies: CatalogPolicies {
+            company_portfolios: None,
+            company_payouts: vec![],
             aid_mandates: vec![],
             household_time: HouseholdTimeAccounting::NotModeled,
             household_time_policy: Vec::new(),

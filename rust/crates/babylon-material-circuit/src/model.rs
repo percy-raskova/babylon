@@ -1,5 +1,8 @@
 //! Current production, inventory, freight and order state.
 
+use crate::CompanyBasisMovement;
+use crate::HouseholdLifecycleReceipt;
+use crate::ResidentWorkforceAttrition;
 use babylon_kernel::economic_location::EconomicLocation;
 
 /// Designed serialization and validation ceiling, not material abundance.
@@ -67,7 +70,6 @@ use crate::AidReceipt;
 use crate::CapitalContributionReceipt;
 use crate::CircuitAccounting;
 use crate::CollectionReceipt;
-use crate::DistributionReceipt;
 use crate::EquipmentPosition;
 use crate::EquipmentWearReceipt;
 use crate::HouseholdConsumptionReceipt;
@@ -97,6 +99,7 @@ use crate::StaffingMemberReceipt;
 use crate::StaffingState;
 use crate::TaxReceipt;
 use crate::WageAccrualReceipt;
+use crate::{CompanyDistributionReceipt, DistributionReceipt};
 pub(crate) use identity_type;
 use std::collections::BTreeMap;
 
@@ -608,6 +611,9 @@ impl MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    CompanyPortfolioEvidence = 35,
+    CompanyPortfolioSelection = 36,
+    HouseholdLifecycleInvariant = 37,
     HouseholdTimeInvariant = 31,
     AidInvariant = 32,
     AidAuthority = 33,
@@ -685,6 +691,9 @@ impl TryFrom<u16> for MaterialCircuitError {
             32 => Ok(Self::AidInvariant),
             33 => Ok(Self::AidAuthority),
             34 => Ok(Self::CollectionInvariant),
+            35 => Ok(Self::CompanyPortfolioEvidence),
+            37 => Ok(Self::HouseholdLifecycleInvariant),
+            36 => Ok(Self::CompanyPortfolioSelection),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -708,6 +717,8 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub household_lifecycle: Vec<HouseholdLifecycleReceipt>,
+    pub resident_workforce_attrition: Vec<ResidentWorkforceAttrition>,
     pub agency_attendance: Vec<AgencyObservationFundingReceipt>,
     pub aid: Vec<AidReceipt>,
     pub collections: Vec<CollectionReceipt>,
@@ -720,6 +731,8 @@ pub struct MaterialCircuitTransition {
     pub public_budgets: Vec<PublicBudgetReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
+    pub company_basis: Vec<CompanyBasisMovement>,
+    pub company_distributions: Vec<CompanyDistributionReceipt>,
     pub contributions: Vec<CapitalContributionReceipt>,
     pub staffing_members: Vec<StaffingMemberReceipt>,
     pub member_labor_use: Vec<MemberLaborUseReceipt>,

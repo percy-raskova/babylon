@@ -103,7 +103,7 @@ pub(super) fn availability(term: ChoiceAvailability) -> String {
     }
 }
 
-fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
+fn aid_card_terms(view: &OrganizerView, choice: &PracticeChoice) -> Option<String> {
     use babylon_persistence::runtime_session::{
         OrganizerAidTransportPreview, OrganizerAllocation, OrganizerGiftConsent,
     };
@@ -129,8 +129,9 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
             OrganizerAidTransportPreview::Local => "local handoff",
             OrganizerAidTransportPreview::Routed { .. } => "freight · delay and loss possible",
         });
+    let parcels = super::partner_copy::parcel_label(food_quantity);
     if matches!(choice.availability, ChoiceAvailability::PendingAid { .. }) {
-        return Some(format!("{name} · {route}\nUnsubmitted draft: {food_quantity} parcels + {}.\nEarlier support is still open on this route.", crate::human_numbers::currency(cash_micros)));
+        return Some(format!("{name} · {route}\nUnsubmitted draft: {food_quantity} {parcels} + {}.\nEarlier support is still open on this route.", crate::human_numbers::currency(cash_micros)));
     }
     let cash = if aid.cash_receiving_consent == OrganizerGiftConsent::Refuse {
         "cash receiving refused"
@@ -142,7 +143,20 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
     } else {
         "Displaces routine once."
     };
-    Some(format!("{name} · {route}\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours))
+    let mut text = format!("{name} · {route}");
+    if presentation::aid_recipient(view, aid).is_some_and(|option| {
+        choice
+            .partner
+            .is_some_and(|partner| partner.actor_id == option.partner_actor_id)
+    }) {
+        let _ = write!(
+            text,
+            "\n{}",
+            super::partner_copy::aid_food_report(view, aid)
+        );
+    }
+    let _ = write!(text, "\n{food_quantity} {parcels} + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours);
+    Some(text)
 }
 
 /// Explain a blocked selected route beside its Review control.
@@ -173,9 +187,9 @@ pub(super) fn review_reason(
     }
 }
 
-pub(super) fn terms(choice: &PracticeChoice) -> String {
+pub(super) fn terms(view: &OrganizerView, choice: &PracticeChoice) -> String {
     use babylon_persistence::runtime_session::OrganizerAllocation;
-    if let Some(terms) = aid_card_terms(choice) {
+    if let Some(terms) = aid_card_terms(view, choice) {
         return terms;
     }
     let parties = match (choice.target, choice.partner) {
@@ -243,6 +257,9 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
                 )
             },
         ),
+        PossibleBenefit::Hearing => {
+            "Each group decides whether to attend and what its delegate may agree to.".into()
+        }
         PossibleBenefit::PauseRoutine => "Suspend the routine until explicitly resumed.".into(),
         PossibleBenefit::NoPractice => "No neighborhood practice will run.".into(),
     };
@@ -507,7 +524,7 @@ mod arrival_tests {
     #[test]
     fn actual_pending_food_warns_on_its_original_route_only_while_a_response_can_occur() {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
+            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v20.json"
         ))
         .expect("captured dispatch");
         let mut client = OrganizerClient {

@@ -3,7 +3,7 @@
 
 # Bevy asset provenance
 
-This file is the authoritative provenance and license record for the twenty catalog assets in
+This file is the authoritative provenance and license record for the assets in
 `manifest.toml`. Every asset in this estate uses `AGPL-3.0-or-later`.
 
 ## Original interface work
@@ -23,6 +23,20 @@ that direction. The work does not copy third-party art, icons, logos, or font ou
 
 Inkscape produced the runtime PNG files from the SVG masters. The source geometry, runtime bytes,
 and SHA-256 digests remain in the repository for review.
+
+## Economic map symbols
+
+On 2026-11-15, Codex drew eight original symbols for the Director’s economic and aid maps. The
+editable master is `sources/economic-map-atlas.svg`. The game uses its transparent raster
+export, `economic-map-atlas.png`. Each cell identifies the same kind of place or partner when an
+artist supplies a replacement.
+
+On 2026-11-16, Codex recolored the shop with a blue and white awning. Inkscape produced the
+updated atlas and the 24- and 30-pixel symbol key. The earlier Wayne period 2 screenshot
+shows the original warm-colored shop.
+
+On 2026-11-18, Codex added a hearing docket in the first cell of a third row. Inkscape rendered
+the docket from the editable master. The eight earlier stamps keep their original pixels.
 
 ## OpenAI-generated illustrations
 

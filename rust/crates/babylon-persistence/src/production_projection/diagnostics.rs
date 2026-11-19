@@ -16,6 +16,15 @@ pub(crate) enum Stage {
     FoundationRegisterDecode,
     FoundationGraphSession,
     FoundationAdmission,
+    JournalPublication,
+    JournalWarmup,
+    JournalSource,
+    JournalAccounts,
+    JournalPayments,
+    JournalSiteStatements,
+    JournalCompanyStatements,
+    JournalLabor,
+    JournalCommit,
     ArchiveRegisterCapture,
     ArchiveFoundationAdmission,
     ArchivePriorCheckpoint,
@@ -43,6 +52,15 @@ pub(crate) enum Stage {
     ArchiveRevisionInsert,
     ArchiveReferenceVisibility,
     ArchiveRevisionReconciliation,
+    TickPackageCapture,
+    TickGraphCapture,
+    TickMaterialCapture,
+    TickCheckpointCapture,
+    TickEventCapture,
+    TickChoiceCapture,
+    TickArchiveCapture,
+    TickMarkerCapture,
+    TickActionAdmission,
     TickStorageAdmission,
     TickGraphAdmission,
     TickMaterialAdmission,
@@ -138,6 +156,11 @@ pub(crate) struct Timing {
 }
 
 impl Timing {
+    pub(crate) fn measure<T>(stage: Stage, tick: u64, operation: impl FnOnce() -> T) -> T {
+        let _timing = Self::start(stage, tick);
+        operation()
+    }
+
     pub(crate) fn start(stage: Stage, tick: u64) -> Self {
         Self {
             started: (std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1")).then(Instant::now),

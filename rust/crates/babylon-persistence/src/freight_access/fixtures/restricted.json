@@ -1,0 +1,85 @@
+{
+  "diagnostics": [
+    {
+      "code": "no_directed_road_path",
+      "destination_county_geoid": "26099",
+      "source_county_geoid": "26163"
+    }
+  ],
+  "paths": [
+    {
+      "destination_county_geoid": "26099",
+      "path": {
+        "distance_mm": 0,
+        "edge_ids": []
+      },
+      "source_county_geoid": "26099"
+    },
+    {
+      "destination_county_geoid": "26163",
+      "path": {
+        "distance_mm": 240619,
+        "edge_ids": [
+          "w40:0:1:f"
+        ]
+      },
+      "source_county_geoid": "26099"
+    },
+    {
+      "destination_county_geoid": "26099",
+      "path": null,
+      "source_county_geoid": "26163"
+    },
+    {
+      "destination_county_geoid": "26163",
+      "path": {
+        "distance_mm": 0,
+        "edge_ids": []
+      },
+      "source_county_geoid": "26163"
+    }
+  ],
+  "policy": {
+    "anchor": "existing Michigan interior-land county atlas anchor",
+    "attachment_distance": "WGS84 geodesic, half-up millimetres, minimum one millimetre",
+    "attachment_limit_mm": 5000,
+    "physical_path_distance": "sum of directed road edge distances; excludes Designed attachment distance",
+    "projection": "EPSG5070-to-EPSG4326;pyproj=3.8.0;PROJ=9.8.1",
+    "terminal_evidence_class": "Designed",
+    "usable_node": "has an incoming and an outgoing physical road edge"
+  },
+  "schema": "MichiganCountyPathMatrixV1",
+  "source_pins": {
+    "graph_sha256": "bc801049424a7c4255ce6c5abaa795bc6b7bce627c26fef50303878c26818387"
+  },
+  "terminals": [
+    {
+      "anchor_lat_e7": 440000000,
+      "anchor_lon_e7": -849960000,
+      "atlas_grid_x": 2,
+      "atlas_grid_y": 1,
+      "attachment_distance_mm": 1,
+      "county_geoid": "26099",
+      "county_name": "Macomb fixture",
+      "evidence_class": "Designed",
+      "node_id": 4,
+      "node_lat_e7": 440000000,
+      "node_lon_e7": -849960000,
+      "status": "attached"
+    },
+    {
+      "anchor_lat_e7": 440000000,
+      "anchor_lon_e7": -849990000,
+      "atlas_grid_x": 1,
+      "atlas_grid_y": 1,
+      "attachment_distance_mm": 1,
+      "county_geoid": "26163",
+      "county_name": "Wayne fixture",
+      "evidence_class": "Designed",
+      "node_id": 1,
+      "node_lat_e7": 440000000,
+      "node_lon_e7": -849990000,
+      "status": "attached"
+    }
+  ]
+}

@@ -14,3 +14,5 @@ use projection::{add_time, Budgets, Principal, Totals};
 use super::ProductionProjectionError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_tick::material_world::MaterialTickReceipts;
+
+pub(crate) use projection::validate_completed_labor;

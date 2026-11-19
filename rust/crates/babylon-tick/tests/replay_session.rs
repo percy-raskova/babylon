@@ -1765,3 +1765,103 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         Err(ReplayTickIdentityError::RuleOutcomeOrder)
     ));
 }
+
+#[test]
+fn company_portfolio_uses_one_replay_keyed_draw_and_only_current_company_evidence() {
+    use std::fmt::Write as _;
+
+    const STRUCTURE: &str =
+        include_str!("../../../../content/scenarios/national/structure-companies.bscn");
+    const RULE: &str = include_str!("../../../../content/scenarios/national/company-portfolio.bsl");
+    let fields = ["defer", "replacement", "modest", "larger"];
+    let outcomes = [
+        "DEFER",
+        "REPLACEMENT_ONLY",
+        "MODEST_EXPANSION",
+        "LARGER_EXPANSION",
+    ];
+    let mut scenario = STRUCTURE
+        .trim_end()
+        .strip_suffix(')')
+        .expect("scenario closes")
+        .to_owned();
+    for node in 0..5 {
+        write!(scenario, "\n(node c{node} NodeType/COMPANY").expect("String write");
+        for (branch, field) in fields.iter().enumerate() {
+            let weight = u8::from(branch == node || node == 4);
+            write!(scenario, " (company/{field}-weight {weight})").expect("String write");
+        }
+        let period = u8::from(node != 4);
+        write!(scenario, " (company/evidence-period {period}) (company/selected-portfolio 0) (company/selection-period 0))").expect("String write");
+    }
+    scenario.push(')');
+    let id = ReplaySessionId::try_from("company/branch-contract").expect("session id");
+    let mut session = ReplayTickSession::new(
+        &scenario,
+        None,
+        RULE,
+        HypergraphStore::default(),
+        id.clone(),
+        ReplaySeed::new(37),
+        content_for(RULE),
+        foundation_reference(),
+        foundation_material_state(),
+    )
+    .expect("admitted production rule");
+    let actions = OrderedPracticeActionBatch::empty(id, 1).expect("empty batch");
+    let mut sink = CollectingSink::default();
+    let report = session
+        .advance(&mut sink, &actions)
+        .expect("four governed draws");
+    assert_eq!(report.rng_seed(), ReplaySeed::new(37));
+    let receipts = &report.report().choice_receipts;
+    assert_eq!(receipts.len(), 4);
+    for ((index, receipt), expected) in (0_u8..).zip(receipts).zip(outcomes) {
+        assert_eq!(receipt.rule_id(), "company/portfolio-investment");
+        assert_eq!(receipt.sample(), "company/investment-portfolio");
+        assert_eq!(receipt.slot(), 0);
+        assert_eq!(
+            receipt.stable_carrier(),
+            &StableElementKey::Node {
+                scenario: "economy/national-world".into(),
+                local_name: format!("c{index}")
+            }
+        );
+        assert_eq!(receipt.selected_outcome(), expected);
+        assert!(receipt
+            .branches()
+            .iter()
+            .map(|b| b.member.as_str())
+            .eq(outcomes));
+        let winner = &receipt.branches()[usize::from(index)];
+        assert_eq!(winner.tickets.start, 0);
+        assert_eq!(winner.tickets.end, 1_u128 << 64);
+        assert!(receipt
+            .branches()
+            .iter()
+            .filter(|b| b.member != expected)
+            .all(|b| b.tickets.count == 0));
+        let node = NodeId(u64::from(index));
+        assert_eq!(
+            session
+                .graph()
+                .node_attribute(node, "company/selected-portfolio")
+                .expect("selected portfolio"),
+            f64::from(index)
+        );
+        assert_eq!(
+            session
+                .graph()
+                .node_attribute(node, "company/selection-period")
+                .expect("selected period"),
+            1.0
+        );
+    }
+    assert_eq!(
+        session
+            .graph()
+            .node_attribute(NodeId(4), "company/selection-period")
+            .expect("unselected period"),
+        0.0
+    );
+}

@@ -4,6 +4,7 @@
 mod actors;
 
 pub mod aid;
+pub mod claimant;
 
 mod equipment;
 
@@ -12,6 +13,7 @@ mod external;
 mod financial;
 
 mod household_time;
+mod lifecycle;
 
 mod markets;
 

@@ -15,6 +15,13 @@ pub use crate::organizer_runtime::{
 };
 
 pub use babylon_practice_contract::{
+    OrganizerHearingDelegation, OrganizerHearingMandate, OrganizerHearingNotice,
+    OrganizerHearingOffer, OrganizerHearingOutcome, OrganizerHearingReceipt,
+    OrganizerHearingResponse, OrganizerHearingReview, OrganizerHearingSeat,
+    OrganizerHearingTestimony,
+};
+
+pub use babylon_practice_contract::{
     OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
     OrganizerAidOption, OrganizerAllocation, OrganizerChoice, OrganizerCollectionOutcome,
     OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
@@ -28,7 +35,7 @@ pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
 use babylon_kernel::clock::CampaignDuration;
 use uuid::Uuid;
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 19;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 21;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -62,6 +69,8 @@ fn required_nullable_world_hash<'de, D: serde::Deserializer<'de>>(
 pub enum RuntimeSessionPreset {
     #[serde(rename = "national-world")]
     NationalWorld,
+    #[serde(rename = "national-economy")]
+    NationalEconomy,
     #[serde(rename = "organize-in-wayne")]
     OrganizeInWayne,
     Standard,
@@ -90,7 +99,7 @@ pub enum RuntimeSessionPreset {
 impl RuntimeSessionPreset {
     pub(super) const fn delivery(self) -> Option<MichiganDeliveryPreset> {
         Some(match self {
-            Self::NationalWorld => return None,
+            Self::NationalWorld | Self::NationalEconomy => return None,
             Self::OrganizeInWayne => MichiganDeliveryPreset::OrganizeInWayne,
             Self::Standard => MichiganDeliveryPreset::Standard,
             Self::Delayed => MichiganDeliveryPreset::Delayed,
@@ -309,10 +318,27 @@ mod selection_tests {
 
     #[test]
     fn national_selection_has_no_michigan_fallback_or_open_override() {
-        let preset: RuntimeSessionPreset = serde_json::from_str("\"national-world\"")
-            .expect("the authored JSON matches the declared schema");
-        assert_eq!(preset, RuntimeSessionPreset::NationalWorld);
-        assert_eq!(preset.delivery(), None);
+        for (name, preset) in [
+            ("national-world", RuntimeSessionPreset::NationalWorld),
+            ("national-economy", RuntimeSessionPreset::NationalEconomy),
+        ] {
+            let wire = serde_json::json!(name);
+            assert_eq!(
+                serde_json::to_value(preset).expect("preset wire name"),
+                wire
+            );
+            assert_eq!(
+                serde_json::from_value::<RuntimeSessionPreset>(wire).expect("national preset"),
+                preset
+            );
+            assert_eq!(preset.delivery(), None);
+            assert!(
+                serde_json::from_value::<RuntimeSessionTarget>(serde_json::json!({
+                    "type": "open", "campaign_id": Uuid::from_u128(7).to_string(), "preset": name
+                }))
+                .is_err()
+            );
+        }
         assert_eq!(
             RuntimeSessionPreset::Standard.delivery(),
             Some(MichiganDeliveryPreset::Standard)
@@ -322,21 +348,19 @@ mod selection_tests {
             "National-world",
             "national_world",
             "national-world ",
+            "national_economy",
         ] {
             assert!(
                 serde_json::from_value::<RuntimeSessionPreset>(serde_json::json!(selection))
                     .is_err()
             );
         }
-        assert!(serde_json::from_value::<RuntimeSessionTarget>(serde_json::json!({
-            "type": "open", "campaign_id": Uuid::from_u128(7).to_string(), "preset": "national-world"
-        })).is_err());
     }
 }
 
 #[test]
 fn advance_progress_current_wire_is_closed_and_versioned() {
-    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 19);
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 21);
     assert!(
         serde_json::from_value::<RuntimeSessionTail>(serde_json::json!({
             "resolve_tick": 0, "tick_content_hash": null

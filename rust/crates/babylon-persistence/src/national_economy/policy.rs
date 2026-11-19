@@ -7,7 +7,8 @@ mod game;
 
 pub use game::{
     GameAidPolicy, GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
-    GameOrganizerPolicy, GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
-    NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
+    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdSupportClaimant,
+    GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed, GameOrganizerPolicy,
+    GamePrice, GameProfile, GameRecipe, GameServiceReach, InitialAgeDistribution,
+    NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
 };

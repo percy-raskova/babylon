@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_persistence::production_observation::ProductionSnapshot;
+use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 use bevy::prelude::{Rect, Vec2, Vec3};
 
 use crate::production_brief;
@@ -29,31 +29,11 @@ impl ProductionLayout {
         let neighbors = selected
             .map(|site| production_brief::dependency_sites(site, snapshot))
             .unwrap_or_default();
-        let mut groups: Vec<_> = neighbors
-            .iter()
-            .map(|(_, site)| site.id.as_str())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        let service = snapshot.maintenance_account.as_ref();
-        groups.sort_by_key(|id| {
-            (
-                !service.is_some_and(|account| {
-                    *id == account.provider_site_id || *id == account.consumer_site_id
-                }),
-                *id,
-            )
-        });
+        let (_, page_ids) = neighbor_page(snapshot, &neighbors, page);
         let ids: Vec<_> = selected
             .into_iter()
             .map(|site| site.id.clone())
-            .chain(
-                groups
-                    .into_iter()
-                    .skip(page.saturating_mul(6))
-                    .take(6)
-                    .map(str::to_owned),
-            )
+            .chain(page_ids.into_iter().map(str::to_owned))
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
@@ -104,6 +84,38 @@ impl ProductionLayout {
             platforms,
         }
     }
+}
+
+/// The circuit and its link controls share exactly the same page membership.
+pub(crate) fn neighbor_page<'a>(
+    snapshot: &ProductionSnapshot,
+    neighbors: &[(DependencyDirection, &'a ProductionSite)],
+    page: usize,
+) -> (usize, BTreeSet<&'a str>) {
+    let mut groups: Vec<_> = neighbors
+        .iter()
+        .map(|(_, site)| site.id.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let service = snapshot.maintenance_account.as_ref();
+    groups.sort_by_key(|id| {
+        (
+            !service.is_some_and(|account| {
+                *id == account.provider_site_id || *id == account.consumer_site_id
+            }),
+            *id,
+        )
+    });
+    let count = groups.len();
+    (
+        count,
+        groups
+            .into_iter()
+            .skip(page.saturating_mul(6))
+            .take(6)
+            .collect(),
+    )
 }
 
 fn reachable(start: usize, edges: &BTreeSet<(usize, usize)>, undirected: bool) -> BTreeSet<usize> {

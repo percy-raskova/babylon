@@ -1,0 +1,416 @@
+{
+  "campaign": "5efafb84-10df-41ea-9451-51b8c7e2020d",
+  "evidence": "PostgreSQL financial publication and the full-observer household reading for the ordinary national demographic campaign, seed 319.",
+  "source_directory": "per293-ordinary-v10-seed319-p65",
+  "source_manifest_sha256": "583bdb52c8d7dc858ef54a23af0fece465952caccdb0d19b9a388a3ba58c5c34",
+  "measurements": {
+    "P15_database_bytes": 329332403,
+    "P15_to_P65_database_growth_bytes": 411934720,
+    "P65_Archive_county_field_comparison": {
+      "candidate_actual_rows": 0,
+      "candidate_only": 0,
+      "candidate_server_execution_ms": 0.75,
+      "equivalent": true,
+      "error": null,
+      "original_only": 0
+    },
+    "P65_DB_bytes_in_separate_restored_copy": 716527283,
+    "P65_database_bytes": 741267123,
+    "P65_restore_archive_bytes": 515206922,
+    "closed_seconds_from_initial_operation_start": 1797.5944018363953,
+    "fastest_durable_and_published_seconds": 17.359423560090363,
+    "first_restore_seconds": 22.94491634494625,
+    "household_food_retailer": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+    "median_durable_and_published_seconds": 17.97925626602955,
+    "median_durable_seconds": 6.653883914928883,
+    "periods_verified": 51,
+    "selected_site_CLI_sha256": "44ad3e401920c82716cdc49821726fe633baa8d0c9a19c2dee928ad4002e9cc4",
+    "selected_site_SQL_fields_matched_to_live_and_restored_CLI": 16,
+    "separately_timed_closes": 51,
+    "site_and_household_food_retailer_match": true,
+    "slowest_durable_and_published_seconds": 45.278961261035874,
+    "sql_to_CLI_currency_fields_compared": 117,
+    "total_timed_advance_through_journal_seconds": 960.1140337826218
+  },
+  "five_year_restore_sha256": "52575d0839f5beac3a0b56f8b7f983d335a5c594976f1cb045cb64db2358f726",
+  "periods": [
+    {
+      "period": 14,
+      "verified_sources": {
+        "statement_sha256": "ca61e4b938b40f9d65d205584e9395654c7be49ee8b133fdaee5dc5043e7b92e",
+        "household_sha256": "3c237466e4ab209993321faae756c13d047589fabaa83a3f15fa991f2266cf0f"
+      },
+      "closing_marker": {
+        "company_count": 99,
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "receipts_sha256": "7bea21deef14562ba55261f1bef95fe5b72140f0fdd2b980250221e7f0f2b08f",
+        "tick_sha256": "1ac985ca6cdd8ef564c8d17fa61f6dbce2504dd2d369bb40ff78672212103807",
+        "world_sha256": "f7b1f8f02ea4d5294e71f6b1fdf0492ace44951917e0cf141896f9a8108b0d1b"
+      },
+      "owned_sites_checked": 2788,
+      "active_owned_sites": 970,
+      "company_scopes_checked": 297,
+      "parent_cash_micros": "147730199784483748",
+      "selected_site": {
+        "company_id": "022f913cafb4987218f786efc4aa383f568e8999a94726b89e444b7e36bd853f",
+        "company_label": "Distribution/transport · National 1",
+        "county_geoid": "26163",
+        "industry_label": "Distribution/transport",
+        "location_key": "county:26163",
+        "site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f"
+      },
+      "site_statement_micros": {
+        "cash_flow_financing_micros": "0",
+        "cash_flow_investing_micros": "0",
+        "cash_flow_operating_micros": "9210000000",
+        "cash_flow_reserve_reclassification_micros": "-113811944400000",
+        "closing_cash_micros": "776472279197375",
+        "closing_total_assets_micros": "1597037536697375",
+        "closing_total_equity_micros": "1597037536697375",
+        "closing_total_liabilities_micros": "0",
+        "contributions_received_micros": "0",
+        "distributions_paid_micros": "0",
+        "income_sales_micros": "9210000000",
+        "net_income_micros": "-113801949240000",
+        "opening_cash_micros": "890275013597375",
+        "opening_total_assets_micros": "1710839485937375",
+        "opening_total_equity_micros": "1710839485937375",
+        "opening_total_liabilities_micros": "0"
+      },
+      "household": "3e2788448c4676d1468036aec970c2eb5aa5ecaebaa0cba1f7905f1153d1c867",
+      "food": {
+        "retailer_site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+        "retailer_name": "Wayne County: distribution_transport (5)",
+        "opening_stock": 0,
+        "requested": 2394514,
+        "admitted": 2394514,
+        "expired": 2394500,
+        "closing_stock": 0,
+        "good": "food",
+        "unit": "person-period food parcel",
+        "required": 1197257,
+        "purchased": 14,
+        "consumed": 14,
+        "unmet": 1197243
+      },
+      "public_support": [
+        {
+          "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+          "requested_micros": "10874360000000",
+          "paid_micros": "10874360000000",
+          "unfunded_micros": "0"
+        }
+      ],
+      "household_cash": {
+        "wages_accrued_micros": "129051120000000",
+        "wages_paid_micros": "129051120000000",
+        "goods_purchases_settled_micros": "5963000000",
+        "service_purchases_settled_micros": "0"
+      },
+      "population": {
+        "opening": {
+          "under_16": 201199,
+          "age_16_17": 29601,
+          "age_18_64": 750884,
+          "age_65_plus": 215573
+        },
+        "closing": {
+          "under_16": 201245,
+          "age_16_17": 29253,
+          "age_18_64": 750715,
+          "age_65_plus": 216099
+        },
+        "opening_households": 456528,
+        "closing_households": 456528,
+        "births": 1013,
+        "deaths": {
+          "under_16": 3,
+          "age_16_17": 0,
+          "age_18_64": 255,
+          "age_65_plus": 700
+        },
+        "reached_16": 964,
+        "reached_18": 1312,
+        "reached_65": 1226
+      }
+    },
+    {
+      "period": 65,
+      "verified_sources": {
+        "statement_sha256": "b601381b66914d64cf0f413377d5bd09bd274154114c96d73049565b06bf3df6",
+        "household_sha256": "2f699d5a019c04a2ed4bce774d4367c7deaa9e07c9f2f72483aa79a9a0ccdb42"
+      },
+      "closing_marker": {
+        "company_count": 99,
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "receipts_sha256": "c90758521c87236f58d02a8d3eb2094b58eb03bb096bcbc10779eb85610a332e",
+        "tick_sha256": "93438e968700d0d516b829785094dd0e7c5419211d50b54e4696fabfc995a1aa",
+        "world_sha256": "9ab00c12b584bf84b22907819e1cce1ab1099b3ea76c125236c48f8cfbfbb7b5"
+      },
+      "owned_sites_checked": 2788,
+      "active_owned_sites": 413,
+      "company_scopes_checked": 297,
+      "parent_cash_micros": "95619266188680890",
+      "selected_site": {
+        "company_id": "022f913cafb4987218f786efc4aa383f568e8999a94726b89e444b7e36bd853f",
+        "company_label": "Distribution/transport · National 1",
+        "county_geoid": "26163",
+        "industry_label": "Distribution/transport",
+        "location_key": "county:26163",
+        "site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f"
+      },
+      "site_statement_micros": {
+        "cash_flow_financing_micros": "0",
+        "cash_flow_investing_micros": "0",
+        "cash_flow_operating_micros": "17625000000",
+        "cash_flow_reserve_reclassification_micros": "-17448000000",
+        "closing_cash_micros": "17644397375",
+        "closing_total_assets_micros": "820526155457375",
+        "closing_total_equity_micros": "820526155457375",
+        "closing_total_liabilities_micros": "0",
+        "contributions_received_micros": "0",
+        "distributions_paid_micros": "0",
+        "income_sales_micros": "17625000000",
+        "net_income_micros": "-1014240000",
+        "opening_cash_micros": "17467397375",
+        "opening_total_assets_micros": "820527169697375",
+        "opening_total_equity_micros": "820527169697375",
+        "opening_total_liabilities_micros": "0"
+      },
+      "household": "3e2788448c4676d1468036aec970c2eb5aa5ecaebaa0cba1f7905f1153d1c867",
+      "food": {
+        "retailer_site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+        "retailer_name": "Wayne County: distribution_transport (5)",
+        "opening_stock": 0,
+        "requested": 2395054,
+        "admitted": 2395054,
+        "expired": 2395039,
+        "closing_stock": 0,
+        "good": "food",
+        "unit": "person-period food parcel",
+        "required": 1197527,
+        "purchased": 15,
+        "consumed": 15,
+        "unmet": 1197512
+      },
+      "public_support": [
+        {
+          "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+          "requested_micros": "10874360000000",
+          "paid_micros": "0",
+          "unfunded_micros": "10874360000000"
+        }
+      ],
+      "household_cash": {
+        "wages_accrued_micros": "17448000000",
+        "wages_paid_micros": "17448000000",
+        "goods_purchases_settled_micros": "12825000000",
+        "service_purchases_settled_micros": "0"
+      },
+      "population": {
+        "opening": {
+          "under_16": 202991,
+          "age_16_17": 25044,
+          "age_18_64": 729657,
+          "age_65_plus": 239835
+        },
+        "closing": {
+          "under_16": 203009,
+          "age_16_17": 25044,
+          "age_18_64": 729167,
+          "age_65_plus": 240261
+        },
+        "opening_households": 456528,
+        "closing_households": 456528,
+        "births": 985,
+        "deaths": {
+          "under_16": 3,
+          "age_16_17": 1,
+          "age_18_64": 248,
+          "age_65_plus": 779
+        },
+        "reached_16": 964,
+        "reached_18": 963,
+        "reached_65": 1205
+      }
+    },
+    {
+      "period": 260,
+      "verified_sources": {
+        "statement_sha256": "8a0411a5d8555ca657e91e8a608c3ae71093c5f437f664c3db03812f26431c2e",
+        "household_sha256": "3bfb696243f084bd93e58ea0be0a336dd2ef5d46e41ab664c825611ce715d5e3",
+        "site_sha256": "7d796c60ad9f97ab28464321fc90ce786181dd4b8b0a6af2dddb3022e4e2dede",
+        "decision_sha256": "a8cee67e42ad86a85852f769adbba2095adfed5d54178f42cb9a603ca1e86895",
+        "company_sha256": "dda24f52567bd8b6954a3e7b0ecb7eacd1f38580819d92d902c75153ea4f99db",
+        "county_flow_sha256": "4333b2ed66dba1fe38be53672875a4a60feb17191ed8713164f9dbd0d96aee02"
+      },
+      "closing_marker": {
+        "company_count": 99,
+        "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+        "receipts_sha256": "5a6fb2328fc4f6d1abc11bdcab6691a29f146cca563635b8ffb38885220efee3",
+        "tick_sha256": "925f52613dda62d764766231cfa502d98e8d81bad9d95d5edb76131c68b9ed91",
+        "world_sha256": "da5bca935a47cbcc3e1285a90d7df207ff06baad9953cded0e25ab2d38f90537"
+      },
+      "owned_sites_checked": 2788,
+      "active_owned_sites": 221,
+      "company_scopes_checked": 297,
+      "parent_cash_micros": "92831224358747808",
+      "selected_site": {
+        "company_id": "022f913cafb4987218f786efc4aa383f568e8999a94726b89e444b7e36bd853f",
+        "company_label": "Distribution/transport · National 1",
+        "county_geoid": "26163",
+        "industry_label": "Distribution/transport",
+        "location_key": "county:26163",
+        "site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f"
+      },
+      "site_statement_micros": {
+        "cash_flow_financing_micros": "0",
+        "cash_flow_investing_micros": "0",
+        "cash_flow_operating_micros": "18032000000",
+        "cash_flow_reserve_reclassification_micros": "-18048000000",
+        "closing_cash_micros": "18039397375",
+        "closing_total_assets_micros": "794089650577375",
+        "closing_total_equity_micros": "794089650577375",
+        "closing_total_liabilities_micros": "0",
+        "contributions_received_micros": "0",
+        "distributions_paid_micros": "0",
+        "income_sales_micros": "18032000000",
+        "net_income_micros": "-809080000",
+        "opening_cash_micros": "18055397375",
+        "opening_total_assets_micros": "794090459657375",
+        "opening_total_equity_micros": "794090459657375",
+        "opening_total_liabilities_micros": "0"
+      },
+      "household": "3e2788448c4676d1468036aec970c2eb5aa5ecaebaa0cba1f7905f1153d1c867",
+      "food": {
+        "retailer_site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+        "retailer_name": "Wayne County: distribution_transport (5)",
+        "opening_stock": 0,
+        "requested": 2319510,
+        "admitted": 2319510,
+        "expired": 2319499,
+        "closing_stock": 0,
+        "good": "food",
+        "unit": "person-period food parcel",
+        "required": 1159755,
+        "purchased": 11,
+        "consumed": 11,
+        "unmet": 1159744
+      },
+      "public_support": [
+        {
+          "public_payer": "0c9ae50b2e3c3f6e797fff2b79d9479782867ef97a8668bee811296b694018ef",
+          "requested_micros": "10874360000000",
+          "paid_micros": "0",
+          "unfunded_micros": "10874360000000"
+        }
+      ],
+      "household_cash": {
+        "wages_accrued_micros": "18048000000",
+        "wages_paid_micros": "18048000000",
+        "goods_purchases_settled_micros": "13592000000",
+        "service_purchases_settled_micros": "0"
+      },
+      "population": {
+        "opening": {
+          "under_16": 193327,
+          "age_16_17": 25950,
+          "age_18_64": 645236,
+          "age_65_plus": 295242
+        },
+        "closing": {
+          "under_16": 193205,
+          "age_16_17": 25938,
+          "age_18_64": 644891,
+          "age_65_plus": 295410
+        },
+        "opening_households": 456528,
+        "closing_households": 456528,
+        "births": 871,
+        "deaths": {
+          "under_16": 2,
+          "age_16_17": 1,
+          "age_18_64": 219,
+          "age_65_plus": 960
+        },
+        "reached_16": 991,
+        "reached_18": 1002,
+        "reached_65": 1128
+      },
+      "food_retailer_statement": {
+        "retailer_site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+        "same_as_selected_owned_site": true,
+        "receipt_sha256": "7d796c60ad9f97ab28464321fc90ce786181dd4b8b0a6af2dddb3022e4e2dede",
+        "statement_micros": {
+          "cash_flow_financing_micros": "0",
+          "cash_flow_investing_micros": "0",
+          "cash_flow_operating_micros": "18032000000",
+          "cash_flow_reserve_reclassification_micros": "-18048000000",
+          "closing_cash_micros": "18039397375",
+          "closing_total_assets_micros": "794089650577375",
+          "closing_total_equity_micros": "794089650577375",
+          "closing_total_liabilities_micros": "0",
+          "contributions_received_micros": "0",
+          "distributions_paid_micros": "0",
+          "income_sales_micros": "18032000000",
+          "net_income_micros": "-809080000",
+          "opening_cash_micros": "18055397375",
+          "opening_total_assets_micros": "794090459657375",
+          "opening_total_equity_micros": "794090459657375",
+          "opening_total_liabilities_micros": "0"
+        }
+      },
+      "food_stock_reconciliation": {
+        "closing_plus_consumed_less_opening_less_purchased_parcels": 0,
+        "scope": "Net pantry change outside this household's recorded commercial purchases and consumption."
+      },
+      "selected_company_portfolio": "DEFER"
+    }
+  ],
+  "twenty_year_source_directory": "per293-ordinary-v10-seed319-p260",
+  "twenty_year_source_manifest_sha256": "84f7e56c3e84c0974e50b3bc8cd8758a5549b96b808e1db6fe38318117dbd18a",
+  "twenty_year_restore_sha256": "54721a11f3f39e00e2eec7a72a6abb68fc19c3b5705c46876b783c911443586b",
+  "twenty_year_material_manifest_sha256": "9588bdf45465e75230fdd7eea7a5eb8e9abb217a9c40bc249a6951c6b1b50c47",
+  "twenty_year_measurements": {
+    "additional_periods": 195,
+    "timed_periods": 195,
+    "first_runtime_to_durable_seconds": {
+      "count": 195,
+      "max": 7.229943712009117,
+      "median": 6.71770310588181,
+      "min": 6.5325006630737334,
+      "p95_nearest_rank": 6.92794289579615,
+      "sum": 1311.8014181575272
+    },
+    "first_runtime_to_financial_seconds": {
+      "count": 195,
+      "max": 81.95684964000247,
+      "median": 18.74442644789815,
+      "min": 17.623962874989957,
+      "p95_nearest_rank": 19.48283553402871,
+      "sum": 3719.9629165155347
+    },
+    "end_to_end_seconds": 5665.276697874069,
+    "P260_last_financial_database_bytes": 2389595827,
+    "P260_restored_database_bytes": 2378880691,
+    "peak_live_database_bytes": 2389595827,
+    "portable_bytes": 1927236444,
+    "P260_payment_count": 4761,
+    "starting_restore_sha256": "52575d0839f5beac3a0b56f8b7f983d335a5c594976f1cb045cb64db2358f726",
+    "verified_advances": [
+      66,
+      260
+    ],
+    "six_matching_identities_per_advance": 6,
+    "financial_and_archive_through": 260,
+    "sql_to_company_CLI_currency_fields_compared": 117,
+    "live_and_restored_reports_byte_identical": [
+      "company",
+      "selected_owned_site",
+      "investment",
+      "household",
+      "actual_food_retailer",
+      "wayne_flows"
+    ]
+  }
+}

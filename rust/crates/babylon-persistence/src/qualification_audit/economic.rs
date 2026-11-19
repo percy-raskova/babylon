@@ -798,7 +798,23 @@ impl Audit {
             CashTransferPurpose::CapitalContribution,
         ] {
             let expected = if kind == CashTransferPurpose::OwnershipDistribution {
-                Self::distribution_payments(&r.distributions, tick)?
+                let mut expected = Self::distribution_payments(&r.distributions, tick)?;
+                babylon_material_circuit::validate_company_distributions(&r.company_distributions)
+                    .map_err(|_| Refusal::Ownership)?;
+                for row in &r.company_distributions {
+                    if row.period != tick {
+                        return Err(Refusal::Ownership);
+                    }
+                    if row.paid.micro_units() > 0 {
+                        cash(
+                            expected
+                                .entry((AccountId::Company(row.company), row.beneficiary))
+                                .or_default(),
+                            row.paid.micro_units(),
+                        )?;
+                    }
+                }
+                expected
             } else {
                 Self::contribution_payments(&r.contributions, tick)?
             };

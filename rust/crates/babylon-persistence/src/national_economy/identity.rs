@@ -10,10 +10,18 @@ use babylon_kernel::economic_location::EconomicLocation;
 
 use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::content_digest;
-use babylon_material_circuit::{FinalDemandPrincipalId, SiteId, StaffingPoolId};
+use babylon_material_circuit::{FinalDemandPrincipalId, GoodId, SiteId, StaffingPoolId};
 
 /// Qualified BSCN scope shared by every national graph subject.
 pub const NATIONAL_SCENARIO_ID: &str = "economy/national-world";
+
+/// Stable identity of a national scenario commodity, independent of its display label.
+#[must_use]
+pub fn commodity_good_id(key: &str) -> GoodId {
+    let mut bytes = b"NationalGoodV1\0".to_vec();
+    bytes.extend_from_slice(key.as_bytes());
+    GoodId::from_bytes(content_digest::sha256_of(&bytes))
+}
 
 /// The observation supporting activity, or a named Designed placement.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,7 +198,7 @@ pub(super) fn representative_workplace(
         key.ownership,
         0,
         &bytes,
-        format!("site-{}", base32(&digest)),
+        format!("site-{}", content_digest::base32(&digest)),
         ResidentWorkplaceSource::Representative(key),
     )
 }
@@ -208,26 +216,9 @@ pub(super) fn representative_household(
 pub(super) fn principal_subject(principal: FinalDemandPrincipalId) -> StableElementKey {
     StableElementKey::Node {
         scenario: NATIONAL_SCENARIO_ID.into(),
-        local_name: format!("household-{}", base32(&principal.as_bytes())),
+        local_name: format!(
+            "household-{}",
+            content_digest::base32(&principal.as_bytes())
+        ),
     }
-}
-pub(super) fn base32(bytes: &[u8; 32]) -> String {
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let mut result = String::with_capacity(52);
-    let mut bits = 0_u16;
-    let mut count = 0;
-    for byte in bytes {
-        bits = (bits << 8) | u16::from(*byte);
-        count += 8;
-        while count >= 5 {
-            count -= 5;
-            result.push(char::from(ALPHABET[usize::from((bits >> count) & 31)]));
-        }
-    }
-    if count > 0 {
-        result.push(char::from(
-            ALPHABET[usize::from((bits << (5 - count)) & 31)],
-        ));
-    }
-    result
 }

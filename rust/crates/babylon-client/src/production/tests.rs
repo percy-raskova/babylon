@@ -1,3 +1,4 @@
+use super::accounting::AccountsView;
 use super::view;
 use super::view::{
     PrimaryView, ProductionBrief, ProductionButton, ProductionCamera, ProductionCommand,
@@ -19,6 +20,7 @@ use crate::production_brief;
 use crate::production_brief::DependencyDirection;
 use crate::production_layout;
 use crate::production_layout::ProductionLayout;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 use babylon_persistence::production_observation::{ProductionInput, ProductionRoute};
@@ -414,6 +416,7 @@ fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(text.contains("COMMITTED WORK TIME / PERIOD 5 / DERIVED"));
     assert!(text.contains("80 used + 40 unused = 120 available"));
@@ -441,6 +444,7 @@ fn foundation_labor_account_does_not_invent_a_completed_work_period() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(!text.contains("COMMITTED WORK TIME"));
     assert!(text.contains("Next opening (period 1): 120 labor-hours (Derived)"));
@@ -473,6 +477,8 @@ fn staffing_account(
             period: 5,
             opening_employed: 4,
             opening_reserve: 0,
+            employed_removed: 0,
+            reserve_removed: 0,
             previous_unretained_hours: 80,
             current_unretained_hours: 40,
             retained_hours: 80,
@@ -517,6 +523,7 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(text.contains("MODELED WORKFORCE / DERIVED"));
     assert!(text.contains("2 employed + 2 reserve = 4 people"));
@@ -554,6 +561,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(foundation.contains("Opening workforce; no completed staffing period."));
     assert!(foundation.contains("MODELED WORKFORCE / DESIGNED"));
@@ -566,6 +574,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot.sites[2],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(missing.contains("No workforce account disclosed for this subject."));
     assert!(!missing.contains("0 employed"));
@@ -576,6 +585,8 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         babylon_persistence::production_observation::CompletedProductionStaffing {
             opening_employed: 2,
             opening_reserve: 2,
+            employed_removed: 0,
+            reserve_removed: 0,
             hires: 0,
             separations: 0,
             ..completed
@@ -602,6 +613,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
+        None,
     );
     assert!(quiet.contains("Work activations: 0 | releases: 0"));
     assert!(!quiet.contains("no completed staffing period"));
@@ -662,6 +674,7 @@ fn inspector_distinguishes_shared_sector_context_from_process_workers() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Sources,
+        None,
     );
     assert!(text.contains("SECTOR CONTEXT / OBSERVED 2024"));
     assert!(text.contains("Manufacturing | NAICS 31-33"));
@@ -674,7 +687,8 @@ fn inspector_distinguishes_shared_sector_context_from_process_workers() {
     assert!(!readings::describe(
         &snapshot.sites[2],
         &snapshot,
-        ProductionReadingSection::Sources
+        ProductionReadingSection::Sources,
+        None
     )
     .contains("SECTOR CONTEXT"));
 }
@@ -690,6 +704,7 @@ fn inspector_keeps_undisclosed_sector_metrics_distinct_from_zero() {
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Sources,
+        None,
     );
     assert!(text.contains("Annual-average jobs: not disclosed"));
     assert!(text.contains("USD 0 annual payroll"));
@@ -2442,7 +2457,7 @@ fn readings_focus_app() -> ReadingsFocusFixture {
     }
 }
 
-fn readings_key(app: &mut App, window: Entity, key_code: KeyCode) {
+pub(crate) fn readings_key(app: &mut App, window: Entity, key_code: KeyCode) {
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::ButtonState;
 
@@ -2498,6 +2513,42 @@ fn reading_sections_switch_by_keyboard_without_changing_the_observed_period() {
 }
 
 #[test]
+fn accounts_keyboard_selection_shows_invalid_evidence_without_changing_the_ledger_period() {
+    use bevy::input_focus::InputFocus;
+    let ReadingsFocusFixture {
+        mut app, window, ..
+    } = readings_focus_app();
+    app.init_resource::<AccountsView>().add_systems(
+        Update,
+        super::accounting::update
+            .after(navigation::navigate)
+            .before(view::paint_readings),
+    );
+    let period = app.world().resource::<ObserverSession>().viewed_tick;
+    for label in ["Accounts", "Investment"] {
+        let selected = {
+            let world = app.world_mut();
+            world
+                .query::<(&Text, &ChildOf)>()
+                .iter(world)
+                .find_map(|(text, parent)| (text.0 == label).then_some(parent.parent()))
+                .expect("a financial reading tab")
+        };
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(selected, FocusCause::Navigated);
+        readings_key(&mut app, window, KeyCode::Enter);
+        assert!(
+            panel_text::<ProductionDetails>(&mut app).contains("Invalid operating-site identity")
+        );
+        assert_eq!(
+            app.world().resource::<ObserverSession>().viewed_tick,
+            period
+        );
+    }
+}
+
+#[test]
 fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ancestor() {
     use bevy::input_focus::InputFocus;
     let ReadingsFocusFixture {
@@ -2514,9 +2565,12 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         .set(close, FocusCause::Navigated);
     for section in [
         ProductionReadingSection::Flow,
+        ProductionReadingSection::Orders,
         ProductionReadingSection::Freight,
         ProductionReadingSection::Work,
         ProductionReadingSection::Sources,
+        ProductionReadingSection::Accounts,
+        ProductionReadingSection::Investment,
     ] {
         readings_key(&mut app, window, KeyCode::Tab);
         let focused = app
@@ -2696,6 +2750,62 @@ fn repainted_reading_scope_reenters_tab_order_after_a_committed_period_refresh()
     assert_eq!(target.context.as_ref(), Some(&context));
     assert!(target.available);
     assert!(app.world().get::<TabIndex>(reading).is_some());
+}
+
+#[test]
+fn section_switches_keep_the_site_links_and_county_controls_for_the_installed_frame() {
+    let mut app = unstarted_dependency_navigation_app();
+    let county = app
+        .world_mut()
+        .spawn((Node::default(), ProductionCountyCohorts))
+        .id();
+    let site = app
+        .world_mut()
+        .query_filtered::<Entity, With<ProductionDependencies>>()
+        .single(app.world())
+        .expect("one circuit dependency panel");
+    app.update();
+    app.world_mut()
+        .resource_mut::<ProductionNavigation>()
+        .selected_site = Some("b".into());
+    app.update();
+    let first = |app: &App, panel| app.world().get::<Children>(panel).expect("has rows")[0];
+    let links = first(&app, site);
+    let cohorts = first(&app, county);
+    for command in [
+        ProductionCommand::Details,
+        ProductionCommand::Reading(ProductionReadingSection::Investment),
+        ProductionCommand::Reading(ProductionReadingSection::Flow),
+    ] {
+        send_command(&mut app, command);
+        assert_eq!(
+            first(&app, site),
+            links,
+            "the same links stay available to focus"
+        );
+        assert_eq!(first(&app, county), cohorts);
+    }
+    let context = app.world().resource::<ObserverSession>().context();
+    send_command(
+        &mut app,
+        ProductionCommand::Select {
+            site_id: "a".into(),
+            context,
+        },
+    );
+    assert_ne!(
+        first(&app, site),
+        links,
+        "a different site installs its own links"
+    );
+    assert_eq!(first(&app, county), cohorts);
+    app.world_mut().resource_mut::<ObserverSession>().generation += 1;
+    app.update();
+    assert_ne!(
+        first(&app, county),
+        cohorts,
+        "a new observation needs new scoped controls"
+    );
 }
 
 #[test]
@@ -2893,7 +3003,8 @@ fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
         "{work}"
     );
     assert!(!work.contains("MERCHANT HANDLING"));
-    let sources = super::readings::describe(provider, &snapshot, ProductionReadingSection::Sources);
+    let sources =
+        super::readings::describe(provider, &snapshot, ProductionReadingSection::Sources, None);
     assert!(
         sources.contains("2 kg parts + 10 labor-hours per job / Designed"),
         "{sources}"
@@ -2955,4 +3066,478 @@ fn maintenance_is_navigable_both_ways_without_becoming_a_parts_route() {
         crate::material_relations::declared_material_relations(&snapshot)
             .all(|row| row.supplier != provider.id)
     );
+}
+
+#[test]
+fn production_labels_and_inspector_show_actual_function_and_preserve_source_codes() {
+    use bevy::ecs::system::RunSystemOnce;
+
+    let mut app = dependency_navigation_app();
+    let mut snapshot = attributed_snapshot();
+    snapshot.sites[0].function = "capital_goods".into();
+    let selected = snapshot.sites[0].clone();
+    let sources = readings::describe(
+        &selected,
+        &snapshot,
+        ProductionReadingSection::Sources,
+        None,
+    );
+    assert!(sources.contains("Capital goods"), "{sources}");
+    assert!(sources.contains("Function code: capital_goods"));
+    assert!(sources.contains("Industry / NAICS: 331"));
+    assert!(sources.contains("Sector / NAICS: 31-33"));
+    assert!(sources.contains("Manufacturing | NAICS 31-33"));
+    assert!(sources.contains("county:26163"));
+    assert!(sources.contains("Modeled processes sharing this context: Cohort a; Cohort b"));
+
+    app.world_mut()
+        .resource_mut::<ObserverFrame>()
+        .0
+        .as_mut()
+        .expect("frame")
+        .production = Some(snapshot.clone());
+    let context = app.world().resource::<ObserverSession>().context();
+    let scene_context = context.clone();
+    app.world_mut()
+        .run_system_once(move |mut commands: Commands| {
+            let parent = commands.spawn_empty().id();
+            view::spawn_site_label(
+                &mut commands,
+                &selected,
+                &scene_context,
+                Vec3::ZERO,
+                true,
+                Color::WHITE,
+                parent,
+            );
+        })
+        .expect("site label");
+    {
+        let world = app.world_mut();
+        assert!(world
+            .query::<&Text>()
+            .iter(world)
+            .any(|text| text.0.contains("Capital goods")));
+    }
+    app.world_mut()
+        .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
+        .expect("readings panel");
+    app.add_systems(Update, view::paint_readings.after(navigation::navigate));
+    send_command(
+        &mut app,
+        ProductionCommand::Select {
+            site_id: "a".into(),
+            context,
+        },
+    );
+    send_command(&mut app, ProductionCommand::Details);
+    assert!(panel_text::<ProductionReadingSubject>(&mut app).contains("Capital goods"));
+    assert_eq!(
+        app.world()
+            .resource::<ObserverFrame>()
+            .0
+            .as_ref()
+            .expect("frame")
+            .production
+            .as_ref(),
+        Some(&snapshot)
+    );
+}
+
+#[test]
+fn production_subject_replaces_only_governed_national_name_tokens() {
+    let mut operating_site = site("a", &[]);
+    operating_site.function = "capital_goods".into();
+    for (authored, expected) in [
+        (
+            "representative capital_goods — Wayne/AboveCellReserveRate",
+            "representative Capital goods — Wayne · above the cell reserve rate",
+        ),
+        (
+            "representative capital_goods — Wayne/Employee",
+            "representative Capital goods — Wayne/Employee",
+        ),
+        ("Wayne: capital_goods (5)", "Wayne: Capital goods (5)"),
+        ("Capital Works", "Capital Works · Capital goods"),
+        (
+            "capital_goods research cooperative",
+            "capital_goods research cooperative · Capital goods",
+        ),
+        (
+            "Wayne: capital_goods (50)",
+            "Wayne: capital_goods (50) · Capital goods",
+        ),
+        (
+            "Wayne: business_services (5)",
+            "Wayne: business_services (5) · Capital goods",
+        ),
+    ] {
+        operating_site.name = authored.into();
+        assert_eq!(readings::site_subject(&operating_site), expected);
+        let mut snapshot = snapshot();
+        snapshot.sites = vec![operating_site.clone()];
+        let sources = readings::describe(
+            &operating_site,
+            &snapshot,
+            ProductionReadingSection::Sources,
+            None,
+        );
+        assert!(sources.contains(&format!("Site name: {authored}")));
+        assert!(sources.contains("Site ID: a"));
+        assert_eq!(snapshot.sites[0].name, authored);
+        assert_eq!(snapshot.sites[0].function, "capital_goods");
+    }
+}
+
+#[test]
+fn household_receipt_opens_from_zero_purchase_and_returns_to_its_retailer() {
+    use bevy::input_focus::InputFocus;
+    let ReadingsFocusFixture {
+        mut app,
+        window,
+        body,
+        reading,
+        ..
+    } = readings_focus_app();
+    let context = app.world().resource::<ObserverSession>().context();
+    let principal = FinalDemandPrincipalId::from_bytes([0x17; 32]);
+    let retailer = open_retailer_with_unfulfilled_food(&mut app);
+    let world = app.world_mut();
+    let (entity, open) = food_button(world, principal);
+    world
+        .resource_mut::<InputFocus>()
+        .set(entity, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Enter);
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().household,
+        Some(principal)
+    );
+    assert_eq!(focused_customer_label(&app), "Back to retailer");
+    readings_key(&mut app, window, KeyCode::PageDown);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("reading scroll")
+            .0
+            .y
+            > 0.0
+    );
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(reading, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Backspace);
+    let nav = app.world().resource::<ProductionNavigation>();
+    assert_eq!(nav.selected_site.as_ref(), Some(&retailer));
+    assert!(nav.details_open && nav.household.is_none());
+    let label = focused_customer_label(&app);
+    app.world_mut()
+        .resource_mut::<ObserverFrame>()
+        .set_changed();
+    app.update();
+    app.update();
+    assert_eq!(
+        focused_customer_label(&app),
+        label,
+        "a refreshed frame preserves its customer"
+    );
+    assert!(label.starts_with("Open household receipt · 17171717"));
+    assert!(label.contains("/ food\n"), "return to the ordered good");
+    let row = app
+        .world()
+        .resource::<InputFocus>()
+        .get()
+        .expect("returned row");
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(reading, FocusCause::Navigated);
+    app.world_mut().entity_mut(row).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert_eq!(focused_customer_label(&app), "Back to retailer");
+    readings_key(&mut app, window, KeyCode::Enter);
+    assert_eq!(focused_customer_label(&app), label);
+    let wrong_retailer = ProductionCommand::Household {
+        site_id: "meals".into(),
+        principal,
+        context,
+    };
+    send_command(&mut app, wrong_retailer);
+    assert!(app
+        .world()
+        .resource::<ProductionNavigation>()
+        .household
+        .is_none());
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .organizer_enabled = true;
+    send_command(&mut app, open.clone());
+    assert!(app
+        .world()
+        .resource::<ProductionNavigation>()
+        .household
+        .is_none());
+    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+    session.organizer_enabled = false;
+    session.viewed_tick = 2;
+    send_command(&mut app, open);
+    assert!(app
+        .world()
+        .resource::<ProductionNavigation>()
+        .household
+        .is_none());
+}
+
+#[test]
+fn retailer_receipt_immediately_refuses_a_period_without_an_admitted_cursor() {
+    use super::customers::{self, Receipt};
+    use bevy::ecs::system::RunSystemOnce;
+
+    let ReadingsFocusFixture { mut app, .. } = readings_focus_app();
+    open_retailer_with_unfulfilled_food(&mut app);
+    let principal = FinalDemandPrincipalId::from_bytes([0x17; 32]);
+    let (button, _) = food_button(app.world_mut(), principal);
+    app.world_mut()
+        .entity_mut(button)
+        .insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().household,
+        Some(principal)
+    );
+    app.init_resource::<Receipt>();
+    app.world_mut()
+        .run_system_once(customers::update)
+        .expect("update the opened receipt");
+    assert!(
+        app.world()
+            .resource::<Receipt>()
+            .text()
+            .contains("SourceChanged"),
+        "an unauthenticated source gives an immediate terminal reading"
+    );
+}
+
+#[test]
+fn resident_food_receipt_selects_the_exact_household_and_retailer_from_the_county_map() {
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::input_focus::InputFocus;
+    use bevy::ui::UiSystems;
+    let ReadingsFocusFixture {
+        mut app,
+        window,
+        body,
+        reading,
+        ..
+    } = readings_focus_app();
+    app.add_systems(
+        PostUpdate,
+        view::reset_inspector_scroll.before(UiSystems::Layout),
+    );
+    app.world_mut()
+        .entity_mut(reading)
+        .insert(UiGlobalTransform::from_translation(Vec2::new(0.0, 518.0)));
+    let retailer = open_retailer_with_unfulfilled_food(&mut app);
+    send_command(&mut app, ProductionCommand::Map);
+    let context = app.world().resource::<ObserverSession>().context();
+    let principal = FinalDemandPrincipalId::from_bytes([0x17; 32]);
+    let county = app
+        .world()
+        .resource::<ObserverFrame>()
+        .0
+        .as_ref()
+        .expect("committed test frame")
+        .production
+        .as_ref()
+        .expect("full-visibility production")
+        .household_accounts[0]
+        .location
+        .to_string();
+    let county = county
+        .strip_prefix("county:")
+        .expect("domestic resident account");
+    let index = app
+        .world()
+        .resource::<CountyAtlas>()
+        .index_of_fips(county)
+        .expect("resident county");
+    app.world_mut().insert_resource(SelectedCounty(Some(index)));
+    app.world_mut()
+        .resource_mut::<ProductionNavigation>()
+        .details_open = false;
+    app.world_mut()
+        .resource_mut::<ObserverUiState>()
+        .history_open = true;
+    let open = ProductionCommand::ResidentReceipt {
+        county: county.to_owned(),
+        site_id: retailer.clone(),
+        principal,
+        context,
+    };
+    let button = app
+        .world_mut()
+        .run_system_once(move |mut commands: Commands| {
+            let mut row = None;
+            commands
+                .spawn((Node::default(), TabGroup::new(24)))
+                .with_children(|panel| {
+                    row = Some(view::button(panel, "Open household receipt", open.clone()));
+                });
+            row.expect("food map receipt button")
+        })
+        .expect("spawn the real production control");
+    app.update();
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(button, FocusCause::Navigated);
+    readings_key(&mut app, window, KeyCode::Enter);
+    let navigation = app.world().resource::<ProductionNavigation>();
+    assert_eq!(
+        *app.world().resource::<PrimaryView>(),
+        PrimaryView::Production
+    );
+    assert_eq!(navigation.household, Some(principal));
+    assert_eq!(navigation.selected_site.as_deref(), Some(retailer.as_str()));
+    assert!(navigation.details_open);
+    assert!(!app.world().resource::<ObserverUiState>().history_open);
+    assert_eq!(navigation.reading_section, ProductionReadingSection::Flow);
+    assert_map_receipt_controls(&mut app, window, body);
+
+    send_command(&mut app, ProductionCommand::Map);
+    app.world_mut().insert_resource(SelectedCounty(Some(index)));
+    app.world_mut()
+        .entity_mut(button)
+        .insert(Interaction::Pressed);
+    app.update();
+    assert_map_receipt_controls(&mut app, window, body);
+}
+
+fn assert_map_receipt_controls(app: &mut App, window: Entity, body: Entity) {
+    app.update(); // Let the regular focus reveal run on the settled receipt.
+    assert_eq!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("receipt scroll")
+            .0,
+        Vec2::ZERO,
+        "opening the map receipt must leave its leading Back row and heading in view"
+    );
+    assert_eq!(focused_customer_label(app), "Back to retailer");
+    readings_key(app, window, KeyCode::PageDown);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("receipt scroll")
+            .0
+            .y
+            > 0.0
+    );
+    readings_key(app, window, KeyCode::Backspace);
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().household,
+        None
+    );
+    assert!(focused_customer_label(app).contains("/ food\n"));
+}
+
+fn open_retailer_with_unfulfilled_food(app: &mut App) -> String {
+    use babylon_persistence::CompletedHouseholdBalance;
+    app.add_systems(
+        Update,
+        super::customers::rebuild_rows.after(navigation::navigate),
+    );
+    let context = app.world().resource::<ObserverSession>().context();
+    let mut snapshot = crate::production_freight::tests::aid_fixture();
+    let row = &mut snapshot.household_accounts[0];
+    row.demand_principal_id = "17".repeat(32);
+    row.good_id = babylon_persistence::qualification_audit::trade::hex(
+        &babylon_persistence::national_economy::commodity_good_id("food").as_bytes(),
+    );
+    row.completed = Some(CompletedHouseholdBalance {
+        population_basis: None,
+        period: 1,
+        opening_stock: 2,
+        received: 0,
+        support_granted: 0,
+        support_dispatched: 0,
+        required: 4,
+        consumed: 2,
+        unmet: 2,
+        closing_stock: 0,
+        desired: 4,
+        requested: 4,
+        admitted: 3,
+        fulfilled: 0,
+        expired: 3,
+    });
+    let retailer = row.retailer_site_id.clone();
+    let mut materials = row.clone();
+    materials.good = "materials".into();
+    materials.good_id = "materials".into();
+    snapshot.household_accounts.insert(0, materials);
+    app.world_mut()
+        .resource_mut::<ObserverFrame>()
+        .0
+        .as_mut()
+        .expect("fixture frame")
+        .production = Some(snapshot);
+    send_command(
+        app,
+        ProductionCommand::Select {
+            site_id: retailer.clone(),
+            context,
+        },
+    );
+    send_command(
+        app,
+        ProductionCommand::Reading(ProductionReadingSection::Flow),
+    );
+    retailer
+}
+
+fn food_button(
+    world: &mut World,
+    principal: FinalDemandPrincipalId,
+) -> (Entity, ProductionCommand) {
+    world
+        .query::<(Entity, &ProductionButton, &Children)>()
+        .iter(world)
+        .find_map(|(entity, button, children)| {
+            let ProductionCommand::Household {
+                principal: customer,
+                ..
+            } = &button.0
+            else {
+                return None;
+            };
+            let food = children
+                .iter()
+                .filter_map(|child| world.get::<Text>(child))
+                .any(|text| text.0.contains("/ food\n"));
+            (food && *customer == principal).then_some((entity, button.0.clone()))
+        })
+        .expect("a zero-purchase household has its own control")
+}
+
+/// Check the same accessible button node and its text child exposed by the native UI tree.
+fn focused_customer_label(app: &App) -> String {
+    use bevy::a11y::AccessibilityNode;
+    use bevy::input_focus::InputFocus;
+    let world = app.world();
+    let focused = world
+        .resource::<InputFocus>()
+        .get()
+        .expect("retailer control focus");
+    let node = world
+        .get::<AccessibilityNode>(focused)
+        .expect("focused AccessKit node");
+    assert_eq!(format!("{:?}", node.role()), "Button");
+    let visible = world
+        .get::<Children>(focused)
+        .expect("button content")
+        .iter()
+        .find_map(|e| world.get::<Text>(e))
+        .expect("visible label");
+    assert_eq!(node.label(), Some(visible.0.as_str()));
+    visible.0.clone()
 }

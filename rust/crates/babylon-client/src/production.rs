@@ -4,11 +4,17 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
+mod accounting;
+mod customers;
+mod orders;
+mod source_codes;
+
 pub(crate) mod maintenance;
 
 pub(crate) mod navigation;
 
 mod readings;
+pub(crate) use readings::{retailer_name, site_subject};
 
 #[path = "production/view.rs"]
 mod view;

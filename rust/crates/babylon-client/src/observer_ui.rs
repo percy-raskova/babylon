@@ -1,5 +1,6 @@
 //! Native observer shell. All economic readings come from one installed frame.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use babylon_persistence::observer_reader::ObserverEconomySnapshot;
@@ -14,6 +15,7 @@ use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::CountyMapScope;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::map_economy_lens;
+use crate::map_economy_lens::MapLensProjection;
 use crate::map_economy_lens::WorkforceMetric;
 use crate::map_economy_lens::{
     CountyLensReading, EconomyMetric, MapLens, MaterialLensKind, ScopeTransition,
@@ -228,6 +230,7 @@ pub enum ObserverCommand {
     NewCampaign,
     NewOrganizerCampaign,
     NewNationalCampaign,
+    NewNationalEconomyCampaign,
     NewDelayedCampaign,
     NewSharedFreightAmpleCampaign,
     NewSharedFreightConstrainedCampaign,
@@ -252,6 +255,7 @@ pub enum ObserverCommand {
     Disclosure(ObserverDisclosure),
     Evidence,
     EconomicDetails,
+    Money,
     Relationships,
     RoadLayer(RoadLayer),
     NetworkSector(NetworkSector),
@@ -571,6 +575,10 @@ fn spawn_inspector(commands: &mut Commands) {
                 ObserverText::County,
             ));
             panel.spawn((
+                context_column(),
+                crate::observer_map3d::money_map::MoneyRail,
+            ));
+            panel.spawn((
                 block_label("", 17.0, theme::PAPER),
                 ObserverText::Production,
                 ObserverFocusTarget::reading(None),
@@ -802,6 +810,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
             "Economy network",
             ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
         );
+        button(bar, "Money flows", ObserverCommand::Money);
         button(bar, "Level geography", ObserverCommand::Relationships);
     });
     spawn_observer_campaign_route(panel);
@@ -955,16 +964,18 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
-    panel.spawn(block_label(
-        "Wayne in the national world",
-        14.0,
-        theme::YELLOW,
-    ));
+    panel.spawn(block_label("National campaigns", 14.0, theme::YELLOW));
     preset_grid(
         panel,
-        &[("New national game", ObserverCommand::NewNationalCampaign)],
+        &[
+            ("New national game", ObserverCommand::NewNationalCampaign),
+            (
+                "Observe national economy",
+                ObserverCommand::NewNationalEconomyCampaign,
+            ),
+        ],
     );
-    panel.spawn(block_label("Organize in Wayne within all 3,144 U.S. counties and external markets. Local aid and remote solidarity use actual food, funds and household time.", 12.0, theme::GRAY));
+    panel.spawn(block_label("Lead the Wayne Organizing Collective. A county relief hearing gives you a choice over who gets the floor. The observer campaign opens the national accounts.", 12.0, theme::GRAY));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -1185,22 +1196,12 @@ fn scroll_panel(
 
 fn pointer_buttons(
     buttons: Query<(&Interaction, &ObserverButton), Changed<Interaction>>,
-    ui: Res<ObserverUiState>,
-    session: Res<ObserverSession>,
-    view: Res<PrimaryView>,
-    opening: Option<Res<OpeningPresentation>>,
+    state: ShellControls,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            dispatch_button(
-                *button,
-                &ui,
-                &session,
-                *view,
-                opening.as_deref(),
-                &mut commands,
-            );
+            dispatch_button(*button, &state, &mut commands);
         }
     }
 }
@@ -1210,6 +1211,7 @@ fn button_visible(
     ui: &ObserverUiState,
     session: &ObserverSession,
     view: PrimaryView,
+    lens_row: Visibility,
 ) -> bool {
     if ui.splash_visible || ui.comparison_open || button.in_menu != ui.menu_open {
         return false;
@@ -1218,24 +1220,22 @@ fn button_visible(
         return true;
     }
     let map = view == PrimaryView::Map;
+    let map_lenses = lens_row == Visibility::Visible;
     match button.command {
         ObserverCommand::TogglePlay | ObserverCommand::Speed | ObserverCommand::StopOnDelivery => {
             ui.disclosure == Some(ObserverDisclosure::Time)
         }
-        ObserverCommand::Relationships
+        ObserverCommand::Money
+        | ObserverCommand::Relationships
         | ObserverCommand::RoadLayer(_)
         | ObserverCommand::NetworkSector(_)
         | ObserverCommand::Workforce(_)
         | ObserverCommand::Lens(_)
         | ObserverCommand::MaterialLens(_)
         | ObserverCommand::ObserverCampaigns => {
-            map && ui.disclosure == Some(ObserverDisclosure::Lens)
+            map_lenses && ui.disclosure == Some(ObserverDisclosure::Lens)
         }
-        ObserverCommand::CycleGood(_) => {
-            map && !ui.history_open
-                && session.viewed_tick == session.durable_tick
-                && matches!(ui.lens, MapLens::Material { .. })
-        }
+        ObserverCommand::CycleGood(_) => map_lenses && matches!(ui.lens, MapLens::Material { .. }),
         ObserverCommand::PreviousPeriod | ObserverCommand::NextPeriod | ObserverCommand::Live => {
             ui.history_open
                 || session.viewed_tick < session.durable_tick
@@ -1245,7 +1245,7 @@ fn button_visible(
         ObserverCommand::EconomicDetails | ObserverCommand::Archive => {
             map && !ui.archive_open && !ui.history_open
         }
-        ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map,
+        ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map_lenses,
         _ => true,
     }
 }
@@ -1275,13 +1275,17 @@ fn menu_scope_visible(button: ObserverButton, opening: Option<&OpeningPresentati
 
 fn dispatch_button(
     button: ObserverButton,
-    ui: &ObserverUiState,
-    session: &ObserverSession,
-    view: PrimaryView,
-    opening: Option<&OpeningPresentation>,
+    state: &ShellControls,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
-    if button_visible(button, ui, session, view) && menu_scope_visible(button, opening) {
+    if button_visible(
+        button,
+        &state.ui,
+        &state.session,
+        *state.view,
+        state.lens_row_visibility(),
+    ) && menu_scope_visible(button, state.opening.as_deref())
+    {
         // The canonical observer command handler still admits or refuses the request.
         commands.write(button.command);
     }
@@ -1290,29 +1294,19 @@ fn dispatch_button(
 fn keyboard_button(
     event: On<ObserverKeyboardActivate>,
     buttons: Query<(&ObserverButton, &ObserverFocusTarget)>,
-    ui: Res<ObserverUiState>,
-    session: Res<ObserverSession>,
-    view: Res<PrimaryView>,
-    opening: Option<Res<OpeningPresentation>>,
+    state: ShellControls,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
     let Ok((button, target)) = buttons.get(event.entity) else {
         return;
     };
     if event.context == target.context {
-        dispatch_button(
-            *button,
-            &ui,
-            &session,
-            *view,
-            opening.as_deref(),
-            &mut commands,
-        );
+        dispatch_button(*button, &state, &mut commands);
     }
 }
 
 #[derive(SystemParam)]
-struct ShellFocusState<'w, 's> {
+struct ShellControls<'w, 's> {
     ui: Res<'w, ObserverUiState>,
     session: Res<'w, ObserverSession>,
     view: Res<'w, PrimaryView>,
@@ -1322,8 +1316,29 @@ struct ShellFocusState<'w, 's> {
     titles: Query<'w, 's, Entity, With<TitleMenuRoot>>,
 }
 
+impl ShellControls<'_, '_> {
+    fn lens_row_visibility(&self) -> Visibility {
+        if *self.view == PrimaryView::Map
+            && !self.ui.history_open
+            && !self.ui.archive_open
+            && !self.ui.splash_visible
+            && !self.ui.menu_open
+            && !self.ui.comparison_open
+            && (self.session.viewed_tick == self.session.durable_tick
+                || (self.session.viewed_tick < self.session.durable_tick
+                    && self.session.perspective == Perspective::FullObserver
+                    && !self.session.organizer_enabled
+                    && self.frame.for_session(&self.session).is_some()))
+        {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        }
+    }
+}
+
 fn sync_focus_policy(
-    state: ShellFocusState,
+    state: ShellControls,
     menus: Query<Entity, With<ObserverMenu>>,
     warnings: Query<Entity, With<ObserverWarningRoot>>,
     comparisons: Query<Entity, With<ComparisonPanel>>,
@@ -1372,20 +1387,22 @@ pub(crate) fn install_shell_focus_policy(app: &mut App) {
 }
 
 fn sync_focus_targets(
-    state: ShellFocusState,
+    state: ShellControls,
     mut targets: Query<(
         &mut ObserverFocusTarget,
         Option<&ObserverButton>,
         Option<&ObserverText>,
     )>,
 ) {
+    let map_lenses = state.lens_row_visibility();
     for (mut target, button, reading) in &mut targets {
         let mut next = target.clone();
         if let Some(button) = button {
-            next.available = button_visible(*button, &state.ui, &state.session, *state.view)
-                && menu_scope_visible(*button, state.opening.as_deref())
-                && observer_controls::availability(button.command, &state.session)
-                    == ControlAvailability::Enabled;
+            next.available =
+                button_visible(*button, &state.ui, &state.session, *state.view, map_lenses)
+                    && menu_scope_visible(*button, state.opening.as_deref())
+                    && observer_controls::availability(button.command, &state.session)
+                        == ControlAvailability::Enabled;
         } else if let Some(reading) = reading {
             let scope_visible = !state.ui.splash_visible && !state.ui.comparison_open;
             next.available = scope_visible
@@ -1529,7 +1546,8 @@ fn paint_buttons(
             }
         }
         let selected = match (button.command, &ui.lens) {
-            (ObserverCommand::Relationships, MapLens::Relationships) => true,
+            (ObserverCommand::Money, MapLens::Money)
+            | (ObserverCommand::Relationships, MapLens::Relationships) => true,
             (ObserverCommand::RoadLayer(layer), _) => layer == ui.road_layer,
             (ObserverCommand::NetworkSector(sector), _) => sector == ui.network_sector,
             (ObserverCommand::Workforce(metric), MapLens::Workforce(current)) => metric == *current,
@@ -1608,30 +1626,33 @@ type DisclosureRows<'w, 's> = Query<
     )>,
 >;
 
-fn paint_view_controls(
-    view: Res<PrimaryView>,
-    ui: Res<ObserverUiState>,
-    state: Res<ObserverSession>,
-    mut rows: DisclosureRows,
-) {
-    if !(view.is_changed() || ui.is_changed() || state.is_changed()) {
+fn paint_view_controls(state: ShellControls, mut rows: DisclosureRows) {
+    let ShellControls {
+        view,
+        ui,
+        session,
+        frame,
+        ..
+    } = &state;
+    if !(view.is_changed() || ui.is_changed() || session.is_changed() || frame.is_changed()) {
         return;
     }
+    let map_lenses = state.lens_row_visibility() == Visibility::Visible;
     for (mut node, map, circuit, drawer, history, evidence) in &mut rows {
         let visible = if let Some(drawer) = drawer {
             ui.disclosure == Some(drawer.0)
                 && !ui.menu_open
                 && !ui.splash_visible
                 && !ui.comparison_open
-                && (drawer.0 != ObserverDisclosure::Lens || *view == PrimaryView::Map)
+                && (drawer.0 != ObserverDisclosure::Lens || map_lenses)
         } else if map.is_some() {
-            *view == PrimaryView::Map && !ui.history_open && state.viewed_tick == state.durable_tick
+            map_lenses
         } else if circuit.is_some() {
-            *view == PrimaryView::Production
+            **view == PrimaryView::Production
                 && !ui.history_open
-                && state.viewed_tick == state.durable_tick
+                && session.viewed_tick == session.durable_tick
         } else if history.is_some() {
-            ui.history_open || state.viewed_tick < state.durable_tick
+            ui.history_open || session.viewed_tick < session.durable_tick
         } else {
             evidence.is_some() && ui.evidence_open
         };
@@ -1847,18 +1868,23 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
     if snapshot.resolve_tick == 0 {
         return "Opening period. No completed production period yet.".into();
     }
+    let county_sites: BTreeSet<_> = production
+        .sites
+        .iter()
+        .filter(|site| site.is_in_county(county))
+        .map(|site| site.id.as_str())
+        .collect();
     let developments: Vec<_> = production
         .events
         .iter()
         .filter(|event| {
             event.period == snapshot.resolve_tick
-                && event.subject_site_ids.iter().any(|id| {
-                    production
-                        .sites
-                        .iter()
-                        .any(|site| site.id == *id && site.is_in_county(county))
-                })
+                && event
+                    .subject_site_ids
+                    .iter()
+                    .any(|id| county_sites.contains(id.as_str()))
         })
+        .take(5)
         .map(|event| event.description.as_str())
         .collect();
     if developments.is_empty() {
@@ -1982,6 +2008,16 @@ fn status_with_organizer_message(
         )
 }
 
+fn lens_source(selected: &MapLens, lens: &MapLensProjection) -> String {
+    match selected {
+                MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
+                MapLens::Money => "Each ribbon joins the recorded origin and destination. A county anchor represents the account location or catchment hub.".into(),
+                MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
+                MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
+                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
+            }
+}
+
 fn repaint(
     shell: ShellState,
     mut texts: Query<(&ObserverText, &mut Text)>,
@@ -2049,15 +2085,16 @@ fn repaint(
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
             ObserverText::Status => status_with_organizer_message(&turn.status, organizer.as_deref(), &state),
             ObserverText::Legend => match &ui.lens {
-                MapLens::Relationships => String::new(),
+                MapLens::Money | MapLens::Relationships => String::new(),
                 MapLens::Workforce(_) | MapLens::Qcew(_) => format!("0..{} {}", lens.maximum().map_or_else(|| "-".into(), grouped), lens.unit),
                 MapLens::Material {..} => lens.good_label.as_ref().map_or_else(|| "Material unavailable".into(), |good|format!("{good} ({})", lens.unit)),
             },
             ObserverText::County => county.as_ref().map_or_else(|| "Select a county".into(), |county| county.name.to_owned()),
+            ObserverText::Measures if matches!(ui.lens, MapLens::Money) => "Inspect settled payments or recorded labor transfers for the viewed period.".into(),
             ObserverText::Measures if matches!(ui.lens, MapLens::Relationships) => "Choose an economic lens to inspect exact county readings.".into(),
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Hover if *view != PrimaryView::Map => String::new(),
-            ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
+            ObserverText::Hover if matches!(ui.lens, MapLens::Money | MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
@@ -2071,12 +2108,7 @@ fn repaint(
                 }
                 evidence
             }),
-            ObserverText::Source => match &ui.lens {
-                MapLens::Workforce(_) => format!("{}\nPeople are counted once per owner workforce pool. Select a county, then a cohort to follow its circuit. Reference sectors have no modeled workforce account.", lens.evidence),
-                MapLens::Relationships => "County geography anchors aggregate owners. Solid lines follow captured physical roads; dashed lines identify schematic supply relations. County terminals do not locate factories.".into(),
-                MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
-                MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for disclosed accounts at this hub, counted once. This is not traffic passing through the county."}),
-            },
+            ObserverText::Source => lens_source(&ui.lens, &lens),
             ObserverText::Developments => world_developments(installed, county.as_ref().map(|county| county.fips), organizer.as_deref(), &state),
             ObserverText::Production => installed.and_then(|snapshot| snapshot.production.as_ref())
                 .map_or_else(|| "Production relationships are unavailable in this observation.".into(), |production|
@@ -2274,14 +2306,29 @@ fn reconcile_lens(
     frame: Res<ObserverFrame>,
     session: Res<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
-    mut previous_scope: Local<Option<(babylon_persistence::identity::CampaignId, Perspective)>>,
+    mut previous_scope: Local<
+        Option<(babylon_persistence::identity::CampaignId, Perspective, bool)>,
+    >,
 ) {
-    let scope = (session.campaign, session.perspective);
+    let scope = (
+        session.campaign,
+        session.perspective,
+        session.organizer_enabled,
+    );
     let changed = previous_scope.as_ref() != Some(&scope);
     if !(changed || frame.is_changed() || session.is_changed() || ui.is_changed()) {
         return;
     }
-    let mut lens = ui.lens.clone();
+    let mut lens = if changed
+        && session.perspective == Perspective::FullObserver
+        && !session.organizer_enabled
+    {
+        MapLens::Money
+    } else if changed && ui.lens == MapLens::Money {
+        MapLens::Relationships
+    } else {
+        ui.lens.clone()
+    };
     lens.reconcile(
         frame.for_session(&session),
         if changed {
@@ -2459,6 +2506,10 @@ pub(crate) mod tests {
             (3, "a", "older material event"),
             (4, "hidden", "undisclosed workplace"),
             (5, "a", "future material event"),
+            (4, "a", "second development"),
+            (4, "a", "third development"),
+            (4, "a", "fourth development"),
+            (4, "a", "fifth development"),
         ]
         .into_iter()
         .enumerate()
@@ -2488,7 +2539,11 @@ pub(crate) mod tests {
             text.contains("Cohort a: 7 of 8 planned batches; 70 kg steel produced."),
             "{text}"
         );
+        assert!(text.ends_with(
+            "\n• second development\n• third development\n• fourth development\nMore reported developments are available in History."
+        ));
         for absent in [
+            "fifth development",
             "older material",
             "undisclosed workplace",
             "future material",
@@ -2883,7 +2938,8 @@ pub(crate) mod tests {
                 },
                 &ui,
                 &session,
-                PrimaryView::Map
+                PrimaryView::Map,
+                Visibility::Hidden
             ));
             assert!(!button_visible(
                 ObserverButton {
@@ -2892,7 +2948,8 @@ pub(crate) mod tests {
                 },
                 &ui,
                 &session,
-                PrimaryView::Map
+                PrimaryView::Map,
+                Visibility::Hidden
             ));
         }
     }
@@ -3115,6 +3172,71 @@ pub(crate) mod tests {
                 .get::<ObserverFocusTarget>(target)
                 .expect("the fixture world holds the addressed component")
                 .available
+        );
+    }
+
+    #[test]
+    fn historical_full_observer_map_keeps_the_lens_row_and_money_keyboard_dispatch() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut app, window, _) = focused_shell(false, ObserverCommand::History);
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| {
+                spawn_footer(&mut commands);
+                spawn_drawers(&mut commands);
+            })
+            .expect("the map controls are installed");
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        session.viewed_tick = 4;
+        session.durable_tick = 5;
+        let historical = crate::observer_io::tests::snapshot_with_event(&session, "delivery", 4);
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure = None;
+        app.add_systems(Update, paint_view_controls);
+        app.update();
+        let row = app
+            .world_mut()
+            .query_filtered::<Entity, With<MapLensControls>>()
+            .single(app.world())
+            .expect("the map has one lens row");
+        assert_eq!(
+            app.world().get::<Node>(row).expect("lens row").display,
+            Display::None
+        );
+        app.world_mut().resource_mut::<ObserverFrame>().0 = Some(historical);
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(row).expect("lens row").display,
+            Display::Flex
+        );
+        let money = app
+            .world_mut()
+            .query::<(Entity, &ObserverButton)>()
+            .iter(app.world())
+            .find_map(|(entity, button)| {
+                (button.command == ObserverCommand::Money).then_some(entity)
+            })
+            .expect("the drawer offers Money");
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure =
+            Some(ObserverDisclosure::Lens);
+        app.update();
+        app.update();
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(money, FocusCause::Navigated);
+        focus_key(&mut app, window, KeyCode::Enter);
+        assert_eq!(
+            app.world_mut()
+                .resource_mut::<Messages<ObserverCommand>>()
+                .drain()
+                .collect::<Vec<_>>(),
+            [ObserverCommand::Money]
+        );
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = true;
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(row).expect("lens row").display,
+            Display::None
         );
     }
 
@@ -3408,6 +3530,7 @@ pub(crate) mod tests {
             MinimalPlugins,
             crate::test_support::HeadlessVisibilityPlugin,
         ))
+        .init_resource::<ObserverFrame>()
         .insert_resource(ObserverSession::new(
             babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
         ))
@@ -3474,6 +3597,7 @@ pub(crate) mod tests {
             ..default()
         })
         .insert_resource(PrimaryView::Map)
+        .init_resource::<ObserverFrame>()
         .insert_resource(ObserverSession::new(
             babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
         ))
@@ -3750,7 +3874,7 @@ pub(crate) mod tests {
         }
     }
     #[test]
-    fn maintenance_menu_keeps_four_distinct_short_presets_and_existing_families() {
+    fn campaign_menu_offers_the_national_observer_and_distinct_maintenance_presets() {
         let mut world = World::new();
         let mut commands = world.commands();
         commands.spawn(Node::default()).with_children(menu_campaign);
@@ -3772,6 +3896,18 @@ pub(crate) mod tests {
                 "missing {label}: {texts:?}"
             );
         }
+        let observer_button = world
+            .query::<(&Text, &ChildOf)>()
+            .iter(&world)
+            .find_map(|(text, parent)| {
+                (text.0 == "Observe national economy").then_some(parent.parent())
+            })
+            .expect("the campaign menu offers the full national observer");
+        let choice = world
+            .get::<ObserverButton>(observer_button)
+            .expect("actionable preset");
+        assert!(choice.in_menu);
+        assert_eq!(choice.command, ObserverCommand::NewNationalEconomyCampaign);
         let buttons = world
             .query::<&ObserverButton>()
             .iter(&world)

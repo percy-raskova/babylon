@@ -28,6 +28,7 @@ use crate::identity::CampaignId;
 use crate::runtime::RustPersistenceRuntimeError;
 
 use crate::checkpoint_reference::Reference;
+use crate::observer_reader::CompanyDraws;
 use crate::production_projection::diagnostics::Stage;
 use crate::production_projection::diagnostics::Timing;
 use crate::semantic_codec;
@@ -415,6 +416,7 @@ impl CapturedEventRows {
 
 /// Owned SQL rows; admission performs the original checks without a connection.
 pub(crate) struct CapturedChoiceReceiptRows {
+    source: StoredTickReadSource,
     branches: Vec<Row>,
     carriers: Vec<Row>,
     receipts: Vec<Row>,
@@ -428,6 +430,7 @@ impl CapturedChoiceReceiptRows {
         resolve_tick: i64,
     ) -> Result<Self, RustPersistenceRuntimeError> {
         Ok(Self {
+            source,
             branches: client
                 .query(
                     &format!(
@@ -470,7 +473,9 @@ impl CapturedChoiceReceiptRows {
                 .map_err(|error| database("read stored choice receipts", &error))?,
         })
     }
-    pub(crate) fn admit(self) -> Result<Vec<CommittedTickRow>, RustPersistenceRuntimeError> {
+    pub(crate) fn admit(
+        self,
+    ) -> Result<(Vec<CommittedTickRow>, CompanyDraws), RustPersistenceRuntimeError> {
         let mut branches: BTreeMap<i64, Vec<ChoiceReceiptSemanticBranch>> = BTreeMap::new();
         for row in self.branches {
             let ordinal: i64 = decode_column(&row, 0)?;
@@ -497,6 +502,7 @@ impl CapturedChoiceReceiptRows {
         }
 
         let mut output = Vec::new();
+        let mut company_draws = CompanyDraws::default();
         for row in self.receipts {
             let ordinal: i64 = decode_column(&row, 0)?;
             require_i64_position(ordinal, output.len())?;
@@ -520,11 +526,14 @@ impl CapturedChoiceReceiptRows {
                 instance_digest: decode_digest(&row, 9)?,
             };
             output.push(semantic_codec::encode_choice_receipt(&receipt)?);
+            if self.source == StoredTickReadSource::FullObserver {
+                company_draws.retain(&receipt)?;
+            }
         }
         if !branches.is_empty() || !carriers.is_empty() {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
-        Ok(output)
+        Ok((output, company_draws))
     }
 }
 

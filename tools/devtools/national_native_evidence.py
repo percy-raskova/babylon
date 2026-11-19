@@ -2022,7 +2022,8 @@ def _walk_memory(
                 or sample.roster_complete != "all_game_processes_in_owned_scope"
                 or sample.native_client_mode != "windowed"
                 or proc != {"engine-runtime": cold.processes[0], "native-client": cold.processes[1]}
-                or not any(p.role == "game-postgresql" for p in sample.processes)
+                or not {"game-postgresql", "economic-projections"}
+                <= {p.role for p in sample.processes}
                 or sample.foundation_sha256 not in (native.foundation_sha256, None)
                 or (founded and sample.foundation_sha256 is None)
                 or sample.tick_content_hash != markers.get(sample.campaign_age_ticks)

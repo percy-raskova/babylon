@@ -20,6 +20,8 @@ mod observer_actions;
 
 mod observer_endpoints;
 
+mod journal_snapshot;
+
 pub(crate) use component_identity::MaterialComponentIdentity;
 
 pub use envelope::MAX_MATERIAL_FOUNDATION_BYTES;
@@ -37,6 +39,9 @@ mod diagnostics_tests;
 
 #[cfg(test)]
 mod city_pd_witness_tests;
+
+#[cfg(test)]
+mod company_cash_floor_tests;
 
 #[cfg(test)]
 mod maintenance_tests;

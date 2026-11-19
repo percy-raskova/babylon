@@ -349,3 +349,208 @@ REVOKE ALL ON
     public.v_observer_archive_dirty_receipt_v1,
     public.v_observer_tick_action_batch_v1
 FROM PUBLIC;
+
+-- Only committed, identity-bound published evidence is exposed to the full observer.
+CREATE VIEW public.v_observer_money_journal_period_v1 AS
+SELECT p.* FROM babylon_state.money_journal_period_v1 p
+JOIN babylon_state.tick_commit t USING (campaign_id, resolve_tick)
+JOIN babylon_state.material_tick_v3 m USING (campaign_id, resolve_tick)
+JOIN babylon_state.material_campaign_foundation_v3 f USING (campaign_id)
+JOIN babylon_meta.current_schema s ON s.singleton AND s.schema_sha256 = p.schema_sha256
+WHERE p.source_identity_bytes = m.identity_bytes AND p.tick_content_hash = t.tick_content_hash
+    AND p.envelope_digest = t.envelope_digest AND p.foundation_sha256 = f.foundation_sha256
+    AND p.content_sha256 = f.content_sha256;
+CREATE VIEW public.v_observer_money_movement_v1 AS
+SELECT d.campaign_id, d.resolve_tick, d.ordinal, d.purpose, d.reference_kind, d.reference_id,
+    CASE WHEN d.reference_id IS NOT NULL AND d.recipient_key IS NOT NULL
+        THEN ref.reserve_kind ELSE payer.account_kind END AS debit_kind,
+    CASE WHEN d.reference_id IS NOT NULL AND d.recipient_key IS NOT NULL
+        THEN d.reference_id ELSE payer.account_id END AS debit_id,
+    CASE WHEN d.recipient_key IS NULL THEN ref.reserve_kind ELSE recipient.account_kind END AS credit_kind,
+    CASE WHEN d.recipient_key IS NULL THEN d.reference_id ELSE recipient.account_id END AS credit_id,
+    d.amount_micros
+FROM babylon_state.money_movement_v1 d
+JOIN public.v_observer_money_journal_period_v1 p USING (campaign_id,resolve_tick)
+CROSS JOIN LATERAL (VALUES (
+    CASE WHEN d.reference_kind='shift' THEN 'payroll_reserve' ELSE d.reference_kind || '_reserve' END
+)) AS ref(reserve_kind)
+LEFT JOIN babylon_state.economic_flow_account_v1 payer
+    ON (payer.campaign_id,payer.account_key)=(d.campaign_id,d.payer_key)
+LEFT JOIN babylon_state.economic_flow_account_v1 recipient
+    ON (recipient.campaign_id,recipient.account_key)=(d.campaign_id,d.recipient_key)
+WHERE p.detail_retained
+    AND (d.payer_key IS NULL OR payer.foundation_sha256=p.foundation_sha256)
+    AND (d.recipient_key IS NULL OR recipient.foundation_sha256=p.foundation_sha256);
+CREATE VIEW public.v_observer_money_movement_total_v1 AS
+SELECT d.* FROM babylon_state.money_movement_total_v1 d
+JOIN public.v_observer_money_journal_period_v1 p USING (campaign_id, resolve_tick);
+REVOKE ALL ON public.v_observer_money_journal_period_v1, public.v_observer_money_movement_v1,
+    public.v_observer_money_movement_total_v1 FROM PUBLIC;
+
+CREATE VIEW public.v_observer_economic_flow_location_v1 AS
+SELECT l.campaign_id,l.foundation_sha256,l.location_key,l.longitude,l.latitude,l.county_internal_point,
+       'tiger_county_internal_point'::text AS point_basis
+FROM babylon_state.economic_flow_location_v1 l
+JOIN babylon_state.material_campaign_foundation_v3 f ON f.campaign_id=l.campaign_id
+    AND f.foundation_sha256=l.foundation_sha256;
+REVOKE ALL ON public.v_observer_economic_flow_location_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_flow_account_v1 AS
+SELECT a.campaign_id,a.foundation_sha256,a.account_kind,a.account_id,
+    a.location_key,a.catchment_key,a.industry_key,a.industry_label
+FROM babylon_state.economic_flow_account_v1 a
+JOIN babylon_state.material_campaign_foundation_v3 f ON f.campaign_id=a.campaign_id
+    AND f.foundation_sha256=a.foundation_sha256;
+CREATE VIEW public.v_observer_economic_company_v1 AS
+SELECT c.* FROM babylon_state.economic_company_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_company_member_v1 AS
+SELECT c.* FROM babylon_state.economic_company_member_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_member_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_company_claim_v1 AS
+SELECT c.* FROM babylon_state.economic_company_claim_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_claim_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_company_claim_source_v1 AS
+SELECT c.* FROM babylon_state.economic_company_claim_source_v1 c
+JOIN babylon_state.material_campaign_foundation_v3 f USING(campaign_id,foundation_sha256);
+REVOKE ALL ON public.v_observer_economic_company_claim_source_v1 FROM PUBLIC;
+CREATE VIEW public.v_observer_economic_flow_account_v2 AS
+SELECT a.*,c.company_id,c.label AS company_label
+FROM public.v_observer_economic_flow_account_v1 a
+LEFT JOIN public.v_observer_economic_company_member_v1 m
+    ON a.account_kind='site_cash' AND (m.campaign_id,m.foundation_sha256,m.site_id)=(a.campaign_id,a.foundation_sha256,a.account_id)
+LEFT JOIN public.v_observer_economic_company_v1 c
+    ON (c.campaign_id,c.foundation_sha256)=(a.campaign_id,a.foundation_sha256)
+    AND c.company_id=CASE WHEN a.account_kind='company_cash' THEN a.account_id ELSE m.company_id END;
+REVOKE ALL ON public.v_observer_economic_flow_account_v2 FROM PUBLIC;
+-- Keep each settlement within its admitted period. Resolve both compact keys
+-- against the same campaign and foundation, including a payer behind escrow.
+CREATE VIEW public.v_observer_economic_payment_v1 AS
+SELECT p.campaign_id, p.resolve_tick, paid.ordinal, paid.purpose, paid.reference_kind, paid.reference_id,
+    paid.payer_kind, paid.payer_id, paid.recipient_kind, paid.recipient_id, paid.amount_micros
+FROM public.v_observer_money_journal_period_v1 p
+CROSS JOIN LATERAL (
+    WITH accounts AS (
+        SELECT jsonb_object_agg(account_key,jsonb_build_array(account_kind,encode(account_id,'hex'))) AS by_key
+        FROM babylon_state.economic_flow_account_v1
+        WHERE campaign_id=p.campaign_id AND foundation_sha256=p.foundation_sha256
+    )
+    SELECT m.ordinal,m.purpose,m.reference_kind,m.reference_id,
+        key.payer->>0 AS payer_kind,decode(key.payer->>1,'hex') AS payer_id,
+        key.recipient->>0 AS recipient_kind,decode(key.recipient->>1,'hex') AS recipient_id,m.amount_micros
+    FROM babylon_state.money_movement_v1 m CROSS JOIN accounts
+    CROSS JOIN LATERAL (SELECT accounts.by_key->m.payer_key::text AS payer,
+        accounts.by_key->m.recipient_key::text AS recipient) key
+    WHERE m.campaign_id=p.campaign_id AND m.resolve_tick=p.resolve_tick
+        AND key.payer IS NOT NULL AND key.recipient IS NOT NULL
+    OFFSET 0
+) AS paid
+WHERE p.detail_retained;
+REVOKE ALL ON public.v_observer_economic_flow_account_v1, public.v_observer_economic_payment_v1 FROM PUBLIC;
+
+CREATE VIEW public.v_observer_site_statement_v1 AS
+SELECT s.campaign_id,s.site_ordinal,s.resolve_tick,k.site_id,
+    s.opening_cash_micros, s.opening_purchase_reserves_micros,
+    s.opening_payroll_reserves_micros, s.opening_wage_receivables_micros,
+    s.opening_inventory_micros, s.opening_freight_micros,
+    s.opening_equity_investments_micros, s.opening_equipment_micros,
+    s.opening_total_assets_micros, s.opening_wage_payables_micros,
+    s.opening_total_liabilities_micros, s.opening_opening_capital_micros,
+    s.opening_contributed_capital_micros, s.opening_retained_earnings_micros,
+    s.opening_total_equity_micros, s.closing_cash_micros,
+    s.closing_purchase_reserves_micros, s.closing_payroll_reserves_micros,
+    s.closing_wage_receivables_micros, s.closing_inventory_micros,
+    s.closing_freight_micros, s.closing_equity_investments_micros,
+    s.closing_equipment_micros, s.closing_total_assets_micros,
+    s.closing_wage_payables_micros, s.closing_total_liabilities_micros,
+    s.closing_opening_capital_micros, s.closing_contributed_capital_micros,
+    s.closing_retained_earnings_micros, s.closing_total_equity_micros,
+    s.income_sales_micros, s.income_wage_income_micros,
+    s.income_cost_of_goods_sold_micros, s.income_productive_labor_capitalized_micros,
+    s.income_installation_labor_capitalized_micros, s.income_equipment_wear_capitalized_micros,
+    s.income_idle_labor_expense_micros, s.income_handling_expense_micros,
+    s.income_maintenance_labor_expense_micros, s.income_maintenance_material_expense_micros,
+    s.income_freight_loss_expense_micros, s.income_consumption_expense_micros,
+    s.income_final_demand_outlay_micros, s.income_unused_service_expense_micros,
+    s.income_tax_income_micros, s.income_tax_expense_micros,
+    s.income_public_transfer_income_micros, s.income_public_transfer_expense_micros,
+    s.income_distribution_income_micros, s.income_gift_income_micros,
+    s.income_gift_expense_micros, s.income_agency_observation_labor_expense_micros,
+    s.cash_flow_operating_micros, s.cash_flow_investing_micros,
+    s.cash_flow_financing_micros, s.cash_flow_reserve_reclassification_micros,
+    s.net_income_micros, s.contributions_received_micros,
+    s.distributions_paid_micros, s.change_in_equity_micros,
+    p.site_monetary_books,p.receipt_sha256
+FROM babylon_state.site_statement_v1 s
+JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick)
+JOIN babylon_state.site_principal_v1 k ON (k.campaign_id,k.site_key,k.foundation_sha256)=(s.campaign_id,s.site_key,p.foundation_sha256);
+CREATE VIEW public.v_observer_site_stock_balance_v1 AS
+SELECT s.campaign_id,s.resolve_tick,k.site_id,g.good_id,g.unit_id,s.opening_quantity,s.closing_quantity,
+    s.opening_carrying_cost_micros,s.closing_carrying_cost_micros,p.site_monetary_books,p.receipt_sha256
+FROM babylon_state.site_stock_balance_v1 s
+JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick)
+JOIN babylon_state.site_principal_v1 k ON (k.campaign_id,k.site_key,k.foundation_sha256)=(s.campaign_id,s.site_key,p.foundation_sha256)
+JOIN babylon_state.site_stock_key_v1 g ON (g.campaign_id,g.resolve_tick,g.commodity_ordinal)=(s.campaign_id,s.resolve_tick,s.commodity_ordinal);
+REVOKE ALL ON public.v_observer_site_statement_v1, public.v_observer_site_stock_balance_v1 FROM PUBLIC;
+
+CREATE VIEW public.v_observer_labor_period_v1 AS
+-- One guarded release per campaign and period. Keep the source checks together when
+-- the view is joined to many facts; both keys remain eligible for predicate pushdown.
+SELECT DISTINCT ON (l.campaign_id,l.resolve_tick) l.*,p.detail_retained,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256
+FROM babylon_state.labor_period_v1 l JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_labor_checkpoint_v1 AS
+SELECT c.*,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256,p.result_world_hash
+FROM babylon_state.labor_checkpoint_v1 c JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick)
+WHERE c.sha256=p.checkpoint_sha256;
+CREATE VIEW public.v_observer_labor_node_v1 AS
+SELECT n.campaign_id,n.resolve_tick,n.node_ordinal,n.kind,n.entity_id,n.good_id,n.unit_id,n.purpose,
+       n.scope_kind,n.scope_id,n.process_id,n.route_id,n.origin_id,n.destination_id,
+       n.location_key,n.catchment_key,n.industry_key,n.industry_label,n.longitude,n.latitude
+FROM babylon_state.labor_node_fact_v1 n JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick)
+WHERE p.detail_retained;
+CREATE VIEW public.v_observer_labor_movement_v1 AS
+SELECT e.* FROM babylon_state.labor_movement_v1 e JOIN public.v_observer_labor_period_v1 p USING(campaign_id,resolve_tick) WHERE p.detail_retained;
+CREATE VIEW public.v_observer_labor_position_v1 AS
+SELECT b.campaign_id, b.resolve_tick, endpoint.side, b.node_ordinal,
+       endpoint.quantity, endpoint.recorded_micro_hours, endpoint.unknown_opening
+FROM babylon_state.labor_node_v1 b
+JOIN public.v_observer_labor_period_v1 p USING (campaign_id, resolve_tick)
+CROSS JOIN LATERAL (VALUES
+    ('opening'::text, b.opening_quantity, b.opening_recorded_micro_hours, b.opening_unknown_opening),
+    ('closing'::text, b.closing_quantity, b.closing_recorded_micro_hours, b.closing_unknown_opening)
+) AS endpoint(side, quantity, recorded_micro_hours, unknown_opening)
+WHERE p.detail_retained AND endpoint.quantity IS NOT NULL;
+REVOKE ALL ON public.v_observer_labor_period_v1,public.v_observer_labor_checkpoint_v1,public.v_observer_labor_node_v1,
+public.v_observer_labor_movement_v1,public.v_observer_labor_position_v1 FROM PUBLIC;
+
+-- Full observer company statements, attached to the same source-validating period marker.
+CREATE VIEW public.v_observer_company_accounting_period_v1 AS
+SELECT b.*, p.foundation_sha256, p.tick_content_hash, p.receipt_sha256, p.source_identity_bytes
+FROM babylon_state.company_accounting_period_v1 b JOIN public.v_observer_money_journal_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_accounting_checkpoint_v1 AS
+SELECT b.*,p.checkpoint_sha256,p.result_world_hash,p.foundation_sha256,p.tick_content_hash,p.receipt_sha256,p.source_identity_bytes
+FROM babylon_state.company_accounting_checkpoint_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_statement_balance_v1 AS
+SELECT b.*
+FROM babylon_state.company_statement_balance_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_statement_income_v1 AS
+SELECT b.*
+FROM babylon_state.company_statement_income_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_statement_cash_flow_v1 AS
+SELECT b.*
+FROM babylon_state.company_statement_cash_flow_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_elimination_v1 AS
+SELECT b.*
+FROM babylon_state.company_elimination_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+CREATE VIEW public.v_observer_company_realization_entry_v1 AS
+SELECT b.*
+FROM babylon_state.company_realization_entry_v1 b JOIN public.v_observer_company_accounting_period_v1 p USING(campaign_id,resolve_tick);
+REVOKE ALL ON public.v_observer_company_accounting_period_v1,
+    public.v_observer_company_accounting_checkpoint_v1,
+    public.v_observer_company_statement_balance_v1,
+    public.v_observer_company_statement_income_v1,
+    public.v_observer_company_statement_cash_flow_v1,
+    public.v_observer_company_elimination_v1,
+    public.v_observer_company_realization_entry_v1 FROM PUBLIC;

@@ -1,13 +1,17 @@
 //! National admission uses supplied checked source bytes only.
+use super::preset::NationalGraph;
 use super::{
     EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSourceView,
     SourceArtifactKind as Kind,
 };
+use crate::national_ages::NationalAgeReference;
 use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
+use crate::national_economy::companies::{CompanyCapture, CompanyFinances};
 use crate::national_economy::grain::NationalGenerationWitness;
-use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
+use crate::national_economy::{NationalAidCapture, NationalSupportClaimant};
+use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::national_households::NationalHouseholdReference;
 use crate::national_resident_workforce::NationalResidentWorkforceReference;
@@ -15,62 +19,38 @@ use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 use babylon_bsl::scenario_seed::GraphSeed;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, EconomicCatalogError>;
 
 pub(super) struct NationalSources {
+    pub(super) companies: Option<CompanyCapture>,
+    pub(super) finances: Option<CompanyFinances>,
     pub(super) counties: NationalCountyReference,
     pub(super) aid: NationalAidCapture,
+    pub(super) support_claimant: Option<NationalSupportClaimant>,
+    pub(super) household_keys: BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub(super) representation: NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
     pub(super) detail: NationalDetailPartition,
     cohorts: NationalCohortReference,
     residents: NationalResidentWorkforceReference,
     households: NationalHouseholdReference,
+    ages: Option<NationalAgeReference>,
     world: WorldReference,
     transport: NationalTransportReference,
 }
 impl NationalSources {
-    pub(super) fn admit(input: &EconomicCatalogInput) -> Result<(Self, EconomicOpening)> {
-        let required = [
-            Kind::GraphDeclarations,
-            Kind::Rules,
-            Kind::NationalGamePolicy,
-            Kind::NationalCounties,
-            Kind::NationalCohorts,
-            Kind::ResidentWorkforce,
-            Kind::NationalHouseholds,
-            Kind::NationalTransport,
-            Kind::InternationalTrade,
-            Kind::WorldPopulation,
-            Kind::CohortFunctionMapping,
-            Kind::CounterpartMembership,
-            Kind::PopulationScopePolicy,
-            Kind::TransportPolicy,
-            Kind::TransportSourceManifest,
-        ];
-        super::capture::source_coverage(
-            input,
-            &required,
-            &[
-                Kind::PreludeDeclarations,
-                Kind::MichiganDynamicHexes,
-                Kind::MichiganSpatialProducts,
-            ],
-        )?;
-        validate_declarations(input)?;
-        let expected_rules = if input.city_pd.is_some() {
-            super::preset::national_city_pd_rules()
-        } else if input.organizer.is_some() {
-            super::preset::national_organizer_rules()
-        } else {
-            include_bytes!("../../../../../content/scenarios/national/material-cycle.bsl").to_vec()
-        };
-        if super::capture::source(input, Kind::Rules)? != expected_rules {
-            return Err(EconomicCatalogError::Source(Kind::Rules));
-        }
+    pub(super) fn admit(
+        input: &EconomicCatalogInput,
+        graph: NationalGraph,
+    ) -> Result<(Self, EconomicOpening)> {
         let b = |kind| super::capture::source(input, kind);
+        let policy = NationalGamePolicy::from_captured_bytes(b(Kind::NationalGamePolicy)?)
+            .map_err(|_| EconomicCatalogError::Source(Kind::NationalGamePolicy))?;
+        validate_graph_sources(input, graph, &policy)?;
         let counties = NationalCountyReference::decode_pinned(b(Kind::NationalCounties)?)
             .map_err(|_| EconomicCatalogError::Source(Kind::NationalCounties))?;
         let cohorts = NationalCohortReference::decode_captured(
@@ -101,8 +81,15 @@ impl NationalSources {
             &counties,
         )
         .map_err(|_| EconomicCatalogError::Source(Kind::NationalTransport))?;
-        let policy = NationalGamePolicy::from_captured_bytes(b(Kind::NationalGamePolicy)?)
-            .map_err(|_| EconomicCatalogError::Source(Kind::NationalGamePolicy))?;
+
+        let ages = if policy.household_lifecycle.is_some() {
+            Some(
+                NationalAgeReference::decode_captured(b(Kind::NationalAges)?, &counties)
+                    .map_err(|_| EconomicCatalogError::Source(Kind::NationalAges))?,
+            )
+        } else {
+            None
+        };
         let opening = crate::national_economy::build_national_opening(
             &counties,
             &cohorts,
@@ -112,6 +99,7 @@ impl NationalSources {
             &transport,
             crate::national_economy::NationalOpeningPolicy {
                 policy: &policy,
+                ages: ages.as_ref(),
                 source_hash: babylon_kernel::content_digest::sha256_of(b(
                     Kind::NationalGamePolicy,
                 )?),
@@ -121,12 +109,17 @@ impl NationalSources {
         Ok((
             Self {
                 aid: opening.aid,
+                support_claimant: opening.support_claimant,
+                household_keys: opening.household_keys,
+                companies: opening.companies,
+                finances: opening.finances,
                 representation: opening.representation,
                 detail: opening.detail,
                 counties,
                 cohorts,
                 residents,
                 households,
+                ages,
                 world,
                 transport,
             },
@@ -139,10 +132,65 @@ impl NationalSources {
             cohorts: &self.cohorts,
             residents: &self.residents,
             households: &self.households,
+            ages: self.ages.as_ref(),
             world: &self.world,
             transport: &self.transport,
         }
     }
+}
+
+fn validate_graph_sources(
+    input: &EconomicCatalogInput,
+    graph: NationalGraph,
+    policy: &NationalGamePolicy,
+) -> Result<()> {
+    let mut required = vec![
+        Kind::GraphDeclarations,
+        Kind::Rules,
+        Kind::NationalGamePolicy,
+        Kind::NationalCounties,
+        Kind::NationalCohorts,
+        Kind::ResidentWorkforce,
+        Kind::NationalHouseholds,
+        Kind::NationalTransport,
+        Kind::InternationalTrade,
+        Kind::WorldPopulation,
+        Kind::CohortFunctionMapping,
+        Kind::CounterpartMembership,
+        Kind::PopulationScopePolicy,
+        Kind::TransportPolicy,
+        Kind::TransportSourceManifest,
+    ];
+    if policy.household_lifecycle.is_some() {
+        required.push(Kind::NationalAges);
+    }
+    super::capture::source_coverage(
+        input,
+        &required,
+        &[
+            Kind::PreludeDeclarations,
+            Kind::MichiganDynamicHexes,
+            Kind::MichiganSpatialProducts,
+        ],
+    )?;
+    if graph == NationalGraph::Companies
+        && super::capture::source(input, Kind::GraphDeclarations)?
+            != super::preset::COMPANY_STRUCTURE
+    {
+        return Err(EconomicCatalogError::Source(Kind::GraphDeclarations));
+    }
+    validate_declarations(input)?;
+    let expected_rules = if input.city_pd.is_some() {
+        super::preset::national_city_pd_rules(graph)
+    } else if input.organizer.is_some() {
+        super::preset::national_organizer_rules(graph)
+    } else {
+        super::preset::national_material_rules(graph)
+    };
+    if super::capture::source(input, Kind::Rules)? != expected_rules {
+        return Err(EconomicCatalogError::Source(Kind::Rules));
+    }
+    Ok(())
 }
 
 fn validate_declarations(input: &EconomicCatalogInput) -> Result<()> {

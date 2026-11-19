@@ -880,7 +880,10 @@ fn validate_foreground(
         .iter()
         .filter_map(|row| match row.id {
             AccountId::Organization(account) => Some(account),
-            AccountId::Site(_) | AccountId::Household(_) | AccountId::Public(_) => None,
+            AccountId::Site(_)
+            | AccountId::Household(_)
+            | AccountId::Public(_)
+            | AccountId::Company(_) => None,
         })
         .collect();
     if selection

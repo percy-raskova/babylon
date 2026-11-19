@@ -9,7 +9,10 @@ use super::OrganizerCommitment;
 use super::OrganizerPreview;
 use super::OrganizerSnapshot;
 use super::RuntimeAdvanceStage;
-use super::{RuntimeSessionErrorCode, RuntimeSessionTail, RuntimeSessionTarget, SessionBackend};
+use super::{
+    RuntimeSessionErrorCode, RuntimeSessionPreset, RuntimeSessionTail, RuntimeSessionTarget,
+    SessionBackend,
+};
 use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::economic_content::EconomicContentAdmission;
 use crate::identity::CampaignId;
@@ -272,16 +275,25 @@ pub(super) fn open(
 }
 
 fn new_foundation(
-    preset: super::RuntimeSessionPreset,
+    preset: RuntimeSessionPreset,
     defines_path: &Path,
     campaign: CampaignId,
 ) -> Result<MaterialRuntimeFoundation, RuntimeSessionErrorCode> {
-    if preset == super::RuntimeSessionPreset::NationalWorld {
-        let captured = CapturedEconomicCatalog::capture_national_campaign(
+    let national = match preset {
+        RuntimeSessionPreset::NationalWorld => {
+            Some(CapturedEconomicCatalog::capture_national_campaign(
+                crate::economic_catalog::national_catalog_input(),
+                campaign,
+            ))
+        }
+        RuntimeSessionPreset::NationalEconomy => Some(CapturedEconomicCatalog::capture(
             crate::economic_catalog::national_catalog_input(),
-            campaign,
-        )
-        .map_err(|error| {
+            None,
+        )),
+        _ => None,
+    };
+    if let Some(captured) = national {
+        let captured = captured.map_err(|error| {
             eprintln!("National source admission refused: {error}");
             RuntimeSessionErrorCode::ScenarioMismatch
         })?;
@@ -367,6 +379,35 @@ fn admit_runtime_content(
 mod defines_tests {
     use super::*;
     use uuid::Uuid;
+    #[test]
+    fn national_economy_new_founds_the_full_observer_company_world() {
+        let foundation = new_foundation(
+            RuntimeSessionPreset::NationalEconomy,
+            Path::new("/unused-michigan-defines"),
+            CampaignId::from_uuid(Uuid::from_u128(31)),
+        )
+        .expect("national observer sources admit a new economic foundation");
+        let graph = foundation.graph_foundation();
+        let source = graph
+            .content_bundle()
+            .economic_catalog()
+            .expect("captured national economy");
+        assert_eq!(graph.rng_seed(), ReplaySeed::new(319));
+        assert_eq!(source.compiler_version(), "national-world-v11");
+        assert_eq!(
+            source
+                .national_companies()
+                .expect("national company roster")
+                .companies
+                .len(),
+            99
+        );
+        assert!(source.organizer_config().is_none());
+        assert!(source.city_pd_config().is_none());
+        assert!(foundation.initial_register().organizer_state().is_none());
+        assert!(foundation.initial_register().city_pd().is_none());
+    }
+
     #[test]
     fn statewide_new_requires_qualified_sources_before_storage_admission() {
         use super::super::RuntimeSessionPreset;

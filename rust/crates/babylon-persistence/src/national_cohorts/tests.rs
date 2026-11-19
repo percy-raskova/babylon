@@ -1,6 +1,7 @@
 //! Semantic refusals remain visible beneath the outer exact-artifact digest.
 use super::mapping::FunctionMapping;
 use super::NationalCohortReferenceError as Error;
+use babylon_kernel::economic_identity::EconomicFunction;
 
 use super::parse;
 use super::CohortReference;
@@ -132,4 +133,28 @@ fn duplicate_groups_are_refused_before_coverage_checks() {
         ),
         Err(Error::GroupOrder)
     );
+}
+
+#[test]
+fn economic_function_display_labels_match_pinned_mapping() {
+    #[derive(serde::Deserialize)]
+    struct CapturedMapping {
+        functions: Vec<CapturedFunction>,
+    }
+    #[derive(serde::Deserialize)]
+    struct CapturedFunction {
+        id: String,
+        label: String,
+    }
+
+    FunctionMapping::load().expect("mapping matches the pinned artifact digest");
+    let mapping: CapturedMapping =
+        serde_json::from_slice(super::mapping::DOCUMENT).expect("captured mapping is valid JSON");
+    assert_eq!(mapping.functions.len(), 10);
+    for captured in mapping.functions {
+        let function = EconomicFunction::from_source_key(&captured.id)
+            .expect("every captured function has a typed identity");
+        assert_eq!(function.label(), captured.label);
+        assert_eq!(function.source_key(), captured.id);
+    }
 }

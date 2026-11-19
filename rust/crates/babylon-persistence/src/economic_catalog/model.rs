@@ -6,6 +6,8 @@
 
 use crate::michigan_sectors::MichiganSectorCode;
 use crate::national_cohorts::CohortKey;
+use babylon_material_circuit::CompanyPayoutPolicy;
+use babylon_material_circuit::CompanyPortfolioPolicy;
 use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_practice_contract::CityPdConfig;
 
@@ -185,6 +187,8 @@ pub enum CatalogAccounting {
 /// Opening policies reuse the engine's exact types without retaining dynamic cursors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogPolicies {
+    pub company_portfolios: Option<CompanyPortfolioPolicy>,
+    pub company_payouts: Vec<CompanyPayoutPolicy>,
     pub aid_mandates: Vec<AidMandate>,
     pub household_time: HouseholdTimeAccounting,
     pub household_time_policy: Vec<HouseholdTimePolicy>,

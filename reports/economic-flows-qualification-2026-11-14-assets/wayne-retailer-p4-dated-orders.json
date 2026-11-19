@@ -1,0 +1,229 @@
+{
+  "campaign": "5efafb84-10df-41ea-9451-51b8c7e2020d",
+  "seed": 319,
+  "period": 4,
+  "captured_defines_sha256": "60870a81ebd622237f843097ec6329a5ee50ba83884808b4c1619400031e8f55",
+  "foundation_sha256": "aa684975f128b40533b654732a884dd80588a7a64e774e8adf1694f8d147fcf2",
+  "receipt_sha256": "05ae99a3d140089bc327385a4c4ceb251fa688afdb6cde0750dfce9d0b441a58",
+  "tick_content_hash": "2cbbf44bed8df70384b6aeb0ea5c6e441339c05e365d131956a8a9a468507996",
+  "archives": {
+    "p4": {
+      "path": "/media/user/data/babylon-recovery/per293-food-household-native-v10-5efafb84/p4-authority/campaign.pgdump",
+      "sha256": "0139947179e47bee1f5b150ff1c8f8c25f391c607213be263db7663d1144e01c"
+    },
+    "p14": {
+      "path": "/media/user/data/babylon-recovery/per293-first-window-v10-q8zucjjl/campaign-p14.pgdump",
+      "sha256": "6c7a7258fd04682fad5bb27a8f9b540b39c1e30d88e0064766c479db442c5c47"
+    }
+  },
+  "buyer": {
+    "site_id": "7c25bfc6731b1c6c3465bb6905f078a480d7d33b138d78f46724f9e796eae03f",
+    "label": "Wayne County: distribution_transport (5)",
+    "location": "county:26163"
+  },
+  "procurement": [
+    {
+      "period": 4,
+      "order_id": "cb5c54a10f030a133e08bc0ed8a47b5ff331afe70b211da2a61f66c17a5962ee",
+      "supplier": {
+        "site_id": "a680a520ea1e9fec9d4afd7a603291dd43eb46682fb65d95e3670e74350b9fab",
+        "label": "sub_saharan_africa: food",
+        "location": "foreign:sub_saharan_africa"
+      },
+      "good_id": "b4b68f6711342fe0404992407fdcd85226a9c77678eca0e7607f66cdf6d53d33",
+      "unit_id": "0dd64ea7f022437a50459ef0dc7f39be94ec8d835b85320599f7dad00fa92f24",
+      "good": "Food for one person for 28 days",
+      "unit": "person-period food parcel",
+      "on_hand": 0,
+      "outstanding_inbound": 3544484,
+      "target": 3544518,
+      "requested": 34,
+      "funded": 34,
+      "unit_price_micros": 50400000,
+      "reserved_micros": 1713600000,
+      "p4_outcome": {
+        "delivered": 0,
+        "awaiting_dispatch": 34,
+        "in_transit": 0,
+        "freight_loss": 0
+      }
+    },
+    {
+      "period": 4,
+      "order_id": "64c7e37e347ce83064e74abda0735fc1f25aac7d4137767bde951277df0e3a67",
+      "supplier": {
+        "site_id": "a7bf085def599bd50e57c54cecfd5939964c73225cf7c1acc3e022ee9bbdc632",
+        "label": "Wayne County: food (5)",
+        "location": "county:26163"
+      },
+      "good_id": "b4b68f6711342fe0404992407fdcd85226a9c77678eca0e7607f66cdf6d53d33",
+      "unit_id": "0dd64ea7f022437a50459ef0dc7f39be94ec8d835b85320599f7dad00fa92f24",
+      "good": "Food for one person for 28 days",
+      "unit": "person-period food parcel",
+      "on_hand": 0,
+      "outstanding_inbound": 3544518,
+      "target": 3544518,
+      "requested": 0,
+      "funded": 0,
+      "unit_price_micros": 301000000,
+      "reserved_micros": 0
+    },
+    {
+      "period": 4,
+      "order_id": "99dc5e0dedd2ba074df0551e7901ccc73bcb3f1dc7b5ae20dd94cb76e26553a9",
+      "supplier": {
+        "site_id": "df72f380ecb3643bdba56fe95e020b453dbfd3e90b9d8ea85863e8b3c0881356",
+        "label": "Wayne County: manufacturing (5)",
+        "location": "county:26163"
+      },
+      "good_id": "0ddc0628b7d5be4ac60f083a7b27ef9f850f5e2dc94c2a0d7e038936ffb7ab73",
+      "unit_id": "9b6cf42406fe00cf17db8eac762f306d610e628ce6a1b65bcea8f91a73dfeadc",
+      "good": "Manufactured supplies",
+      "unit": "supplies bundle",
+      "on_hand": 16,
+      "outstanding_inbound": 1009639,
+      "target": 1401182,
+      "requested": 391527,
+      "funded": 391527,
+      "unit_price_micros": 123000000,
+      "reserved_micros": 48157821000000,
+      "p4_outcome": {
+        "delivered": 0,
+        "awaiting_dispatch": 391527,
+        "in_transit": 0,
+        "freight_loss": 0
+      }
+    },
+    {
+      "period": 4,
+      "order_id": "3afafecf9031b0919dccd07c17012d8b1bf8fb071d52278253fa54752dc07f8a",
+      "supplier": {
+        "site_id": "f286ea77b64278cc716019a1ef6527e9d1135de700ee5f1d3ed50f6a387ed046",
+        "label": "sub_saharan_africa: manufacturing",
+        "location": "foreign:sub_saharan_africa"
+      },
+      "good_id": "0ddc0628b7d5be4ac60f083a7b27ef9f850f5e2dc94c2a0d7e038936ffb7ab73",
+      "unit_id": "9b6cf42406fe00cf17db8eac762f306d610e628ce6a1b65bcea8f91a73dfeadc",
+      "good": "Manufactured supplies",
+      "unit": "supplies bundle",
+      "on_hand": 16,
+      "outstanding_inbound": 1401166,
+      "target": 1401182,
+      "requested": 0,
+      "funded": 0,
+      "unit_price_micros": 23220000,
+      "reserved_micros": 0
+    }
+  ],
+  "service_performance": [],
+  "p4_earlier_goods_by_supplier_and_good": [
+    {
+      "supplier": {
+        "site_id": "a680a520ea1e9fec9d4afd7a603291dd43eb46682fb65d95e3670e74350b9fab",
+        "label": "sub_saharan_africa: food",
+        "location": "foreign:sub_saharan_africa"
+      },
+      "good_id": "b4b68f6711342fe0404992407fdcd85226a9c77678eca0e7607f66cdf6d53d33",
+      "unit_id": "0dd64ea7f022437a50459ef0dc7f39be94ec8d835b85320599f7dad00fa92f24",
+      "good": "Food for one person for 28 days",
+      "unit": "person-period food parcel",
+      "quantities": {
+        "dispatched": 36,
+        "arrived": 34,
+        "delivered": 34,
+        "realized": 34
+      },
+      "source_orders": [
+        "10844b1504937541f69c8d04dd6f4eac54b909722f1ef007b47586b77fa079c6",
+        "7bc38b419205e23e051866b943eb60fed4a6d8c3fbd5e2f50ee302282e5aefa9",
+        "f15d5cd0f8fbc4e0ba00382ce482bde79c0b15c825b51ac107221730af1b4ccb"
+      ],
+      "scheduled_dispatch_arrivals": {
+        "5": 36
+      }
+    },
+    {
+      "supplier": {
+        "site_id": "df72f380ecb3643bdba56fe95e020b453dbfd3e90b9d8ea85863e8b3c0881356",
+        "label": "Wayne County: manufacturing (5)",
+        "location": "county:26163"
+      },
+      "good_id": "0ddc0628b7d5be4ac60f083a7b27ef9f850f5e2dc94c2a0d7e038936ffb7ab73",
+      "unit_id": "9b6cf42406fe00cf17db8eac762f306d610e628ce6a1b65bcea8f91a73dfeadc",
+      "good": "Manufactured supplies",
+      "unit": "supplies bundle",
+      "quantities": {
+        "local_transfer": 16
+      },
+      "source_orders": [
+        "53c04ae605013dc59276ce0bf9f5c67aa1f0e7f13fa173a6d5cbb30be459143d"
+      ],
+      "scheduled_dispatch_arrivals": {}
+    },
+    {
+      "supplier": {
+        "site_id": "f286ea77b64278cc716019a1ef6527e9d1135de700ee5f1d3ed50f6a387ed046",
+        "label": "sub_saharan_africa: manufacturing",
+        "location": "foreign:sub_saharan_africa"
+      },
+      "good_id": "0ddc0628b7d5be4ac60f083a7b27ef9f850f5e2dc94c2a0d7e038936ffb7ab73",
+      "unit_id": "9b6cf42406fe00cf17db8eac762f306d610e628ce6a1b65bcea8f91a73dfeadc",
+      "good": "Manufactured supplies",
+      "unit": "supplies bundle",
+      "quantities": {
+        "dispatched": 15,
+        "arrived": 12,
+        "delivered": 12,
+        "realized": 12
+      },
+      "source_orders": [
+        "2165ebc399719c2177762545cf05b0127afbf03e6467065a88a66d6093a916f5",
+        "330f17ee9e74e4b71ef1ccbb4dac497b0877df313a4a6d61ce3f7d85f6cfabfb",
+        "86edeb3f34e996619bb17ce6d598838f60c66eae4b6cea71bd9649fadcb19859"
+      ],
+      "scheduled_dispatch_arrivals": {
+        "5": 15
+      }
+    }
+  ],
+  "follow_up_after_viewed_period": [
+    {
+      "order_id": "cb5c54a10f030a133e08bc0ed8a47b5ff331afe70b211da2a61f66c17a5962ee",
+      "periods_checked": [
+        5,
+        14
+      ],
+      "observed_outcomes": []
+    },
+    {
+      "order_id": "99dc5e0dedd2ba074df0551e7901ccc73bcb3f1dc7b5ae20dd94cb76e26553a9",
+      "periods_checked": [
+        5,
+        14
+      ],
+      "observed_outcomes": [
+        {
+          "period": 5,
+          "order_id": "99dc5e0dedd2ba074df0551e7901ccc73bcb3f1dc7b5ae20dd94cb76e26553a9",
+          "order_period": 4,
+          "kind": "local_transfer",
+          "quantity": 197
+        },
+        {
+          "period": 6,
+          "order_id": "99dc5e0dedd2ba074df0551e7901ccc73bcb3f1dc7b5ae20dd94cb76e26553a9",
+          "order_period": 4,
+          "kind": "local_transfer",
+          "quantity": 602
+        },
+        {
+          "period": 7,
+          "order_id": "99dc5e0dedd2ba074df0551e7901ccc73bcb3f1dc7b5ae20dd94cb76e26553a9",
+          "order_period": 4,
+          "kind": "local_transfer",
+          "quantity": 366
+        }
+      ]
+    }
+  ]
+}

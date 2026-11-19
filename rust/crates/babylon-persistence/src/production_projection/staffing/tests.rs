@@ -643,7 +643,7 @@ fn full_typed_integer_hours_above_graph_precision_survive_the_complete_account_p
         reserve: 0,
         previous: request,
     };
-    let result = projection::completed_account(1, opening, opening, next_hours, values)
+    let result = projection::completed_account(1, opening, opening, next_hours, values, (0, 0))
         .expect("the fixture call `completed_account` succeeds for the authored inputs");
     assert_eq!(result.current_unretained_hours, request);
     assert_eq!(result.retained_hours, request);
@@ -696,4 +696,34 @@ fn member_receipt_omission_duplication_and_residence_forgery_refuse_even_with_va
     )
     .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed.project(), Err(ProductionProjectionError::History));
+}
+
+#[test]
+fn demographic_loss_and_hiring_reconcile_against_the_same_opening() {
+    let opening = Stocks {
+        employed: 2,
+        reserve: 3,
+        previous: 0,
+    };
+    let closing = Stocks {
+        employed: 2,
+        reserve: 1,
+        previous: 0,
+    };
+    // One employed resident and one reserve resident die before one funded hire.
+    let event = [1, 1, 2, 0, 0, 0, 2, 1, 0, 2, 1, 320];
+    let result = projection::completed_account(1, opening, closing, 320, event, (1, 1))
+        .expect("verified demographic removals and hiring reconcile");
+    assert_eq!(result.opening_employed, 2);
+    assert_eq!(result.opening_reserve, 3);
+    assert_eq!(result.employed_removed, 1);
+    assert_eq!(result.reserve_removed, 1);
+    assert_eq!(result.hires, 1);
+    assert_eq!(result.separations, 0);
+    for forged in [(0, 0), (2, 0), (3, 1)] {
+        assert_eq!(
+            projection::completed_account(1, opening, closing, 320, event, forged),
+            Err(ProductionProjectionError::History)
+        );
+    }
 }

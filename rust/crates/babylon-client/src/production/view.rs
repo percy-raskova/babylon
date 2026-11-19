@@ -1,6 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::navigation;
+use super::accounting::AccountsView;
+use super::customers::{CustomerControl, Receipt};
+use super::source_codes::{self, Codes};
+use super::{accounting, customers, navigation, orders};
+use babylon_material_circuit::FinalDemandPrincipalId;
 
 use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
@@ -11,11 +15,13 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
 
 use bevy::input_focus::tab_navigation::TabGroup;
+use bevy::input_focus::InputFocus;
 
 use bevy::light::CascadeShadowConfigBuilder;
 
 use bevy::prelude::*;
 
+use bevy::text::LineBreak;
 use bevy::window::PrimaryWindow;
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
@@ -52,6 +58,7 @@ pub enum PrimaryView {
 pub struct ProductionNavigation {
     pub selected_site: Option<String>,
     pub selected_process: Option<String>,
+    pub(super) household: Option<FinalDemandPrincipalId>,
     pub(crate) county_geoid: Option<String>,
     pub(crate) county_open: bool,
     pub(super) cohort_page: usize,
@@ -74,18 +81,24 @@ pub enum ProductionPage {
 pub enum ProductionReadingSection {
     #[default]
     Flow,
+    Orders,
     Freight,
     Work,
     Sources,
+    Accounts,
+    Investment,
 }
 
 impl ProductionReadingSection {
     fn label(self) -> &'static str {
         match self {
             Self::Flow => "Flow",
+            Self::Orders => "Orders",
             Self::Freight => "Freight",
             Self::Work => "Work",
             Self::Sources => "Sources",
+            Self::Accounts => "Accounts",
+            Self::Investment => "Investment",
         }
     }
 }
@@ -170,6 +183,17 @@ pub enum ProductionCommand {
     Page {
         kind: ProductionPage,
         page: usize,
+        context: ObservationContext,
+    },
+    ResidentReceipt {
+        county: String,
+        site_id: String,
+        principal: FinalDemandPrincipalId,
+        context: ObservationContext,
+    },
+    Household {
+        site_id: String,
+        principal: FinalDemandPrincipalId,
         context: ObservationContext,
     },
     Process {
@@ -516,15 +540,20 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
     panel
         .spawn(Node {
             column_gap: px(4),
+            row_gap: px(4),
+            flex_wrap: FlexWrap::Wrap,
             flex_shrink: 0.0,
             ..default()
         })
         .with_children(|tabs| {
             for section in [
                 ProductionReadingSection::Flow,
+                ProductionReadingSection::Orders,
                 ProductionReadingSection::Freight,
                 ProductionReadingSection::Work,
                 ProductionReadingSection::Sources,
+                ProductionReadingSection::Accounts,
+                ProductionReadingSection::Investment,
             ] {
                 button(tabs, section.label(), ProductionCommand::Reading(section));
             }
@@ -545,8 +574,27 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
         ))
         .with_children(|details| {
             details.spawn((
+                customers::Rows,
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(4),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+            ));
+            details.spawn((
+                orders::Rows,
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(8),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+            ));
+            details.spawn((
                 text("", 15.0, theme::PAPER),
                 ProductionDetails,
+                TextLayout::linebreak(LineBreak::WordOrCharacter),
                 ObserverFocusTarget::reading(None),
                 Node {
                     flex_shrink: 0.0,
@@ -601,8 +649,12 @@ pub(crate) fn orbit_input(
     }
 }
 
+type ReceiptFocusTargets = Or<(With<CustomerControl>, With<ProductionDetails>)>;
+
 #[derive(SystemParam)]
-pub(crate) struct ProductionInputContext<'w> {
+pub(crate) struct ProductionInputContext<'w, 's> {
+    focus: Option<Res<'w, InputFocus>>,
+    receipt_targets: Query<'w, 's, (), ReceiptFocusTargets>,
     observation: ProductionObservation<'w>,
     navigation: Res<'w, ProductionNavigation>,
     claim: Option<Res<'w, ObserverKeyboardClaim>>,
@@ -620,6 +672,8 @@ pub(crate) fn inputs(
         return;
     }
     let ProductionInputContext {
+        focus,
+        receipt_targets,
         observation,
         navigation,
         claim,
@@ -633,6 +687,17 @@ pub(crate) fn inputs(
         .as_ref()
         .is_some_and(|claim| claim.blocks_world_shortcuts())
     {
+        if *view == PrimaryView::Production
+            && navigation.details_open
+            && navigation.household.is_some()
+            && keys.just_pressed(KeyCode::Backspace)
+            && focus
+                .as_ref()
+                .and_then(|focus| focus.get())
+                .is_some_and(|e| receipt_targets.contains(e))
+        {
+            events.write(ProductionCommand::Back);
+        }
         return;
     }
     if [
@@ -672,6 +737,8 @@ pub(crate) fn production_command_context(
     match command {
         ProductionCommand::Select { context, .. }
         | ProductionCommand::Focus { context, .. }
+        | ProductionCommand::ResidentReceipt { context, .. }
+        | ProductionCommand::Household { context, .. }
         | ProductionCommand::Page { context, .. }
         | ProductionCommand::Process { context, .. } => Some(context),
         _ => None,
@@ -788,6 +855,7 @@ pub(crate) struct InspectorScrollScope {
     perspective: Perspective,
     site: Option<String>,
     section: ProductionReadingSection,
+    household: Option<FinalDemandPrincipalId>,
 }
 
 /// New subjects start at their brief; a new period preserves the reader's place.
@@ -802,6 +870,7 @@ pub(crate) fn reset_inspector_scroll(
         perspective: state.perspective,
         site: navigation.selected_site.clone(),
         section: navigation.reading_section,
+        household: navigation.household,
     };
     if previous.as_ref() == Some(&scope) {
         return;
@@ -1033,13 +1102,13 @@ pub(crate) fn spawn_site_label(
             if selected {
                 format!(
                     "{}\n{}",
-                    site.name.trim_end_matches(" cohort"),
+                    readings::site_subject(site),
                     committed_plan_status(site)
                         .strip_prefix("Committed ")
                         .unwrap_or(committed_plan_status(site))
                 )
             } else {
-                site.name.trim_end_matches(" cohort").to_owned()
+                readings::site_subject(site)
             },
             12.0,
             theme::PAPER,
@@ -1288,10 +1357,9 @@ pub(crate) fn spawn_county_cohorts(
         button(
             panel,
             &format!(
-                "{} / {:?}\n{} · {}",
-                site.name,
+                "{} / {:?}\n{}",
+                readings::site_subject(site),
                 site.roles,
-                site.sector_code.as_deref().unwrap_or(&site.function),
                 workforce
             ),
             ProductionCommand::Select {
@@ -1388,19 +1456,62 @@ pub(crate) fn visible_dependency_directions<'a>(
     })
 }
 
+#[derive(PartialEq, Eq)]
+pub(crate) enum DependencyPage {
+    County {
+        county: Option<String>,
+        page: usize,
+    },
+    Site {
+        site: Option<String>,
+        relationship_page: usize,
+        competitor_page: usize,
+    },
+}
+
+impl DependencyPage {
+    fn for_navigation(navigation: &ProductionNavigation) -> Self {
+        if navigation.county_open {
+            Self::County {
+                county: navigation.county_geoid.clone(),
+                page: navigation.cohort_page,
+            }
+        } else {
+            Self::Site {
+                site: navigation.selected_site.clone(),
+                relationship_page: navigation.relationship_page,
+                competitor_page: navigation.competitor_page,
+            }
+        }
+    }
+}
+
 pub(crate) fn rebuild_dependencies(
     mut commands: Commands,
     roots: Query<Entity, With<ProductionDependencies>>,
     state: Res<ObserverSession>,
     frame: Res<ObserverFrame>,
     navigation: Res<ProductionNavigation>,
-    mut last_context: Local<Option<ObservationContext>>,
+    mut last_context: Local<Option<(ObservationContext, DependencyPage)>>,
 ) {
     let context = state.context();
-    if !frame.is_changed() && !navigation.is_changed() && last_context.as_ref() == Some(&context) {
+    if !frame.is_changed()
+        && !navigation.is_changed()
+        && last_context
+            .as_ref()
+            .is_some_and(|(previous, _)| previous == &context)
+    {
         return;
     }
-    *last_context = Some(context.clone());
+    let page = DependencyPage::for_navigation(&navigation);
+    if !frame.is_changed()
+        && last_context
+            .as_ref()
+            .is_some_and(|(previous, prior_page)| previous == &context && prior_page == &page)
+    {
+        return;
+    }
+    *last_context = Some((context.clone(), page));
     let snapshot = frame
         .for_session(&state)
         .and_then(|frame| frame.production.as_ref());
@@ -1422,14 +1533,9 @@ pub(crate) fn rebuild_dependencies(
         else {
             continue;
         };
-        let layout =
-            ProductionLayout::focused(snapshot, Some(&site.id), navigation.relationship_page);
         let links = production_brief::dependency_sites(site, snapshot);
-        let group_count = links
-            .iter()
-            .map(|(_, site)| &site.id)
-            .collect::<BTreeSet<_>>()
-            .len();
+        let (group_count, page) =
+            production_layout::neighbor_page(snapshot, &links, navigation.relationship_page);
         commands.entity(root).with_children(|panel| {
             for process in &site.processes {
                 if site.processes.len() > 1 {
@@ -1455,7 +1561,8 @@ pub(crate) fn rebuild_dependencies(
                 panel.spawn(text(direction.label(), 13.0, theme::YELLOW));
                 let mut count = 0;
                 for (_, neighbor) in links.iter().filter(|(candidate, neighbor)| {
-                    *candidate == direction && layout.positions.contains_key(&neighbor.id)
+                    *candidate == direction
+                        && (neighbor.id == site.id || page.contains(neighbor.id.as_str()))
                 }) {
                     count += 1;
                     button(
@@ -1484,16 +1591,25 @@ pub(crate) fn rebuild_county_cohorts(
     roots: Query<Entity, With<ProductionCountyCohorts>>,
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
-    mut last_context: Local<Option<ObservationContext>>,
+    mut last_context: Local<Option<(ObservationContext, Option<String>, usize)>>,
 ) {
     let context = observation.state.context();
     if !observation.frame.is_changed()
-        && !navigation.is_changed()
-        && last_context.as_ref() == Some(&context)
+        && last_context
+            .as_ref()
+            .is_some_and(|(previous, county, page)| {
+                previous == &context
+                    && county == &navigation.county_geoid
+                    && *page == navigation.cohort_page
+            })
     {
         return;
     }
-    *last_context = Some(context.clone());
+    *last_context = Some((
+        context.clone(),
+        navigation.county_geoid.clone(),
+        navigation.cohort_page,
+    ));
     let snapshot = observation
         .frame
         .for_session(&observation.state)
@@ -1531,7 +1647,7 @@ pub(crate) fn paint_disclosure(
         .and_then(|frame| frame.production.as_ref());
     let available = ProductionControlAvailability::for_snapshot(snapshot, &navigation);
     for (button, mut node) in &mut controls {
-        if let Some(next) = available.display(&button.0) {
+        if let Some(next) = available.display(&button.0, &observation.state) {
             if node.display != next {
                 node.display = next;
             }
@@ -1578,7 +1694,10 @@ pub(crate) fn paint_buttons(
             ProductionCommand::Process { process_id, .. } => {
                 navigation.selected_process.as_ref() == Some(process_id)
             }
-            ProductionCommand::Back | ProductionCommand::Page { .. } => false,
+            ProductionCommand::Back
+            | ProductionCommand::Page { .. }
+            | ProductionCommand::ResidentReceipt { .. }
+            | ProductionCommand::Household { .. } => false,
         };
         // Labels can overlap bright geometry in the flat view. Keep their
         // text surface opaque and carry interaction feedback in the border.
@@ -1777,17 +1896,57 @@ pub(crate) type ReadingFocusTargets<'w, 's> = Query<
     Or<(With<ProductionBrief>, With<ProductionDetails>)>,
 >;
 
+#[derive(SystemParam)]
+pub(crate) struct ReadingSources<'w> {
+    accounts: Option<Res<'w, AccountsView>>,
+    codes: Option<Res<'w, Codes>>,
+    household: Option<Res<'w, Receipt>>,
+}
+
+pub(crate) struct BriefScope {
+    context: ObservationContext,
+    site: Option<String>,
+    county: Option<String>,
+    county_open: bool,
+}
+
 pub(crate) fn paint_readings(
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
+    sources: ReadingSources,
     mut details: Query<ReadingText, ReadingMarkers>,
     mut reading_targets: ReadingFocusTargets,
-    mut last_context: Local<Option<ObservationContext>>,
+    mut last_brief: Local<Option<BriefScope>>,
 ) {
+    let ReadingSources {
+        accounts,
+        codes,
+        household,
+    } = sources;
     let ProductionObservation { frame, state } = observation;
     let context = state.context();
-    if navigation.is_changed() || frame.is_changed() || last_context.as_ref() != Some(&context) {
-        *last_context = Some(context.clone());
+    let refresh_brief = frame.is_changed()
+        || last_brief.as_ref().is_none_or(|previous| {
+            previous.context != context
+                || previous.site != navigation.selected_site
+                || previous.county_open != navigation.county_open
+                || previous.county != navigation.county_geoid
+        });
+    if navigation.is_changed()
+        || frame.is_changed()
+        || refresh_brief
+        || accounts.as_ref().is_some_and(DetectChanges::is_changed)
+        || household.as_ref().is_some_and(DetectChanges::is_changed)
+        || codes.as_ref().is_some_and(DetectChanges::is_changed)
+    {
+        if refresh_brief {
+            *last_brief = Some(BriefScope {
+                context: context.clone(),
+                site: navigation.selected_site.clone(),
+                county_open: navigation.county_open,
+                county: navigation.county_geoid.clone(),
+            });
+        }
         for mut target in &mut reading_targets {
             let mut next = target.clone();
             next.context = Some(context.clone());
@@ -1803,27 +1962,56 @@ pub(crate) fn paint_readings(
                 .and_then(|id| snapshot.sites.iter().find(|site| site.id == *id))
         });
         for (mut text, brief, subject, headline) in &mut details {
+            if brief.is_some() && !refresh_brief {
+                continue;
+            }
             if subject.is_some() || headline.is_some() {
-                text.0 = match (snapshot, site) {
+                let next = match (snapshot, site) {
+                    (_, Some(site))
+                        if navigation.details_open
+                            && navigation.household.is_some()
+                            && accounting::authorized(&state) =>
+                    {
+                        if subject.is_some() {
+                            "Household period receipt".into()
+                        } else {
+                            format!("Retailer · {}", readings::site_subject(site))
+                        }
+                    }
                     (Some(snapshot), Some(site)) if navigation.details_open => {
                         if subject.is_some() {
-                            site.name.trim_end_matches(" cohort").into()
+                            readings::site_subject(site)
                         } else {
                             readings::reading_headline(site, snapshot, state.viewed_tick)
                         }
                     }
                     _ => String::new(),
                 };
+                text.set_if_neq(Text::new(next));
                 continue;
             }
-            text.0 = match (snapshot, site, brief.is_some()) {
+            let next = match (snapshot, site, brief.is_some()) {
                 (Some(snapshot), Some(site), true) => production_brief::describe_brief(site, snapshot),
-                (Some(snapshot), Some(site), false) if navigation.details_open => readings::describe(site, snapshot, navigation.reading_section),
+                (_, Some(_), false) if navigation.details_open && navigation.household.is_some()
+                    && accounting::authorized(&state) => {
+                    household.as_deref().map_or("Reading the household receipt…", Receipt::text).to_owned()
+                }
+                (Some(snapshot), Some(site), false) if navigation.details_open => {
+                    let mut reading = readings::describe(site, snapshot, navigation.reading_section, accounts.as_deref());
+                    if navigation.reading_section == ProductionReadingSection::Sources {
+                        if let Some(source) = codes.as_deref().and_then(Codes::text) {
+                            reading.push('\n');
+                            reading.push_str(source);
+                        }
+                    }
+                    reading
+                },
                 (Some(snapshot), None, true) if navigation.county_open => format!("COUNTY {}\nChoose a commodity cohort to follow its circuit.\n{}", navigation.county_geoid.as_deref().unwrap_or("unavailable"), snapshot.scenario_label),
                 (Some(snapshot), None, true) => production_brief::describe_overview(snapshot),
                 (None, _, true) => "No production relationships are disclosed at this period and perspective. Open World to explore the information available to you.".into(),
                 _ => String::new(),
             };
+            text.set_if_neq(Text::new(next));
         }
     }
 }
@@ -1834,6 +2022,9 @@ impl Plugin for ProductionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PrimaryView>()
             .init_resource::<ProductionNavigation>()
+            .init_resource::<AccountsView>()
+            .init_resource::<Codes>()
+            .init_resource::<Receipt>()
             .init_resource::<ProductionOrbit>()
             .init_resource::<ObserverFeedback>()
             .add_message::<ProductionCommand>()
@@ -1865,6 +2056,11 @@ impl Plugin for ProductionPlugin {
                     rebuild_county_cohorts,
                     paint_scene,
                     paint_labels,
+                    accounting::update,
+                    source_codes::update,
+                    customers::rebuild_rows,
+                    orders::rebuild_rows,
+                    customers::update,
                     paint_readings,
                     paint_disclosure,
                     paint_buttons,
@@ -1892,4 +2088,3 @@ use bevy::input::mouse::MouseWheel;
 use bevy::ui::UiSystems;
 use bevy::ui_widgets::Button;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;

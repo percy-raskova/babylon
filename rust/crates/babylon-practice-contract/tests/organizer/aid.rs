@@ -17,7 +17,7 @@ use babylon_practice_contract::{
 use babylon_practice_contract::{OrganizerCommand, OrganizerObservation};
 use std::collections::BTreeSet;
 
-fn captured() -> OrganizerConfig {
+pub(super) fn captured() -> OrganizerConfig {
     let mut config = support::config();
     for (contributor_id, actor_id) in [(204, 105), (205, 106)] {
         config.participants.push(OrganizerParticipant {

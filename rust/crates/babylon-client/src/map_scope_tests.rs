@@ -211,13 +211,14 @@ fn organizer_camera_frames_admitted_wayne_and_restores_map_orbit() {
     use crate::observer_ui::ObserverViewport;
     use crate::production::PrimaryView;
     use bevy::window::PrimaryWindow;
-    let mut app = scene(vec!["26163".into(), "26165".into()]);
+    let mut app = scene(vec!["17031".into(), "26163".into(), "26165".into()]);
     app.insert_resource(PrimaryView::Map)
         .insert_resource(ObserverViewport(Some(Rect::from_corners(
             Vec2::ZERO,
             Vec2::new(900.0, 600.0),
         ))))
-        .add_systems(Update, super::sync_camera);
+        .add_systems(Update, super::sync_camera)
+        .add_observer(super::frame_organizer_counties);
     app.world_mut().spawn((Window::default(), PrimaryWindow));
     app.update();
     let previous = app.world().resource::<MapOrbit>().clone();
@@ -246,6 +247,31 @@ fn organizer_camera_frames_admitted_wayne_and_restores_map_orbit() {
         cameras.single(world).expect("map camera entity").is_active
     };
     assert!(camera_active);
+    let cook = "17031".parse().expect("Cook GEOID");
+    let wayne = "26163".parse().expect("Wayne GEOID");
+    app.world_mut()
+        .trigger(super::FrameOrganizerCounties(vec![wayne, cook]));
+    app.update();
+    let overview = app.world().resource::<MapOrbit>().clone();
+    assert_ne!(
+        overview.target, target,
+        "overview includes the remote county"
+    );
+    app.world_mut()
+        .trigger(super::FrameOrganizerCounties(vec![cook]));
+    app.update();
+    let remote = app.world().resource::<MapOrbit>().clone();
+    assert_ne!(remote.target, overview.target);
+    assert!(
+        remote.organizer_extent.expect("one county").x
+            < overview.organizer_extent.expect("two counties").x
+    );
+    app.update();
+    assert_eq!(
+        app.world().resource::<MapOrbit>().target,
+        remote.target,
+        "ordinary repaint keeps Cook in view"
+    );
     *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
     app.update();
     assert!(*app.world().resource::<MapOrbit>() == previous);

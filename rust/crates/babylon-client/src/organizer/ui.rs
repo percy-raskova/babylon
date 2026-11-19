@@ -7,6 +7,9 @@ use super::{board, workspace, workspace_copy as copy};
 #[path = "report_view.rs"]
 mod report_view;
 
+#[path = "partner_map.rs"]
+mod partner_map;
+
 use super::scene::{
     BodyShape, OrganizerScene, OrganizerSceneMode, OrganizerSubject, RelationKind, SceneNode,
 };
@@ -53,6 +56,8 @@ pub(crate) enum OrganizerAction {
     Open,
     SetSceneMode(OrganizerSceneMode),
     SelectSubject(OrganizerSubject),
+    ShowAidPartners,
+    PreparePartnerOffer,
     Choose(OrganizerChoice),
     FocusAmount(AmountField),
     DraftFromReport,
@@ -357,12 +362,12 @@ fn spawn_scene(commands: &mut Commands) {
             .with_children(|modes| {
                 button(
                     modes,
-                    "Places · Wayne County",
+                    "Places",
                     OrganizerAction::SetSceneMode(OrganizerSceneMode::Places),
                 );
                 button(
                     modes,
-                    "Relationships · Wayne County",
+                    "Relationships",
                     OrganizerAction::SetSceneMode(OrganizerSceneMode::Relationships),
                 );
             });
@@ -381,7 +386,10 @@ fn spawn_scene(commands: &mut Commands) {
 fn history_inspector_allowed(inspector: OrganizerInspector) -> bool {
     matches!(
         inspector,
-        OrganizerInspector::Evidence | OrganizerInspector::Receipts | OrganizerInspector::Notes
+        OrganizerInspector::Evidence
+            | OrganizerInspector::Receipts
+            | OrganizerInspector::Notes
+            | OrganizerInspector::Hearing
     )
 }
 
@@ -543,7 +551,19 @@ fn retained_scene_detail(scope: &Scope, scene: &OrganizerScene) -> String {
         .client
         .selected_subject
         .or_else(|| scene.nodes.first().map(|node| node.subject));
-    let detail = scene_detail(Some(scene), selected);
+    let mut detail = scene_detail(Some(scene), selected);
+    if let Some(partner) = scope.client.selected_aid_partner(&scope.session) {
+        use std::fmt::Write as _;
+        let location = partner_map::county(partner).and_then(|id| {
+            let atlas = scope.atlas.as_ref()?;
+            atlas.county(atlas.index_of_fips(id.as_str())?)
+        });
+        if let Some(county) = location {
+            write!(detail, "\nRecipient county · {}", county.name).expect("writing to a String");
+        } else {
+            detail.push_str("\nRecipient county unavailable");
+        }
+    }
     if scope.session.phase == SessionPhase::Failed || scope.session.runtime_disconnected() {
         let error = scope
             .session
@@ -634,12 +654,20 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
                 ..column()
             },
             Overlay,
+            crate::observer_map3d::symbols::MapObstruction,
+            Visibility::Inherited,
             BackgroundColor(theme::INK.with_alpha(0.9)),
         ))
         .with_children(|dock| {
-            dock.spawn(text("Wayne County", 28.0, theme::PAPER))
+            dock.spawn(text("Groups and places", 28.0, theme::PAPER))
                 .insert(ObserverFontRole::Display);
-            dock.spawn(text("Known groups and places", 14.0, theme::YELLOW));
+            if scene.mapped_aid_partners > 1 {
+                button(
+                    dock,
+                    "Show aid partners on map",
+                    OrganizerAction::ShowAidPartners,
+                );
+            }
             dock.spawn(Node {
                 row_gap: px(3),
                 ..column()
@@ -1034,6 +1062,39 @@ fn spawn_notes(body: &mut ChildSpawnerCommands) {
         });
 }
 
+/// Whether `choice` is offered by the organizer's current inspector.
+fn choice_visible(
+    choice: OrganizerChoice,
+    client: &OrganizerClient,
+    session: &ObserverSession,
+) -> bool {
+    match client.inspector {
+        OrganizerInspector::Practices => !matches!(choice, OrganizerChoice::InviteToHearing(_)),
+        OrganizerInspector::Hearing => {
+            matches!(choice, OrganizerChoice::InviteToHearing(_))
+                && session.viewed_tick == session.durable_tick
+                && client
+                    .view
+                    .as_ref()
+                    .and_then(super::hearing::invitation)
+                    .is_some()
+        }
+        OrganizerInspector::Direction => matches!(
+            choice,
+            OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
+        ),
+        OrganizerInspector::Closed => {
+            workspace::comparison(client, session).is_some_and(|comparison| {
+                comparison
+                    .alternatives
+                    .iter()
+                    .any(|term| term.choice == choice)
+            })
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn visible(
     action: OrganizerAction,
     client: &OrganizerClient,
@@ -1074,32 +1135,27 @@ pub(super) fn visible(
             && field.applies(client.choice())
             && session.viewed_tick == session.durable_tick;
     }
+    if action == OrganizerAction::Inspect(OrganizerInspector::Hearing) {
+        return view == PrimaryView::Organizer
+            && client.inspector == OrganizerInspector::Closed
+            && super::hearing::has_entry(client, session);
+    }
     if action == OrganizerAction::DraftFromReport {
         return view == PrimaryView::Organizer
             && client.inspector == OrganizerInspector::Evidence
             && client.report_aid_choice(session).is_some();
     }
+    if action == OrganizerAction::PreparePartnerOffer {
+        return view == PrimaryView::Organizer
+            && client.inspector == OrganizerInspector::Closed
+            && session.viewed_tick == session.durable_tick
+            && client.selected_aid_partner(session).is_some();
+    }
     if matches!(action, OrganizerAction::Confirm) {
         return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Review;
     }
     if let OrganizerAction::Choose(choice) = action {
-        return view == PrimaryView::Organizer
-            && match client.inspector {
-                OrganizerInspector::Practices => true,
-                OrganizerInspector::Direction => matches!(
-                    choice,
-                    OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
-                ),
-                OrganizerInspector::Closed => {
-                    workspace::comparison(client, session).is_some_and(|comparison| {
-                        comparison
-                            .alternatives
-                            .iter()
-                            .any(|term| term.choice == choice)
-                    })
-                }
-                _ => false,
-            };
+        return view == PrimaryView::Organizer && choice_visible(choice, client, session);
     }
     if matches!(action, OrganizerAction::OpenReferences) {
         return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Notes;
@@ -1134,12 +1190,43 @@ pub(super) fn visible(
     view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Closed
 }
 
+fn link_enabled(link: DatedLink, client: &OrganizerClient, session: &ObserverSession) -> bool {
+    client.campaign == Some(*session.campaign.as_uuid())
+        && link.current(session)
+        && match link.destination {
+            Destination::Subject(subject) => {
+                enabled(OrganizerAction::SelectSubject(subject), client, session)
+            }
+            Destination::Detail(DispatchDestination::Report(id)) => {
+                client.lawful_evidence(id, session.viewed_tick).is_some()
+            }
+            Destination::Detail(DispatchDestination::Inspector(inspector)) => {
+                enabled(OrganizerAction::Inspect(inspector), client, session)
+            }
+            Destination::Detail(DispatchDestination::ArchiveOrganization) => {
+                enabled(OrganizerAction::ArchiveOrganization, client, session)
+            }
+            Destination::Detail(DispatchDestination::ArchiveWorkplace) => {
+                enabled(OrganizerAction::ArchiveWorkplace, client, session)
+            }
+        }
+}
+
 pub(super) fn enabled(
     action: OrganizerAction,
     client: &OrganizerClient,
     session: &ObserverSession,
 ) -> bool {
     match action {
+        OrganizerAction::ShowAidPartners => client
+            .scene_for(session)
+            .is_some_and(|scene| scene.mapped_aid_partners > 1),
+        OrganizerAction::PreparePartnerOffer => {
+            client.selected_aid_partner(session).is_some_and(|partner| {
+                client.draft_writable
+                    && workspace::reviewable(client, session, partner_map::choice(partner.kind))
+            })
+        }
         OrganizerAction::Choose(choice) => workspace::reviewable(client, session, choice),
         OrganizerAction::DraftFromReport => {
             client.report_aid_choice(session).is_some_and(|choice| {
@@ -1177,6 +1264,9 @@ pub(super) fn enabled(
                 }
         }
         OrganizerAction::InspectSubjectEvidence => client.selected_report_subject().is_some(),
+        OrganizerAction::Inspect(OrganizerInspector::Hearing) => {
+            super::hearing::has_entry(client, session)
+        }
         OrganizerAction::Inspect(_) | OrganizerAction::OpenReferences => client.view.is_some(),
         OrganizerAction::PreviousEvidence => client
             .evidence_neighbor(false, session.viewed_tick)
@@ -1209,33 +1299,14 @@ pub(super) fn enabled(
         OrganizerAction::SelectSubject(subject) => client
             .scene_for(session)
             .is_some_and(|scene| scene.nodes.iter().any(|node| node.subject == subject)),
-        OrganizerAction::Follow(link) => {
-            client.campaign == Some(*session.campaign.as_uuid())
-                && link.current(session)
-                && match link.destination {
-                    Destination::Subject(subject) => {
-                        enabled(OrganizerAction::SelectSubject(subject), client, session)
-                    }
-                    Destination::Detail(DispatchDestination::Report(id)) => {
-                        client.lawful_evidence(id, session.viewed_tick).is_some()
-                    }
-                    Destination::Detail(DispatchDestination::Inspector(inspector)) => {
-                        enabled(OrganizerAction::Inspect(inspector), client, session)
-                    }
-                    Destination::Detail(DispatchDestination::ArchiveOrganization) => {
-                        enabled(OrganizerAction::ArchiveOrganization, client, session)
-                    }
-                    Destination::Detail(DispatchDestination::ArchiveWorkplace) => {
-                        enabled(OrganizerAction::ArchiveWorkplace, client, session)
-                    }
-                }
-        }
+        OrganizerAction::Follow(link) => link_enabled(link, client, session),
         OrganizerAction::Open | OrganizerAction::CloseInspector => true,
     }
 }
 
 #[derive(SystemParam)]
 pub(super) struct Scope<'w> {
+    atlas: Option<Res<'w, crate::atlas::CountyAtlas>>,
     pub(super) client: Res<'w, OrganizerClient>,
     pub(super) session: Res<'w, ObserverSession>,
     pub(super) ui: Res<'w, ObserverUiState>,
@@ -1499,99 +1570,128 @@ fn actions(
             }
             continue;
         }
-        let ActionState {
-            client,
-            session,
-            ui,
-            view,
-            focus,
-            atlas,
-            selected,
-            time,
-        } = &mut state;
-        let Some(action) = route_link(action, client, session.viewed_tick) else {
+        let period = state.session.viewed_tick;
+        let Some(action) = route_link(action, &mut state.client, period) else {
             continue;
         };
         if pauses_playback(action) {
-            session.pause_playback();
+            state.session.pause_playback();
         }
         if let Some(cue) = feedback(action) {
             commands.trigger(cue);
         }
-        match action {
-            OrganizerAction::Follow(_) => unreachable!("dated links were routed above"),
-            OrganizerAction::Open => open_organizer(view, ui, client, focus, atlas, selected),
-            OrganizerAction::SetSceneMode(mode) => client.scene_mode = mode,
-            OrganizerAction::SelectSubject(subject) => {
-                select_subject(subject, client, atlas, selected);
-            }
-            OrganizerAction::Choose(choice) => {
-                choose_approach(client, focus, time.elapsed_secs_f64(), choice);
-            }
-            OrganizerAction::FocusAmount(field) => {
-                if let Some((entity, _)) = fields.iter().find(|(_, value)| **value == field) {
-                    focus.set(entity, FocusCause::Navigated);
-                }
-            }
-            OrganizerAction::DraftFromReport => {
-                if !draft_from_report(client, session, focus, time.elapsed_secs_f64()) {
-                    continue;
-                }
-            }
-            OrganizerAction::Review => {
-                if !review_approach(client, session, focus) {
-                    continue;
-                }
-            }
-            OrganizerAction::Confirm => {
-                confirm_approach(client, session);
-                close_inspector(client, focus);
-            }
-            OrganizerAction::Advance => {
-                observer_commands.write(ObserverCommand::Step);
-            }
-            OrganizerAction::Refresh => {
-                client.status_due = true;
-            }
-            OrganizerAction::Inspect(inspector) => {
-                inspect(client, focus, inspector, session.viewed_tick);
-            }
-            OrganizerAction::InspectSubjectEvidence => {
-                if !client.open_selected_subject_reports(session.viewed_tick) {
-                    continue;
-                }
-                client.return_focus = focus.get();
-                client.inspector = OrganizerInspector::Evidence;
-            }
-            OrganizerAction::OpenReferences => {
-                if client.inspector == OrganizerInspector::Closed {
-                    client.return_focus = focus.get();
-                }
-                client.inspector = OrganizerInspector::Evidence;
-                client.open_saved_references();
-            }
-            OrganizerAction::PreviousEvidence
-            | OrganizerAction::NextEvidence
-            | OrganizerAction::KeepEvidence
-            | OrganizerAction::RemoveReference => {
-                change_evidence(action, client, session, time.elapsed_secs_f64());
-            }
-            OrganizerAction::ArchiveWorkplace
-            | OrganizerAction::ArchiveOrganization
-            | OrganizerAction::ArchiveReport
-            | OrganizerAction::ArchiveSelection => {
-                if !open_archive(action, &mut state, &mut commands) {
-                    continue;
-                }
-            }
-            OrganizerAction::CloseInspector => {
-                close_inspector(client, focus);
-            }
+        if !perform_action(
+            action,
+            &mut state,
+            &fields,
+            &mut commands,
+            &mut observer_commands,
+        ) {
+            continue;
         }
         if let Some(receipt) = qualification.as_deref_mut() {
             receipt.organizer_finished(message_id, true, &state.client);
         }
     }
+}
+
+fn perform_action(
+    action: OrganizerAction,
+    state: &mut ActionState,
+    fields: &Query<(Entity, &AmountField)>,
+    commands: &mut Commands,
+    observer_commands: &mut MessageWriter<ObserverCommand>,
+) -> bool {
+    let ActionState {
+        client,
+        session,
+        ui,
+        view,
+        focus,
+        atlas,
+        selected,
+        time,
+    } = state;
+    match action {
+        OrganizerAction::Follow(_) => unreachable!("dated links were routed above"),
+        OrganizerAction::Open => open_organizer(view, ui, client, focus, atlas, selected),
+        OrganizerAction::SetSceneMode(mode) => client.scene_mode = mode,
+        OrganizerAction::SelectSubject(subject) => {
+            select_subject(subject, client, atlas, selected, session, commands);
+        }
+        OrganizerAction::ShowAidPartners => {
+            commands.trigger(crate::observer_map3d::FrameOrganizerCounties(
+                client
+                    .known_aid_partners(session)
+                    .iter()
+                    .filter_map(partner_map::county)
+                    .collect(),
+            ));
+        }
+        OrganizerAction::PreparePartnerOffer => {
+            if let Some(partner) = client.selected_aid_partner(session) {
+                let choice = partner_map::choice(partner.kind);
+                choose_approach(client, focus, time.elapsed_secs_f64(), choice);
+            }
+        }
+        OrganizerAction::Choose(choice) => {
+            choose_approach(client, focus, time.elapsed_secs_f64(), choice);
+        }
+        OrganizerAction::FocusAmount(field) => {
+            if let Some((entity, _)) = fields.iter().find(|(_, value)| **value == field) {
+                focus.set(entity, FocusCause::Navigated);
+            }
+        }
+        OrganizerAction::DraftFromReport => {
+            return draft_from_report(client, session, focus, time.elapsed_secs_f64());
+        }
+        OrganizerAction::Review => {
+            return review_approach(client, session, focus);
+        }
+        OrganizerAction::Confirm => {
+            confirm_approach(client, session);
+            close_inspector(client, focus);
+        }
+        OrganizerAction::Advance => {
+            observer_commands.write(ObserverCommand::Step);
+        }
+        OrganizerAction::Refresh => {
+            client.status_due = true;
+        }
+        OrganizerAction::Inspect(inspector) => {
+            inspect(client, focus, inspector, session.viewed_tick);
+        }
+        OrganizerAction::InspectSubjectEvidence => {
+            if !client.open_selected_subject_reports(session.viewed_tick) {
+                return false;
+            }
+            client.return_focus = focus.get();
+            client.inspector = OrganizerInspector::Evidence;
+        }
+        OrganizerAction::OpenReferences => {
+            if client.inspector == OrganizerInspector::Closed {
+                client.return_focus = focus.get();
+            }
+            client.inspector = OrganizerInspector::Evidence;
+            client.open_saved_references();
+        }
+        OrganizerAction::PreviousEvidence
+        | OrganizerAction::NextEvidence
+        | OrganizerAction::KeepEvidence
+        | OrganizerAction::RemoveReference => {
+            change_evidence(action, client, session, time.elapsed_secs_f64());
+        }
+        OrganizerAction::ArchiveWorkplace
+        | OrganizerAction::ArchiveOrganization
+        | OrganizerAction::ArchiveReport
+        | OrganizerAction::ArchiveSelection => {
+            return open_archive(action, state, commands);
+        }
+        OrganizerAction::CloseInspector => {
+            close_inspector(client, focus);
+        }
+    }
+    true
 }
 
 fn inspect(
@@ -1670,9 +1770,21 @@ fn select_subject(
     client: &mut OrganizerClient,
     atlas: &crate::atlas::CountyAtlas,
     selected: &mut crate::map::SelectedCounty,
+    session: &ObserverSession,
+    commands: &mut Commands,
 ) {
     client.selected_subject = Some(subject);
-    selected.0 = atlas.index_of_fips("26163");
+    let county = if let OrganizerSubject::AidPartner(_) = subject {
+        client
+            .selected_aid_partner(session)
+            .and_then(partner_map::county)
+    } else {
+        Some("26163".parse().expect("Wayne organizer home GEOID"))
+    };
+    selected.0 = county.and_then(|county| atlas.index_of_fips(county.as_str()));
+    if let Some(county) = county {
+        commands.trigger(crate::observer_map3d::FrameOrganizerCounties(vec![county]));
+    }
 }
 
 fn choose_approach(
@@ -1689,7 +1801,7 @@ fn choose_approach(
     client.message = amount_editor::reconcile(client).err().unwrap_or_default();
     if matches!(
         client.inspector,
-        OrganizerInspector::Direction | OrganizerInspector::Practices
+        OrganizerInspector::Direction | OrganizerInspector::Practices | OrganizerInspector::Hearing
     ) {
         client.inspector = OrganizerInspector::Closed;
         if let Some(entity) = client.return_focus.take() {
@@ -2051,6 +2163,15 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let complete = scope.session.phase == SessionPhase::Complete;
     let (inspector_title, mut inspector_body) =
         presentation::inspector(&scope.client, scope.session.viewed_tick);
+    if scope.client.inspector == OrganizerInspector::Hearing {
+        inspector_body = scope.client.view.as_ref().map_or_else(String::new, |view| {
+            if super::hearing::has_entry(&scope.client, &scope.session) {
+                super::hearing::notice(view, scope.session.viewed_tick, !historical)
+            } else {
+                "No hearing record is available for this period.".into()
+            }
+        });
+    }
     if scope.client.inspector == OrganizerInspector::Relationships {
         if let Some((
             babylon_persistence::runtime_session::OrganizerBodyDisclosure::Partial(part),
@@ -2082,7 +2203,11 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::ReviewAvailability => copy::review_reason(&scope.client, comparison.as_ref()),
             TextPart::ChoiceHeading => if complete { "Campaign complete".into() } else if historical { "Past commitments".into() } else { format!("Work for period {}", scope.session.viewed_tick.saturating_add(1)) },
             TextPart::Approach(_) if historical => String::new(),
-            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
+            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else {
+                scope.client.view.as_ref()
+                    .filter(|view| view.period == scope.session.viewed_tick)
+                    .map_or_else(|| "Awaiting current terms".into(), |view| presentation::client_approach(&scope.client, view, *choice))
+            },
             TextPart::ChoiceMarker(choice) => {
                 if complete { "CLOSED".into() }
                 else if scope.client.commitment.as_ref().is_some_and(|value| value.command.choice == *choice) { "ACCEPTED".into() }
@@ -2110,11 +2235,50 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     }
 }
 
+fn button_selected(action: OrganizerAction, client: &OrganizerClient) -> bool {
+    match action {
+        OrganizerAction::Choose(choice) => choice == client.choice(),
+        OrganizerAction::SetSceneMode(mode) => mode == client.scene_mode,
+        OrganizerAction::SelectSubject(subject) => Some(subject) == client.selected_subject,
+        OrganizerAction::Follow(link) => {
+            matches!(link.destination, Destination::Subject(subject) if Some(subject) == client.selected_subject)
+        }
+        _ => false,
+    }
+}
+
+fn button_background(
+    paper: Option<&PaperAction>,
+    interaction: Interaction,
+    available: bool,
+    highlighted: bool,
+) -> Color {
+    if paper.is_some() {
+        if !available || interaction == Interaction::Pressed {
+            theme::INK
+        } else {
+            theme::PANEL
+        }
+    } else if !available {
+        theme::INK
+    } else if interaction == Interaction::Pressed {
+        theme::RED.with_alpha(0.4)
+    } else if interaction == Interaction::Hovered || highlighted {
+        theme::YELLOW.with_alpha(0.2)
+    } else {
+        theme::PANEL
+    }
+}
+
 fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
     for (button, paper, interaction, mut node, mut background, mut border) in &mut *buttons {
         if matches!(
             button.0,
-            OrganizerAction::FocusAmount(_) | OrganizerAction::DraftFromReport
+            OrganizerAction::FocusAmount(_)
+                | OrganizerAction::DraftFromReport
+                | OrganizerAction::PreparePartnerOffer
+                | OrganizerAction::Inspect(OrganizerInspector::Hearing)
+                | OrganizerAction::Choose(OrganizerChoice::InviteToHearing(_))
         ) {
             node.display = if visible(
                 button.0,
@@ -2145,9 +2309,7 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
             &scope.ui,
             *scope.view,
         ) && enabled(button.0, &scope.client, &scope.session);
-        let selected = matches!(button.0, OrganizerAction::Choose(choice) if choice == scope.client.choice())
-            || matches!(button.0, OrganizerAction::SetSceneMode(mode) if mode == scope.client.scene_mode)
-            || matches!(button.0, OrganizerAction::SelectSubject(subject) if Some(subject) == scope.client.selected_subject);
+        let selected = button_selected(button.0, &scope.client);
         let next_action = available
             && match button.0 {
                 OrganizerAction::Review => scope.client.preview.is_none(),
@@ -2155,21 +2317,7 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
                 OrganizerAction::Advance => scope.client.commitment.is_some(),
                 _ => false,
             };
-        let color = if paper.is_some() {
-            if !available || *interaction == Interaction::Pressed {
-                theme::INK
-            } else {
-                theme::PANEL
-            }
-        } else if !available {
-            theme::INK
-        } else if *interaction == Interaction::Pressed {
-            theme::RED.with_alpha(0.4)
-        } else if *interaction == Interaction::Hovered || selected || next_action {
-            theme::YELLOW.with_alpha(0.2)
-        } else {
-            theme::PANEL
-        };
+        let color = button_background(paper, *interaction, available, selected || next_action);
         background.set_if_neq(BackgroundColor(color));
         border.set_if_neq(BorderColor::all(
             if selected
@@ -2235,6 +2383,7 @@ fn normalize_history_inspector(
 }
 
 pub(super) fn install(app: &mut App) {
+    app.add_systems(Update, partner_map::paint.in_set(ObserverSet::Paint));
     board::install(app);
     amount_editor::install(app);
     report_view::install(app);
@@ -2273,6 +2422,10 @@ pub(super) fn install(app: &mut App) {
 pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
     app.add_observer(open_evidence);
 }
+
+#[cfg(test)]
+#[path = "hearing_tests.rs"]
+mod hearing_tests;
 
 #[cfg(test)]
 #[path = "report_reading_tests.rs"]
@@ -3568,7 +3721,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v20.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {
@@ -4656,7 +4809,7 @@ pub(crate) mod tests {
                 .expect("embedded reading face")
         };
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
+            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v20.json"
         ))
         .expect("actual national pending remote aid");
         {
@@ -4917,6 +5070,9 @@ pub(crate) mod tests {
                 receipts: Vec::new(),
                 positions: Vec::new(),
                 aid_partners: vec![],
+                hearing: None,
+                hearing_receipt: None,
+                hearing_review: None,
                 aid_options: Vec::new(),
             }),
             ..default()
@@ -5036,7 +5192,7 @@ pub(crate) mod tests {
             });
     }
 
-    fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
+    pub(super) fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
         OrganizerPreview {
             allocation: command.allocation,
             choice: command.choice,
@@ -5065,7 +5221,7 @@ pub(crate) mod tests {
         assert!(session.installed(&context));
     }
 
-    fn press_named(app: &mut App, label: &str) {
+    pub(super) fn press_named(app: &mut App, label: &str) {
         let world = app.world_mut();
         let action = world
             .query::<(&ActionButton, &Children)>()
@@ -5100,7 +5256,7 @@ pub(crate) mod tests {
         app.update();
     }
 
-    fn painted_text(app: &mut App, inspector: bool) -> String {
+    pub(super) fn painted_text(app: &mut App, inspector: bool) -> String {
         let world = app.world_mut();
         world
             .query::<(&TextPart, &Text)>()

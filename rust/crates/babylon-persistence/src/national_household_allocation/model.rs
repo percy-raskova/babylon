@@ -1,12 +1,14 @@
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 use babylon_material_circuit::FinalDemandPrincipalId;
+use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Historical earnings and Designed ownership exposure are independent axes.
 /// Labels describe opening authoring; subsequent hiring never changes identity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(u8)]
 pub enum HouseholdBudgetKey {
     EarningNonowner = 1,

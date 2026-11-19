@@ -78,6 +78,7 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
     assert_eq!(bytes.len(), STAFFING_BYTES);
     assert_eq!(
         decode_staffing(
+            false,
             &mut ReceiptCursor {
                 bytes: &bytes,
                 position: 0
@@ -159,6 +160,7 @@ fn member_receipts_authenticate_payee_and_earned_wages_against_the_aggregate() {
                     members: &[MemberLaborUseReceipt],
                     wages: &[WageAccrualReceipt]| {
         workforce_receipt::validate_join(
+            &[],
             staff,
             members,
             std::slice::from_ref(&aggregate),

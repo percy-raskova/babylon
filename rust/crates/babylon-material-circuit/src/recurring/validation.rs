@@ -2,6 +2,7 @@
 
 use super::PricePolicy;
 use super::RecurringEconomy;
+use crate::HouseholdCohort;
 
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,
@@ -60,6 +61,15 @@ pub(crate) fn row_limits(rows: &RecurringEconomy) -> Result<()> {
     Ok(())
 }
 
+fn admitted_counts(state: &MaterialCircuitState, row: &HouseholdCohort) -> bool {
+    row.kind.admits_counts(row.persons, row.households)
+        || (row.persons == 0
+            && row.households == 0
+            && state
+                .household_lifecycle()
+                .is_some_and(|book| book.position(row.principal_id).is_some()))
+}
+
 pub(crate) fn validate_households(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
@@ -77,9 +87,7 @@ pub(crate) fn validate_households(
         .map(|r| (r.principal_id, r))
         .collect();
     for row in &rows.households {
-        if !row.kind.admits_counts(row.persons, row.households)
-            || !principals.contains_key(&row.principal_id)
-        {
+        if !admitted_counts(state, row) || !principals.contains_key(&row.principal_id) {
             return Err(MaterialCircuitError::FinalDemandInvariant);
         }
     }

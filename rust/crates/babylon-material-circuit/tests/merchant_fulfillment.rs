@@ -72,6 +72,8 @@ fn merchant() -> (MaterialCatalog, MaterialCircuitState) {
             unit_id,
             hours_per_unit: 2,
         }],
+        company_portfolios: None,
+        company_payouts: vec![],
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],

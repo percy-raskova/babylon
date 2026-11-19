@@ -1,6 +1,7 @@
 meta:
   contract: MaterialCircuitV4
   schema_version: 22
+  household_lifecycle_schema_version: 24
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -536,6 +537,10 @@ error_codes:
   household_time_invariant: 31
   aid_invariant: 32
   aid_authority: 33
+  collection_invariant: 34
+  company_portfolio_evidence: 35
+  company_portfolio_selection: 36
+  household_lifecycle_invariant: 37
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -893,8 +898,23 @@ goods_quote_costs:
 household_time:
   authority: ADR270
   evidence: Captured eligible residents and explicitly Designed hour commitments; not observed time-use estimates.
-  accounting_u8: {not_modeled_control: 0, modeled: 1}
-  field_order: [accounting_u8, receipts, contributions]
+  accounting_u8: {not_modeled_control: 0, modeled: 1, modeled_with_household_lifecycle: 2}
+  field_order: [accounting_u8, receipts, contributions, lifecycle_if_tag_2]
+  lifecycle_if_tag_2:
+    state_schema: 24
+    framing: A u32 length bounds all lifecycle bytes. Each principal has at most 845 dated birthday rows.
+    fields: [birth_rate_per_million, four_age_specific_death_rates_per_million, optional_purchase_buffer_periods,
+             positions_by_principal]
+    position_fields: [principal_id, closing_ages, opening_ages, opening_households, birth_remainder,
+                      four_death_remainders, three_initial_bounded_band_totals, surviving_groups_by_65th_birthday]
+    ages: [under_16, age_16_to_17, age_18_to_64, age_65_plus]
+    age_basis: Domestic opening county totals come from the captured ACS sources. Allocation within counties,
+      external opening mixes and the four-week vital rates are Designed.
+    initial_birthdays: Spread the initial population across the remaining four-week birthdays within each age band.
+      Each surviving resident keeps the date of subsequent age crossings.
+    newborns: Each surviving cohort born during play reaches 16, 18 and 65 after 208, 234 and 845 four-week intervals.
+    close: Existing residents determine current need and time. Survivors and newborns determine the next period.
+      A material workforce reduction applies only where the remaining eligible residents cannot back existing members.
   policy_owner: immutable catalog; policies are absent from state bytes
   count_encoding: u32_big_endian_before_each_modeled_row_family; catalog policy burden families also use u32 counts
   policy_fields: [principal_id, labor_unit_id, eligible_persons, hours_per_eligible_person,

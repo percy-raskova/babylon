@@ -43,7 +43,7 @@ def snapshot(tick=0, size=100, relation=100, opening=True):
         "relations": [["babylon_state", "history", relation, 0, 0, relation, 1]],
         "acknowledged_markers": {
             n: {"count": tick, "maximum_resolve_tick": tick}
-            for n in ["tick_commit", "material_tick_v3"]
+            for n in ["tick_commit", "material_tick_v3", "economic_journal_v1"]
         },
         "wal_lsn_container_wide": f"0/{tick + 100:X}",
         "bytea_columns_count_canonical_octets_column_storage_compression": {
@@ -555,24 +555,49 @@ def test_collector_v3_refuses_old_wrapper_and_malformed_descriptor_claims(fault)
 
 
 @pytest.mark.parametrize(
-    "field,maximum",
+    "version,field,maximum",
     [
-        ("canonical_receipt_bytes", 925_434_745),
-        ("receipt_storage_bytes", 925_437_040),
+        (3, "canonical_receipt_bytes", 925_434_745),
+        (3, "receipt_storage_bytes", 925_437_040),
+        (4, "canonical_receipt_bytes", 947_585_922),
+        (4, "receipt_storage_bytes", 947_588_276),
+        (5, "canonical_receipt_bytes", 947_585_922),
+        (5, "receipt_storage_bytes", 947_588_276),
     ],
 )
-def test_current_receipt_cap_boundary(field, maximum):
+def test_current_receipt_cap_boundary(version, field, maximum):
     item = snapshot(1)
     claim = item["actual_rust_storage_package_claims"][0]
+    claim["receipt_storage_version"] = version
+    claim["receipt_storage_bytes"] = 2531
     claim[field] = maximum
-    if field == "receipt_storage_bytes":
-        claim["total_storage_package_bytes"] = maximum + 200 + 190
+    claim["total_storage_package_bytes"] = claim["receipt_storage_bytes"] + 200 + 190
     PackageClaim.model_validate(claim)
     claim[field] += 1
     if field == "receipt_storage_bytes":
         claim["total_storage_package_bytes"] += 1
     with pytest.raises(ValueError, match="length exceeds"):
         PackageClaim.model_validate(claim)
+
+
+def test_committed_storage_requires_projections_to_have_reached_the_same_period():
+    item = snapshot(2)
+    item["acknowledged_markers"]["economic_journal_v1"] = {"count": 1, "maximum_resolve_tick": 1}
+    with pytest.raises(ValueError, match="economic journal coverage"):
+        Snapshot.model_validate(item)
+
+
+@pytest.mark.parametrize(("version", "families"), [(4, 39), (5, 41)])
+def test_collector_extended_receipt_requires_complete_family_framing(version, families):
+    state, receipt, lookup = current_headers()
+    receipt = receipt.replace(
+        b"BabylonReceiptStorageV3", f"BabylonReceiptStorageV{version}".encode()
+    )
+    minimum = len(b"BabylonReceiptStorageV4\0") + 88 + families * 59
+    claim = package_claim_from_headers(1, state, receipt, lookup, 200, minimum, len(lookup) + 7)
+    assert claim.receipt_storage_version == version
+    with pytest.raises(ValueError, match="shorter"):
+        package_claim_from_headers(1, state, receipt, lookup, 200, minimum - 1, len(lookup) + 7)
 
 
 def test_collector_current_receipt_requires_complete_37_family_framing():
@@ -2023,7 +2048,7 @@ def test_shared_roster_is_checked_against_each_actual_storage_snapshot():
         )
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 6])
 def test_collector_current_receipt_storage_domain_refuses_obsolete_versions(version):
     state, receipt, lookup = current_headers()
     receipt = (
@@ -2318,8 +2343,8 @@ def combined_memory_evidence(periods=52):
     from tools.devtools.national_storage_qualification import CombinedMemoryEvidence
 
     h = "ab" * 32
-    roles = ("native-client", "engine-runtime", "game-postgresql")
-    sizes = (2_000_000_000, 6_000_000_000, 1_000_000_000)
+    roles = ("native-client", "engine-runtime", "game-postgresql", "economic-projections")
+    sizes = (2_000_000_000, 6_000_000_000, 900_000_000, 100_000_000)
     samples = []
     for age in range(periods + 1):
         samples.append(
@@ -2478,7 +2503,7 @@ def test_combined_memory_test_native_composite_is_charged_in_full():
     for sample in raw["samples"]:
         sample["processes"].append(
             {
-                "pid": 4,
+                "pid": 5,
                 "start_time_ticks": 10,
                 "role": "native-test-composite",
                 "executable_sha256": "ab" * 32,
@@ -2493,13 +2518,17 @@ def test_combined_memory_test_native_composite_is_charged_in_full():
 
 
 @pytest.mark.parametrize(
-    "fault", ["client", "postgres", "sequential", "roster", "ages", "headless"]
+    "fault", ["client", "postgres", "publisher", "sequential", "roster", "ages", "headless"]
 )
 def test_combined_memory_missing_component_or_simultaneous_age_proof_is_incomplete(fault):
     raw = combined_memory_evidence().model_dump(mode="json")
     for sample in raw["samples"]:
-        if fault in {"client", "postgres"}:
-            missing = "native-client" if fault == "client" else "game-postgresql"
+        if fault in {"client", "postgres", "publisher"}:
+            missing = {
+                "client": "native-client",
+                "postgres": "game-postgresql",
+                "publisher": "economic-projections",
+            }[fault]
             sample["processes"] = [
                 process for process in sample["processes"] if process["role"] != missing
             ]
@@ -2561,7 +2590,12 @@ def test_combined_memory_private_capture_artifact_tampering_or_absence_refuses(t
                     "version": 1,
                     "roles": {
                         role: ["ab" * 32]
-                        for role in ("native-client", "engine-runtime", "game-postgresql")
+                        for role in (
+                            "native-client",
+                            "engine-runtime",
+                            "game-postgresql",
+                            "economic-projections",
+                        )
                     },
                 }
             ).encode()
@@ -3954,7 +3988,7 @@ def cash_only_producer_practice():
     fixture = json.loads(
         (
             Path(__file__).resolve().parents[3]
-            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"
+            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v20.json"
         ).read_bytes()
     )
     resolution = fixture["resolutions"][0]
@@ -4354,3 +4388,121 @@ def test_normal_native_member_measures_ordinary_play_without_a_sampler(tmp_path)
     result = native_join_result(tmp_path, manifest, report, timing, None, opening, ticks)
     assert result["status"] == "qualified"
     assert result["combined_memory_status"] == "not_measured"
+
+
+def test_retained_ordinary_snapshot_requires_the_same_stage_campaign_and_frame_hashes():
+    from tools.devtools.wayne_qualification_storage import (
+        StorageRefusal,
+        validate_ordinary_publication,
+    )
+
+    campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
+    rows = ["ab" * 32, "cd" * 32, "ef" * 32]
+    source = snapshot(tick=3)
+    source.update(stage="ordinary-p3-published", campaign=campaign)
+    for tick, digest in enumerate(rows, 1):
+        source["marker_and_encoded_package_hashes"][tick - 1][1] = digest
+    expected = tuple(enumerate(rows, 1))
+    validate_ordinary_publication(Snapshot.model_validate(source), "game", campaign, expected)
+    for field, value in (
+        ("stage", "opening-created"),
+        ("campaign", "another-campaign"),
+        ("database", "unrelated"),
+    ):
+        with pytest.raises(StorageRefusal, match="published snapshot"):
+            validate_ordinary_publication(
+                Snapshot.model_validate({**source, field: value}), "game", campaign, expected
+            )
+    wrong_history = ((1, rows[0]), (2, rows[0]), (3, rows[2]))
+    for comparison in (wrong_history, expected[:2]):
+        with pytest.raises(StorageRefusal, match="published snapshot"):
+            validate_ordinary_publication(
+                Snapshot.model_validate(source), "game", campaign, comparison
+            )
+
+
+@pytest.mark.parametrize("version", [4, 5])
+def test_current_economic_coverage_requires_observer_schema_and_content_bindings(version):
+    import sqlite3
+    from contextlib import closing
+
+    from tools.devtools.national_storage_qualification import ECONOMIC_COVERAGE_SQL
+
+    # Run the collector's relational join against the actual observer view definition.
+    # SQLite uses a single namespace and qmark parameters for this in-memory fixture.
+    root = Path(__file__).resolve().parents[3]
+    view_sql = (root / "rust/crates/babylon-persistence/migrations/current_views.sql").read_text()
+    view = "CREATE VIEW public.v_observer_money_journal_period_v1 AS"
+    body = view + view_sql.split(view, 1)[1].split(";", 1)[0]
+
+    def local(statement):
+        return (
+            statement.replace("babylon_state.", "")
+            .replace("babylon_meta.", "")
+            .replace("public.", "")
+            .replace("%s::uuid", "?")
+            .replace("%s::bytea", "?")
+        )
+
+    with closing(sqlite3.connect(":memory:")) as db:
+        db.executescript("""
+          CREATE TABLE money_journal_period_v1(campaign_id,resolve_tick,schema_sha256,
+             source_identity_bytes,tick_content_hash,envelope_digest,foundation_sha256,content_sha256,receipt_sha256);
+          CREATE TABLE tick_commit(campaign_id,resolve_tick,tick_content_hash,envelope_digest);
+          CREATE TABLE material_tick_v3(campaign_id,resolve_tick,identity_bytes,receipt_storage_bytes);
+          CREATE TABLE material_campaign_foundation_v3(campaign_id,foundation_sha256,content_sha256);
+          CREATE TABLE current_schema(singleton,schema_sha256);
+          CREATE TABLE labor_period_v1(campaign_id,resolve_tick,result_world_hash);
+          CREATE TABLE company_accounting_period_v1(campaign_id,resolve_tick,result_world_hash);
+          INSERT INTO current_schema VALUES(1,'schema');
+          INSERT INTO material_campaign_foundation_v3 VALUES('campaign','foundation','content');
+          INSERT INTO tick_commit VALUES('campaign',1,'tick','envelope');
+          INSERT INTO labor_period_v1 VALUES('campaign',1,'world');
+          INSERT INTO company_accounting_period_v1 VALUES('campaign',1,'world');
+        """)
+        db.execute(local(body))
+        kind = f"BabylonReceiptStorageV{version}\0".encode()
+        digest = b"b" * 32
+        db.execute(
+            "INSERT INTO material_tick_v3 VALUES('campaign',1,'id',?)", (kind + bytes(8) + digest,)
+        )
+        db.execute(
+            "INSERT INTO money_journal_period_v1 VALUES('campaign',1,'schema','id','tick','envelope','foundation','content',?)",
+            (digest,),
+        )
+
+        def coverage():
+            return db.execute(
+                local(ECONOMIC_COVERAGE_SQL),
+                ("campaign", b"BabylonReceiptStorageV4\0", b"BabylonReceiptStorageV5\0"),
+            ).fetchone()
+
+        assert coverage() == (1, 1)
+        for field, valid in (("content_sha256", "content"), ("schema_sha256", "schema")):
+            db.execute(f"UPDATE money_journal_period_v1 SET {field}='different'")
+            assert coverage() == (0, 0)
+            db.execute(f"UPDATE money_journal_period_v1 SET {field}=?", (valid,))
+        db.execute("DELETE FROM company_accounting_period_v1")
+        assert coverage() == (0, 0)
+
+
+def test_live_archive_index_page_is_charged_once_to_the_same_relation_and_diagnostic():
+    from tools.devtools.national_storage_qualification import captured_relation_sizes
+
+    item = snapshot(tick=1)
+    prefix = ("babylon_meta", "archive_atom_v1")
+    # The archive primary key gained one page between two reads during a real close.
+    item["relations"] = [[*prefix, 475136, 229376, 8192, 712704, -1.0]]
+    indexes = [(*prefix, "archive_atom_v1_pkey", 237568)]
+    item["index_diagnostics_not_additional_totals"] = indexes
+    with pytest.raises(ValueError, match="index diagnostics exceed"):
+        Snapshot.model_validate(item)
+
+    heaps = [(*prefix, 475136, 8192, -1.0), ("public", "unindexed", 8192, 0, 1.0)]
+    item["relations"] = captured_relation_sizes(heaps, indexes)
+    parsed = Snapshot.model_validate(item)
+    assert parsed.relations == (
+        (*prefix, 475136, 237568, 8192, 720896, -1.0),
+        ("public", "unindexed", 8192, 0, 0, 8192, 1.0),
+    )
+    assert parsed.index_diagnostics_not_additional_totals == tuple(indexes)

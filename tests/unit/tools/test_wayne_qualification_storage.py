@@ -1084,6 +1084,7 @@ def native_release(tmp_path, monkeypatch):
         ("runtime", "babylon-runtime"),
         ("client", "babylon-client"),
         ("material_audit", "babylon-material-audit"),
+        ("economic_projections", "babylon-economic-projections"),
     ):
         data = name.encode()
         (binaries / name).write_bytes(data)
@@ -1340,7 +1341,12 @@ def test_native_pin_publishes_only_released_normal_copies(
         assert result == 0, capsys.readouterr().err
         assert storage.strict_json_bytes(roster.read_bytes()) == {
             entry["path"].removeprefix("normal-"): entry
-            for entry in (packet["runtime"], packet["client"], packet["material_audit"])
+            for entry in (
+                packet["runtime"],
+                packet["client"],
+                packet["material_audit"],
+                packet["economic_projections"],
+            )
         }
     else:
         reason = "initial reservation" if change == "new-reference" else "babylon-material-audit"

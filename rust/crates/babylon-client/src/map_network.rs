@@ -1,10 +1,10 @@
 //! Disclosed domestic county owners as a geographic, schematic network.
 //! Display offsets separate county aggregates; they are never factory locations.
 
-use super::super::{ObserverMapCamera, BASE_HEIGHT, MAP_LAYER};
+use super::super::{MapOrbit, ObserverMapCamera, BASE_HEIGHT, MAP_LAYER};
 use super::{
-    disclosed_snapshot, CountyAnchors, RelationshipEntity, RelationshipLabel,
-    RelationshipObservation, RoadSegment, RoadSegments,
+    CountyAnchors, RelationshipEntity, RelationshipLabel, RelationshipObservation, RoadSegment,
+    RoadSegments,
 };
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObservationContext, ObserverSession};
@@ -21,6 +21,14 @@ use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+
+#[path = "map_facilities.rs"]
+mod facilities;
+use self::facilities::{Active, LegendFocus, Selection};
+use crate::map_economy_lens::MapLens;
+use crate::observer_map3d::symbols::GeographicSymbol;
+use crate::visual_assets::{MapSymbol, VisualAssets};
+use babylon_persistence::identity::CampaignId;
 
 #[path = "map_network_projection.rs"]
 mod projection;
@@ -40,6 +48,7 @@ enum NodeKey {
 #[derive(Clone, Debug, PartialEq)]
 struct NetworkNode {
     key: NodeKey,
+    symbols: Vec<MapSymbol>,
     site_id: String,
     county: String,
     sector: NetworkSector,
@@ -82,8 +91,8 @@ fn site_sector(site: &ProductionSite) -> NetworkSector {
         return match site.sector_code.as_deref() {
             Some("11") => NetworkSector::Agriculture,
             Some("21") => NetworkSector::Mining,
-            Some(_) => NetworkSector::Manufacturing,
-            None => NetworkSector::Production,
+            Some("31-33" | "31" | "32" | "33") => NetworkSector::Manufacturing,
+            _ => NetworkSector::Production,
         };
     }
     if site.roles.contains(&ProductionSiteRole::Retail) {
@@ -98,10 +107,14 @@ fn site_sector(site: &ProductionSite) -> NetworkSector {
 fn node_caption(site: &ProductionSite, workforce: Option<(u64, u64)>) -> String {
     let mut text = format!(
         "{}\n{} · {}",
-        site.name,
+        crate::production::site_subject(site),
         site_sector(site).label(),
         site.industry_code.as_ref().map_or_else(
-            || format!("Function {}", site.function),
+            || babylon_kernel::economic_identity::EconomicFunction::from_source_key(&site.function)
+                .map_or_else(
+                    || site.function.clone(),
+                    |function| function.label().to_owned()
+                ),
             |code| format!("NAICS {code}")
         )
     );
@@ -216,7 +229,7 @@ fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
         .map(|node| &node.county)
         .collect::<BTreeSet<_>>()
         .len();
-    format!("{county} + direct counterparts\n{cohorts} / {} disclosed cohorts · {counties} mapped counties\n{} / {} disclosed links · {}\n{} counterparts listed outside this map\nArrows: supplier → buyer; county aggregates, not factories\nClick a dot or counterpart to inspect · county selection changes scope",
+    format!("{county} + direct counterparts\n{cohorts} / {} disclosed cohorts · {counties} mapped counties\n{} / {} disclosed links · {}\n{} counterparts listed outside this map\nArrows: supplier → buyer; county aggregates, not factories\nChoose a workplace symbol to open its sites · dots trace other relationships",
         projection.total_cohorts, projection.links.len(), projection.total_links,
         filter.label(), projection.external.len())
 }
@@ -232,70 +245,44 @@ fn heading_bundle(projection: &NetworkProjection, filter: NetworkSector) -> impl
     )
 }
 
-fn spawn_legend(commands: &mut Commands) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(px(8)),
-                row_gap: px(3),
-                ..default()
-            },
-            BackgroundColor(theme::INK.with_alpha(0.9)),
-            ZIndex(5),
-            Visibility::Hidden,
-            EconomyEntity,
-            NetworkLegend,
-            Pickable::IGNORE,
-            DeclaredSurface::new(SurfaceId::ObserverProduction),
-        ))
-        .with_children(|legend| {
-            for sector in NetworkSector::GROUPS {
-                legend.spawn((
-                    Text::new(format!("■ {}", sector.label())),
-                    TextFont {
-                        font_size: FontSize::Px(13.0),
-                        ..default()
-                    },
-                    TextColor(sector_color(sector)),
-                    ObserverFontRole::Body,
-                    Pickable::IGNORE,
-                ));
-            }
-        });
+#[derive(SystemParam)]
+struct NetworkArt<'w> {
+    assets: Res<'w, NetworkAssets>,
+    visual: Res<'w, VisualAssets>,
+    meshes: ResMut<'w, Assets<Mesh>>,
 }
 
 fn rebuild_network(
     mut commands: Commands,
     observation: RelationshipObservation,
-    assets: Res<NetworkAssets>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut scope: ResMut<NetworkScope>,
-    mut hovered: ResMut<HoveredNode>,
+    mut art: NetworkArt,
+    active: Res<Active>,
+    (mut scope, mut hovered): (ResMut<NetworkScope>, ResMut<HoveredNode>),
+    mut keyboard: LegendFocus,
     old: Query<(Entity, Option<&Mesh3d>), With<EconomyEntity>>,
 ) {
     let context = observation.session.context();
-    if scope.0.as_ref() == Some(&context) && !observation.changed() {
+    if scope.0.as_ref() == Some(&context) && !observation.changed() && !active.is_changed() {
         return;
     }
     scope.0 = Some(context.clone());
     hovered.0 = None;
     for (entity, mesh) in &old {
         if let Some(mesh) = mesh {
-            if mesh.0 != assets.marker {
-                meshes.remove(mesh.0.id());
+            if mesh.0 != art.assets.marker {
+                art.meshes.remove(mesh.0.id());
             }
         }
         commands.entity(entity).despawn();
     }
     if *observation.view != PrimaryView::Map
+        || matches!(observation.ui.lens, MapLens::Money)
         || observation.ui.road_layer != RoadLayer::EconomyNetwork
     {
         return;
     }
     let good = match &observation.ui.lens {
-        crate::map_economy_lens::MapLens::Material { good, .. } => good.as_ref(),
+        MapLens::Material { good, .. } => good.as_ref(),
         _ => None,
     };
     let mut projection = projection::project_network(
@@ -306,32 +293,47 @@ fn rebuild_network(
         observation.ui.network_sector,
         good,
     );
-    if matches!(
-        observation.ui.lens,
-        crate::map_economy_lens::MapLens::Relationships
-    ) {
+    if matches!(observation.ui.lens, MapLens::Relationships) {
         for node in projection.nodes.values_mut() {
-            node.position.y = BASE_HEIGHT + 8.0;
+            if node.symbols.is_empty() {
+                node.position.y = BASE_HEIGHT + 8.0;
+            } else {
+                node.position = observation
+                    .anchors
+                    .county_position(&node.county)
+                    .expect("the projected group has a county anchor");
+            }
         }
     }
     commands
         .spawn(heading_bundle(&projection, observation.ui.network_sector))
         .remove::<RelationshipEntity>()
-        .insert((EconomyEntity, Pickable::IGNORE));
+        .insert((
+            EconomyEntity,
+            Pickable::IGNORE,
+            crate::observer_map3d::symbols::MapObstruction,
+        ));
     if projection.available {
-        spawn_legend(&mut commands);
+        facilities::spawn(
+            &mut commands,
+            &projection,
+            &observation,
+            &art.visual,
+            &active,
+            &mut keyboard,
+        );
     }
     spawn_network_connections(
         &mut commands,
-        &assets,
-        &mut meshes,
+        &art.assets,
+        &mut art.meshes,
         &projection,
         observation.navigation.selected_site.as_deref(),
     );
     peers::spawn_peers(&mut commands, &projection, &context);
     spawn_network_nodes(
         &mut commands,
-        &assets,
+        &art.assets,
         projection,
         &context,
         observation.navigation.selected_site.as_deref(),
@@ -363,6 +365,10 @@ fn spawn_network_connections(
     for (index, ((from_key, to_key), sector)) in connections.into_iter().enumerate() {
         let from = projection.nodes[&from_key].position;
         let to = projection.nodes[&to_key].position;
+        // Co-located groups retain their disclosed relationship in the reader.
+        if from == to {
+            continue;
+        }
         let focused = [&from_key, &to_key]
             .into_iter()
             .any(|key| matches!(key, NodeKey::Site(id) if selected_site == Some(id.as_str())));
@@ -426,7 +432,11 @@ fn spawn_network_nodes(
     context: &ObservationContext,
     selected_site: Option<&str>,
 ) {
-    for node in projection.nodes.into_values() {
+    for node in projection
+        .nodes
+        .into_values()
+        .filter(|node| node.symbols.is_empty())
+    {
         let focused = selected_site == Some(node.site_id.as_str());
         let scale = if focused { 6.0 } else { 4.2 };
         commands
@@ -589,11 +599,56 @@ fn place_network_labels(mut placement: NetworkLabelPlacement) {
     }
 }
 
+/// Enter a selected county's disclosed network once. Period refreshes and row activation preserve manual pan and zoom.
+fn frame_network(
+    observation: RelationshipObservation,
+    viewport: Res<ObserverViewport>,
+    mut orbit: ResMut<MapOrbit>,
+    markers: Query<&GeographicSymbol, With<Selection>>,
+    remaining: Query<&EconomyNode>,
+    mut framed: Local<Option<(CampaignId, usize)>>,
+) {
+    if *observation.view != PrimaryView::Map
+        || observation.ui.lens == MapLens::Money
+        || observation.ui.road_layer != RoadLayer::EconomyNetwork
+    {
+        *framed = None;
+        return;
+    }
+    let Some(county) = observation.selected.0 else {
+        return;
+    };
+    let key = (observation.session.campaign, county);
+    if *framed == Some(key)
+        || !usable(&observation.ui, *observation.view)
+        || super::disclosed_snapshot(&observation.frame, &observation.session).is_none()
+    {
+        return;
+    }
+    let Some(bounds) = viewport.0.filter(|r| r.size().min_element() > 0.0) else {
+        return;
+    };
+    let positions = markers
+        .iter()
+        .map(|m| m.anchor)
+        .chain(remaining.iter().map(|n| n.node.position));
+    if let Some((lo, hi)) = positions
+        .map(|point| (point, point))
+        .reduce(|(a, b), (x, y)| (a.min(x), b.max(y)))
+    {
+        super::super::money_map::frame_bounds(&mut orbit, lo, hi, bounds.width() / bounds.height());
+        *framed = Some(key);
+    }
+}
+
 pub(super) fn install(app: &mut App) {
-    app.init_resource::<NetworkScope>()
+    app.init_resource::<Active>()
+        .init_resource::<NetworkScope>()
         .init_resource::<HoveredNode>()
         .add_systems(Startup, setup_network)
         .add_systems(Update, rebuild_network.in_set(ObserverSet::Paint))
+        .add_systems(Update, peers::sync_disclosure.after(rebuild_network))
+        .add_systems(Update, frame_network.after(super::super::sync_camera))
         .add_systems(
             Update,
             place_network_labels.after(super::super::sync_camera),
@@ -617,6 +672,11 @@ fn place_legend(
             Visibility::Hidden
         });
         if let Some(bounds) = bounds {
+            node.max_height = px((bounds.height() / scale.0 - 16.0).max(0.0));
+            let width = bounds.width() / scale.0;
+            node.max_width = px((width * 0.32)
+                .clamp(190.0, 250.0)
+                .min((width - 16.0).max(0.0)));
             node.left = px((bounds.min.x + 8.0) / scale.0);
             node.top = px((bounds.min.y + 8.0) / scale.0);
         }

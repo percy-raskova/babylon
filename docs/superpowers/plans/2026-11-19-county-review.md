@@ -1800,7 +1800,12 @@ Decisions:
   its structure always: its group, its workplace and pay mode or, with no crew, "no wage · no one in
   the labor force", people at work, people looking for work, units held, its rank, and its units
   paid and unpaid at the last session. Amounts are shown when `earned` is present. Otherwise the
-  line ends: "Amounts are earned by contact. Reach a household here."
+  line ends: "Amounts are earned by contact. Reach a household here." Positions are shown in the
+  projection's order: the last list's ranks first, then, by key, the positions that have no rank.
+  After a session has been held, a position with no rank is one whose households moved there since
+  that session (the roll-forward made its key), and its line says "Not on the last list: its
+  households moved here since the last session." Before the first session no position has a rank,
+  and the roster says once, above the positions, "The county has not held a session yet."
 - Beside each income source the class reading of spec 7.10 is shown word for word, marked
   "Designed". Nation shows "pending". Every one of the four inspectors ends with the standing line
   of the Global Constraints.

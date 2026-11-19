@@ -902,12 +902,17 @@ pub fn project(config: &CountyReviewConfig, state: &CountyReviewState, ledger: &
 `project` names the City PD's payroll: the workplace line with that label is reduced by the payroll,
 and a `CityPdPayroll` line of the payroll follows it; the agency line is `CityPdVisits`. A position
 is `contacted` when `contacted` holds its key. Wage and wage tax "per household" are rounded down to
-a micro-unit for display. They are never used to rank. `preview_contact` runs `hold_session` twice
-on `state.roster` and `state.last_facts`, without and with the contact, and compares: `place_open`
-is whether the contacted row's `asked_paid` rose; `taken_from` lists rows whose `units_unpaid` rose;
-`then_at_stake` lists rows whose `losers` rose. It reads nothing earned. `project` fills `bands`
-from `state.roster.band_counts()`. They are county totals and are shown whether or not the player
-has contacted anyone.
+a micro-unit for display. They are never used to rank. `preview_contact` runs `hold_session` twice,
+without and with the contact, on `state.roster` and on a copy of `state.last_facts` whose crews'
+`opening_at_work` and `opening_seeking` are set to `state.roster.crew_at_work(crew)` and
+`state.roster.crew_seeking(crew)`. The stored roster has already been rolled forward to the next
+opening, so the last close's own opening counts no longer match it, and `hold_session`'s first check
+would refuse every preview after a period with a hire, a separation or a departure. The wages,
+taxes, cash and hours stay those of the last close, and `basis_period` is its period. It compares:
+`place_open` is whether the contacted row's `asked_paid` rose; `taken_from` lists rows whose
+`units_unpaid` rose; `then_at_stake` lists rows whose `losers` rose. It reads nothing earned.
+`project` fills `bands` from `state.roster.band_counts()`. They are county totals and are shown
+whether or not the player has contacted anyone.
 
 - [ ] **Step 1: Write the failing tests.** In `projection.rs`, on `world()` after a session with `D`
   reached and contacted:
@@ -953,6 +958,17 @@ fn who_works_in_each_band_is_a_public_county_total() {
                          (Band::Next40, 1, 1, 0, 0, 1, 0, 0), (Band::Bottom50, 5, 3, 2, 0, 3, 5, 5)]);
 }
 ```
+
+Also in `projection.rs`, `the_preview_after_a_roll_forward_with_hires_still_answers`: on `world()`
+after a session and a `roll_forward` in which one crew hires one person, `preview_contact` returns
+`Some(..)` (not `RosterEngineMismatch`) and its `basis_period` is the session's period.
+
+Every type in this task's Interfaces except `LedgerInput` derives `Debug, Clone, PartialEq, Eq,
+Serialize, Deserialize`, and every struct has `#[serde(deny_unknown_fields)]`, because
+`OrganizerSnapshot` and `OrganizerPreview`, which hold `CountyReviewProjection` and `ContactPreview`
+from Task 9 on, derive all six and deny unknown fields. Money fields serialize through
+`super::decimal`, as Task 3's do. The workspace denies `unwrap` in tests: where a sketch here says
+`unwrap`, write `expect` with a reason.
 
 In `codec.rs`: a state survives `decode(encode(state))`; a byte flipped in the payload is
 `NonCanonical` or `Codec`; a roster with unsorted rows is refused by `validate_county_review_state`;

@@ -28,8 +28,9 @@ ADR302_household_roster_and_counting:
     Nothing here is called an adjunction.
 
     R2. POSITIONS BY WORKPLACE. A position is one budget group's households bound
-    to one crew, with a count of people at work, a count looking for work, and a
-    count of units held. A crew is one budget group's people at one workplace,
+    to one crew, with a count of people at work, a count looking for work, a
+    count of units held, and the band of the rule of thirds its households were
+    in at the opening (R9). A crew is one budget group's people at one workplace,
     paid in one way. All of a household's people in the labor force belong to
     one crew. That is declared. It is not true of Wayne. One crew's workers are
     taken as paid alike, which is the floor of the grain.
@@ -53,7 +54,7 @@ ADR302_household_roster_and_counting:
 
     R5. EXACT SPLITS AND TIES. Each split is by largest remainder on whole
     numbers. An exact tie between positions of one crew is settled by fewer units,
-    then fewer job-seekers, then fewer at work. An exact tie between crews in the
+    then fewer job-seekers, then fewer at work, then the lower band. An exact tie between crews in the
     binding step leaves the household bound to no crew, counted with the
     households that have nobody in the labor force. Between reached and
     unreached households it goes to the unreached. No split reads an identifier.
@@ -67,9 +68,25 @@ ADR302_household_roster_and_counting:
     R7. TYPED REFUSALS. A group with more crews than households refuses the
     campaign (D.3 step 1). A lowering of a group's households that the roster
     cannot follow, for want of households with nobody in the labor force,
-    refuses the session with a typed error (D.3 step 6).
+    refuses the session with a typed error (D.3 step 6). An opening in which the
+    owners have too few households outside the labor force for the top 1%, or
+    the other households too few in the labor force for the next 40%, refuses
+    the campaign and names the band (R9).
 
     R8. NO KERNEL RECEIPT. An exact split with no draw owes no kernel receipt.
+
+    R9. BANDS. Each position carries a band: the top 1%, the next 9%, the next
+    40% or the bottom 50% (ADR305). Two more Designed placements set it, once,
+    at the opening. (7) Sizes. The engine's households with business ownership
+    are taken as the top tenth. The top 1% is one tenth of them, and the next 40%
+    is four ninths of the other households. (8) Filling. The top 1% are owner
+    households with nobody in the labor force. The next 40% are other households
+    in the labor force, those with the most people at work first and those only
+    looking for work last. Job-seekers and units are not read, so the next 40%
+    has unemployment too. A line that falls inside like households takes
+    from each position in proportion, and an exact tie stays in the lower band. A
+    household keeps its band. No rule reads a band, except as the last tie of an
+    exact split. The views count who works in each band every period.
   calls:
     - 'Positions by workplace, with the floor of the grain (design 7.2).'
     - 'All of a household''s people in the labor force belong to one crew (7.2).'
@@ -77,6 +94,7 @@ ADR302_household_roster_and_counting:
     - 'Spread people evenly, because the other bound needs a cap on household size (7.2).'
     - 'Unpaid tax is shared in proportion to wages (7.4).'
     - 'Collective residence has no position (7.2).'
+    - 'The bands: owners as the top tenth, the next 40% by the number at work, and refusal of an opening that cannot obey (7.2; ADR305).'
   alternatives_rejected:
     - 'Every household takes its budget group''s average (design 6, How households are counted).'
     - 'Each group split into has-a-wage and has-no-wage only.'
@@ -100,3 +118,4 @@ ADR302_household_roster_and_counting:
     - ADR269_sparse_household_budgets
     - ADR296_national_game_grain
     - ADR301_county_review_session
+    - ADR305_rule_of_thirds_anchoring_law

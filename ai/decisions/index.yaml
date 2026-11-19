@@ -26,7 +26,7 @@ meta:
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
   ADR305_rule_of_thirds_anchoring_law:
-    title: Adopt the rule of thirds as the anchoring law for the opening split of household wealth
+    title: Adopt the rule of thirds as the anchoring law for household wealth and for who works
     status: accepted
     date: '2026-11-19'
     file: ADR305_rule_of_thirds_anchoring_law.yaml

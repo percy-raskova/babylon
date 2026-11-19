@@ -3,7 +3,10 @@
 **Status:** Sixth draft, 19 November 2026. The Director read the fourth draft, said it "looks good
 elsewise", and gave three instructions. The fifth draft applied them and was checked by three
 readers. This draft fixes what they found. The Director then said to write the plan and begin
-building. The plan is `docs/superpowers/plans/2026-11-19-county-review.md`.
+building. The plan is `docs/superpowers/plans/2026-11-19-county-review.md`. Later that day the
+Director said that one part of the rule of thirds belongs in this slice: who works and who does not.
+Sections 2, 3, 7.2, 7.10, 7.11, 7.13, 8, 11 and 12 and Appendix D.3 were amended for it. Building
+had begun, and no built task was changed by it.
 
 **Scope:** PER-366, the first playable slice of the class-agents lane. Wayne County only (county
 geoid 26163).
@@ -85,7 +88,22 @@ MIM's line. Neither is a source for method here.
 - *The rule of thirds.* "lets also consider as an anchoring law the generalized rule of thirds: 1%
   of the pops owns 1/3 of the wealth, 1-10% own next third, 10-50% own last third, >50% have net
   zero wealth". It is the lane's law for the opening split of household wealth. This slice holds no
-  household wealth, so it binds the next slice (section 11, and section 8, record 15).
+  household wealth, so the shares of wealth bind the next slice (section 11, and section 8, record
+  15).
+- *Who works.* The author then told the Director that the law changes nothing in this slice. The
+  Director answered: "the rule of thirds is relevant, not in its entirety right now, but we know
+  that roughly 40% of the population makes its living from selling wage labor so that's 40% of the
+  population at least who must work, the top 1% do not work they live entirely off investments, the
+  next top 10% some work some live off investments or they are retired, the bottom 50% work but are
+  more likely to receive welfare and require aid and they don't own homes, i think the proportions
+  of populations who aren't and are working are relevant to this point in the game at least". So the
+  four bands of the law are on the roster in this slice, and the opening obeys what the Director
+  said of the work of each band (section 7.2).
+- *Unemployment in the next 40%.* The author's first form of that amendment kept every job-seeker
+  out of the next 40%. The Director answered: "yes but the next 40% can have unemployment too, so
+  they can be looking. i think this is a good start though. lets work on actually getting it made".
+  So the next 40% is filled by the number of people at work alone, and it takes its share of
+  job-seekers and units with it (section 7.2).
 
 **Things the author told the Director that were wrong**
 
@@ -116,6 +134,11 @@ MIM's line. Neither is a source for method here.
    rule for a place does not do. They also spread the units of the group with business ownership
    over households of working owners, who cannot hold one. The tables are withdrawn. Section 3 says
    what is known without them.
+7. *The rule of thirds.* The author told the Director that the law "changes nothing in this first
+   slice", because the slice holds no household wealth. The Director corrected it: the law also says
+   who works and who does not, and those proportions belong here. The sixth draft was amended for
+   it. The amendment's first form then gave the next 40% no household that was looking for work. The
+   Director corrected that as well: the next 40% can have unemployment too.
 
 **What changed since the last draft**
 
@@ -138,6 +161,9 @@ MIM's line. Neither is a source for method here.
 - The worked tables of the fifth draft are withdrawn (section 3).
 - Facts corrected: household counts, how wages are paid, what the engine holds for each budget
   group, where the $24 comes from, and who is paid for the City PD's hour (Appendix A).
+- Amended after the sixth draft: every position carries its band in the rule of thirds, the opening
+  obeys the Director's statement of who works in each band, and the views count who works in each
+  band every period.
 
 **The author's calls, for the Director to check while reading**
 
@@ -191,9 +217,19 @@ MIM's line. Neither is a source for method here.
     and 7.11).
 22. The City PD's payroll is named on the public workplace that employs the force. No workplace is
     carved out for it (section 7.3).
-23. The rule of thirds changes nothing in this slice. It binds the opening split of household wealth
-    in the next (section 11).
+23. The bands of the rule of thirds are on the roster, and the opening obeys the Director's
+    statement of who works in each. The law's shares of wealth bind the next slice (sections 7.2 and
+    11).
 24. All of a household's people in the labor force belong to one crew (section 7.2).
+25. The engine's households with business ownership are taken as the top tenth. The top 1% is one
+    tenth of them, and the next 40% is four ninths of the other households (section 7.2).
+26. The top 1% are owner households with nobody in the labor force. The next 40% are the other
+    households in the labor force, those with the most people at work first. Job-seekers and units
+    are not read, so the next 40% has unemployment too (section 7.2).
+27. An opening that cannot obey the Director's statement of who works is refused by name. It is not
+    bent quietly (section 7.2).
+28. Who works in each band is a public county total. A position's own number of households stays
+    earned (section 7.11).
 
 ## 3. One period at the table
 
@@ -246,6 +282,34 @@ they own a share of a business. It does not say who has a wage now.
   roll.
 - The second and fourth groups also receive ownership income: $103.1 million and $39.3 million in
   period 4. The engine does not tax it. A working owner is at work and is paid no wage.
+
+**Who works.** **[Director]** The Director's law names four bands and says who works in each
+(section 2). Laid over the four groups by the rules of section 7.2, Wayne opens as below.
+
+| Band | Households | With someone at work | Only looking for work | Nobody in the labor force | People at work | People looking for work | Units held |
+|---|---|---|---|---|---|---|---|
+| Top 1% | 7,006 | none | none | 7,006 | none | none | none |
+| Next 9% | 63,054 | 50,726 | 2,949 | 9,379 | 101,931 | 5,618 | 5,618 |
+| Next 40% | 280,232 | 280,232 | none | none | 470,691 | 13,104 | 13,104 |
+| Bottom 50% | 350,291 | 176,296 | 26,538 | 147,457 | 176,296 | 52,271 | 52,271 |
+| All households | 700,583 | 507,254 | 29,487 | 163,842 | 748,918 | 70,993 | 70,993 |
+
+- The figures are worked from the group totals above by the rules of section 7.2, with each group's
+  workplaces taken as one. So they are close and not exact. The first run records the exact figures.
+- The top 1% come from the fourth group: owners with no earner. The engine holds 16,385 such
+  households with nobody in the labor force, more than twice the 7,006 the law needs.
+- The next 9% are the other owners: 50,726 households that work, 2,949 that are looking for work and
+  9,379 that live on ownership income.
+- The next 40% come from the first group, which is 65 of every 100 households in Wayne. So "at
+  least" holds with room. The band has unemployment: 13,104 of its people are looking for work,
+  about 3 of every 100 of its people in the labor force. At the opening each of them shares a
+  household with someone at work.
+- The bottom 50% are the rest of the first group and all of the third. Half of its households have
+  someone at work. Of its people in the labor force 23 of every 100 are looking for work. It holds
+  74 of every 100 units that households hold, and the claimants and the aid partners' households are
+  in it.
+- So the engine's opening and the Director's law agree in shape. The law adds the names of the bands
+  and two checks at the opening.
 
 In a player's campaign the scenario also carves out three small named groups. The aid partners'
 households (4 households, nobody in the labor force, no unit) come out of the third group, and the
@@ -636,7 +700,7 @@ So one budget group's workers at one workplace are taken as paid alike. This is 
 grain. **[Call]**
 
 **Positions.** A **position** is a set of households that no rule in this slice can tell apart. A
-position answers five questions.
+position answers six questions.
 
 | Question | Answers |
 |---|---|
@@ -645,6 +709,7 @@ position answers five questions.
 | How many of its people are at work now? | Any whole number |
 | How many of its people are looking for work now? | Any whole number |
 | How many units does it hold? | One for each job-seeker it had at the opening: none, one, or more |
+| Which band was it in at the opening? | The top 1%, the next 9%, the next 40% or the bottom 50% of the county's households |
 
 - A **crew** is one budget group's people at one workplace, paid in one way. The engine calls it a
   staffing member. All of a household's people in the labor force belong to one crew. **[Call]** No
@@ -660,6 +725,29 @@ position answers five questions.
   never hired.
 - A view may fold positions for reading (section 7.11). No rule folds them.
 
+**The bands, and who works.** **[Director]** The rule of thirds divides a population into the top
+1%, the next 9%, the next 40% and the bottom 50%. Its shares of wealth are for the next slice. Its
+bands are in this one, because the Director said who works in each (section 2).
+
+| Band | The Director's words |
+|---|---|
+| Top 1% | "do not work they live entirely off investments" |
+| Next 9% | "some work some live off investments or they are retired" |
+| Next 40% | "makes its living from selling wage labor"; "at least who must work"; "can have unemployment too, so they can be looking" |
+| Bottom 50% | "work but are more likely to receive welfare and require aid and they don't own homes" |
+
+- A household's band is set once, at the opening, and the household keeps it. A band is a place in
+  the opening order of the county's households. It is not a class, and no view calls it one.
+- No rule of this slice decides by a band. The county ranks by wage tax alone. A band settles only
+  the last exact tie of a split (below). Bands are shown on every position and counted every period
+  (section 7.11).
+- After the opening nothing holds a band to the law. Hires, layoffs and departures move its
+  households between positions, and the count of who works in each band is a measurement. The owner
+  ruled this form in July for an empirical law: the opening obeys it without condition, and a run
+  only measures it (section 11).
+- The engine holds no home and no household wealth in this slice. So "they don't own homes" is shown
+  as the Director's law. It is not a figure.
+
 **The roster** is the table of positions. For each position it holds the number of households and,
 of those, the number reached. Every entry is a whole number. The roster adds back every period:
 
@@ -667,7 +755,9 @@ of those, the number reached. Every entry is a whole number. The roster adds bac
 - the people at work in a crew's positions are the people the engine holds at work in that crew, and
   the same holds for its people looking for work;
 - the units in a group's positions are its units on the roll, less any that left with a household
-  (rule 6).
+  (rule 6);
+- the positions of a band sum to the band's households at the opening, less households that left,
+  and no household of the top 1% is in the labor force.
 
 **The declared placements.** **[Call]** **[Record needed]** The engine holds people by crew and
 holds no household. The sources give Wayne's households, workers and job-seekers as separate totals,
@@ -692,6 +782,25 @@ holds a unit or who can ask, so each changes outcomes.
    kind.* When the engine lowers a budget group's households, households with nobody in the labor
    force leave. A unit that leaves with a household stays in the money for relief and is held by
    nobody.
+7. *The bands are sized from the engine's own top tenth.* The engine gives business ownership to one
+   tenth of the households of each earnings group, by a Designed setting (Appendix A). Those
+   households are taken as the top tenth. The top 1% is one tenth of them, and the next 9% is the
+   rest. The next 40% is four ninths of the other households, and the bottom 50% is the rest.
+8. *The bands are filled by the Director's words.* The top 1% are owner households with nobody in
+   the labor force. The next 40% are households without ownership that are in the labor force, taken
+   by the number of their people at work, most first. Households that are only looking for work come
+   last. A household with nobody in the labor force is never taken. Job-seekers and units are not
+   read, and a household brings its own with it, so the next 40% has unemployment too. Where a
+   band's line falls inside a set of like households, it takes from each position in proportion.
+
+Rules 7 and 8 run once, at the opening, after rules 1 to 3. They decide which households carry which
+band. They move no unit and no person.
+
+**Two checks at the opening.** **[Call]** If the owners have fewer households with nobody in the
+labor force than the top 1% needs, the build refuses the campaign. If the other households have
+fewer in the labor force than the next 40% needs, the build refuses the campaign. Each refusal names
+the band. The law is an opening condition. An opening that cannot meet it shows a fault in the data
+or in this reading, and it is not bent quietly. Wayne meets both with room (section 3).
 
 Among households that a rule treats alike, it falls on positions in proportion to their households,
 and inside a position on reached and unreached households in proportion.
@@ -701,11 +810,24 @@ and inside a position on reached and unreached households in proportion.
   one more Designed number.
 - **The other bounds of rules 4 to 6** are that a hire, a layoff or a departure falls first on
   households that hold a unit, or last.
+- **Why the owners are the top tenth.** MIM counts net worth as means of production (Appendix B).
+  The engine's households hold no net worth yet, but two budget groups draw income from a share of a
+  business, and those are the groups taken here. The setting that makes owners one tenth of
+  households is Designed, and its own comment says it is "not observed wealth/class". So this is a
+  reading. The next slice tests it against the two thirds the law gives the top tenth (section 11).
+- **Why by the number at work.** The next 40% live by selling wage labor, so a household with more
+  wages stands higher. Nothing else orders them. Job-seekers and units are not read, because the
+  Director said the next 40% can have unemployment too. Relief still sits mostly with the bottom
+  50%, because every household with no earner is there (section 3).
+- **The other bound of rule 8** fills the next 40% without regard to the number at work. It changes
+  which households carry the name. It changes no outcome beyond an exact tie, because no rule
+  decides by a band and two positions that differ only in band stand at one place on the list
+  (section 7.14).
 - **Every split is exact.** Each is made by largest remainder on whole numbers, as the Game Design
   Standard requires. An exact tie between positions is settled by a fixed order of their answers:
-  fewer units first, then fewer people looking for work, then fewer at work. Between reached and
-  unreached households it goes to the unreached. No split reads an identifier. Appendix D gives each
-  rule step by step.
+  fewer units first, then fewer people looking for work, then fewer at work, then the lower band.
+  Between reached and unreached households it goes to the unreached. No split reads an identifier.
+  Appendix D gives each rule step by step.
 
 **What is not split.** Money and stock. A position has no account. The engine pays a group's support
 into one pooled account and collects its wage tax from that account. The roster is the county's
@@ -714,7 +836,10 @@ record of whose units and whose tax those are.
 **The small named groups** are budget groups of their own in the engine: the claimants (2
 households, each with a job-seeker and a unit), the aid partners' households (4, nobody in the labor
 force) and the organization's own households (4, with 4 people at work). The same rules place their
-households.
+households. None of them owns a business. The aid partners' households have nobody in the labor
+force, so they are in the bottom 50%. The claimants are only looking for work. In Wayne the line of
+rule 8 is reached long before them, so they are in the bottom 50% too. The organization's own
+households fall in the next 40% or the bottom 50% as that line gives them.
 
 **Collective residence** has no position.
 
@@ -940,7 +1065,7 @@ next is put to the Director (section 12).
   runs may make the same choice. In this slice none does.
 - **Each one brings one.** **[Director]** Every household that came to a session brings one more
   household of its own position, who is reached from the next session on. That is a household with
-  the same five answers. **[Call]**
+  the same six answers, the band among them. **[Call]**
 - **Bringing one costs two hours.** **[Call]** The household that brings spends 2 hours of its own
   on it, the same as the organizer's contact. So a household that comes gives 4 hours in the period:
   2 in the room and 2 bringing the next. The floor still compares the stake with the 2 hours in the
@@ -1066,6 +1191,11 @@ Design Standard requires. **[Record needed]**
   same however households are grouped. No partition is claimed by it, so Article II's proof is owed
   only for the positions (section 7.14).
 - No position is called "workers", "proletariat" or "the base".
+- Each position shows its **band** at the opening, with the Director's words for that band beside
+  it, marked Designed. **[Director]** A band is not called a class. MIM's reading stays beside each
+  source of income.
+- Beside the bottom 50% the words "they don't own homes" are shown as the law's. The view adds:
+  "Homes and wealth are not in this slice."
 - Nation shows as "pending" on every position.
 - One line is on screen in every view of this slice: "This slice has no nation, no solidarity and no
   consciousness. Households act on their own money only." **[Director]**
@@ -1083,7 +1213,7 @@ links, and a statement that it is not an administrative display.
 | View | The question it answers | What it shows | What the player can do from it | What comes back |
 |---|---|---|---|---|
 | County ledger | Is there relief money to move, for how long, and who is first in line for it? | The lines in pay order with the City PD's line, the money for relief announced for next period, the county's cash, the roll by budget group, the order of the list | Nothing directly | Next period's payment receipts |
-| Roster | Who lives here, where does their wage come from, and where do they stand toward the roll? | Each position in the order of the list: its budget group, its workplace or "no wage", its units, its sources of income with MIM's reading beside each and, where earned, its dollar figures and how many are reached | Choose a position for a review contact | The contact's receipt |
+| Roster | Who lives here, where does their wage come from, and where do they stand toward the roll? | Above the positions, who works in each band this period. Then each position in the order of the list: its band, its budget group, its workplace or "no wage", its units, its sources of income with MIM's reading beside each and, where earned, its dollar figures and how many are reached | Choose a position for a review contact | The contact's receipt |
 | Preview | What would the next session do if I reached one more household here? | Whether a place is open, whose unit would be taken, and who would then have a unit at stake | Confirm or cancel the contact | The session record |
 | Session record | Who came, who was paid, who was ranked too low, and who stayed home and why? | The county's list, each position's count and reason, each body's roll | Nothing directly | Next period's receipts |
 | Food run | Is a food run worth this period's practice? | Parcels the organization's households can spare, parcels delivered and eaten last run, hours each side was charged | Choose a local aid run | The run's receipt |
@@ -1098,7 +1228,11 @@ No rule reads a folded line.
 - Public record: the county's lines, its money for relief, its cash balance, the two claims, the
   roll by budget group, the order of the list, and every session's list. A list shows each
   position's rank and its units paid and not paid. It does not show the wage tax behind a rank.
-- Structure, shown for every position: its five answers (section 7.2) and which sources of income it
+- Who works in each band: the households of the band, those with someone at work, those only looking
+  for work, those with nobody in the labor force, its people at work, its people looking for work,
+  and the units it holds. These are county totals, like the roll by budget group, and they are
+  public. They are worked out again every period.
+- Structure, shown for every position: its six answers (section 7.2) and which sources of income it
   has. The player names a position by its structure, so a contact needs nothing that is earned.
 - Earned: a position's dollar figures (its wage tax, its wage, its stake), how many households it
   has, and how many of them are reached. The player sees these only for a position where the player
@@ -1177,6 +1311,10 @@ attribution rows arrive with the code, not before. The numbers stay in the scena
   the people looking for work in a crew's positions are the people the engine holds there. The units
   in a group's positions are its units on the roll, less any that left with a household. Reached
   households in a position are never more than its households.
+- The bands: the households of a band are its households at the opening, less those that left. In
+  each band, the households with someone at work, those only looking for work and those with nobody
+  in the labor force add to the band's households. No household of the top 1% is in the labor force.
+  At the opening every household of the next 40% is in the labor force.
 - Every split moves whole households and adds back exactly. A household that changes position is
   counted once, before and after.
 - For each position and session: households reached = households that came + households that stayed
@@ -1208,8 +1346,9 @@ attribution rows arrive with the code, not before. The numbers stay in the scena
 Article II asks for a proof that a grouping does not change the result. The declared scale is the
 county. The declared grouping is the position.
 
-**The statement.** A rule of this slice reads only a household's five answers and figures worked out
-from them. So it treats households with the same answers alike. Deciding once for a position and
+**The statement.** A rule of this slice reads only a household's answers and figures worked out from
+them. Of the six answers the band is the one no rule decides by: it only settles the last exact tie
+of a split. So it treats households with the same answers alike. Deciding once for a position and
 multiplying by its count gives the same number as deciding for each household and counting. A
 simulation that carried every household one by one, under the same rules, must give the same count
 in every position. Split a position into two with the same answers, merge them again, or rename
@@ -1230,7 +1369,9 @@ exact proportion. Largest remainder gives every part its exact share to within o
 exactly. Two declared rules settle exact ties: a unit in an exact tie between positions is not
 moved, and a household in an exact tie between kinds goes by the fixed order of kinds. A different
 grouping can therefore move a result by at most one unit or one household for each split it makes.
-Money is never rounded, because lines are whole units.
+The bands are such a split: two positions that differ only in band stand at one place on the list,
+and the tie rules of section 7.4 apply to them as to any two positions. Money is never rounded,
+because lines are whole units.
 
 **Merging positions with different figures changes the result, and must.** Two workplaces that pay
 differently would be given one average place that neither has. That was the error of the fourth
@@ -1261,14 +1402,14 @@ say how many records these become. The list is what must be decided and written 
 | 5 | Each one brings one | A Designed rate, the Director's. One household of the same position. Two hours for each household brought. Nothing can be called back | It sets how fast anything spreads, and how far |
 | 6 | The session roll | A household's own hours in the county's room put it on a body's roll for that period. The roll records who came, not agreement. Any Wayne household may be charged hours on its own recorded choice. This amends, for this one act, ADR262's "Neither operation writes solidarity, membership" and ADR270's rule on what creates membership | ADR270; ADR262; ADR299 |
 | 7 | The review contact, and where the session sits in the turn | A new organizer choice, open to any organization, that names a position. It is new content vocabulary, so it needs the Director's ceremony, schema and conformance updates and a recording record. The record says how it sits with the nine verbs of ADR177. It also states the Article III reading of section 7.5 | Constitution Articles III and VIII |
-| 8 | The roster and how households are counted | The four rules of section 7.2. Positions by workplace, with the floor of the grain. The declared placements, each with its other bound, and the order that settles ties. That all of a household's people in the labor force belong to one crew. How unpaid tax is shared. That the roster is a table of counts and not a new kind of field. That an exact split with no draw owes no kernel receipt | ADR269; ADR296; ADR176 ruling 17; the Game Design Standard; Amendment AJ |
+| 8 | The roster and how households are counted | The four rules of section 7.2. Positions by workplace, with the floor of the grain. The declared placements, each with its other bound, and the order that settles ties. That all of a household's people in the labor force belong to one crew. The bands of the rule of thirds on the roster, how they are sized and filled, and the two checks at the opening. How unpaid tax is shared. That the roster is a table of counts and not a new kind of field. That an exact split with no draw owes no kernel receipt | ADR269; ADR296; ADR176 ruling 17; the Game Design Standard; Amendment AJ |
 | 9 | The class and nation text on screen | As in section 7.10: a reading beside each source of income, and no label on a position. A figure held only for a budget group is shown as the group's | The ideological line is the Director's |
 | 10 | The aid road's roll | CHARTER: no roll in this slice. It arrives with the kitchen | The Director's ruling; Game Design Standard W.2 |
 | 11 | The graph payload | Either "blocked on PER-44 and hypergraph-rs issue 2", or the Director opens the payload ceremony in this lane. It covers a body's link and a workplace's link | ADR198 R4; Game Design Standard W.2 |
 | 12 | Opening conditions and evidence gaps | The first session in period 4. The opening reach of 2 and 3 households, which moves no money. The two standing claims. No organizer for either body. Geographic and sector variation recorded as BLOCKED, because the slice is one county | They are Designed; Constitution Article VIII |
 | 13 | The City PD's budget | Three numbers in place of one. The payroll: positions, hours and the wage, from a named count, carried as a record on the public workplace that employs the force. The engine's lines and the opening economy do not change. One visit a period, as before. It amends ADR291's sizing of the proxy and leaves the rest of that record standing | The Director's ruling; ADR291; ADR184 R4 |
 | 14 | Amendment AM | Article III carries ruling 5 in its own words, and the amendment says how the rule is applied: a rule may decide for one member by comparing material amounts held for that member, and three forms stay prohibited. It is written as ADR300 on this branch, with the status proposed (Appendix E). The Director's acceptance of the wording accepts it. The branch must not merge while it is proposed | Constitution Article VIII |
-| 15 | The rule of thirds | The Director's anchoring law for household wealth: the top hundredth of a population holds a third, the next nine hundredths a third, the next two fifths a third, and the lower half nothing. It binds the opening split of wealth when positions hold accounts of their own (section 11). After the opening it is measured and never enforced | The Director's direction of 19 November; the owner's ruling of 16 July on empirical laws |
+| 15 | The rule of thirds | The Director's anchoring law: the top hundredth of a population holds a third of the wealth, the next nine hundredths a third, the next two fifths a third, and the lower half nothing. With it, the Director's statement of who works in each band. The bands and that statement bind the opening roster of this slice (section 7.2). The shares of wealth bind the opening split when positions hold accounts of their own (section 11). After the opening both are measured and never enforced | The Director's direction of 19 November; the owner's ruling of 16 July on empirical laws |
 
 ## 9. Build order and proof
 
@@ -1336,10 +1477,10 @@ has one county, so that evidence is recorded as BLOCKED (record 12).
 
 **Play proof for the whole slice.** Four recorded playthroughs from the same seed, each run past the
 period in which the county runs short, each driven through the real client with no screen, and each
-kept as seed, action log and result. They differ only in the player's line: no contact at all;
-opening one workplace's households with a wage; opening two; food runs only. They must give four
-different records that the receipts explain. The tutorial chapter that walks a new player through
-the first session is the acceptance script.
+kept as seed, action log and result. Each also records who works in each band, period by period.
+They differ only in the player's line: no contact at all; opening one workplace's households with a
+wage; opening two; food runs only. They must give four different records that the receipts explain.
+The tutorial chapter that walks a new player through the first session is the acceptance script.
 
 **Views.** Each view of section 7.11 ships with its decision-surface contract and its links into the
 Archive.
@@ -1388,16 +1529,21 @@ Archive.
   stochasticity or class struggle". The project already holds the evidence. United States wealth
   shares in 2024 were 34.8%, 34.8%, 29.5% and 1.0%, and the lower half held between −1.8% and 3.7%
   of all wealth from 1913 to 2024 (`reports/test-estate-audit-2026-07-16.md`). This slice holds no
-  household wealth and no rule that reads it, so the law changes nothing here. It binds the next
-  slice. When positions hold accounts of their own, the opening split of a county's household wealth
-  follows the thirds, as a declared split with its source named. After the opening the split moves
+  household wealth and no rule that reads it. The Director then said that one part of the law
+  belongs here all the same: who works in each band (section 2). So the bands are on the roster now,
+  with the two opening checks of section 7.2, and the shares of wealth wait for the next slice. When
+  positions hold accounts of their own, the opening split of a county's household wealth follows the
+  thirds, band by band, as a declared split with its source named. After the opening the split moves
   only by what households earn, spend, win and lose. It is measured each period and never pulled
   back. The owner ruled that form in July: an opening contract without condition, and during a run
   only the reverse test, that a distribution outside the band has a rupture in its history. In Wayne
   the two budget groups with business ownership are 70,060 of 700,583 households, which is one
-  tenth. So the share of household wealth they hold can be measured from the engine's accounts as
-  they are, and set beside the two thirds the law gives the top tenth. That measurement is the first
-  task of the next slice. **[Call]**
+  tenth. This slice already takes them as the top tenth (section 7.2). So the share of household
+  wealth they hold can be measured from the engine's accounts as they are, and set beside the two
+  thirds the law gives the top tenth. That measurement is the first task of the next slice, and it
+  tests the reading. **[Call]**
+- **Homes.** The Director's law says the bottom 50% do not own homes. The engine holds no housing
+  tenure. It enters with household wealth.
 - **Households as the sources count them.** A census table of households by number of workers, and
   one by the work status of their members, would replace the first three declared placements with
   observed counts.
@@ -1486,8 +1632,16 @@ Archive.
   named moments or a fixed-size sketch. Whether the hours a household spends in the county's room
   belong to the period just closed, as the engine's check on household hours expects, or to the next
   under Article III.
-- **The rule of thirds is not in this slice.** Nothing here holds household wealth. The law is
-  recorded, and it binds the next slice (section 11).
+- **Only part of the rule of thirds is in this slice.** The bands and the Director's statement of
+  who works are on the roster. Nothing here holds household wealth, so the shares of wealth are
+  recorded and bind the next slice (section 11). Three things in the banding are the author's
+  reading and are open to the Director: that the engine's business owners are the top tenth; that
+  the next 40% is filled by the number of people at work; and that an opening which cannot obey the
+  law is refused.
+- **The engine gives relief to owners who are looking for work.** At the opening 5,618 units are
+  held by households of the next 9%. The Director's law puts welfare with the bottom 50%. Those
+  units were not moved, because that would change the opening economy and every recorded figure that
+  follows from it. The views show them as they are.
 - **Turn time.** On the recorded runs the organizer's turns took 11 to 16 seconds, and the
   qualification report records several turns over the 30-second budget. The session adds work to
   every Wayne turn, and that work has not been measured.
@@ -1602,6 +1756,10 @@ Archive.
   households each from the first and third groups, and the claimants take 2 from the third. The
   replica reproduces the recorded job-seekers of all five groups and the recorded households of the
   largest. Its other household counts were not checked against a run.
+- Business ownership is given to one tenth of the households of each earnings group by a Designed
+  setting: `private_owner_households_bps = 1000` in `content/scenarios/national/defines.toml`. Its
+  comment reads: "Designed exposure within each historical earnings margin; not observed
+  wealth/class."
 - A workplace sets its people at work for the next period from the hours it asks for, or the hours
   it asked for in the last period if that is more, divided by 160 and rounded up, and never above
   its labor force.
@@ -1695,8 +1853,9 @@ where the slice cannot yet show it.
   income from ownership and no access to credit.
 - On wealth: "net worth is means of production, in which home equity and pension funds have to be
   counted." (mim-class-structure MC-05). MIM also writes that "the capitalist class can be estimated
-  at one percent" (mim F06). This slice holds no household wealth. The rule of thirds is where
-  wealth enters the lane (section 11).
+  at one percent" (mim F06). This slice holds no household wealth. It carries the bands of the rule
+  of thirds and who works in each (section 7.2). The shares of wealth enter in the next slice
+  (section 11).
 - Two findings bear on a later slice with elections, and on nothing here: "The majority of white
   Amerikans support or participate in the electoral system." (mim F15), and "It is possible that in
   elections to city hall, some small battles can be won locally" (mim F14).
@@ -1891,7 +2050,8 @@ it.
 
 A **crew** is one budget group's people at one workplace, paid in one way. A position is written
 (crew, k, s, u): k people at work, s looking for work, u units held. A household with nobody in the
-labor force has no crew and is written (none, 0, 0, u).
+labor force has no crew and is written (none, 0, 0, u). A position also carries its band, which is
+written in front where it matters.
 
 **At the opening.** Take one budget group with H households. For each of its crews the engine gives
 E people at work and S people looking for work. L is E + S.
@@ -1909,6 +2069,24 @@ E people at work and S people looking for work. L is E + S.
 3. **Job-seekers and units.** The crew's S job-seekers are placed one to a household, starting with
    the households that have the fewest people at work. If S is more than h, a second round starts in
    the same order. A household holds one unit for each job-seeker placed in it.
+
+**Bands.** This step runs once, over the whole county, after steps 1 to 3 have placed every budget
+group.
+
+- *Sizes.* O is the households of the groups with business ownership, and N the households of the
+  other groups. The top 1% is O ÷ 10, and the next 9% is the rest of O. The next 40% is 4 × N ÷ 9,
+  and the bottom 50% is the rest of N. Each division is by largest remainder, and an exact tie goes
+  to the lower band.
+- *The top 1%* is taken from the owners' positions with nobody in the labor force, in proportion to
+  their households. If those positions hold fewer households than the top 1% needs, the build
+  refuses the campaign.
+- *The next 40%* is taken from the other groups' positions in the labor force. The positions are
+  ranked by the number of people at work, most first, so positions that are only looking for work
+  come last. Job-seekers and units are not read. Whole ranks are taken while they fit. The first
+  rank that does not fit gives its share in proportion to households. If the positions in the labor
+  force hold fewer households than the next 40% needs, the build refuses the campaign.
+- Where two remainders are exactly equal at a band's line, those households stay in the lower band.
+  So a band can open a few households short of its size.
 
 **Each period,** for each crew.
 
@@ -1944,10 +2122,10 @@ largest remainder.
 
 **Ties.** A split by largest remainder leaves a tie only when two remainders are exactly equal.
 Between positions of one crew the tie goes by a fixed order of their answers: fewer units first,
-then fewer people looking for work, then fewer at work. Between reached and unreached households it
-goes to the unreached. Between crews in step 1, and between positions at one place on the county's
-list, there is no such order: the household is bound to no crew, and the unit is paid to nobody
-(section 7.4). No tie is settled by an identifier.
+then fewer people looking for work, then fewer at work, then the lower band. Between reached and
+unreached households it goes to the unreached. Between crews in step 1, and between positions at one
+place on the county's list, there is no such order: the household is bound to no crew, and the unit
+is paid to nobody (section 7.4). No tie is settled by an identifier.
 
 The engine's own exact split settles ties by the caller's order. The roster needs the tie rules
 above, so it cannot call that split as it is.

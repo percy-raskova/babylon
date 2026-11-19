@@ -21,8 +21,9 @@ and one new organizer choice.
 **Tech Stack:** Rust (workspace `rust/crates`, Bevy 0.19 client), BSL rule files, PostgreSQL
 runtime, Python 3 tools, TOML scenario defines.
 
-**Spec:** `docs/superpowers/specs/2026-11-19-county-review-design.md` (sixth draft). Section numbers
-below refer to it. Read sections 7.1 to 7.6, 7.11 to 7.13 and Appendix D before any task.
+**Spec:** `docs/superpowers/specs/2026-11-19-county-review-design.md` (sixth draft, amended the same
+day for the Director's direction on who works). Section numbers below refer to it. Read sections 7.1
+to 7.6, 7.11 to 7.13 and Appendix D before any task.
 
 ## Global Constraints
 
@@ -46,6 +47,10 @@ below refer to it. Read sections 7.1 to 7.6, 7.11 to 7.13 and Appendix D before 
   exact fractions.
 - No rule reads the average of a group. A rule decides for a position from that position's own
   figures (spec 7.2, Amendment AM).
+- A household's band is its place in the Director's rule of thirds at the opening: the top 1%, the
+  next 9%, the next 40% or the bottom 50% (spec 7.2). Task 3's opening rules set it once, and the
+  household keeps it. No rule reads a band, except as the last tie of an exact split. Views show it
+  and count by it.
 - Every refusal is a typed error or a typed outcome with a reason. No panic, no `unwrap` outside
   tests, no silent clamp.
 - Scenario numbers stay in `content/scenarios/national/defines.toml`: unit price is derived from the
@@ -220,8 +225,10 @@ Director's words (spec section 2) and mark every author's call as a call.
   section that holds it, `alternatives_rejected` from spec section 6, and `related`. ADR301 states
   the Article III reading of spec 7.5 and names the two open questions of spec section 12. ADR303
   gives the aid road's roll the disposition CHARTER and the graph payload the disposition BLOCKED on
-  PER-44 and hypergraph-rs issue 2. ADR305 quotes the Director's direction on the rule of thirds
-  from spec section 2 and states that it binds no rule of this slice.
+  PER-44 and hypergraph-rs issue 2. ADR305 quotes both of the Director's directions on the rule of
+  thirds from spec section 2. It states what binds this slice (the bands on the roster and the two
+  opening checks) and what waits for the next (the shares of wealth). ADR302 records how the bands
+  are sized and filled.
 - [ ] **Step 3: Verify.** `mise run check:adr-catalog` prints `"status":"ok"`. `mise run
   check:governance-mass` prints `governance-mass: ok`. `PYTHONPATH=src mise exec -- uv run --frozen
   pre-commit run --files ai/decisions/ADR30[1-5]*.yaml ai/decisions/index.yaml` passes.
@@ -251,9 +258,20 @@ pub const COUNTY_REVIEW_MAX_ROWS: usize = 65_536;
 pub enum PayMode { Wage, WorkingOwner, UnpaidFamily }
 pub enum GroupKind { Ordinary, CollectiveResidence }
 
-/// A position. `group` and `crew` index the config's tables.
+/// A household's band in the rule of thirds at the opening. Declared lowest first: an exact tie falls on the lower band.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PositionKey { pub group: u32, pub crew: Option<u32>, pub at_work: u16, pub seeking: u16, pub units: u16 }
+pub enum Band { Bottom50, Next40, Next9, Top1 }
+
+/// A position. `group` and `crew` index the config's tables. Rows sort by the fields in this order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PositionKey { pub group: u32, pub band: Band, pub crew: Option<u32>, pub at_work: u16, pub seeking: u16, pub units: u16 }
+
+/// Who works in one band: county totals worked out from the roster.
+pub struct BandCount {
+    pub band: Band, pub households: u64,
+    pub with_work: u64, pub seeking_only: u64, pub outside_labor_force: u64,   // households; the three add to `households`
+    pub people_at_work: u64, pub people_seeking: u64, pub units: u64,           // sums of at_work, seeking and units times households
+}
 
 pub struct CountyReviewGroup {
     pub group_id: [u8; 32], pub label: String, pub kind: GroupKind,
@@ -303,12 +321,17 @@ pub enum CountyReviewError { /* one variant per refusal named in this plan, plus
 pub enum Ties { Withhold, InOrder }
 pub struct Apportionment { pub shares: Vec<u64>, pub withheld: u64 }
 pub fn apportion(total: u64, weights: &[u64], ties: Ties) -> Result<Apportionment, CountyReviewError>;
+/// Splits `total` in the ratio `upper : lower`. The household left over goes to the larger remainder, and to `lower` on an exact tie.
+pub fn ratio_split(total: u64, upper: u64, lower: u64) -> Result<(u64, u64), CountyReviewError>;
 ```
 
 - Produces, in `roster.rs`:
 
 ```rust
 pub struct OpeningCrew { pub crew: u32, pub at_work: u64, pub seeking: u64 }
+/// One line of the opening placement, before bands are given.
+pub struct PlacedRow { pub group: u32, pub crew: Option<u32>, pub at_work: u16, pub seeking: u16, pub units: u16, pub households: u64 }
+pub fn opening_placement(config: &CountyReviewConfig, crews: &[OpeningCrew]) -> Result<Vec<PlacedRow>, CountyReviewError>;   // sorted, unique
 pub fn validate_county_review_config(config: &CountyReviewConfig) -> Result<(), CountyReviewError>;
 pub fn opening_roster(config: &CountyReviewConfig, crews: &[OpeningCrew], opening_reach: &[(u32, u64)]) -> Result<Roster, CountyReviewError>;
 pub fn validate_roster(config: &CountyReviewConfig, roster: &Roster) -> Result<(), CountyReviewError>;
@@ -321,6 +344,7 @@ impl Roster {
     pub fn crew_at_work(&self, crew: u32) -> u64;   // sum of at_work * households over the crew's rows
     pub fn crew_seeking(&self, crew: u32) -> u64;
     pub fn group_units(&self, group: u32) -> u64;   // sum of units * households over the group's rows
+    pub fn band_counts(&self) -> Vec<BandCount>;    // four entries, top first; with_work: at_work >= 1; seeking_only: at_work == 0 && seeking >= 1
 }
 ```
 
@@ -332,8 +356,8 @@ kept. The units left over go one each to the largest remainders. If the cut fall
 equal remainders: `InOrder` gives them to the earlier indices; `Withhold` gives none of that run
 anything and reports the units as `withheld`. `W == 0` returns all zeros.
 
-`opening_roster`, for each ordinary group with `H` households and its crews `(E, S)`, `L = E + S`,
-skipping crews with `L == 0`:
+`opening_placement`, for each ordinary group with `H` households and its crews `(E, S)`, `L = E +
+S`, skipping crews with `L == 0`:
 
 1. If `sum(L) < H`: each crew gets `E` households at `(crew, 1, 0, 0)` and `S` at `(crew, 0, 1, 1)`;
    the other `H - sum(L)` households are `(None, 0, 0, 0)`.
@@ -344,14 +368,39 @@ skipping crews with `L == 0`:
    `r` have `q + 1`. With `sq = S / h` and `sr = S % h`, every household has `sq` job-seekers, and
    the first `sr` households have one more, counting the households with `q` at work first. `units`
    equals the job-seekers placed.
-4. Opening reach `(group, n)` is placed on the group's rows with `apportion(n, [households],
-   Withhold)`; anything withheld is `OpeningReachNotPlaceable`.
-5. The units placed in a group must equal its `roll_units`, else `RollMismatch`.
+4. The units placed in a group must equal its `roll_units`, else `RollMismatch`.
 
 A collective-residence group has no rows. Its `RosterGroup.households` is 0.
 
+`opening_roster` runs `opening_placement`, then gives every placed household a band, then places the
+opening reach. The bands follow spec 7.2, rules 7 and 8, and Appendix D.3.
+
+1. *Sizes.* `ratio_split(total, upper, lower)` gives `total * upper / (upper + lower)` and `total *
+   lower / (upper + lower)`, each rounded down. If one household is left over it goes to the part
+   with the larger remainder, and to `lower` on an exact tie. `O` is the households of the ordinary
+   groups with `has_ownership_income`, and `N` the households of the other ordinary groups. The top
+   1% needs the first part of `ratio_split(O, 1, 9)`. The next 40% needs the first part of
+   `ratio_split(N, 4, 5)`.
+2. *The top 1%* is taken from the owner groups' placed rows with `crew: None`. If those rows hold
+   fewer households than it needs: `TopBandInLaborForce`. Otherwise `apportion(needed, [households],
+   Withhold)` over those rows. The households taken are `Top1`. Every other owner household is
+   `Next9`.
+3. *The next 40%* is taken from the other groups' placed rows that are in the labor force (`crew` is
+   `Some`). Rows with equal `at_work` form a level, whatever their job-seekers and units, and levels
+   are ordered by more at work first. So the last level is the households that are only looking for
+   work. A level that fits in what is still needed is taken whole. The first level that does not fit
+   gives `apportion(still_needed, [households], Withhold)` over its rows, and the walk ends. If the
+   levels run out first: `WageBandOutsideLaborForce`. The households taken are `Next40`, and each
+   keeps its job-seekers and units: the next 40% can have unemployment too (the Director, 19
+   November). Every other household of those groups is `Bottom50`.
+4. Withheld households stay in the lower band, so a band can open a few households short. Under
+   `Withhold` the order of the rows does not matter.
+5. Opening reach `(group, n)` is placed last, on the group's roster rows, with `apportion(n,
+   [households], Withhold)`; anything withheld is `OpeningReachNotPlaceable`.
+
 `roll_forward`, for each crew in `facts.crews`: require `roster.crew_at_work == opening_at_work` and
-`roster.crew_seeking == opening_seeking`, else `RosterEngineMismatch`. Then, in this order:
+`roster.crew_seeking == opening_seeking`, else `RosterEngineMismatch`. A household keeps its band in
+every step. Then, in this order:
 
 1. `left_at_work` people: repeatedly take households from the rows with the largest `at_work`; each
    becomes `(k - 1, s, u)`.
@@ -363,11 +412,12 @@ A collective-residence group has no rows. Its `RosterGroup.households` is 0.
 
 "Take `n` households from the candidate rows": if the candidates hold `n` or fewer, take them all
 and continue with the next level. Otherwise `apportion(n, [households], InOrder)` with the candidate
-rows ordered by `(units, seeking, at_work)` ascending. Inside a row that gives up `t` of its
-households, `apportion(t, [households - reached, reached], InOrder)` says how many of them are
-unreached and reached, and they keep that status in the row they join. After each crew, a row with
-`at_work == 0 && seeking == 0` is re-keyed to `crew: None`, rows with equal keys are merged, and
-empty rows are dropped. Then require the crew's sums to equal `closing_at_work` and
+rows ordered by `(units, seeking, at_work, band)` ascending. The level is found again after each
+take: a household that has moved can be taken again at its new level. Inside a row that gives up `t`
+of its households, `apportion(t, [households - reached, reached], InOrder)` says how many of them
+are unreached and reached, and they keep that status in the row they join. After each crew, a row
+with `at_work == 0 && seeking == 0` is re-keyed to `crew: None`, rows with equal keys are merged,
+and empty rows are dropped. Then require the crew's sums to equal `closing_at_work` and
 `closing_seeking`.
 
 `HoldersFirst` and `HoldersLast` change one thing: among candidate rows at one level, rows with
@@ -379,7 +429,7 @@ order.
 
 Then for each group: `closing_households` above the roster's count is `RosterEngineMismatch`. If it
 is lower by `d`, take `d` households from the group's rows `(None, 0, 0, u)` with `apportion(d,
-[households], InOrder)` in ascending `units`, add `u` times the households taken to
+[households], InOrder)` in ascending `(units, band)`, add `u` times the households taken to
 `departed_units`, and if those rows hold fewer than `d` return `HouseholdsBelowLaborHouseholds`.
 Finally `period += 1`.
 
@@ -406,83 +456,162 @@ fn a_split_with_no_tie_adds_back_exactly() {
   'binary(county_review)'`. Expected: compile failure.
 - [ ] **Step 3: Implement `types.rs` and `split.rs`.** Run again. Expected: PASS.
 - [ ] **Step 4: Write the failing roster tests** in `tests/county_review/roster.rs`. `support.rs`
-  gives `config(groups: &[(u64 /*households*/, u64 /*roll units*/)], crews: &[u32 /*group*/])` with
-  price 280_000_000, wage 24_000_000, 2 and 2 hours, first session 1, and `rows(&Roster) ->
-  Vec<((u32, Option<u32>, u16, u16, u16), u64, u64)>`.
+  gives `config(groups: &[(u64 /*households*/, u64 /*roll units*/, bool /*has ownership income*/)],
+  crews: &[u32 /*group*/])` with price 280_000_000, wage 24_000_000, 2 and 2 hours, first session 1;
+  `placed(&[PlacedRow]) -> Vec<((u32, Option<u32>, u16, u16, u16), u64)>`; `rows(&Roster) ->
+  Vec<((u32, Band, Option<u32>, u16, u16, u16), u64, u64)>`; and the short names `T1`, `N9`, `N40`
+  and `B50` for `Band::Top1`, `Next9`, `Next40` and `Bottom50`.
+
+The placement, before bands:
 
 ```rust
 #[test]
 fn fewer_people_than_households_gives_each_person_a_household() {
-    let c = config(&[(10, 2)], &[0]);
-    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 3, seeking: 2 }], &[]).unwrap();
-    assert_eq!(rows(&r), vec![((0, None, 0, 0, 0), 5, 0), ((0, Some(0), 0, 1, 1), 2, 0), ((0, Some(0), 1, 0, 0), 3, 0)]);
+    let c = config(&[(10, 2, false)], &[0]);
+    let p = opening_placement(&c, &[OpeningCrew { crew: 0, at_work: 3, seeking: 2 }]).unwrap();
+    assert_eq!(placed(&p), vec![((0, None, 0, 0, 0), 5), ((0, Some(0), 0, 1, 1), 2), ((0, Some(0), 1, 0, 0), 3)]);
 }
 
 #[test]
 fn more_people_than_households_spreads_work_evenly_and_seekers_to_the_fewest_at_work() {
-    let c = config(&[(4, 3)], &[0]);
-    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 6, seeking: 3 }], &[]).unwrap();
-    assert_eq!(rows(&r), vec![((0, Some(0), 1, 1, 1), 2, 0), ((0, Some(0), 2, 0, 0), 1, 0), ((0, Some(0), 2, 1, 1), 1, 0)]);
+    let c = config(&[(4, 3, false)], &[0]);
+    let p = opening_placement(&c, &[OpeningCrew { crew: 0, at_work: 6, seeking: 3 }]).unwrap();
+    assert_eq!(placed(&p), vec![((0, Some(0), 1, 1, 1), 2), ((0, Some(0), 2, 0, 0), 1), ((0, Some(0), 2, 1, 1), 1)]);
 }
 
 #[test]
 fn two_crews_with_equal_claims_leave_the_tied_household_with_no_crew() {
-    let c = config(&[(5, 2)], &[0, 0]);
+    let c = config(&[(5, 2, false)], &[0, 0]);
     let open = [OpeningCrew { crew: 0, at_work: 4, seeking: 0 }, OpeningCrew { crew: 1, at_work: 2, seeking: 2 }];
-    let r = opening_roster(&c, &open, &[]).unwrap();
-    assert_eq!(rows(&r), vec![((0, None, 0, 0, 0), 1, 0), ((0, Some(0), 2, 0, 0), 2, 0), ((0, Some(1), 1, 1, 1), 2, 0)]);
+    let p = opening_placement(&c, &open).unwrap();
+    assert_eq!(placed(&p), vec![((0, None, 0, 0, 0), 1), ((0, Some(0), 2, 0, 0), 2), ((0, Some(1), 1, 1, 1), 2)]);
 }
 
 #[test]
 fn more_seekers_than_households_gives_a_household_two_or_three_units() {
-    let c = config(&[(2, 5)], &[0]);
-    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 1, seeking: 5 }], &[]).unwrap();
-    assert_eq!(rows(&r), vec![((0, Some(0), 0, 3, 3), 1, 0), ((0, Some(0), 1, 2, 2), 1, 0)]);
+    let c = config(&[(2, 5, false)], &[0]);
+    let p = opening_placement(&c, &[OpeningCrew { crew: 0, at_work: 1, seeking: 5 }]).unwrap();
+    assert_eq!(placed(&p), vec![((0, Some(0), 0, 3, 3), 1), ((0, Some(0), 1, 2, 2), 1)]);
 }
 
 #[test]
 fn more_crews_than_households_is_refused() {
-    let c = config(&[(1, 0)], &[0, 0]);
+    let c = config(&[(1, 0, false)], &[0, 0]);
     let open = [OpeningCrew { crew: 0, at_work: 1, seeking: 0 }, OpeningCrew { crew: 1, at_work: 1, seeking: 0 }];
-    assert_eq!(opening_roster(&c, &open, &[]), Err(CountyReviewError::MoreCrewsThanHouseholds));
+    assert_eq!(opening_placement(&c, &open), Err(CountyReviewError::MoreCrewsThanHouseholds));
 }
 ```
 
-Roll-forward tests start from the second roster above (`E = 6`, `S = 3`). `facts(crew_changes,
+The bands:
+
+```rust
+#[test]
+fn the_next_forty_are_taken_by_the_number_at_work_and_bring_their_seekers() {
+    let c = config(&[(9, 2, false)], &[0]);          // the next 40% needs 4 of the 9
+    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 10, seeking: 2 }], &[]).unwrap();
+    // the household with 2 at work first; then 3 of the 8 with 1 at work, in proportion 6 : 2, so one of them has a job-seeker and a unit
+    assert_eq!(rows(&r), vec![((0, B50, Some(0), 1, 0, 0), 4, 0), ((0, B50, Some(0), 1, 1, 1), 1, 0),
+                              ((0, N40, Some(0), 1, 0, 0), 2, 0), ((0, N40, Some(0), 1, 1, 1), 1, 0), ((0, N40, Some(0), 2, 0, 0), 1, 0)]);
+}
+
+#[test]
+fn a_unit_does_not_keep_a_household_out_of_the_next_forty() {
+    let c = config(&[(4, 3, false)], &[0]);          // the next 40% needs 2 of the 4: the two households with 2 at work
+    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 6, seeking: 3 }], &[]).unwrap();
+    assert_eq!(rows(&r), vec![((0, B50, Some(0), 1, 1, 1), 2, 0), ((0, N40, Some(0), 2, 0, 0), 1, 0), ((0, N40, Some(0), 2, 1, 1), 1, 0)]);
+}
+
+#[test]
+fn households_only_looking_for_work_come_last_and_those_outside_the_labor_force_never() {
+    let c = config(&[(9, 3, false)], &[0]);          // the next 40% needs 4: 2 at work, then 2 of the 3 that are only looking
+    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 2, seeking: 3 }], &[]).unwrap();
+    assert_eq!(rows(&r), vec![((0, B50, None, 0, 0, 0), 4, 0), ((0, B50, Some(0), 0, 1, 1), 1, 0),
+                              ((0, N40, Some(0), 0, 1, 1), 2, 0), ((0, N40, Some(0), 1, 0, 0), 2, 0)]);
+}
+
+#[test]
+fn the_top_hundredth_has_nobody_in_the_labor_force() {
+    let c = config(&[(20, 2, true)], &[0]);          // owners: the top 1% needs 2 of the 20
+    let r = opening_roster(&c, &[OpeningCrew { crew: 0, at_work: 5, seeking: 2 }], &[]).unwrap();
+    assert_eq!(rows(&r), vec![((0, N9, None, 0, 0, 0), 11, 0), ((0, N9, Some(0), 0, 1, 1), 2, 0),
+                              ((0, N9, Some(0), 1, 0, 0), 5, 0), ((0, T1, None, 0, 0, 0), 2, 0)]);
+}
+
+#[test]
+fn an_exact_tie_at_a_bands_line_stays_in_the_lower_band() {
+    let c = config(&[(16, 0, false)], &[0, 0]);      // the next 40% needs 7; two equal crews tie for the seventh
+    let open = [OpeningCrew { crew: 0, at_work: 8, seeking: 0 }, OpeningCrew { crew: 1, at_work: 8, seeking: 0 }];
+    let r = opening_roster(&c, &open, &[]).unwrap();
+    assert_eq!(rows(&r), vec![((0, B50, Some(0), 1, 0, 0), 5, 0), ((0, B50, Some(1), 1, 0, 0), 5, 0),
+                              ((0, N40, Some(0), 1, 0, 0), 3, 0), ((0, N40, Some(1), 1, 0, 0), 3, 0)]);
+}
+
+#[test]
+fn an_opening_that_cannot_obey_the_law_is_refused_by_name() {
+    let owners = config(&[(10, 0, true)], &[0]);     // every owner household has someone at work
+    assert_eq!(opening_roster(&owners, &[OpeningCrew { crew: 0, at_work: 10, seeking: 0 }], &[]),
+               Err(CountyReviewError::TopBandInLaborForce));
+    let others = config(&[(9, 0, false)], &[0]);     // the next 40% needs 4 households in the labor force; there are 2
+    assert_eq!(opening_roster(&others, &[OpeningCrew { crew: 0, at_work: 2, seeking: 0 }], &[]),
+               Err(CountyReviewError::WageBandOutsideLaborForce));
+}
+
+#[test]
+fn ratio_split_gives_the_odd_household_to_the_larger_remainder() {
+    assert_eq!(ratio_split(70_060, 1, 9).unwrap(), (7_006, 63_054));
+    assert_eq!(ratio_split(630_523, 4, 5).unwrap(), (280_232, 350_291));
+    assert_eq!(ratio_split(15, 1, 9).unwrap(), (1, 14));      // an exact tie goes to the lower part
+    assert_eq!(ratio_split(4, 4, 5).unwrap(), (2, 2));
+}
+```
+
+Roll-forward tests start from the banded roster of the second band test above (4 households, `E =
+6`, `S = 3`): `(B50, 1, 1, 1) x 2`, `(N40, 2, 0, 0) x 1`, `(N40, 2, 1, 1) x 1`. `facts(crew_changes,
 households)` in `support.rs` fills the opening and closing sums from the roster and the changes.
+`after(changes)` rolls that roster forward and returns `rows`.
 
 ```rust
 #[test]
 fn a_hire_takes_a_seeker_from_the_households_with_the_fewest_at_work() {
-    // hires = 1: one of the two (1,1,1) households becomes (2,0,1)
-    assert_eq!(after(hires(1)), vec![((0, Some(0), 1, 1, 1), 1, 0), ((0, Some(0), 2, 0, 0), 1, 0),
-                                      ((0, Some(0), 2, 0, 1), 1, 0), ((0, Some(0), 2, 1, 1), 1, 0)]);
+    assert_eq!(after(hires(1)), vec![((0, B50, Some(0), 1, 1, 1), 1, 0), ((0, B50, Some(0), 2, 0, 1), 1, 0),
+                                      ((0, N40, Some(0), 2, 0, 0), 1, 0), ((0, N40, Some(0), 2, 1, 1), 1, 0)]);
 }
 
 #[test]
 fn a_layoff_takes_from_the_most_at_work_and_a_tie_goes_to_fewer_units() {
-    // separations = 1: (2,0,0) and (2,1,1) tie; the one with no unit goes
-    assert_eq!(after(separations(1)), vec![((0, Some(0), 1, 1, 0), 1, 0), ((0, Some(0), 1, 1, 1), 2, 0), ((0, Some(0), 2, 1, 1), 1, 0)]);
+    // separations = 1: (2, 0, 0) and (2, 1, 1) tie; the one with no unit goes
+    assert_eq!(after(separations(1)), vec![((0, B50, Some(0), 1, 1, 1), 2, 0), ((0, N40, Some(0), 1, 1, 0), 1, 0), ((0, N40, Some(0), 2, 1, 1), 1, 0)]);
     // separations = 2: both go
-    assert_eq!(after(separations(2)), vec![((0, Some(0), 1, 1, 0), 1, 0), ((0, Some(0), 1, 1, 1), 2, 0), ((0, Some(0), 1, 2, 1), 1, 0)]);
+    assert_eq!(after(separations(2)), vec![((0, B50, Some(0), 1, 1, 1), 2, 0), ((0, N40, Some(0), 1, 1, 0), 1, 0), ((0, N40, Some(0), 1, 2, 1), 1, 0)]);
 }
 
 #[test]
 fn a_seeker_who_leaves_the_labor_force_keeps_the_households_unit() {
-    // left_seeking = 1: weights 2 and 1, the larger remainder is the (1,1,1) row
-    assert_eq!(after(left_seeking(1)), vec![((0, Some(0), 1, 0, 1), 1, 0), ((0, Some(0), 1, 1, 1), 1, 0),
-                                             ((0, Some(0), 2, 0, 0), 1, 0), ((0, Some(0), 2, 1, 1), 1, 0)]);
+    // left_seeking = 1: weights 2 and 1; the larger remainder is the (B50, 1, 1, 1) row
+    assert_eq!(after(left_seeking(1)), vec![((0, B50, Some(0), 1, 0, 1), 1, 0), ((0, B50, Some(0), 1, 1, 1), 1, 0),
+                                             ((0, N40, Some(0), 2, 0, 0), 1, 0), ((0, N40, Some(0), 2, 1, 1), 1, 0)]);
+}
+
+#[test]
+fn a_household_keeps_its_band_and_an_exact_tie_between_bands_falls_on_the_lower() {
+    // a roster written by hand: (B50, Some(0), 1, 0, 0) x 3 and (N40, Some(0), 1, 0, 0) x 3; separations = 1
+    // the two rows tie for it, and the lower band gives it
+    assert_eq!(rows(&rolled), vec![((0, B50, Some(0), 0, 1, 0), 1, 0), ((0, B50, Some(0), 1, 0, 0), 2, 0), ((0, N40, Some(0), 1, 0, 0), 3, 0)]);
 }
 
 #[test]
 fn a_household_left_with_nobody_in_the_labor_force_has_no_crew_and_can_leave_with_its_unit() {
-    // from the first roster: left_seeking = 1 makes one (0,1,1) household (None,0,0,1)
-    // then closing_households = 9 takes one household from the (None,0,0,_) rows in proportion 5 : 1
+    // 9 households, 2 units, E = 4, S = 2 opens as (B50, None, 0, 0, 0) x 3, (B50, Some(0), 0, 1, 1) x 2, (N40, Some(0), 1, 0, 0) x 4
+    // left_seeking = 1 makes one (0, 1, 1) household (B50, None, 0, 0, 1)
+    // closing_households = 8: one household leaves, in proportion 3 : 1, so it is one with no unit, and departed_units stays 0
+    // closing_households = 5: all four leave, and departed_units becomes 1
+    // closing_households = 4: HouseholdsBelowLaborHouseholds
 }
 
 #[test]
 fn a_moved_household_stays_reached_or_unreached() {
-    // (1,1,1) x 2 with 1 reached, hires = 1: the tie goes to the unreached household
+    // (B50, 1, 1, 1) x 2 with 1 reached, hires = 1: the unreached household moves
+    // afterwards (B50, 1, 1, 1) x 1 has 1 reached and (B50, 2, 0, 1) x 1 has none
 }
 
 #[test]
@@ -492,22 +621,21 @@ fn sums_that_do_not_match_the_engine_are_refused() {
 }
 ```
 
-Write the two commented tests in full with the same helpers. For the fourth: after the departure the
-rows are `(None,0,0,0) x 5`, `(None,0,0,1) x 1`, `(Some(0),0,1,1) x 1`, `(Some(0),1,0,0) x 3`; with
-`closing_households = 9` the household taken is one of the five with no unit, and `departed_units`
-stays 0. A second case with `closing_households = 4` takes all six, and `departed_units` becomes 1.
-A third with `closing_households = 3` returns `HouseholdsBelowLaborHouseholds`.
+Write the commented tests in full with the same helpers, one assertion for each commented line.
 
 - [ ] **Step 5: Run them.** Expected: FAIL (missing functions).
 - [ ] **Step 6: Implement `roster.rs`.** `validate_roster` checks: rows sorted and unique, no empty
   row, `reached <= households`, every index in range, a row with `crew: None` has `at_work == 0 &&
-  seeking == 0`, a row's crew belongs to its group, and each ordinary group's rows sum to its
-  `RosterGroup.households`.
+  seeking == 0`, a `Top1` row has `crew: None`, a row's crew belongs to its group, and each ordinary
+  group's rows sum to its `RosterGroup.households`.
 - [ ] **Step 7: Add a property test** `rolling_forward_keeps_every_total` in `roster.rs` tests: with
-  a small xorshift generator written in the test file, build 200 random openings (1 to 3 groups, 1
-  to 4 crews, up to 40 households) and apply 6 random periods of departures and hires or layoffs
-  that the sums allow. After every period assert: each group's households, each crew's two sums,
-  `sum(reached) ` unchanged, and `group_units + departed_units == roll units placed at the opening`.
+  a small xorshift generator written in the test file, build 200 random openings that the law
+  accepts (1 to 3 groups, some with ownership income, 1 to 4 crews, up to 40 households; draw again
+  when `opening_roster` refuses) and apply 6 random periods of departures and hires or layoffs that
+  the sums allow. After every period assert: each group's households, each crew's two sums,
+  `sum(reached) ` unchanged, `group_units + departed_units == roll units placed at the opening`,
+  each band's households unchanged except by the households that left, and no `Top1` row with a
+  crew.
 - [ ] **Step 8: Run.** Expected: PASS. Then `mise run rust:check-no-docs`.
 - [ ] **Step 9: Commit** as `feat(county-review): exact splits and the household roster`.
 
@@ -605,13 +733,14 @@ asked_no_time + came_from_roll + roll_no_time + nothing_at_stake + not_worth_tim
 taken after step 2.
 
 - [ ] **Step 1: Write the failing tests** in `tests/county_review/session.rs`. `support.rs` gains
-  `world()`: the worked example of spec 7.7. Group 0 has crews 0 and 1; group 1 has crew 2. Rows: `A
-  = (0, Some(0), 1, 1, 1) x 2`, `D = (0, Some(0), 1, 0, 0) x 1`, `B = (0, Some(1), 1, 1, 1) x 1`, `C
-  = (1, Some(2), 0, 1, 1) x 2`. Crew 0 was paid 11_520_000_000 with 3 at work; crew 1 was paid
-  1_920_000_000 with 1 at work; crew 2 was paid nothing with nobody at work. Group 0: taxed wages
-  13_440_000_000, collected 2_016_000_000, 100 free hours. Group 1: nothing taxed, 100 free hours.
-  Cash 10_000_000_000, limit 10_000_000_000, floor 0, first class 0. `balanced(&SessionRecord)`
-  asserts every identity of spec 7.13 that the record can show.
+  `world()`: the worked example of spec 7.7. Group 0 has crews 0 and 1; group 1 has crew 2. Rows,
+  with the band after the group: `A = (0, B50, Some(0), 1, 1, 1) x 2`, `D = (0, N40, Some(0), 1, 0,
+  0) x 1`, `B = (0, B50, Some(1), 1, 1, 1) x 1`, `C = (1, B50, Some(2), 0, 1, 1) x 2`. The world is
+  built by hand, not by `opening_roster`. Crew 0 was paid 11_520_000_000 with 3 at work; crew 1 was
+  paid 1_920_000_000 with 1 at work; crew 2 was paid nothing with nobody at work. Group 0: taxed
+  wages 13_440_000_000, collected 2_016_000_000, 100 free hours. Group 1: nothing taxed, 100 free
+  hours. Cash 10_000_000_000, limit 10_000_000_000, floor 0, first class 0.
+  `balanced(&SessionRecord)` asserts every identity of spec 7.13 that the record can show.
 
 ```rust
 #[test]
@@ -641,8 +770,8 @@ cuts.
 
 - `ties_keep_the_holder`: with the roll whole and only `A` and `D` in group 0 at one place, and no
   lower holder, `D` asks and finds no place: `asked_no_place == 1`, no hour is charged.
-- `a_household_with_no_wage_takes_nothing`: reach one household of a row `(1, None, 0, 0, 0)`; it
-  asks, `asked_no_place == 1`.
+- `a_household_with_no_wage_takes_nothing`: reach one household of a row `(1, B50, None, 0, 0, 0)`;
+  it asks, `asked_no_place == 1`.
 - `a_short_county_pays_from_the_top`: payable 3 with nobody reached: `A` 2 paid, `B` 1 paid, `C` 0
   paid, and `lines` has no entry for group 1.
 - `no_money_for_relief_removes_every_line`: cash 0: `relief_micros == 0`, `lines` empty, every unit
@@ -671,8 +800,11 @@ cuts.
   config; map the keys back; every row is equal.
 - `splitting_a_crew_that_pays_alike_moves_at_most_one_unit`: split crew 0 into two crews with wages
   and people in proportion; summed over the two, every count differs by at most 1.
-- `two_units_are_lost_a_household_at_a_time`: a row `(_, _, 0, 2, 2) x 2` with 3 units unpaid has
-  `losers == 2`.
+- `two_units_are_lost_a_household_at_a_time`: a row with nobody at work, 2 job-seekers and 2 units,
+  `x 2`, with 3 units unpaid has `losers == 2`.
+- `the_band_changes_no_outcome`: give `D` the band `B50`, and then give every row the band `N9`;
+  after mapping the keys back, every count of the record is the same each time. No rule of the
+  session reads a band.
 
 - [ ] **Step 2: Run them.** Expected: compile failure.
 - [ ] **Step 3: Implement `place.rs`.** `Ord` multiplies in 256 bits with two `u128` limbs. Test
@@ -745,6 +877,7 @@ pub struct CountyReviewProjection {
     pub ledger: Vec<LedgerLine>, pub first_class_micros: i128,
     pub relief_micros: Option<i128>, pub household_units_payable: Option<u64>, pub kept_back_units: Option<u64>,
     pub roll: Vec<(String, u64)>,                     // group label, units on the roll
+    pub bands: Vec<BandCount>,                        // who works in each band: four entries, top first; public
     pub claimants_roll_households: Option<u64>, pub aid_roll_households: Option<u64>,
     pub contact: Option<(PositionKey, ContactOutcome)>,
     pub positions: Vec<PositionView>,                 // in the order of the list, then by key
@@ -759,7 +892,9 @@ is `contacted` when `contacted` holds its key. Wage and wage tax "per household"
 a micro-unit for display. They are never used to rank. `preview_contact` runs `hold_session` twice
 on `state.roster` and `state.last_facts`, without and with the contact, and compares: `place_open`
 is whether the contacted row's `asked_paid` rose; `taken_from` lists rows whose `units_unpaid` rose;
-`then_at_stake` lists rows whose `losers` rose. It reads nothing earned.
+`then_at_stake` lists rows whose `losers` rose. It reads nothing earned. `project` fills `bands`
+from `state.roster.band_counts()`. They are county totals and are shown whether or not the player
+has contacted anyone.
 
 - [ ] **Step 1: Write the failing tests.** In `projection.rs`, on `world()` after a session with `D`
   reached and contacted:
@@ -790,6 +925,19 @@ fn the_preview_reads_only_the_public_record() {
     assert_eq!((pv.outcome, pv.asks, pv.place_open), (ContactOutcome::Reached, true, true));
     assert_eq!(pv.taken_from, vec![C]);
     assert_eq!(preview_contact(&c, &state_with_no_close_yet, D).unwrap(), None);
+}
+```
+
+Also in `projection.rs`:
+
+```rust
+#[test]
+fn who_works_in_each_band_is_a_public_county_total() {
+    let p = project(&c, &state, &ledger(), &[]).unwrap();
+    let got: Vec<_> = p.bands.iter().map(|b| (b.band, b.households, b.with_work, b.seeking_only, b.outside_labor_force,
+                                              b.people_at_work, b.people_seeking, b.units)).collect();
+    assert_eq!(got, vec![(Band::Top1, 0, 0, 0, 0, 0, 0, 0), (Band::Next9, 0, 0, 0, 0, 0, 0, 0),
+                         (Band::Next40, 1, 1, 0, 0, 1, 0, 0), (Band::Bottom50, 5, 3, 2, 0, 3, 5, 5)]);
 }
 ```
 
@@ -854,7 +1002,7 @@ the session's record (Task 7).
 ```rust
 #[test]
 fn a_review_contact_costs_the_contact_hours_and_resolves_one_period_later() {
-    let key = PositionKey { group: 0, crew: Some(0), at_work: 1, seeking: 0, units: 0 };
+    let key = PositionKey { group: 0, band: Band::Next40, crew: Some(0), at_work: 1, seeking: 0, units: 0 };
     let (config, state) = at_period(3);
     let command = command(&config, &state, OrganizerChoice::ReviewContact(key));
     let preview = preview_organizer(&config, &state, &command).unwrap();
@@ -987,7 +1135,9 @@ Decisions:
 
 - [ ] **Step 1: Write the failing section tests** in `county_review_tests.rs`, on the hand-built
   world of `material_world/tests.rs` extended with two household groups, two crews and a public
-  account with one grant and two support lines:
+  account with one grant and two support lines. Build its roster with `opening_roster`: neither
+  group has ownership income, and at least four ninths of the households must be in the labor force,
+  or the opening is refused (Task 3):
 
 ```rust
 #[test]
@@ -1176,6 +1326,8 @@ aid_body_label = "Wayne Local Aid Partners"
 - *Crews* are the staffing members whose household is one of the groups, sorted by member id, with
   the pay mode from the member's `EmploymentTerms.compensation` and the workplace label the observer
   uses for the site.
+- *The bands* come from `opening_roster`. `TopBandInLaborForce` and `WageBandOutsideLaborForce`
+  become capture errors that name the band and give the households needed and found.
 - *The opening roster* is `opening_roster` on the members' opening `employed` and `reserve`. The
   opening reach is the number of authorizing households of each hearing delegation: the claimants'
   on the claimant group, the partner's on the local aid recipients.
@@ -1215,6 +1367,27 @@ fn wayne_is_captured_with_a_roster_that_adds_back() {
 }
 
 #[test]
+fn wayne_opens_with_the_directors_bands() {
+    let opening = county_review_of(&national_opening());
+    let ordinary = |owner: bool| -> u64 {
+        opening.config.groups.iter().filter(|g| g.kind == GroupKind::Ordinary && g.has_ownership_income == owner).map(|g| g.opening_households).sum()
+    };
+    let (owners, others) = (ordinary(true), ordinary(false));
+    let b = opening.state.roster.band_counts();                          // top 1%, next 9%, next 40%, bottom 50%
+    assert_eq!(b[0].households + b[1].households, owners);
+    assert_eq!(b[2].households + b[3].households, others);
+    assert!(b[0].households <= owners / 10 + 1 && b[0].households + 8 >= owners / 10);
+    assert!(b[2].households <= others * 4 / 9 + 1 && b[2].households + 64 >= others * 4 / 9);
+    assert_eq!(b[0].with_work + b[0].seeking_only, 0);                   // the top 1% do not work
+    assert_eq!(b[2].outside_labor_force, 0);                             // the next 40% are all in the labor force
+    assert!(b[2].people_seeking > 0);                                    // and they have unemployment too
+    assert!(b[3].units > b[2].units && b[3].units > b[1].units);         // most relief sits with the bottom 50%
+    // a larger share of the bottom 50%'s labor force is looking for work than of the next 40%'s
+    assert!(b[3].people_seeking * (b[2].people_at_work + b[2].people_seeking) > b[2].people_seeking * (b[3].people_at_work + b[3].people_seeking));
+    assert!(opening.state.roster.rows.iter().filter(|r| r.reached > 0).all(|r| r.key.band == Band::Bottom50));
+}
+
+#[test]
 fn the_snapshot_at_the_opening_shows_the_ledger_and_hides_every_amount() {
     let view = snapshot(&national_opening()).county_review.unwrap();
     assert!(view.positions.iter().all(|p| p.earned.is_none()));
@@ -1233,9 +1406,9 @@ Also: `a_snapshot_of_a_register_with_no_county_section_has_no_county_field` (its
 - [ ] **Step 3: Implement** the policy table, the capture, the catalog fields, the runtime wiring,
   the snapshot, the preview and the archive page.
 - [ ] **Step 4: Print the opening for the record.** Add an ignored test `print_wayne_opening_roster`
-  that writes, for each group, its households, its units, its crews and its rows to
-  `reports/county-review-2026-11-19/wayne-opening-roster.json`. Run it once and keep the file. It
-  replaces the counts the design could not give (spec section 3).
+  that writes, for each group, its households, its units, its crews and its rows, and the count of
+  who works in each band, to `reports/county-review-2026-11-19/wayne-opening-roster.json`. Run it
+  once and keep the file. It replaces the counts the design could not give (spec section 3).
 - [ ] **Step 5: Run** the scoped tests, `mise run rust:test:q -- -p babylon-persistence -E 'not
   test(live)'` and `mise run rust:check-no-docs`. Raise the catalog pins the new rule file and the
   new capture move. Existing JSON fixtures must still deserialize unchanged. Expected: PASS.
@@ -1273,6 +1446,7 @@ pub enum OrganizerAction { /* existing */ RosterPage(i8), ChooseRosterSlot(u8) }
 // county.rs
 pub(super) const ROSTER_PAGE_ROWS: usize = 8;
 pub(super) fn ledger(view: &CountyReviewProjection) -> String;
+pub(super) fn who_works(view: &CountyReviewProjection) -> String;
 pub(super) fn roster_page(view: &CountyReviewProjection, page: usize) -> Vec<String>;
 pub(super) fn slot_key(view: &CountyReviewProjection, page: usize, slot: u8) -> Option<PositionKey>;
 pub(super) fn session(view: &CountyReviewProjection) -> String;
@@ -1300,10 +1474,20 @@ Decisions:
   open. The unit would come from: <position>." or "No place is open: every unit below this household
   is held by a household that pays the same or more." or "Nobody is left to reach here." It says
   which period the preview is based on.
-- A position's line shows its structure always: group, workplace and pay mode or "no one in the
-  labor force", people at work, people looking for work, units held, its rank, and its units paid
-  and unpaid at the last session. Amounts are shown when `earned` is present. Otherwise the line
-  ends: "Amounts are earned by contact. Reach a household here."
+- Above the positions the roster shows a block headed "Who works", from `view.bands`: one line for
+  each band with its households, those with someone at work, those only looking for work, those with
+  nobody in the labor force, its people at work, its people looking for work, and its units. Beside
+  each band are the Director's words for it, marked "Designed": Top 1%: "Does not work. Lives
+  entirely off investments." Next 9%: "Some work. Some live off investments or are retired." Next
+  40%: "Lives by selling wage labor. Must work. Can be out of work and looking." Bottom 50%: "Works,
+  but is more likely to receive welfare and to need aid. Does not own a home." The block ends:
+  "Bands are set at the opening. Homes and wealth are not in this slice." It is shown whether or not
+  the player has contacted anyone.
+- A position's line shows its structure always: its band ("Top 1%", "Next 9%", "Next 40%" or "Bottom
+  50%"), group, workplace and pay mode or "no one in the labor force", people at work, people
+  looking for work, units held, its rank, and its units paid and unpaid at the last session. Amounts
+  are shown when `earned` is present. Otherwise the line ends: "Amounts are earned by contact. Reach
+  a household here."
 - Beside each income source the class reading of spec 7.10 is shown word for word, marked
   "Designed". Nation shows "pending". Every one of the four inspectors ends with the standing line
   of the Global Constraints.
@@ -1341,6 +1525,14 @@ fn choosing_a_slot_reviews_and_confirms_a_review_contact() {
     assert!(painted_text(&app, OrganizerInspector::CountyRoster).contains("A place is open."));
     press_named(&mut app, "Confirm ruling");
     assert_submit_request(&app, OrganizerChoice::ReviewContact(key));
+}
+
+#[test]
+fn the_roster_counts_who_works_in_each_band_and_names_each_positions_band() {
+    let text = who_works(&fixture());
+    assert!(text.contains("Who works") && text.contains("Next 40%") && text.contains("Bottom 50%"));
+    assert!(text.contains("Homes and wealth are not in this slice."));
+    assert!(roster_page(&fixture(), 0).iter().all(|line| ["Top 1%", "Next 9%", "Next 40%", "Bottom 50%"].iter().any(|band| line.starts_with(band))));
 }
 
 #[test]
@@ -1402,6 +1594,9 @@ Spec section 9 ("Play proof").
     county's money for relief ends nobody is paid;
   - the first-class lines, the spending limit and the tax rates are identical in all four runs in
     every period;
+  - in every period of every run each band's households are its opening households less those that
+    left, no household of the top 1% is in the labor force, and the count of who works in each band
+    is written to the record;
   - the four final records differ, and the test prints the difference in the county's cash and tax
     receipts between the first two;
   - replaying the "one position" run gives the same register digest in every period.
@@ -1419,9 +1614,12 @@ Spec section 9 ("Play proof").
   households with no wage under the three placements. This is a report for the Director. It is not a
   pass or a fail.
 - [ ] **Step 5: Write the how-to section and the README.** The README states what each playthrough
-  shows, with figures read from its record, and what was not shown.
+  shows, with figures read from its record, and what was not shown. It gives who works in each band
+  at the opening and in each period of the "no contact" run, beside the Director's words for each
+  band.
 - [ ] **Step 6: Put the recorded figures into the design** in place of the withdrawn tables of
-  sections 3 and 7.7, wrap it at 100 columns, and run the markdown hooks.
+  sections 3 and 7.7, and in place of the worked "Who works" table of section 3, wrap it at 100
+  columns, and run the markdown hooks.
 - [ ] **Step 7: Run every gate.** `mise run rust:check-no-docs`, `mise run rust:test`, `mise run
   check`, `mise run check:ceremony`. Expected: PASS. A failure that this branch did not cause is
   listed in the README with its evidence and is not fixed here.

@@ -245,7 +245,7 @@ pub fn random_opening(rng: &mut Rng) -> Option<(CountyReviewConfig, Vec<OpeningC
             (1 + rng.up_to(39), seekers, rng.up_to(2) == 0)
         })
         .collect();
-    let c = config(&groups, &crew_groups);
+    let mut c = config(&groups, &crew_groups);
     let reach: Vec<(u32, u64)> = groups
         .iter()
         .enumerate()
@@ -253,6 +253,13 @@ pub fn random_opening(rng: &mut Rng) -> Option<(CountyReviewConfig, Vec<OpeningC
             (u32::try_from(g).expect("small"), rng.up_to(households / 4))
         })
         .collect();
+    // Now and then the county also holds a collective residence: it has a roll and no rows.
+    if rng.up_to(2) == 0 {
+        let mut with_residence = groups.clone();
+        with_residence.push((0, 1 + rng.up_to(40), false));
+        c = config(&with_residence, &crew_groups);
+        c.groups.last_mut()?.kind = GroupKind::CollectiveResidence;
+    }
     let roster = practice_contract::opening_roster(&c, &crews, &reach).ok()?;
     Some((c, crews, roster))
 }
@@ -432,9 +439,11 @@ fn money_balanced(record: &SessionRecord) {
     let asked_paid = checked_total(record.rows.iter().map(|r| r.asked_paid));
     assert_eq!(listed, record.household_units_listed);
     assert!(record.household_units_payable <= listed);
-    assert!(
-        paid + asked_paid + record.kept_back_units <= record.household_units_payable,
-        "units paid and kept back are never more than the county can pay"
+    let asked = checked_total(record.rows.iter().map(|r| r.asked));
+    assert_eq!(
+        paid + asked_paid + record.kept_back_units,
+        record.household_units_payable.min(listed + asked),
+        "the units paid are the units the county's money covers, or every unit wanted if fewer"
     );
     assert_eq!(asked_paid, record.aid_roll_households);
     assert_eq!(

@@ -418,8 +418,10 @@ fn rows_by_group(
 ///
 /// `wants` is a row and the households that want `per_household` hours each. The households a
 /// pool of equal places may take are `min(pool, hours / per_household)`, shared by `apportion`
-/// with `Withhold`, so two positions at one place never differ by an identifier. Returns every
-/// row's grant, zero included, and takes the hours from `hours`.
+/// with `Withhold`, so two positions at one place never differ by an identifier. A pool granted
+/// less than it wanted, by the room or by a tie, closes the places below it: they are granted
+/// nothing, so hours are never given to a lower place that a higher place was refused. Returns
+/// every row's grant, zero included, and takes the hours the grants use from `hours`.
 fn allot(
     work: &[Work],
     wants: &[(usize, u64)],
@@ -438,13 +440,19 @@ fn allot(
         .collect();
     ordered.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     let mut granted = Vec::with_capacity(ordered.len());
+    let mut closed = false;
     for pool in ordered.chunk_by(|a, b| a.0 == b.0) {
         let weights: Vec<u64> = pool.iter().map(|(_, _, want)| *want).collect();
         let wanted = sum(weights.iter().map(|w| Ok(*w)))?;
         // Hours that cost nothing set no limit.
         let room = hours.checked_div(per_household).unwrap_or(u64::MAX);
-        let shares = split::apportion(wanted.min(room), &weights, Ties::Withhold)?.shares;
+        let shares = if closed {
+            vec![0; weights.len()]
+        } else {
+            split::apportion(wanted.min(room), &weights, Ties::Withhold)?.shares
+        };
         let used = sum(shares.iter().map(|s| Ok(*s)))?;
+        closed = closed || used < wanted;
         *hours = sub(*hours, mul(used, per_household)?)?;
         granted.extend(
             pool.iter()

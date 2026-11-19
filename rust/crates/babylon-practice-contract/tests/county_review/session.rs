@@ -3,12 +3,13 @@ use std::collections::BTreeMap;
 
 use babylon_practice_contract as practice_contract;
 use babylon_practice_contract::{
-    Band, ContactOutcome, CountyPeriodFacts, CountyReviewConfig, CountyReviewError, HourCharge,
-    PositionKey, Roster, RosterRow, SessionOutcome, SessionRecord, SessionRow, SupportLine,
+    Band, ContactOutcome, CountyPeriodFacts, CountyReviewConfig, CountyReviewError, GroupKind,
+    HourCharge, PositionKey, Roster, RosterRow, SessionOutcome, SessionRecord, SessionRow,
+    SupportLine,
 };
 
 use super::support;
-use super::support::{Rng, A, B, B50, C, D, N9};
+use super::support::{Rng, RowTuple, A, B, B50, C, D, N9};
 
 fn hold(
     c: &CountyReviewConfig,
@@ -759,4 +760,218 @@ fn every_session_balances() {
         seen.iter().all(|n| *n > 0),
         "every branch of the session was reached: {seen:?}"
     );
+}
+
+/// A position of group 0 in its own crew: `(at_work, seeking, units)` is `(1, 0, 0)` for a
+/// household that holds no unit and `(1, 1, 1)` for one that holds a unit.
+fn crew_position(crew: u32, seeking: u16, units: u16) -> PositionKey {
+    PositionKey {
+        group: 0,
+        band: B50,
+        crew: Some(crew),
+        at_work: 1,
+        seeking,
+        units,
+    }
+}
+
+/// One group with four crews. Crews 0 and 1 are paid alike, so their positions stand at one place,
+/// crew 2 is paid less and stands below, and crew 3 is paid nothing.
+fn tied_pair_world(
+    rows_held: &[RowTuple],
+    free_hours: u64,
+    cash_micros: i128,
+) -> (CountyReviewConfig, Roster, CountyPeriodFacts) {
+    let households: u64 = rows_held.iter().map(|row| row.1).sum();
+    let c = support::config(&[(households, 3, false)], &[0, 0, 0, 0]);
+    let r = support::hand_roster(&c, rows_held);
+    let mut f = support::facts(&c, &r, &[], &[households]);
+    for (crew, wages) in [(0, 960_000_000), (1, 960_000_000), (2, 480_000_000), (3, 0)] {
+        f.crews[crew].accrued_wages_micros = wages;
+    }
+    f.groups[0].taxed_wages_micros = 1_920_000_000;
+    f.groups[0].wage_tax_collected_micros = 960_000_000;
+    f.groups[0].free_hours = free_hours;
+    f.cash_micros = cash_micros;
+    f.spending_limit_micros = 10_000_000_000;
+    (c, r, f)
+}
+
+#[test]
+fn hours_a_tie_withholds_are_not_given_to_a_lower_place_when_households_ask() {
+    // Severs: spec 7.4 step 5, hours are set aside in order of place. The first two stand at one
+    // place and want two households between them with room for one, so the tie withholds both.
+    // The third, below them, must not take the hours they were refused.
+    let (first, second, below) = (
+        crew_position(0, 0, 0),
+        crew_position(1, 0, 0),
+        crew_position(2, 0, 0),
+    );
+    let (c, r, f) = tied_pair_world(
+        &[
+            support::tuple(first, 1, 1),
+            support::tuple(second, 1, 1),
+            support::tuple(below, 1, 1),
+        ],
+        2,
+        10_000_000_000,
+    );
+    let out = hold(&c, &r, &f, None);
+    let rec = &out.record;
+    assert_eq!(
+        support::row(rec, first).rank,
+        support::row(rec, second).rank
+    );
+    assert!(support::row(rec, below).rank > support::row(rec, first).rank);
+    for key in [first, second, below] {
+        let row = support::row(rec, key);
+        assert_eq!(
+            (row.asked, row.asked_no_time),
+            (0, 1),
+            "no household asks: the hours stay with the place the tie refused"
+        );
+    }
+    assert_eq!(out.hour_charges, Vec::new());
+    support::balanced(rec);
+}
+
+#[test]
+fn hours_a_tie_withholds_are_not_given_to_a_lower_place_when_losers_come() {
+    // Severs: spec 7.5, as many come as the hours cover from the top of the list. With no cash
+    // every unit is unpaid, so each reached household of the three positions loses its unit and
+    // is willing.
+    let (first, second, below) = (
+        crew_position(0, 1, 1),
+        crew_position(1, 1, 1),
+        crew_position(2, 1, 1),
+    );
+    let (c, r, f) = tied_pair_world(
+        &[
+            support::tuple(first, 1, 1),
+            support::tuple(second, 1, 1),
+            support::tuple(below, 1, 1),
+        ],
+        2,
+        0,
+    );
+    let out = hold(&c, &r, &f, None);
+    let rec = &out.record;
+    for key in [first, second, below] {
+        let row = support::row(rec, key);
+        assert_eq!(
+            (row.came_from_roll, row.roll_no_time),
+            (0, 1),
+            "no loser comes: the hours stay with the place the tie refused"
+        );
+    }
+    assert_eq!(rec.claimants_roll_households, 0);
+    assert_eq!(out.hour_charges, Vec::new());
+    support::balanced(rec);
+}
+
+#[test]
+fn hours_a_tie_withholds_are_not_given_to_a_lower_place_when_households_spread() {
+    // Severs: the spread keeps the same rule. The three positions each ask, are paid and come, and
+    // each has one more household to bring. Two hours are left: room for one household, wanted by
+    // the tied pair, so the tie withholds both and the third must not bring one with the hours.
+    let (first, second, below) = (
+        crew_position(0, 0, 0),
+        crew_position(1, 0, 0),
+        crew_position(2, 0, 0),
+    );
+    let holder = crew_position(3, 1, 1);
+    let (c, r, f) = tied_pair_world(
+        &[
+            support::tuple(first, 2, 1),
+            support::tuple(second, 2, 1),
+            support::tuple(below, 2, 1),
+            support::tuple(holder, 3, 0),
+        ],
+        8,
+        10_000_000_000,
+    );
+    let out = hold(&c, &r, &f, None);
+    let rec = &out.record;
+    for key in [first, second, below] {
+        let row = support::row(rec, key);
+        assert_eq!(
+            (row.asked_paid, row.brought),
+            (1, 0),
+            "each asks and comes, and none brings another"
+        );
+    }
+    assert_eq!(rec.aid_roll_households, 3);
+    support::balanced(rec);
+}
+
+/// Group 0 holds the worked example's positions `A`, `D` and `B`; group 1 is a collective
+/// residence with a roll of ten units and no household.
+fn collective_world(cash_micros: i128) -> (CountyReviewConfig, Roster, CountyPeriodFacts) {
+    let mut c = support::config(&[(4, 3, false), (0, 10, false)], &[0, 0]);
+    c.groups[1].kind = GroupKind::CollectiveResidence;
+    let r = support::hand_roster(
+        &c,
+        &[
+            support::tuple(A, 2, 0),
+            support::tuple(D, 1, 0),
+            support::tuple(B, 1, 0),
+        ],
+    );
+    let mut f = support::facts(&c, &r, &[], &[4, 0]);
+    f.crews[0].accrued_wages_micros = 11_520_000_000;
+    f.crews[1].accrued_wages_micros = 1_920_000_000;
+    f.groups[0].taxed_wages_micros = 13_440_000_000;
+    f.groups[0].wage_tax_collected_micros = 2_016_000_000;
+    f.groups[0].free_hours = 100;
+    f.cash_micros = cash_micros;
+    f.spending_limit_micros = 10_000_000_000;
+    (c, r, f)
+}
+
+#[test]
+fn a_collective_residence_is_paid_its_whole_roll_when_the_county_can() {
+    // Severs: step 3 adds the residence's roll to the roll. Left out, the roll would be three
+    // units and the residence would have no line.
+    let (c, r, f) = collective_world(10_000_000_000);
+    let rec = hold(&c, &r, &f, None).record;
+    assert_eq!(rec.household_units_listed, 3);
+    assert_eq!(rec.roll_total_micros, 13 * 280_000_000);
+    assert_eq!(rec.relief_micros, rec.roll_total_micros);
+    assert_eq!(
+        rec.collective_lines,
+        vec![SupportLine {
+            group: 1,
+            units: 10,
+            amount_micros: 10 * 280_000_000
+        }],
+        "a whole roll pays the collective line its units at the price"
+    );
+    assert_eq!(rec.household_units_payable, 3);
+    support::balanced(&rec);
+}
+
+#[test]
+fn a_short_county_cuts_the_collective_line_in_proportion_and_floors_it() {
+    // Severs: a short county cuts each collective line to relief * its_total / roll_total, and
+    // the households have what is left. Cash is 2_000_000_000 of a roll of 3_640_000_000.
+    let (c, r, f) = collective_world(2_000_000_000);
+    let rec = hold(&c, &r, &f, None).record;
+    let line = 2_000_000_000_i128 * 2_800_000_000 / 3_640_000_000;
+    assert_eq!(line, 1_538_461_538, "the line is floor-rounded");
+    assert_eq!(
+        rec.collective_lines,
+        vec![SupportLine {
+            group: 1,
+            units: 10,
+            amount_micros: line
+        }]
+    );
+    assert_eq!(rec.relief_micros, 2_000_000_000);
+    assert_eq!(
+        i128::from(rec.household_units_payable),
+        (rec.relief_micros - line) / 280_000_000,
+        "the households are paid what the collective line leaves"
+    );
+    assert_eq!(rec.household_units_payable, 1);
+    support::balanced(&rec);
 }

@@ -443,3 +443,186 @@ pub(crate) fn add_opening(opening: &mut EconomicOpening, config: &CityPdConfig) 
         });
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use babylon_graph::stable_element::StableElementKey;
+    use babylon_kernel::currency::Currency;
+    use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+    use babylon_kernel::economic_location::EconomicLocation;
+    use babylon_material_circuit::{
+        AccountId, EquipmentPosition, FinancialInstitutions, HouseholdTimeAccounting,
+        LogisticsNodeId, PublicAccountId, PublicAllocation, PublicTransferTreatment,
+        RollingProcessSupply, SiteId,
+    };
+
+    use crate::economic_catalog::{
+        CatalogAccounting, CatalogCapacity, CatalogLogistics, CatalogOpeningOrders,
+        CatalogPolicies, EconomicCatalogError, EconomicOpening, EconomicSiteSeed,
+        EconomicSiteSource,
+    };
+
+    const PUBLIC: [u8; 32] = [7; 32];
+
+    fn wayne() -> EconomicLocation {
+        "county:26163".parse().expect("Wayne is a county location")
+    }
+
+    /// An opening that holds nothing: tests add the sites and allocations they need.
+    fn empty_opening() -> EconomicOpening {
+        EconomicOpening {
+            commodity_labels: vec![],
+            commodities: vec![],
+            recipes: vec![],
+            household_templates: vec![],
+            sites: vec![],
+            households: vec![],
+            staffing: vec![],
+            employment: vec![],
+            accounting: CatalogAccounting::Monetary,
+            institutional_cash: vec![],
+            institutions: FinancialInstitutions::empty(),
+            equity: vec![],
+            equipment: vec![],
+            equipment_position: EquipmentPosition::default(),
+            capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
+            policies: CatalogPolicies {
+                company_portfolios: None,
+                company_payouts: vec![],
+                aid_mandates: vec![],
+                household_time: HouseholdTimeAccounting::NotModeled,
+                household_time_policy: vec![],
+                offers: vec![],
+                replenishment: vec![],
+                household_purchases: vec![],
+                service_inputs: vec![],
+                service_connections: vec![],
+            },
+            logistics: CatalogLogistics {
+                supplier_routes: vec![],
+                route_stages: vec![],
+                memberships: vec![],
+                shared_capacity: vec![],
+            },
+            orders: CatalogOpeningOrders {
+                principals: vec![],
+                goods: vec![],
+                final_demand: vec![],
+            },
+            maintenance: None,
+        }
+    }
+
+    /// A Wayne public-provisioning site of local government, which employs nobody.
+    fn local_government_site(tag: u8) -> EconomicSiteSeed {
+        EconomicSiteSeed {
+            site_id: SiteId::from_bytes([tag; 32]),
+            label: format!("Local government {tag}"),
+            subject: StableElementKey::Node {
+                scenario: "city-pd-payroll-site-test".into(),
+                local_name: format!("site-{tag}"),
+            },
+            location: wayne(),
+            logistics_node_id: LogisticsNodeId::from_bytes([tag; 32]),
+            source: EconomicSiteSource::Designed {
+                key: format!("site-{tag}"),
+                source_ownership: Some(QcewOwnership::LocalGovernment),
+            },
+            function: EconomicFunction::PublicProvisioning,
+            processes: vec![],
+            merchant: None,
+            opening_stock: vec![],
+            opening_cash: Currency::from_micro_units(0),
+        }
+    }
+
+    fn grant(opening: &mut EconomicOpening, site: u8, micros: i128) {
+        opening
+            .institutions
+            .public_allocations
+            .push(PublicAllocation {
+                public_account: PublicAccountId::from_bytes(PUBLIC),
+                recipient: AccountId::Site(SiteId::from_bytes([site; 32])),
+                treatment: PublicTransferTreatment::ProviderOperatingGrant,
+                priority: 0,
+                amount_per_period: Currency::from_micro_units(micros),
+            });
+    }
+
+    fn payroll_site(
+        opening: &EconomicOpening,
+        positions: u64,
+        payroll: i128,
+    ) -> Result<[u8; 32], EconomicCatalogError> {
+        super::payroll_site(
+            opening,
+            wayne(),
+            PublicAccountId::from_bytes(PUBLIC),
+            positions,
+            payroll,
+        )
+    }
+
+    fn refusal(result: Result<[u8; 32], EconomicCatalogError>) -> &'static str {
+        match result {
+            Err(EconomicCatalogError::Opening(reason)) => reason,
+            other => panic!("the payroll site must be refused by name, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_county_with_no_local_government_site_has_no_payroll_site() {
+        let mut opening = empty_opening();
+        assert!(refusal(payroll_site(&opening, 0, 0)).contains("no local-government"));
+        // A site of another ownership is not one.
+        let mut private = local_government_site(1);
+        private.source = EconomicSiteSource::Designed {
+            key: "private".into(),
+            source_ownership: Some(QcewOwnership::Private),
+        };
+        opening.sites.push(private);
+        assert!(refusal(payroll_site(&opening, 0, 0)).contains("no local-government"));
+    }
+
+    #[test]
+    fn two_sites_that_employ_equally_many_persons_are_a_tie_that_no_identifier_breaks() {
+        let mut opening = empty_opening();
+        opening.sites.push(local_government_site(1));
+        opening.sites.push(local_government_site(2));
+        grant(&mut opening, 1, 10);
+        grant(&mut opening, 2, 10);
+        assert!(refusal(payroll_site(&opening, 0, 10)).contains("equally many"));
+        // The order of the sites does not turn the tie into a choice.
+        opening.sites.reverse();
+        assert!(refusal(payroll_site(&opening, 0, 10)).contains("equally many"));
+    }
+
+    #[test]
+    fn a_provider_grant_smaller_than_the_payroll_is_refused() {
+        let mut opening = empty_opening();
+        opening.sites.push(local_government_site(1));
+        grant(&mut opening, 1, 9);
+        assert!(refusal(payroll_site(&opening, 0, 10)).contains("smaller than the payroll"));
+        // A grant of a different treatment does not count towards it.
+        opening
+            .institutions
+            .public_allocations
+            .push(PublicAllocation {
+                public_account: PublicAccountId::from_bytes(PUBLIC),
+                recipient: AccountId::Site(SiteId::from_bytes([1; 32])),
+                treatment: PublicTransferTreatment::AgencyAppropriation,
+                priority: 0,
+                amount_per_period: Currency::from_micro_units(100),
+            });
+        assert!(refusal(payroll_site(&opening, 0, 10)).contains("smaller than the payroll"));
+    }
+
+    #[test]
+    fn a_site_whose_grants_cover_the_payroll_is_the_payroll_site() {
+        let mut opening = empty_opening();
+        opening.sites.push(local_government_site(1));
+        grant(&mut opening, 1, 4);
+        grant(&mut opening, 1, 6);
+        assert_eq!(payroll_site(&opening, 0, 10), Ok([1; 32]));
+    }
+}

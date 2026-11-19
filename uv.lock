@@ -195,9 +195,9 @@ dev = [
     { name = "pytest-randomly", specifier = ">=5.0.0,<6.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0,<4.0.0" },
     { name = "ruff", specifier = ">=0.17.4,<0.18.0" },
-    { name = "types-docutils", specifier = ">=0.23.0.20261030,<0.24.0" },
+    { name = "types-docutils", specifier = ">=0.23.0.20261107,<0.24.0" },
     { name = "types-jsonschema", specifier = ">=4.26.0.20261006,<5.0.0" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20261103,<7.0.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20261113,<7.0.0" },
     { name = "yamllint", specifier = ">=1.37.1,<2.0.0" },
 ]
 docs = [
@@ -2712,11 +2712,11 @@ wheels = [
 
 [[package]]
 name = "types-docutils"
-version = "0.23.0.20261030"
+version = "0.23.0.20261107"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/dd/91/093dd26df8f008367c6d0ae66592fca57e985b91aac3c7242b24594473a7/types_docutils-0.23.0.20261030.tar.gz", hash = "sha256:cc8fcc4c24320263d54158fc0914464fc9b0210992c5bdd24acf01b273b9adf1", size = 58600, upload-time = "2026-10-30T07:50:16.743Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/80/d19724558bad27983fa500f0e44f159e97031bbc842207995b66480baa21/types_docutils-0.23.0.20261107.tar.gz", hash = "sha256:9bb297fc33fe0f606c883217779a4f532ee023d7da852dcc244513c0f100228a", size = 58673, upload-time = "2026-11-07T07:55:19.171Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/69/e64310cd286616e060fa7e25aa3953a1ded3fb158cb3c3853fee273c5262/types_docutils-0.23.0.20261030-py3-none-any.whl", hash = "sha256:1e19e751868a108d2a96b72013fe3aac29d7f0b8737dd0722cbc8c92ce398352", size = 92178, upload-time = "2026-10-30T07:50:15.706Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/26/5ffc9517119f08e530509af6296c6e8fff36176ef479ddb8f765fdfee8fd/types_docutils-0.23.0.20261107-py3-none-any.whl", hash = "sha256:47def8a8c78bff72d6aa86a6daaa0a49ef3911e1f538f911f1bbd8006f3e196e", size = 92176, upload-time = "2026-11-07T07:55:18.144Z" },
 ]
 
 [[package]]
@@ -2733,11 +2733,11 @@ wheels = [
 
 [[package]]
 name = "types-pyyaml"
-version = "6.0.12.20261103"
+version = "6.0.12.20261113"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d9/82/2ed4d215a2840b467a9a864f03b0d21904250e28f5e1f006ad36fba0311a/types_pyyaml-6.0.12.20261103.tar.gz", hash = "sha256:7a1b5f837881dd35d5448b5f18275164f89f206185e31e8eae6e0b42607bc001", size = 18911, upload-time = "2026-11-03T08:45:23.714Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4d/8b/ba599d956693dbc98e170f32097128bdea0a17f9d42b0b490fa749c12b1a/types_pyyaml-6.0.12.20261113.tar.gz", hash = "sha256:0828be2580fd94151182364f4d0158e4de62fdbeeb8d4296f7f7d2b6c22bb640", size = 19017, upload-time = "2026-11-13T08:51:21.488Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/10/4353eb86278f6a59aeb9fe2be4d979c20b110b4009fa455a3ea6467cf5cb/types_pyyaml-6.0.12.20261103-py3-none-any.whl", hash = "sha256:444654c61f635dab82c092a511aa96a0ce31164810784b9a37314e3e56532ac8", size = 21299, upload-time = "2026-11-03T08:45:22.749Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/2e/36fc0941a40ef066dbc8abac41bbbefb41389f547c779aef832aea6b873d/types_pyyaml-6.0.12.20261113-py3-none-any.whl", hash = "sha256:3600749e613748afdc4327f0b17c3296cf880cdbc7335f320007abd9dd815f67", size = 21321, upload-time = "2026-11-13T08:51:20.417Z" },
 ]
 
 [[package]]

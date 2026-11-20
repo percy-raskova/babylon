@@ -1818,17 +1818,31 @@ Decisions:
 - Beside each income source the class reading of spec 7.10 is shown word for word, marked
   "Designed". Nation shows "pending". Every one of the four inspectors ends with the standing line
   of the Global Constraints.
-- The session inspector shows the county's money for relief, units payable and kept back, the list
-  in rank order, each body's roll, and for contacted positions one reason for every reached
-  household that stayed home. It shows a session only when `session_period <= viewed_tick`.
+- The session inspector shows the county's money for relief, units payable and kept back, each
+  body's roll, the player's contact, then a block "What this session changed": one sentence, naming
+  the position, for each position where a household asked and was paid, households came from the
+  roll, a unit was left unpaid, or an earned position has a reason to show. Then the list in rank
+  order, holding only the positions with a unit listed or a line in that block, and one closing line
+  that counts the rest ("N other positions hold no unit; nobody there asked."). The remedy for
+  hidden reasons is written once under the list's heading, not under every row. It shows a session
+  only when `session_period <= viewed_tick`. (Lead's amendment of 20 November, from the play check:
+  the first form listed all 131 positions, 84 of them empty, and the position that lost a unit was
+  several screens down.)
 - On a past period (`viewed_tick != durable_tick`) each county view opens with the line "These
   figures are period P, the live period. Past sessions are in the Archive." (P is `roster_period`).
   The client holds only the live period's projection, so the line is what keeps a past period's
   heading honest.
 - The food run inspector shows what the client already holds: parcels the organization's households
   can spare, parcels delivered and eaten at the last run, and the hours each side was charged.
-- When a new session record arrives, playback pauses with "The county's session record arrived." as
-  the hearing's notices do.
+- A session record the player has a reason to read pauses playback with a notice, as the hearing's
+  notices do: the county's first session ("The county's session record arrived."), a session that
+  carries the player's contact ("... arrived: your contact was heard."), and a session that changes
+  how the county's money stands against the roll, by the projection's own figures: from every
+  listed unit paid to fewer ("... the county could not pay every unit."), from some to none ("...
+  the county paid no household unit."), or back ("... the county can pay every unit again."). Any
+  other session installs silently and playback goes on. (Lead's amendment of 20 November, from the
+  play check: the county holds a session every period from period 4, so the first form stopped
+  playback at every period.)
 - The `OrganizerWorkspace` manifest row gains the action `review-contact`, the signals and
   uncertainty of the four views, their receipts and their Archive subjects.
 - Scripted input. `Action::organizer` maps `ChooseRosterSlot { slot }` to
@@ -1972,10 +1986,15 @@ Decisions:
   `.collected` and the `PublicBudgetReceipt`s, and the observer cursor's `current_register()` then
   `.county_review()` for `last_facts`, `last_session` and `roster`. Each period's register digest is
   the committed `RuntimeSessionTail` (`tick_content_hash` and `world_hash`).
-- *The positions.* The first position is the first entry of the period-3 snapshot's
-  `county_review.positions` (key order, since no session has been held) with `has_wages`, `key.units
-  == 0` and, in the register's roster, more households than reached. The second is the first such
-  entry of the period-10 snapshot (list order) whose `key.crew` differs from the first's.
+- *The positions.* Each contacted position is chosen by the county's own preview. The first is the
+  first position, in the period-3 snapshot's list order, whose `PreviewOrganizer` reply for
+  `ReviewContact(key)` has `review.outcome` reached, `review.asks` true and `review.place_open`
+  true. The second is the first such position of the period-10 snapshot whose `key.crew` differs
+  from the first's. Each preview goes into the action log. (Lead's amendment of 20 November, from
+  the play check. The first form took the first position with `has_wages`, no unit and households
+  left to reach; in a real campaign the first seven positions of the period-3 list had no open place
+  or would not ask, and the eighth, a household at work at "Wayne County: extraction (5)" in the
+  bottom 50%, had one.)
 - *How long.* "Short" means a session with `relief_micros < roll_total_micros`. Each run stops at
   period 34 or two periods after its first short session, whichever is later, and never past period
   40. If the county is not short by period 40, the record says so. (In the recorded run of 14

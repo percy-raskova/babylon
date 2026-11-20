@@ -175,17 +175,24 @@ top 1%, and earning-owner).
 
 ### Other persons for each household, at the opening (C8)
 
-| Group | households | persons | labor force | other persons | admits every crewless unit |
-|---|---|---|---|---|---|
-| no-earner-owner | 19334 | 41713 | 2949 | 38764 | true |
-| earning-nonowner | 456528 | 1196378 | 685824 | 510554 | true |
-| no-earner-nonowner (claimants) | 2 | 2 | 2 | 0 | false |
-| earning-owner | 50726 | 139681 | 104600 | 35081 | false |
-| earning-nonowner (aid donors) | 4 | 8 | 4 | 4 | true |
-| no-earner-nonowner | 173993 | 375394 | 26536 | 348858 | true |
-| no-earner-nonowner (aid partners) | 4 | 4 | 0 | 4 | true |
+A crew row has someone in the labor force for each of its households, so the opening's persons
+rule (a unit with fewer persons than households refuses the campaign) can refuse only a group with
+households in crewless rows, where nobody is in the labor force. The flag
+`admits_every_crewless_unit` (other persons >= households) is therefore computed only for those
+groups and is `null` (shown as n/a) for the others.
 
-Groups where `admits_every_crewless_unit` is false: no-earner-nonowner (claimants), earning-owner.
+| Group | households | crewless households | persons | labor force | other persons | admits every crewless unit |
+|---|---|---|---|---|---|---|
+| no-earner-owner | 19334 | 16385 | 41713 | 2949 | 38764 | true |
+| earning-nonowner | 456528 | 0 | 1196378 | 685824 | 510554 | n/a |
+| no-earner-nonowner (claimants) | 2 | 0 | 2 | 2 | 0 | n/a |
+| earning-owner | 50726 | 0 | 139681 | 104600 | 35081 | n/a |
+| earning-nonowner (aid donors) | 4 | 0 | 8 | 4 | 4 | n/a |
+| no-earner-nonowner | 173993 | 147457 | 375394 | 26536 | 348858 | true |
+| no-earner-nonowner (aid partners) | 4 | 4 | 4 | 0 | 4 | true |
+
+Every group with crewless households admits them; no group is refused. (The earlier `false` for
+the claimants and earning-owner was the flag applied to groups the rule cannot refuse.)
 
 ## Why Wayne's sellers stop supplying (`wayne-supply-chain.json`)
 

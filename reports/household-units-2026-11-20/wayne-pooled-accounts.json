@@ -85,6 +85,7 @@
   "other_persons": [
     {
       "admits_every_crewless_unit": true,
+      "crewless_households": 16385,
       "households": 19334,
       "label": "no-earner-owner",
       "labor_force": 2949,
@@ -92,7 +93,8 @@
       "persons": 41713
     },
     {
-      "admits_every_crewless_unit": true,
+      "admits_every_crewless_unit": null,
+      "crewless_households": 0,
       "households": 456528,
       "label": "earning-nonowner",
       "labor_force": 685824,
@@ -100,7 +102,8 @@
       "persons": 1196378
     },
     {
-      "admits_every_crewless_unit": false,
+      "admits_every_crewless_unit": null,
+      "crewless_households": 0,
       "households": 2,
       "label": "no-earner-nonowner (claimants)",
       "labor_force": 2,
@@ -108,7 +111,8 @@
       "persons": 2
     },
     {
-      "admits_every_crewless_unit": false,
+      "admits_every_crewless_unit": null,
+      "crewless_households": 0,
       "households": 50726,
       "label": "earning-owner",
       "labor_force": 104600,
@@ -116,7 +120,8 @@
       "persons": 139681
     },
     {
-      "admits_every_crewless_unit": true,
+      "admits_every_crewless_unit": null,
+      "crewless_households": 0,
       "households": 4,
       "label": "earning-nonowner (aid donors)",
       "labor_force": 4,
@@ -125,6 +130,7 @@
     },
     {
       "admits_every_crewless_unit": true,
+      "crewless_households": 147457,
       "households": 173993,
       "label": "no-earner-nonowner",
       "labor_force": 26536,
@@ -133,6 +139,7 @@
     },
     {
       "admits_every_crewless_unit": true,
+      "crewless_households": 4,
       "households": 4,
       "label": "no-earner-nonowner (aid partners)",
       "labor_force": 0,

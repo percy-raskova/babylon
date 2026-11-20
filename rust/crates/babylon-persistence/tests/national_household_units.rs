@@ -251,22 +251,49 @@ fn top_tenth_json(sums: &TopTenth) -> Value {
     row
 }
 
+/// Households in the roster rows of each spec's group that have no crew (nobody in the labor force).
+fn crewless_households(session: &Session, specs: &[AccountSpec]) -> Vec<u64> {
+    let register = session
+        .material()
+        .county_review()
+        .expect("the national opening has a county section");
+    let roster = &register.state().roster;
+    (0..specs.len())
+        .map(|at| {
+            let at = u32::try_from(at).expect("few groups");
+            roster
+                .rows
+                .iter()
+                .filter(|row| row.key.group == at && row.key.crew.is_none())
+                .map(|row| row.households)
+                .sum()
+        })
+        .collect()
+}
+
 /// C8's test: at the opening, each ordinary account has a person outside the labor force for each
-/// household.
-fn other_persons_json(specs: &[AccountSpec], opening: &[AccountReading]) -> Vec<Value> {
+/// household. A crew row holds someone in the labor force for each household, so the opening's
+/// persons rule can refuse only a group with crewless rows; the flag is `null` for the others.
+fn other_persons_json(
+    specs: &[AccountSpec],
+    opening: &[AccountReading],
+    crewless: &[u64],
+) -> Vec<Value> {
     specs
         .iter()
         .zip(opening)
-        .filter(|(_, account)| account.households > 0)
-        .map(|(spec, account)| {
+        .zip(crewless)
+        .filter(|((_, account), _)| account.households > 0)
+        .map(|((spec, account), &crewless)| {
             let other = account.persons - account.labor_force;
             json!({
                 "label": spec.label,
                 "persons": account.persons,
                 "labor_force": account.labor_force,
                 "households": account.households,
+                "crewless_households": crewless,
                 "other_persons": other,
-                "admits_every_crewless_unit": other >= account.households,
+                "admits_every_crewless_unit": (crewless > 0).then_some(other >= account.households),
             })
         })
         .collect()
@@ -338,6 +365,7 @@ fn record_wayne_pooled_accounts() {
     let mut session = opened_session(catalog, "household-units-pooled-record");
     let specs = pooled_specs(&session);
     let opening = read_accounts(&session, &specs);
+    let crewless = crewless_households(&session, &specs);
     let mut periods = vec![period_json(&specs, &opening, None, 0)];
     for period in 1..=34 {
         let (readings, accounts) = close_period(&mut session, &labels, &specs, period);
@@ -361,7 +389,7 @@ fn record_wayne_pooled_accounts() {
             "bands": spec.bands.iter().map(|(band, households)| json!([band, households])).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "periods": periods,
-        "other_persons": other_persons_json(&specs, &opening),
+        "other_persons": other_persons_json(&specs, &opening, &crewless),
     });
     let text = serde_json::to_string_pretty(&report).expect("the report serializes") + "\n";
     assert!(text.len() < 1_048_576, "the report is {} bytes", text.len());

@@ -4,6 +4,8 @@
 //! books and the organizer's journal. The player's figures are earned by contact, so the keys the
 //! organizer has made contact in come from the journal's receipts and from nowhere else.
 
+use std::fmt::Write as _;
+
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, FinalDemandPrincipalId, PublicAccountId, PublicTransferTreatment,
     SiteId,
@@ -15,6 +17,7 @@ use babylon_practice_contract::{
 };
 use babylon_tick::material_world::{CountyReviewRegister, MaterialWorldRegister};
 
+use crate::archive::SemanticArchiveError;
 use crate::runtime_session::RuntimeSessionErrorCode;
 
 /// The label of a grant to a site that none of the county's crews works at.
@@ -196,11 +199,19 @@ pub(crate) fn review_preview(
 /// The largest text the archive holds for one signal, in bytes.
 const ARCHIVE_TEXT_LIMIT: usize = 4_096;
 
-/// Millionths of a dollar as dollars, with at least two decimals and no trailing zeros past them.
+/// Millionths of a dollar as dollars, written as the client writes money: exact, with thousands
+/// separators and at least two decimals.
 fn dollars(micros: i128) -> String {
     let sign = if micros < 0 { "-" } else { "" };
     let magnitude = micros.unsigned_abs();
-    let whole = magnitude / 1_000_000;
+    let raw = (magnitude / 1_000_000).to_string();
+    let mut whole = String::with_capacity(raw.len() + raw.len() / 3);
+    for (at, digit) in raw.chars().enumerate() {
+        if at > 0 && (raw.len() - at).is_multiple_of(3) {
+            whole.push(',');
+        }
+        whole.push(digit);
+    }
     let fraction = format!("{:06}", magnitude % 1_000_000);
     let trimmed = fraction.trim_end_matches('0');
     let cents = if trimmed.len() < 2 {
@@ -211,11 +222,33 @@ fn dollars(micros: i128) -> String {
     format!("{sign}${whole}.{cents}")
 }
 
+/// What the text says of the positions it leaves out, whichever way the list ends: the positions
+/// with units that did not fit, then the positions that hold no unit.
+fn closing_words(unshown: usize, without_units: usize) -> String {
+    let mut words = String::new();
+    if unshown > 0 {
+        let _ = write!(words, " Positions with units that did not fit: {unshown}.");
+    }
+    let _ = write!(
+        words,
+        " Positions holding no unit, left out: {without_units}."
+    );
+    words
+}
+
 /// The public record of one session, as the archive keeps it: the money for relief, the units
-/// payable and kept back, how many positions were paid in full, in part and not at all, and the
-/// ranks and units of the first positions on the list, as many as fit the archive's text limit.
-/// Nothing earned by contact is in it.
-pub(crate) fn session_signal_text(record: &SessionRecord) -> String {
+/// payable and kept back, how many positions were paid in full, in part and not at all, and then
+/// each position that held a unit, in the order of the list, as many as fit the archive's text
+/// limit. A position is named by its public structure (band, budget group, workplace or no wage),
+/// then its rank and its units listed, paid and unpaid. Nothing earned by contact is in it.
+///
+/// # Errors
+///
+/// `InvalidIdentity` for a position the county's configuration does not hold.
+pub(crate) fn session_signal_text(
+    config: &CountyReviewConfig,
+    record: &SessionRecord,
+) -> Result<String, SemanticArchiveError> {
     let (mut full, mut partly, mut none) = (0_u64, 0_u64, 0_u64);
     for row in &record.rows {
         match (row.units_paid, row.units_unpaid) {
@@ -227,39 +260,54 @@ pub(crate) fn session_signal_text(record: &SessionRecord) -> String {
     }
     let mut text = format!(
         "The county had {} for relief after {} of lines paid first, against a roll of {}. It could \
-         pay {} of {} household units and kept back {} to an exact tie. Positions paid in full: \
-         {full}. Paid in part: {partly}. Not paid: {none}. Highest on the list:",
+         pay {} of {} household units",
         dollars(record.relief_micros),
         dollars(record.first_class_micros),
         dollars(record.roll_total_micros),
         record.household_units_payable,
         record.household_units_listed,
-        record.kept_back_units,
     );
-    let mut ranked: Vec<_> = record.rows.iter().collect();
-    ranked.sort_by_key(|row| (row.rank, row.key));
+    if record.kept_back_units > 0 {
+        let _ = write!(
+            text,
+            " and kept back {} to an exact tie",
+            record.kept_back_units
+        );
+    }
+    let _ = write!(
+        text,
+        ". Positions paid in full: {full}. Paid in part: {partly}. Not paid: {none}."
+    );
+    let mut listed: Vec<_> = record
+        .rows
+        .iter()
+        .filter(|row| row.units_listed > 0)
+        .collect();
+    listed.sort_by_key(|row| (row.rank, row.key));
+    let without_units = record.rows.len() - listed.len();
+    if !listed.is_empty() {
+        text.push_str(" Positions that hold units, highest on the list first:");
+    }
     let mut shown = 0_usize;
-    for row in &ranked {
+    for row in &listed {
+        let name = babylon_practice_contract::position_name_in(config, row.key)
+            .map_err(|_| SemanticArchiveError::InvalidIdentity)?;
         let entry = format!(
-            " rank {}: {} listed, {} paid, {} unpaid;",
+            " {name}, rank {}: {} listed, {} paid, {} unpaid;",
             row.rank, row.units_listed, row.units_paid, row.units_unpaid
         );
-        let more = ranked.len() - shown - 1;
         // Leave room for the closing words, whichever way the list ends.
-        let closing = format!(" and {more} more positions.");
+        let closing = closing_words(listed.len() - shown - 1, without_units);
         if text.len() + entry.len() + closing.len() > ARCHIVE_TEXT_LIMIT {
             break;
         }
         text.push_str(&entry);
         shown += 1;
     }
-    if shown == ranked.len() {
-        if text.ends_with(';') {
-            text.pop();
-            text.push('.');
-        }
-    } else {
-        text = format!("{text} and {} more positions.", ranked.len() - shown);
+    if text.ends_with([';', ':']) {
+        text.pop();
+        text.push('.');
     }
-    text
+    text.push_str(&closing_words(listed.len() - shown, without_units));
+    Ok(text)
 }

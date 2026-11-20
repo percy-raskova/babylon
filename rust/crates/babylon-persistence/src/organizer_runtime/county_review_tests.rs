@@ -4,9 +4,10 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_practice_contract::{
-    Band, ContactOutcome, OrganizerAllocation, OrganizerChoice, OrganizerCommand, OrganizerOutcome,
+    Band, ContactOutcome, CountyReviewConfig, CountyReviewCrew, CountyReviewGroup, GroupKind,
+    OrganizerAllocation, OrganizerChoice, OrganizerCommand, OrganizerOutcome,
     OrganizerPartnerResponse, OrganizerPeriodJournal, OrganizerPeriodJournalEntries,
-    OrganizerReceipt, PositionKey, SessionRecord, SessionRow,
+    OrganizerReceipt, PayMode, PositionKey, SessionRecord, SessionRow,
 };
 use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::replay_session::ReplayCommitDisposition;
@@ -22,7 +23,7 @@ fn campaign() -> CampaignId {
     CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7037))
 }
 
-fn session(name: &str, opponent: NationalOpponent) -> Session {
+pub(crate) fn session(name: &str, opponent: NationalOpponent) -> Session {
     CapturedEconomicCatalog::capture_national_campaign_with_opponent(
         economic_catalog::national_catalog_input(),
         campaign(),
@@ -274,26 +275,113 @@ fn record(rows: Vec<SessionRow>) -> SessionRecord {
     }
 }
 
+/// A county of two groups and one crew, with names a reader can tell apart.
+pub(crate) fn sample_config() -> CountyReviewConfig {
+    CountyReviewConfig {
+        schema_version: babylon_practice_contract::COUNTY_REVIEW_SCHEMA_VERSION,
+        campaign_id: [1; 16],
+        actor_id: 9,
+        authority_id: [2; 16],
+        county: *b"26163",
+        administration_label: "Administration".to_owned(),
+        claimants_body_label: "Claimants".to_owned(),
+        aid_body_label: "Aid".to_owned(),
+        public_account_id: [3; 32],
+        unit_price_micros: 280_000_000,
+        going_wage_micros: 24_000_000,
+        session_hours: 2,
+        bring_hours: 2,
+        first_session_period: 1,
+        groups: vec![
+            CountyReviewGroup {
+                group_id: [1; 32],
+                label: "Wayne households".to_owned(),
+                kind: GroupKind::Ordinary,
+                opening_households: 10,
+                roll_units: 10,
+                has_ownership_income: false,
+                receives_mutual_aid: false,
+            },
+            CountyReviewGroup {
+                group_id: [2; 32],
+                label: "Hospital families".to_owned(),
+                kind: GroupKind::Ordinary,
+                opening_households: 5,
+                roll_units: 5,
+                has_ownership_income: false,
+                receives_mutual_aid: false,
+            },
+        ],
+        crews: vec![CountyReviewCrew {
+            crew_id: [1; 32],
+            group: 0,
+            site_id: [4; 32],
+            unit_id: [5; 32],
+            workplace_label: "Wayne General".to_owned(),
+            pay_mode: PayMode::Wage,
+        }],
+        content_digest: [6; 32],
+        policy_source_digest: [7; 32],
+    }
+}
+
+fn at_crew(mut row: SessionRow, crew: u32) -> SessionRow {
+    row.key.crew = Some(crew);
+    row
+}
+
 #[test]
-fn the_session_text_is_the_public_record_and_fits_the_archive_at_any_size() {
-    let small = county_review::session_signal_text(&record(vec![
-        row(2, 1, 4, 4),
-        row(1, 0, 3, 1),
-        row(3, 2, 2, 0),
-    ]));
-    assert!(small.contains("$2500000.00 for relief"), "{small}");
-    assert!(small.contains("8928 of 71765 household units"), "{small}");
-    assert!(small.contains("kept back 3"), "{small}");
-    assert!(
-        small.contains("Positions paid in full: 1. Paid in part: 1. Not paid: 1."),
-        "{small}"
-    );
-    assert!(
-        small.ends_with("rank 1: 3 listed, 1 paid, 2 unpaid; rank 2: 4 listed, 4 paid, 0 unpaid; rank 3: 2 listed, 0 paid, 2 unpaid."),
-        "the whole list, best rank first: {small}"
+fn the_session_text_names_each_position_that_holds_a_unit() {
+    let config = sample_config();
+    let held = county_review::session_signal_text(
+        &config,
+        &record(vec![
+            at_crew(row(2, 1, 4, 4), 0),
+            row(1, 0, 3, 1),
+            row(3, 2, 0, 0),
+        ]),
+    )
+    .expect("the text");
+    assert_eq!(
+        held,
+        "The county had $2,500,000.00 for relief after $1,500,000.00 of lines paid first, \
+         against a roll of $20,094,200.00. It could pay 8928 of 71765 household units and kept \
+         back 3 to an exact tie. Positions paid in full: 1. Paid in part: 1. Not paid: 0. \
+         Positions that hold units, highest on the list first: \
+         Bottom 50% \u{b7} Wayne households \u{b7} no wage \u{b7} no one in the labor force, rank 1: \
+         3 listed, 1 paid, 2 unpaid; \
+         Bottom 50% \u{b7} Wayne households \u{b7} Wayne General (wage), rank 2: 4 listed, 4 paid, \
+         0 unpaid. Positions holding no unit, left out: 1."
     );
 
-    // A roster far larger than Wayne's 111 positions is cut at the limit and says how many it left.
+    // A session that kept nothing back says nothing of a tie.
+    let mut none_kept = record(vec![row(1, 0, 3, 3)]);
+    none_kept.kept_back_units = 0;
+    let text = county_review::session_signal_text(&config, &none_kept).expect("the text");
+    assert!(!text.contains("kept back"), "{text}");
+    assert!(
+        text.contains("household units. Positions paid in full: 1."),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("0 unpaid. Positions holding no unit, left out: 0."),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_position_the_county_does_not_hold_has_no_text() {
+    let mut stranger = row(1, 0, 3, 3);
+    stranger.key.group = 9;
+    assert_eq!(
+        county_review::session_signal_text(&sample_config(), &record(vec![stranger])),
+        Err(crate::archive::SemanticArchiveError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn the_session_text_fits_the_archive_at_any_size_and_says_what_it_left_out() {
+    // A roster far larger than Wayne's positions is cut at the limit and says how many it left.
     let many: Vec<_> = (0..5_000_u32)
         .map(|n| {
             row(
@@ -304,9 +392,16 @@ fn the_session_text_is_the_public_record_and_fits_the_archive_at_any_size() {
             )
         })
         .collect();
-    let long = county_review::session_signal_text(&record(many));
+    let long = county_review::session_signal_text(&sample_config(), &record(many)).expect("text");
     assert!(long.len() <= 4_096, "{} bytes", long.len());
-    assert!(long.contains(" more positions."), "{long}");
+    assert!(
+        long.contains("Positions with units that did not fit: "),
+        "{long}"
+    );
+    assert!(
+        long.ends_with("Positions holding no unit, left out: 0."),
+        "{long}"
+    );
     assert!(long.contains("rank 1: 12 listed"), "{long}");
 }
 
@@ -325,11 +420,21 @@ fn the_largest_session_text_fits_the_archive() {
         .last_session
         .as_ref()
         .expect("the first session was held at period 4");
-    let text = county_review::session_signal_text(held);
+    let text = county_review::session_signal_text(county.config(), held).expect("the text");
     assert!(text.len() <= 4_096, "{} bytes", text.len());
     assert!(
-        text.starts_with("The county had "),
+        text.starts_with("The county had $"),
         "the signal opens with the money for relief: {text}"
+    );
+    assert!(
+        !text.contains(" 0 listed"),
+        "no position without a unit is listed: {text}"
+    );
+    assert!(!text.contains("kept back 0"), "{text}");
+    let group = &county.config().groups[0].label;
+    assert!(
+        text.contains(&format!(" \u{b7} {group} \u{b7} ")),
+        "a position is named by its public structure: {text}"
     );
 }
 

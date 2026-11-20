@@ -15,8 +15,11 @@ use babylon_material_circuit::{
 };
 use babylon_practice_contract::{
     Band, CountyPeriodFacts, CountyReviewConfig, CountyReviewCrew, CountyReviewError,
-    CountyReviewGroup, CountyReviewState, GroupKind, OpeningCrew, PayMode, PositionKey,
-    SessionOutcome, COUNTY_REVIEW_SCHEMA_VERSION,
+    CountyReviewGroup, CountyReviewState, GroupKind, OpeningCrew, OrganizerConfig,
+    OrganizerContribution, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
+    OrganizerPeriodJournal, OrganizerPeriodJournalEntries, OrganizerReviewConfig, OrganizerState,
+    OrganizerTimeBindingMode, PayMode, PositionKey, SessionOutcome, COUNTY_REVIEW_SCHEMA_VERSION,
+    ORGANIZER_SCHEMA_VERSION,
 };
 
 use super::county_review_execution;
@@ -591,6 +594,132 @@ fn cutting_the_tax_receipt_changes_the_list() {
     );
     assert_eq!(asked_paid(&without), Some(0), "no tax, no place");
     assert_eq!(held_paid(&without), 1, "the holder keeps its unit");
+}
+
+/// An organizer with one participant, the county review it may reach a household for, and a
+/// journal that holds the closed period 1 with no receipt: the contact the rule reads is none.
+fn organizer_for(
+    county: &CountyReviewConfig,
+) -> (OrganizerConfig, OrganizerState, OrganizerPeriodJournal) {
+    let partner = |actor_id: u64, authority: u8, label: &str| OrganizerPartner {
+        actor_id,
+        authority_id: [authority; 16],
+        label: label.to_owned(),
+        policy: OrganizerPartnerPolicy::Participate,
+        permits_work_report: false,
+        permits_maintenance_report: false,
+    };
+    let config = OrganizerConfig {
+        hearing: None,
+        review: Some(OrganizerReviewConfig {
+            county_geoid: "26163".to_owned(),
+            first_session_period: county.first_session_period,
+            county_config_digest: babylon_practice_contract::county_review_config_digest(county)
+                .expect("the county's configuration encodes"),
+        }),
+        schema_version: ORGANIZER_SCHEMA_VERSION,
+        collection: None,
+        campaign_id: [3; 16],
+        controlled_actor_id: 101,
+        input_authority_id: [8; 16],
+        organization_label: "Fixture organizing collective".to_owned(),
+        workplace_id: 104,
+        workplace_process_id: [1; 32],
+        workplace_label: "Fixture workplace".to_owned(),
+        workplace_partner: partner(102, 9, "Fixture workplace committee"),
+        neighborhood_partner: partner(103, 10, "Fixture neighborhood group"),
+        participants: vec![OrganizerParticipant {
+            contributor_id: 201,
+            label: "Fixture participant".to_owned(),
+            available_hours: 16,
+            commitments: vec![OrganizerContribution {
+                actor_id: 101,
+                hours: 8,
+            }],
+            concern: "Explain lost work".to_owned(),
+            objection: "Respect promised time".to_owned(),
+            review_condition: "Review next period".to_owned(),
+        }],
+        time_binding: OrganizerTimeBindingMode::FixedTimeControl,
+        aid_bindings: vec![],
+        inquiry_hours: 12,
+        contact_hours: 8,
+        partner_response_hours: 2,
+        initial_agreement_through_period: 3,
+        contact_renewal_periods: 2,
+        content_digest: [5; 32],
+        initial_observations: vec![],
+    };
+    let mut state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the configuration admits an opening state");
+    state.period = 1;
+    let mut journal = OrganizerPeriodJournal::empty();
+    journal
+        .append(OrganizerPeriodJournalEntries::new(1))
+        .expect("the first period extends an empty journal");
+    (config, state, journal)
+}
+
+/// The closed period 1 of the county world, with an organizer whose journal holds that period.
+fn organized_candidate() -> (MaterialCatalog, PreparedMaterialWorld) {
+    let (catalog, opening) = county_register(1);
+    let mut prepared = opening
+        .prepare_next(&catalog)
+        .expect("the closed period prepares");
+    let (config, state, journal) = organizer_for(&config(1));
+    prepared
+        .set_organizer(&catalog, config, state, journal, &resolver())
+        .expect("the organizer binds to the county world");
+    (catalog, prepared)
+}
+
+#[test]
+fn resolving_the_same_candidate_twice_writes_the_same_register() {
+    let (catalog, mut prepared) = organized_candidate();
+    let resolver = resolver();
+    county_review_execution::resolve(&mut prepared, &catalog, &resolver)
+        .expect("the county's period resolves");
+    let bytes = prepared.register().canonical_bytes().to_vec();
+    let county = prepared
+        .register()
+        .county_review()
+        .expect("the section is written")
+        .clone();
+    assert!(
+        county.state().last_session.is_some(),
+        "period 1 is the first session"
+    );
+    county_review_execution::resolve(&mut prepared, &catalog, &resolver)
+        .expect("the same candidate resolves again");
+    assert_eq!(
+        prepared.register().canonical_bytes(),
+        bytes.as_slice(),
+        "the second run reads the period's opening and not its own result"
+    );
+    assert_eq!(prepared.register().county_review(), Some(&county));
+}
+
+#[test]
+fn every_other_writer_carries_the_county_section() {
+    let (catalog, mut prepared) = organized_candidate();
+    let resolver = resolver();
+    county_review_execution::resolve(&mut prepared, &catalog, &resolver)
+        .expect("the county's period resolves");
+    let county = prepared
+        .register()
+        .county_review()
+        .expect("the section is written")
+        .clone();
+    let (config, state, journal) = organizer_for(&config(1));
+    prepared
+        .set_organizer(&catalog, config, state, journal, &resolver)
+        .expect("the organizer is written again");
+    assert_eq!(
+        prepared.register().county_review(),
+        Some(&county),
+        "the organizer writer keeps the county's section"
+    );
+    assert!(prepared.register().organizer_journal().is_some());
 }
 
 #[test]

@@ -408,7 +408,7 @@ fn only<'a, T>(
 /// One crew's facts. The engine removes people before it hires or lays off, so a staffing
 /// receipt's opening counts are the counts after the removal: the kernel's opening counts are
 /// those plus the people removed. A crew with no staffing receipt in the period keeps the roster's
-/// counts and has no wages.
+/// counts; its wages are still read from its labor-use receipt (zero when it has none).
 fn crew_facts(
     register: &CountyReviewRegister,
     transition: &MaterialCircuitTransition,

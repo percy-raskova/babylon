@@ -456,3 +456,40 @@ fn a_crew_with_nobody_at_work_and_a_group_with_no_taxed_wages_stand_at_zero() {
         (0, 0)
     );
 }
+
+#[test]
+fn a_position_is_named_by_its_public_structure_the_same_way_everywhere() {
+    let (c, state) = support::state_before_contact();
+    let shown = project(&c, &state, &ledger(), &[]);
+    for position in &shown.positions {
+        let named = practice_contract::position_name_in(&c, position.key).expect("a held key");
+        assert_eq!(
+            named,
+            practice_contract::position_name(
+                position.key.band,
+                &position.group_label,
+                position.workplace_label.as_deref(),
+                position.pay_mode,
+            ),
+            "the client names a position from its view, the Archive from the configuration"
+        );
+    }
+    let first = shown.positions.first().expect("a roster");
+    let named = practice_contract::position_name_in(&c, first.key).expect("a held key");
+    assert!(named.starts_with(practice_contract::band_label(first.key.band)));
+    assert!(named.contains(&first.group_label));
+    let mut stranger = first.key;
+    stranger.group = 99;
+    assert_eq!(
+        practice_contract::position_name_in(&c, stranger),
+        Err(CountyReviewError::UnknownGroup)
+    );
+    assert_eq!(
+        practice_contract::workplace_text(None, None),
+        "no wage · no one in the labor force"
+    );
+    assert_eq!(
+        practice_contract::workplace_text(Some("Mill"), Some(PayMode::WorkingOwner)),
+        "Mill (working owner)"
+    );
+}

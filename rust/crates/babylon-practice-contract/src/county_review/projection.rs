@@ -12,7 +12,7 @@ use super::place;
 use super::roster;
 use super::session::{ContactOutcome, SessionRow};
 use super::types::{
-    BandCount, CountyReviewConfig, CountyReviewCrew, CountyReviewError, GroupKind, PayMode,
+    Band, BandCount, CountyReviewConfig, CountyReviewCrew, CountyReviewError, GroupKind, PayMode,
     PositionKey, RosterRow,
 };
 
@@ -325,6 +325,84 @@ fn earned_for(
         not_worth_time: count(|r| r.not_worth_time),
         brought: count(|r| r.brought),
     }))
+}
+
+/// A band's name, as the player reads it.
+#[must_use]
+pub const fn band_label(band: Band) -> &'static str {
+    match band {
+        Band::Top1 => "Top 1%",
+        Band::Next9 => "Next 9%",
+        Band::Next40 => "Next 40%",
+        Band::Bottom50 => "Bottom 50%",
+    }
+}
+
+/// How a crew is paid, in the player's words.
+#[must_use]
+pub const fn pay_mode_text(mode: PayMode) -> &'static str {
+    match mode {
+        PayMode::Wage => "wage",
+        PayMode::WorkingOwner => "working owner",
+        PayMode::UnpaidFamily => "unpaid family work",
+    }
+}
+
+/// Where a position's people work, in the player's words: the workplace and how it pays, or that
+/// nobody in the position is in the labor force.
+#[must_use]
+pub fn workplace_text(workplace_label: Option<&str>, pay_mode: Option<PayMode>) -> String {
+    match (workplace_label, pay_mode) {
+        (Some(label), Some(mode)) => format!("{label} ({})", pay_mode_text(mode)),
+        (Some(label), None) => label.to_owned(),
+        (None, _) => "no wage · no one in the labor force".to_owned(),
+    }
+}
+
+/// The public structure that names a position: its band, its budget group and its workplace. The
+/// interface and the Archive both name a position with these words.
+#[must_use]
+pub fn position_name(
+    band: Band,
+    group_label: &str,
+    workplace_label: Option<&str>,
+    pay_mode: Option<PayMode>,
+) -> String {
+    format!(
+        "{} · {group_label} · {}",
+        band_label(band),
+        workplace_text(workplace_label, pay_mode)
+    )
+}
+
+/// The name of a position of the county's configuration.
+///
+/// # Errors
+///
+/// `UnknownGroup` or `UnknownCrew` for a key the configuration does not hold.
+pub fn position_name_in(
+    config: &CountyReviewConfig,
+    key: PositionKey,
+) -> Result<String, CountyReviewError> {
+    let group = config
+        .groups
+        .get(index(key.group)?)
+        .ok_or(CountyReviewError::UnknownGroup)?;
+    let crew = match key.crew {
+        None => None,
+        Some(crew) => Some(
+            config
+                .crews
+                .get(index(crew)?)
+                .ok_or(CountyReviewError::UnknownCrew)?,
+        ),
+    };
+    Ok(position_name(
+        key.band,
+        &group.label,
+        crew.map(|c| c.workplace_label.as_str()),
+        crew.map(|c| c.pay_mode),
+    ))
 }
 
 fn position_view(

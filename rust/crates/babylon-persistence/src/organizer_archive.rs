@@ -11,7 +11,7 @@ use crate::{
     PendingArchiveReceipt, SemanticArchiveError,
 };
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
-use babylon_practice_contract::SessionRecord;
+use babylon_practice_contract::{CountyReviewConfig, SessionRecord};
 use babylon_practice_contract::{OrganizerAidCashStatus, OrganizerPeriodJournal};
 
 use crate::archive;
@@ -832,10 +832,20 @@ impl CapturedOrganizerPages {
                     signals.extend(
                         register
                             .county_review()
-                            .and_then(|county| county.state().last_session.as_ref())
-                            .filter(|session| session.period == self.tick)
-                            .map(|session| {
-                                PageEvidence::CountySession(config.controlled_actor_id, session)
+                            .and_then(|county| {
+                                county
+                                    .state()
+                                    .last_session
+                                    .as_ref()
+                                    .map(|session| (county.config(), session))
+                            })
+                            .filter(|(_, session)| session.period == self.tick)
+                            .map(|(county_config, session)| {
+                                PageEvidence::CountySession(
+                                    config.controlled_actor_id,
+                                    county_config,
+                                    session,
+                                )
                             }),
                     );
                 }
@@ -963,7 +973,7 @@ impl HearingEvidence<'_> {
 
 enum PageEvidence<'a> {
     Hearing(u64, HearingEvidence<'a>),
-    CountySession(u64, &'a SessionRecord),
+    CountySession(u64, &'a CountyReviewConfig, &'a SessionRecord),
     Report(&'a OrganizerObservation),
     Encounter(&'a CityPdEncounter),
     Practice(&'a OrganizerReceipt),
@@ -975,7 +985,7 @@ impl PageEvidence<'_> {
     fn period(&self) -> u64 {
         match self {
             Self::Hearing(_, row) => row.period(),
-            Self::CountySession(_, record) => record.period,
+            Self::CountySession(_, _, record) => record.period,
             Self::Report(r) => r.acquired_period,
             Self::Encounter(r) => r.resolve_period,
             Self::Practice(r) => r.period,
@@ -986,7 +996,9 @@ impl PageEvidence<'_> {
     fn signal(&self) -> Result<ArchiveSignal, SemanticArchiveError> {
         match self {
             Self::Hearing(actor, row) => row.signal(*actor),
-            Self::CountySession(actor, record) => county_session_signal(*actor, record),
+            Self::CountySession(actor, config, record) => {
+                county_session_signal(*actor, config, record)
+            }
             Self::Report(r) => observation_signal(r),
             Self::Encounter(r) => encounter_signal(r),
             Self::Practice(r) => practice_signal(r),
@@ -1127,12 +1139,13 @@ fn county_session_citation(
 /// the session is granted to the organization when it is held, like the hearing minutes.
 fn county_session_signal(
     actor: u64,
+    config: &CountyReviewConfig,
     record: &SessionRecord,
 ) -> Result<ArchiveSignal, SemanticArchiveError> {
     ArchiveSignal::try_new(
         county_session_key(record),
         format!("County review session, period {}", record.period),
-        crate::organizer_runtime::county_review::session_signal_text(record),
+        crate::organizer_runtime::county_review::session_signal_text(config, record)?,
         county_session_citation(actor, record)?,
     )
 }
@@ -1569,6 +1582,7 @@ mod projection_tests {
     #[test]
     fn county_session_atom_reaches_the_page_only_through_its_grant() {
         let actor = 1;
+        let config = crate::organizer_runtime::county_review_tests::sample_config();
         let record = SessionRecord {
             period: 4,
             cash_micros: 5_000_000_000_000,
@@ -1594,7 +1608,7 @@ mod projection_tests {
             )
             .expect("known organization"),
             &PendingArchiveReceipt::try_new(4, [1; 32]).expect("committed period"),
-            vec![PageEvidence::CountySession(actor, &record)],
+            vec![PageEvidence::CountySession(actor, &config, &record)],
         )
         .expect("valid Archive page");
         let [signal] = page.signals() else {

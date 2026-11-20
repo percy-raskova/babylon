@@ -10,9 +10,9 @@ use crate::human_numbers;
 use crate::observer::ObserverSession;
 use crate::observer_theme as theme;
 use babylon_persistence::runtime_session::{
-    Band, BandCount, ContactOutcome, ContactPreview, CountyReviewProjection, OrganizerAidKind,
-    OrganizerChoice, OrganizerFoodDelivery, OrganizerPreview, PayMode, PositionEarned, PositionKey,
-    PositionView,
+    self, Band, BandCount, ContactOutcome, ContactPreview, CountyReviewProjection,
+    OrganizerAidKind, OrganizerChoice, OrganizerFoodDelivery, OrganizerPreview, PositionEarned,
+    PositionKey, PositionView,
 };
 use bevy::a11y::AccessibilityNode;
 use bevy::prelude::*;
@@ -75,15 +75,6 @@ pub(super) fn why_unavailable(client: &OrganizerClient, period: u64) -> Option<C
         .then_some(CountyUnavailable::AlreadyChosen)
 }
 
-pub(super) const fn band_label(band: Band) -> &'static str {
-    match band {
-        Band::Top1 => "Top 1%",
-        Band::Next9 => "Next 9%",
-        Band::Next40 => "Next 40%",
-        Band::Bottom50 => "Bottom 50%",
-    }
-}
-
 const fn band_words(band: Band) -> &'static str {
     match band {
         Band::Top1 => "Does not work. Lives entirely off investments.",
@@ -95,18 +86,10 @@ const fn band_words(band: Band) -> &'static str {
     }
 }
 
-const fn pay_mode_text(mode: PayMode) -> &'static str {
-    match mode {
-        PayMode::Wage => "wage",
-        PayMode::WorkingOwner => "working owner",
-        PayMode::UnpaidFamily => "unpaid family work",
-    }
-}
-
 fn band_line(count: &BandCount) -> String {
     format!(
         "{} · Designed: {}\n  {} households · {} with someone at work · {} only looking for work · {} with nobody in the labor force · {} people at work · {} people looking for work · {} units",
-        band_label(count.band),
+        runtime_session::band_label(count.band),
         band_words(count.band),
         human_numbers::grouped(u128::from(count.households)),
         human_numbers::grouped(u128::from(count.with_work)),
@@ -128,21 +111,13 @@ pub(super) fn who_works(view: &CountyReviewProjection) -> String {
     text
 }
 
-fn workplace_text(position: &PositionView) -> String {
-    match (&position.workplace_label, position.pay_mode) {
-        (Some(label), Some(mode)) => format!("{label} ({})", pay_mode_text(mode)),
-        (Some(label), None) => label.clone(),
-        (None, _) => "no wage · no one in the labor force".into(),
-    }
-}
-
 /// The structure that names a position: band, group and workplace.
 fn position_name(position: &PositionView) -> String {
-    format!(
-        "{} · {} · {}",
-        band_label(position.key.band),
-        position.group_label,
-        workplace_text(position)
+    runtime_session::position_name(
+        position.key.band,
+        &position.group_label,
+        position.workplace_label.as_deref(),
+        position.pay_mode,
     )
 }
 
@@ -155,7 +130,7 @@ pub(super) fn name_of(view: &CountyReviewProjection, key: PositionKey) -> String
             || {
                 format!(
                     "{} · budget group {} · {} at work · {} looking for work · {} units held",
-                    band_label(key.band),
+                    runtime_session::band_label(key.band),
                     key.group,
                     key.at_work,
                     key.seeking,

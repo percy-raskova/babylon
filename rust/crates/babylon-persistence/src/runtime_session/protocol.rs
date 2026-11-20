@@ -22,8 +22,9 @@ pub use babylon_practice_contract::{
 };
 
 pub use babylon_practice_contract::{
-    Band, BandCount, ContactOutcome, ContactPreview, CountyReviewProjection, GroupKind, LedgerLine,
-    LedgerLineKind, PayMode, PositionEarned, PositionKey, PositionView,
+    band_label, position_name, Band, BandCount, ContactOutcome, ContactPreview,
+    CountyReviewProjection, GroupKind, LedgerLine, LedgerLineKind, PayMode, PositionEarned,
+    PositionKey, PositionView,
 };
 
 pub use babylon_practice_contract::{

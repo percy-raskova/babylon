@@ -6,7 +6,8 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
-    CapturedEconomicCatalog, CommodityLabel, EconomicOpening,
+    CapturedEconomicCatalog, CommodityLabel, EconomicCatalogInput, EconomicOpening, SourceArtifact,
+    SourceArtifactKind,
 };
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::Band;
@@ -16,14 +17,17 @@ use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+#[path = "support/economy_health.rs"]
+mod economy_health;
 #[path = "support/household_accounts.rs"]
 mod household_accounts;
 #[path = "support/supply_chain.rs"]
 mod supply_chain;
 
+use economy_health::{Census, Opening};
 use household_accounts::{AccountReading, AccountSpec, PeriodReading, Session, TopTenth};
 use supply_chain::{ChainSite, Names};
 
@@ -502,4 +506,294 @@ fn record_wayne_supply_chain() {
         &Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../reports/household-units-2026-11-20/wayne-supply-chain.json"),
     );
+}
+
+/// The shipped national policy text, as captured in the catalog input.
+fn policy_text(input: &EconomicCatalogInput) -> String {
+    let source = input
+        .sources
+        .iter()
+        .find(|source| source.kind() == SourceArtifactKind::NationalGamePolicy)
+        .expect("the national input carries its game policy");
+    String::from_utf8(source.bytes().to_vec()).expect("the policy is text")
+}
+
+/// The national catalog input with `edits` made to its policy text, each exactly once.
+fn edited_input(edits: &[(&str, &str)]) -> EconomicCatalogInput {
+    let mut input = economic_catalog::national_catalog_input();
+    let mut text = policy_text(&input);
+    for (old, new) in edits {
+        assert_eq!(text.matches(old).count(), 1, "one exact place for {old:?}");
+        text = text.replacen(old, new, 1);
+    }
+    let source = input
+        .sources
+        .iter_mut()
+        .find(|source| source.kind() == SourceArtifactKind::NationalGamePolicy)
+        .expect("the national input carries its game policy");
+    *source = SourceArtifact::capture(source.kind(), text.into_bytes());
+    input
+}
+
+/// The policy's default wage, read from its text.
+fn default_wage(input: &EconomicCatalogInput) -> i128 {
+    let text = policy_text(input);
+    let line = text
+        .lines()
+        .find_map(|line| line.strip_prefix("default_wage_micros_per_hour = "))
+        .expect("the policy names a default wage");
+    line.trim().parse().expect("the default wage is an integer")
+}
+
+/// Plays `periods` closes of one policy and returns its health record.
+fn health_report(name: &str, edits: &[(&str, &str)], periods: u64) -> Value {
+    let input = edited_input(edits);
+    let wage = default_wage(&input);
+    let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
+        .expect("the national campaign");
+    let compiler = catalog.compiler_version().to_owned();
+    let census = Census::new(catalog.opening(), wage);
+    let mut session = opened_session(catalog, "economy-health");
+    let mut rows = Vec::new();
+    for period in 1..=periods {
+        let open = Opening::read(&census, &session);
+        let receipts = close_period_with(&mut session, period, |_, candidate| {
+            material_world::decode_material_receipts(candidate.material().receipt_bytes())
+                .expect("canonical material receipts")
+        });
+        rows.push(economy_health::period_record(
+            &census, &open, &receipts, &session,
+        ));
+    }
+    let panel: Vec<Value> = census
+        .panel
+        .iter()
+        .map(|county| json!({"name": county.name, "geoid": county.geoid, "rule": county.rule}))
+        .collect();
+    json!({
+        "campaign": campaign().as_uuid().to_string(),
+        "replay_seed": 319,
+        "compiler": compiler,
+        "candidate": name,
+        "policy_edits": edits,
+        "default_wage_micros_per_hour": wage.to_string(),
+        "columns": economy_health::columns(),
+        "panel": panel,
+        "periods": rows,
+    })
+}
+
+/// Writes a record one period to a line, with a trailing newline, under 1 MiB.
+fn write_compact(report: &Value, path: &Path) {
+    let mut head = report.clone();
+    let periods = head
+        .as_object_mut()
+        .expect("a JSON object")
+        .remove("periods")
+        .expect("a record has periods");
+    let lines: Vec<String> = periods
+        .as_array()
+        .expect("periods are a list")
+        .iter()
+        .map(|row| serde_json::to_string(row).expect("a period serializes"))
+        .collect();
+    let mut text = serde_json::to_string_pretty(&head).expect("the head serializes");
+    text.truncate(text.len() - 2);
+    text += ",\n  \"periods\": [\n    ";
+    text += &lines.join(",\n    ");
+    text += "\n  ]\n}\n";
+    let size = text.len();
+    std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
+    std::fs::write(path, text).expect("the record is written");
+    assert!(size < 1_048_576, "the record is {size} bytes");
+}
+
+#[test]
+fn the_health_reader_adds_back_at_the_opening() {
+    let input = economic_catalog::national_catalog_input();
+    let wage = default_wage(&input);
+    assert_eq!(wage, 24_000_000);
+    let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
+        .expect("the national campaign");
+    let census = Census::new(catalog.opening(), wage);
+    let seeded = economy_health::opening_counts(catalog.opening());
+    let sites = catalog.opening().sites.len();
+    let session = opened_session(catalog, "economy-health-opening");
+    assert_eq!(economy_health::session_counts(&census, &session), seeded);
+    assert!(
+        seeded["domestic"][0] > 100_000_000,
+        "the nation's households"
+    );
+    assert_eq!(
+        economy_health::site_counts(&census).values().sum::<u64>(),
+        u64::try_from(sites).expect("few sites")
+    );
+    let geoids: Vec<&str> = census.panel.iter().map(|c| c.geoid.as_str()).collect();
+    assert_eq!(geoids.len(), 6);
+    assert_eq!(geoids[..4], ["26163", "17031", "06037", "48201"]);
+    let money = economy_health::money_record(&census, &session);
+    let book: i128 = economy_health::economy(&session)
+        .book
+        .snapshot()
+        .accounts
+        .iter()
+        .map(|row| row.cash.micro_units())
+        .sum();
+    assert_eq!(money["cash_total"], json!(book.to_string()));
+}
+
+/// The periods the summaries and the README read.
+const SUMMARY_PERIODS: [u64; 7] = [1, 2, 3, 4, 5, 13, 34];
+
+fn int(value: &Value) -> i128 {
+    value
+        .as_str()
+        .map_or_else(|| value.as_i64().map(i128::from), |text| text.parse().ok())
+        .expect("an integer figure")
+}
+
+/// Unmet over required for each need, summed over every place abroad.
+fn abroad_unmet(row: &Value) -> Map<String, Value> {
+    let mut sums = BTreeMap::<&str, [u64; 2]>::new();
+    for place in row["abroad"].as_object().expect("places abroad").values() {
+        for need in economy_health::NEEDS {
+            let cells = &place[need];
+            let sum = sums.entry(need).or_default();
+            sum[0] += cells[0].as_u64().unwrap_or(0);
+            sum[1] += cells[1].as_u64().unwrap_or(0);
+        }
+    }
+    sums.into_iter()
+        .map(|(need, [required, unmet])| {
+            let share = (required > 0).then(|| u128::from(unmet) * 10_000 / u128::from(required));
+            (need.to_owned(), json!(share))
+        })
+        .collect()
+}
+
+/// Sites under each floor, idle with a plan, and the functions they are in.
+fn business_summary(row: &Value) -> Value {
+    let mut totals = [0_i128; 3];
+    let mut under = BTreeSet::new();
+    for (scope, functions) in row["businesses"].as_object().expect("businesses") {
+        for (function, cells) in functions.as_object().expect("functions") {
+            for (at, total) in totals.iter_mut().enumerate() {
+                *total += int(&cells[at + 1]);
+            }
+            if int(&cells[1]) + int(&cells[2]) > 0 {
+                under.insert(format!("{scope} {function}"));
+            }
+        }
+    }
+    json!({
+        "under_service_input_floor": totals[0],
+        "under_replenishment_floor": totals[1],
+        "zero_output_with_a_plan": totals[2],
+        "functions_with_sites_under_a_floor": under,
+    })
+}
+
+/// The products whose designed process does not cover its cost.
+fn below_cost(row: &Value) -> Vec<String> {
+    let mut names = Vec::new();
+    for (name, product) in row["products"].as_object().expect("products") {
+        for process in product["processes"].as_array().expect("processes") {
+            let verdict = process["verdict"].as_str().expect("a verdict");
+            if verdict != "covers cost" {
+                names.push(format!("{name}: {verdict}"));
+            }
+        }
+    }
+    names
+}
+
+fn summary_row(row: &Value) -> Value {
+    let supply = &row["supply"];
+    let mut unmet = Map::new();
+    let mut bands = Map::new();
+    for need in economy_health::NEEDS {
+        unmet.insert(need.to_owned(), supply[need]["sum"][4].clone());
+        bands.insert(need.to_owned(), supply[need]["county_bands"].clone());
+    }
+    let jobs = &row["jobs"];
+    json!({
+        "period": row["period"],
+        "national_unmet_share_bps": unmet,
+        "counties_by_band": bands,
+        "abroad_unmet_share_bps": abroad_unmet(row),
+        "domestic_at_work_close": jobs["domestic"]["all"][2],
+        "domestic_looking_close": jobs["domestic"]["all"][3],
+        "abroad_at_work_close": jobs["foreign"]["all"][2],
+        "businesses": business_summary(row),
+        "below_cost": below_cost(row),
+    })
+}
+
+/// The README's table for one record.
+fn summary(record: &Value) -> Vec<Value> {
+    record["periods"]
+        .as_array()
+        .expect("periods")
+        .iter()
+        .filter(|row| SUMMARY_PERIODS.contains(&row["period"].as_u64().expect("a period")))
+        .map(summary_row)
+        .collect()
+}
+
+fn report_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../reports/economy-repair-2026-11-20")
+        .join(name)
+}
+
+#[test]
+#[ignore = "writes reports/economy-repair-2026-11-20/national-economy-health.json"]
+fn record_national_economy_health() {
+    let record = health_report("shipped", &[], 34);
+    write_compact(&record, &report_path("national-economy-health.json"));
+}
+
+/// Candidate repairs, each a set of exact edits to the shipped policy text.
+const SWEEP_OFF: (&str, &str) = (
+    "opening_treasury_bps = 1000\n",
+    "opening_treasury_bps = 0\n",
+);
+const BUSINESS_SERVICES_48: (&str, &str) = (
+    "output = \"business_services\"\noutput_units_per_batch = 16\n",
+    "output = \"business_services\"\noutput_units_per_batch = 48\n",
+);
+const EXTRACTION_16: (&str, &str) = (
+    "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+    "output = \"resources\"\noutput_units_per_batch = 16\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 16,",
+);
+const CANDIDATES: [(&str, &[(&str, &str)]); 4] = [
+    ("shipped", &[]),
+    ("A", &[SWEEP_OFF]),
+    ("B", &[SWEEP_OFF, BUSINESS_SERVICES_48]),
+    ("C", &[SWEEP_OFF, BUSINESS_SERVICES_48, EXTRACTION_16]),
+];
+
+#[test]
+#[ignore = "writes reports/economy-repair-2026-11-20/experiments.json; ECONOMY_CANDIDATES=A,B plays only those"]
+fn record_economy_repair_candidates() {
+    let only = std::env::var("ECONOMY_CANDIDATES").ok();
+    let chosen = |name: &str| {
+        only.as_deref()
+            .is_none_or(|list| list.split(',').any(|n| n == name))
+    };
+    let mut rows = Vec::new();
+    for (name, edits) in CANDIDATES.iter().filter(|(name, _)| chosen(name)) {
+        let record = health_report(name, edits, 34);
+        let full =
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("economy-repair/{name}.json"));
+        write_compact(&record, &full);
+        rows.push(json!({"candidate": name, "policy_edits": edits, "summary": summary(&record)}));
+    }
+    let path = match only {
+        None => report_path("experiments.json"),
+        Some(_) => {
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join("economy-repair/experiments-partial.json")
+        }
+    };
+    write_report(&json!({"candidates": rows}), &path);
 }

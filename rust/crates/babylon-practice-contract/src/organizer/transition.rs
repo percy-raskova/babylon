@@ -30,6 +30,7 @@ use super::ResolvedOrganizerPeriod;
 
 use std::collections::BTreeSet;
 
+use crate::county_review::{Band, PositionKey};
 use babylon_kernel::content_digest;
 
 use crate::CampaignId;
@@ -46,6 +47,24 @@ use babylon_kernel::replay::ReplaySessionId;
 pub(super) fn target_identity(domain: &[u8], id: u64) -> [u8; 32] {
     let mut bytes = Vec::from(domain);
     bytes.extend_from_slice(&id.to_be_bytes());
+    content_digest::sha256_of(&bytes)
+}
+
+/// The target of a review contact: the position's own sixteen bytes under their own domain.
+fn position_target_identity(key: PositionKey) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"babylon.organizer-review-position.v1"[..]);
+    bytes.extend_from_slice(&key.group.to_be_bytes());
+    bytes.push(match key.band {
+        Band::Bottom50 => 0,
+        Band::Next40 => 1,
+        Band::Next9 => 2,
+        Band::Top1 => 3,
+    });
+    bytes.push(u8::from(key.crew.is_some()));
+    bytes.extend_from_slice(&key.crew.unwrap_or(0).to_be_bytes());
+    for count in [key.at_work, key.seeking, key.units] {
+        bytes.extend_from_slice(&count.to_be_bytes());
+    }
     content_digest::sha256_of(&bytes)
 }
 
@@ -175,6 +194,12 @@ pub(super) fn intent_for_authorized_commitment(
                     .claimant_actor_id,
             ),
             control_parameter(offer.parameter()),
+        ),
+        OrganizerChoice::ReviewContact(key) => (
+            PracticeId::Organize,
+            PracticeTargetTag::Organization,
+            position_target_identity(key),
+            control_parameter(9),
         ),
         OrganizerChoice::Reinforce => (
             PracticeId::Organize,
@@ -514,6 +539,15 @@ fn routine_commitment(
     })
 }
 
+/// The outcome of a choice that spends one actor's hours and writes no contact product.
+fn single_actor_outcome(choice: OrganizerChoice) -> Option<OrganizerOutcome> {
+    match choice {
+        OrganizerChoice::InviteToHearing(_) => Some(OrganizerOutcome::HearingInvitationIssued),
+        OrganizerChoice::ReviewContact(_) => Some(OrganizerOutcome::ReviewContactMade),
+        _ => None,
+    }
+}
+
 fn partner_for_choice(
     config: &OrganizerConfig,
     choice: OrganizerChoice,
@@ -528,7 +562,8 @@ fn partner_for_choice(
         }
         OrganizerChoice::PauseStanding
         | OrganizerChoice::Collect
-        | OrganizerChoice::InviteToHearing(_) => None,
+        | OrganizerChoice::InviteToHearing(_)
+        | OrganizerChoice::ReviewContact(_) => None,
     }
 }
 
@@ -901,14 +936,14 @@ pub fn resolve_organizer_practice_with_time(
         // The original accepted gift replaces ordinary work once, without
         // dispatch being mislabeled as performed mutual-aid practice.
         receipt.outcome = OrganizerOutcome::AidScheduled;
-    } else if matches!(choice, OrganizerChoice::InviteToHearing(_)) {
+    } else if let Some(issued) = single_actor_outcome(choice) {
         let intent = practice_intent_with_origin(config, opening, commitment, false)?;
-        if let Some(time_use) =
-            super::time_resources::allocate_hearing_hours(config, &intent, required, resources)?
-        {
+        if let Some(time_use) = super::time_resources::allocate_single_actor_hours(
+            config, &intent, required, resources,
+        )? {
             receipt.time_use = time_use;
             receipt.hours_spent = required;
-            receipt.outcome = OrganizerOutcome::HearingInvitationIssued;
+            receipt.outcome = issued;
         } else {
             receipt.outcome = OrganizerOutcome::InsufficientTime;
         }
@@ -1102,7 +1137,8 @@ fn execute_practice(
         }
         OrganizerChoice::PauseStanding
         | OrganizerChoice::Collect
-        | OrganizerChoice::InviteToHearing(_) => return Err(OrganizerError::InvalidCommitment),
+        | OrganizerChoice::InviteToHearing(_)
+        | OrganizerChoice::ReviewContact(_) => return Err(OrganizerError::InvalidCommitment),
     }
     Ok(())
 }

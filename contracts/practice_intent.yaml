@@ -139,8 +139,10 @@ parameter_contract:
           invite_hearing_claimant_only: 6
           invite_hearing_joint_minutes: 7
           hearing_attendance: 8
+          review_contact: 9
     saved_standing_contact_origin: engine_derived_only_no_player_choice
     hearing_attendance_origin: engine_derived_from_each_group_hearing_mandate
+    review_contact_origin: player_choice_naming_one_county_review_position
     MUTUAL_AID:
       empty: independent_partner_response
       collection:

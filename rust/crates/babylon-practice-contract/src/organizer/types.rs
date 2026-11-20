@@ -14,6 +14,7 @@ use super::{
 };
 
 use super::collection;
+use crate::county_review::PositionKey;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
@@ -100,6 +101,8 @@ pub struct OrganizerConfig {
     pub aid_bindings: Vec<OrganizerAidBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hearing: Option<OrganizerHearingConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<OrganizerReviewConfig>,
     pub inquiry_hours: u64,
     pub contact_hours: u64,
     pub partner_response_hours: u64,
@@ -107,6 +110,16 @@ pub struct OrganizerConfig {
     pub contact_renewal_periods: u64,
     pub content_digest: [u8; 32],
     pub initial_observations: Vec<OrganizerObservation>,
+}
+
+/// The county review the organizer may reach one household for: the county, the first period a
+/// session runs, and the digest of the county's configuration the session rules are bound to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerReviewConfig {
+    pub county_geoid: String,
+    pub first_session_period: u64,
+    pub county_config_digest: [u8; 32],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +141,8 @@ pub enum OrganizerChoice {
     PauseStanding,
     ResumeStanding,
     InviteToHearing(OrganizerHearingOffer),
+    /// Reach one household in the named position before the county's next review session.
+    ReviewContact(PositionKey),
 }
 
 /// Exact selected material request, authenticated with its practice kind.
@@ -208,6 +223,8 @@ pub enum OrganizerRefusal {
     CollectionCashRefused,
     AidUnavailable,
     HearingUnavailable,
+    /// The campaign has no county review, or its first session is still too far off.
+    ReviewUnavailable,
     AidReceivingRefused,
     PendingAidConflict,
     /// This household hour identity was already debited in the witnessed period.
@@ -333,6 +350,7 @@ pub enum OrganizerOutcome {
     StandingPaused,
     StandingResumed,
     HearingInvitationIssued,
+    ReviewContactMade,
     NoAuthorizedPractice,
 }
 

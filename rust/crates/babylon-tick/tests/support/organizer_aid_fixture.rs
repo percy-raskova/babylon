@@ -667,6 +667,7 @@ pub(crate) fn mandate(routed: bool) -> AidMandate {
 pub(crate) fn config() -> OrganizerConfig {
     OrganizerConfig {
         hearing: None,
+        review: None,
         schema_version: ORGANIZER_SCHEMA_VERSION,
         collection: None,
         campaign_id: [1; 16],

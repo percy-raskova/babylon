@@ -484,6 +484,7 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
     let practice = match receipt.choice {
         OrganizerChoice::Collect => "Collect a voluntary contribution",
         OrganizerChoice::InviteToHearing(_) => "Invite a delegation to the county relief hearing",
+        OrganizerChoice::ReviewContact(_) => "County review contact",
         OrganizerChoice::LocalAid => "Local aid",
         OrganizerChoice::RemoteAid => "Cross-region support",
         OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Ask about work and output",
@@ -505,6 +506,9 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
         OrganizerOutcome::AidPracticeUncompleted => "Independent aid practice uncompleted",
         OrganizerOutcome::EvidenceObtained => "Evidence obtained",
         OrganizerOutcome::HearingInvitationIssued => "Hearing invitation delivered",
+        OrganizerOutcome::ReviewContactMade => {
+            "Reached out to one household for the county review."
+        }
         OrganizerOutcome::EvidenceWithheld => "No report obtained",
         OrganizerOutcome::ContactCompleted => "Mutual contact completed",
         OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",

@@ -494,6 +494,7 @@ class Preview(SelectedAllocation):
             "collection_cash_refused",
             "aid_unavailable",
             "hearing_unavailable",
+            "review_unavailable",
             "aid_receiving_refused",
             "pending_aid_conflict",
             "household_time_already_spent",

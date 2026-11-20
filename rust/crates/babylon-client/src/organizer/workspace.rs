@@ -124,6 +124,7 @@ pub(super) enum PossibleBenefit {
     LocalGift,
     RemoteGift,
     Hearing,
+    ReviewContact,
     PauseRoutine,
     NoPractice,
 }
@@ -271,6 +272,7 @@ fn captured_parties<'a>(
             None,
             super::hearing::invitee(view).map(|partner| known_partner(view, partner.actor_id)),
         ),
+        OrganizerChoice::ReviewContact(_) => (None, None),
         OrganizerChoice::Collect => (
             client.collection_preview().map(|terms| NamedSubject {
                 subject: OrganizerSubject::Contributor(terms.contributor_id),
@@ -300,7 +302,9 @@ fn practice<'a>(
     let aid = client.aid_preview(choice);
     let hours = match choice {
         OrganizerChoice::Inquiry(_) => Some(view.inquiry_hours),
-        OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => Some(view.contact_hours),
+        OrganizerChoice::Reinforce
+        | OrganizerChoice::ResumeStanding
+        | OrganizerChoice::ReviewContact(_) => Some(view.contact_hours),
         OrganizerChoice::Hold if view.standing.authorized => Some(view.contact_hours),
         OrganizerChoice::Hold | OrganizerChoice::PauseStanding => Some(0),
         OrganizerChoice::InviteToHearing(_) => {
@@ -331,6 +335,7 @@ fn practice<'a>(
         OrganizerChoice::PauseStanding => PossibleBenefit::PauseRoutine,
         OrganizerChoice::Collect => PossibleBenefit::Collection,
         OrganizerChoice::InviteToHearing(_) => PossibleBenefit::Hearing,
+        OrganizerChoice::ReviewContact(_) => PossibleBenefit::ReviewContact,
         OrganizerChoice::LocalAid => PossibleBenefit::LocalGift,
         OrganizerChoice::RemoteAid => PossibleBenefit::RemoteGift,
     };

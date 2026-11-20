@@ -26,6 +26,7 @@ pub(super) fn choice(value: OrganizerChoice) -> &'static str {
         OrganizerChoice::LocalAid => "Organize local aid",
         OrganizerChoice::RemoteAid => "Organize remote solidarity",
         OrganizerChoice::InviteToHearing(offer) => super::hearing::label(offer),
+        OrganizerChoice::ReviewContact(_) => "County review contact",
         OrganizerChoice::Hold => "Keep current routine",
         OrganizerChoice::PauseStanding => "Pause neighborhood work",
         OrganizerChoice::ResumeStanding => "Resume neighborhood work",
@@ -48,6 +49,9 @@ pub(super) fn flavor(view: &OrganizerView, choice: OrganizerChoice) -> &'static 
             "Send support across the distance; the route still has to carry it."
         }
         OrganizerChoice::InviteToHearing(offer) => super::hearing::terms(offer),
+        OrganizerChoice::ReviewContact(_) => {
+            "Reach out to one household in a named position before the county's next review."
+        }
         OrganizerChoice::Hold if view.standing.authorized => {
             "Keep showing up for the neighborhood contact work."
         }
@@ -81,6 +85,9 @@ pub(super) fn refusal(value: OrganizerRefusal) -> &'static str {
             "The household has declined this cash contribution."
         }
         OrganizerRefusal::HearingUnavailable => "No invitation can be issued for the next period.",
+        OrganizerRefusal::ReviewUnavailable => {
+            "No county review session follows the next period."
+        }
         OrganizerRefusal::AidUnavailable => "No captured aid mandate is offered here.",
         OrganizerRefusal::AidReceivingRefused => {
             "The recipient has not consented to receive this gift."
@@ -290,7 +297,9 @@ pub(super) fn context(view: &OrganizerView) -> String {
 fn practice_hours(view: &OrganizerView, choice: OrganizerChoice) -> u64 {
     match choice {
         OrganizerChoice::Inquiry(_) => view.inquiry_hours,
-        OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => view.contact_hours,
+        OrganizerChoice::Reinforce
+        | OrganizerChoice::ResumeStanding
+        | OrganizerChoice::ReviewContact(_) => view.contact_hours,
         OrganizerChoice::Hold if view.standing.authorized => view.contact_hours,
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
             let kind = if choice == OrganizerChoice::LocalAid {
@@ -659,6 +668,7 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
     };
     match choice {
         OrganizerChoice::InviteToHearing(offer) => format!("{}\n{displacement}\nHearing in period {resolves} · {hours} organizer-hours", super::hearing::terms(offer)),
+        OrganizerChoice::ReviewContact(_) => format!("{hours} organizer-hours\n{displacement}\nResolves period {resolves} · the county's session records who was reached"),
         OrganizerChoice::Collect => "Captured collection terms require the current runtime snapshot.".into(),
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid =>
             "Gift delivery and later mutual-aid practice require separate evidence. Review the captured material terms before admission.".into(),
@@ -760,6 +770,7 @@ fn aid_stage_order(outcome: OrganizerOutcome) -> u8 {
         | OrganizerOutcome::StandingPaused
         | OrganizerOutcome::StandingResumed
         | OrganizerOutcome::HearingInvitationIssued
+        | OrganizerOutcome::ReviewContactMade
         | OrganizerOutcome::NoAuthorizedPractice => 4,
     }
 }
@@ -792,6 +803,7 @@ fn aid_commitment_summary(rows: &[&DispatchPractice]) -> String {
             | OrganizerOutcome::StandingPaused
             | OrganizerOutcome::StandingResumed
             | OrganizerOutcome::HearingInvitationIssued
+            | OrganizerOutcome::ReviewContactMade
             | OrganizerOutcome::NoAuthorizedPractice => "Resolution",
         };
         let _ = write!(text, "\n{stage} · {}", outcome(receipt.outcome));
@@ -842,6 +854,14 @@ fn practice_summary(row: &DispatchPractice) -> String {
     if matches!(receipt.choice, OrganizerChoice::InviteToHearing(_)) {
         return format!(
             "Period {} · {origin}\n{}\n{}. Read Wayne hearing for attendance, authority and minutes.",
+            receipt.period,
+            choice(receipt.choice),
+            outcome(receipt.outcome)
+        );
+    }
+    if matches!(receipt.choice, OrganizerChoice::ReviewContact(_)) {
+        return format!(
+            "Period {} · {origin}\n{}\n{}",
             receipt.period,
             choice(receipt.choice),
             outcome(receipt.outcome)
@@ -1161,6 +1181,7 @@ fn preview_routine(preview: &OrganizerPreview) -> &'static str {
         | OrganizerChoice::Inquiry(_)
         | OrganizerChoice::Reinforce
         | OrganizerChoice::InviteToHearing(_)
+        | OrganizerChoice::ReviewContact(_)
             if preview.replaces_standing_work =>
         {
             "Replaces neighborhood work once; later work remains subject to eligibility."
@@ -1170,7 +1191,8 @@ fn preview_routine(preview: &OrganizerPreview) -> &'static str {
         | OrganizerChoice::RemoteAid
         | OrganizerChoice::Inquiry(_)
         | OrganizerChoice::Reinforce
-        | OrganizerChoice::InviteToHearing(_) => "The neighborhood routine remains paused.",
+        | OrganizerChoice::InviteToHearing(_)
+        | OrganizerChoice::ReviewContact(_) => "The neighborhood routine remains paused.",
         OrganizerChoice::PauseStanding => {
             "Pauses the saved routine until you explicitly resume it."
         }
@@ -1277,6 +1299,9 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
 pub(super) fn outcome(value: OrganizerOutcome) -> &'static str {
     match value {
         OrganizerOutcome::HearingInvitationIssued => "Invitation issued",
+        OrganizerOutcome::ReviewContactMade => {
+            "Reached out to one household for the county review."
+        }
         OrganizerOutcome::CollectionCompleted => {
             "Voluntary contribution collected; funds available for later aid"
         }

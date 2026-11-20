@@ -250,6 +250,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
 fn config() -> OrganizerConfig {
     OrganizerConfig {
         hearing: None,
+        review: None,
         aid_bindings: vec![],
         schema_version: ORGANIZER_SCHEMA_VERSION,
         collection: None,

@@ -260,6 +260,9 @@ pub(super) fn terms(view: &OrganizerView, choice: &PracticeChoice) -> String {
         PossibleBenefit::Hearing => {
             "Each group decides whether to attend and what its delegate may agree to.".into()
         }
+        PossibleBenefit::ReviewContact => {
+            "One household in the named position hears from you; the county's session records who was reached.".into()
+        }
         PossibleBenefit::PauseRoutine => "Suspend the routine until explicitly resumed.".into(),
         PossibleBenefit::NoPractice => "No neighborhood practice will run.".into(),
     };

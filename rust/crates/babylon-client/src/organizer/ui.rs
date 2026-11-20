@@ -46,7 +46,6 @@ use crate::observer::SessionPhase;
 use crate::observer_controls::ControlAvailability;
 use crate::ui;
 use crate::ui::Interaction;
-use babylon_persistence::runtime_session::OrganizerGiftConsent;
 use bevy::input_focus::FocusCause;
 use bevy::text::LineBreak;
 use bevy::ui::UiSystems;
@@ -78,6 +77,10 @@ pub(crate) enum OrganizerAction {
     ArchiveReport,
     ArchiveSelection,
     ArchiveOrganization,
+    /// Moves the county roster by this many pages.
+    RosterPage(i8),
+    /// Picks the position in this slot of the roster's page for a review contact.
+    ChooseRosterSlot(u8),
 }
 
 /// Feedback for an accepted local navigation or draft selection.
@@ -183,6 +186,7 @@ pub(super) enum TextPart {
     ReferenceSummary,
     InspectorTitle,
     InspectorBody,
+    RosterLine(u8),
 }
 
 pub(super) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
@@ -390,6 +394,10 @@ fn history_inspector_allowed(inspector: OrganizerInspector) -> bool {
             | OrganizerInspector::Receipts
             | OrganizerInspector::Notes
             | OrganizerInspector::Hearing
+            | OrganizerInspector::CountyLedger
+            | OrganizerInspector::CountyRoster
+            | OrganizerInspector::CountySession
+            | OrganizerInspector::FoodRun
     )
 }
 
@@ -1108,6 +1116,9 @@ pub(super) fn visible(
     if matches!(action, OrganizerAction::Open) {
         return client.inspector == OrganizerInspector::Closed;
     }
+    if let Some(shown) = super::county::control_visible(action, client) {
+        return view == PrimaryView::Organizer && shown;
+    }
     if session.viewed_tick != session.durable_tick
         && matches!(
             action,
@@ -1228,6 +1239,9 @@ pub(super) fn enabled(
             })
         }
         OrganizerAction::Choose(choice) => workspace::reviewable(client, session, choice),
+        OrganizerAction::RosterPage(_) | OrganizerAction::ChooseRosterSlot(_) => {
+            super::county::control_enabled(action, client, session)
+        }
         OrganizerAction::DraftFromReport => {
             client.report_aid_choice(session).is_some_and(|choice| {
                 client.available(session)
@@ -1448,6 +1462,8 @@ fn feedback(action: OrganizerAction) -> Option<OrganizerFeedback> {
     match action {
         OrganizerAction::SetSceneMode(_)
         | OrganizerAction::SelectSubject(_)
+        | OrganizerAction::RosterPage(_)
+        | OrganizerAction::ChooseRosterSlot(_)
         | OrganizerAction::Choose(_) => Some(OrganizerFeedback::Select),
         OrganizerAction::Inspect(_)
         | OrganizerAction::InspectSubjectEvidence
@@ -1476,7 +1492,7 @@ fn action_available(action: OrganizerAction, state: &mut ActionState) -> bool {
     .then(|| amount_editor::allocation(&state.client).err())
     .flatten();
     state.client.message = allocation_error
-        .unwrap_or_else(|| unavailable_message(action, &state.client, &state.session).into());
+        .unwrap_or_else(|| copy::unavailable_message(action, &state.client, &state.session).into());
     false
 }
 
@@ -1636,6 +1652,12 @@ fn perform_action(
         }
         OrganizerAction::Choose(choice) => {
             choose_approach(client, focus, time.elapsed_secs_f64(), choice);
+        }
+        OrganizerAction::RosterPage(_) | OrganizerAction::ChooseRosterSlot(_) => {
+            let now = time.elapsed_secs_f64();
+            return super::county::perform_control(action, client, |client, choice| {
+                choose_approach(client, focus, now, choice);
+            });
         }
         OrganizerAction::FocusAmount(field) => {
             if let Some((entity, _)) = fields.iter().find(|(_, value)| **value == field) {
@@ -1801,7 +1823,10 @@ fn choose_approach(
     client.message = amount_editor::reconcile(client).err().unwrap_or_default();
     if matches!(
         client.inspector,
-        OrganizerInspector::Direction | OrganizerInspector::Practices | OrganizerInspector::Hearing
+        OrganizerInspector::Direction
+            | OrganizerInspector::Practices
+            | OrganizerInspector::Hearing
+            | OrganizerInspector::CountyRoster
     ) {
         client.inspector = OrganizerInspector::Closed;
         if let Some(entity) = client.return_focus.take() {
@@ -1860,64 +1885,6 @@ fn change_evidence(
             client.message = client.remove_reference(session, now).map_or_else(str::to_owned, |()| "Reference removed from the personal draft. The earned report remains available.".into());
         }
         _ => {}
-    }
-}
-
-fn unavailable_message(
-    action: OrganizerAction,
-    client: &OrganizerClient,
-    session: &ObserverSession,
-) -> &'static str {
-    match action {
-        OrganizerAction::Advance => {
-            if let ControlAvailability::Disabled(reason) =
-                crate::observer_controls::availability(ObserverCommand::Step, session)
-            {
-                return reason;
-            }
-        }
-        OrganizerAction::KeepEvidence => {
-            return client
-                .can_keep_evidence(session)
-                .err()
-                .unwrap_or("This report cannot be retained.")
-        }
-        OrganizerAction::RemoveReference => {
-            return client
-                .can_remove_reference(session)
-                .err()
-                .unwrap_or("No saved reference is selected.")
-        }
-        OrganizerAction::PreviousEvidence | OrganizerAction::NextEvidence => {
-            return "No other report is available in that direction."
-        }
-        _ => {}
-    }
-    if session.viewed_tick != session.durable_tick {
-        "Return Live before changing the organization's commitments."
-    } else if session.phase == SessionPhase::Complete {
-        "This campaign is complete. Its reports and practice receipts remain available."
-    } else if client
-        .pending
-        .as_ref()
-        .is_some_and(|pending| pending.kind == RequestKind::Submit)
-    {
-        "Waiting for durable acceptance of this ruling. Refresh its status after the response."
-    } else if client.commitment.is_some() {
-        "A ruling is already accepted for this period. Advance or inspect its status."
-    } else if matches!(action, OrganizerAction::Choose(OrganizerChoice::Collect))
-        || client.choice() == OrganizerChoice::Collect
-    {
-        if client
-            .collection_preview()
-            .is_some_and(|terms| terms.cash_consent == OrganizerGiftConsent::Refuse)
-        {
-            "The household independently refused cash consent. Other work does not grant that permission."
-        } else {
-            "Refresh the current attributed collection terms before reviewing this ruling."
-        }
-    } else {
-        "Wait for the committed situation or review the selected approach."
     }
 }
 
@@ -2193,6 +2160,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
         FocusState::Unfocused
     };
     let comparison = workspace::comparison(&scope.client, &scope.session);
+    let roster = super::county::roster_lines(&scope.client);
     for (part, mut text) in &mut paint.texts {
         let value = match part {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
@@ -2228,6 +2196,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                 else { draft.notes.display(note_focus) }
             }),
             TextPart::InspectorTitle => inspector_title.clone(), TextPart::InspectorBody => inspector_body.clone(),
+            TextPart::RosterLine(slot) => roster.get(usize::from(*slot)).cloned().unwrap_or_default(),
         };
         if text.0 != value {
             text.0 = value;
@@ -2240,6 +2209,7 @@ fn button_selected(action: OrganizerAction, client: &OrganizerClient) -> bool {
         OrganizerAction::Choose(choice) => choice == client.choice(),
         OrganizerAction::SetSceneMode(mode) => mode == client.scene_mode,
         OrganizerAction::SelectSubject(subject) => Some(subject) == client.selected_subject,
+        OrganizerAction::ChooseRosterSlot(slot) => super::county::slot_selected(client, slot),
         OrganizerAction::Follow(link) => {
             matches!(link.destination, Destination::Subject(subject) if Some(subject) == client.selected_subject)
         }
@@ -2279,6 +2249,8 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
                 | OrganizerAction::PreparePartnerOffer
                 | OrganizerAction::Inspect(OrganizerInspector::Hearing)
                 | OrganizerAction::Choose(OrganizerChoice::InviteToHearing(_))
+                | OrganizerAction::RosterPage(_)
+                | OrganizerAction::ChooseRosterSlot(_)
         ) {
             node.display = if visible(
                 button.0,
@@ -2384,6 +2356,10 @@ fn normalize_history_inspector(
 
 pub(super) fn install(app: &mut App) {
     app.add_systems(Update, partner_map::paint.in_set(ObserverSet::Paint));
+    app.add_systems(
+        Update,
+        super::county::paint_labels.in_set(ObserverSet::Paint),
+    );
     board::install(app);
     amount_editor::install(app);
     report_view::install(app);
@@ -2426,6 +2402,10 @@ pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
 #[cfg(test)]
 #[path = "hearing_tests.rs"]
 mod hearing_tests;
+
+#[cfg(test)]
+#[path = "county_tests.rs"]
+pub(in crate::organizer) mod county_tests;
 
 #[cfg(test)]
 #[path = "report_reading_tests.rs"]
@@ -4158,11 +4138,19 @@ pub(crate) mod tests {
         let mut app = measured_board(UVec2::new(1366, 768), 1.0, false, false);
         let (reading, hint) = {
             let world = app.world_mut();
+            // The period dispatch also scrolls now that the county entry buttons share its panel.
+            let dossier = world
+                .query::<(&TextPart, &ChildOf)>()
+                .iter(world)
+                .find_map(|(part, parent)| {
+                    matches!(part, TextPart::Situation).then_some(parent.parent())
+                })
+                .expect("the dossier reading region");
             let mut hints = world.query::<(Entity, &ScrollHint, &Text)>();
             hints
                 .iter(world)
                 .find_map(|(entity, hint, text)| {
-                    text.0.contains("More below").then_some((hint.0, entity))
+                    (hint.0 == dossier && text.0.contains("More below")).then_some((hint.0, entity))
                 })
                 .expect("the clipped dossier must show a persistent scroll cue")
         };
@@ -4379,7 +4367,8 @@ pub(crate) mod tests {
             .expect("dispatch panel")
             .parent();
         assert!(
-            workspace_rect(&app, panel).height() < 120.0,
+            // The four county entry buttons add a wrapping row to the compact panel.
+            workspace_rect(&app, panel).height() < 200.0,
             "opening copy should not reserve a full decision-sized panel: {:?}",
             workspace_rect(&app, panel)
         );

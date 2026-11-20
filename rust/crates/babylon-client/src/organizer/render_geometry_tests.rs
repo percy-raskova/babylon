@@ -305,3 +305,38 @@ fn national_allocation_fields_and_choices_leave_the_subject_visible_at_all_four_
         }
     }
 }
+
+/// The four county entry buttons share a wrapping row under "Wayne hearing"; the period dispatch
+/// below them must keep room to be read at the standard fit.
+#[test]
+fn the_county_entry_buttons_leave_the_period_dispatch_sixty_pixels_at_the_standard_fit() {
+    let (mut app, _) = measured(UVec2::new(1366, 768), false, false);
+    let world = app.world_mut();
+    let aftermath = world
+        .query::<(Entity, &TextPart)>()
+        .iter(world)
+        .find_map(|(entity, part)| matches!(part, TextPart::Aftermath).then_some(entity))
+        .expect("the period dispatch text");
+    let region = world
+        .get::<ChildOf>(aftermath)
+        .expect("the dispatch scrolls inside a reading region")
+        .parent();
+    let computed = world.get::<ComputedNode>(region).expect("laid out");
+    let height = computed.size().y * computed.inverse_scale_factor;
+    let labels = [
+        "County ledger",
+        "Household roster",
+        "County session",
+        "Food run",
+    ];
+    let shown = world
+        .query::<(&Text, &ChildOf)>()
+        .iter(world)
+        .filter(|(text, _)| labels.contains(&text.0.as_str()))
+        .count();
+    assert_eq!(shown, labels.len(), "all four entry buttons are spawned");
+    assert!(
+        height >= 60.0,
+        "the period dispatch keeps {height} px; it needs at least 60"
+    );
+}

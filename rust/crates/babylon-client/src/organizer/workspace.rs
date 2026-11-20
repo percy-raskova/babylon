@@ -166,6 +166,8 @@ pub(super) struct PracticeChoice<'a> {
     pub availability: ChoiceAvailability,
     pub collection: Option<&'a OrganizerCollectionPreview>,
     pub aid: Option<&'a OrganizerMaterialAidPreview>,
+    /// The household position a review contact would reach, named from the county's roster.
+    pub contact: Option<String>,
 }
 
 #[derive(Debug)]
@@ -368,6 +370,13 @@ fn practice<'a>(
         availability: availability(client, view, session, choice, hours),
         collection,
         aid,
+        contact: match choice {
+            OrganizerChoice::ReviewContact(key) => client
+                .county_review
+                .as_ref()
+                .map(|county| super::county::name_of(county, key)),
+            _ => None,
+        },
     }
 }
 
@@ -443,6 +452,9 @@ fn availability(
     }
     if matches!(choice, OrganizerChoice::InviteToHearing(_)) && !client.choice_available(choice) {
         return ChoiceAvailability::Refused(OrganizerRefusal::HearingUnavailable);
+    }
+    if matches!(choice, OrganizerChoice::ReviewContact(_)) && !client.choice_available(choice) {
+        return ChoiceAvailability::Refused(OrganizerRefusal::ReviewUnavailable);
     }
     if aid_kind(choice).is_some() {
         let Some(terms) = client.aid_preview(choice) else {

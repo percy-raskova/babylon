@@ -472,6 +472,16 @@ fn dispatch_panel(root: &mut ChildSpawnerCommands) {
             "Wayne hearing",
             OrganizerAction::Inspect(OrganizerInspector::Hearing),
         );
+        panel.spawn(ui::row()).with_children(|views| {
+            for (label, inspector) in [
+                ("County ledger", OrganizerInspector::CountyLedger),
+                ("Household roster", OrganizerInspector::CountyRoster),
+                ("County session", OrganizerInspector::CountySession),
+                ("Food run", OrganizerInspector::FoodRun),
+            ] {
+                ui::button(views, label, OrganizerAction::Inspect(inspector));
+            }
+        });
         ui::spawn_scrolling_reading(panel, |reading| {
             reading.spawn((
                 ui::text("", 15.0, theme::PAPER),

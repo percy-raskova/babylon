@@ -1128,6 +1128,13 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
         OrganizerChoice::Collect => {
             let _ = write!(text, "\n{}", collection_review_terms(client));
         }
+        OrganizerChoice::ReviewContact(key) => {
+            let _ = write!(
+                text,
+                "\n{}",
+                super::county::contact_review(client, preview, key)
+            );
+        }
         _ => {
             let _ = write!(
                 text,
@@ -1222,7 +1229,10 @@ fn append_preview_result(text: &mut String, client: &OrganizerClient, preview: &
             text.push_str(
                 "\nReview reserves nothing; the actual collection or refusal follows Advance.",
             );
-        } else if preview.choice != OrganizerChoice::PauseStanding {
+        } else if !matches!(
+            preview.choice,
+            OrganizerChoice::PauseStanding | OrganizerChoice::ReviewContact(_)
+        ) {
             text.push_str("\nPartner participation is independent.");
         }
     }
@@ -1424,6 +1434,10 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
     };
     match client.inspector {
         OrganizerInspector::Hearing => ("Wayne representation hearing".into(), String::new()),
+        OrganizerInspector::CountyLedger
+        | OrganizerInspector::CountyRoster
+        | OrganizerInspector::CountySession
+        | OrganizerInspector::FoodRun => super::county::inspector(client, period),
         OrganizerInspector::Practices => ("All practices".into(), String::new()),
         OrganizerInspector::Review => ("Review the ruling".into(), String::new()),
         OrganizerInspector::Closed => (String::new(), String::new()),

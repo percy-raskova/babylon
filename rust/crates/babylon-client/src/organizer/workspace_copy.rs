@@ -4,16 +4,20 @@ use std::fmt::Write as _;
 
 use super::presentation;
 use super::scene::OrganizerSubject;
-use super::ui::Scope;
+use super::ui::{OrganizerAction, Scope};
 use super::workspace;
-use super::{OrganizerClient, OrganizerInspector};
+use super::{OrganizerClient, OrganizerInspector, RequestKind};
+use crate::observer::SessionPhase;
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
+use crate::observer_controls::ControlAvailability;
+use crate::observer_ui::ObserverCommand;
 use crate::organizer::workspace::{
     ChoiceAvailability, ChoiceComparison, DispatchCoverage, DispatchDestination, DispatchRows,
     HourUse, PossibleBenefit, PracticeChoice, RoutineEffect,
 };
 use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::{OrganizerChoice, OrganizerGiftConsent};
 
 /// One current resource reading shared by Organizer, World and Evidence headers.
 pub(crate) fn resource_masthead(client: &OrganizerClient, session: &ObserverSession) -> String {
@@ -192,13 +196,14 @@ pub(super) fn terms(view: &OrganizerView, choice: &PracticeChoice) -> String {
     if let Some(terms) = aid_card_terms(view, choice) {
         return terms;
     }
-    let parties = match (choice.target, choice.partner) {
-        (Some(target), Some(partner)) if partner.subject != Some(target.subject) => {
+    let parties = match (choice.target, choice.partner, &choice.contact) {
+        (_, _, Some(contact)) => format!("Reach a household at {contact}"),
+        (Some(target), Some(partner), None) if partner.subject != Some(target.subject) => {
             format!("At {} · with {}", target.label, partner.label)
         }
-        (Some(target), Some(_)) => format!("With {}", target.label),
-        (Some(target), None) => format!("From {}", target.label),
-        (None, Some(partner)) => format!("With {}", partner.label),
+        (Some(target), Some(_), None) => format!("With {}", target.label),
+        (Some(target), None, None) => format!("From {}", target.label),
+        (None, Some(partner), None) => format!("With {}", partner.label),
         _ => "Party attribution unavailable".into(),
     };
     let cost = choice.hours.map_or_else(
@@ -517,6 +522,65 @@ pub(super) fn bulletin(scope: &Scope) -> Bulletin {
         );
     }
     bulletin
+}
+
+/// Why a visible control cannot be used now, in the player's words.
+pub(super) fn unavailable_message(
+    action: OrganizerAction,
+    client: &OrganizerClient,
+    session: &ObserverSession,
+) -> &'static str {
+    match action {
+        OrganizerAction::Advance => {
+            if let ControlAvailability::Disabled(reason) =
+                crate::observer_controls::availability(ObserverCommand::Step, session)
+            {
+                return reason;
+            }
+        }
+        OrganizerAction::KeepEvidence => {
+            return client
+                .can_keep_evidence(session)
+                .err()
+                .unwrap_or("This report cannot be retained.")
+        }
+        OrganizerAction::RemoveReference => {
+            return client
+                .can_remove_reference(session)
+                .err()
+                .unwrap_or("No saved reference is selected.")
+        }
+        OrganizerAction::PreviousEvidence | OrganizerAction::NextEvidence => {
+            return "No other report is available in that direction."
+        }
+        _ => {}
+    }
+    if session.viewed_tick != session.durable_tick {
+        "Return Live before changing the organization's commitments."
+    } else if session.phase == SessionPhase::Complete {
+        "This campaign is complete. Its reports and practice receipts remain available."
+    } else if client
+        .pending
+        .as_ref()
+        .is_some_and(|pending| pending.kind == RequestKind::Submit)
+    {
+        "Waiting for durable acceptance of this ruling. Refresh its status after the response."
+    } else if client.commitment.is_some() {
+        "A ruling is already accepted for this period. Advance or inspect its status."
+    } else if matches!(action, OrganizerAction::Choose(OrganizerChoice::Collect))
+        || client.choice() == OrganizerChoice::Collect
+    {
+        if client
+            .collection_preview()
+            .is_some_and(|terms| terms.cash_consent == OrganizerGiftConsent::Refuse)
+        {
+            "The household independently refused cash consent. Other work does not grant that permission."
+        } else {
+            "Refresh the current attributed collection terms before reviewing this ruling."
+        }
+    } else {
+        "Wait for the committed situation or review the selected approach."
+    }
 }
 
 #[cfg(test)]

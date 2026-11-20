@@ -46,7 +46,7 @@ use crate::production::{
 use crate::ui::dossier_card::{
     ArchiveEvidenceApplied, ArchiveEvidenceReceipt, OpenArchiveEvidence,
 };
-use babylon_persistence::runtime_session::{OrganizerAidKind, OrganizerFoodDelivery};
+use babylon_persistence::runtime_session::{OrganizerAidKind, OrganizerFoodDelivery, PositionKey};
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerInquiry, RuntimeSessionScope,
 };
@@ -136,6 +136,13 @@ enum Action {
     OpenDirection,
     InspectPractices,
     InspectHearing,
+    InspectCountyLedger,
+    InspectCountyRoster,
+    InspectCountySession,
+    InspectFoodRun,
+    RosterNextPage,
+    RosterPreviousPage,
+    ChooseRosterSlot { slot: u8 },
     InspectReceipts,
     OpenRelationships,
     ScenePlaces,
@@ -267,6 +274,13 @@ impl Action {
             Self::OpenOrganizer => O::Open,
             Self::InspectPractices => O::Inspect(OrganizerInspector::Practices),
             Self::InspectHearing => O::Inspect(OrganizerInspector::Hearing),
+            Self::InspectCountyLedger => O::Inspect(OrganizerInspector::CountyLedger),
+            Self::InspectCountyRoster => O::Inspect(OrganizerInspector::CountyRoster),
+            Self::InspectCountySession => O::Inspect(OrganizerInspector::CountySession),
+            Self::InspectFoodRun => O::Inspect(OrganizerInspector::FoodRun),
+            Self::RosterNextPage => O::RosterPage(1),
+            Self::RosterPreviousPage => O::RosterPage(-1),
+            Self::ChooseRosterSlot { slot } => O::ChooseRosterSlot(slot),
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
             Self::InspectReceipts => O::Inspect(OrganizerInspector::Receipts),
             Self::OpenRelationships => O::Inspect(OrganizerInspector::Relationships),
@@ -480,6 +494,9 @@ struct Pending {
     amount_handled: Option<bool>,
     resize_armed: bool,
     presentation_started: Instant,
+    /// The position a roster slot named, and the roster's page, before the action ran.
+    roster_key: Option<PositionKey>,
+    roster_page: usize,
 }
 
 impl Pending {
@@ -489,6 +506,15 @@ impl Pending {
             amount_handled: None,
             resize_armed: false,
             presentation_started: Instant::now(),
+            roster_key: match input.action {
+                Action::ChooseRosterSlot { slot } => {
+                    situation.client.county_review.as_ref().and_then(|view| {
+                        super::county::slot_key(view, situation.client.roster_page, slot)
+                    })
+                }
+                _ => None,
+            },
+            roster_page: situation.client.roster_page,
             expected_evidence: match input.action {
                 Action::NextEvidence => situation
                     .client
@@ -2115,6 +2141,16 @@ fn presentation_applied(pending: &Pending, s: &Situation) -> bool {
     let action = pending.input.action;
     match action.organizer(&s.client, &s.session) {
         Some(OrganizerAction::Choose(choice)) => s.client.choice() == choice,
+        Some(OrganizerAction::ChooseRosterSlot(_)) => pending
+            .roster_key
+            .is_some_and(|key| s.client.choice() == OrganizerChoice::ReviewContact(key)),
+        Some(OrganizerAction::RosterPage(step)) => {
+            i64::try_from(pending.roster_page)
+                .ok()
+                .and_then(|page| page.checked_add(i64::from(step)))
+                .and_then(|page| usize::try_from(page).ok())
+                == Some(s.client.roster_page)
+        }
         Some(OrganizerAction::FocusAmount(field)) => s.focused_amount() == Some(field),
         Some(OrganizerAction::DraftFromReport) => {
             s.client.inspector == OrganizerInspector::Closed
@@ -2609,6 +2645,50 @@ mod tests {
         }
         assert!(serde_json::from_value::<Action>(json!("capture_desktop")).is_err());
         assert!(serde_json::from_value::<Action>(json!("shell_evidence")).is_err());
+    }
+
+    #[test]
+    fn county_review_actions_decode_and_map_to_the_ordinary_controls() {
+        let (client, session) = super::super::tests::ready();
+        let cases = [
+            (
+                json!("inspect_county_ledger"),
+                OrganizerAction::Inspect(OrganizerInspector::CountyLedger),
+            ),
+            (
+                json!("inspect_county_roster"),
+                OrganizerAction::Inspect(OrganizerInspector::CountyRoster),
+            ),
+            (
+                json!("inspect_county_session"),
+                OrganizerAction::Inspect(OrganizerInspector::CountySession),
+            ),
+            (
+                json!("inspect_food_run"),
+                OrganizerAction::Inspect(OrganizerInspector::FoodRun),
+            ),
+            (json!("roster_next_page"), OrganizerAction::RosterPage(1)),
+            (
+                json!("roster_previous_page"),
+                OrganizerAction::RosterPage(-1),
+            ),
+            (
+                json!({"choose_roster_slot": {"slot": 1}}),
+                OrganizerAction::ChooseRosterSlot(1),
+            ),
+        ];
+        for (wire, expected) in cases {
+            let action: Action = serde_json::from_value(wire.clone()).expect("a decoded action");
+            assert_eq!(
+                action.organizer(&client, &session),
+                Some(expected),
+                "{wire}"
+            );
+        }
+        assert!(serde_json::from_value::<Action>(json!({"choose_roster_slot": {}})).is_err());
+        assert!(
+            serde_json::from_value::<Action>(json!({"choose_roster_slot": {"slot": 256}})).is_err()
+        );
     }
 
     #[test]
@@ -3691,6 +3771,8 @@ mod tests {
             amount_handled: None,
             resize_armed: false,
             presentation_started: Instant::now(),
+            roster_key: None,
+            roster_page: client.roster_page,
         }
     }
 
@@ -4008,6 +4090,64 @@ mod tests {
         assert_eq!(bad["state"]["amount_text"], "28-");
         assert!(bad["state"]["allocation_error"].is_string());
         assert!(bad["state"]["reviewed_command"].is_null() && bad["state"]["commitment"].is_null());
+    }
+
+    #[test]
+    fn county_roster_actions_are_applied_by_the_ordinary_handlers_and_reported() {
+        let (mut app, _window) = super::ui::tests::allocation_opening();
+        {
+            let mut county = super::ui::county_tests::paged(10);
+            county.first_session_period = 1;
+            app.world_mut()
+                .resource_mut::<OrganizerClient>()
+                .county_review = Some(county);
+        }
+        let (_peer, incoming, output) = amount_control_transport(&mut app, 4);
+        let mut sequence = 0;
+        let mut send = |app: &mut App, action: Value| {
+            sequence += 1;
+            let session = app.world().resource::<ObserverSession>();
+            let record = json!({"version":5,"sequence":sequence,"campaign_id":session.campaign.as_uuid().to_string(),
+                "scope_epoch":session.runtime_scope().map(|scope|scope.epoch),"expected_tick":session.durable_tick,
+                "expected_generation":session.generation,"action":action});
+            let line = format!("{record}\n");
+            let input = read_input(&mut line.as_bytes())
+                .expect("valid wire")
+                .expect("one action");
+            incoming
+                .send(Incoming::Input(input))
+                .expect("bounded action");
+            for _ in 0..6 {
+                app.update();
+                if let Ok(raw) = output.try_recv() {
+                    return serde_json::from_slice::<Value>(&raw).expect("actual producer frame");
+                }
+            }
+            panic!("ordinary handler did not acknowledge {action:?}");
+        };
+        let opened = send(&mut app, json!("inspect_county_roster"));
+        assert_eq!(opened["event"], "applied", "{opened}");
+        assert_eq!(opened["state"]["inspector"], "CountyRoster");
+        let paged = send(&mut app, json!("roster_next_page"));
+        assert_eq!(paged["event"], "applied", "{paged}");
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().roster_page,
+            1,
+            "the page moved"
+        );
+        let beyond = send(&mut app, json!("roster_next_page"));
+        assert_eq!(beyond["event"], "refused", "{beyond}");
+        assert_eq!(
+            beyond["reason"], "control_stale_or_unavailable",
+            "there is no page past the last one"
+        );
+        let chosen = send(&mut app, json!({"choose_roster_slot":{"slot":1}}));
+        assert_eq!(chosen["event"], "applied", "{chosen}");
+        assert_eq!(chosen["state"]["inspector"], "Closed");
+        assert_eq!(chosen["state"]["choice"]["review_contact"]["at_work"], 9);
+        let empty = send(&mut app, json!({"choose_roster_slot":{"slot":1}}));
+        assert_eq!(empty["event"], "refused", "the roster is closed: {empty}");
+        assert_eq!(empty["reason"], "control_stale_or_unavailable");
     }
 
     #[derive(Clone, Copy, PartialEq, Eq)]

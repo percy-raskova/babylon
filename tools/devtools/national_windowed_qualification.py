@@ -558,7 +558,9 @@ class Preview(SelectedAllocation):
         | None
     )
     observations: tuple[Observation, ...]
-    review: ContactPreview | None = None
+    # The Rust client omits `review` when there is none (`skip_serializing_if`), and a reply must
+    # survive the round trip through these models unchanged, so the dump omits it too.
+    review: ContactPreview | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class Standing(FrozenRecord):

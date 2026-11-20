@@ -1538,6 +1538,10 @@ def test_a_preview_with_no_review_has_none() -> None:
     _command, preview, _commitment = admission_fields("hold", 3)
     parsed = windowed.ControlState.model_validate({**state(3), "preview": preview})
     assert parsed.preview is not None and parsed.preview.review is None
+    # The Rust client omits `review` when there is none, and a reply must survive the round trip
+    # through these models unchanged, so the dump omits it too.
+    assert "review" not in parsed.model_dump(mode="json")["preview"]
+    assert "review" not in json.loads(parsed.model_dump_json())["preview"]
 
 
 def test_a_position_with_no_crew_parses() -> None:

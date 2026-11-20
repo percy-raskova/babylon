@@ -465,7 +465,9 @@ The opening divides each Wayne budget group among its units. Nothing new is deci
 - At the opening every group's units add back exactly to the group as it was before units:
   households, persons, people at work, people looking, the ages, cash, each good, each need, the
   buying limits, support, and shares in each business.
-- A campaign that asks for one unit for each group gives the old opening, byte for byte.
+- A campaign that asks for one unit for each group gives the old opening, value for value, apart
+  from the identifiers the engine hashes from the policy's own text. Corrected after approval: the
+  first form said byte for byte, and the two policy files differ by the section itself.
 - Every period: the roster's sums against the engine's, for each unit; money conserved.
 - The engine's limits on rows and the size of the organizer's status line are checked with units in.
 - After the first period a unit's results rightly differ from the pooled group's. That drift is
@@ -1398,6 +1400,10 @@ three statements of step A that the code does not bear out. Each is the author's
   (section 7.2).
 - **The rule for a household that leaves stands as it is** (section 7.3). No new rule is needed,
   and a test proves it.
+- **One unit for each group gives the old opening value for value** (section 7.6), not byte for
+  byte.
+- **The census table is published in six parts** (section 7.15), because one file would pass the
+  project's limit on a committed file. It is still one table, with one builder and one record.
 
 Two risks were added to section 12: the top 1% may be the first to go without in step A, and a
 seller that is short serves its buyers in the order of an identifier.

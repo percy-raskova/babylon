@@ -1196,8 +1196,11 @@ Decisions:
   `collected` from its `TaxReceipt` with `TaxBasis::WageIncome`; from its `IncomeReceipt` statement,
   ownership income (`distribution_income`), support income (`public_transfer_income`) and aid income
   (`gift_income`); and `closing_households` from its lifecycle receipt, or the cohort's households
-  when there is none. A crew with no staffing receipt in the period keeps its counts and has no
-  wages. A principal with no receipt of a kind has zero for that figure.
+  when there is none. A crew with no staffing receipt in the period keeps its counts. Its wages are
+  read from its labor-use receipt all the same, when the engine wrote one: a wage the engine accrued
+  is a wage, and the list ranks on it. (Lead's ruling of 20 November on a review note: the first
+  form said such a crew has no wages; the code reads them, and the code is right.) A principal with
+  no receipt of a kind has zero for that figure.
 - *The rest of the facts* is read from the candidate's state when `resolve` runs: the public
   account's cash, its `PublicBudget` cap and floor, the sum of its lines that are not
   `HouseholdIncomeSupport`, and each group's free hours. Free hours are

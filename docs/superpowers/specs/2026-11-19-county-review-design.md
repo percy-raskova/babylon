@@ -241,7 +241,7 @@ group. Appendix A names the older files.
 
 | Line | Per period | In this slice |
 |---|---|---|
-| First class: grants to public administration sites | $151,969,774 | Off the table. No claim can touch it |
+| First class: $151,969,750 of grants to public administration sites plus a $24 agency appropriation | $151,969,774 | Off the table. No claim can touch it |
 | of which the City PD's payroll, under this design | $13,551,360 | Taken out of the line above, not added to it (section 7.3) |
 | Relief: household support | $20,094,200 | The only money the review can move. $216,160 of it is for collective residence and stays outside the review |
 | Spending limit (the first class and relief) | $172,063,974 | Unchanged |

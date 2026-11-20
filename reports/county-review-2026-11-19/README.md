@@ -5,7 +5,7 @@ bounds of the declared placement. They are the play proof of design section 9. E
 is read from the record files in this directory. The run is `BABYLON_POSTGRES_LIVE_FOCUS=county_review
 mise run test:rust-postgres`, which runs `county_review_playthroughs` in
 `rust/crates/babylon-persistence/tests/observer_material_live/county_review_playthroughs.rs`. It
-took 1,981 s for the five sessions (33 minutes) and passed on 20 November 2026.
+took 1,991 s for the five sessions (33 minutes) and passed on 20 November 2026.
 
 ## What was run
 
@@ -40,10 +40,10 @@ list, in its order, whose preview reached a household that would ask and find a 
 eight positions the period-3 list put first were tried; the first seven had no place open or would
 not ask, and every one is logged in the action log.
 
-| Contact | From the snapshot of | Position | Chosen after |
-|---|---|---|---|
-| First | Period 3 | Bottom 50%, earning-nonowner, "Wayne County: extraction (5)", wage, 1 at work, 0 looking, 0 units | 8 positions tried |
-| Second | Period 10 | Next 40%, earning-nonowner, "Wayne County: food (5)", wage, 2 at work, 0 looking, 0 units | 1 position tried (the first of another crew) |
+- First contact, from the snapshot of period 3: Bottom 50%, earning-nonowner, "Wayne County: extraction (5)", wage,
+  1 at work, 0 looking, 0 units. It was chosen after 8 positions were tried.
+- Second contact, from the snapshot of period 10: Next 40%, earning-nonowner, "Wayne County: food (5)", wage,
+  2 at work, 0 looking, 0 units. It was chosen after 1 position was tried (the first of another crew).
 
 ## What each playthrough shows
 
@@ -52,12 +52,12 @@ every unit on the roll: 70,993 household units, $20,094,200 for relief, the hous
 the roll's own in all 25 sessions the test checked before the county is short, no hour is charged
 and nobody is paid off the roll. The county's cash is $747 million after period 1 and peaks at
 $1,150.9 million after period 3. It then falls by $18 million in period 4, by $33.8 million in
-period 10, by $36.3 million in period 20, by $53.8 million a period from period 22 to period 27
-and by $56.3 million in period 29. At the close of period 29 it holds $149.5 million, less than
-its first class of $151.97 million, so the session of period 29 announces no relief: from period
-30 the county pays no household unit. After period 31 the cash stays at $84.0 million. The two Claimants' Assembly households come to every session from
-period 29, in the room four hours together, and bring nobody (the position has no household left
-to reach).
+period 10, by $36.3 million in period 20, by $53.8 million a period from period 22 to period 27 and
+by $56.3 million in period 29. At the close of period 29 it holds $149.5 million, less than its
+first class of $151.97 million, so the session of period 29 announces no relief: from period 30 the
+county pays no household unit. After period 31 the cash stays at $84.0 million. The two Claimants'
+Assembly households come to every session from period 29, in the room four hours together, and bring
+nobody (the position has no household left to reach).
 
 **One position.** The contact lands in the session of period 4. One household of the first
 position asks, finds a place and is paid: the lines for period 5 hold one more unit for the budget
@@ -85,9 +85,11 @@ economy: the world hash differs from period 1 on, and the wage tax collected fro
 
 ## The same in all four
 
-In every period of the four runs, up to the shortest, the first class (the amount and every
-public budget line that is not household support), the spending limit and the tax rates are
-identical: the wage tax and the operating-income tax both at 1,500 basis points. The relief
+In every period of the four runs, which all stop at period 34, the first class (the amount and every
+public budget line that is not household support), the spending limit and every tax rate, whoever
+receives the tax, are identical. The test compares the set of recipient, basis and rate of all the
+tax receipts of each period. The county's own taxes, the wage tax and the operating-income tax, are
+both at 1,500 basis points. The relief
 requested at the close of a period equals the lines announced at the session before it, in every
 period of every run. The county keeps its word.
 
@@ -101,12 +103,19 @@ the county's cash at period 34 is equal in all four.
 
 ## Who works
 
-The Director's words for each band, as the client shows them, marked Designed:
+The Director's words for each band are quoted from the table of design section 7.2. Beside each is the
+client's own line for the band, which is the client's text, marked Designed in the client and not the
+Director's words:
 
-- Top 1%: Does not work. Lives entirely off investments.
-- Next 9%: Some work. Some live off investments or are retired.
-- Next 40%: Lives by selling wage labor. Must work. Can be out of work and looking.
-- Bottom 50%: Works, but is more likely to receive welfare and to need aid. Does not own a home.
+- Top 1%: "do not work they live entirely off investments". The client's text: "Does not work. Lives
+  entirely off investments."
+- Next 9%: "some work some live off investments or they are retired". The client's text: "Some work. Some
+  live off investments or are retired."
+- Next 40%: "makes its living from selling wage labor"; "at least who must work"; "can have unemployment
+  too, so they can be looking". The client's text: "Lives by selling wage labor. Must work. Can be
+  out of work and looking."
+- Bottom 50%: "work but are more likely to receive welfare and require aid and they don't own homes". The
+  client's text: "Works, but is more likely to receive welfare and to need aid. Does not own a home."
 
 At the opening, from the roster the campaign captured:
 
@@ -201,56 +210,57 @@ Step 4 replays the one-position record's opening roster and its recorded facts a
 the kernel under the three placements of design 7.2. The declared placement reproduces the run
 exactly in every period (the test asserts it). This is a report for the Director, not a pass or a
 fail. The figure is the units held by households with no wage after each period: no crew, nobody at
-work, or a crew paid no wage.
+work, a crew that is not paid a wage, or a crew whose wages accrued to nothing in that period.
 
 | Period | Declared | Holders first | Holders last |
 |---|---|---|---|
-| 1 | 32,145 | 32,145 | 32,145 |
-| 2 | 43,578 | 51,366 | 36,183 |
-| 3 | 48,804 | 51,367 | 36,184 |
-| 4 | 48,274 | 50,837 | 35,654 |
-| 5 | 47,661 | 50,224 | 35,041 |
-| 6 | 47,418 | 49,981 | 34,798 |
-| 7 | 47,402 | 49,965 | 34,782 |
-| 8 | 47,387 | 49,950 | 34,767 |
-| 9 | 47,372 | 49,935 | 34,752 |
-| 10 | 47,358 | 49,921 | 34,738 |
-| 11 | 47,344 | 49,907 | 34,724 |
-| 12 | 47,331 | 49,894 | 34,711 |
-| 13 | 47,318 | 49,881 | 34,698 |
-| 14 | 47,305 | 49,868 | 34,685 |
-| 15 | 47,293 | 49,856 | 34,673 |
-| 16 | 47,281 | 49,844 | 34,661 |
-| 17 | 47,269 | 49,832 | 34,649 |
-| 18 | 47,258 | 49,821 | 34,638 |
-| 19 | 47,247 | 49,810 | 34,627 |
-| 20 | 47,236 | 49,799 | 34,616 |
-| 21 | 47,235 | 49,798 | 34,615 |
-| 22 | 47,232 | 49,795 | 34,612 |
-| 23 | 47,229 | 49,792 | 34,609 |
-| 24 | 47,227 | 49,790 | 34,607 |
-| 25 | 47,225 | 49,788 | 34,605 |
-| 26 | 47,223 | 49,786 | 34,603 |
-| 27 | 47,221 | 49,784 | 34,601 |
-| 28 | 47,219 | 49,782 | 34,599 |
-| 29 | 47,217 | 49,780 | 34,597 |
-| 30 | 47,217 | 49,780 | 34,597 |
-| 31 | 47,221 | 49,784 | 34,601 |
-| 32 | 47,225 | 49,788 | 34,605 |
-| 33 | 47,229 | 49,792 | 34,609 |
-| 34 | 47,233 | 49,796 | 34,613 |
+| 1 | 32,156 | 32,156 | 32,156 |
+| 2 | 43,584 | 51,372 | 36,189 |
+| 3 | 68,364 | 70,927 | 55,744 |
+| 4 | 68,364 | 70,927 | 55,744 |
+| 5 | 67,283 | 69,846 | 54,663 |
+| 6 | 67,040 | 69,603 | 54,420 |
+| 7 | 67,024 | 69,587 | 54,404 |
+| 8 | 69,572 | 69,572 | 69,572 |
+| 9 | 69,557 | 69,557 | 69,557 |
+| 10 | 69,546 | 69,546 | 69,546 |
+| 11 | 69,532 | 69,532 | 69,532 |
+| 12 | 69,519 | 69,519 | 69,519 |
+| 13 | 69,506 | 69,506 | 69,506 |
+| 14 | 69,493 | 69,493 | 69,493 |
+| 15 | 69,482 | 69,482 | 69,482 |
+| 16 | 69,470 | 69,470 | 69,470 |
+| 17 | 69,458 | 69,458 | 69,458 |
+| 18 | 69,447 | 69,447 | 69,447 |
+| 19 | 69,436 | 69,436 | 69,436 |
+| 20 | 69,425 | 69,425 | 69,425 |
+| 21 | 70,993 | 70,993 | 70,993 |
+| 22 | 70,993 | 70,993 | 70,993 |
+| 23 | 70,993 | 70,993 | 70,993 |
+| 24 | 70,993 | 70,993 | 70,993 |
+| 25 | 70,993 | 70,993 | 70,993 |
+| 26 | 70,993 | 70,993 | 70,993 |
+| 27 | 70,993 | 70,993 | 70,993 |
+| 28 | 70,993 | 70,993 | 70,993 |
+| 29 | 70,993 | 70,993 | 70,993 |
+| 30 | 70,993 | 70,993 | 70,993 |
+| 31 | 70,993 | 70,993 | 70,993 |
+| 32 | 70,993 | 70,993 | 70,993 |
+| 33 | 70,993 | 70,993 | 70,993 |
+| 34 | 70,993 | 70,993 | 70,993 |
 
 The three agree in period 1. In period 2 holders first puts 7,788 more units with households that
 have no wage than the declared placement does, and holders last 7,395 fewer. From period 3 to
-period 34 the differences stay at 2,563 more and 12,620 fewer.
+period 7 the differences are 2,563 more and 12,620 fewer. From period 8 to period 34 the three
+agree. From period 21 every one of the 70,993 units on the roll is held by a household with no wage.
 
 ## Time
 
-A close took 8.4 to 10.3 s (mean 9.0 s over 136 closes) and about 305 s for 34 periods. The full
+A close took 8.5 to 10.2 s (mean 9.1 s over 136 closes) and about 308 s for 34 periods. The full
 observer's read of a committed period took 6 s at period 1 and 12 s at period 34; the driver reads
-on its own thread while the next period closes, so a run waited 63 to 67 s for the reads after
-its last close. A campaign opened in 28 s and its opening was read in 4 to 5 s. The five sessions
-took 1,981 s together. The wall time of every close is in the `close_seconds` of each period.
+on its own thread while the next period closes, so a run waited 62 to 65 s for the reads after
+its last close. A campaign opened in 27 to 28 s and its opening was read in 4 s. The five sessions
+took 1,991 s together. The wall time of every close is in the `close_seconds` of each period.
 
 ## The windowed run
 

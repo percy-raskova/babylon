@@ -1841,8 +1841,9 @@ Decisions:
   notices do: the county's first session ("The county's session record arrived."), a session that
   carries the player's contact ("... arrived: your contact was heard."), and a session that changes
   how the county's money stands against the roll, by the projection's own figures: from every
-  listed unit paid to fewer ("... the county could not pay every unit."), from some to none ("...
-  the county paid no household unit."), or back ("... the county can pay every unit again."). Any
+  listed unit paid to some paid ("... the county could not pay every unit."), from every unit or
+  from some to none ("... the county paid no household unit."), or back to every unit ("... the
+  county can pay every unit again."). Any
   other session installs silently and playback goes on. (Lead's amendment of 20 November, from the
   play check: the county holds a session every period from period 4, so the first form stopped
   playback at every period.)

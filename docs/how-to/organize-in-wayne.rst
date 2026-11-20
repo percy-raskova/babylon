@@ -225,7 +225,22 @@ organization's households can spare and the last local aid run. When the county'
 the lines it pays first, it announces no relief, and nobody is paid whatever their place.
 
 Every session adds its public record to the organization's page in the Archive: the money for
-relief, the units paid and unpaid and the first positions on the list. Past sessions are there.
+relief, the units paid and unpaid and the first positions on the list. The organization's page for
+a period carries that period's session and no other. **County session** shows the session of the
+period you are inspecting. To read an earlier session, choose **Previous period** until you reach
+it. **County session** then says the session of that period is in the Archive. Open **Our practice
+Archive** for the same period to read it. Choose **Return Live** before you choose again.
+
+**Play** stops for a session only when it is worth reading, and says why in the notice. It stops
+at the county's first session, "The county's session record arrived." It stops at a session that
+carries your contact, "The county's session record arrived: your contact was heard." It stops at
+a session that changes how the county's money stands against the roll: "the county could not pay
+every unit" when it paid every unit and now pays some, "the county paid no household unit" when it
+now pays none, whether it paid every unit or some before, and "the county can pay every unit
+again" when it pays every unit after a session that did not. Each of these follows "The county's
+session record arrived:". Any other session installs without a pause: read it in **County
+session** when you want to.
+
 The recorded playthroughs of this slice are in ``reports/county-review-2026-11-19/``.
 
 Read consequences and continue

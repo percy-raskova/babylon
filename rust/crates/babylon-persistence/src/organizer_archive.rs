@@ -258,8 +258,42 @@ pub(crate) fn insert_projection(
         )
         .map_err(archive_error)?;
     }
+    insert_county_session_grant(
+        client,
+        campaign,
+        register,
+        config.controlled_actor_id,
+        state.period,
+    )?;
     insert_encounters(client, campaign, register)?;
     validate_projection(client, campaign, register)
+}
+
+/// Grants the organization's page the county review session held in `period`, if there is one.
+fn insert_county_session_grant(
+    client: &mut impl GenericClient,
+    campaign: CampaignId,
+    register: &MaterialWorldRegister,
+    actor: u64,
+    period: u64,
+) -> Result<(), MaterialRuntimeError> {
+    let Some(session) = register
+        .county_review()
+        .and_then(|county| county.state().last_session.as_ref())
+        .filter(|session| session.period == period)
+    else {
+        return Ok(());
+    };
+    archive::insert_grant_row(
+        client,
+        campaign,
+        "organization",
+        &actor.to_string(),
+        &county_session_key(session),
+        session.period,
+        &county_session_citation(actor, session).map_err(archive_error)?,
+    )
+    .map_err(archive_error)
 }
 
 fn encounter_key(value: &CityPdEncounter) -> String {
@@ -1069,23 +1103,37 @@ fn hearing_signal(
     )
 }
 
+/// The grant key of one held county review session.
+fn county_session_key(record: &SessionRecord) -> String {
+    format!("county-review-{}", record.period)
+}
+
+/// The citation of one held county review session, shared by its page signal and its grant row.
+fn county_session_citation(
+    actor: u64,
+    record: &SessionRecord,
+) -> Result<ArchiveCitation, SemanticArchiveError> {
+    ArchiveCitation::try_new(
+        "committed-county-review-session-v1".into(),
+        format!(
+            "source-actor/{actor}/observed-period/{0}/acquired-period/{0}/county-session/{0}",
+            record.period
+        ),
+    )
+}
+
 /// One held session of the county review: its public record, on the organization's page. The
-/// session is the county's own act, so the signal asks no knowledge grant of its own.
+/// session is the county's own act, but the page shows only atoms whose grant the page holds, so
+/// the session is granted to the organization when it is held, like the hearing minutes.
 fn county_session_signal(
     actor: u64,
     record: &SessionRecord,
 ) -> Result<ArchiveSignal, SemanticArchiveError> {
     ArchiveSignal::try_new(
-        format!("county-review-{}", record.period),
+        county_session_key(record),
         format!("County review session, period {}", record.period),
         crate::organizer_runtime::county_review::session_signal_text(record),
-        ArchiveCitation::try_new(
-            "committed-county-review-session-v1".into(),
-            format!(
-                "source-actor/{actor}/observed-period/{0}/acquired-period/{0}/county-session/{0}",
-                record.period
-            ),
-        )?,
+        county_session_citation(actor, record)?,
     )
 }
 
@@ -1209,6 +1257,7 @@ pub(crate) fn validate_projection(
 /// Exact mutable organizer projection rows, owned by the short capture snapshot.
 pub(crate) struct CapturedOrganizerProjection {
     hearing_grants: Vec<Row>,
+    county_grants: Vec<Row>,
     subjects: Vec<Row>,
     observations: Vec<Row>,
     receipts: Vec<Row>,
@@ -1225,6 +1274,7 @@ pub(crate) fn capture_projection(
     let tick = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let subjects = capture_subjects(client, campaign)?;
     let hearing_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'hearing-%' AND granted_tick<=$2 ORDER BY granted_tick, grant_key LIMIT 3", &[campaign.as_uuid(), &tick])?;
+    let county_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'county-review-%' AND granted_tick<=$2 ORDER BY granted_tick DESC, grant_key LIMIT 1", &[campaign.as_uuid(), &tick])?;
     let observations = client.query("SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes FROM babylon_state.organizer_observation_v1 WHERE campaign_id=$1 AND acquired_period<=$2 ORDER BY observation_id", &[campaign.as_uuid(),&tick])?;
     let receipts = client.query("SELECT receipt_id,actor_id,resolve_tick,receipt_bytes FROM babylon_state.organizer_receipt_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 ORDER BY receipt_id", &[campaign.as_uuid(),&tick])?;
     let bound = i64::try_from(babylon_practice_contract::CITY_PD_MAX_ROWS + 1)
@@ -1234,6 +1284,7 @@ pub(crate) fn capture_projection(
     let report_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'report-%' AND granted_tick<=$2 ORDER BY grant_key", &[campaign.as_uuid(),&tick])?;
     Ok(CapturedOrganizerProjection {
         hearing_grants,
+        county_grants,
         subjects,
         observations,
         receipts,
@@ -1244,6 +1295,37 @@ pub(crate) fn capture_projection(
 }
 
 impl CapturedOrganizerProjection {
+    /// The newest county session grant is the register's last session, and none exists before the
+    /// first session is held.
+    fn validate_county_grants(
+        &self,
+        register: &MaterialWorldRegister,
+        controlled_actor_id: u64,
+    ) -> Result<(), MaterialRuntimeError> {
+        let last = register
+            .county_review()
+            .and_then(|county| county.state().last_session.as_ref());
+        let (Some(session), [row]) = (last, self.county_grants.as_slice()) else {
+            return if last.is_none() && self.county_grants.is_empty() {
+                Ok(())
+            } else {
+                Err(MaterialRuntimeError::OrganizerStorage)
+            };
+        };
+        let expected =
+            county_session_citation(controlled_actor_id, session).map_err(archive_error)?;
+        if row.get::<_, String>("subject_kind") != "organization"
+            || row.get::<_, String>("subject_id") != controlled_actor_id.to_string()
+            || row.get::<_, String>("grant_key") != county_session_key(session)
+            || u64::try_from(row.get::<_, i64>("granted_tick")).ok() != Some(session.period)
+            || row.get::<_, String>("provenance_source_id") != expected.source_id()
+            || row.get::<_, String>("provenance_locator") != expected.locator()
+        {
+            return Err(MaterialRuntimeError::OrganizerStorage);
+        }
+        Ok(())
+    }
+
     pub(crate) fn validate(
         &self,
         register: &MaterialWorldRegister,
@@ -1275,6 +1357,7 @@ impl CapturedOrganizerProjection {
                 return Err(MaterialRuntimeError::OrganizerStorage);
             }
         }
+        self.validate_county_grants(register, config.controlled_actor_id)?;
         let observed = &self.observations;
         let mut expected = report_rows(config, journal)
             .filter(|row| row.actor_id == config.controlled_actor_id)
@@ -1481,6 +1564,77 @@ mod projection_tests {
             .expect("earned review")
             .citations()
             .contains(review.citation()));
+    }
+
+    #[test]
+    fn county_session_atom_reaches_the_page_only_through_its_grant() {
+        let actor = 1;
+        let record = SessionRecord {
+            period: 4,
+            cash_micros: 5_000_000_000_000,
+            spending_limit_micros: 4_000_000_000_000,
+            first_class_micros: 1_500_000_000_000,
+            roll_total_micros: 20_094_200_000_000,
+            relief_micros: 2_500_000_000_000,
+            collective_lines: vec![],
+            household_units_listed: 71_765,
+            household_units_payable: 8_928,
+            kept_back_units: 3,
+            contact: None,
+            rows: vec![],
+            lines: vec![],
+            claimants_roll_households: 0,
+            aid_roll_households: 0,
+        };
+        let page = organizer_page(
+            ArchiveSubject::try_new(
+                ArchiveSubjectKind::Organization,
+                actor.to_string(),
+                "Wayne Organizing Collective".into(),
+            )
+            .expect("known organization"),
+            &PendingArchiveReceipt::try_new(4, [1; 32]).expect("committed period"),
+            vec![PageEvidence::CountySession(actor, &record)],
+        )
+        .expect("valid Archive page");
+        let [signal] = page.signals() else {
+            panic!("expected the county session signal")
+        };
+        assert_eq!(signal.grant_key(), county_session_key(&record));
+        assert_eq!(
+            signal.citation(),
+            &county_session_citation(actor, &record).expect("session citation")
+        );
+
+        let scope = page.subject().page_ref();
+        let grant = |key: String, tick, citation| {
+            ArchiveKnowledgeGrant::try_new(scope.clone(), key, tick, citation)
+                .expect("scoped grant")
+        };
+        let subject = grant(
+            "subject".into(),
+            0,
+            ArchiveCitation::try_new("captured-organizer".into(), "organization".into())
+                .expect("subject citation"),
+        );
+        let held = grant(
+            county_session_key(&record),
+            record.period,
+            county_session_citation(actor, &record).expect("session citation"),
+        );
+        let without = ArchiveKnowledge::try_new(vec![subject.clone()]).expect("no session grant");
+        let with = ArchiveKnowledge::try_new(vec![subject, held]).expect("session grant");
+        let renderer = FogSafeArchiveRenderer::new().expect("Archive renderer");
+        assert!(!renderer
+            .render(&page, &without)
+            .expect("page without the grant")
+            .citations()
+            .contains(signal.citation()));
+        assert!(renderer
+            .render(&page, &with)
+            .expect("page with the grant")
+            .citations()
+            .contains(signal.citation()));
     }
 
     #[test]

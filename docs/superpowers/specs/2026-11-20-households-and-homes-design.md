@@ -1325,11 +1325,12 @@ period 49, so step B's runs are four game years.
   needs of a household of one person cost $2,526 a period. Section 7.2 names the remedy: the
   division of the shares moves forward. Step A's report on the units shows it, and the Director
   decides.
-- **A seller that is short serves its buyers in the order of an identifier.** When a seller
-  cannot supply every buyer, the engine supplies them in the order of their orders' identifiers.
-  That is so today among the budget groups. With units it can decide which unit goes without.
-  Step A does not change it. Its records keep "could not pay" apart from "paid and was not
-  supplied", and the gate's first report gives the size of it.
+- **A seller that is short.** Corrected on 20 November 2026: this risk first said that a short
+  seller serves its buyers in the order of their orders' identifiers. It does not. The engine
+  shares a short stock in proportion to what each buyer ordered, and only the last indivisible
+  units go in identifier order. The Director then ruled that a short market clears by price
+  inside the period (ADR312, `2026-11-20-price-of-a-short-market-design.md`). Step A's records
+  still keep "could not pay" apart from "paid and was not supplied", and show the price paid.
 - **This branch stands on a branch that is not merged.** The County Review branch is local and has
   not been pushed.
 
@@ -1405,8 +1406,8 @@ three statements of step A that the code does not bear out. Each is the author's
 - **The census table is published in six parts** (section 7.15), because one file would pass the
   project's limit on a committed file. It is still one table, with one builder and one record.
 
-Two risks were added to section 12: the top 1% may be the first to go without in step A, and a
-seller that is short serves its buyers in the order of an identifier.
+Two risks were added to section 12: the top 1% may be the first to go without in step A, and
+how a seller that is short serves its buyers (since corrected there, and ruled on in ADR312).
 
 **The calls that matter most, to check while reading.** The first is the widest: the author reads
 the Director's ruling on the clock as covering every clock, fee and remedy that the law fixes

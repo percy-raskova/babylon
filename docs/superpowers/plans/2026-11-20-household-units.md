@@ -305,6 +305,17 @@ Tasks 4 and 8 use that helper and define no other cut.
 households, the classes of building size, a missing refusal, the Federal Reserve's ratios) goes
 into the second gate report as findings for the Director. No task edits the design.
 
+**R-J. After the price of a short market (ADR312, 20 November 2026).** The repaired economy
+that clears by price is `national-world-v13`. Household units compile as `national-world-v14`,
+wherever a task says v13, and their policy stands on the shipped policy with its `paying_order`.
+Task 6 is replaced: the order of going without is the campaign's order of paying (ADR312 P7),
+built by `2026-11-20-price-of-a-short-market.md`. No need gets a rank, and no household rule
+is Wayne's alone. Its Decision 1, that the pantry is part of food, stands. Tasks 5 and 7 show,
+for a need a unit went without, the price paid beside the posted price, and say "priced out"
+where the unit could not pay the price of the market. Task 8's question for the Director about
+the identifier order of a short seller is withdrawn: the claim was wrong and ADR312 rules on
+it. Task 1's pooled measurement stays the record of the economy before the repair.
+
 ---
 
 ### Task 1: The measurement on today's accounts

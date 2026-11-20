@@ -97,16 +97,20 @@ ADR306_household_units_in_wayne:
 
     R8. WAYNE ONLY, ON ASKING. Units exist only under a policy's
     `[household_units]` for the County Review's county. It compiles as
-    `national-world-v13`. Every earlier compiler gives the same bytes. `grain =
+    `national-world-v14` (`national-world-v13` is the repaired economy that
+    clears by price, ADR312). Every earlier compiler gives the same bytes. `grain =
     "group"` gives the pooled opening value for value, apart from the
     identifiers the engine hashes from the policy text (the aid mandates' ids
     and source hash, the commitments that carry them, the config's policy
     digest) and the labels of R14.
 
     R9. THE ORDER OF GOING WITHOUT. A short unit pays for food, materials,
-    utility, housing, household services and public provision, in that order, by
-    its own ranked buying rule; storable goods before services. Buying food and
-    materials includes refilling the pantry.
+    utility, housing, household services and public provision, in that order;
+    storable goods before services. Buying food and materials includes
+    refilling the pantry. Amended 2026-11-20 by ADR312 P7: the order is the
+    campaign's order of paying, which every household of the campaign follows.
+    It is not a ranked rule of Wayne's units alone, and a unit pays the price
+    of the market, which rises when the seller is short.
 
     R10. TAX COLLECTED LAST. As today. The list ranks a household by the wage
     tax collected from its own unit. A unit that spent its cash on needs stands
@@ -124,7 +128,7 @@ ADR306_household_units_in_wayne:
     line. Its facts gain its purse: closing cash, net assets from its capital
     account, wage tax assessed, and for each need the amounts required, unmet,
     unpaid and unsupplied and the cost. Went without = ceil(unmet x households /
-    required). Under v13 a county group has a business share by its budget key
+    required). Under v14 a county group has a business share by its budget key
     (`HouseholdBudgetKey::owner_exposure`), not by how its shares rounded.
 
     R13. WHAT IS PUBLIC. Public: the counts of who went without (by need, band
@@ -166,12 +170,12 @@ ADR306_household_units_in_wayne:
         the canonical member id as the last tie only (design 7.2).
     - 'The unit that keeps the group''s account keeps the remainder of the pooled seed (design 7.2).'
     - >-
-        Units exist only on asking, compile as national-world-v13, and give the
+        Units exist only on asking, compile as national-world-v14, and give the
         pooled opening value for value under `grain = "group"`, apart from the
         identifiers hashed from the policy text and the labels of R14 (design
         7.1, 7.6).
     - >-
-        Under v13 a county group has a business share by its budget key,
+        Under v14 a county group has a business share by its budget key,
         `HouseholdBudgetKey::owner_exposure`, and not by how its shares rounded
         (design 7.4).
     - >-
@@ -200,12 +204,13 @@ ADR306_household_units_in_wayne:
     - 'Binding the thirds at step A''s opening (design 7.2). The Director chose to measure now and bind with homes.'
   open_questions:
     - >-
-        A short seller serves its buyers in `order_id` order
-        (`babylon-material-circuit/src/services/close.rs:174`, `sell_grants`;
-        goods through the order book). With units, that order can decide which
-        unit goes without. Step A keeps it and records "could not pay" apart
-        from "paid and was not supplied". Does the Director want another rule
-        before step B?
+        Closed on 2026-11-20 by ADR312. This question said a short seller
+        serves its buyers in `order_id` order. That was wrong: the engine
+        shares a short stock in proportion to what each buyer ordered, and only
+        the last indivisible units go in identifier order
+        (`babylon-material-circuit/src/transition/outbound/orders.rs`,
+        `limit_allocations`). The Director then ruled that a short market
+        clears by price inside the period.
     - >-
         If Task 4's report shows the top 1% unit going without, does the
         division of the shares between the top 1% and the next 9% move into step

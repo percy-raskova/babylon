@@ -223,8 +223,10 @@ fn standing_clause(before: Standing, after: Standing) -> Option<&'static str> {
     match (before, after) {
         (Standing::EveryUnit, Standing::EveryUnit) => None,
         (_, Standing::EveryUnit) => Some("the county can pay every unit again"),
-        (Standing::EveryUnit, _) => Some("the county could not pay every unit"),
-        (Standing::SomeUnits, Standing::NoUnit) => Some("the county paid no household unit"),
+        (Standing::EveryUnit, Standing::SomeUnits) => Some("the county could not pay every unit"),
+        (Standing::EveryUnit | Standing::SomeUnits, Standing::NoUnit) => {
+            Some("the county paid no household unit")
+        }
         _ => None,
     }
 }

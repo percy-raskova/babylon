@@ -708,6 +708,16 @@ fn a_session_that_changes_whether_the_county_can_pay_every_unit_says_so() {
         notice(&some, &none),
         Some("The county's session record arrived: the county paid no household unit.".to_owned())
     );
+    // From every unit paid straight to none: the one notice says that nothing was paid, not that
+    // the county fell a little short.
+    assert_eq!(
+        notice(&every, &none),
+        Some("The county's session record arrived: the county paid no household unit.".to_owned())
+    );
+    // From some units paid to some, or none to none or to some, is not news.
+    assert_eq!(notice(&some, &session_held(8, 1, false)), None);
+    assert_eq!(notice(&none, &session_held(8, 0, false)), None);
+    assert_eq!(notice(&none, &session_held(8, 2, false)), None);
     assert_eq!(
         notice(&none, &again),
         Some(
@@ -995,6 +1005,88 @@ fn an_earned_position_shows_its_reasons_in_the_block_and_an_unearned_one_does_no
         unearned.ends_with(": 1 unit left unpaid."),
         "an unearned position shows no reasons: {unearned}"
     );
+}
+
+/// A county with one reached position, rank 1, whose households asked as the arguments say:
+/// `asked` in all, `paid` of them paid, `no_place` finding no place open, and `brought` brought.
+fn asked_at(asked: u64, paid: u64, no_place: u64, brought: u64) -> CountyReviewProjection {
+    let mut reached = position(
+        key(Band::Bottom50, Some(0), 2, 0),
+        Some(1),
+        Some(PositionEarned {
+            asked,
+            asked_no_place: no_place,
+            asked_no_time: 0,
+            nothing_at_stake: 0,
+            brought,
+            ..earned()
+        }),
+    );
+    reached.asked_paid = paid;
+    CountyReviewProjection {
+        positions: vec![reached],
+        ..held()
+    }
+}
+
+/// The text of the block of changes, from its heading to the list.
+fn changes_block(view: &CountyReviewProjection) -> String {
+    let text = county::session(view, 3);
+    let from = text.find("What this session changed").expect("the block");
+    let to = text.find("The list, in rank order").expect("the list");
+    text[from..to].to_owned()
+}
+
+#[test]
+fn a_household_that_asked_is_told_once_by_what_became_of_it() {
+    // Every household that asked found no place open: one clause, with no bare count before it.
+    let block = changes_block(&asked_at(2, 0, 2, 0));
+    assert!(
+        block.contains(": 2 households asked and found no place open."),
+        "{block}"
+    );
+    assert_eq!(block.matches("asked").count(), 1, "{block}");
+    // One asked and was paid, and one was brought.
+    let block = changes_block(&asked_at(1, 1, 0, 1));
+    assert!(
+        block.contains(
+            ": 1 household asked and was paid, 1 household was brought, to be reached from the \
+             next session."
+        ),
+        "{block}"
+    );
+    assert_eq!(block.matches("asked").count(), 1, "{block}");
+    // The list's reason line reads the same as the block.
+    let text = county::session(&asked_at(2, 0, 2, 0), 3);
+    let list = &text[text.find("The list, in rank order").expect("the list")..];
+    assert!(
+        list.contains("\n     2 households asked and found no place open"),
+        "{list}"
+    );
+    assert!(!text.contains("no place was open"), "{text}");
+    // One household that found no place open reads in the singular.
+    assert!(changes_block(&asked_at(1, 0, 1, 0))
+        .contains(": 1 household asked and found no place open."),);
+}
+
+#[test]
+fn the_bare_count_of_households_that_asked_stays_when_the_clauses_do_not_add_up() {
+    // Five asked: one was paid and two found no place open. The other two are not told, so the
+    // count of all five stays, after the paid household and before the reasons.
+    let block = changes_block(&asked_at(5, 1, 2, 0));
+    assert!(
+        block.contains(
+            ": 1 household asked and was paid, 5 households asked in all, 2 households asked and \
+             found no place open."
+        ),
+        "{block}"
+    );
+    // Three asked and nothing is told of them: the bare count is all there is.
+    let block = changes_block(&asked_at(3, 0, 0, 0));
+    assert!(block.contains(": 3 households asked in all."), "{block}");
+    // One asked and nothing is told of it: the count reads in the singular, with no "in all".
+    let block = changes_block(&asked_at(1, 0, 0, 0));
+    assert!(block.contains(": 1 household asked."), "{block}");
 }
 
 #[test]

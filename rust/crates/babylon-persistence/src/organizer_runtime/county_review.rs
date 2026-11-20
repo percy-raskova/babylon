@@ -199,19 +199,30 @@ pub(crate) fn review_preview(
 /// The largest text the archive holds for one signal, in bytes.
 const ARCHIVE_TEXT_LIMIT: usize = 4_096;
 
+/// A count written as the client writes it: digits in groups of three, separated by commas.
+fn grouped(value: u128) -> String {
+    let raw = value.to_string();
+    let mut text = String::with_capacity(raw.len() + raw.len() / 3);
+    for (at, digit) in raw.chars().enumerate() {
+        if at > 0 && (raw.len() - at).is_multiple_of(3) {
+            text.push(',');
+        }
+        text.push(digit);
+    }
+    text
+}
+
+/// A length written as [`grouped`] writes a count.
+fn grouped_len(value: usize) -> String {
+    grouped(u128::try_from(value).unwrap_or(u128::MAX))
+}
+
 /// Millionths of a dollar as dollars, written as the client writes money: exact, with thousands
 /// separators and at least two decimals.
 fn dollars(micros: i128) -> String {
     let sign = if micros < 0 { "-" } else { "" };
     let magnitude = micros.unsigned_abs();
-    let raw = (magnitude / 1_000_000).to_string();
-    let mut whole = String::with_capacity(raw.len() + raw.len() / 3);
-    for (at, digit) in raw.chars().enumerate() {
-        if at > 0 && (raw.len() - at).is_multiple_of(3) {
-            whole.push(',');
-        }
-        whole.push(digit);
-    }
+    let whole = grouped(magnitude / 1_000_000);
     let fraction = format!("{:06}", magnitude % 1_000_000);
     let trimmed = fraction.trim_end_matches('0');
     let cents = if trimmed.len() < 2 {
@@ -227,11 +238,16 @@ fn dollars(micros: i128) -> String {
 fn closing_words(unshown: usize, without_units: usize) -> String {
     let mut words = String::new();
     if unshown > 0 {
-        let _ = write!(words, " Positions with units that did not fit: {unshown}.");
+        let _ = write!(
+            words,
+            " Positions with units that did not fit: {}.",
+            grouped_len(unshown)
+        );
     }
     let _ = write!(
         words,
-        " Positions holding no unit, left out: {without_units}."
+        " Positions holding no unit, left out: {}.",
+        grouped_len(without_units)
     );
     words
 }
@@ -264,19 +280,22 @@ pub(crate) fn session_signal_text(
         dollars(record.relief_micros),
         dollars(record.first_class_micros),
         dollars(record.roll_total_micros),
-        record.household_units_payable,
-        record.household_units_listed,
+        grouped(u128::from(record.household_units_payable)),
+        grouped(u128::from(record.household_units_listed)),
     );
     if record.kept_back_units > 0 {
         let _ = write!(
             text,
             " and kept back {} to an exact tie",
-            record.kept_back_units
+            grouped(u128::from(record.kept_back_units))
         );
     }
     let _ = write!(
         text,
-        ". Positions paid in full: {full}. Paid in part: {partly}. Not paid: {none}."
+        ". Positions paid in full: {}. Paid in part: {}. Not paid: {}.",
+        grouped(u128::from(full)),
+        grouped(u128::from(partly)),
+        grouped(u128::from(none))
     );
     let mut listed: Vec<_> = record
         .rows
@@ -294,7 +313,10 @@ pub(crate) fn session_signal_text(
             .map_err(|_| SemanticArchiveError::InvalidIdentity)?;
         let entry = format!(
             " {name}, rank {}: {} listed, {} paid, {} unpaid;",
-            row.rank, row.units_listed, row.units_paid, row.units_unpaid
+            row.rank,
+            grouped(u128::from(row.units_listed)),
+            grouped(u128::from(row.units_paid)),
+            grouped(u128::from(row.units_unpaid))
         );
         // Leave room for the closing words, whichever way the list ends.
         let closing = closing_words(listed.len() - shown - 1, without_units);

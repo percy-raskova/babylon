@@ -1636,13 +1636,31 @@ def test_county_actions_refuse_unknown_shapes(action: Any) -> None:
         )
 
 
-def test_a_planned_review_contact_names_its_roster_page_and_slot() -> None:
-    planned = windowed.PlannedChoice.model_validate(
-        {"period": 4, "choice": "review_contact", "allocation": "none", "page": 1, "slot": 3}
+def planned_contact(position: dict[str, Any] = POSITION, **changes: Any) -> windowed.PlannedChoice:
+    return windowed.PlannedChoice.model_validate(
+        {
+            "period": 4,
+            "choice": "review_contact",
+            "allocation": "none",
+            "page": 1,
+            "slot": 3,
+            "position": position,
+            **changes,
+        }
     )
+
+
+def test_a_planned_review_contact_names_its_roster_page_slot_and_position() -> None:
+    planned = planned_contact()
     assert (planned.page, planned.slot) == (1, 3)
+    assert planned.position == windowed.PositionKey.model_validate(POSITION)
     assert planned.at_period(5) == windowed.PlannedChoice(
-        period=5, choice="review_contact", allocation="none", page=1, slot=3
+        period=5,
+        choice="review_contact",
+        allocation="none",
+        page=1,
+        slot=3,
+        position=windowed.PositionKey.model_validate(POSITION),
     )
 
 
@@ -1652,6 +1670,9 @@ def test_a_planned_review_contact_names_its_roster_page_and_slot() -> None:
         {"choice": "review_contact", "allocation": "none"},
         {"choice": "review_contact", "allocation": "none", "page": 0},
         {"choice": "review_contact", "allocation": "none", "slot": 0},
+        {"choice": "review_contact", "allocation": "none", "page": 0, "slot": 0},
+        {"choice": "review_contact", "allocation": "none", "position": POSITION},
+        {"choice": "review_contact", "allocation": "none", "slot": 0, "position": POSITION},
         {"choice": "review_contact", "allocation": "none", "page": 0, "slot": 8},
         {"choice": "review_contact", "allocation": "none", "page": -1, "slot": 0},
         {
@@ -1659,8 +1680,11 @@ def test_a_planned_review_contact_names_its_roster_page_and_slot() -> None:
             "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
             "page": 0,
             "slot": 0,
+            "position": POSITION,
         },
         {"choice": "hold", "allocation": "none", "page": 0, "slot": 0},
+        {"choice": "hold", "allocation": "none", "position": POSITION},
+        {"choice": "hold", "allocation": "none", "page": 0, "slot": 0, "position": POSITION},
     ],
 )
 def test_a_planned_review_contact_refuses_a_missing_or_stray_slot(plan: dict[str, Any]) -> None:
@@ -1674,6 +1698,7 @@ def serve_roster(
     *,
     slot_drafts: bool = True,
     opens: bool = True,
+    drafts: dict[str, Any] = POSITION,
 ) -> None:
     """A native client that answers the county roster, page, slot, review and confirm."""
     fields = review_contact_state(inspector="Closed", choice="hold")
@@ -1694,7 +1719,7 @@ def serve_roster(
             elif action == {"choose_roster_slot": {"slot": 2}}:
                 fields["inspector"] = "Closed"
                 if slot_drafts:
-                    fields["choice"] = {"review_contact": POSITION}
+                    fields["choice"] = {"review_contact": drafts}
             elif action == "review":
                 fields["reviewed_command"] = command
                 fields["preview"] = preview
@@ -1719,7 +1744,7 @@ def serve_roster(
             )
 
 
-def drive_roster_contact(**server: bool) -> list[Any]:
+def drive_roster_contact(**server: Any) -> list[Any]:
     parent, peer = socket.socketpair()
     channel = windowed.ControlChannel(parent, CAMPAIGN, 3)
     requested: list[Any] = []
@@ -1729,9 +1754,7 @@ def drive_roster_contact(**server: bool) -> list[Any]:
         channel.observe(1)
         windowed.submit_choice(
             channel,
-            windowed.PlannedChoice(
-                period=4, choice="review_contact", allocation="none", page=1, slot=2
-            ),
+            planned_contact(slot=2),
             1,
         )
         assert channel.state is not None
@@ -1759,6 +1782,13 @@ def test_a_review_contact_is_chosen_from_the_roster_then_reviewed_and_confirmed(
 def test_a_roster_slot_that_drafts_no_review_contact_is_refused() -> None:
     with pytest.raises(windowed.ControlRefusal, match="did not draft a review contact"):
         drive_roster_contact(slot_drafts=False)
+
+
+def test_a_roster_slot_that_drafts_another_position_is_refused() -> None:
+    """The client keeps its roster page between openings, so a page count that assumed page 0 can
+    land on another page: the position that slot drafts must be the one the plan expects."""
+    with pytest.raises(windowed.ControlRefusal, match="review contact in another position"):
+        drive_roster_contact(drafts=LOSING_POSITION)
 
 
 def test_a_county_roster_that_does_not_open_is_refused() -> None:

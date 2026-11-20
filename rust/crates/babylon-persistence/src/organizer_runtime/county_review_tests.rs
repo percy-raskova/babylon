@@ -339,19 +339,22 @@ fn the_session_text_names_each_position_that_holds_a_unit() {
             at_crew(row(2, 1, 4, 4), 0),
             row(1, 0, 3, 1),
             row(3, 2, 0, 0),
+            row(4, 3, 2, 0),
         ]),
     )
     .expect("the text");
     assert_eq!(
         held,
         "The county had $2,500,000.00 for relief after $1,500,000.00 of lines paid first, \
-         against a roll of $20,094,200.00. It could pay 8928 of 71765 household units and kept \
-         back 3 to an exact tie. Positions paid in full: 1. Paid in part: 1. Not paid: 0. \
+         against a roll of $20,094,200.00. It could pay 8,928 of 71,765 household units and \
+         kept back 3 to an exact tie. Positions paid in full: 1. Paid in part: 1. Not paid: 1. \
          Positions that hold units, highest on the list first: \
          Bottom 50% \u{b7} Wayne households \u{b7} no wage \u{b7} no one in the labor force, rank 1: \
          3 listed, 1 paid, 2 unpaid; \
          Bottom 50% \u{b7} Wayne households \u{b7} Wayne General (wage), rank 2: 4 listed, 4 paid, \
-         0 unpaid. Positions holding no unit, left out: 1."
+         0 unpaid; \
+         Bottom 50% \u{b7} Wayne households \u{b7} no wage \u{b7} no one in the labor force, rank 4: \
+         2 listed, 0 paid, 2 unpaid. Positions holding no unit, left out: 1."
     );
 
     // A session that kept nothing back says nothing of a tie.
@@ -403,6 +406,34 @@ fn the_session_text_fits_the_archive_at_any_size_and_says_what_it_left_out() {
         "{long}"
     );
     assert!(long.contains("rank 1: 12 listed"), "{long}");
+    // The count of positions left out is written with thousands separators, as the client does.
+    let unshown = long
+        .split("Positions with units that did not fit: ")
+        .nth(1)
+        .and_then(|rest| rest.split('.').next())
+        .expect("the count of positions that did not fit");
+    assert!(unshown.contains(','), "{unshown}");
+}
+
+#[test]
+fn every_count_in_the_session_text_has_thousands_separators() {
+    let mut big = record(vec![row(1, 0, 12_345, 1_234), row(2, 1, 2_000, 2_000)]);
+    big.household_units_listed = 1_698_000;
+    big.household_units_payable = 70_993;
+    big.kept_back_units = 1_234;
+    let text = county_review::session_signal_text(&sample_config(), &big).expect("the text");
+    assert!(
+        text.contains("It could pay 70,993 of 1,698,000 household units and kept back 1,234 to"),
+        "{text}"
+    );
+    assert!(
+        text.contains("rank 1: 12,345 listed, 1,234 paid, 11,111 unpaid;"),
+        "{text}"
+    );
+    assert!(
+        text.contains("rank 2: 2,000 listed, 2,000 paid, 0 unpaid."),
+        "{text}"
+    );
 }
 
 #[test]

@@ -23,13 +23,14 @@ use babylon_persistence::runtime_session::{
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 use babylon_practice_contract::{
-    CountyPeriodFacts, CountyReviewConfig, PayMode, Placement, Roster, SessionRecord, SessionRow,
-    SupportLine,
+    CountyPeriodFacts, CountyReviewConfig, CountyReviewCrew, CountyReviewGroup, CrewPeriodFacts,
+    GroupKind, PayMode, Placement, Roster, SessionRecord, SessionRow, SupportLine,
 };
 use babylon_tick::material_world::MaterialReceiptHandle;
 use postgres::{Config, NoTls};
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
@@ -144,6 +145,10 @@ struct Action {
     preview: Option<PreviewRecord>,
     /// Whether the choice was submitted. A refused preview leaves the standing routine.
     submitted: bool,
+    /// The code the session answered the preview request with, when it refused the request itself.
+    /// It is in the record only when there was one; a typed refusal in the preview is `preview`'s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
     /// The positions tried before the contact was chosen, each with its preview.
     probes: Vec<Probe>,
 }
@@ -483,9 +488,33 @@ fn budget_lines(receipts: &MaterialReceiptHandle, county: PublicAccountId) -> Ve
         .collect()
 }
 
+/// A tax rate in force: the public account it is paid to, its basis and its rate in basis points.
+type TaxRate = ([u8; 32], u8, u16);
+
+/// Every tax rate the period's receipts show, whoever received the tax: each distinct recipient,
+/// basis and rate once, in order.
+fn tax_rates(receipts: &MaterialReceiptHandle) -> Vec<TaxRate> {
+    receipts
+        .taxes
+        .iter()
+        .map(|tax| {
+            (
+                tax.public_recipient.as_bytes(),
+                tax.basis as u8,
+                tax.rate_bps,
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 /// What the full observer reads of one committed period.
 struct Observed {
+    /// The county's own taxes, summed: the lines its cash and receipts are made of.
     taxes: Vec<TaxLine>,
+    /// The rate of every tax of the period, whoever it was paid to.
+    tax_rates: Vec<TaxRate>,
     budgets: Vec<BudgetLine>,
     roster: Roster,
     facts: CountyPeriodFacts,
@@ -540,6 +569,7 @@ fn observe(
     assert_eq!(facts.period, tick);
     Observed {
         taxes: tax_lines(&committed.receipts, county),
+        tax_rates: tax_rates(&committed.receipts),
         budgets: budget_lines(&committed.receipts, county),
         roster: state.roster.clone(),
         facts,
@@ -743,6 +773,18 @@ fn choose_position(
     );
 }
 
+/// What the session answered a preview request with: the preview, or the code it refused the
+/// request with.
+fn preview_answer(
+    driver: &mut Driver,
+    command: &OrganizerCommand,
+) -> (Option<OrganizerPreview>, Option<String>) {
+    match driver.preview(command) {
+        Ok(preview) => (Some(preview), None),
+        Err(code) => (None, Some(format!("{code:?}"))),
+    }
+}
+
 /// Previews and, unless refused, submits one choice. A refused preview leaves the standing
 /// routine and is logged.
 fn act(
@@ -754,7 +796,7 @@ fn act(
 ) -> Action {
     let nonce = nonce_for(snapshot.view.period);
     let command = build_command(snapshot, choice, allocation, nonce);
-    let preview = driver.preview(&command).ok();
+    let (preview, error) = preview_answer(driver, &command);
     let submitted = preview
         .as_ref()
         .is_some_and(|preview| preview.refusal.is_none());
@@ -768,6 +810,7 @@ fn act(
         nonce,
         preview: preview.as_ref().map(PreviewRecord::of),
         submitted,
+        error,
         probes,
     }
 }
@@ -805,11 +848,15 @@ fn decide(
             recorded.allocation,
             recorded.nonce,
         );
-        let preview = driver.preview(&command).ok();
+        let (preview, error) = preview_answer(driver, &command);
         assert_eq!(
             preview.as_ref().map(|preview| preview.refusal),
             recorded.preview.as_ref().map(|preview| preview.refusal),
             "the replay's preview agrees with the recorded one"
+        );
+        assert_eq!(
+            error, recorded.error,
+            "the replay's preview request is answered as the recorded one was"
         );
         if recorded.submitted {
             driver.submit(&command);
@@ -1444,8 +1491,8 @@ fn assert_nobody_paid_when_relief_ends(run: &Run) -> Option<u64> {
     ended
 }
 
-/// The figures no player move can touch: the first class, the spending limit and the tax rates,
-/// compared period by period across runs.
+/// The figures no player move can touch: the first class, the spending limit and every tax rate
+/// (whoever receives the tax), compared period by period across runs.
 fn untouchable(run: &Run) -> Vec<Value> {
     run.periods
         .iter()
@@ -1459,12 +1506,7 @@ fn untouchable(run: &Run) -> Vec<Value> {
                 })
                 .map(|line| (line.treatment, line.claims, line.requested_micros.as_str()))
                 .collect();
-            let rates: Vec<(u8, u16)> = period
-                .observed
-                .taxes
-                .iter()
-                .map(|line| (line.basis, line.rate_bps))
-                .collect();
+            let rates = &period.observed.tax_rates;
             json!({"period": period.tick,
                 "first_class_micros": micros_string(period.observed.facts.first_class_micros),
                 "spending_limit_micros": micros_string(period.observed.facts.spending_limit_micros),
@@ -1477,6 +1519,12 @@ fn assert_untouchable_alike(runs: &[&Run]) {
     let base = untouchable(runs[0]);
     for run in &runs[1..] {
         let other = untouchable(run);
+        assert_eq!(
+            base.len(),
+            other.len(),
+            "{}: as many periods as the no-contact run, so every period is compared",
+            run.line.name()
+        );
         for (left, right) in base.iter().zip(&other) {
             assert_eq!(
                 left,
@@ -1517,22 +1565,160 @@ fn difference(left: &Run, right: &Run) -> Vec<Value> {
 // ---------------------------------------------------------------------------------------------
 // Step 4: the other bounds of the declared placement.
 
-/// Units held by households with no wage: no crew, nobody at work, or a crew paid no wage.
-fn units_without_wage(config: &CountyReviewConfig, roster: &Roster) -> u64 {
+/// Whether a household in this position has a wage in the period the facts report: it has a crew,
+/// somebody at work, a crew that is paid a wage, and wages that accrued to that crew.
+fn has_wage(config: &CountyReviewConfig, facts: &CountyPeriodFacts, key: &PositionKey) -> bool {
+    let Some(crew) = key.crew else {
+        return false;
+    };
+    let paid_a_wage = usize::try_from(crew)
+        .ok()
+        .and_then(|at| config.crews.get(at))
+        .is_some_and(|configured| configured.pay_mode == PayMode::Wage);
+    let accrued = facts
+        .crews
+        .iter()
+        .find(|reported| reported.crew == crew)
+        .is_some_and(|reported| reported.accrued_wages_micros > 0);
+    key.at_work >= 1 && paid_a_wage && accrued
+}
+
+/// Units held by households with no wage: no crew, nobody at work, a crew that is not paid a wage,
+/// or a crew whose wages accrued to nothing in the period the facts report.
+fn units_without_wage(
+    config: &CountyReviewConfig,
+    facts: &CountyPeriodFacts,
+    roster: &Roster,
+) -> u64 {
     roster
         .rows
         .iter()
-        .filter(|row| {
-            let wage = row.key.at_work >= 1
-                && row
-                    .key
-                    .crew
-                    .and_then(|crew| config.crews.get(usize::try_from(crew).ok()?))
-                    .is_some_and(|crew| crew.pay_mode == PayMode::Wage);
-            !wage
-        })
+        .filter(|row| !has_wage(config, facts, &row.key))
         .map(|row| u64::from(row.key.units) * row.households)
         .sum()
+}
+
+/// A county of one group and three crews, which pay a wage, a working owner and a wage, with the
+/// facts of one period in which the third crew's wages accrued to nothing.
+fn wage_county() -> (CountyReviewConfig, CountyPeriodFacts) {
+    let crew = |at: u8, pay_mode| CountyReviewCrew {
+        crew_id: [at; 32],
+        group: 0,
+        site_id: [at; 32],
+        unit_id: [at; 32],
+        workplace_label: format!("Crew {at}"),
+        pay_mode,
+    };
+    let config = CountyReviewConfig {
+        schema_version: babylon_practice_contract::COUNTY_REVIEW_SCHEMA_VERSION,
+        campaign_id: [1; 16],
+        actor_id: 9,
+        authority_id: [2; 16],
+        county: *b"26163",
+        administration_label: "Administration".to_owned(),
+        claimants_body_label: "Claimants".to_owned(),
+        aid_body_label: "Aid".to_owned(),
+        public_account_id: [3; 32],
+        unit_price_micros: 280_000_000,
+        going_wage_micros: 24_000_000,
+        session_hours: 2,
+        bring_hours: 2,
+        first_session_period: 1,
+        groups: vec![CountyReviewGroup {
+            group_id: [1; 32],
+            label: "Wayne households".to_owned(),
+            kind: GroupKind::Ordinary,
+            opening_households: 10,
+            roll_units: 10,
+            has_ownership_income: false,
+            receives_mutual_aid: false,
+        }],
+        crews: vec![
+            crew(0, PayMode::Wage),
+            crew(1, PayMode::WorkingOwner),
+            crew(2, PayMode::Wage),
+        ],
+        content_digest: [6; 32],
+        policy_source_digest: [7; 32],
+    };
+    let reported = |crew: u32, accrued_wages_micros: i128| CrewPeriodFacts {
+        crew,
+        accrued_wages_micros,
+        opening_at_work: 1,
+        opening_seeking: 0,
+        left_at_work: 0,
+        left_seeking: 0,
+        hires: 0,
+        separations: 0,
+        closing_at_work: 1,
+        closing_seeking: 0,
+    };
+    let facts = CountyPeriodFacts {
+        period: 5,
+        crews: vec![
+            reported(0, 24_000_000),
+            reported(1, 24_000_000),
+            reported(2, 0),
+        ],
+        groups: vec![],
+        cash_micros: 0,
+        cash_floor_micros: 0,
+        spending_limit_micros: 0,
+        first_class_micros: 0,
+    };
+    (config, facts)
+}
+
+#[test]
+fn a_household_has_a_wage_only_where_the_crew_is_paid_one_and_its_wages_accrued() {
+    let (config, facts) = wage_county();
+    let at = |crew: Option<u32>, at_work: u16| PositionKey {
+        group: 0,
+        band: Band::Bottom50,
+        crew,
+        at_work,
+        seeking: 0,
+        units: 1,
+    };
+    assert!(has_wage(&config, &facts, &at(Some(0), 1)), "a paid crew");
+    assert!(!has_wage(&config, &facts, &at(None, 1)), "no crew");
+    assert!(
+        !has_wage(&config, &facts, &at(Some(0), 0)),
+        "nobody at work"
+    );
+    assert!(
+        !has_wage(&config, &facts, &at(Some(1), 1)),
+        "a working owner is paid no wage"
+    );
+    assert!(
+        !has_wage(&config, &facts, &at(Some(2), 1)),
+        "a crew whose wages accrued to nothing pays none in that period"
+    );
+    assert!(
+        !has_wage(&config, &facts, &at(Some(7), 1)),
+        "a crew the config does not hold pays none"
+    );
+}
+
+#[test]
+fn the_record_of_an_action_carries_a_refused_request_only_when_there_was_one() {
+    let action = |error: Option<&str>| Action {
+        view_period: 3,
+        choice: OrganizerChoice::LocalAid,
+        allocation: OrganizerAllocation::None,
+        nonce: [0; 16],
+        preview: None,
+        submitted: false,
+        error: error.map(str::to_owned),
+        probes: Vec::new(),
+    };
+    let quiet = serde_json::to_value(action(None)).expect("the action serializes");
+    assert!(
+        quiet.get("error").is_none(),
+        "no error field when the session answered the preview: {quiet}"
+    );
+    let refused = serde_json::to_value(action(Some("OrganizerRefused"))).expect("it serializes");
+    assert_eq!(refused["error"], "OrganizerRefused");
 }
 
 /// Replays the recorded facts and contacts through the kernel under one placement. Returns the
@@ -1564,7 +1750,7 @@ fn replay_placement(record: &Value, placement: Placement) -> Vec<u64> {
             )
             .expect("a roster rolls")
         };
-        held.push(units_without_wage(&config, &roster));
+        held.push(units_without_wage(&config, &facts, &roster));
     }
     held
 }
@@ -1574,7 +1760,9 @@ fn placement_bounds(record: &Value, run: &Run) -> Value {
     let actual: Vec<u64> = run
         .periods
         .iter()
-        .map(|period| units_without_wage(&run.config, &period.observed.roster))
+        .map(|period| {
+            units_without_wage(&run.config, &period.observed.facts, &period.observed.roster)
+        })
         .collect();
     assert_eq!(
         declared, actual,
@@ -1636,7 +1824,7 @@ fn replay_agrees(original: &Run, foundation: &str, tails: &[RuntimeSessionTail])
     }
 }
 
-/// A short run of the driver: no contact through period 5, one position through period 6. It
+/// A short run of the driver: no contact and one position, each through period 6. It
 /// proves the driver, the reads and the assertions before the 40-minute test is started. Its
 /// records go to the temporary directory, not to the reports.
 #[test]
@@ -1647,7 +1835,7 @@ fn county_review_playthroughs_smoke() {
         &Spec {
             line: Line::NoContact,
             replay: None,
-            last_period: Some(5),
+            last_period: Some(6),
             reopen: false,
         },
         &directory,
@@ -1664,6 +1852,7 @@ fn county_review_playthroughs_smoke() {
         &directory,
     );
     assert_every_run(&one);
+    assert_eq!(none.foundation, one.foundation, "one opening");
     let (period, key) = contact_key(&one, 0);
     let spread = assert_contact_spreads(&one, period, &key, Landing::UnitMoves);
     assert_untouchable_alike(&[&none, &one]);
@@ -1703,6 +1892,15 @@ fn county_review_playthroughs() {
     ];
     let food = play_and_record(&live(Line::FoodRuns, false), &directory);
     assert_every_run(&food);
+    // One opening: the Ready foundation digest, which is the seed, is the same in every run.
+    for run in [&one, &two, &food] {
+        assert_eq!(
+            none.foundation,
+            run.foundation,
+            "{}: the same opening as the no-contact run",
+            run.line.name()
+        );
+    }
     assert_untouchable_alike(&[&none, &one, &two, &food]);
     let finals: Vec<_> = [&none, &one, &two, &food]
         .iter()

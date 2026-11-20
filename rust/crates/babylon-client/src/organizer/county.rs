@@ -486,8 +486,8 @@ fn reason_clauses(earned: &PositionEarned) -> Vec<String> {
     [
         household_clause(
             earned.asked_no_place,
-            "asked, and no place was open",
-            "asked, and no place was open",
+            "asked and found no place open",
+            "asked and found no place open",
         ),
         household_clause(
             earned.asked_no_time,
@@ -536,7 +536,11 @@ fn changed_clauses(position: &PositionView) -> Vec<String> {
         ));
     }
     if let Some(earned) = &position.earned {
-        clauses.extend(household_clause(earned.asked, "asked", "asked"));
+        // The households that asked are told in the clauses of what became of them. Their bare
+        // count is added only when those clauses do not account for every one.
+        if earned.asked != position.asked_paid.saturating_add(earned.asked_no_place) {
+            clauses.extend(household_clause(earned.asked, "asked", "asked in all"));
+        }
         clauses.extend(reason_clauses(earned));
         clauses.extend(household_clause(
             earned.brought,

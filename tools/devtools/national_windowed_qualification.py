@@ -832,13 +832,17 @@ class PlannedChoice(FrozenRecord):
     ]
     page: Annotated[StrictInt, Field(ge=0, le=2**32 - 1)] | None = None
     slot: Annotated[StrictInt, Field(ge=0, le=ROSTER_PAGE_ROWS - 1)] | None = None
+    position: PositionKey | None = None
 
     @model_validator(mode="after")
     def offered_amount(self) -> Self:
-        if (self.choice == "review_contact") != (self.page is not None and self.slot is not None):
-            raise ValueError("only a review contact names a roster page and slot, and it must")
-        if (self.page is None) != (self.slot is None):
-            raise ValueError("a roster page and slot are named together")
+        named = (self.page is not None, self.slot is not None, self.position is not None)
+        if (self.choice == "review_contact") != all(named):
+            raise ValueError(
+                "only a review contact names a roster page, slot and position, and it must"
+            )
+        if any(named) != all(named):
+            raise ValueError("a roster page, slot and position are named together")
         if self.choice.startswith(("inquiry_", "hearing_")) or self.choice == "review_contact":
             if self.allocation != "none":
                 raise ValueError("this practice does not authorize a material allocation")
@@ -855,6 +859,7 @@ class PlannedChoice(FrozenRecord):
             allocation=self.allocation,
             page=self.page,
             slot=self.slot,
+            position=self.position,
         )
 
 
@@ -1327,7 +1332,12 @@ class ControlChannel:
         raise self._refuse("diagnostic resize refused outside its expected window outcome")
 
     def perform(
-        self, action: Action, timeout: float, *, allow_review_refusal: bool = False
+        self,
+        action: Action,
+        timeout: float,
+        *,
+        allow_review_refusal: bool = False,
+        expected_contact: PositionKey | None = None,
     ) -> ControlState:
         prior = self.state
         if action == "review" and (
@@ -1372,6 +1382,13 @@ class ControlChannel:
             reply.state.choice, ReviewContactChoice
         ):
             raise self._refuse("native roster slot did not draft a review contact")
+        if (
+            isinstance(action, ChooseRosterSlot)
+            and expected_contact is not None
+            and isinstance(reply.state.choice, ReviewContactChoice)
+            and reply.state.choice.review_contact != expected_contact
+        ):
+            raise self._refuse("native roster slot drafted a review contact in another position")
         choice = (
             {
                 "choose_collect": "collect",
@@ -1528,13 +1545,15 @@ def edit_amount(
 def open_review_contact(channel: ControlChannel, choice: PlannedChoice, timeout: float) -> None:
     """Select the household position in a roster slot, as the player does: open the roster, turn
     to the page, press the slot's button. The roster closes with the choice drafted."""
-    if choice.page is None or choice.slot is None:
-        raise ControlRefusal("native review contact names no roster page and slot")
+    if choice.page is None or choice.slot is None or choice.position is None:
+        raise ControlRefusal("native review contact names no roster page, slot and position")
     channel.perform("inspect_county_roster", timeout)
     for _ in range(choice.page):
         channel.perform("roster_next_page", timeout)
     selected = channel.perform(
-        ChooseRosterSlot(choose_roster_slot=RosterSlot(slot=choice.slot)), timeout
+        ChooseRosterSlot(choose_roster_slot=RosterSlot(slot=choice.slot)),
+        timeout,
+        expected_contact=choice.position,
     )
     if selected.inspector != "Closed":
         channel.perform("close_inspector", timeout)

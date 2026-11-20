@@ -2487,6 +2487,12 @@ where
             per_rule_fired.push((id.clone(), 1));
             continue;
         }
+        if loaded.execution == RuleExecution::CountyReview {
+            return Err(transaction_error(
+                identity,
+                "County review needs a captured county administration".to_owned(),
+            ));
+        }
         let event_start = working_sink.events.len();
         let mut write_log = CollectingWriteLog::new();
         let outcome = tick::run_tick_observed(

@@ -66,6 +66,8 @@ pub enum RuleExecution {
     OrganizerPractice,
     /// Resolve the bounded City PD public observation intent.
     CityPdObserve,
+    /// Run the county's household review session after the organizer's practice.
+    CountyReview,
 }
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -360,7 +362,8 @@ pub fn load_rule_form(
         RuleExecution::MaterialCycle
         | RuleExecution::OrganizerProducts
         | RuleExecution::OrganizerPractice
-        | RuleExecution::CityPdObserve => Vec::new(),
+        | RuleExecution::CityPdObserve
+        | RuleExecution::CountyReview => Vec::new(),
     };
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
     crate::scope::check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;

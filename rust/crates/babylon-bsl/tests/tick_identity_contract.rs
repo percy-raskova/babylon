@@ -624,3 +624,15 @@ fn payload_sections_preserve_governed_and_live_vector_order() {
     );
     assert_eq!(sections.accepted_action_outcomes(), &0_u16.to_be_bytes());
 }
+
+#[test]
+fn the_county_review_effect_encodes_as_the_next_unused_tag() {
+    let mut effect = Vec::new();
+    identity_codec::encode_effect_signature(&EffectSignature::CityPdObserve, &mut effect)
+        .expect("the fixture value encodes to its canonical bytes");
+    assert_eq!(effect, vec![0x09]);
+    effect.clear();
+    identity_codec::encode_effect_signature(&EffectSignature::CountyReview, &mut effect)
+        .expect("the fixture value encodes to its canonical bytes");
+    assert_eq!(effect, vec![0x0a]);
+}

@@ -17,10 +17,10 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
 use std::collections::{HashMap, HashSet};
 
 fn source(operation: &str, role: &str, position: &str) -> String {
-    let id = if operation == "city-pd-observe" {
-        "state-opponent/observe-public-activity".to_owned()
-    } else {
-        format!("organizer/{operation}")
+    let id = match operation {
+        "city-pd-observe" => "state-opponent/observe-public-activity".to_owned(),
+        "county-review" => "welfare/county-review-session".to_owned(),
+        _ => format!("organizer/{operation}"),
     };
     format!(
         "(rule {id} :role {role} :evidence designed \
@@ -55,6 +55,7 @@ fn scheduled_operations_load_only_as_explicit_native_execution() {
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
         ("city-pd-observe", "intent", "after"),
+        ("county-review", "intent", "after"),
     ] {
         let rule = load(&source(operation, role, position)).expect("governed organizer operation");
         assert_ne!(rule.execution, RuleExecution::Graph);
@@ -70,6 +71,7 @@ fn native_graph_refusal_identifies_the_operation_even_without_subjects() {
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
         ("city-pd-observe", "intent", "after"),
+        ("county-review", "intent", "after"),
     ] {
         let loaded = load(&source(operation, role, position)).expect("the fixture artifact loads");
         let mut graph = MemoryGraph::new();
@@ -120,6 +122,7 @@ fn native_bodies_are_not_certified_by_a_graph_only_synthetic_audit() {
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
         ("city-pd-observe", "intent", "after"),
+        ("county-review", "intent", "after"),
     ] {
         let loaded = load(&source(operation, role, position)).expect("the fixture artifact loads");
         assert_eq!(
@@ -142,6 +145,7 @@ fn native_operations_refuse_nested_extra_or_wrong_role_execution() {
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
         ("city-pd-observe", "intent", "after"),
+        ("county-review", "intent", "after"),
     ] {
         let original = source(operation, role, position);
         for replacement in [
@@ -166,4 +170,25 @@ fn native_operations_refuse_nested_extra_or_wrong_role_execution() {
         "unapproved/observation"
     ))
     .is_err());
+    assert!(load(
+        &source("county-review", "intent", "after")
+            .replace("welfare/county-review-session", "unapproved/review")
+    )
+    .is_err());
+}
+
+#[test]
+fn the_county_review_operation_classifies_as_an_intent_after_ooda() {
+    let rule = load(&source("county-review", "intent", "after")).expect("governed county review");
+    assert_eq!(rule.execution, RuleExecution::CountyReview);
+    assert_eq!(
+        rule.contract.role,
+        babylon_bsl::causal_contract::RuleRole::Intent
+    );
+    assert_eq!(rule.contract.rule_id, "welfare/county-review-session");
+    assert_eq!(
+        babylon_bsl::causal_contract::effect_footprint(&rule.rule)
+            .expect("the footprint of the loaded rule is walkable"),
+        vec![babylon_bsl::causal_contract::EffectSignature::CountyReview]
+    );
 }

@@ -618,6 +618,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         graph.validate_material_cycle()?;
         graph.validate_organizer_cycle(material.organizer_state().is_some())?;
         graph.validate_city_pd_cycle(material.city_pd().is_some())?;
+        graph.validate_county_review_cycle(false)?;
         graph.validate_material_field_ownership(catalog.company_portfolios.is_some())?;
         let venue_sources = match material.public_venue() {
             Some(history) => vec![crate::public_venue::admit_public_venue_source(

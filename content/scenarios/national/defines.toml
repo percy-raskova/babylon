@@ -473,3 +473,17 @@ positions = 3529
 positions_source = "City of Detroit, City Council Legislative Policy Division, budget analysis of 21 March 2025: Police Department, adopted positions, fiscal year 2025"
 visits_per_period = 1
 visit_hours = 1
+
+# The county review. The county ranks its households by the wage tax each paid and pays relief
+# units down that list; the organizer can reach one household in a named position per period. The
+# price of a unit is derived from the opening, not written here. The two body labels repeat the
+# labels the hearing already uses and are checked against them.
+[county_review]
+evidence_class = "Designed"
+county = "26163"
+first_session_period = 4
+session_hours = 2
+bring_hours = 2
+administration_label = "Wayne County administration"
+claimants_body_label = "Wayne Relief Claimants Assembly"
+aid_body_label = "Wayne Local Aid Partners"

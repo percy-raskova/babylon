@@ -34,9 +34,13 @@ pub(crate) fn actor_key() -> StableElementKey {
 }
 
 pub(crate) fn actor_id() -> Result<u64> {
+    actor_id_of(&actor_key())
+}
+
+/// The nonzero actor identifier a stable key derives: the first eight bytes of its digest.
+pub(crate) fn actor_id_of(key: &StableElementKey) -> Result<u64> {
     let digest = content_digest::sha256_of(
-        &actor_key()
-            .canonical_bytes()
+        &key.canonical_bytes()
             .map_err(|_| EconomicCatalogError::Identity)?,
     );
     let id = u64::from_be_bytes(
@@ -205,7 +209,7 @@ fn authority_id(campaign: [u8; 16], actor_id: u64) -> [u8; 16] {
 }
 
 /// The county-scoped public account that the national opening already holds.
-fn public_account_id(county: EconomicLocation) -> [u8; 32] {
+pub(crate) fn public_account_id(county: EconomicLocation) -> [u8; 32] {
     let mut preimage = b"NationalPublicProvisioningV1\0".to_vec();
     preimage.extend_from_slice(&county.canonical_bytes());
     content_digest::sha256_of(&preimage)

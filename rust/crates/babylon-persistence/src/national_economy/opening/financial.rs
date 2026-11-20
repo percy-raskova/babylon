@@ -1,6 +1,7 @@
 //! Explicit budget and ownership opening assumptions, separate from source class.
 use super::{ActorContext, Builder, NationalOpeningError, Result};
 use crate::national_economy::grain::NationalGrainError;
+use crate::national_economy::NationalGamePolicy;
 use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
@@ -126,22 +127,10 @@ fn household_support(
     if policy.reserve_food_support_periods == 0 {
         return Ok(());
     }
-    let food = builder
-        .commodity("food")?
-        .price
-        .as_ref()
-        .ok_or(NationalOpeningError::Policy)?
-        .clone();
     for ((principal, location), persons) in reserves {
         let scale = scale(builder, *location)?;
-        let unit_price = food
-            .scaled(scale)
-            .map_err(|_| NationalOpeningError::Arithmetic)?
-            .opening;
-        let support = super::amount(
-            super::quantity(*persons, policy.reserve_food_support_periods)?,
-            unit_price,
-        )?;
+        let unit_price = support_unit_price(builder.policy, scale)?;
+        let support = super::amount(*persons, unit_price)?;
         if support.micro_units() == 0 {
             continue;
         }
@@ -166,6 +155,35 @@ fn household_support(
     }
     Ok(())
 }
+
+/// What the county's household support pays for one job-seeking person for one period: the food
+/// price at the given scale times the periods of food the policy supports. A county's scale is
+/// 10,000 basis points.
+pub(in crate::national_economy) fn support_unit_price(
+    policy: &NationalGamePolicy,
+    scale_bps: u16,
+) -> Result<Currency> {
+    let food = policy
+        .commodities
+        .get("food")
+        .and_then(|commodity| commodity.price.as_ref())
+        .ok_or(NationalOpeningError::Policy)?;
+    let price = food
+        .scaled(scale_bps)
+        .map_err(|_| NationalOpeningError::Arithmetic)?
+        .opening;
+    super::amount(policy.financial.reserve_food_support_periods, price)
+}
+
+/// The support unit of a domestic county.
+pub(in crate::national_economy) fn county_support_unit_price(
+    policy: &NationalGamePolicy,
+) -> Result<Currency> {
+    support_unit_price(policy, COUNTY_PRICE_SCALE_BPS)
+}
+
+/// A county's prices are the policy's own: no scale.
+const COUNTY_PRICE_SCALE_BPS: u16 = 10_000;
 
 type PrivateOwners = BTreeMap<FinancialDomainId, Vec<(FinalDemandPrincipalId, u64)>>;
 
@@ -360,7 +378,7 @@ fn payroll(builder: &Builder<'_>, actor: &ActorContext) -> Result<Currency> {
 }
 fn scale(builder: &Builder<'_>, location: EconomicLocation) -> Result<u16> {
     match location {
-        EconomicLocation::County(_) => Ok(10_000),
+        EconomicLocation::County(_) => Ok(COUNTY_PRICE_SCALE_BPS),
         EconomicLocation::Foreign(counterpart) => builder
             .policy
             .counterparts

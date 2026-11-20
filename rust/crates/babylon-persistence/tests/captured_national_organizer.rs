@@ -35,9 +35,10 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let raw = CapturedEconomicCatalog::capture(national_capture::input(), None)
         .expect("the fixture captures the authored state");
     assert_eq!(raw.compiler_version(), "national-world-v12");
+    // Absent organizer, City PD and county review footers: a presence tag and a length each.
     assert_eq!(
-        &raw.canonical_bytes()[raw.canonical_bytes().len() - 5..],
-        &[0; 5]
+        &raw.canonical_bytes()[raw.canonical_bytes().len() - 15..],
+        &[0; 15]
     );
     let material_rules = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -55,6 +56,10 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let city_pd_rules = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/state-opponent-cycle.bsl"
+    ));
+    let county_review_rules = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../content/scenarios/national/county-review-cycle.bsl"
     ));
     assert_eq!(
         raw.source(Kind::Rules)
@@ -97,6 +102,8 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     rules.extend_from_slice(organizer_rules);
     rules.push(b'\n');
     rules.extend_from_slice(city_pd_rules);
+    rules.push(b'\n');
+    rules.extend_from_slice(county_review_rules);
     assert_eq!(
         playable
             .source(Kind::Rules)
@@ -154,7 +161,7 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         cold_catalog,
         &expected_config,
         raw_frame_size,
-        organizer_rules.len() + 1 + city_pd_rules.len(),
+        organizer_rules.len() + 1 + city_pd_rules.len() + 1 + county_review_rules.len(),
     );
     // Actual native session admission validates the captured organizer rules.
     let session = foundation
@@ -234,7 +241,23 @@ fn assert_no_opponent_route(playable: &CapturedEconomicCatalog, campaign: Campai
     )
     .expect("the no-PD control captures the same organizer route");
     assert!(control.city_pd_config().is_none());
-    assert_eq!(control.organizer_config(), playable.organizer_config());
+    assert!(control.county_review_config().is_none());
+    let mut control_config = control
+        .organizer_config()
+        .expect("the control keeps the organizer")
+        .clone();
+    let mut playable_config = playable
+        .organizer_config()
+        .expect("the playable campaign has the organizer")
+        .clone();
+    assert!(
+        control_config.review.is_none(),
+        "the control has no county review to reach a household in"
+    );
+    assert!(playable_config.review.is_some());
+    control_config.review = None;
+    playable_config.review = None;
+    assert_eq!(control_config, playable_config);
     assert!(!control
         .source(Kind::Rules)
         .expect("control rules")
@@ -467,24 +490,43 @@ fn assert_source_bindings(
         catalog.city_pd_config().expect("national agency captured"),
     )
     .expect("agency terms encode");
+    let county_bytes = babylon_practice_contract::encode_county_review_config(
+        catalog
+            .county_review_config()
+            .expect("national county review captured"),
+    )
+    .expect("county review terms encode");
     assert_eq!(
         catalog.canonical_bytes().len(),
-        raw_frame_size + 1 + organizer_rule_size + config_bytes.len() + pd_bytes.len()
+        raw_frame_size
+            + 1
+            + organizer_rule_size
+            + config_bytes.len()
+            + pd_bytes.len()
+            + county_bytes.len()
     );
-    let marker = catalog.canonical_bytes().len() - pd_bytes.len() - 5 - config_bytes.len() - 5;
+    // The footers close the frame in order: organizer, City PD, county review.
+    let marker = catalog.canonical_bytes().len()
+        - county_bytes.len()
+        - 5
+        - pd_bytes.len()
+        - 5
+        - config_bytes.len()
+        - 5;
     assert_eq!(catalog.canonical_bytes()[marker], 1);
     assert_eq!(
         &catalog.canonical_bytes()[marker + 5..marker + 5 + config_bytes.len()],
         config_bytes
     );
+    let pd_at = marker + 5 + config_bytes.len();
+    assert_eq!(catalog.canonical_bytes()[pd_at], 1);
     assert_eq!(
-        catalog.canonical_bytes()[marker + 5 + config_bytes.len()],
-        1
-    );
-    assert_eq!(
-        &catalog.canonical_bytes()[marker + 10 + config_bytes.len()..],
+        &catalog.canonical_bytes()[pd_at + 5..pd_at + 5 + pd_bytes.len()],
         pd_bytes
     );
+    let county_at = pd_at + 5 + pd_bytes.len();
+    assert_eq!(catalog.canonical_bytes()[county_at], 1);
+    assert_eq!(&catalog.canonical_bytes()[county_at + 5..], county_bytes);
     let aid = catalog
         .national_aid_capture()
         .expect("the fixture call `national_aid_capture` succeeds for the authored inputs");

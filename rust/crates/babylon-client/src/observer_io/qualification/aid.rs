@@ -403,6 +403,7 @@ mod tests {
             choice: OrganizerChoice::LocalAid,
         };
         let preview = OrganizerPreview {
+            review: None,
             allocation: OrganizerAllocation::Aid {
                 food_quantity: 1,
                 cash_micros: 0,

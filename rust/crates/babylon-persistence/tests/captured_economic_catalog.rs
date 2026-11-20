@@ -42,6 +42,8 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         .windows(compiler.len())
         .position(|s| s == compiler)
         .expect("the fixture sequence holds the addressed position");
+    // An earlier compiler's genuine frame ends before the county review's footer.
+    obsolete.truncate(obsolete.len() - 5);
     for incompatible in *b"08" {
         obsolete[offset + compiler.len() - 1] = incompatible;
         assert_eq!(

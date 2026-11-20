@@ -351,6 +351,15 @@ impl MaterialRuntimeFoundation {
             register =
                 register.with_city_pd(&admitted.catalog, city_pd, graph.stable_resolver())?;
         }
+        if let Some(county_review) = source.initial_county_review().map_err(|error| {
+            MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
+        })? {
+            register = register.with_county_review(
+                &admitted.catalog,
+                county_review,
+                Some(graph.stable_resolver()),
+            )?;
+        }
         Self::from_parts(graph, graph_foundation, admitted, register, spec)
     }
 
@@ -381,7 +390,7 @@ impl MaterialRuntimeFoundation {
             .content_bundle()
             .economic_catalog()
             .and_then(|catalog| catalog.city_pd_config());
-        let (expected_venue, expected_city_pd) =
+        let (expected_venue, expected_city_pd, expected_county_review) =
             match graph_foundation.content_bundle().economic_catalog() {
                 Some(source) => (
                     source
@@ -390,8 +399,11 @@ impl MaterialRuntimeFoundation {
                     source
                         .initial_city_pd(&catalog, &state, graph.stable_resolver())
                         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+                    source
+                        .initial_county_review()
+                        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
                 ),
-                None => (None, None),
+                None => (None, None, None),
             };
         if register.state() != &state
             || register.catalog_digest() != catalog.catalog_digest()
@@ -400,6 +412,7 @@ impl MaterialRuntimeFoundation {
             || register.city_pd().map(|pd| &pd.config) != captured_city_pd
             || register.public_venue() != expected_venue.as_ref()
             || register.city_pd() != expected_city_pd.as_ref()
+            || register.county_review() != expected_county_review.as_ref()
         {
             return Err(MaterialRuntimeError::FoundationMismatch);
         }

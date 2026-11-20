@@ -14,7 +14,7 @@ use super::{
 };
 
 use super::collection;
-use crate::county_review::PositionKey;
+use crate::county_review::{ContactPreview, PositionKey};
 
 use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
@@ -243,6 +243,10 @@ pub struct OrganizerPreview {
     pub replaces_standing_work: bool,
     pub refusal: Option<OrganizerRefusal>,
     pub observations: Vec<OrganizerObservation>,
+    /// What a review contact would do to the county's next session. Present only on a runtime
+    /// preview of a contact for a campaign with a county review.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<ContactPreview>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

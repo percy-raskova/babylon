@@ -435,3 +435,60 @@ fn city_pd_terms_are_designed_sourced_and_required_from_schema_7() {
         assert!(NationalGamePolicy::parse(&changed).is_err());
     }
 }
+
+#[test]
+fn county_review_terms_are_designed_and_required_from_schema_7() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("the shipped national policy");
+    let terms = policy
+        .county_review
+        .as_ref()
+        .expect("schema 7 carries [county_review]");
+    assert_eq!(terms.county.as_str(), "26163");
+    assert_eq!(terms.first_session_period, 4);
+    assert_eq!(terms.session_hours, 2);
+    assert_eq!(terms.bring_hours, 2);
+    // The two bodies are the hearing's claimants and the organizer's local partner.
+    let hearing = policy
+        .organizer
+        .hearing
+        .as_ref()
+        .expect("the shipped policy holds the relief hearing");
+    assert_eq!(terms.claimants_body_label, hearing.claimant_label);
+    assert_eq!(terms.aid_body_label, policy.organizer.local_partner_label);
+
+    let table = SOURCE
+        .find("\n[county_review]\n")
+        .expect("the shipped policy names the county review's terms");
+    assert!(NationalGamePolicy::parse(&SOURCE[..table]).is_err());
+    // An earlier schema has no such table and refuses one.
+    assert!(NationalGamePolicy::parse(&SOURCE.replacen(
+        "schema_version = 7",
+        "schema_version = 6",
+        1
+    ))
+    .is_err());
+    for changed in [
+        SOURCE.replace(
+            "[county_review]\nevidence_class = \"Designed\"",
+            "[county_review]\nevidence_class = \"Observed\"",
+        ),
+        SOURCE.replace("first_session_period = 4", "first_session_period = 0"),
+        SOURCE.replace("session_hours = 2", "session_hours = 0"),
+        SOURCE.replace("bring_hours = 2", "bring_hours = 0"),
+        SOURCE.replace(
+            "claimants_body_label = \"Wayne Relief Claimants Assembly\"",
+            "claimants_body_label = \"Another assembly\"",
+        ),
+        SOURCE.replace(
+            "aid_body_label = \"Wayne Local Aid Partners\"",
+            "aid_body_label = \"Another partner\"",
+        ),
+        SOURCE.replace(
+            "[county_review]\nevidence_class = \"Designed\"\ncounty = \"26163\"",
+            "[county_review]\nevidence_class = \"Designed\"\ncounty = \"26125\"",
+        ),
+    ] {
+        assert_ne!(changed, SOURCE, "the mutation must change the input");
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
+}

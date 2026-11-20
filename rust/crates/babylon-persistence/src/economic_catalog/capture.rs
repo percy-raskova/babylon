@@ -7,8 +7,11 @@ use super::{
     codec, CatalogGeography, EconomicCatalogError, EconomicCatalogInput, EconomicOpening,
     EconomicProjectionView, SourceArtifact, SourceArtifactKind,
 };
+use crate::national_economy::county_review::{CountyReviewCapture, CountyReviewOpening};
 use babylon_practice_contract::CityPdConfig;
+use babylon_practice_contract::CountyReviewConfig;
 use babylon_practice_contract::OrganizerConfig;
+use babylon_practice_contract::OrganizerReviewConfig;
 
 use babylon_kernel::clock::CampaignDuration;
 
@@ -51,6 +54,9 @@ pub struct CapturedEconomicCatalog {
     pub(super) digest: [u8; 32],
     pub(super) local_detail: Option<MichiganDynamicHexFoundation>,
     spatial_detail: Option<SpatialReferenceProducts>,
+    /// The county review's configuration with the roster it opens with, regenerated from the
+    /// opening on every capture; only the configuration is encoded.
+    county_review: Option<CountyReviewOpening>,
 }
 impl std::fmt::Debug for CapturedEconomicCatalog {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -107,30 +113,7 @@ impl CapturedEconomicCatalog {
             }
         };
         if let (CapturedSources::National(national), Some(config)) = (&sources, &input.organizer) {
-            let mut source_only = input.clone();
-            source_only.organizer = None;
-            source_only.city_pd = None;
-            let rules = source_only
-                .sources
-                .iter_mut()
-                .find(|row| row.kind() == SourceArtifactKind::Rules)
-                .ok_or(EconomicCatalogError::Source(SourceArtifactKind::Rules))?;
-            *rules = SourceArtifact::capture(
-                SourceArtifactKind::Rules,
-                super::preset::national_organizer_rules(graph),
-            );
-            let source_basis = content_digest::sha256_of(&codec::encode(&source_only, compiler)?);
-            let expected_config = crate::national_economy::organizer::assemble(
-                config.campaign_id,
-                crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
-                &opening,
-                &national.aid,
-                national.support_claimant.as_ref(),
-                &input,
-            )?;
-            if *config != expected_config {
-                return Err(EconomicCatalogError::Identity);
-            }
+            check_organizer(config, &input, national, &opening, (graph, compiler))?;
         }
         if let Some(config) = &input.city_pd {
             let CapturedSources::National(national) = &sources else {
@@ -149,6 +132,20 @@ impl CapturedEconomicCatalog {
             }
             crate::national_economy::city_pd::add_opening(&mut opening, config)?;
         }
+        let county_review = match &input.county_review {
+            None => None,
+            Some(config) => {
+                let CapturedSources::National(national) = &sources else {
+                    return Err(EconomicCatalogError::Identity);
+                };
+                let assembled =
+                    assemble_county_review(config.campaign_id, &input, &opening, national)?;
+                if assembled.config != *config {
+                    return Err(EconomicCatalogError::Identity);
+                }
+                Some(assembled)
+            }
+        };
         if expected.is_some_and(|expected| *expected != opening) {
             return Err(EconomicCatalogError::Opening("supplied opening mismatch"));
         }
@@ -163,6 +160,7 @@ impl CapturedEconomicCatalog {
             digest,
             local_detail,
             spatial_detail,
+            county_review,
         })
     }
     /// Capture a playable national campaign with authenticated immutable organizer content.
@@ -184,7 +182,7 @@ impl CapturedEconomicCatalog {
         campaign: CampaignId,
         opponent: NationalOpponent,
     ) -> Result<Self> {
-        if input.organizer.is_some() || input.city_pd.is_some() {
+        if input.organizer.is_some() || input.city_pd.is_some() || input.county_review.is_some() {
             return Err(EconomicCatalogError::Identity);
         }
         let mut catalog = Self::capture(input, None)?;
@@ -222,9 +220,20 @@ impl CapturedEconomicCatalog {
             )?;
             crate::national_economy::city_pd::add_opening(&mut catalog.opening, &city_pd)?;
             catalog.input.city_pd = Some(city_pd);
+            let county = assemble_county_review(
+                *campaign.canonical_bytes(),
+                &catalog.input,
+                &catalog.opening,
+                national,
+            )?;
+            if let Some(organizer) = &mut catalog.input.organizer {
+                organizer.review = Some(organizer_review(&county.config)?);
+            }
+            catalog.input.county_review = Some(county.config.clone());
+            catalog.county_review = Some(county);
             catalog.input.sources[index] = SourceArtifact::capture(
                 SourceArtifactKind::Rules,
-                super::preset::national_city_pd_rules(graph),
+                super::preset::national_county_review_rules(graph),
             );
         }
         catalog.bytes = codec::encode(&catalog.input, catalog.compiler)?;
@@ -261,6 +270,15 @@ impl CapturedEconomicCatalog {
     #[must_use]
     pub fn city_pd_config(&self) -> Option<&CityPdConfig> {
         self.input.city_pd.as_ref()
+    }
+    /// Captured county review terms, when this campaign includes the opponent's county.
+    #[must_use]
+    pub fn county_review_config(&self) -> Option<&CountyReviewConfig> {
+        self.input.county_review.as_ref()
+    }
+    /// The county review's configuration and the roster it opens with.
+    pub(crate) fn county_review_opening(&self) -> Option<&CountyReviewOpening> {
+        self.county_review.as_ref()
     }
     /// Captured organizer terms shared by the national control and opponent.
     #[must_use]
@@ -366,6 +384,105 @@ impl CapturedEconomicCatalog {
             .map(|i| self.input.sources[i].bytes())
     }
 }
+/// The captured organizer must be exactly the one the sources and the county review derive.
+fn check_organizer(
+    config: &OrganizerConfig,
+    input: &EconomicCatalogInput,
+    national: &NationalSources,
+    opening: &EconomicOpening,
+    (graph, compiler): (NationalGraph, &str),
+) -> Result<()> {
+    let mut source_only = input.clone();
+    source_only.organizer = None;
+    source_only.city_pd = None;
+    source_only.county_review = None;
+    let rules = source_only
+        .sources
+        .iter_mut()
+        .find(|row| row.kind() == SourceArtifactKind::Rules)
+        .ok_or(EconomicCatalogError::Source(SourceArtifactKind::Rules))?;
+    *rules = SourceArtifact::capture(
+        SourceArtifactKind::Rules,
+        super::preset::national_organizer_rules(graph),
+    );
+    let source_basis = content_digest::sha256_of(&codec::encode(&source_only, compiler)?);
+    let expected_config = crate::national_economy::organizer::assemble(
+        config.campaign_id,
+        crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
+        opening,
+        &national.aid,
+        national.support_claimant.as_ref(),
+        input,
+    )?;
+    let expected_config = OrganizerConfig {
+        review: input
+            .county_review
+            .as_ref()
+            .map(organizer_review)
+            .transpose()?,
+        ..expected_config
+    };
+    if *config == expected_config {
+        Ok(())
+    } else {
+        Err(EconomicCatalogError::Identity)
+    }
+}
+
+/// What the organizer's configuration holds of the county review: the county, the first session
+/// and the identity of the county's configuration.
+fn organizer_review(config: &CountyReviewConfig) -> Result<OrganizerReviewConfig> {
+    Ok(OrganizerReviewConfig {
+        county_geoid: std::str::from_utf8(&config.county)
+            .map_err(|_| EconomicCatalogError::Identity)?
+            .to_owned(),
+        first_session_period: config.first_session_period,
+        county_config_digest: babylon_practice_contract::county_review_config_digest(config)
+            .map_err(|_| EconomicCatalogError::Identity)?,
+    })
+}
+
+/// Assembles the county review from the captured policy, the hearing and the opening the
+/// campaign's national sources produced.
+fn assemble_county_review(
+    campaign: [u8; 16],
+    input: &EconomicCatalogInput,
+    opening: &EconomicOpening,
+    national: &NationalSources,
+) -> Result<CountyReviewOpening> {
+    let policy = NationalGamePolicy::from_captured_bytes(source(
+        input,
+        SourceArtifactKind::NationalGamePolicy,
+    )?)
+    .map_err(|_| EconomicCatalogError::Source(SourceArtifactKind::NationalGamePolicy))?;
+    let hearing = input
+        .organizer
+        .as_ref()
+        .and_then(|organizer| organizer.hearing.as_ref())
+        .ok_or(EconomicCatalogError::Identity)?;
+    let claimant = national
+        .support_claimant
+        .as_ref()
+        .ok_or(EconomicCatalogError::Identity)?;
+    let county = crate::national_economy::county_review::assemble(
+        campaign,
+        &CountyReviewCapture {
+            opening,
+            policy: &policy,
+            aid: &national.aid,
+            claimant,
+            household_keys: &national.household_keys,
+            hearing,
+        },
+    )?;
+    let city_pd = input
+        .city_pd
+        .as_ref()
+        .ok_or(EconomicCatalogError::Identity)?;
+    crate::national_economy::county_review::check_payroll_site(&county.config, city_pd)?;
+    Ok(county)
+}
+
 fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
     input
         .duration
@@ -405,7 +522,8 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                     if terms.experiment.is_some()
                         && input.geography == CatalogGeography::NationalCounties
                         && input.organizer.is_none()
-                        && input.city_pd.is_none() =>
+                        && input.city_pd.is_none()
+                        && input.county_review.is_none() =>
                 {
                     Ok(match terms.portfolio.condition_order {
                         CompanyConditionOrder::FirstApplicable
@@ -551,6 +669,7 @@ impl CapturedEconomicCatalog {
             geography: CatalogGeography::MichiganControl,
             organizer: catalog.organizer_config().cloned(),
             city_pd: None,
+            county_review: None,
         };
         Self::capture(
             input,

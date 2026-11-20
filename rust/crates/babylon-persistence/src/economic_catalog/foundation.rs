@@ -8,7 +8,7 @@ use babylon_material_circuit::MaterialCircuitState;
 use babylon_practice_contract::CityPdCaseSource;
 use babylon_practice_contract::CityPdCaseStatus;
 use babylon_practice_contract::PublicVenueHistory;
-use babylon_tick::material_world::CityPdRegister;
+use babylon_tick::material_world::{CityPdRegister, CountyReviewRegister};
 
 use crate::material_runtime::{
     AdmittedMaterial, MaterialFoundationSpec, MaterialRuntimeError, MaterialRuntimeFoundation,
@@ -141,6 +141,19 @@ impl CapturedEconomicCatalog {
         .map_err(|_| EconomicCatalogError::Foundation)?;
         Ok(Some(register))
     }
+    /// The county review's section as the campaign opens: its captured configuration and the
+    /// roster it was captured with.
+    pub(crate) fn initial_county_review(
+        &self,
+    ) -> Result<Option<CountyReviewRegister>, EconomicCatalogError> {
+        self.county_review_opening()
+            .map(|opening| {
+                CountyReviewRegister::try_new(opening.config.clone(), opening.state.clone())
+                    .map_err(|_| EconomicCatalogError::Foundation)
+            })
+            .transpose()
+    }
+
     /// Derive the one immutable definition set and opening its sources authorize.
     /// # Errors
     /// Refuses a spec, graph identity or organizer binding from another capture.

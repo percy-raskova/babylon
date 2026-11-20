@@ -1,0 +1,140 @@
+{
+  "campaign": "00000000-0000-0000-0000-002616317036",
+  "crews": 41,
+  "groups": [
+    {
+      "crews": 2,
+      "has_ownership_income": true,
+      "households": 19334,
+      "kind": "ordinary",
+      "label": "no-earner-owner",
+      "reached": 0,
+      "receives_mutual_aid": false,
+      "roll_units": 2949,
+      "rows": 4
+    },
+    {
+      "crews": 20,
+      "has_ownership_income": false,
+      "households": 456528,
+      "kind": "ordinary",
+      "label": "earning-nonowner",
+      "reached": 0,
+      "receives_mutual_aid": false,
+      "roll_units": 38837,
+      "rows": 80
+    },
+    {
+      "crews": 1,
+      "has_ownership_income": false,
+      "households": 2,
+      "kind": "ordinary",
+      "label": "no-earner-nonowner (claimants)",
+      "reached": 2,
+      "receives_mutual_aid": false,
+      "roll_units": 2,
+      "rows": 1
+    },
+    {
+      "crews": 5,
+      "has_ownership_income": true,
+      "households": 50726,
+      "kind": "ordinary",
+      "label": "earning-owner",
+      "reached": 0,
+      "receives_mutual_aid": false,
+      "roll_units": 2669,
+      "rows": 10
+    },
+    {
+      "crews": 0,
+      "has_ownership_income": false,
+      "households": 0,
+      "kind": "collective_residence",
+      "label": "collective-residence",
+      "reached": 0,
+      "receives_mutual_aid": false,
+      "roll_units": 772,
+      "rows": 0
+    },
+    {
+      "crews": 1,
+      "has_ownership_income": false,
+      "households": 4,
+      "kind": "ordinary",
+      "label": "earning-nonowner (aid donors)",
+      "reached": 0,
+      "receives_mutual_aid": false,
+      "roll_units": 0,
+      "rows": 2
+    },
+    {
+      "crews": 12,
+      "has_ownership_income": false,
+      "households": 173993,
+      "kind": "ordinary",
+      "label": "no-earner-nonowner",
+      "reached": 0,
+      "receives_mutual_aid": false,
+      "roll_units": 26536,
+      "rows": 13
+    },
+    {
+      "crews": 0,
+      "has_ownership_income": false,
+      "households": 4,
+      "kind": "ordinary",
+      "label": "no-earner-nonowner (aid partners)",
+      "reached": 3,
+      "receives_mutual_aid": true,
+      "roll_units": 0,
+      "rows": 1
+    }
+  ],
+  "organizer_status_line_bound": 1048576,
+  "organizer_status_line_bytes": 56805,
+  "positions": 111,
+  "unit_price_micros": "280000000",
+  "who_works_by_band": [
+    {
+      "band": "top1",
+      "households": 7006,
+      "outside_labor_force": 7006,
+      "people_at_work": 0,
+      "people_seeking": 0,
+      "seeking_only": 0,
+      "units": 0,
+      "with_work": 0
+    },
+    {
+      "band": "next9",
+      "households": 63054,
+      "outside_labor_force": 9379,
+      "people_at_work": 101931,
+      "people_seeking": 5618,
+      "seeking_only": 4244,
+      "units": 5618,
+      "with_work": 49431
+    },
+    {
+      "band": "next40",
+      "households": 280236,
+      "outside_labor_force": 0,
+      "people_at_work": 470695,
+      "people_seeking": 13105,
+      "seeking_only": 0,
+      "units": 13105,
+      "with_work": 280236
+    },
+    {
+      "band": "bottom50",
+      "households": 350295,
+      "outside_labor_force": 147461,
+      "people_at_work": 176296,
+      "people_seeking": 52270,
+      "seeking_only": 26538,
+      "units": 52270,
+      "with_work": 176296
+    }
+  ]
+}

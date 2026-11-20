@@ -2225,6 +2225,7 @@ mod tests {
             view: Some(view.clone()),
             aid: vec![terms],
             preview: Some(OrganizerPreview {
+                review: None,
                 allocation: OrganizerAllocation::Aid {
                     food_quantity: 1,
                     cash_micros: 0,
@@ -2695,6 +2696,7 @@ mod tests {
         OrganizerClient {
             view: Some(view),
             preview: Some(OrganizerPreview {
+                review: None,
                 allocation: OrganizerAllocation::None,
                 choice: OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
                 current_period: period,
@@ -2965,6 +2967,7 @@ mod tests {
             let client = OrganizerClient {
                 view: Some(view()),
                 preview: Some(OrganizerPreview {
+                    review: None,
                     allocation: OrganizerAllocation::None,
                     choice,
                     current_period: 5,

@@ -15,6 +15,12 @@ const MAX_SOURCE_ROWS: usize = 32;
 const MAX_TEXT_BYTES: usize = 128;
 // Matches the authoritative practice-contract organizer codec bound.
 const MAX_ORGANIZER_CONFIG_BYTES: usize = 32 * 1024 * 1024;
+/// The one compiler whose frame ends with the county review's footer. A catalog of an earlier
+/// compiler keeps its bytes and has no county.
+pub(super) const COUNTY_REVIEW_COMPILER: &str = "national-world-v12";
+fn frames_county_review(compiler: &str) -> bool {
+    compiler == COUNTY_REVIEW_COMPILER
+}
 fn text(out: &mut Vec<u8>, text: &str) -> Result<()> {
     if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
         return Err(EconomicCatalogError::Identity);
@@ -39,23 +45,7 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
             .and_then(|n| n.checked_add(row.bytes().len()))
             .ok_or(EconomicCatalogError::Bound)
     })?;
-    let organizer = input
-        .organizer
-        .as_ref()
-        .map(babylon_practice_contract::encode_organizer_config)
-        .transpose()
-        .map_err(|_| EconomicCatalogError::Identity)?;
-    let organizer_size = organizer.as_ref().map_or(0, Vec::len);
-    if organizer_size > MAX_ORGANIZER_CONFIG_BYTES {
-        return Err(EconomicCatalogError::Bound);
-    }
-    let city_pd = input
-        .city_pd
-        .as_ref()
-        .map(babylon_practice_contract::encode_city_pd_config)
-        .transpose()
-        .map_err(|_| EconomicCatalogError::Identity)?;
-    let city_pd_size = city_pd.as_ref().map_or(0, Vec::len);
+    let footers = Footers::of(input, compiler)?;
     let size = source_size
         .checked_add(
             DOMAIN.len()
@@ -67,12 +57,9 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
                 + input.preset_id.len()
                 + 9
                 + 1
-                + 2
-                + 5
-                + organizer_size
-                + 5
-                + city_pd_size,
+                + 2,
         )
+        .and_then(|size| size.checked_add(footers.size()))
         .ok_or(EconomicCatalogError::Bound)?;
     if size > MAX_CATALOG_BYTES {
         return Err(EconomicCatalogError::Bound);
@@ -117,12 +104,72 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
         );
         out.extend_from_slice(source.bytes());
     }
-    append_optional(&mut out, organizer)?;
-    append_optional(&mut out, city_pd)?;
+    footers.append(&mut out)?;
     if out.len() != size {
         return Err(EconomicCatalogError::Bound);
     }
     Ok(out)
+}
+/// The optional configurations that end a frame, encoded, in frame order.
+struct Footers {
+    organizer: Option<Vec<u8>>,
+    city_pd: Option<Vec<u8>>,
+    county_review: Option<Vec<u8>>,
+    /// Whether the compiler frames the county review at all.
+    county_framed: bool,
+}
+impl Footers {
+    fn of(input: &EconomicCatalogInput, compiler: &str) -> Result<Self> {
+        let organizer = input
+            .organizer
+            .as_ref()
+            .map(babylon_practice_contract::encode_organizer_config)
+            .transpose()
+            .map_err(|_| EconomicCatalogError::Identity)?;
+        if organizer.as_ref().map_or(0, Vec::len) > MAX_ORGANIZER_CONFIG_BYTES {
+            return Err(EconomicCatalogError::Bound);
+        }
+        let city_pd = input
+            .city_pd
+            .as_ref()
+            .map(babylon_practice_contract::encode_city_pd_config)
+            .transpose()
+            .map_err(|_| EconomicCatalogError::Identity)?;
+        let county_review = input
+            .county_review
+            .as_ref()
+            .map(babylon_practice_contract::encode_county_review_config)
+            .transpose()
+            .map_err(|_| EconomicCatalogError::Identity)?;
+        let county_framed = frames_county_review(compiler);
+        if county_review.is_some() && !county_framed {
+            return Err(EconomicCatalogError::Identity);
+        }
+        Ok(Self {
+            organizer,
+            city_pd,
+            county_review,
+            county_framed,
+        })
+    }
+    /// Bytes the footers take: a tag and a length for each, and the configuration it holds.
+    fn size(&self) -> usize {
+        let held = |value: &Option<Vec<u8>>| 5 + value.as_ref().map_or(0, Vec::len);
+        let county = if self.county_framed {
+            held(&self.county_review)
+        } else {
+            0
+        };
+        held(&self.organizer) + held(&self.city_pd) + county
+    }
+    fn append(self, out: &mut Vec<u8>) -> Result<()> {
+        append_optional(out, self.organizer)?;
+        append_optional(out, self.city_pd)?;
+        if self.county_framed {
+            append_optional(out, self.county_review)?;
+        }
+        Ok(())
+    }
 }
 fn append_optional(out: &mut Vec<u8>, value: Option<Vec<u8>>) -> Result<()> {
     match value {
@@ -191,33 +238,23 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
         }
         sources.push(SourceArtifact::capture(kind, bytes.to_vec()));
     }
-    let organizer_tag = c.take(1)?[0];
-    let organizer_length =
-        usize::try_from(u32::from_be_bytes(c.array()?)).map_err(|_| EconomicCatalogError::Bound)?;
-    if organizer_length > MAX_ORGANIZER_CONFIG_BYTES {
-        return Err(EconomicCatalogError::Bound);
-    }
-    let organizer = match (organizer_tag, organizer_length) {
-        (0, 0) => None,
-        (1, n) if n > 0 => Some(
-            babylon_practice_contract::decode_organizer_config(c.take(n)?)
-                .map_err(|_| EconomicCatalogError::Identity)?,
-        ),
-        _ => return Err(EconomicCatalogError::WireNoncanonical),
-    };
-    let city_pd_tag = c.byte()?;
-    let city_pd_length =
-        usize::try_from(u32::from_be_bytes(c.array()?)).map_err(|_| EconomicCatalogError::Bound)?;
-    if city_pd_length > MAX_ORGANIZER_CONFIG_BYTES {
-        return Err(EconomicCatalogError::Bound);
-    }
-    let city_pd = match (city_pd_tag, city_pd_length) {
-        (0, 0) => None,
-        (1, n) if n > 0 => Some(
-            babylon_practice_contract::decode_city_pd_config(c.take(n)?)
-                .map_err(|_| EconomicCatalogError::Identity)?,
-        ),
-        _ => return Err(EconomicCatalogError::WireNoncanonical),
+    let organizer = c
+        .optional_frame()?
+        .map(babylon_practice_contract::decode_organizer_config)
+        .transpose()
+        .map_err(|_| EconomicCatalogError::Identity)?;
+    let city_pd = c
+        .optional_frame()?
+        .map(babylon_practice_contract::decode_city_pd_config)
+        .transpose()
+        .map_err(|_| EconomicCatalogError::Identity)?;
+    let county_review = if frames_county_review(&compiler) {
+        c.optional_frame()?
+            .map(babylon_practice_contract::decode_county_review_config)
+            .transpose()
+            .map_err(|_| EconomicCatalogError::Identity)?
+    } else {
+        None
     };
     if c.at != bytes.len() {
         return Err(EconomicCatalogError::WireTrailing);
@@ -231,6 +268,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
             geography,
             organizer,
             city_pd,
+            county_review,
         },
         compiler,
     ))
@@ -256,6 +294,21 @@ impl<'a> Cursor<'a> {
         self.take(N)?
             .try_into()
             .map_err(|_| EconomicCatalogError::WireTruncated)
+    }
+    /// One optional footer: a presence tag, a length and the bytes. Absent is tag zero and length
+    /// zero; present is tag one and a positive, bounded length.
+    fn optional_frame(&mut self) -> Result<Option<&'a [u8]>> {
+        let tag = self.byte()?;
+        let length = usize::try_from(u32::from_be_bytes(self.array()?))
+            .map_err(|_| EconomicCatalogError::Bound)?;
+        if length > MAX_ORGANIZER_CONFIG_BYTES {
+            return Err(EconomicCatalogError::Bound);
+        }
+        match (tag, length) {
+            (0, 0) => Ok(None),
+            (1, n) if n > 0 => self.take(n).map(Some),
+            _ => Err(EconomicCatalogError::WireNoncanonical),
+        }
     }
     fn byte(&mut self) -> Result<u8> {
         Ok(self.array::<1>()?[0])
@@ -372,6 +425,49 @@ mod tests {
         );
     }
     #[test]
+    fn only_the_county_compiler_frames_a_county_review_footer() {
+        let raw = vector();
+        let (input, _) = decode(&raw).expect("the committed canonical bytes decode");
+        // A compiler that does not frame the county ends after the City PD's footer and keeps the
+        // bytes it always had.
+        assert_eq!(encode(&input, "c").expect("it encodes"), raw);
+        let framed =
+            encode(&input, COUNTY_REVIEW_COMPILER).expect("the county's compiler frames it");
+        let unframed_length = encode(&input, "national-world-v11")
+            .expect("an earlier compiler encodes")
+            .len();
+        // The two names are as long as each other; the county's frame has a footer more.
+        assert_eq!(framed.len(), unframed_length + 5);
+        assert_eq!(&framed[framed.len() - 15..], &[0; 15]);
+        let (decoded, compiler) = decode(&framed).expect("the framed bytes decode");
+        assert_eq!(compiler, COUNTY_REVIEW_COMPILER);
+        assert_eq!(decoded.county_review, None);
+        assert_eq!(
+            encode(&decoded, &compiler).expect("it encodes again"),
+            framed
+        );
+        // The footer cannot be dropped from the county's frame, and a footer cannot be added to
+        // another compiler's.
+        assert_eq!(
+            decode(&framed[..framed.len() - 5]).err(),
+            Some(EconomicCatalogError::WireTruncated)
+        );
+        let mut padded = encode(&input, "national-world-v11").expect("an earlier compiler encodes");
+        padded.extend_from_slice(&[0; 5]);
+        assert_eq!(
+            decode(&padded).err(),
+            Some(EconomicCatalogError::WireTrailing)
+        );
+        // The footer is a presence tag and a length that cannot disagree.
+        let mut lying = framed.clone();
+        let tag = lying.len() - 5;
+        lying[tag] = 1;
+        assert_eq!(
+            decode(&lying).err(),
+            Some(EconomicCatalogError::WireNoncanonical)
+        );
+    }
+    #[test]
     fn current_catalog_frame_retains_campaign_config_and_refuses_old_version() {
         let mut input = EconomicCatalogInput {
             scenario_id: "s".into(),
@@ -384,6 +480,7 @@ mod tests {
             )],
             organizer: None,
             city_pd: None,
+            county_review: None,
         };
         let d = MichiganDefines::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),

@@ -25,6 +25,9 @@ encoding:
     - u32_big_endian_config_byte_length
     - exact_current_canonical_organizer_config_bytes
   city_pd_footer: A second presence tag and length carry the optional City PD configuration.
+  county_review_footer: A third presence tag and length carry the optional county review configuration. It is written
+    only under national-world-v12; the roster the review opens with is regenerated from the opening, never encoded.
+    A catalog of an earlier compiler ends after the City PD footer and keeps its bytes.
   organizer_presence: Absent is tag zero and length zero; present is tag one and positive bounded length.
   maximum_organizer_config_bytes: 33554432
   organizer_source_basis: SHA256 of the exact current source frame with an absent organizer footer.
@@ -83,6 +86,10 @@ admission:
   national_city_pd: National policy schema 7 names the City PD's payroll on the county's local-government
     public-provisioning workplace that employs the force and derives the City PD's wage, visit price and
     appropriation separately from the scenario wage. Earlier policy versions keep their original opening.
+  national_county_review: National policy schema 7 names the county review's session terms. The county's groups
+    are its household cohorts, its crews are the staffing members of its ordinary groups, and the roll of each group
+    is its household-support line over the unit price the opening pays one job-seeking person. The review adds no
+    opening row. Earlier policy versions keep their original opening.
   source_coverage: Each importer requires its exact dependency set and refuses extra roles.
   source_semantics: Captured bytes enter their source-specific checked native readers.
   missingness: Suppression, absent observations and incomplete subtotals remain explicit.

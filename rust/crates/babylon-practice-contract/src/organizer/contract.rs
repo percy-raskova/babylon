@@ -1373,6 +1373,7 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
     );
     Ok(OrganizerPreview {
+        review: None,
         choice: command.choice,
         allocation: command.allocation,
         current_period: state.period,

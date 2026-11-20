@@ -5194,6 +5194,7 @@ pub(crate) mod tests {
 
     pub(super) fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
         OrganizerPreview {
+            review: None,
             allocation: command.allocation,
             choice: command.choice,
             current_period: command.expected_period,

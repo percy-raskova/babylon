@@ -22,6 +22,11 @@ pub use babylon_practice_contract::{
 };
 
 pub use babylon_practice_contract::{
+    Band, BandCount, ContactOutcome, ContactPreview, CountyReviewProjection, GroupKind, LedgerLine,
+    LedgerLineKind, PayMode, PositionEarned, PositionKey, PositionView,
+};
+
+pub use babylon_practice_contract::{
     OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
     OrganizerAidOption, OrganizerAllocation, OrganizerChoice, OrganizerCollectionOutcome,
     OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
@@ -36,7 +41,7 @@ use babylon_kernel::clock::CampaignDuration;
 use uuid::Uuid;
 
 pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 22;
-pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
+pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 1_048_576;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

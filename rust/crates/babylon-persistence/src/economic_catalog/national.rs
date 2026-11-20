@@ -180,7 +180,9 @@ fn validate_graph_sources(
         return Err(EconomicCatalogError::Source(Kind::GraphDeclarations));
     }
     validate_declarations(input)?;
-    let expected_rules = if input.city_pd.is_some() {
+    let expected_rules = if input.county_review.is_some() {
+        super::preset::national_county_review_rules(graph)
+    } else if input.city_pd.is_some() {
         super::preset::national_city_pd_rules(graph)
     } else if input.organizer.is_some() {
         super::preset::national_organizer_rules(graph)

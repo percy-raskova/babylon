@@ -70,6 +70,25 @@ fn controlled_register(
         .expect("public venue opening")
 }
 
+/// The county review's section, which the national campaign's rules require beside the City PD's.
+fn with_county_review(
+    register: MaterialWorldRegister,
+    foundation: &MaterialRuntimeFoundation,
+    catalog: &MaterialCatalog,
+) -> MaterialWorldRegister {
+    register
+        .with_county_review(
+            catalog,
+            foundation
+                .register
+                .county_review()
+                .expect("the national campaign's county review")
+                .clone(),
+            Some(foundation.graph.stable_resolver()),
+        )
+        .expect("the county review binds beside the City PD")
+}
+
 fn controlled_session(
     foundation: MaterialRuntimeFoundation,
     register: MaterialWorldRegister,
@@ -145,9 +164,10 @@ fn alternate_reader_register(foundation: &MaterialRuntimeFoundation) -> Material
         foundation.graph.stable_resolver(),
     )
     .expect("real zero-cash opening decision");
-    register
+    let register = register
         .with_city_pd(&foundation.catalog, pd, foundation.graph.stable_resolver())
-        .expect("bound PD")
+        .expect("bound PD");
+    with_county_review(register, foundation, &foundation.catalog)
 }
 
 fn opening_command(config: &OrganizerConfig, choice: OrganizerChoice) -> OrganizerCommand {
@@ -265,6 +285,7 @@ fn public_budget_shortage_leaves_no_pending_visit() {
         foundation.graph.stable_resolver(),
     )
     .expect("bound zero-cash PD");
+    let register = with_county_review(register, &foundation, &foundation.catalog);
     let session = controlled_session(foundation, register, None);
     let first = session
         .prepare_advance(&actions(&session, None))
@@ -329,6 +350,7 @@ fn genuine_household_time_shortfall_does_not_complete_the_visit() {
         foundation.graph.stable_resolver(),
     )
     .expect("bound PD");
+    let register = with_county_review(register, &foundation, &catalog);
     let mut session = controlled_session(foundation, register, Some(catalog));
     for period in 1..=2 {
         let candidate = session

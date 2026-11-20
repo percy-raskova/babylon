@@ -872,6 +872,7 @@ mod tests {
     fn preview_refusals_pending_requests_and_historical_views_cannot_offer_writes() {
         let (mut client, mut session) = super::super::tests::ready();
         client.preview = Some(OrganizerPreview {
+            review: None,
             allocation: OrganizerAllocation::None,
             choice: OrganizerChoice::Reinforce,
             current_period: 3,

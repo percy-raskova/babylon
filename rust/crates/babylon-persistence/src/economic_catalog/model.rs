@@ -10,6 +10,7 @@ use babylon_material_circuit::CompanyPayoutPolicy;
 use babylon_material_circuit::CompanyPortfolioPolicy;
 use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_practice_contract::CityPdConfig;
+use babylon_practice_contract::CountyReviewConfig;
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::currency::Currency;
@@ -308,6 +309,9 @@ pub struct EconomicCatalogInput {
     pub organizer: Option<OrganizerConfig>,
     /// The captured national opponent and its independent authority.
     pub city_pd: Option<CityPdConfig>,
+    /// The captured county review, carried only by the compiler that frames it. The roster it
+    /// opens with is regenerated from the opening, never encoded.
+    pub county_review: Option<CountyReviewConfig>,
 }
 
 /// Captured user-facing commodity identity; labels never come from guessing a hash.

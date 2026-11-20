@@ -11,6 +11,7 @@ use crate::{
     PendingArchiveReceipt, SemanticArchiveError,
 };
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
+use babylon_practice_contract::SessionRecord;
 use babylon_practice_contract::{OrganizerAidCashStatus, OrganizerPeriodJournal};
 
 use crate::archive;
@@ -794,6 +795,15 @@ impl CapturedOrganizerPages {
                         hearing_evidence(journal, self.tick)
                             .map(|row| PageEvidence::Hearing(config.controlled_actor_id, row)),
                     );
+                    signals.extend(
+                        register
+                            .county_review()
+                            .and_then(|county| county.state().last_session.as_ref())
+                            .filter(|session| session.period == self.tick)
+                            .map(|session| {
+                                PageEvidence::CountySession(config.controlled_actor_id, session)
+                            }),
+                    );
                 }
                 let matching_receipts = receipts
                     .iter()
@@ -919,6 +929,7 @@ impl HearingEvidence<'_> {
 
 enum PageEvidence<'a> {
     Hearing(u64, HearingEvidence<'a>),
+    CountySession(u64, &'a SessionRecord),
     Report(&'a OrganizerObservation),
     Encounter(&'a CityPdEncounter),
     Practice(&'a OrganizerReceipt),
@@ -930,6 +941,7 @@ impl PageEvidence<'_> {
     fn period(&self) -> u64 {
         match self {
             Self::Hearing(_, row) => row.period(),
+            Self::CountySession(_, record) => record.period,
             Self::Report(r) => r.acquired_period,
             Self::Encounter(r) => r.resolve_period,
             Self::Practice(r) => r.period,
@@ -940,6 +952,7 @@ impl PageEvidence<'_> {
     fn signal(&self) -> Result<ArchiveSignal, SemanticArchiveError> {
         match self {
             Self::Hearing(actor, row) => row.signal(*actor),
+            Self::CountySession(actor, record) => county_session_signal(*actor, record),
             Self::Report(r) => observation_signal(r),
             Self::Encounter(r) => encounter_signal(r),
             Self::Practice(r) => practice_signal(r),
@@ -1053,6 +1066,26 @@ fn hearing_signal(
         format!("Relief hearing minutes from period {}", hearing.period),
         minutes,
         evidence.citation(actor)?,
+    )
+}
+
+/// One held session of the county review: its public record, on the organization's page. The
+/// session is the county's own act, so the signal asks no knowledge grant of its own.
+fn county_session_signal(
+    actor: u64,
+    record: &SessionRecord,
+) -> Result<ArchiveSignal, SemanticArchiveError> {
+    ArchiveSignal::try_new(
+        format!("county-review-{}", record.period),
+        format!("County review session, period {}", record.period),
+        crate::organizer_runtime::county_review::session_signal_text(record),
+        ArchiveCitation::try_new(
+            "committed-county-review-session-v1".into(),
+            format!(
+                "source-actor/{actor}/observed-period/{0}/acquired-period/{0}/county-session/{0}",
+                record.period
+            ),
+        )?,
     )
 }
 

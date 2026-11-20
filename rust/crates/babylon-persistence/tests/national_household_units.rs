@@ -766,11 +766,102 @@ const EXTRACTION_16: (&str, &str) = (
     "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
     "output = \"resources\"\noutput_units_per_batch = 16\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 16,",
 );
-const CANDIDATES: [(&str, &[(&str, &str)]); 4] = [
+/// Round 1 after C: extraction makes 32 units a batch from 32 units of deposit (16 hours).
+const EXTRACTION_32: (&str, &str) = (
+    "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+    "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,",
+);
+/// Round 2: energy makes 320 units of utility a batch (16 hours, 8 units of resources).
+const ENERGY_320: (&str, &str) = (
+    "output = \"utility\"\noutput_units_per_batch = 160\n",
+    "output = \"utility\"\noutput_units_per_batch = 320\n",
+);
+/// Round 3: no secondary supplier abroad; every retailer and producer buys its whole need at home.
+const NO_FOREIGN_PROCUREMENT: (&str, &str) = (
+    "foreign_procurement_bps = 2500 ",
+    "foreign_procurement_bps = 0 ",
+);
+/// Round 4: the county pays each opening job-seeker sixteen periods of food a period (the most
+/// the policy admits), not one.
+const SUPPORT_16: (&str, &str) = (
+    "reserve_food_support_periods = 1\n",
+    "reserve_food_support_periods = 16\n",
+);
+/// Round 4: food makes 32 parcels a batch (16 hours, the same inputs).
+const FOOD_32: (&str, &str) = (
+    "output = \"food\"\noutput_units_per_batch = 16\n",
+    "output = \"food\"\noutput_units_per_batch = 32\n",
+);
+const C_EDITS: [(&str, &str); 3] = [SWEEP_OFF, BUSINESS_SERVICES_48, EXTRACTION_16];
+const E_EDITS: [(&str, &str); 4] = [SWEEP_OFF, BUSINESS_SERVICES_48, EXTRACTION_32, ENERGY_320];
+const F_EDITS: [(&str, &str); 5] = [
+    SWEEP_OFF,
+    BUSINESS_SERVICES_48,
+    EXTRACTION_32,
+    ENERGY_320,
+    NO_FOREIGN_PROCUREMENT,
+];
+const G_EDITS: [(&str, &str); 4] = [
+    SWEEP_OFF,
+    BUSINESS_SERVICES_48,
+    EXTRACTION_16,
+    NO_FOREIGN_PROCUREMENT,
+];
+const H_EDITS: [(&str, &str); 6] = [
+    SWEEP_OFF,
+    BUSINESS_SERVICES_48,
+    EXTRACTION_32,
+    ENERGY_320,
+    NO_FOREIGN_PROCUREMENT,
+    SUPPORT_16,
+];
+const I_EDITS: [(&str, &str); 6] = [
+    SWEEP_OFF,
+    BUSINESS_SERVICES_48,
+    EXTRACTION_32,
+    ENERGY_320,
+    NO_FOREIGN_PROCUREMENT,
+    FOOD_32,
+];
+/// Round 5: no wage tax and no operating-income tax, so no money leaves circulation into the
+/// public accounts.
+const NO_WAGE_TAX: (&str, &str) = ("wage_tax_bps = 1500\n", "wage_tax_bps = 0\n");
+const NO_OPERATING_TAX: (&str, &str) = (
+    "operating_income_tax_bps = 1500\n",
+    "operating_income_tax_bps = 0\n",
+);
+const J_EDITS: [(&str, &str); 8] = [
+    SWEEP_OFF,
+    BUSINESS_SERVICES_48,
+    EXTRACTION_32,
+    ENERGY_320,
+    NO_FOREIGN_PROCUREMENT,
+    FOOD_32,
+    NO_WAGE_TAX,
+    NO_OPERATING_TAX,
+];
+const K_EDITS: [(&str, &str); 7] = [
+    SWEEP_OFF,
+    BUSINESS_SERVICES_48,
+    EXTRACTION_32,
+    ENERGY_320,
+    NO_FOREIGN_PROCUREMENT,
+    FOOD_32,
+    SUPPORT_16,
+];
+const CANDIDATES: [(&str, &[(&str, &str)]); 12] = [
     ("shipped", &[]),
     ("A", &[SWEEP_OFF]),
     ("B", &[SWEEP_OFF, BUSINESS_SERVICES_48]),
-    ("C", &[SWEEP_OFF, BUSINESS_SERVICES_48, EXTRACTION_16]),
+    ("C", &C_EDITS),
+    ("D", &[SWEEP_OFF, BUSINESS_SERVICES_48, EXTRACTION_32]),
+    ("E", &E_EDITS),
+    ("F", &F_EDITS),
+    ("G", &G_EDITS),
+    ("H", &H_EDITS),
+    ("I", &I_EDITS),
+    ("J", &J_EDITS),
+    ("K", &K_EDITS),
 ];
 
 #[test]
@@ -796,4 +887,20 @@ fn record_economy_repair_candidates() {
         }
     };
     write_report(&json!({"candidates": rows}), &path);
+}
+
+#[test]
+#[ignore = "writes the Wayne supply chain of one candidate (ECONOMY_CANDIDATE) under the target's tmp"]
+fn record_wayne_supply_chain_of_a_candidate() {
+    let name = std::env::var("ECONOMY_CANDIDATE").unwrap_or_else(|_| "C".to_owned());
+    let (_, edits) = CANDIDATES
+        .iter()
+        .find(|(candidate, _)| *candidate == name)
+        .expect("a named candidate");
+    let catalog =
+        CapturedEconomicCatalog::capture_national_campaign(edited_input(edits), campaign())
+            .expect("the national campaign");
+    let path =
+        Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("economy-repair/chain-{name}.json"));
+    write_report(&chain_report(catalog, 10), &path);
 }

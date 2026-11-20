@@ -66,6 +66,58 @@ pub fn apportion(
     Ok(Apportionment { shares, withheld })
 }
 
+/// Divides `total` among parts in proportion to `weights`. Each part gets the floor of
+/// total × weight ÷ Σ weights; what is left goes one each to the largest remainders, and equal
+/// remainders go to the earlier part. Unlike `apportion`, the total is not capped by the weights.
+///
+/// A total of zero gives all zeros. Callers list the parts from the bottom 50% up, so that the
+/// earlier part is the lower band.
+///
+/// # Errors
+///
+/// `Arithmetic` when the weights sum to zero and the total does not, and when a sum or a product
+/// leaves the range of `u128`.
+pub fn split_by_largest_remainder(
+    total: u128,
+    weights: &[u64],
+) -> Result<Vec<u128>, CountyReviewError> {
+    if total == 0 {
+        return Ok(vec![0; weights.len()]);
+    }
+    let sum = weights.iter().try_fold(0_u128, |acc, w| {
+        acc.checked_add(u128::from(*w))
+            .ok_or(CountyReviewError::Arithmetic)
+    })?;
+    if sum == 0 {
+        return Err(CountyReviewError::Arithmetic);
+    }
+    let mut shares: Vec<u128> = Vec::with_capacity(weights.len());
+    let mut remainders: Vec<(u128, usize)> = Vec::with_capacity(weights.len());
+    for (index, weight) in weights.iter().enumerate() {
+        let numerator = total
+            .checked_mul(u128::from(*weight))
+            .ok_or(CountyReviewError::Arithmetic)?;
+        shares.push(numerator / sum);
+        remainders.push((numerator % sum, index));
+    }
+    let assigned = shares.iter().try_fold(0_u128, |acc, s| {
+        acc.checked_add(*s).ok_or(CountyReviewError::Arithmetic)
+    })?;
+    let leftover = total
+        .checked_sub(assigned)
+        .ok_or(CountyReviewError::Arithmetic)?;
+    let cut = usize::try_from(leftover).map_err(|_| CountyReviewError::Arithmetic)?;
+    // Largest remainder first; equal remainders keep the caller's order.
+    remainders.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    for (_, index) in remainders.iter().take(cut) {
+        let share = shares
+            .get_mut(*index)
+            .ok_or(CountyReviewError::Arithmetic)?;
+        *share = share.checked_add(1).ok_or(CountyReviewError::Arithmetic)?;
+    }
+    Ok(shares)
+}
+
 /// Gives the leftover units to the largest remainders and returns the units withheld.
 fn hand_out_leftover(
     shares: &mut [u64],

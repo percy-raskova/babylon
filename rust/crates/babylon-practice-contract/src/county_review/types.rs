@@ -41,6 +41,15 @@ pub enum CountyReviewError {
     WageBandOutsideLaborForce,
     /// An opening reach cannot be placed on the group's households.
     OpeningReachNotPlaceable,
+    /// An opening row arrives with households already reached.
+    OpeningRowReached,
+    /// A row's band is not one its group's income allows: top 1% or next 9% with a business share,
+    /// else the other two.
+    BandOutsideGroup,
+    /// An opening row bound to a crew has nobody in the labor force.
+    OpeningCrewRowOutsideLaborForce,
+    /// An opening row's relief units differ from its people looking for work.
+    OpeningUnitsNotSeekers,
     /// The roster's group list does not match the configuration.
     RosterShape,
     /// Roster rows are not sorted by key and unique.

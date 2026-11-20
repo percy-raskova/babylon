@@ -126,3 +126,85 @@ fn ratio_split_gives_the_odd_household_to_the_larger_remainder() {
         Err(CountyReviewError::SplitExceedsWeights)
     );
 }
+
+#[test]
+fn split_by_largest_remainder_gives_the_pinned_values() {
+    let cases: [(u128, &[u64], Vec<u128>); 5] = [
+        (7, &[3, 1], vec![5, 2]),
+        (300_000_000, &[2, 1], vec![200_000_000, 100_000_000]),
+        (10_000, &[0, 1, 1, 1], vec![0, 3334, 3333, 3333]),
+        (1, &[1, 1], vec![1, 0]),
+        (0, &[0, 0], vec![0, 0]),
+    ];
+    for (total, weights, want) in cases {
+        assert_eq!(
+            practice_contract::split_by_largest_remainder(total, weights),
+            Ok(want),
+            "{total} over {weights:?}"
+        );
+    }
+}
+
+#[test]
+fn split_by_largest_remainder_refuses_a_total_with_no_weight() {
+    assert_eq!(
+        practice_contract::split_by_largest_remainder(5, &[0, 0]),
+        Err(CountyReviewError::Arithmetic)
+    );
+    assert_eq!(
+        practice_contract::split_by_largest_remainder(5, &[]),
+        Err(CountyReviewError::Arithmetic)
+    );
+    assert_eq!(
+        practice_contract::split_by_largest_remainder(u128::MAX, &[2, 1]),
+        Err(CountyReviewError::Arithmetic),
+        "a product that leaves u128 is refused"
+    );
+}
+
+#[test]
+fn split_by_largest_remainder_always_adds_to_the_total() {
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut draw = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for _ in 0..500 {
+        let parts = usize::try_from(1 + draw() % 6).expect("small");
+        let mut weights: Vec<u64> = (0..parts).map(|_| draw() % 1_000).collect();
+        if weights.iter().all(|w| *w == 0) {
+            weights[0] = 1;
+        }
+        let total = u128::from(draw() % 1_000_000_000_000);
+        let split = practice_contract::split_by_largest_remainder(total, &weights).expect("splits");
+        assert_eq!(split.len(), weights.len());
+        assert_eq!(
+            split.iter().sum::<u128>(),
+            total,
+            "{total} over {weights:?}"
+        );
+        let sum: u128 = weights.iter().map(|w| u128::from(*w)).sum();
+        for (part, weight) in split.iter().zip(&weights) {
+            let floor = total * u128::from(*weight) / sum;
+            assert!(
+                *part == floor || *part == floor + 1,
+                "part {part} is not floor {floor} or one above"
+            );
+            if *weight == 0 {
+                assert_eq!(*part, 0, "a part with no weight gets nothing");
+            }
+        }
+    }
+}
+
+#[test]
+fn split_by_largest_remainder_divides_a_total_above_the_weights() {
+    assert!(practice_contract::apportion(1_000, &[2, 1], Ties::InOrder).is_err());
+    assert_eq!(
+        practice_contract::split_by_largest_remainder(1_000, &[2, 1]),
+        Ok(vec![667, 333]),
+        "unlike apportion, the total is not capped by the weights"
+    );
+}

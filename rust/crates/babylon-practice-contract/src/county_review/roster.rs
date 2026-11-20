@@ -496,7 +496,17 @@ pub fn opening_roster(
     let placed = opening_placement(config, crews)?;
     let mut rows = band_rows(config, &placed)?;
     place_opening_reach(config, &mut rows, opening_reach)?;
-    let groups = config
+    Ok(Roster {
+        period: 0,
+        groups: opening_groups(config),
+        rows,
+    })
+}
+
+/// Each group's households at the opening: the ordinary groups' own, and none for a collective
+/// residence.
+fn opening_groups(config: &CountyReviewConfig) -> Vec<RosterGroup> {
+    config
         .groups
         .iter()
         .map(|g| RosterGroup {
@@ -507,10 +517,141 @@ pub fn opening_roster(
             },
             departed_units: 0,
         })
-        .collect();
+        .collect()
+}
+
+/// Checks one opening row against what `opening_roster` could make: nobody reached, the row's own
+/// rules, a band in its group's pair, a crew for every next 40% row, someone in the labor force on
+/// every crew row, and relief units equal to the people looking for work.
+fn check_opening_row(
+    config: &CountyReviewConfig,
+    row: &RosterRow,
+) -> Result<(), CountyReviewError> {
+    if row.reached != 0 {
+        return Err(CountyReviewError::OpeningRowReached);
+    }
+    check_row(config, row)?;
+    let key = &row.key;
+    let owner = usize::try_from(key.group)
+        .ok()
+        .and_then(|g| config.groups.get(g))
+        .is_some_and(|g| g.has_ownership_income);
+    let pair = if owner {
+        [Band::Top1, Band::Next9]
+    } else {
+        [Band::Next40, Band::Bottom50]
+    };
+    if !pair.contains(&key.band) {
+        return Err(CountyReviewError::BandOutsideGroup);
+    }
+    if key.band == Band::Next40 && key.crew.is_none() {
+        return Err(CountyReviewError::WageBandOutsideLaborForce);
+    }
+    if key.crew.is_some() && key.at_work == 0 && key.seeking == 0 {
+        return Err(CountyReviewError::OpeningCrewRowOutsideLaborForce);
+    }
+    if key.units != key.seeking {
+        return Err(CountyReviewError::OpeningUnitsNotSeekers);
+    }
+    Ok(())
+}
+
+/// Checks that the rows add to the configuration and to the crews: each ordinary group's
+/// households, then its units against its roll, then each configured crew's people at work and
+/// looking for work against the engine's (zero for a crew not listed). The rows must have passed
+/// `check_opening_row`, which keeps every group and crew index in range.
+fn check_opening_sums(
+    config: &CountyReviewConfig,
+    crews: &[OpeningCrew],
+    rows: &[RosterRow],
+) -> Result<(), CountyReviewError> {
+    let mut group_totals = vec![(0_u128, 0_u128); config.groups.len()];
+    let mut crew_totals = vec![(0_u128, 0_u128); config.crews.len()];
+    for row in rows {
+        let households = u128::from(row.households);
+        let group = usize::try_from(row.key.group)
+            .ok()
+            .and_then(|g| group_totals.get_mut(g))
+            .ok_or(CountyReviewError::UnknownGroup)?;
+        group.0 += households;
+        group.1 += u128::from(row.key.units) * households;
+        if let Some(index) = row.key.crew {
+            let crew = usize::try_from(index)
+                .ok()
+                .and_then(|c| crew_totals.get_mut(c))
+                .ok_or(CountyReviewError::UnknownCrew)?;
+            crew.0 += u128::from(row.key.at_work) * households;
+            crew.1 += u128::from(row.key.seeking) * households;
+        }
+    }
+    for (group, (households, units)) in config.groups.iter().zip(&group_totals) {
+        if group.kind != GroupKind::Ordinary {
+            continue;
+        }
+        if *households != u128::from(group.opening_households) {
+            return Err(CountyReviewError::GroupHouseholdsMismatch);
+        }
+        if *units != u128::from(group.roll_units) {
+            return Err(CountyReviewError::RollMismatch);
+        }
+    }
+    for (index, (at_work, seeking)) in crew_totals.iter().enumerate() {
+        let listed = crews
+            .iter()
+            .find(|c| usize::try_from(c.crew).is_ok_and(|c| c == index));
+        let (want_work, want_seeking) = listed.map_or((0, 0), |c| (c.at_work, c.seeking));
+        if *at_work != u128::from(want_work) || *seeking != u128::from(want_seeking) {
+            return Err(CountyReviewError::RosterEngineMismatch);
+        }
+    }
+    Ok(())
+}
+
+/// Builds the opening roster from rows the opening already made, and places the reach on them.
+///
+/// The law: `opening_roster_from_rows(c, k, opening_roster(c, k, []).rows, r)` is
+/// `opening_roster(c, k, r)`. The opening's household units are cut from the pooled groups' rows,
+/// so their roster cannot be placed again: placing again would move households between bands.
+///
+/// It admits a row only if `opening_roster` could make a row like it, and a roster only if its sums
+/// match the configuration and the crews. It does not check band sizes or the even spread of the
+/// placement. Those are the pooled law's, applied once to the pooled groups, and a household
+/// unit's configuration cannot repeat them.
+///
+/// `opening_reach` lists `(group, households reached)`.
+///
+/// # Errors
+///
+/// The first refusal found, in this order: the configuration's own refusals; `DuplicateCrew` and
+/// `UnknownCrew`; `SizeLimit` for more than `COUNTY_REVIEW_MAX_ROWS` rows; `RosterNotCanonical`;
+/// then for each row `OpeningRowReached`, the refusals of a valid row, `BandOutsideGroup`,
+/// `WageBandOutsideLaborForce` for a next 40% row with no crew, `OpeningCrewRowOutsideLaborForce`
+/// and `OpeningUnitsNotSeekers`; then for each ordinary group `GroupHouseholdsMismatch` and
+/// `RollMismatch`; then for each configured crew `RosterEngineMismatch`; last
+/// `OpeningReachNotPlaceable`.
+pub fn opening_roster_from_rows(
+    config: &CountyReviewConfig,
+    crews: &[OpeningCrew],
+    rows: &[RosterRow],
+    opening_reach: &[(u32, u64)],
+) -> Result<Roster, CountyReviewError> {
+    validate_county_review_config(config)?;
+    crews_by_group(config, crews)?;
+    if rows.len() > COUNTY_REVIEW_MAX_ROWS {
+        return Err(CountyReviewError::SizeLimit);
+    }
+    if !rows.windows(2).all(|pair| pair[0].key < pair[1].key) {
+        return Err(CountyReviewError::RosterNotCanonical);
+    }
+    for row in rows {
+        check_opening_row(config, row)?;
+    }
+    check_opening_sums(config, crews, rows)?;
+    let mut rows = rows.to_vec();
+    place_opening_reach(config, &mut rows, opening_reach)?;
     Ok(Roster {
         period: 0,
-        groups,
+        groups: opening_groups(config),
         rows,
     })
 }

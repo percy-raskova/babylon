@@ -146,6 +146,12 @@ fn the_list_is_public_and_ordered_by_rank_then_key() {
         "the contact is public"
     );
     assert_eq!(p.household_units_payable, Some(5));
+    assert_eq!(
+        p.household_units_listed,
+        Some(p.positions.iter().map(|v| v.units_listed).sum::<u64>()),
+        "with the roster as it was listed, the session's figure is the positions' sum"
+    );
+    assert!(p.household_units_listed >= p.household_units_payable);
     assert_eq!(p.kept_back_units, Some(0));
     assert_eq!(view(&p, D).asked_paid, 1);
     let (before_config, before) = support::state_before_contact();
@@ -157,6 +163,7 @@ fn the_list_is_public_and_ordered_by_rank_then_key() {
     sorted.sort();
     assert_eq!(order, sorted, "with no session the order is the key's");
     assert_eq!((p.relief_micros, p.household_units_payable), (None, None));
+    assert_eq!(p.household_units_listed, None);
     let text = serde_json::to_string(&p).expect("the projection serializes");
     assert!(
         text.contains("\"relief_micros\":null"),

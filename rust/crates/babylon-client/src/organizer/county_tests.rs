@@ -117,6 +117,7 @@ pub(in crate::organizer) fn fixture() -> CountyReviewProjection {
         ],
         first_class_micros: 1_000_000_000,
         relief_micros: None,
+        household_units_listed: None,
         household_units_payable: None,
         kept_back_units: None,
         roll: vec![("Wayne households".into(), 2)],
@@ -155,6 +156,7 @@ fn held() -> CountyReviewProjection {
         first_session_period: 2,
         session_period: Some(3),
         relief_micros: Some(560_000_000),
+        household_units_listed: Some(positions().iter().map(|p| p.units_listed).sum()),
         household_units_payable: Some(1),
         kept_back_units: Some(0),
         claimants_roll_households: Some(4),
@@ -655,6 +657,7 @@ fn session_held(period: u64, payable: u64, contact: bool) -> CountyReviewProject
     CountyReviewProjection {
         first_session_period: 4,
         session_period: Some(period),
+        household_units_listed: Some(4),
         household_units_payable: Some(payable),
         contact: contact.then(|| (key(Band::Bottom50, Some(0), 2, 4), ContactOutcome::Reached)),
         positions: vec![listed],
@@ -717,6 +720,36 @@ fn a_session_that_changes_whether_the_county_can_pay_every_unit_says_so() {
             "The county's session record arrived: the county can pay every unit again.".to_owned()
         )
     );
+}
+
+#[test]
+fn a_listed_row_that_left_the_roster_does_not_hide_a_shortfall() {
+    // The session listed rows of 4 and 2 units (6 in all) and could pay 4. Every household of the
+    // second row has since been hired, so the roll-forward left only the first row: its 4 listed
+    // units alone would make 4 payable look like every unit.
+    let mut before = session_held(4, 6, false);
+    before.household_units_listed = Some(6);
+    let mut after = session_held(5, 4, false);
+    after.household_units_listed = Some(6);
+    assert_eq!(
+        after
+            .positions
+            .iter()
+            .map(|position| position.units_listed)
+            .sum::<u64>(),
+        4,
+        "the projection's positions hold fewer listed units than the session listed"
+    );
+    assert_eq!(
+        client::county_update(Some(&before), Some(&after)),
+        Some(
+            "The county's session record arrived: the county could not pay every unit.".to_owned()
+        )
+    );
+    // The other way: a session that is still short is not "every unit again" because a row left.
+    let mut short = session_held(4, 2, false);
+    short.household_units_listed = Some(6);
+    assert_eq!(client::county_update(Some(&short), Some(&after)), None);
 }
 
 #[test]

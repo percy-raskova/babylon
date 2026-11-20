@@ -647,13 +647,13 @@ pub(super) enum Standing {
     NoUnit,
 }
 
-/// The standing of the last session, by the projection's own figures: the household units payable
-/// against the household units listed. `None` before any session.
+/// The standing of the last session: the household units it could pay against the household units
+/// it listed, both the session record's own figures. The projection's positions are the roster as
+/// it stands now, rolled forward since the session, so their listed units are not the session's
+/// total. `None` before any session.
 pub(super) fn standing(view: &CountyReviewProjection) -> Option<Standing> {
     let payable = view.household_units_payable?;
-    let listed = view.positions.iter().fold(0_u64, |total, position| {
-        total.saturating_add(position.units_listed)
-    });
+    let listed = view.household_units_listed?;
     Some(if payable >= listed {
         Standing::EveryUnit
     } else if payable == 0 {

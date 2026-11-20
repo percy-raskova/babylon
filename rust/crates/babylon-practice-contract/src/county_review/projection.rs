@@ -179,6 +179,10 @@ pub struct CountyReviewProjection {
     /// The money for relief at the last session.
     #[serde(with = "super::decimal::option")]
     pub relief_micros: Option<i128>,
+    /// Household units the last session listed. This is the session's own figure: the positions
+    /// below are the roster as it stands now, rolled forward since the session, so their listed
+    /// units can sum to less (a listed row whose households moved leaves no position).
+    pub household_units_listed: Option<u64>,
     /// Household units the county could pay at the last session.
     pub household_units_payable: Option<u64>,
     /// Units an exact tie left unpaid at the last session.
@@ -528,6 +532,7 @@ pub fn project(
         ledger: lines,
         first_class_micros,
         relief_micros: session.map(|s| s.relief_micros),
+        household_units_listed: session.map(|s| s.household_units_listed),
         household_units_payable: session.map(|s| s.household_units_payable),
         kept_back_units: session.map(|s| s.kept_back_units),
         roll: roll_by_group(config, state)?,

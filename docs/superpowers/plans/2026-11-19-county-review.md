@@ -51,7 +51,7 @@ check found.
   --frozen pytest ...`.
 - Commit one task at a time: `git add <files>` then `PYTHONPATH=src mise exec -- git commit -F -`
   with the message on stdin. Check `git log --oneline -1` moved. The body ends with `Part of
-  PER-366` and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never commit `uv.lock`.
+  PER-366` and `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`. Never commit `uv.lock`.
 - A commit that changes a file under `tests/baselines/` carries the trailer `Baselines:
   blessed(per-366-county-review)`.
 - No rule reads an identifier to settle a tie or to order an outcome. Identifiers order encodings

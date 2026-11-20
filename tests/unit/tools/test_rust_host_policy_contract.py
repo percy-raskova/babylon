@@ -369,18 +369,6 @@ def test_native_mise_prefers_installed_managed_cargo() -> None:
     policy_root = data_root / "codex-rust-host"
     if policy_root not in cargo_path.parents:
         pytest.skip("the managed Codex Cargo shim is not installed on this host")
-    installed_policy = (cargo_path.parent / "policy.sh").read_text(encoding="utf-8")
-    installed_versions = re.findall(
-        r"^CODEX_RUST_HOST_POLICY_VERSION=([0-9]+)$", installed_policy, re.MULTILINE
-    )
-    assert len(installed_versions) == 1
-    if int(installed_versions[0]) < int(_live_policy_version()):
-        # This proof concerns the dispatcher this checkout defines. An older
-        # installation refuses the checkout's job count until it is upgraded.
-        pytest.skip(
-            f"host policy v{installed_versions[0]} is installed; this checkout defines "
-            f"v{_live_policy_version()} (run .codex/host/install.sh to upgrade)"
-        )
     cargo_home = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")).resolve()
 
     expected_target = REPO_ROOT / "rust" / "target"

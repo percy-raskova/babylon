@@ -43,27 +43,30 @@ ADR301_county_review_session:
     ordinary fiscal accounts continue to determine payments."
 
     R2. THE COUNTY'S RULE. The county lists every household that holds or asks
-    for a unit by the wage tax that household paid on its own wage, and pays down
-    the list until its money runs out. This is an ADR184 allocation: every unit
-    costs the same and the yield is the wage tax. A unit moves only to a household
-    that pays strictly more. An exact tie moves nothing. Positions at one place
-    lose in proportion to the units they hold. A household that asks comes only
-    when a place is open. Relief won lasts one period. The wage the City PD pays for an
-    agency shift is in the group's taxed wages and gives no household a place. A
-    ranking by yield with no threshold is not a fixed political-response curve.
+    for a unit by the wage tax that household paid on its own wage, counted at
+    the rate collected from its own household unit where the campaign has
+    household units (ADR306), and pays down the list until its money runs out.
+    This is an ADR184 allocation: every unit costs the same and the yield is the
+    wage tax. A unit moves only to a household that pays strictly more. An exact
+    tie moves nothing. Positions at one place lose in proportion to the units
+    they hold. A household that asks comes only when a place is open. Relief won
+    lasts one period. The wage the City PD pays for an agency shift is in the
+    group's taxed wages and gives no household a place. A ranking by yield with
+    no threshold is not a fixed political-response curve.
 
     R3. THE HOUSEHOLD'S RULE. A household reads only its own money and hours. A
-    reached household that holds no unit asks only if its budget group has two
-    free hours to set aside, and hours are set aside in order of place. A
-    household left without them is recorded "no time" and does not ask. The
-    number that come is the count of reached households whose own stake is at
-    least their own cost of time: two session hours at the wage. A stake is a
-    whole unit or nothing. Unpaid units fall on reached and unreached households
-    in proportion, and an exact tie falls on the unreached. A household ranked
-    last still comes, and is recorded as in the room. An hour is valued at the
-    wage for every household. The step at $280 is the real spread of stakes.
-    Today the floor keeps nobody home. It would if two hours' wages exceeded a
-    unit, which is a wage above $140 an hour.
+    reached household that holds no unit asks only if its household unit, or its
+    budget group in a campaign without units, has two free hours to set aside,
+    and hours are set aside in order of place. A household left without them is
+    recorded "no time" and does not ask. The number that come is the count of
+    reached households whose own stake is at least their own cost of time: two
+    session hours at the wage. A stake is a whole unit or nothing. Unpaid units
+    fall on reached and unreached households in proportion, and an exact tie
+    falls on the unreached. A household ranked last still comes, and is recorded
+    as in the room. An hour is valued at the wage for every household. The step
+    at $280 is the real spread of stakes. Today the floor keeps nobody home. It
+    would if two hours' wages exceeded a unit, which is a wage above $140 an
+    hour.
 
     R4. WHEN THE COUNTY IS SHORT. The household list is paid from the top.
     Collective residence is outside the review and is cut only in proportion. The
@@ -114,7 +117,7 @@ ADR301_county_review_session:
     - 'A household that came spends 2 more hours to bring one (7.6).'
     - 'Relief won is a level and lasts one period (7.1).'
     - 'Collective residence is outside the review (7.1).'
-    - 'A household asks only if its budget group has two free hours, set aside in order of place; otherwise it is recorded "no time" (7.4 step 5, 7.5).'
+    - 'A household asks only if its household unit, or its budget group in a campaign without units, has two free hours, set aside in order of place; otherwise it is recorded "no time" (7.4 step 5, 7.5).'
     - 'The City PD agency-shift wage gives no household a place (7.4).'
     - 'A household that is brought has the same five answers as the one that brought it (7.6).'
     - 'The two claims stand for the whole run (7.3).'

@@ -27,13 +27,14 @@ ADR302_household_roster_and_counting:
     The first three are Lawvere's account of quantities. The fourth is ADR173.
     Nothing here is called an adjunction.
 
-    R2. POSITIONS BY WORKPLACE. A position is one budget group's households bound
-    to one crew, with a count of people at work, a count looking for work, a
-    count of units held, and the band of the rule of thirds its households were
-    in at the opening (R9). A crew is one budget group's people at one workplace,
-    paid in one way. All of a household's people in the labor force belong to
-    one crew. That is declared. It is not true of Wayne. One crew's workers are
-    taken as paid alike, which is the floor of the grain.
+    R2. POSITIONS BY WORKPLACE. A position is one group's households bound to
+    one crew, where a group is a budget group or, in a campaign that has them, a
+    household unit (ADR306), with a count of people at work, a count looking for
+    work, a count of units held, and the band of the rule of thirds its
+    households were in at the opening (R9). A crew is one group's people at one
+    workplace, paid in one way. All of a household's people in the labor force
+    belong to one crew. That is declared. It is not true of Wayne. One crew's
+    workers are taken as paid alike, which is the floor of the grain.
 
     R3. THE ROSTER. A table of whole-number counts: for each position, its
     households and the reached ones. It adds back to the engine's counts every
@@ -53,11 +54,14 @@ ADR302_household_roster_and_counting:
     households in proportion.
 
     R5. EXACT SPLITS AND TIES. Each split is by largest remainder on whole
-    numbers. An exact tie between positions of one crew is settled by fewer units,
-    then fewer job-seekers, then fewer at work, then the lower band. An exact tie between crews in the
-    binding step leaves the household bound to no crew, counted with the
-    households that have nobody in the labor force. Between reached and
-    unreached households it goes to the unreached. No split reads an identifier.
+    numbers. An exact tie between positions of one crew is settled by fewer
+    units, then fewer job-seekers, then fewer at work, then the lower band. An
+    exact tie between crews in the binding step leaves the household bound to no
+    crew, counted with the households that have nobody in the labor force.
+    Between reached and unreached households it goes to the unreached. No split
+    of the roster reads an identifier. The opening's split of a budget group
+    among its household units takes the canonical order of the pooled crew's
+    member id as its last tie only (ADR306 R6).
 
     R6. UNPAID TAX. A household's place is its own wage (its people at work times
     its crew's wages, divided by the crew's people at work) times the share of
@@ -100,8 +104,9 @@ ADR302_household_roster_and_counting:
     - 'Each group split into has-a-wage and has-no-wage only.'
     - 'A summary of the spread. The engine holds exact counts, so nothing is summarized.'
     - >-
-      Real sub-budgets, each position with its own cash and stock. It belongs to a
-      later slice.
+      Real sub-budgets, each position with its own cash and stock. Household
+      units hold cash and stock instead, and a position is a row inside a unit
+      (ADR306).
   open_questions:
     - >-
       Whether an exact table of counts is lawful under ADR176 ruling 17 is open and

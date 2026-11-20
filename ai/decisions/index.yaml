@@ -1,6 +1,6 @@
 meta:
-  version: 1.98.0
-  updated: '2026-11-19'
+  version: 1.99.0
+  updated: '2026-11-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR306_household_units_in_wayne:
+    title: Give each Wayne household unit its own account, cut once from its budget group at the opening
+    status: accepted
+    date: '2026-11-20'
+    file: ADR306_household_units_in_wayne.yaml
   ADR305_rule_of_thirds_anchoring_law:
     title: Adopt the rule of thirds as the anchoring law for household wealth and for who works
     status: accepted

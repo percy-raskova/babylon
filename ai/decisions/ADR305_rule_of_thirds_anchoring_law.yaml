@@ -47,8 +47,11 @@ ADR305_rule_of_thirds_anchoring_law:
     the opening obeys the Director's statement of who works in each band (R5).
     The shares of wealth bind no rule of that slice, because nothing in it reads
     or writes household wealth. They bind the opening split of a county's
-    household wealth in the next slice, when positions hold accounts of their
-    own. That split is a declared split with its source named.
+    household wealth at the opening of the next slice's step B, when household
+    units hold homes. Step A gives household units accounts of their own and
+    measures each band's share beside the law, by the Director's ruling of
+    2026-11-20, "Measure now, bind with homes" (ADR306 R15). That split is a
+    declared split with its source named.
 
     R3. AFTER THE OPENING. The split of wealth moves only by what households
     earn, spend, win and lose. Who works in each band moves only by hires,
@@ -88,8 +91,9 @@ ADR305_rule_of_thirds_anchoring_law:
   verification: |
     This slice: confirm that no rule reads household wealth or a band, that the
     opening meets the two conditions of R5, and that every period records who
-    works in each band. Next slice: the opening contract splits wealth by R1 with
-    its source named, and the run applies only the reverse test of R3.
+    works in each band. Next slice: step A measures each band's share beside R1
+    (ADR306); step B's opening contract splits wealth by R1 with its source
+    named, and the run applies only the reverse test of R3.
   related:
     - ADR194_director_rulings_batch2_2026_08_11
     - ADR301_county_review_session

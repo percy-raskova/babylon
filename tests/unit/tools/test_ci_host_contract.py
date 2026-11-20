@@ -342,9 +342,10 @@ def test_ci_debug_profile_reaches_every_persistence_consumer_and_cache(tmp_path:
 
     workspace = tomllib.loads((REPO_ROOT / "rust/Cargo.toml").read_text())
     profiles = workspace["profile"]
-    local_debug = profiles["dev"].get("debug", 2)
-    assert local_debug == 2
-    assert profiles.get("test", {}).get("debug", local_debug) == 2
+    local_debug = profiles["dev"]["debug"]
+    test_debug = profiles.get("test", {}).get("debug", local_debug)
+    assert local_debug == expected["CARGO_PROFILE_DEV_DEBUG"]
+    assert test_debug == expected["CARGO_PROFILE_TEST_DEBUG"]
 
 
 def test_scheduled_failure_artifacts_survive_failure() -> None:

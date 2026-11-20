@@ -1,5 +1,5 @@
 meta:
-  version: 1.99.0
+  version: 1.100.0
   updated: '2026-11-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR311_host_policy_v14:
+    title: Babylon's Rust build budget rises to eight CPUs and eight Cargo jobs
+    status: accepted
+    date: '2026-11-19'
+    file: ADR311_host_policy_v14.yaml
   ADR306_household_units_in_wayne:
     title: Give each Wayne household unit its own account, cut once from its budget group at the opening
     status: accepted
@@ -95,6 +100,11 @@ decisions:
     status: accepted
     date: '2026-11-06'
     file: ADR293_wayne_resource_allocations.yaml
+  ADR292_bounded_cargo_intermediates:
+    title: Babylon leases a single Cargo intermediate directory on the media mount
+    status: accepted
+    date: '2026-11-05'
+    file: ADR292_bounded_cargo_intermediates.yaml
   ADR291_first_state_opponent_observation:
     title: A City PD unit observes known public organizing through finite, receipted means
     status: accepted

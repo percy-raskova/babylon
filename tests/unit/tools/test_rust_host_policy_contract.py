@@ -1,6 +1,6 @@
 """Repository contract for Babylon's versioned Codex Rust host bundle.
 
-Version 12 is Babylon's deployment; NNSims has not adopted its bytes.
+The Babylon policy governs its media-backed intermediate build directory.
 """
 
 from __future__ import annotations
@@ -8,8 +8,10 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shlex
 import shutil
 import subprocess
+import tarfile
 import tomllib
 from pathlib import Path
 
@@ -18,7 +20,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HOST_ROOT = REPO_ROOT / ".codex" / "host"
-ADR_KEY = "ADR290_host_policy_v12"
+ADR_KEY = "ADR311_host_policy_v14"
 ADR_PATH = REPO_ROOT / "ai" / "decisions" / f"{ADR_KEY}.yaml"
 ADR_INDEX_PATH = REPO_ROOT / "ai" / "decisions" / "index.yaml"
 POLICY_V12_SHA256 = {
@@ -29,9 +31,32 @@ POLICY_V12_SHA256 = {
     "systemd/codex-rust-babylon.slice": "db18f20360e1b04cf2cd3c2e1a60e6f72df4d23141028c8b0be1e5b533c05da8",
     "systemd/codex-rust-nnsims.slice": "ab60acb7148fb1effd1cf8c4370744a536cd6cc7cbf09eef5bdb0e3083a7d51a",
     "systemd/codex-rust.slice": "54958cafc2b9073b8bdeceda78511a738e70fd78e555e0746741ec8ead4f1171",
-    "tests/installer-contract.sh": "38ad421118281cc2f3ad223f5a66ff1e908ec513024fd6f59bbe45d73e6d0001",
-    "tests/policy-contract.sh": "724cd467b00c01f5839e82372c7864557ed8b4ecad1a7ecfb0d297b554ab551f",
 }
+
+POLICY_V13_SHA256 = {
+    "cargo": "daed14c184f307fbe93a643e0886f1cc2015184e16e619bd9badd7a029f9c504",
+    "cargo-config.py": "efd74452a2c521dfc9a38810e75f6605fadfa987af66f547f3bc89b5077380e0",
+    "install.sh": "c1df783af6f515675e13b5c83fc1e196e2a75b396b536b03e7ff7e9eb45b7675",
+    "policy.sh": "6d92ebafa2b03bbcb6492c1db958846090ee64ee30bdd239fd6c4e1e5b933080",
+    "systemd/codex-rust-babylon.slice": "631c681ae9b1a89bf8d3e7163f2bc1e05a983e7cb40aebafe42638a4afa66643",
+    "systemd/codex-rust-nnsims.slice": "6745aeecf6603df6fe76aff3d0b02d5f3344de1241635a1139c517b9ef9a3d90",
+    "systemd/codex-rust.slice": "52fa6bff4cdaa472d45b003a51215091d2ee29a27ef193e45cf0461f5cfe5647",
+    "tests/installer-contract.sh": "f4adb80b4a6c426b0686bf83f486471258a1057cc7f30ffcbd750b93689017cf",
+    "tests/policy-contract.sh": "4bb1d4abba225c924fbcd7753c5dd1ccf736cbdaad99a3ce6b6cb782783a6ff0",
+}
+
+POLICY_V14_SHA256 = {
+    "cargo": "be7cf26b263ca15c8cdde614f49258227a14cce709fb0191428d5fdb02b2f74a",
+    "cargo-config.py": "66161ba5bb78db3e5ac578086796bc4a3ff063e0dbeca386cd04762bcc6773f6",
+    "install.sh": "1eac44c57c35d78c1ebd285712b3e02c9d5bd766be82f06032f2d370fed88861",
+    "policy.sh": "cf5025d22f28dff8f9236c1034e7188bc67b27fe9e4bd457f0ca537ba8ae87c1",
+    "systemd/codex-rust-babylon.slice": "204282fb8b403456aa1a85579f78a463395ef44ea1c9892c06a6d27a02eb719e",
+    "systemd/codex-rust-nnsims.slice": "fa89db7566aa895dcb85c102483d467e16021a3bad4cea0135326501118bc857",
+    "systemd/codex-rust.slice": "cd674d21f9622663e151c39b5bd21ac17183bf43af05b760ac6a090f2d539c28",
+    "tests/installer-contract.sh": "3375b0969075fc4c146758887a3e6bea2417dc38ee37ae5f55f61b4e4bdb2e3d",
+    "tests/policy-contract.sh": "71320e2385d3184ddbde60360001c1561772f4816d4f7e488544e2301188549c",
+}
+HOST_POLICY_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "host-policy"
 
 _WORKTREE_ENV_FIXTURE = """\
 # Test-only support for policy v11's inherited NNS worktree assertions.
@@ -105,14 +130,36 @@ def _live_policy_version() -> str:
     return versions[0]
 
 
+def _archive_digests(path: Path) -> dict[str, str]:
+    with tarfile.open(path) as archive:
+        original = {}
+        for member in archive.getmembers():
+            if member.isfile():
+                file = archive.extractfile(member)
+                assert file is not None
+                original[member.name] = hashlib.sha256(file.read()).hexdigest()
+    return original
+
+
 @pytest.mark.unit
-def test_policy_v12_bundle_matches_reviewed_bytes() -> None:
+@pytest.mark.parametrize(
+    ("fixture", "pins"),
+    (("v12.tar.gz", POLICY_V12_SHA256), ("v13.tar.gz", POLICY_V13_SHA256)),
+)
+def test_original_upgrade_fixtures_match_reviewed_bytes(fixture: str, pins: dict[str, str]) -> None:
+    """Check each prior installed source byte before exercising the real upgrade."""
+    installed = {name: digest for name, digest in pins.items() if not name.startswith("tests/")}
+    assert _archive_digests(HOST_POLICY_FIXTURES / fixture) == installed
+
+
+@pytest.mark.unit
+def test_policy_v14_bundle_matches_reviewed_bytes() -> None:
     """A changed bundle must receive review and a new policy version."""
     actual_files = {
         path.relative_to(HOST_ROOT).as_posix() for path in HOST_ROOT.rglob("*") if path.is_file()
     }
-    assert actual_files == set(POLICY_V12_SHA256)
-    assert _bundle_mismatches(HOST_ROOT, POLICY_V12_SHA256) == []
+    assert actual_files == set(POLICY_V14_SHA256)
+    assert _bundle_mismatches(HOST_ROOT, POLICY_V14_SHA256) == []
 
 
 @pytest.mark.unit
@@ -125,13 +172,14 @@ def test_accepted_decision_and_index_name_the_live_policy_version() -> None:
     decisions = index["decisions"]
     assert isinstance(decisions, dict)
 
-    title = "Babylon deploys host policy v12 for its current Rust bootstrap"
-    assert version == "12"
+    title = "Babylon's Rust build budget rises to eight CPUs and eight Cargo jobs"
+    assert version == "14"
     assert decision["title"] == title
+    assert decision["issue"] == "PER-368"
     assert decisions[ADR_KEY] == {
         "title": title,
         "status": "accepted",
-        "date": "2026-10-28",
+        "date": "2026-11-19",
         "file": ADR_PATH.name,
     }
     toolchain = tomllib.loads((REPO_ROOT / "rust/rust-toolchain.toml").read_text())
@@ -147,6 +195,33 @@ def test_host_shell_contracts_pass(contract: str, tmp_path: Path) -> None:
     fixture_codex = tmp_path / ".codex"
     fixture_host = fixture_codex / "host"
     shutil.copytree(HOST_ROOT, fixture_host)
+    # Exercise real mount checks on the fixture filesystem. Only the copied policy
+    # uses fixture paths and a checksum for a local stand-in release asset.
+    mount = subprocess.check_output(
+        ["findmnt", "--first-only", "--noheadings", "--output", "TARGET", "--target", "/tmp"],
+        text=True,
+    ).strip()
+    asset = tmp_path / "budget-asset"
+    asset.write_text("#!/bin/sh\nexit 0\n")
+    policy = fixture_host / "policy.sh"
+    source = policy.read_text()
+    source = source.replace(
+        "CODEX_RUST_BABYLON_MOUNT=/media/user/data",
+        f"CODEX_RUST_BABYLON_MOUNT={shlex.quote(mount)}",
+    )
+    source = re.sub(
+        r"^CODEX_RUST_BUDGET_ROOT=.*$",
+        'CODEX_RUST_BUDGET_ROOT="${HOST_CONTRACT_BUDGET_ROOT:?}"',
+        source,
+        flags=re.MULTILINE,
+    )
+    source = re.sub(
+        r"^CODEX_RUST_BUDGET_SHA256=.*$",
+        f"CODEX_RUST_BUDGET_SHA256={_sha256(asset)}",
+        source,
+        flags=re.MULTILINE,
+    )
+    policy.write_text(source)
     fixture_scripts = fixture_codex / "scripts"
     fixture_scripts.mkdir()
     support = {
@@ -161,12 +236,35 @@ def test_host_shell_contracts_pass(contract: str, tmp_path: Path) -> None:
     completed = subprocess.run(
         [str(fixture_host / "tests" / contract)],
         cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "TMPDIR": "/tmp",
+            "HOST_CONTRACT_BUDGET_ASSET": str(asset),
+            "HOST_CONTRACT_V12": str(HOST_POLICY_FIXTURES / "v12.tar.gz"),
+            "HOST_CONTRACT_V13": str(HOST_POLICY_FIXTURES / "v13.tar.gz"),
+        },
         check=False,
         capture_output=True,
         text=True,
         timeout=60,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.unit
+def test_dev_symbols_are_opt_in_and_routine_builds_omit_incremental_state() -> None:
+    """Keep ordinary workspace backtraces small and full symbols available on demand."""
+    with (REPO_ROOT / "rust" / "Cargo.toml").open("rb") as stream:
+        profiles = tomllib.load(stream)["profile"]
+    assert profiles["dev"]["debug"] == "line-tables-only"
+    assert profiles["dev"]["incremental"] is False
+    assert profiles["dev"]["package"]["*"]["debug"] is False
+    assert profiles["dev-dylib"]["inherits"] == "dev"
+    with (REPO_ROOT / ".mise.toml").open("rb") as stream:
+        tasks = tomllib.load(stream)["tasks"]
+    assert "--profile dev-dylib" in tasks["rust:client-dev-dylib"]["run"]
+    assert profiles["full-debug"]["inherits"] == "dev"
+    assert profiles["full-debug"]["debug"] == "full"
 
 
 @pytest.mark.unit
@@ -251,7 +349,7 @@ def test_repository_entrypoints_do_not_override_dispatcher_owned_resources() -> 
 
     assert re.findall(
         r'^CARGO_BUILD_JOBS = "([0-9]+)"$', entrypoints[".mise.toml"], re.MULTILINE
-    ) == ["4"]
+    ) == ["8"]
     environment = (REPO_ROOT / ".codex/environments/environment.toml").read_text(encoding="utf-8")
     assert (
         'export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"' in environment
@@ -304,4 +402,4 @@ def test_native_mise_prefers_installed_managed_cargo() -> None:
     assert proof.returncode == 0, proof.stdout + proof.stderr
     assert "repository=babylon" in proof.stdout
     assert f"target={expected_target}" in proof.stdout
-    assert "jobs=4" in proof.stdout
+    assert "jobs=8" in proof.stdout

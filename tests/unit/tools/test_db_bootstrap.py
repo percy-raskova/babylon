@@ -74,8 +74,11 @@ def test_db_bootstrap_clears_inherited_libpq_targets_before_any_database_access(
 def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
     mise = (ROOT / ".mise.toml").read_text(encoding="utf-8")
 
-    assert 'CARGO_BUILD_JOBS = "4"' in mise
-    assert 'CARGO_BUILD_JOBS = "8"' not in mise
+    assert 'CARGO_BUILD_JOBS = "8"' in mise
+    assert 'CARGO_BUILD_JOBS = "4"' not in mise
+    assert "CARGO_BUILD_JOBS=4 " not in mise
+    runner = (ROOT / "tools/run_rust_postgres.sh").read_text(encoding="utf-8")
+    assert "export CARGO_BUILD_JOBS=8\n" in runner
 
 
 def test_sccache_uses_the_repository_local_policy_cache() -> None:

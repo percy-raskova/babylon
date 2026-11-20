@@ -80,10 +80,11 @@ def _write_host_policy(repo: Path) -> None:
     (host / "systemd").mkdir(parents=True)
     (host / "policy.sh").write_text(
         """\
-CODEX_RUST_HOST_POLICY_VERSION=11
+CODEX_RUST_HOST_POLICY_VERSION=14
 CODEX_RUST_SCCACHE_POLICY_KEY=0.17.0-p2
 CODEX_RUST_SCCACHE_VERSION=0.17.0
-CODEX_RUST_MAX_JOBS=4
+CODEX_RUST_NNSIMS_MAX_JOBS=4
+CODEX_RUST_BABYLON_MAX_JOBS=8
 CODEX_RUST_PARENT_SLICE=codex-rust.slice
 CODEX_RUST_BABYLON_SLICE=codex-rust-babylon.slice
 CODEX_RUST_BABYLON_TARGET_SUBDIR=rust/target
@@ -106,9 +107,9 @@ TasksMax=1024
     (host / "systemd" / "codex-rust-babylon.slice").write_text(
         """\
 [Slice]
-CPUQuota=400%
-MemoryHigh=10G
-MemoryMax=12G
+CPUQuota=800%
+MemoryHigh=16G
+MemoryMax=20G
 MemorySwapMax=2G
 IOWeight=500
 TasksMax=512
@@ -147,14 +148,14 @@ def test_collect_report_covers_git_mise_and_static_host_policy(tmp_path: Path) -
         "repo_root": str(repo),
         "rust_host_policy": {
             "available": True,
-            "max_jobs": 4,
-            "policy_version": 11,
+            "max_jobs": 8,
+            "policy_version": 14,
             "repository_slice": {
                 "limits": {
-                    "CPUQuota": "400%",
+                    "CPUQuota": "800%",
                     "IOWeight": "500",
-                    "MemoryHigh": "10G",
-                    "MemoryMax": "12G",
+                    "MemoryHigh": "16G",
+                    "MemoryMax": "20G",
                     "MemorySwapMax": "2G",
                     "TasksMax": "512",
                 },
@@ -214,12 +215,30 @@ def test_renderers_are_bounded_and_do_not_emit_environment_values(
     assert "branch codex/PER-304-dev-tooling-observability" in text
     assert "ahead 3, behind 5" in text
     assert "2 tasks" in text
-    assert "rust policy (repository): v11" in text
+    assert "rust policy (repository): v14, max jobs 8" in text
     assert "do-not-print" not in text
     assert "do-not-print" not in encoded
     assert len(text.encode()) <= doctor.MAX_REPORT_BYTES
     assert len(encoded.encode()) <= doctor.MAX_REPORT_BYTES
     assert json.loads(encoded) == report
+
+
+def test_repository_host_policy_reports_babylon_limits() -> None:
+    """The doctor reads Babylon's own job limit and slice from the live bundle."""
+    policy = doctor._collect_host_policy(Path(__file__).resolve().parents[3])
+
+    assert policy["max_jobs"] == 8
+    assert policy["repository_slice"] == {
+        "name": "codex-rust-babylon.slice",
+        "limits": {
+            "CPUQuota": "800%",
+            "IOWeight": "500",
+            "MemoryHigh": "16G",
+            "MemoryMax": "20G",
+            "MemorySwapMax": "2G",
+            "TasksMax": "512",
+        },
+    }
 
 
 def test_missing_host_policy_is_an_explicit_available_false_fact(tmp_path: Path) -> None:

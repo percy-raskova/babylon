@@ -4128,6 +4128,13 @@ mod tests {
         let opened = send(&mut app, json!("inspect_county_roster"));
         assert_eq!(opened["event"], "applied", "{opened}");
         assert_eq!(opened["state"]["inspector"], "CountyRoster");
+        // On page 0 of ten positions, a slot past the page's eight rows is on no page: it is refused, not read as the
+        // position that would sit there on another page.
+        for slot in [8, 9, 255] {
+            let off_page = send(&mut app, json!({"choose_roster_slot":{"slot":slot}}));
+            assert_eq!(off_page["event"], "refused", "slot {slot}: {off_page}");
+            assert_eq!(off_page["reason"], "control_stale_or_unavailable");
+        }
         let paged = send(&mut app, json!("roster_next_page"));
         assert_eq!(paged["event"], "applied", "{paged}");
         assert_eq!(

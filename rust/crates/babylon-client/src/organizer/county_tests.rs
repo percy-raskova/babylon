@@ -321,6 +321,7 @@ fn choosing_a_slot_reviews_and_confirms_a_review_contact() {
     assert!(text.contains("Cost: 8 of 16 organizer-hours"), "{text}");
     assert!(text.contains("lands in period 4"), "{text}");
     assert!(text.contains("worked from period 3"), "{text}");
+    assert!(text.contains(county::STANDING_LINE), "{text}");
     tests::press_named(&mut app, "Confirm ruling");
     assert_submit_request(&mut app, OrganizerChoice::ReviewContact(key));
 }
@@ -375,6 +376,18 @@ fn a_past_period_disables_the_slots_with_a_reason() {
         county::why_unavailable(client, session.viewed_tick),
         Some(CountyUnavailable::PastPeriod)
     );
+    close(&mut app);
+    for label in ["County ledger", "County session", "Food run"] {
+        tests::press_named(&mut app, label);
+        let body = tests::painted_text(&mut app, true);
+        assert!(
+            body.starts_with(
+                "These figures are period 3, the live period. Past sessions are in the Archive."
+            ),
+            "{label}: {body}"
+        );
+        close(&mut app);
+    }
 }
 
 #[test]
@@ -540,9 +553,21 @@ fn the_session_shows_only_a_session_held_by_the_viewed_period() {
     assert!(text.contains("Your contact at the session: Next 40%"));
     assert!(text.contains("2 households wanted to ask and had no hours"));
     assert!(text.contains("rank 1"));
-    let earlier = county::session(&view, 2);
-    assert!(earlier.starts_with("No county session has been held as of period 2."));
-    assert!(!earlier.contains("rank 1"));
+    assert!(
+        text.contains("rank 3 · Bottom 50%")
+            && text.contains("Reasons are earned by contact. Reach a household here."),
+        "an uncontacted ranked position states the remedy: {text}"
+    );
+    // The client holds only the live projection: a period from the first session on, before the
+    // live one, had its session, and that record is in the Archive.
+    let archived = county::session(&view, 2);
+    assert_eq!(archived, "The session of period 2 is in the Archive.");
+    let before_first = county::session(&view, 1);
+    assert_eq!(
+        before_first,
+        "No county session has been held as of period 1. The first is in period 2."
+    );
+    assert!(!archived.contains("rank 1") && !before_first.contains("rank 1"));
     let none = county::session(&fixture(), 3);
     assert!(none.starts_with("No county session has been held"));
 }
@@ -634,6 +659,31 @@ fn a_new_session_record_pauses_with_a_notice_and_only_once() {
     assert_eq!(client::county_update(Some(&before), Some(&before)), None);
     assert_eq!(client::county_update(None, Some(&after)), None);
     assert_eq!(client::county_update(Some(&after), None), None);
+}
+
+#[test]
+fn a_status_with_a_new_session_record_installs_the_notice_and_pauses_play() {
+    let (mut client, mut session, request, mut snapshot) =
+        crate::organizer::tests::status_fixture();
+    let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+        panic!("status");
+    };
+    snapshot.city_pd_encounters.clear();
+    client.county_review = Some(fixture());
+    snapshot.county_review = Some(held());
+    session.playing = true;
+    client
+        .status(request_id, snapshot, &mut session)
+        .expect("the status is admitted");
+    assert_eq!(client.message, "The county's session record arrived.");
+    assert!(!session.playing, "the new session record pauses play");
+    assert_eq!(
+        client
+            .county_review
+            .as_ref()
+            .and_then(|view| view.session_period),
+        Some(3)
+    );
 }
 
 #[test]

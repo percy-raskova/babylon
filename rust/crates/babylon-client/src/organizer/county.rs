@@ -261,6 +261,9 @@ fn position_line(view: &CountyReviewProjection, position: &PositionView) -> Stri
 }
 
 fn slot_position(view: &CountyReviewProjection, page: usize, slot: u8) -> Option<&PositionView> {
+    if usize::from(slot) >= ROSTER_PAGE_ROWS {
+        return None;
+    }
     let index = page
         .saturating_mul(ROSTER_PAGE_ROWS)
         .saturating_add(usize::from(slot));
@@ -510,7 +513,7 @@ fn reasons(text: &mut String, earned: &PositionEarned) {
     }
 }
 
-fn session_row(text: &mut String, view: &CountyReviewProjection, position: &PositionView) {
+fn session_row(text: &mut String, position: &PositionView) {
     let rank = position
         .rank
         .map_or_else(|| "unranked".to_owned(), |rank| format!("rank {rank}"));
@@ -524,10 +527,9 @@ fn session_row(text: &mut String, view: &CountyReviewProjection, position: &Posi
         human_numbers::grouped(u128::from(position.asked_paid)),
         human_numbers::grouped(u128::from(position.came_from_roll)),
     );
-    if let Some(earned) = &position.earned {
-        reasons(text, earned);
-    } else if view.contact.is_some_and(|(key, _)| key == position.key) {
-        text.push_str("\n     Amounts and reasons are earned by contact.");
+    match &position.earned {
+        Some(earned) => reasons(text, earned),
+        None => text.push_str("\n     Reasons are earned by contact. Reach a household here."),
     }
 }
 
@@ -543,6 +545,11 @@ const fn contact_outcome_text(outcome: ContactOutcome) -> &'static str {
 /// player has contacted, why its reached households stayed home.
 pub(super) fn session(view: &CountyReviewProjection, viewed_tick: u64) -> String {
     let Some(held) = view.session_period.filter(|held| *held <= viewed_tick) else {
+        // The client holds only the live projection, so a session after the viewed period may
+        // still have been held in the viewed period itself: that record is in the Archive.
+        if view.session_period.is_some() && viewed_tick >= view.first_session_period {
+            return format!("The session of period {viewed_tick} is in the Archive.");
+        }
         return format!(
             "No county session has been held as of period {viewed_tick}. The first is in period {}.",
             view.first_session_period
@@ -572,7 +579,7 @@ pub(super) fn session(view: &CountyReviewProjection, viewed_tick: u64) -> String
     }
     text.push_str("\n\nThe list, in rank order");
     for position in view.positions.iter().filter(|p| p.rank.is_some()) {
-        session_row(&mut text, view, position);
+        session_row(&mut text, position);
     }
     text
 }
@@ -689,7 +696,7 @@ pub(super) fn contact_review(
         return unavailable(CountyUnavailable::NoReview);
     };
     format!(
-        "Target: {}\nCost: {} of {} organizer-hours\nThe contact lands in period {}, the period of the county's next session.\n{}",
+        "Target: {}\nCost: {} of {} organizer-hours\nThe contact lands in period {}, the period of the county's next session.\n{}\n\n{STANDING_LINE}",
         name_of(view, key),
         human_numbers::grouped(u128::from(reviewed.required_hours)),
         human_numbers::grouped(u128::from(reviewed.available_hours)),

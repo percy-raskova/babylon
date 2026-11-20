@@ -1,12 +1,15 @@
 //! Household units in Wayne: what the pooled budget groups hold and are paid today, read from the
 //! engine's own accounts.
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_persistence::economic_catalog::{national_catalog_input, CapturedEconomicCatalog};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::Band;
 use babylon_practice_contract::CountyPeriodFacts;
+use babylon_tick::material_replay::PreparedMaterialTick;
+use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,6 +18,8 @@ use uuid::Uuid;
 
 #[path = "support/household_accounts.rs"]
 mod household_accounts;
+#[path = "support/supply_chain.rs"]
+mod supply_chain;
 
 use household_accounts::{
     is_top_tenth, read_accounts, read_period, top_tenth, AccountReading, AccountSpec,
@@ -285,14 +290,12 @@ fn period_json(
     })
 }
 
-/// Closes one period with no organizer commitment; returns the readings of the close and of the
-/// state after it.
-fn close_period(
+/// Closes one period with no organizer commitment; `read` sees the candidate before it commits.
+fn close_period_with<T>(
     session: &mut Session,
-    labels: &[babylon_persistence::economic_catalog::CommodityLabel],
-    specs: &[AccountSpec],
     period: u64,
-) -> (Vec<PeriodReading>, Vec<AccountReading>) {
+    read: impl FnOnce(&Session, &PreparedMaterialTick<HypergraphStore>) -> T,
+) -> T {
     let actions = babylon_practice_contract::organizer_action_batch(
         session.material().organizer_config().expect("organizer"),
         session.material().organizer_state().expect("state"),
@@ -304,12 +307,25 @@ fn close_period(
     let candidate = session
         .prepare_advance(&actions)
         .expect("ordinary national close");
-    let readings = read_period(session, &candidate, labels, specs);
+    let read = read(session, &candidate);
     session
         .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
             Ok::<_, &str>(ReplayCommitDisposition::Committed)
         })
         .expect("the period commits");
+    read
+}
+
+/// Closes one period; returns the readings of the close and of the state after it.
+fn close_period(
+    session: &mut Session,
+    labels: &[babylon_persistence::economic_catalog::CommodityLabel],
+    specs: &[AccountSpec],
+    period: u64,
+) -> (Vec<PeriodReading>, Vec<AccountReading>) {
+    let readings = close_period_with(session, period, |session, candidate| {
+        read_period(session, candidate, labels, specs)
+    });
     (readings, read_accounts(session, specs))
 }
 
@@ -354,4 +370,105 @@ fn record_wayne_pooled_accounts() {
     std::fs::create_dir_all(path.parent().expect("the report has a directory"))
         .expect("the report directory is created");
     std::fs::write(&path, text).expect("the report is written");
+}
+
+/// One site's record across the recorded periods.
+fn chain_json(site: &supply_chain::ChainSite, floors: &[Value], periods: &[Value]) -> Value {
+    json!({
+        "site": supply_chain::short(site.site),
+        "label": site.label,
+        "location": site.location,
+        "roles": site.roles,
+        "cash_floors": floors,
+        "periods": periods,
+    })
+}
+
+/// Households of one county in the opening, by principal.
+fn county_principals(
+    opening: &babylon_persistence::economic_catalog::EconomicOpening,
+    geoid: &str,
+) -> BTreeSet<FinalDemandPrincipalId> {
+    let location = format!("county:{geoid}");
+    opening
+        .households
+        .iter()
+        .filter(|row| row.location.to_string() == location && row.households > 0)
+        .map(|row| row.principal_id)
+        .collect()
+}
+
+/// Plays `periods` closes and returns the chain report: each Wayne need's seller, one step
+/// upstream, the business-services providers of those, and the four needs of Wayne and Cook.
+fn chain_report(catalog: CapturedEconomicCatalog, periods: u64) -> Value {
+    let names = supply_chain::Names::new(catalog.opening());
+    let cook = county_principals(catalog.opening(), "17031");
+    let compiler = catalog.compiler_version().to_owned();
+    let mut session = opened_session(catalog, "household-units-supply-chain");
+    let names = names.with_processes(&session);
+    let wayne: Vec<_> = pooled_specs(&session)
+        .iter()
+        .filter(|spec| !spec.bands.is_empty())
+        .map(|spec| spec.principal)
+        .collect();
+    let sites = supply_chain::chain_sites(&session, &names, &wayne);
+    let floors: Vec<_> = sites
+        .iter()
+        .map(|site| supply_chain::floors(&session, &names, site.site))
+        .collect();
+    let mut records = vec![Vec::new(); sites.len()];
+    let mut counties = Vec::new();
+    let wayne: BTreeSet<_> = wayne.into_iter().collect();
+    for period in 1..=periods {
+        let opening: Vec<_> = sites
+            .iter()
+            .map(|site| supply_chain::site_opening(&session, &names, site.site))
+            .collect();
+        let (closes, needs) = close_period_with(&mut session, period, |session, candidate| {
+            let receipts =
+                material_world::decode_material_receipts(candidate.material().receipt_bytes())
+                    .expect("canonical material receipts");
+            let closes: Vec<_> = sites
+                .iter()
+                .map(|site| supply_chain::site_close(&receipts, &names, site.site))
+                .collect();
+            let needs = json!({
+                "period": period,
+                "wayne_26163": supply_chain::county_needs(session, &receipts, &names, &wayne),
+                "cook_17031": supply_chain::county_needs(session, &receipts, &names, &cook),
+            });
+            (closes, needs)
+        });
+        counties.push(needs);
+        for (at, (open, close)) in opening.into_iter().zip(closes).enumerate() {
+            let after = supply_chain::site_after(&session, &names, sites[at].site);
+            records[at]
+                .push(json!({"period": period, "opening": open, "close": close, "after": after}));
+        }
+    }
+    json!({
+        "campaign": campaign().as_uuid().to_string(),
+        "replay_seed": 319,
+        "compiler": compiler,
+        "cook_household_principals": cook.len(),
+        "county_needs": counties,
+        "sites": sites.iter().zip(&floors).zip(&records).map(|((site, floors), periods)| chain_json(site, floors, periods)).collect::<Vec<_>>(),
+    })
+}
+
+fn write_report(report: &Value, path: &Path) {
+    let text = serde_json::to_string_pretty(report).expect("the report serializes") + "\n";
+    assert!(text.len() < 1_048_576, "the report is {} bytes", text.len());
+    std::fs::write(path, text).expect("the report is written");
+}
+
+#[test]
+#[ignore = "writes reports/household-units-2026-11-20/wayne-supply-chain.json"]
+fn record_wayne_supply_chain() {
+    let report = chain_report(pooled_catalog(), 10);
+    write_report(
+        &report,
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../reports/household-units-2026-11-20/wayne-supply-chain.json"),
+    );
 }

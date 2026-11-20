@@ -187,4 +187,41 @@ top 1%, and earning-owner).
 
 Groups where `admits_every_crewless_unit` is false: no-earner-nonowner (claimants), earning-owner.
 
+## Why Wayne's sellers stop supplying (`wayne-supply-chain.json`)
+
+`wayne-supply-chain.json` follows, for 10 periods of the same campaign, the site each Wayne
+household buys food, utility, housing and household services from, one step upstream of each
+(replenishment and service-input suppliers), and the business-services providers of those
+suppliers. For each site and period it records cash at the opening and after the commit, every cash
+floor and what it gates, stock, committed batches, capacity, labor, order backlog and freight in
+transit (opening); and purchases, sales, production, labor, taxes and distributions (receipts). It
+also records the four needs, required and unmet, for Wayne (26163) and Cook (17031). Money is
+millionths, as decimal strings. Test-only: no engine or persistence source changed.
+
+Command, from the repository root (about 40 s inside nextest after the build):
+`mise run rust:test:q -- -p babylon-persistence -E
+'binary(national_household_units) & test(record_wayne_supply_chain)' --run-ignored ignored-only`.
+Reader: `rust/crates/babylon-persistence/tests/support/supply_chain.rs`.
+
+What it shows. A service site's inputs are admitted only from cash above a floor equal to its
+opening payroll (`services/admission.rs:213-219`, floor from `opening/markets.rs:567`), and that
+check runs after the period's wages are paid (`transition/state.rs:1321` before `1326`). The
+labor-heavy service sellers end period 1 (Wayne) or period 2 (abroad) below that floor, buy no
+utility, and perform nothing from then on:
+household services from period 1 in Wayne; business services from period 1 in Wayne and period 2
+in China, Russia and Sub-Saharan Africa. Every goods producer upstream needs business services
+(food, extraction, manufacturing), so it produces nothing, and the county lives on its two
+periods of opening stock: the food retailer's stock is gone in period 4, the utility's feedstock
+in period 4, and housing, which needs utility, stops with it.
+
+Share of each need unmet, Wayne beside Cook (same run):
+
+| Period | Wayne food | utility | housing | household services | Cook food | utility | housing | household services |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 0.0% | 3.4% | 0.0% | 100% | 0.0% | 0.0% | 0.0% | 100% |
+| 3 | 0.0% | 25.2% | 25.2% | 100% | 0.0% | 11.3% | 11.3% | 100% |
+| 4 | 50.8% | 100% | 100% | 100% | 0.0% | 65.2% | 59.0% | 100% |
+| 5 | 100% | 100% | 100% | 100% | 79.7% | 55.8% | 47.9% | 100% |
+| 10 | 100% | 100% | 100% | 100% | 100% | 53.8% | 45.5% | 100% |
+
 Homes are not in yet: a household's wealth in this engine is cash, a pantry and claims carried at zero.

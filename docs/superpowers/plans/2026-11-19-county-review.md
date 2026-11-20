@@ -1938,8 +1938,9 @@ Spec section 9 ("Play proof").
   Task 10, with `{"choose_roster_slot": {"slot": n}}` as a record in `Action`; a
   `ReviewContactChoice` (`review_contact`: group, band, crew, at_work, seeking and units, with the
   exact serde names of Task 3's `PositionKey` and `Band`) in `Choice`; a `ContactPreview` model and
-  `review: ContactPreview | None` on `Preview`; `"review_contact"` with `page` and `slot` in
-  `PlannedChoice`, its validator branch and the driver's action map. Every model is a `FrozenRecord`
+  `review: ContactPreview | None` on `Preview`; `"review_contact"` with `page`, `slot` and
+  `position` in `PlannedChoice`, its validator branch and the driver's action map (the driver
+  refuses a drafted contact that is not in the planned position). Every model is a `FrozenRecord`
   (`extra="forbid"`), so a reply the Rust client emits after a slot is chosen fails to parse until
   these exist. The unit tests check each model against a reply the Rust client emits.
 - Modify: `tools/run_rust_postgres.sh`: a new live focus `county_review`, added to the focus `case`
@@ -1957,6 +1958,10 @@ Spec section 9 ("Play proof").
 - Create: `reports/county-review-2026-11-19/README.md` and one JSON record for each playthrough
 - Modify: `docs/how-to/organize-in-wayne.rst` (a section "Take a household to the county review";
   rstcheck and doc8 with lines of at most 100)
+- Create: `docs/tutorials/first-county-review.rst`, with its entry in `docs/tutorials/index.rst`
+  (lead's addition of 20 November: design section 9 names the tutorial chapter of the first
+  session as the acceptance script, and no task wrote it. It follows the "one position"
+  playthrough and was checked against the client's code, the records and the real window)
 - Modify: `docs/superpowers/specs/2026-11-19-county-review-design.md` (section 3 and 7.7 take the
   recorded figures)
 - Test: the files above

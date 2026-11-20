@@ -226,10 +226,10 @@ the lines it pays first, it announces no relief, and nobody is paid whatever the
 
 Every session adds its public record to the organization's page in the Archive: the money for
 relief, the units paid and unpaid and the first positions on the list. The organization's page for
-a period carries that period's session and no other. **County session** shows the session of the
-period you are inspecting. To read an earlier session, choose **Previous period** until you reach
-it. **County session** then says the session of that period is in the Archive. Open **Our practice
-Archive** for the same period to read it. Choose **Return Live** before you choose again.
+a period carries that period's session and no other. **County session** shows the live period's
+session. To read an earlier session, choose **Previous period** until you reach its period.
+**County session** then says that the session of that period is in the Archive. Open **Our
+practice Archive** for that period to read it. Choose **Return Live** before you choose again.
 
 **Play** stops for a session only when it is worth reading, and says why in the notice. It stops
 at the county's first session, "The county's session record arrived." It stops at a session that
@@ -241,7 +241,9 @@ again" when it pays every unit after a session that did not. Each of these follo
 session record arrived:". Any other session installs without a pause: read it in **County
 session** when you want to.
 
-The recorded playthroughs of this slice are in ``reports/county-review-2026-11-19/``.
+New to the county review? :doc:`/tutorials/first-county-review` walks through the first session,
+one step at a time. The recorded playthroughs of this slice are in
+``reports/county-review-2026-11-19/``.
 
 Read consequences and continue
 ------------------------------

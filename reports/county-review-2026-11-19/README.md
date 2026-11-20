@@ -286,9 +286,13 @@ No `native-controls.json` is promised.
 - One county. Geographic and sector variation, which Article VIII asks for, is recorded as blocked
   (record 12).
 - Runs of 34 periods, not longer. The county is short from period 29 in all four.
-- A real window. The driver sends the client's requests through the session; the windowed run
-  did not run (see above).
+- A real window in the record. The driver sends the client's requests through the session, and
+  the windowed run did not run (see above). The lead played the walk of
+  `docs/tutorials/first-county-review.rst` in the real client on PostgreSQL on 20 November. That
+  check is the lead's own, and its frames are not in the repository.
 - The Director's wealth law. Homes and wealth are not in this slice.
-- The tutorial chapter, which design section 9 names as the acceptance script, is not written here.
+- A test of the screens. The tutorial chapter that design section 9 names as the acceptance
+  script is `docs/tutorials/first-county-review.rst`. `county_review_playthroughs_smoke` plays
+  its way through period 6 with the client's requests. No test reads the screens it describes.
 - The gates. `mise run rust:check-no-docs`, `mise run check` and `mise run check:ceremony` are run
   by the lead on the final commit of the branch. This file lists no gate result.

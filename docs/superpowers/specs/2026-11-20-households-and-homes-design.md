@@ -12,7 +12,9 @@ the engine, for the landlord's rent; Michigan's statutes; and the data on who ow
 (Appendix E). Three more readers then tested the draft against the Director's answers, against
 those checks, and for faults in its rules. Their faults were corrected, and the Director answered
 the three questions that came of them. Step B's rules were not read again after that. The gate of
-section 9 checks them once more before step B is planned.
+section 9 checks them once more before step B is planned. On the same day the mapping of the
+code for step A's plan corrected three of step A's statements (sections 7.1, 7.2 and 7.3). Each
+says "Corrected after approval" where it stands, and section 13 lists them for the Director.
 
 **What approval covers.** Step A is ready to plan and build. Step B's rules are stated here. Its
 plan is written after the gate of section 9: step A played, and the census tables captured, with the
@@ -21,7 +23,8 @@ tables, the Federal Reserve's accounts and, once their terms are confirmed, the 
 owners and the Survey of Consumer Finances (section 7.15). All are public data of the federal
 government, and the units of step A are the wired consumer that the ruling of 17 August asks for.
 
-**Scope:** The second slice of the class-agents lane (PER-366) and the first relation of the land
+**Scope:** The second slice of the class-agents lane (PER-366; its own issue is PER-369) and the
+first relation of the land
 foundation. Units and homes are in Wayne County only (county geoid 26163). One new reference table
 covers all 3,144 counties.
 
@@ -345,8 +348,11 @@ from period to period. It answers three questions, and the answers never change.
   units in its policy file, and the build that makes them has a new compiler name (section 7.18).
   Every earlier compiler gives the same bytes as before.
 - **The three small named groups** (the claimants, the aid donors and the aid partners) each stay
-  one unit. The hearing, the aid mandates and the organizer name them. If a rule of the opening
-  would cut one of them, the build refuses the campaign by name. **[Call]**
+  one unit. The hearing, the aid mandates and the organizer name them. A named group stays one
+  unit even where its households lie in two bands. Its positions keep their bands, and a figure
+  shown by band divides the unit's total between them in proportion to households, by largest
+  remainder. **[Call]** Corrected after approval: the first form refused a campaign whose opening
+  would cut a named group, and today's Wayne has the four aid donors in two bands.
 - **Collective residence** stays one unit with no households, as today.
 - **Two words.** **[Call]** On screen the new object is always a "household unit" and the county's
   support is always a "relief unit". The budget groups read "with a business share" and "no business
@@ -372,7 +378,14 @@ The opening divides each Wayne budget group among its units. Nothing new is deci
   by rounding.
 - **The bands are placed before the money is wired.** **[Record needed]** Today the roster sets the
   bands after the opening has wired every account (Appendix A). Units need their bands first, so
-  the opening runs the County Review's placement before it wires the money.
+  the opening runs the County Review's placement before it wires the money. The roster is then
+  made from the rows that placement gave. It is not placed a second time: placing again on units
+  would move households between bands. Corrected after approval.
+- **One unit of each group keeps the group's own account:** the unit with the most households.
+  **[Call]** The aid mandates, the hearing and the organizer name that account. It also keeps
+  what the counts do not explain: the engine holds the aid partners' opening cash and pantry in
+  their parent group's account, and they stay there. Every other unit's cash and pantry follow
+  its own counts. Corrected after approval.
 - **Wealth is measured, and the law binds in step B.** **[Director]** ADR305 names a measurement as
   the first task of this slice: the share of household wealth the top tenth holds, set beside the
   law's two thirds. Step A makes it. ADR305 also says the law binds the opening split of wealth
@@ -409,9 +422,12 @@ The opening divides each Wayne budget group among its units. Nothing new is deci
   does.
 - **What is not bought is unmet, and is not owed.** That stays as it is. Step B changes it for
   housing only.
-- **A household that leaves** is taken from its unit. Today the roster can only take a leaving
-  household from rows with no crew. With units, a crew's unit may have none, so the rule must also
-  take from crew rows, in a declared order. **[Record needed]**
+- **A household that leaves** is taken from its unit by the rule the County Review has today:
+  from the unit's rows with nobody in the labor force. **[Record needed]** Corrected after
+  approval: the first form said the rule must also take from a crew's rows. It need not. A unit
+  loses households only when it has fewer people than households. In that same period the engine
+  takes the dead out of the labor force, so at least as many of the unit's households are left
+  with nobody in it. The plan proves this with a test, and the decision record carries the proof.
 
 ### 7.4 Step A: what changes in the County Review
 
@@ -1165,6 +1181,9 @@ follow, by recorded playthroughs, and by play in the real game as soon as its fi
 9. The reference tables of section 7.15, built and pinned by the project's own builder, and the
    second report of the gate. This task changes nothing in the game.
 
+The plan builds item 6 before item 4, so that item 4's report is recorded once, on the final
+buying rule. It carries item 9 as two tasks: the tables, then the report.
+
 **The gate between the plans.** Two reports go to the Director.
 
 - What step A showed in play: who goes without, when, what the County Review's results became,
@@ -1297,6 +1316,18 @@ period 49, so step B's runs are four game years.
 - **Moving households between units re-cuts crews in the middle of a run.** The engine fixes each
   crew's parts at the opening today. Step B needs them to move with the households (section 7.7).
 - **Every recorded result of the County Review changes** in step A.
+- **The top 1% may be the first to go without in step A.** It is one unit of 7,006 households,
+  with no wage and no relief unit. In today's recorded runs a household with a business share is
+  paid nothing from ownership in period 1, about $1,160 in period 2, about $2,180 at the highest
+  (period 5), under $800 by period 10 and about $120 by period 34. At the opening's prices the
+  needs of a household of one person cost $2,526 a period. Section 7.2 names the remedy: the
+  division of the shares moves forward. Step A's report on the units shows it, and the Director
+  decides.
+- **A seller that is short serves its buyers in the order of an identifier.** When a seller
+  cannot supply every buyer, the engine supplies them in the order of their orders' identifiers.
+  That is so today among the budget groups. With units it can decide which unit goes without.
+  Step A does not change it. Its records keep "could not pay" apart from "paid and was not
+  supplied", and the gate's first report gives the size of it.
 - **This branch stands on a branch that is not merged.** The County Review branch is local and has
   not been pushed.
 
@@ -1356,6 +1387,20 @@ the law leaves open, and a fact of the engine. The Director answered each on 20 
     pay-out leaves Wayne.
 11. **Approval.** The Director approved the design with these answers written in, and asked for the
     plan of step A.
+
+**Corrected after approval, for the Director to check.** The plan's mapping of the code found
+three statements of step A that the code does not bear out. Each is the author's call.
+
+- **A named group in two bands** (section 7.1). The design refused a campaign whose opening would
+  cut a named group. Today's Wayne has the four aid donors in two bands. They stay one unit, and
+  their positions keep their bands.
+- **The roster is made from the opening's own rows, and one unit keeps the group's account**
+  (section 7.2).
+- **The rule for a household that leaves stands as it is** (section 7.3). No new rule is needed,
+  and a test proves it.
+
+Two risks were added to section 12: the top 1% may be the first to go without in step A, and a
+seller that is short serves its buyers in the order of an identifier.
 
 **The calls that matter most, to check while reading.** The first is the widest: the author reads
 the Director's ruling on the clock as covering every clock, fee and remedy that the law fixes

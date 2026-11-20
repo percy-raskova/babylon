@@ -583,7 +583,7 @@ The county administration is the actor the County Review made. It gains these.
   price. That is what the studies of Detroit found (Appendix B).
 - **A home nobody buys** stays in the land bank and is offered again each period.
 - **Who can buy** depends on the placement of section 7.15. If every tenant is in the bottom half,
-  almost none will ever have the money, and the land bank only grows. The report that opens plan 2
+  almost none will ever have the money, and the land bank only grows. The gate's report (section 9)
   counts the tenant households that could buy, period by period.
 
 ### 7.14 Step B: what a household decides, and what happens to it
@@ -622,7 +622,7 @@ building; rent. It is built, pinned and loaded as the household table is today. 
 totals are totals. A median is shown and is used only as a check. No rule reads one.
 
 **Placing the homes on Wayne's units.** **[Call]** **[Record needed]** Each step is a declared
-split in whole numbers. The report that opens plan 2 prints each step's other bound beside it, on
+split in whole numbers. The gate's report (section 9) prints each step's other bound beside it, on
 Wayne's real figures, and the Director can choose on the figures.
 
 1. **Who owns.** The census table of tenure by income gives the owners among households above and
@@ -673,7 +673,7 @@ Wayne's real figures, and the Director can choose on the figures.
   division beside the Federal Reserve's own figure for the top 1%'s share of business wealth.
   Section 13 asks the Director to choose.
 - **The build refuses the opening, naming the band,** when the bottom half's share of all wealth is
-  outside the range the project measured for 1913 to 2024 (from −1.8% to 3.7%); when a solved figure
+  outside the range ADR305 records for 1913 to 2024 (from −1.8% to 3.7%); when a solved figure
   is below zero; when a mortgage is larger than its home's value; when a band has debt and no
   mortgaged home; or when the census tables do not add up.
 - **It then measures the finished opening from the accounts,** and refuses it when any of the top
@@ -682,8 +682,9 @@ Wayne's real figures, and the Director can choose on the figures.
 - **What step A's figures say.** Without homes, Wayne's households open with $5.55 billion of cash
   and $0.57 billion of goods, and the bottom half holds $2.99 billion of that. For the bottom half
   to be under 3.7% of all wealth, the upper bands must hold about $78 billion. Whether Wayne's real
-  homes, mortgages and businesses give that is not known until the table is built. So plan 2 opens
-  with the table and this arithmetic, as a report, before any rule is written (section 9).
+  homes, mortgages and businesses give that is not known until the table is built. So the gate of
+  section 9 builds the table and works this arithmetic, as a report, before any rule of step B is
+  written.
 
 ### 7.16 Step B: class reading and nation
 
@@ -895,21 +896,21 @@ figures are worked from this design's numbers and are not a promise.
    positions hold accounts of their own". Step A gives them accounts and no homes. The author would
    measure the law in step A and bind it in step B, where homes can carry it (section 7.2). Is that
    accepted? The Director corrected an earlier deferral of this law.
-2. **Does the tax on a home rank a household for relief?** Today the county lists households by the
-   wage tax they paid it. With a tax on homes, an owner pays the county more than a tenant with the
-   same wage. If that tax counts, relief moves toward owners. The author recommends that it counts:
-   the ruling was "defends its own, weighs by tax", and this is tax paid to the county.
-3. **The county's clock.** Michigan's law takes 27 periods from unpaid tax to foreclosure, with
-   forfeiture at 13. A run of thirty periods would end as the first home is taken. The author
-   recommends 6 periods to forfeiture and 13 to foreclosure, marked Designed, with the law's own
-   figures shown beside them.
-4. **The top's two thirds.** Homes cannot give the top 1% a third. The opening can give Wayne's
+2. **The top's two thirds.** Homes cannot give the top 1% a third. The opening can give Wayne's
    shares in businesses a value in the books and divide them between the top 1% and the next 9%, so
    that all three upper bands hold the same. That changes who receives the income from ownership:
    the top 1% receive much more of it. Or it can give the shares a value and leave them divided as
    today, one part for each owner household. Then the top tenth holds two thirds together, nobody's
    income changes, and the top 1% hold far less than a third. The author recommends the first: the
    law says the top 1% live entirely off investments, and this is what gives them the investments.
+3. **Does the tax on a home rank a household for relief?** Today the county lists households by the
+   wage tax they paid it. With a tax on homes, an owner pays the county more than a tenant with the
+   same wage. If that tax counts, relief moves toward owners. The author recommends that it counts:
+   the ruling was "defends its own, weighs by tax", and this is tax paid to the county.
+4. **The county's clock.** Michigan's law takes 27 periods from unpaid tax to foreclosure, with
+   forfeiture at 13. A run of thirty periods would end as the first home is taken. The author
+   recommends 6 periods to forfeiture and 13 to foreclosure, marked Designed, with the law's own
+   figures shown beside them.
 
 **The calls that matter most, to check while reading:** the bottom half's owners open owing what the
 home is worth (section 2); existing mortgages are in (section 2); the large landlord is a business
@@ -984,7 +985,7 @@ of the home they have paid for. That agrees with the Director's ruling that an o
 
 | Found | Answer |
 |---|---|
-| One value for shares cannot give the top 1% and the next 9% a third each, because every owner household holds the same share | 7.15: two figures are solved, the division of shares and their value. Section 13, question 4 |
+| One value for shares cannot give the top 1% and the next 9% a third each, because every owner household holds the same share | 7.15: two figures are solved, the division of shares and their value. Section 13, question 2 |
 | A debt had no count of households, and nothing said who falls behind inside one purse | 7.9, 7.10 |
 | Wages are paid to fixed crews, and a moving household took only cash and goods; the unit it moved to might not exist | 7.7 |
 | An evicted household could take a home again at once | 7.11 |

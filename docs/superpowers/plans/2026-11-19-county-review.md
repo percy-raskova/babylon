@@ -1590,7 +1590,16 @@ aid_body_label = "Wayne Local Aid Partners"
   (`county_review().state().last_session` whose period is that tick's). Its text is the public
   record only and at most 4,096 bytes, the archive's text limit: the money for relief, units payable
   and kept back, how many positions were paid in full, in part and not at all, and the ranks and
-  units of the first positions on the list up to that bound. No knowledge-grant row is added for it.
+  units of the first positions on the list up to that bound. The Archive emits a page signal only
+  when the page holds a knowledge grant with the signal's key (`archive.rs`, the loop over
+  `input.signals` that skips a signal `knowledge.knows_field` does not know), so
+  `organizer_archive::insert_projection` also inserts, in the tick the session is held, one grant
+  row on the organization's page: key `county-review-{period}`, `granted_tick` the session's period,
+  and the signal's own citation. `capture_projection` and `CapturedOrganizerProjection::validate`
+  check the newest such row against the register's `last_session`, and that there is none while no
+  session has been held. (Lead's ruling of 19 November. This bullet first said that no grant row is
+  added, which left the signal built and never shown, against the client's own line "Past sessions
+  are in the Archive.")
 - *The line bound.* The whole snapshot travels in one `OrganizerStatus` line, and the roster can
   hold hundreds of positions, so `RUNTIME_SESSION_MAX_LINE_BYTES` rises from 131,072 to 1,048,576. A
   line at or past the bound still fails as it does today. The client and the session read the same

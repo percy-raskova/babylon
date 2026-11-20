@@ -4,14 +4,17 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::FinalDemandPrincipalId;
-use babylon_persistence::economic_catalog::{national_catalog_input, CapturedEconomicCatalog};
+use babylon_persistence::economic_catalog;
+use babylon_persistence::economic_catalog::{
+    CapturedEconomicCatalog, CommodityLabel, EconomicOpening,
+};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::Band;
 use babylon_practice_contract::CountyPeriodFacts;
 use babylon_tick::material_replay::PreparedMaterialTick;
 use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use uuid::Uuid;
@@ -21,10 +24,8 @@ mod household_accounts;
 #[path = "support/supply_chain.rs"]
 mod supply_chain;
 
-use household_accounts::{
-    is_top_tenth, read_accounts, read_period, top_tenth, AccountReading, AccountSpec,
-    PeriodReading, Session, TopTenth,
-};
+use household_accounts::{AccountReading, AccountSpec, PeriodReading, Session, TopTenth};
+use supply_chain::{ChainSite, Names};
 
 /// The County Review's recorded campaign; no organizer commitment is made, so the run matches its
 /// `no-contact` line.
@@ -73,9 +74,11 @@ fn opened_session(catalog: CapturedEconomicCatalog, name: &str) -> Session {
 }
 
 fn pooled_catalog() -> CapturedEconomicCatalog {
-    let catalog =
-        CapturedEconomicCatalog::capture_national_campaign(national_catalog_input(), campaign())
-            .expect("the national campaign");
+    let catalog = CapturedEconomicCatalog::capture_national_campaign(
+        economic_catalog::national_catalog_input(),
+        campaign(),
+    )
+    .expect("the national campaign");
     assert_eq!(catalog.compiler_version(), "national-world-v12");
     catalog
 }
@@ -84,7 +87,7 @@ fn pooled_catalog() -> CapturedEconomicCatalog {
 fn the_pooled_opening_accounts_add_back() {
     let session = opened_session(pooled_catalog(), "household-units-pooled");
     let specs = pooled_specs(&session);
-    let accounts = read_accounts(&session, &specs);
+    let accounts = household_accounts::read_accounts(&session, &specs);
     assert_eq!(specs.len(), 8);
     assert!(
         specs[4].bands.is_empty(),
@@ -132,7 +135,7 @@ fn the_pooled_opening_accounts_add_back() {
         .expect("county section")
         .config();
     let named: BTreeSet<usize> = (0..specs.len())
-        .filter(|&i| is_top_tenth(&specs[i]))
+        .filter(|&i| household_accounts::is_top_tenth(&specs[i]))
         .collect();
     let owning: BTreeSet<usize> = (0..specs.len())
         .filter(|&i| !specs[i].bands.is_empty() && config.groups[i].has_ownership_income)
@@ -141,7 +144,10 @@ fn the_pooled_opening_accounts_add_back() {
         named, owning,
         "the top tenth is the groups with ownership income"
     );
-    assert_eq!(top_tenth(&specs, &accounts, None).households, 70_060);
+    assert_eq!(
+        household_accounts::top_tenth(&specs, &accounts, None).households,
+        70_060
+    );
 }
 
 /// The reader's figures against the county register's facts for the period just committed.
@@ -195,7 +201,7 @@ fn account_json(account: &AccountReading, period: Option<&PeriodReading>) -> Val
         "net_assets_micros": account.net_assets_micros.to_string(),
     });
     let Some(period) = period else { return row };
-    let needs: serde_json::Map<String, Value> = period
+    let needs: Map<String, Value> = period
         .needs
         .iter()
         .map(|need| {
@@ -313,7 +319,7 @@ fn period_json(
     json!({
         "period": at,
         "accounts": rows,
-        "top_tenth": top_tenth_json(&top_tenth(specs, accounts, period)),
+        "top_tenth": top_tenth_json(&household_accounts::top_tenth(specs, accounts, period)),
     })
 }
 
@@ -346,14 +352,14 @@ fn close_period_with<T>(
 /// Closes one period; returns the readings of the close and of the state after it.
 fn close_period(
     session: &mut Session,
-    labels: &[babylon_persistence::economic_catalog::CommodityLabel],
+    labels: &[CommodityLabel],
     specs: &[AccountSpec],
     period: u64,
 ) -> (Vec<PeriodReading>, Vec<AccountReading>) {
     let readings = close_period_with(session, period, |session, candidate| {
-        read_period(session, candidate, labels, specs)
+        household_accounts::read_period(session, candidate, labels, specs)
     });
-    (readings, read_accounts(session, specs))
+    (readings, household_accounts::read_accounts(session, specs))
 }
 
 #[test]
@@ -364,7 +370,7 @@ fn record_wayne_pooled_accounts() {
     let compiler = catalog.compiler_version().to_owned();
     let mut session = opened_session(catalog, "household-units-pooled-record");
     let specs = pooled_specs(&session);
-    let opening = read_accounts(&session, &specs);
+    let opening = household_accounts::read_accounts(&session, &specs);
     let crewless = crewless_households(&session, &specs);
     let mut periods = vec![period_json(&specs, &opening, None, 0)];
     for period in 1..=34 {
@@ -401,7 +407,7 @@ fn record_wayne_pooled_accounts() {
 }
 
 /// One site's record across the recorded periods.
-fn chain_json(site: &supply_chain::ChainSite, floors: &[Value], periods: &[Value]) -> Value {
+fn chain_json(site: &ChainSite, floors: &[Value], periods: &[Value]) -> Value {
     json!({
         "site": supply_chain::short(site.site),
         "label": site.label,
@@ -413,10 +419,7 @@ fn chain_json(site: &supply_chain::ChainSite, floors: &[Value], periods: &[Value
 }
 
 /// Households of one county in the opening, by principal.
-fn county_principals(
-    opening: &babylon_persistence::economic_catalog::EconomicOpening,
-    geoid: &str,
-) -> BTreeSet<FinalDemandPrincipalId> {
+fn county_principals(opening: &EconomicOpening, geoid: &str) -> BTreeSet<FinalDemandPrincipalId> {
     let location = format!("county:{geoid}");
     opening
         .households
@@ -429,7 +432,7 @@ fn county_principals(
 /// Plays `periods` closes and returns the chain report: each Wayne need's seller, one step
 /// upstream, the business-services providers of those, and the four needs of Wayne and Cook.
 fn chain_report(catalog: CapturedEconomicCatalog, periods: u64) -> Value {
-    let names = supply_chain::Names::new(catalog.opening());
+    let names = Names::new(catalog.opening());
     let cook = county_principals(catalog.opening(), "17031");
     let compiler = catalog.compiler_version().to_owned();
     let mut session = opened_session(catalog, "household-units-supply-chain");

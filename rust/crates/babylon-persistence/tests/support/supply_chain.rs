@@ -1,9 +1,10 @@
 //! The sellers that Wayne's households buy their needs from, and one step upstream of each, read
 //! period by period from the engine's own state and receipts. Nothing here is a model of them.
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, MaterialCircuitState,
-    MonetaryCircuit, ProcessId, SiteId, UnitId,
+    AccountId, CircuitAccounting, CommodityKind, FinalDemandPrincipalId, GoodId,
+    MaterialCircuitState, MonetaryCircuit, ProcessId, SiteId, UnitId,
 };
 use babylon_persistence::economic_catalog::{CommodityLabel, EconomicOpening};
 use babylon_tick::material_replay::MaterialReplaySession;
@@ -321,7 +322,7 @@ fn cash(session: &Session, site: SiteId) -> i128 {
     economy(session)
         .book
         .cash(AccountId::Site(site))
-        .map_or(0, babylon_kernel::currency::Currency::micro_units)
+        .map_or(0, Currency::micro_units)
 }
 
 fn inventory(state: &MaterialCircuitState, names: &Names, site: SiteId) -> Map<String, Value> {
@@ -745,12 +746,7 @@ pub fn county_needs(
         .catalog()
         .commodities
         .iter()
-        .filter(|row| {
-            matches!(
-                row.kind,
-                babylon_material_circuit::CommodityKind::PeriodService { .. }
-            )
-        })
+        .filter(|row| matches!(row.kind, CommodityKind::PeriodService { .. }))
         .map(|row| (row.good_id, row.unit_id))
         .collect();
     for need in NEEDS {

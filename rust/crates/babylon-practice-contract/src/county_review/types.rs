@@ -9,7 +9,7 @@ pub const COUNTY_REVIEW_SCHEMA_VERSION: u32 = 1;
 pub const COUNTY_REVIEW_MAX_ROWS: usize = 65_536;
 
 /// A refusal of the County Review kernel.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CountyReviewError {
     /// The wire schema is not the current one.
     UnsupportedSchema,

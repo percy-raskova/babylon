@@ -59,6 +59,7 @@ use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
 
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
+use babylon_material_circuit::MaterialCatalog;
 
 use std::collections::{HashMap, HashSet};
 
@@ -2090,6 +2091,39 @@ where
     })
 }
 
+/// Runs the county's period on the material candidate, which must carry the captured county
+/// administration.
+fn run_county_review<C>(
+    identity: &ExecutionIdentity<'_, C>,
+    candidate: Option<&mut PreparedMaterialWorld>,
+    catalog: Option<&MaterialCatalog>,
+) -> Result<(), TickTransactionError> {
+    let candidate = candidate.ok_or_else(|| {
+        transaction_error(
+            identity,
+            "County review requires a material candidate".to_owned(),
+        )
+    })?;
+    if candidate.county_review_opening().is_none() {
+        return Err(transaction_error(
+            identity,
+            "County review needs a captured county administration".to_owned(),
+        ));
+    }
+    let catalog = catalog.ok_or_else(|| {
+        transaction_error(
+            identity,
+            "County review requires a material catalog".to_owned(),
+        )
+    })?;
+    crate::material_world::county_review_execution::resolve(
+        candidate,
+        catalog,
+        identity.stable_resolver(),
+    )
+    .map_err(|error| transaction_error(identity, format!("County review refused: {error}")))
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "one governed causal schedule; extraction would hide the phase order phase_order.rs enumerates"
@@ -2126,6 +2160,7 @@ where
     let mut organizer_reduced = None;
     let mut organizer_completed = false;
     let mut city_pd_completed = false;
+    let mut county_completed = false;
     for (id, loaded) in &prepared.rules {
         if loaded.execution == RuleExecution::MaterialCycle {
             // The closed body spends its entire fixed invocation budget.
@@ -2488,10 +2523,33 @@ where
             continue;
         }
         if loaded.execution == RuleExecution::CountyReview {
-            return Err(transaction_error(
-                identity,
-                "County review needs a captured county administration".to_owned(),
-            ));
+            if county_completed || !organizer_completed {
+                return Err(transaction_error(
+                    identity,
+                    "County review must run once after organizer practice".to_owned(),
+                ));
+            }
+            loaded
+                .declared_fuel
+                .checked_sub(babylon_bsl::fuel::MATERIAL_CYCLE_INVOCATION_COST)
+                .ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        format!("county review invocation {id} exhausted its fuel budget"),
+                    )
+                })?;
+            run_county_review(identity, material.as_mut(), organizer_catalog)?;
+            audit_receipts.push(AuditReceipt {
+                rule_id: id.clone(),
+                role: loaded.contract.role,
+                evidence: loaded.contract.evidence,
+                ordinal: 0,
+                effect: babylon_bsl::causal_contract::EffectSignature::CountyReview,
+            });
+            county_completed = true;
+            per_rule_considered.push((id.clone(), 1));
+            per_rule_fired.push((id.clone(), 1));
+            continue;
         }
         let event_start = working_sink.events.len();
         let mut write_log = CollectingWriteLog::new();

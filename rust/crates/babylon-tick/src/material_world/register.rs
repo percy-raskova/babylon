@@ -5,6 +5,9 @@ use super::aid_receipt;
 use super::city_pd::DecodedCityPdAttemptEvidence;
 use super::city_pd::{self, CityPdRegister, CityPdRegisterError};
 use super::collection_receipt;
+use super::county_review::{
+    self, CountyLaborFacts, CountyReviewRegister, CountyReviewRegisterError,
+};
 use super::equipment_receipt;
 use super::financial_receipt;
 use super::household_time_receipt;
@@ -29,6 +32,7 @@ use babylon_practice_contract::CityPdCaseSource;
 use babylon_practice_contract::OrganizerPartnerFacts;
 use babylon_practice_contract::PublicVenueHistory;
 use babylon_practice_contract::PublicVenueRecordKind;
+use babylon_practice_contract::{CountyReviewState, SessionOutcome};
 use std::collections::BTreeSet;
 
 use babylon_material_circuit::ArrivalReceipt;
@@ -118,8 +122,14 @@ use std::sync::Arc;
 
 use babylon_material_circuit::CompanyPortfolioRegister;
 const COMPANY_REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v8\0";
+/// A register with a county review section. All three domains have the same length.
+const COUNTY_REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v9\0";
 fn register_version(bytes: &[u8]) -> Result<u32, MaterialWorldError> {
-    for (domain, version) in [(REGISTER_DOMAIN, 7_u32), (COMPANY_REGISTER_DOMAIN, 8_u32)] {
+    for (domain, version) in [
+        (REGISTER_DOMAIN, 7_u32),
+        (COMPANY_REGISTER_DOMAIN, 8_u32),
+        (COUNTY_REGISTER_DOMAIN, 9_u32),
+    ] {
         if bytes
             .strip_prefix(domain)
             .is_some_and(|rest| rest.starts_with(&version.to_be_bytes()))
@@ -129,23 +139,40 @@ fn register_version(bytes: &[u8]) -> Result<u32, MaterialWorldError> {
     }
     Err(MaterialWorldError::Wire)
 }
-fn take_company_frame<'a>(
+/// The frames that follow the City PD's: the company decisions and the county review section.
+struct TrailingFrames<'a> {
+    company: Option<&'a [u8]>,
+    county: Option<&'a [u8]>,
+}
+
+/// Version 7 has no further frame, version 8 has the company frame, and version 9 has the county
+/// frame after the company frame, which is present exactly when its domain leads the next frame.
+fn take_trailing_frames<'a>(
     version: u32,
     sections: &mut &'a [u8],
-) -> Result<Option<&'a [u8]>, MaterialWorldError> {
-    let frame = if version == 8 {
+) -> Result<TrailingFrames<'a>, MaterialWorldError> {
+    let mut company = None;
+    let mut county = None;
+    if version == 8 || version == 9 {
         let bytes = take_organizer_section(sections)?;
-        if !bytes.starts_with(babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN) {
+        if bytes.starts_with(babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN) {
+            company = Some(bytes);
+        } else if version == 8 {
             return Err(MaterialWorldError::Wire);
+        } else {
+            county = Some(bytes);
         }
-        Some(bytes)
-    } else {
-        None
-    };
+    }
+    if version == 9 && county.is_none() {
+        county = Some(take_organizer_section(sections)?);
+    }
+    if county.is_some_and(|bytes| !bytes.starts_with(county_review::COUNTY_FRAME_DOMAIN)) {
+        return Err(MaterialWorldError::Wire);
+    }
     if !sections.is_empty() {
         return Err(MaterialWorldError::Wire);
     }
-    Ok(frame)
+    Ok(TrailingFrames { company, county })
 }
 pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v7\0";
 
@@ -270,6 +297,7 @@ pub struct MaterialWorldRegister {
     organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
     public_venue: Option<PublicVenueHistory>,
     city_pd: Option<CityPdRegister>,
+    county_review: Option<CountyReviewRegister>,
     canonical_bytes: SharedCanonicalBytes,
     /// Digest of the immutable catalog that admitted this register's state frame.
     catalog_digest: [u8; 32],
@@ -292,6 +320,7 @@ pub enum MaterialWorldError {
     ReportSharingScope,
     Organizer(OrganizerError),
     CityPd(CityPdRegisterError),
+    CountyReview(CountyReviewRegisterError),
 }
 
 impl std::fmt::Display for MaterialWorldError {
@@ -325,6 +354,7 @@ struct RegisterSections {
     organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
     public_venue: Option<PublicVenueHistory>,
     city_pd: Option<CityPdRegister>,
+    county_review: Option<CountyReviewRegister>,
 }
 
 #[derive(Clone, Copy)]
@@ -442,6 +472,7 @@ impl MaterialWorldRegister {
             organizer,
             public_venue,
             city_pd,
+            county_review,
         } = sections;
         validate_city_pd_venue(city_pd.as_ref(), public_venue.as_ref())?;
         let organizer_bytes = encode_bound_organizer(
@@ -462,52 +493,19 @@ impl MaterialWorldRegister {
             .as_ref()
             .map(|r| r.canonical_bytes(catalog, &state, completed_tick))
             .transpose()?;
-        let extra = company_bytes.as_ref().map_or(Ok(0), |b| {
-            b.len().checked_add(8).ok_or(MaterialWorldError::Arithmetic)
-        })?;
-        let length = REGISTER_DOMAIN
-            .len()
-            .checked_add(36)
-            .and_then(|n| n.checked_add(extra))
-            .and_then(|count| count.checked_add(state_bytes.len()))
-            .and_then(|count| count.checked_add(organizer_bytes.len()))
-            .and_then(|count| count.checked_add(city_pd_bytes.len()))
-            .ok_or(MaterialWorldError::Arithmetic)?;
-        let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
-        let (domain, version) = if company_bytes.is_some() {
-            (COMPANY_REGISTER_DOMAIN, 8_u32)
-        } else {
-            (REGISTER_DOMAIN, 7)
+        let county_bytes = match &county_review {
+            Some(register) => {
+                county_review::validate_world(register, &state, completed_tick)?;
+                Some(county_review::encode(register)?)
+            }
+            None => None,
         };
-        bytes.extend_from_slice(domain);
-        bytes.extend_from_slice(&version.to_be_bytes());
-        bytes.extend_from_slice(&completed_tick.to_be_bytes());
-        bytes.extend_from_slice(
-            &u64::try_from(state_bytes.len())
-                .map_err(|_| MaterialWorldError::Arithmetic)?
-                .to_be_bytes(),
-        );
-        bytes.extend_from_slice(state_bytes);
-        bytes.extend_from_slice(
-            &u64::try_from(organizer_bytes.len())
-                .map_err(|_| MaterialWorldError::Arithmetic)?
-                .to_be_bytes(),
-        );
-        bytes.extend_from_slice(&organizer_bytes);
-        bytes.extend_from_slice(
-            &u64::try_from(city_pd_bytes.len())
-                .map_err(|_| MaterialWorldError::Arithmetic)?
-                .to_be_bytes(),
-        );
-        bytes.extend_from_slice(&city_pd_bytes);
-        if let Some(frame) = company_bytes {
-            bytes.extend_from_slice(
-                &u64::try_from(frame.len())
-                    .map_err(|_| MaterialWorldError::Arithmetic)?
-                    .to_be_bytes(),
-            );
-            bytes.extend_from_slice(&frame);
-        }
+        let bytes = register_bytes(
+            completed_tick,
+            state_bytes,
+            &[&organizer_bytes, &city_pd_bytes],
+            [company_bytes.as_deref(), county_bytes.as_deref()],
+        )?;
         let digest = content_digest::sha256_of(&bytes);
         Ok(Self {
             completed_tick,
@@ -516,6 +514,7 @@ impl MaterialWorldRegister {
             organizer,
             public_venue,
             city_pd,
+            county_review,
             canonical_bytes: SharedCanonicalBytes::from_vec(bytes),
             catalog_digest: catalog.catalog_digest(),
             digest,
@@ -537,6 +536,7 @@ impl MaterialWorldRegister {
                     organizer: self.organizer,
                     public_venue: self.public_venue,
                     city_pd: self.city_pd,
+                    county_review: self.county_review,
                 },
                 resolver,
             );
@@ -566,6 +566,7 @@ impl MaterialWorldRegister {
                 organizer: self.organizer,
                 public_venue: self.public_venue,
                 city_pd: self.city_pd,
+                county_review: self.county_review,
             },
             AssemblyEvidence {
                 resolver,
@@ -607,6 +608,27 @@ impl MaterialWorldRegister {
         self.city_pd.as_ref()
     }
 
+    /// Bind the county administration, its roster and its session history into this world.
+    ///
+    /// # Errors
+    /// Refuses a section that does not fit the world: a group that is not a household cohort of
+    /// the roster's size, a crew that is not an employment row of its group, a missing public
+    /// account, or support lines that are not the ones the section announces.
+    pub fn with_county_review(
+        mut self,
+        catalog: &MaterialCatalog,
+        register: CountyReviewRegister,
+        resolver: Option<&StableElementResolver>,
+    ) -> Result<Self, MaterialWorldError> {
+        self.county_review = Some(register);
+        self.rebuild_binding(catalog, resolver)
+    }
+
+    #[must_use]
+    pub const fn county_review(&self) -> Option<&CountyReviewRegister> {
+        self.county_review.as_ref()
+    }
+
     /// Bind the independent public desk and its retained public records.
     ///
     /// # Errors
@@ -642,7 +664,7 @@ impl MaterialWorldRegister {
         let _state = take_organizer_section(&mut sections)?;
         let _organizer = take_organizer_section(&mut sections)?;
         let city_pd_bytes = take_organizer_section(&mut sections)?;
-        take_company_frame(register_version(self.canonical_bytes())?, &mut sections)?;
+        take_trailing_frames(register_version(self.canonical_bytes())?, &mut sections)?;
         if city_pd::encode(
             self.city_pd.as_ref(),
             catalog,
@@ -748,7 +770,10 @@ impl MaterialWorldRegister {
         let state_bytes = take_organizer_section(&mut sections)?;
         let organizer_wire = take_organizer_section(&mut sections)?;
         let city_pd_wire = take_organizer_section(&mut sections)?;
-        let company_wire = take_company_frame(version, &mut sections)?;
+        let TrailingFrames {
+            company: company_wire,
+            county: county_wire,
+        } = take_trailing_frames(version, &mut sections)?;
         if (catalog.company_portfolios.is_some() && tick > 0) != company_wire.is_some() {
             return Err(MaterialWorldError::Wire);
         }
@@ -776,9 +801,14 @@ impl MaterialWorldRegister {
         let city_pd = city_pd::decode(city_pd_wire, catalog, &state, tick, resolver)?;
         validate_city_pd_venue(city_pd.as_ref(), public_venue.as_ref())?;
         let canonical_city_pd = city_pd::encode(city_pd.as_ref(), catalog, &state, tick, resolver)?;
+        let county_review = county_wire.map(county_review::decode).transpose()?;
+        if let Some(register) = &county_review {
+            county_review::validate_world(register, &state, tick)?;
+        }
         let canonical_length = header
             .checked_add(24)
             .and_then(|n| n.checked_add(company_wire.map_or(0, |r| r.len().saturating_add(8))))
+            .and_then(|n| n.checked_add(county_wire.map_or(0, |r| r.len().saturating_add(8))))
             .and_then(|count| count.checked_add(canonical_state.len()))
             .and_then(|count| count.checked_add(canonical_organizer.len()))
             .and_then(|count| count.checked_add(canonical_city_pd.len()))
@@ -806,6 +836,7 @@ impl MaterialWorldRegister {
             organizer,
             public_venue,
             city_pd,
+            county_review,
             canonical_bytes,
             catalog_digest: catalog.catalog_digest(),
             digest,
@@ -879,6 +910,11 @@ impl MaterialWorldRegister {
             )?,
             None => Vec::new(),
         };
+        let county_labor_facts = self
+            .county_review
+            .as_ref()
+            .map(|register| county_review::labor_facts(register, &transition))
+            .transpose()?;
         let portfolios = catalog
             .company_portfolios
             .as_ref()
@@ -901,11 +937,62 @@ impl MaterialWorldRegister {
             organizer_collection_fact,
             partner_reports,
             city_pd_opening: self.city_pd.clone(),
+            county_review_opening: self.county_review.clone(),
+            county_labor_facts,
             public_venue_opening: self.public_venue.clone(),
             agency_attendance,
             venue_sources: venue_sources.to_vec(),
         })
     }
+}
+
+/// The register's bytes: the domain of its version, the completed tick, then the state, the
+/// organizer and the City PD frames, then the company and county frames when present. Every frame
+/// is length-prefixed. A county frame makes version 9, a company frame alone version 8.
+fn register_bytes(
+    completed_tick: u64,
+    state_bytes: &[u8],
+    frames: &[&[u8]; 2],
+    trailing: [Option<&[u8]>; 2],
+) -> Result<Vec<u8>, MaterialWorldError> {
+    let [company, county] = trailing;
+    let (domain, version) = if county.is_some() {
+        (COUNTY_REGISTER_DOMAIN, 9_u32)
+    } else if company.is_some() {
+        (COMPANY_REGISTER_DOMAIN, 8_u32)
+    } else {
+        (REGISTER_DOMAIN, 7)
+    };
+    let sections = [
+        Some(state_bytes),
+        Some(frames[0]),
+        Some(frames[1]),
+        company,
+        county,
+    ];
+    let mut length = domain
+        .len()
+        .checked_add(12)
+        .ok_or(MaterialWorldError::Arithmetic)?;
+    for frame in sections.iter().flatten() {
+        length = length
+            .checked_add(frame.len())
+            .and_then(|total| total.checked_add(8))
+            .ok_or(MaterialWorldError::Arithmetic)?;
+    }
+    let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
+    bytes.extend_from_slice(domain);
+    bytes.extend_from_slice(&version.to_be_bytes());
+    bytes.extend_from_slice(&completed_tick.to_be_bytes());
+    for frame in sections.into_iter().flatten() {
+        bytes.extend_from_slice(
+            &u64::try_from(frame.len())
+                .map_err(|_| MaterialWorldError::Arithmetic)?
+                .to_be_bytes(),
+        );
+        bytes.extend_from_slice(frame);
+    }
+    Ok(bytes)
 }
 
 fn validate_city_pd_venue(
@@ -976,12 +1063,25 @@ pub struct PreparedMaterialWorld {
     organizer_collection_fact: Option<OrganizerCollectionFact>,
     partner_reports: Vec<(u64, OrganizerPartnerFacts)>,
     city_pd_opening: Option<CityPdRegister>,
+    county_review_opening: Option<CountyReviewRegister>,
+    county_labor_facts: Option<CountyLaborFacts>,
     public_venue_opening: Option<PublicVenueHistory>,
     agency_attendance: Vec<AgencyObservationFundingReceipt>,
     venue_sources: Vec<AdmittedPublicVenueSource>,
 }
 
 impl PreparedMaterialWorld {
+    /// Every optional section of the candidate register. A writer changes the one it owns and
+    /// keeps the rest, so no writer can drop another's section.
+    fn sections(&self) -> RegisterSections {
+        RegisterSections {
+            company_portfolios: self.register.company_portfolios.clone(),
+            organizer: self.register.organizer.clone(),
+            public_venue: self.register.public_venue.clone(),
+            city_pd: self.register.city_pd.clone(),
+            county_review: self.register.county_review.clone(),
+        }
+    }
     pub(crate) fn organizer_collection_fact(&self) -> Option<&OrganizerCollectionFact> {
         self.organizer_collection_fact.as_ref()
     }
@@ -1044,14 +1144,13 @@ impl PreparedMaterialWorld {
             self.register.completed_tick,
             state,
             RegisterSections {
-                company_portfolios: self.register.company_portfolios.clone(),
                 organizer: Some((config, organizer, journal)),
                 public_venue: self
                     .register
                     .public_venue
                     .clone()
                     .or_else(|| self.public_venue_opening.clone()),
-                city_pd: self.register.city_pd.clone(),
+                ..self.sections()
             },
             Some(resolver),
         )?;
@@ -1075,14 +1174,13 @@ impl PreparedMaterialWorld {
             self.register.completed_tick,
             self.register.state.clone(),
             RegisterSections {
-                company_portfolios: self.register.company_portfolios.clone(),
                 organizer: Some((config, state, journal)),
                 public_venue: self
                     .register
                     .public_venue
                     .clone()
                     .or_else(|| self.public_venue_opening.clone()),
-                city_pd: self.register.city_pd.clone(),
+                ..self.sections()
             },
             Some(resolver),
         )?;
@@ -1090,6 +1188,64 @@ impl PreparedMaterialWorld {
     }
     pub(crate) fn city_pd_opening(&self) -> Option<&CityPdRegister> {
         self.city_pd_opening.as_ref()
+    }
+    /// The labor and tax facts of this close, present exactly when the opening register carried
+    /// a county review section.
+    #[must_use]
+    pub const fn county_labor_facts(&self) -> Option<&CountyLaborFacts> {
+        self.county_labor_facts.as_ref()
+    }
+    /// The county's section as the period opened.
+    pub(crate) const fn county_review_opening(&self) -> Option<&CountyReviewRegister> {
+        self.county_review_opening.as_ref()
+    }
+    /// Write the county's next section and, when a session was held, its support lines and the
+    /// hours it charged.
+    ///
+    /// The household support rows of the configured groups are replaced by the session's lines at
+    /// priority 1: a group with no line has no row, because every amount must be above zero. No
+    /// other row of the state changes. Each charge is one use of the group's household hours under
+    /// the county's actor. A period with no session writes neither.
+    pub(crate) fn set_county_review(
+        &mut self,
+        catalog: &MaterialCatalog,
+        next: CountyReviewState,
+        session: Option<&SessionOutcome>,
+        resolver: &StableElementResolver,
+    ) -> Result<(), MaterialWorldError> {
+        let config = self
+            .county_review_opening
+            .as_ref()
+            .ok_or(CountyReviewRegisterError::Economy)?
+            .config()
+            .clone();
+        let period = self.register.completed_tick;
+        let mut state = self.register.state.clone();
+        if let Some(held) = session {
+            county_review::write_support_lines(
+                &config,
+                &mut state,
+                &held.record.lines,
+                &held.record.collective_lines,
+            )?;
+            let uses = county_review::hour_uses(&config, period, &held.hour_charges)?;
+            if !uses.is_empty() {
+                babylon_material_circuit::consume_household_contributions(
+                    catalog, &mut state, period, &uses,
+                )?;
+            }
+        }
+        self.register = MaterialWorldRegister::build(
+            catalog,
+            period,
+            state,
+            RegisterSections {
+                county_review: Some(CountyReviewRegister::try_new(config, next)?),
+                ..self.sections()
+            },
+            Some(resolver),
+        )?;
+        Ok(())
     }
     pub(crate) fn set_public_venue(
         &mut self,
@@ -1102,10 +1258,8 @@ impl PreparedMaterialWorld {
             self.register.completed_tick,
             self.register.state.clone(),
             RegisterSections {
-                company_portfolios: self.register.company_portfolios.clone(),
-                organizer: self.register.organizer.clone(),
                 public_venue: Some(venue),
-                city_pd: self.register.city_pd.clone(),
+                ..self.sections()
             },
             Some(resolver),
         )?;
@@ -1131,10 +1285,8 @@ impl PreparedMaterialWorld {
             self.register.completed_tick,
             self.register.state.clone(),
             RegisterSections {
-                company_portfolios: self.register.company_portfolios.clone(),
-                organizer: self.register.organizer.clone(),
-                public_venue: self.register.public_venue.clone(),
                 city_pd: Some(city_pd),
+                ..self.sections()
             },
             Some(resolver),
         )?;
@@ -1295,7 +1447,7 @@ pub fn decode_material_organizer_evidence(
     let state_wire = take_organizer_section(&mut sections)?;
     let organizer_wire = take_organizer_section(&mut sections)?;
     let private_wire = take_organizer_section(&mut sections)?;
-    let company_frame = take_company_frame(version, &mut sections)?;
+    let company_frame = take_trailing_frames(version, &mut sections)?.company;
     if (catalog.company_portfolios.is_some() && tick > 0) != company_frame.is_some()
         || !matches!(private_wire.first(), Some(0 | 1))
         || (private_wire.first() == Some(&0) && private_wire.len() != 1)
@@ -1354,7 +1506,7 @@ pub fn decode_city_pd_attempt_evidence(
     let _state = take_organizer_section(&mut sections)?;
     let _organizer = take_organizer_section(&mut sections)?;
     let city_pd = take_organizer_section(&mut sections)?;
-    take_company_frame(register_version(bytes)?, &mut sections)?;
+    take_trailing_frames(register_version(bytes)?, &mut sections)?;
     Ok(city_pd::decode_attempt_evidence(city_pd)?)
 }
 

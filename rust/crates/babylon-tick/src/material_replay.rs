@@ -9,7 +9,9 @@ use crate::material_staffing::{
     MaterialStaffingError, StaffingComposition, StaffingEffectContext, StaffingEffects,
 };
 use crate::material_state::MaterialStateRows;
-use crate::material_world::{MaterialWorldError, MaterialWorldRegister, PreparedMaterialWorld};
+use crate::material_world::{
+    CountyReviewRegister, MaterialWorldError, MaterialWorldRegister, PreparedMaterialWorld,
+};
 use crate::public_venue::AdmittedPublicVenueSource;
 use crate::replay_session::{
     IdentifiedTickReport, PreparedReplayCommitError, PreparedReplayTick, ReplayCommitDisposition,
@@ -618,7 +620,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         graph.validate_material_cycle()?;
         graph.validate_organizer_cycle(material.organizer_state().is_some())?;
         graph.validate_city_pd_cycle(material.city_pd().is_some())?;
-        graph.validate_county_review_cycle(false)?;
+        graph.validate_county_review_cycle(material.county_review().is_some())?;
         graph.validate_material_field_ownership(catalog.company_portfolios.is_some())?;
         let venue_sources = match material.public_venue() {
             Some(history) => vec![crate::public_venue::admit_public_venue_source(
@@ -722,6 +724,14 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         )?;
         if self.material.city_pd().map(|pd| &pd.config)
             != material.register().city_pd().map(|pd| &pd.config)
+            || self
+                .material
+                .county_review()
+                .map(CountyReviewRegister::config)
+                != material
+                    .register()
+                    .county_review()
+                    .map(CountyReviewRegister::config)
             || self.material.public_venue().map(|venue| &venue.policy)
                 != material
                     .register()
@@ -821,7 +831,13 @@ impl MaterialReplaySession<HypergraphStore> {
         if material.catalog_digest() != self.catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
-        if material.city_pd().map(|pd| &pd.config) != self.material.city_pd().map(|pd| &pd.config) {
+        if material.city_pd().map(|pd| &pd.config) != self.material.city_pd().map(|pd| &pd.config)
+            || material.county_review().map(CountyReviewRegister::config)
+                != self
+                    .material
+                    .county_review()
+                    .map(CountyReviewRegister::config)
+        {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
         // Never adopt another graph session's resolved dossier handles, even

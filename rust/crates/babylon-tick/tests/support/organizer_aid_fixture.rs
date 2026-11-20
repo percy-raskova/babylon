@@ -974,10 +974,6 @@ pub(crate) fn authored_session(
 ) -> Session {
     authored_session_with_loss(foundation, organizer, no_time, routed, 0)
 }
-#[allow(
-    clippy::too_many_lines,
-    reason = "one authored boundary keeps the complete session fixture and its controls together"
-)]
 pub(crate) fn authored_session_with_loss(
     foundation: &MichiganDynamicHexFoundation,
     organizer: OrganizerConfig,
@@ -985,6 +981,22 @@ pub(crate) fn authored_session_with_loss(
     routed: bool,
     loss_ppm: u32,
 ) -> Session {
+    try_session(
+        foundation,
+        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
+        authored_materials(no_time, routed, loss_ppm),
+        organizer,
+    )
+    .expect("the fixture opens a session")
+}
+
+/// The authored definitions and conserved opening of the aid fixture, before any session binds
+/// them: the opening allocation, the actual mutual-aid contribution and the time controls.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one authored boundary keeps the complete session fixture and its controls together"
+)]
+pub(crate) fn authored_materials(no_time: bool, routed: bool, loss_ppm: u32) -> Materials {
     let Materials {
         mut catalog,
         mut state,
@@ -1072,11 +1084,5 @@ pub(crate) fn authored_session_with_loss(
     if no_time {
         catalog.household_time_policy[0].hours_per_eligible_person = 4;
     }
-    try_session(
-        foundation,
-        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        Materials { catalog, state },
-        organizer,
-    )
-    .expect("the fixture opens a session")
+    Materials { catalog, state }
 }

@@ -33,7 +33,7 @@ envelope:
       name: complete_material_register
       count: 1
       key: empty
-      payload: captured_material_world_register_v7_or_v8_bytes
+      payload: captured_material_world_register_v7_v8_or_v9_bytes
     - {tag: 8, name: material_receipts, count: 1, key: empty,
        payload: captured_material_tick_receipts_v20_v21_or_v22_bytes}
   family_frame: u8_tag_then_u64_big_endian_count

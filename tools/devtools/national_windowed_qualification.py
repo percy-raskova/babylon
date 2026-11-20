@@ -70,6 +70,12 @@ UnitAction = Literal[
     "open_direction",
     "inspect_practices",
     "inspect_hearing",
+    "inspect_county_ledger",
+    "inspect_county_roster",
+    "inspect_county_session",
+    "inspect_food_run",
+    "roster_next_page",
+    "roster_previous_page",
     "inspect_receipts",
     "open_relationships",
     "scene_places",
@@ -105,6 +111,12 @@ UnitAction = Literal[
     "refresh",
     "quit",
 ]
+COUNTY_INSPECTORS: dict[str, str] = {
+    "inspect_county_ledger": "CountyLedger",
+    "inspect_county_roster": "CountyRoster",
+    "inspect_county_session": "CountySession",
+    "inspect_food_run": "FoodRun",
+}
 Event = Literal[
     "observed",
     "frame_captured",
@@ -246,7 +258,19 @@ class AmountKey(FrozenRecord):
     amount_key: Literal["home", "end", "delete", "backspace"] | CharacterKey
 
 
-Action = UnitAction | FocusAmount | SelectAidPartner | AmountKey
+ROSTER_PAGE_ROWS = 8
+RosterSlotNumber = Annotated[StrictInt, Field(ge=0, le=255)]
+
+
+class RosterSlot(FrozenRecord):
+    slot: RosterSlotNumber
+
+
+class ChooseRosterSlot(FrozenRecord):
+    choose_roster_slot: RosterSlot
+
+
+Action = UnitAction | FocusAmount | SelectAidPartner | AmountKey | ChooseRosterSlot
 
 
 def expected_event(action: Action) -> str:
@@ -301,7 +325,27 @@ UnitChoice = Literal[
 ]
 
 
-Choice = UnitChoice | InquiryChoice | HearingChoice
+BandName = Literal["bottom50", "next40", "next9", "top1"]
+CountIndex = Annotated[StrictInt, Field(ge=0, le=2**32 - 1)]
+HouseholdCount = Annotated[StrictInt, Field(ge=0, le=2**16 - 1)]
+
+
+class PositionKey(FrozenRecord):
+    """The county's household position; the serde names of `PositionKey` and `Band`."""
+
+    group: CountIndex
+    band: BandName
+    crew: CountIndex | None
+    at_work: HouseholdCount
+    seeking: HouseholdCount
+    units: HouseholdCount
+
+
+class ReviewContactChoice(FrozenRecord):
+    review_contact: PositionKey
+
+
+Choice = UnitChoice | InquiryChoice | HearingChoice | ReviewContactChoice
 Byte = Annotated[StrictInt, Field(ge=0, le=255)]
 Bytes16 = Annotated[tuple[Byte, ...], Field(min_length=16, max_length=16)]
 Bytes32 = Annotated[tuple[Byte, ...], Field(min_length=32, max_length=32)]
@@ -473,6 +517,18 @@ class Observation(FrozenRecord):
     ]
 
 
+class ContactPreview(FrozenRecord):
+    """What one more reached household would do to the county's next session."""
+
+    key: PositionKey
+    basis_period: Nonnegative
+    outcome: Literal["reached", "nobody_left", "no_such_position"]
+    asks: StrictBool
+    place_open: StrictBool
+    taken_from: tuple[PositionKey, ...]
+    then_at_stake: tuple[PositionKey, ...]
+
+
 class Preview(SelectedAllocation):
     current_period: Nonnegative
     resolves_period: Nonnegative
@@ -502,6 +558,7 @@ class Preview(SelectedAllocation):
         | None
     )
     observations: tuple[Observation, ...]
+    review: ContactPreview | None = None
 
 
 class Standing(FrozenRecord):
@@ -767,15 +824,22 @@ class PlannedChoice(FrozenRecord):
         "inquiry_maintenance_received",
         "hearing_claimants",
         "hearing_joint",
+        "review_contact",
         "reinforce",
         "hold",
         "pause_standing",
         "resume_standing",
     ]
+    page: Annotated[StrictInt, Field(ge=0, le=2**32 - 1)] | None = None
+    slot: Annotated[StrictInt, Field(ge=0, le=ROSTER_PAGE_ROWS - 1)] | None = None
 
     @model_validator(mode="after")
     def offered_amount(self) -> Self:
-        if self.choice.startswith(("inquiry_", "hearing_")):
+        if (self.choice == "review_contact") != (self.page is not None and self.slot is not None):
+            raise ValueError("only a review contact names a roster page and slot, and it must")
+        if (self.page is None) != (self.slot is None):
+            raise ValueError("a roster page and slot are named together")
+        if self.choice.startswith(("inquiry_", "hearing_")) or self.choice == "review_contact":
             if self.allocation != "none":
                 raise ValueError("this practice does not authorize a material allocation")
         else:
@@ -785,7 +849,13 @@ class PlannedChoice(FrozenRecord):
         return self
 
     def at_period(self, period: int) -> PlannedChoice:
-        return PlannedChoice(period=period, choice=self.choice, allocation=self.allocation)
+        return PlannedChoice(
+            period=period,
+            choice=self.choice,
+            allocation=self.allocation,
+            page=self.page,
+            slot=self.slot,
+        )
 
 
 SMOKE_DECISIONS = (
@@ -1295,6 +1365,13 @@ class ControlChannel:
             raise self._refuse("native practice list did not open")
         if action == "inspect_hearing" and reply.state.inspector != "Hearing":
             raise self._refuse("native hearing notice or minutes did not open")
+        county_inspector = COUNTY_INSPECTORS.get(action) if isinstance(action, str) else None
+        if county_inspector is not None and reply.state.inspector != county_inspector:
+            raise self._refuse("native county view did not open")
+        if isinstance(action, ChooseRosterSlot) and not isinstance(
+            reply.state.choice, ReviewContactChoice
+        ):
+            raise self._refuse("native roster slot did not draft a review contact")
         choice = (
             {
                 "choose_collect": "collect",
@@ -1448,6 +1525,21 @@ def edit_amount(
         key(AmountKey(amount_key=CharacterKey(character=char)), raw, mutation=True)
 
 
+def open_review_contact(channel: ControlChannel, choice: PlannedChoice, timeout: float) -> None:
+    """Select the household position in a roster slot, as the player does: open the roster, turn
+    to the page, press the slot's button. The roster closes with the choice drafted."""
+    if choice.page is None or choice.slot is None:
+        raise ControlRefusal("native review contact names no roster page and slot")
+    channel.perform("inspect_county_roster", timeout)
+    for _ in range(choice.page):
+        channel.perform("roster_next_page", timeout)
+    selected = channel.perform(
+        ChooseRosterSlot(choose_roster_slot=RosterSlot(slot=choice.slot)), timeout
+    )
+    if selected.inspector != "Closed":
+        channel.perform("close_inspector", timeout)
+
+
 def submit_choice(
     channel: ControlChannel,
     choice: PlannedChoice,
@@ -1460,7 +1552,9 @@ def submit_choice(
     """Submit the selected amount through a fresh witnessed Review and Confirm."""
     if channel.state is None or channel.state.durable_tick + 1 != choice.period:
         raise ControlRefusal("native choice plan does not match the next actual period")
-    if choice.choice in {"pause_standing", "resume_standing"}:
+    if choice.choice == "review_contact":
+        open_review_contact(channel, choice, timeout)
+    elif choice.choice in {"pause_standing", "resume_standing"}:
         channel.perform("open_direction", timeout)
         selected = channel.perform(
             "choose_pause_standing"

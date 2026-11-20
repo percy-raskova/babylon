@@ -63,6 +63,9 @@ mod city_pd_acceptance;
 #[path = "observer_material_live/organizer.rs"]
 mod organizer;
 
+#[path = "observer_material_live/county_review_playthroughs.rs"]
+mod county_review_playthroughs;
+
 #[path = "observer_material_live/support.rs"]
 mod support;
 

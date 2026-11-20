@@ -235,25 +235,27 @@ MIM's line. Neither is a source for method here.
 
 ### The county's books
 
-These figures come from the recorded run with seed 319. Appendix A names the files. That run was
-made without the City PD's line.
+These figures come from the recorded playthroughs of this slice (seed 319, in
+`reports/county-review-2026-11-19/`), in a Wayne campaign that has the City PD and the claimant
+group. Appendix A names the older files.
 
 | Line | Per period | In this slice |
 |---|---|---|
-| First class: grants to public administration sites | $151,969,750 | Off the table. No claim can touch it |
+| First class: grants to public administration sites | $151,969,774 | Off the table. No claim can touch it |
 | of which the City PD's payroll, under this design | $13,551,360 | Taken out of the line above, not added to it (section 7.3) |
 | Relief: household support | $20,094,200 | The only money the review can move. $216,160 of it is for collective residence and stays outside the review |
-| Spending limit (the first class and relief) | $172,063,950 | Unchanged |
+| Spending limit (the first class and relief) | $172,063,974 | Unchanged |
 
 Household support is one **unit** for each job-seeking person at the opening. A unit is $280 a
 period: one period of food at the opening price. The recorded run pays 71,765 units. The list of
 those units is the county's **roll**.
 
-The county's cash in that run starts at $344 million and peaks near $1,151 million after period 3.
-From period 4 the county takes in less than it pays out. Its cash falls by $18 million in period 4,
-by $34 million in period 10 and by $56 million in period 29. At the close of period 29 it holds
-$149.5 million, which is less than its first class. From period 30 it pays its offices in part and
-pays no relief at all. Nothing scripts this.
+The county's cash in the recorded playthroughs is $747 million after period 1 and peaks at
+$1,150.9 million after period 3. From period 4 the county takes in less than it pays out. Its cash
+falls by $18.0 million in period 4, by $33.8 million in period 10 and by $56.3 million in period
+29. At the close of period 29 it holds $149.5 million, which is less than its first class of
+$151.97 million. The session of period 29 announces no relief, and from period 30 the county pays
+no household unit. Nothing scripts this: it is the same in all four playthroughs.
 
 ### Wayne's households
 
@@ -275,33 +277,47 @@ they own a share of a business. It does not say who has a wage now.
 - The engine pays wages by the hour worked. In period 4 the first group was paid for 9,928,626
   hours. A person at work for a full period works 160 hours, so that is the work of about 62,000
   persons, in a group of 456,528 households. Wages had fallen by four fifths since period 2.
-- The recorded files do not hold the people at work in each period, or wages for each workplace. So
-  nobody can yet say how many households had a wage in period 4, or how many of them hold a unit.
-  The first run of this slice records both.
+- The older recorded files do not hold the people at work in each period, or wages for each
+  workplace. The playthroughs of this slice do. In period 4, 226,213 households have someone at
+  work, against 505,963 at the opening, and 296,817 people are at work, against 748,922.
 - The four persons at work in the third group had been job-seekers, so their households are on the
   roll.
 - The second and fourth groups also receive ownership income: $103.1 million and $39.3 million in
   period 4. The engine does not tax it. A working owner is at work and is paid no wage.
 
 **Who works.** **[Director]** The Director's law names four bands and says who works in each
-(section 2). Laid over the four groups by the rules of section 7.2, Wayne opens as below.
+(section 2). The roster the campaign captures counts Wayne's households into them by the rules of
+section 7.2. At the opening it holds:
 
-| Band | Households | With someone at work | Only looking for work | Nobody in the labor force | People at work | People looking for work | Units held |
+| Band | Households | At work | Only looking | None in labor force | People at work | Looking | Units |
 |---|---|---|---|---|---|---|---|
-| Top 1% | 7,006 | none | none | 7,006 | none | none | none |
-| Next 9% | 63,054 | 50,726 | 2,949 | 9,379 | 101,931 | 5,618 | 5,618 |
-| Next 40% | 280,232 | 280,232 | none | none | 470,691 | 13,104 | 13,104 |
-| Bottom 50% | 350,291 | 176,296 | 26,538 | 147,457 | 176,296 | 52,271 | 52,271 |
-| All households | 700,583 | 507,254 | 29,487 | 163,842 | 748,918 | 70,993 | 70,993 |
+| Top 1% | 7,006 | 0 | 0 | 7,006 | 0 | 0 | 0 |
+| Next 9% | 63,054 | 49,431 | 4,244 | 9,379 | 101,931 | 5,618 | 5,618 |
+| Next 40% | 280,236 | 280,236 | 0 | 0 | 470,695 | 13,105 | 13,105 |
+| Bottom 50% | 350,295 | 176,296 | 26,538 | 147,461 | 176,296 | 52,270 | 52,270 |
+| All households | 700,591 | 505,963 | 30,782 | 163,846 | 748,922 | 70,993 | 70,993 |
 
-- The figures are worked from the group totals above by the rules of section 7.2, with each group's
-  workplaces taken as one. So they are close and not exact. The first run records the exact figures.
+"At work" counts households with someone at work, and "Only looking" households with nobody at work
+and someone looking. In the no-contact playthrough the counts move as the engine's wages do. The
+households with someone at work, and the people looking for work, in the first session and in the
+first short session:
+
+| Band | Households | Work, opening | Work, period 4 | Work, period 29 | Looking, 0 | Looking, 4 | Looking, 29 |
+|---|---|---|---|---|---|---|---|
+| Top 1% | 7,006 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Next 9% | 63,054 | 49,431 | 10,185 | 10,185 | 5,618 | 96,257 | 96,246 |
+| Next 40% | 280,236 | 280,236 | 129,732 | 135,781 | 13,105 | 284,585 | 278,536 |
+| Bottom 50% | 350,295 | 176,296 | 86,296 | 90,330 | 52,270 | 142,256 | 138,222 |
+
+No household left Wayne in 34 periods: every band holds its opening households throughout. The
+count for every period of every run is in the records.
+
 - The top 1% come from the fourth group: owners with no earner. The engine holds 16,385 such
   households with nobody in the labor force, more than twice the 7,006 the law needs.
-- The next 9% are the other owners: 50,726 households that work, 2,949 that are looking for work and
-  9,379 that live on ownership income.
+- The next 9% are the other owners: 49,431 households that work, 4,244 that are looking for work
+  and 9,379 that live on ownership income.
 - The next 40% come from the first group, which is 65 of every 100 households in Wayne. So "at
-  least" holds with room. The band has unemployment: 13,104 of its people are looking for work,
+  least" holds with room. The band has unemployment: 13,105 of its people are looking for work,
   about 3 of every 100 of its people in the labor force. At the opening each of them shares a
   household with someone at work.
 - The bottom 50% are the rest of the first group and all of the third. Half of its households have
@@ -309,14 +325,15 @@ they own a share of a business. It does not say who has a wage now.
   74 of every 100 units that households hold, and the claimants and the aid partners' households are
   in it.
 - So the engine's opening and the Director's law agree in shape. The law adds the names of the bands
-  and two checks at the opening.
+  and two checks at the opening. By period 3 the engine's wages have fallen, and with them the
+  households with someone at work: the next 40% have 127,432 of them, not 280,236.
 
 In a player's campaign the scenario also carves out three small named groups. The aid partners'
 households (4 households, nobody in the labor force, no unit) come out of the third group, and the
 organization's own households (4 households, 8 persons, 4 of them at work, no unit) come out of the
 first. The table's figures are after both. The relief claimants (2 households, each with a
-job-seeker) come out of the third group as well, and hold 2 of its 26,538 units. The recorded run
-was made before the claimant group and the City PD existed.
+job-seeker) come out of the third group as well, and hold 2 of its 26,538 units. The recorded
+playthroughs were made with all three groups and the City PD.
 
 ### The county's list
 
@@ -358,8 +375,8 @@ only to a household that pays strictly more than the household that held it. **[
 
 ### What a claim does
 
-The fifth draft gave a table of sessions here. It is withdrawn, because it rested on counts the
-recorded files do not hold (section 2). The rules fix this much without those counts.
+The fifth draft gave a table of sessions here. It is withdrawn (section 2), and the recorded
+playthroughs replace it below. The rules fix this much without them.
 
 - One review contact reaches one household. If that household has a wage and no unit, it asks. The
   county pays it a unit, and stops paying one unit held by a household with no wage.
@@ -375,8 +392,30 @@ recorded files do not hold (section 2). The rules fix this much without those co
   roll loses its unit whatever its place. In the recorded run that is at the close of period 29.
 
 The player has three choices at the county: which position to open, in what order, and when. There
-is no counter-move. Section 12 says so. The first recorded playthroughs of this slice (section 9)
-replace this list with figures.
+is no counter-move. Section 12 says so.
+
+The recorded sessions of two claims, from `reports/county-review-2026-11-19/` (the first contact is
+chosen from the period-3 snapshot, the second from the period-10 snapshot; "came" is households
+that asked and were paid):
+
+| Contact | Session | Reached | Came | Brought | Asked, no place |
+|---|---|---|---|---|---|
+| First: Bottom 50%, "Wayne County: extraction (5)" | 4 | 1 | 1 | 1 | 0 |
+| | 5 and every session to 34 | 2 | 0 | 0 | 2 |
+| Second: Next 40%, "Wayne County: food (5)" | 11 | 1 | 1 | 1 | 0 |
+| | 12 | 2 | 2 | 2 | 0 |
+| | 13 | 4 | 4 | 4 | 0 |
+| | 14 | 8 | 8 | 8 | 0 |
+| | 15 | 16 | 16 | 16 | 0 |
+| | 16 and every session to 34 | 32 | 0 | 0 | 32 |
+
+Both claims doubled while a place was open, and both stopped for the same reason: the workplace
+stopped paying a wage. "Wayne County: extraction (5)" paid $2,273,280 a period through period 3,
+$242,304 in period 4 and nothing from period 5. "Wayne County: food (5)" paid $20,947,200 a period
+through period 14, $6,918,672 in period 15 and nothing from period 16. A household whose workplace
+pays nothing is ranked last, and a household that is ranked last finds no place. The first claim
+moved one unit and stopped at 2 of its family's 185 households. The second moved 31 units (1, 2, 4,
+8 and 16) and stopped at 32 of 2,434. Neither reached the edge of its position.
 
 ### What a new player notices within ten minutes
 
@@ -1090,8 +1129,8 @@ has, and this design applies it to every household that came.
 ### 7.7 The county's list: a worked example
 
 The fifth draft gave seven cases on Wayne's recorded figures. They are withdrawn (section 2). The
-first recorded playthroughs replace them (section 9). The example below is small enough to check by
-hand.
+example below is small enough to check by hand. Two sessions of the recorded playthroughs follow
+it, in place of the withdrawn cases.
 
 A county can pay 5 units. Its roll holds 5.
 
@@ -1115,6 +1154,21 @@ A county can pay 5 units. Its roll holds 5.
 **What this shows.** Relief moves up the county's list and never down it. A household with no wage
 loses first and can take nothing back. The county does not weigh which budget group a household is
 in. It weighs whether the household has a wage, and how much.
+
+**Two recorded sessions.** In the session of period 4 the county could pay all 70,993 household
+units and held 70,993. One reached household of "Wayne County: extraction (5)" (Bottom 50%, one at
+work, no unit) asked and was paid. The unit it took was held by a household of the group with no
+earner that was looking for work. The lines for period 5 were one unit more for the group of
+households with earnings and no business share, 38,838, and one fewer for the group with no earner,
+26,535. The household had spent 2 hours in the room and 2 hours bringing one more.
+
+In the session of period 11 a reached household of "Wayne County: food (5)" (Next 40%, two at work,
+no unit) asked and was paid. This time the lines of every group equal those of the no-contact run.
+The contact's preview had named, as the household that would lose its unit, one of the same budget
+group with a person at work and a person looking, and a line moves only when the two households are
+in different groups. From session 12 the claim doubled: two households asked and were paid, then
+four, eight and sixteen. Against the no-contact run the line of the group with earnings rose by 1,
+1 and 3 units in sessions 12 to 14, and the line of the group with no earner fell by the same.
 
 ### 7.8 The second road: food runs
 
@@ -1599,9 +1653,9 @@ Archive.
 - **Positions are large.** The map of the recorded run shows 18 groups of producers, three shops and
   two utilities in Wayne. A workplace in the engine is a whole branch of the county's work, not a
   firm. So a single contact can still reach tens of thousands of households.
-- **The worked tables are withdrawn.** The recorded files hold wages for each budget group and not
-  for each crew, and they do not hold the people at work or the wage tax collected. The first
-  recorded runs of this slice hold all three, and replace the tables.
+- **The worked tables are replaced.** The older recorded files hold wages for each budget group and
+  not for each crew, and they do not hold the people at work or the wage tax collected. The
+  recorded playthroughs of this slice hold all three, and sections 3 and 7.7 take their figures.
 - **Households that are ranked last keep coming.** By the rule they come every period in which their
   own unit is not paid, and it changes nothing for them. When the county stops paying relief
   altogether, every reached household on the roll comes each period for as long as that lasts.
@@ -1644,7 +1698,8 @@ Archive.
   follows from it. The views show them as they are.
 - **Turn time.** On the recorded runs the organizer's turns took 11 to 16 seconds, and the
   qualification report records several turns over the 30-second budget. The session adds work to
-  every Wayne turn, and that work has not been measured.
+  every Wayne turn. In the headless playthroughs a close took 8.4 to 10.3 seconds (mean 9.0 over
+  136 closes) with the session held, on the build machine.
 - **The recorded figures come from one seed and an older world format.** That run has no City PD and
   no claimant group. A player's campaign has both.
 - **The format has no compatibility path.** Changing the organizer records resets saved campaigns,

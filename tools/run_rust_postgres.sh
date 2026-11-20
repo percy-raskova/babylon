@@ -131,7 +131,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | money_journal | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage | organizer_allocation_atomic) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | money_journal | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_pair | city_pd_atomic | city_pd_history | city_pd_nonwitness | county_review | client | national_storage | organizer_allocation_atomic) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -719,7 +719,7 @@ if [ "$status" -eq 0 ]; then
         run_phase "$reader_suite" 600 cargo test -p babylon-persistence --test "$reader_suite" \
           --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
           --skip staffing_history::production_history --skip organizer:: --skip money_journal:: --skip inspection_copy:: \
-          --skip state_opponent_history:: --skip state_opponent_nonwitness:: \
+          --skip state_opponent_history:: --skip state_opponent_nonwitness:: --skip county_review_playthroughs:: \
           --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break
       done
@@ -830,6 +830,19 @@ if [ "$status" -eq 0 ]; then
       if [ "$status" -eq 0 ]; then
         run_phase city_pd_nonwitness 900 cargo test -p babylon-persistence --test observer_material_live "$nonwitness_test" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       fi
+      ;;
+    county_review)
+      # Local only: four recorded playthroughs and a replay, about 40 minutes, one national
+      # runtime at a time (a national runtime peaks near 4 GB). BABYLON_COUNTY_REVIEW_TEST=
+      # county_review_playthroughs_smoke runs the short driver check (about 10 minutes).
+      county_test="${BABYLON_COUNTY_REVIEW_TEST-county_review_playthroughs}"
+      case "$county_test" in
+        county_review_playthroughs | county_review_playthroughs_smoke) ;;
+        *) die "unsupported county review test: $county_test" ;;
+      esac
+      run_phase county_review_playthroughs 3600 cargo test -p babylon-persistence \
+        --test observer_material_live "county_review_playthroughs::$county_test" \
+        --locked -- --ignored --nocapture --exact --test-threads=1 || status=$?
       ;;
     client)
       run_phase client 900 cargo test -p babylon-client --test dossier_cli_live \

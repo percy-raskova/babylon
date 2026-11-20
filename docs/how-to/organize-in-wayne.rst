@@ -175,6 +175,59 @@ A reference opens a report only if you can access it in the inspected period.
 Use **Return Live** to read a report acquired after that period. A retained
 reference grants no access to an unavailable report.
 
+Take a household to the county review
+--------------------------------------
+
+The county holds a review session every period from period 4, after that period's accounts close.
+It ranks households by the wage tax each paid in the period just closed and pays relief down that
+list. A household that pays more than a household holding a unit of relief can take the unit. Your
+organizer can reach one household in a named position, from period 3 on. That household asks the
+county for a unit. This slice has no nation, no solidarity and no consciousness. Households act on
+their own money only.
+
+Read the county before you choose:
+
+#. Open **County ledger**. It shows the county's cash, its spending limit, the lines it pays before
+   relief and the money for relief. No claim can touch the lines paid before relief.
+#. Open **Household roster**. **Who works** counts, for each band of households, those with someone
+   at work, those only looking for work and those with nobody in the labor force. The bands are set
+   at the opening and are Designed. Below them, the positions follow the county's list.
+#. Read a position's line. It gives its band, budget group, workplace and how that workplace pays,
+   the people at work and looking for work, the units it holds and its rank. A position you have not
+   contacted shows no dollar figures: **Amounts are earned by contact**. A position with no
+   workplace has nobody in the labor force and no wage, so it can take nothing from anyone.
+
+Reach a household:
+
+#. Use **Previous** and **Next** to find a position. Eight positions show on a page.
+#. Press **Reach a household here (N)** for the position you choose. The roster closes and the
+   choice is drafted. On a past period the buttons are off and the roster says why. Choose
+   **Return Live** first.
+#. Choose **Review choice**. The review costs two organizer hours, names the period the contact
+   lands in and the period the preview is worked from, and says one of these: a place is open and
+   whose unit it would take; no place is open; nobody is left to reach; the position is no longer on
+   the roster; or a reached household here would not ask.
+#. Choose **Confirm ruling**, then **Advance one period**.
+
+The contact is carried out when the next period closes, like every practice. Open **County session**
+after the close. It gives the money for relief, the units payable and kept back, and **What this
+session changed**: which positions asked and were paid, which units went unpaid and why a reached
+household stayed home. The unit a household wins is paid when the period after the session closes.
+It holds for that period only, so the household has to come again.
+
+Each household that comes brings one more household of its own position, who is reached from the
+next session. A claim therefore doubles each session, until the position has no household left to
+reach or no unit is left below it. It then stops at the edge of its position. To go further, reach a
+household in another position. You cannot call back a household you have reached.
+
+A period spent at the county is a period not spent on food. **Food run** shows the parcels the
+organization's households can spare and the last local aid run. When the county's cash falls below
+the lines it pays first, it announces no relief, and nobody is paid whatever their place.
+
+Every session adds its public record to the organization's page in the Archive: the money for
+relief, the units paid and unpaid and the first positions on the list. Past sessions are there.
+The recorded playthroughs of this slice are in ``reports/county-review-2026-11-19/``.
+
 Read consequences and continue
 ------------------------------
 

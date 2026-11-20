@@ -295,9 +295,18 @@ verify_installation() {
   assert_unit_property codex-rust.slice TasksMax 1024
 
   for child_slice in codex-rust-nnsims.slice codex-rust-babylon.slice; do
-    assert_unit_property "$child_slice" CPUQuotaPerSecUSec 4s
-    assert_unit_property "$child_slice" MemoryHigh 10737418240
-    assert_unit_property "$child_slice" MemoryMax 12884901888
+    case "$child_slice" in
+      codex-rust-nnsims.slice)
+        assert_unit_property "$child_slice" CPUQuotaPerSecUSec 4s
+        assert_unit_property "$child_slice" MemoryHigh 10737418240
+        assert_unit_property "$child_slice" MemoryMax 12884901888
+        ;;
+      codex-rust-babylon.slice)
+        assert_unit_property "$child_slice" CPUQuotaPerSecUSec 8s
+        assert_unit_property "$child_slice" MemoryHigh 17179869184
+        assert_unit_property "$child_slice" MemoryMax 21474836480
+        ;;
+    esac
     assert_unit_property "$child_slice" MemorySwapMax 2147483648
     assert_unit_property "$child_slice" IOWeight 500
     assert_unit_property "$child_slice" TasksMax 512

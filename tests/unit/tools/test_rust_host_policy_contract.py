@@ -20,7 +20,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HOST_ROOT = REPO_ROOT / ".codex" / "host"
-ADR_KEY = "ADR292_bounded_cargo_intermediates"
+ADR_KEY = "ADR302_host_policy_v14"
 ADR_PATH = REPO_ROOT / "ai" / "decisions" / f"{ADR_KEY}.yaml"
 ADR_INDEX_PATH = REPO_ROOT / "ai" / "decisions" / "index.yaml"
 POLICY_V12_SHA256 = {
@@ -44,6 +44,19 @@ POLICY_V13_SHA256 = {
     "tests/installer-contract.sh": "f4adb80b4a6c426b0686bf83f486471258a1057cc7f30ffcbd750b93689017cf",
     "tests/policy-contract.sh": "4bb1d4abba225c924fbcd7753c5dd1ccf736cbdaad99a3ce6b6cb782783a6ff0",
 }
+
+POLICY_V14_SHA256 = {
+    "cargo": "be7cf26b263ca15c8cdde614f49258227a14cce709fb0191428d5fdb02b2f74a",
+    "cargo-config.py": "66161ba5bb78db3e5ac578086796bc4a3ff063e0dbeca386cd04762bcc6773f6",
+    "install.sh": "1eac44c57c35d78c1ebd285712b3e02c9d5bd766be82f06032f2d370fed88861",
+    "policy.sh": "cf5025d22f28dff8f9236c1034e7188bc67b27fe9e4bd457f0ca537ba8ae87c1",
+    "systemd/codex-rust-babylon.slice": "204282fb8b403456aa1a85579f78a463395ef44ea1c9892c06a6d27a02eb719e",
+    "systemd/codex-rust-nnsims.slice": "fa89db7566aa895dcb85c102483d467e16021a3bad4cea0135326501118bc857",
+    "systemd/codex-rust.slice": "cd674d21f9622663e151c39b5bd21ac17183bf43af05b760ac6a090f2d539c28",
+    "tests/installer-contract.sh": "3375b0969075fc4c146758887a3e6bea2417dc38ee37ae5f55f61b4e4bdb2e3d",
+    "tests/policy-contract.sh": "71320e2385d3184ddbde60360001c1561772f4816d4f7e488544e2301188549c",
+}
+HOST_POLICY_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "host-policy"
 
 _WORKTREE_ENV_FIXTURE = """\
 # Test-only support for policy v11's inherited NNS worktree assertions.
@@ -117,10 +130,7 @@ def _live_policy_version() -> str:
     return versions[0]
 
 
-@pytest.mark.unit
-def test_original_v12_upgrade_fixture_matches_reviewed_bytes() -> None:
-    """Check each prior installed source byte before exercising the real upgrade."""
-    path = REPO_ROOT / "tests" / "fixtures" / "host-policy" / "v12.tar.gz"
+def _archive_digests(path: Path) -> dict[str, str]:
     with tarfile.open(path) as archive:
         original = {}
         for member in archive.getmembers():
@@ -128,17 +138,28 @@ def test_original_v12_upgrade_fixture_matches_reviewed_bytes() -> None:
                 file = archive.extractfile(member)
                 assert file is not None
                 original[member.name] = hashlib.sha256(file.read()).hexdigest()
-    assert original == POLICY_V12_SHA256
+    return original
 
 
 @pytest.mark.unit
-def test_policy_v13_bundle_matches_reviewed_bytes() -> None:
+@pytest.mark.parametrize(
+    ("fixture", "pins"),
+    (("v12.tar.gz", POLICY_V12_SHA256), ("v13.tar.gz", POLICY_V13_SHA256)),
+)
+def test_original_upgrade_fixtures_match_reviewed_bytes(fixture: str, pins: dict[str, str]) -> None:
+    """Check each prior installed source byte before exercising the real upgrade."""
+    installed = {name: digest for name, digest in pins.items() if not name.startswith("tests/")}
+    assert _archive_digests(HOST_POLICY_FIXTURES / fixture) == installed
+
+
+@pytest.mark.unit
+def test_policy_v14_bundle_matches_reviewed_bytes() -> None:
     """A changed bundle must receive review and a new policy version."""
     actual_files = {
         path.relative_to(HOST_ROOT).as_posix() for path in HOST_ROOT.rglob("*") if path.is_file()
     }
-    assert actual_files == set(POLICY_V13_SHA256)
-    assert _bundle_mismatches(HOST_ROOT, POLICY_V13_SHA256) == []
+    assert actual_files == set(POLICY_V14_SHA256)
+    assert _bundle_mismatches(HOST_ROOT, POLICY_V14_SHA256) == []
 
 
 @pytest.mark.unit
@@ -151,13 +172,14 @@ def test_accepted_decision_and_index_name_the_live_policy_version() -> None:
     decisions = index["decisions"]
     assert isinstance(decisions, dict)
 
-    title = "Babylon leases a single Cargo intermediate directory on the media mount"
-    assert version == "13"
+    title = "Babylon's Rust build budget rises to eight CPUs and eight Cargo jobs"
+    assert version == "14"
     assert decision["title"] == title
+    assert decision["issue"] == "PER-368"
     assert decisions[ADR_KEY] == {
         "title": title,
         "status": "accepted",
-        "date": "2026-11-05",
+        "date": "2026-11-19",
         "file": ADR_PATH.name,
     }
     toolchain = tomllib.loads((REPO_ROOT / "rust/rust-toolchain.toml").read_text())
@@ -218,9 +240,8 @@ def test_host_shell_contracts_pass(contract: str, tmp_path: Path) -> None:
             **os.environ,
             "TMPDIR": "/tmp",
             "HOST_CONTRACT_BUDGET_ASSET": str(asset),
-            "HOST_CONTRACT_V12": str(
-                REPO_ROOT / "tests" / "fixtures" / "host-policy" / "v12.tar.gz"
-            ),
+            "HOST_CONTRACT_V12": str(HOST_POLICY_FIXTURES / "v12.tar.gz"),
+            "HOST_CONTRACT_V13": str(HOST_POLICY_FIXTURES / "v13.tar.gz"),
         },
         check=False,
         capture_output=True,
@@ -328,7 +349,7 @@ def test_repository_entrypoints_do_not_override_dispatcher_owned_resources() -> 
 
     assert re.findall(
         r'^CARGO_BUILD_JOBS = "([0-9]+)"$', entrypoints[".mise.toml"], re.MULTILINE
-    ) == ["4"]
+    ) == ["8"]
     environment = (REPO_ROOT / ".codex/environments/environment.toml").read_text(encoding="utf-8")
     assert (
         'export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"' in environment
@@ -348,6 +369,18 @@ def test_native_mise_prefers_installed_managed_cargo() -> None:
     policy_root = data_root / "codex-rust-host"
     if policy_root not in cargo_path.parents:
         pytest.skip("the managed Codex Cargo shim is not installed on this host")
+    installed_policy = (cargo_path.parent / "policy.sh").read_text(encoding="utf-8")
+    installed_versions = re.findall(
+        r"^CODEX_RUST_HOST_POLICY_VERSION=([0-9]+)$", installed_policy, re.MULTILINE
+    )
+    assert len(installed_versions) == 1
+    if int(installed_versions[0]) < int(_live_policy_version()):
+        # This proof concerns the dispatcher this checkout defines. An older
+        # installation refuses the checkout's job count until it is upgraded.
+        pytest.skip(
+            f"host policy v{installed_versions[0]} is installed; this checkout defines "
+            f"v{_live_policy_version()} (run .codex/host/install.sh to upgrade)"
+        )
     cargo_home = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")).resolve()
 
     expected_target = REPO_ROOT / "rust" / "target"
@@ -381,4 +414,4 @@ def test_native_mise_prefers_installed_managed_cargo() -> None:
     assert proof.returncode == 0, proof.stdout + proof.stderr
     assert "repository=babylon" in proof.stdout
     assert f"target={expected_target}" in proof.stdout
-    assert "jobs=4" in proof.stdout
+    assert "jobs=8" in proof.stdout

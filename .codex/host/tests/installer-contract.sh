@@ -42,33 +42,34 @@ printf '%s\n' \
   'exit 0' >"$fake_bin/systemd-analyze"
 chmod 755 "$fake_bin/systemd-analyze"
 
-printf '%s\n' \
-  '#!/bin/sh' \
-  'set -eu' \
-  '[ "$1" = --user ] || exit 2' \
-  'case "$2" in' \
-  '  show-environment|daemon-reload) exit 0 ;;' \
-  '  show)' \
-  '    unit="$3"' \
-  '    property="${4#--property=}"' \
-  '    case "$unit:$property" in' \
-  '      codex-rust.slice:CPUQuotaPerSecUSec) echo 8s ;;' \
-  '      codex-rust.slice:MemoryHigh) echo 21474836480 ;;' \
-  '      codex-rust.slice:MemoryMax) echo 25769803776 ;;' \
-  '      codex-rust.slice:MemorySwapMax) echo 4294967296 ;;' \
-  '      codex-rust.slice:IOWeight) echo 500 ;;' \
-  '      codex-rust.slice:TasksMax) echo 1024 ;;' \
-  '      codex-rust-nnsims.slice:CPUQuotaPerSecUSec|codex-rust-babylon.slice:CPUQuotaPerSecUSec) echo 4s ;;' \
-  '      codex-rust-nnsims.slice:MemoryHigh|codex-rust-babylon.slice:MemoryHigh) echo 10737418240 ;;' \
-  '      codex-rust-nnsims.slice:MemoryMax|codex-rust-babylon.slice:MemoryMax) echo 12884901888 ;;' \
-  '      codex-rust-nnsims.slice:MemorySwapMax|codex-rust-babylon.slice:MemorySwapMax) echo 2147483648 ;;' \
-  '      codex-rust-nnsims.slice:IOWeight|codex-rust-babylon.slice:IOWeight) echo 500 ;;' \
-  '      codex-rust-nnsims.slice:TasksMax|codex-rust-babylon.slice:TasksMax) echo 512 ;;' \
-  '      *) exit 3 ;;' \
-  '    esac' \
-  '    ;;' \
-  '  *) exit 4 ;;' \
-  'esac' >"$fake_bin/systemctl"
+# The fake manager reports each governed property from the unit file the
+# installer under test placed in this fixture home, as a reload would.
+cat >"$fake_bin/systemctl" <<'SYSTEMCTL'
+#!/bin/sh
+set -eu
+[ "$1" = --user ] || exit 2
+case "$2" in
+  show-environment|daemon-reload) exit 0 ;;
+  show)
+    unit_file="${XDG_CONFIG_HOME:?}/systemd/user/$3"
+    property="${4#--property=}"
+    [ -f "$unit_file" ] || exit 3
+    case "$property" in
+      CPUQuotaPerSecUSec) setting=CPUQuota ;;
+      MemoryHigh|MemoryMax|MemorySwapMax|IOWeight|TasksMax) setting="$property" ;;
+      *) exit 3 ;;
+    esac
+    value="$(sed -n "s/^$setting=//p" "$unit_file")"
+    case "$property:$value" in
+      CPUQuotaPerSecUSec:*%) echo "$((${value%\%} / 100))s" ;;
+      Memory*:*G) echo "$((${value%G} * 1073741824))" ;;
+      *:'') exit 3 ;;
+      *) echo "$value" ;;
+    esac
+    ;;
+  *) exit 4 ;;
+esac
+SYSTEMCTL
 chmod 755 "$fake_bin/systemctl"
 
 # No network in these fixtures. Match the immutable release URL and copy bytes
@@ -126,11 +127,66 @@ cp -a "$upgrade_home/.local/share/codex-rust-host/v12" "$temporary_root/snapshot
 run_installer "$upgrade_home" >/dev/null || fail "original v12 could not upgrade"
 diff -r "$temporary_root/snapshot-v12" "$upgrade_home/.local/share/codex-rust-host/v12" >/dev/null ||
   fail "upgrade modified installed v12"
-[ "$(readlink -f -- "$upgrade_home/.local/bin/cargo")" = "$upgrade_home/.local/share/codex-rust-host/v13/cargo" ] ||
-  fail "upgrade did not activate v13"
+[ "$(readlink -f -- "$upgrade_home/.local/bin/cargo")" = "$upgrade_home/.local/share/codex-rust-host/v14/cargo" ] ||
+  fail "upgrade did not activate v14"
 if run_installer_from "$old_host" "$upgrade_home" >/dev/null 2>&1; then
   fail "v12 repository downgraded the upgraded host"
 fi
+
+# Pinned original v13 installer and installed files from commit 02555c29f, the
+# version installed on the development host before v14. Like the live bundle,
+# its host-specific mount, budget root, and budget digest take the fixture's.
+v13_home="$temporary_root/upgrade-v13"
+v13_host="$temporary_root/old-v13"
+prepare_home "$v13_home"
+mkdir -p "$v13_host"
+[ "$(sha256sum < "$HOST_CONTRACT_V13" | cut -d' ' -f1)" = 676b4600b6ccef66e5c0b87d9beb658c86c9f31d840867bc23cda1330c95f73d ] ||
+  fail "v13 archive differs from the original release fixture"
+tar -xzf "$HOST_CONTRACT_V13" -C "$v13_host"
+awk -v fixture="$host_dir/policy.sh" '
+  BEGIN {
+    while ((getline line < fixture) > 0) {
+      if (line ~ /^CODEX_RUST_(BABYLON_MOUNT|BUDGET_ROOT|BUDGET_SHA256)=/) {
+        name = line
+        sub(/=.*/, "", name)
+        host[name] = line
+      }
+    }
+  }
+  {
+    name = $0
+    sub(/=.*/, "", name)
+    if (name in host) { print host[name]; replaced++ } else { print }
+  }
+  END { if (replaced != 3) exit 1 }
+' "$v13_host/policy.sh" >"$temporary_root/v13-policy.sh" ||
+  fail "the v13 fixture policy lacks its host-specific storage lines"
+mv -f -- "$temporary_root/v13-policy.sh" "$v13_host/policy.sh"
+grep -Fqx 'CODEX_RUST_HOST_POLICY_VERSION=13' "$v13_host/policy.sh" ||
+  fail "the v13 fixture is not policy v13"
+run_installer_from "$v13_host" "$v13_home" >/dev/null || fail "the v13 fixture did not install"
+grep -Fqx 'CPUQuota=400%' "$v13_home/.config/systemd/user/codex-rust-babylon.slice" ||
+  fail "the v13 fixture did not install its four-CPU Babylon slice"
+cp -a "$v13_home/.local/share/codex-rust-host/v13" "$temporary_root/snapshot-v13"
+run_installer "$v13_home" >/dev/null || fail "installed v13 could not upgrade"
+diff -r "$temporary_root/snapshot-v13" "$v13_home/.local/share/codex-rust-host/v13" >/dev/null ||
+  fail "upgrade modified installed v13"
+[ "$(readlink -f -- "$v13_home/.local/bin/cargo")" = "$v13_home/.local/share/codex-rust-host/v14/cargo" ] ||
+  fail "upgrade from v13 did not activate v14"
+[ "$(sed -n '1p' "$v13_home/.local/share/codex-rust-host/highest-policy-version")" = 14 ] ||
+  fail "upgrade from v13 did not persist policy v14 as the high-water mark"
+for upgraded_unit in codex-rust.slice codex-rust-nnsims.slice codex-rust-babylon.slice; do
+  cmp -s "$host_dir/systemd/$upgraded_unit" "$v13_home/.config/systemd/user/$upgraded_unit" ||
+    fail "upgrade from v13 did not install the v14 $upgraded_unit"
+done
+run_installer "$v13_home" --check >/dev/null || fail "the upgraded v14 host does not verify"
+if run_installer_from "$v13_host" "$v13_home" >/dev/null 2>"$temporary_root/v13-downgrade"; then
+  fail "v13 repository downgraded the upgraded host"
+fi
+grep -Fq 'refusing to downgrade' "$temporary_root/v13-downgrade" ||
+  fail "the v13 downgrade was refused for another reason: $(cat "$temporary_root/v13-downgrade")"
+[ "$(readlink -f -- "$v13_home/.local/bin/cargo")" = "$v13_home/.local/share/codex-rust-host/v14/cargo" ] ||
+  fail "the refused v13 downgrade changed the active Cargo shim"
 
 managed_home="$temporary_root/managed-home"
 prepare_home "$managed_home"
@@ -153,14 +209,14 @@ fi
   fail "the first install did not create the dedicated Cargo-only shim"
 [ "$(find "$managed_home/.local/share/codex-rust-host/bin" -mindepth 1 -maxdepth 1 -printf '%f\n')" = cargo ] ||
   fail "the dedicated managed shim directory contains more than Cargo"
-[ "$(sed -n '1p' "$managed_home/.local/share/codex-rust-host/highest-policy-version")" = 13 ] ||
-  fail "the first install did not persist policy v13 as the high-water mark"
+[ "$(sed -n '1p' "$managed_home/.local/share/codex-rust-host/highest-policy-version")" = 14 ] ||
+  fail "the first install did not persist policy v14 as the high-water mark"
 [ -d "$managed_home/cache/sccache/nnsims/0.17.0-p2" ] ||
   fail "the NNSims compiler cache was not provisioned"
 [ -d "$managed_home/cache/sccache/babylon/0.17.0-p2" ] ||
   fail "the Babylon compiler cache was not provisioned"
 printf '%s\n' '# same-version drift' >> \
-  "$managed_home/.local/share/codex-rust-host/v13/policy.sh"
+  "$managed_home/.local/share/codex-rust-host/v14/policy.sh"
 if run_installer "$managed_home" >/dev/null 2>&1; then
   fail "the installer overwrote a divergent copy of its own policy version"
 fi
@@ -210,12 +266,12 @@ set -e
 [ "$second_installer_status" -ne 0 ] ||
   fail "two divergent same-version installers both committed host policy"
 cmp -s "$host_dir/policy.sh" \
-  "$collision_home/.local/share/codex-rust-host/v13/policy.sh" ||
+  "$collision_home/.local/share/codex-rust-host/v14/policy.sh" ||
   fail "the refused concurrent installer mixed its policy into the installed bundle"
 
 partial_home="$temporary_root/partial-bundle-home"
 prepare_home "$partial_home"
-partial_root="$partial_home/.local/share/codex-rust-host/v13"
+partial_root="$partial_home/.local/share/codex-rust-host/v14"
 mkdir -p "$partial_root/real" "$partial_root/systemd"
 install -m 755 "$host_dir/cargo" \
   "$partial_root/cargo"
@@ -236,12 +292,14 @@ rm -f -- \
   "$downgrade_home/.config/systemd/user/codex-rust.slice" \
   "$downgrade_home/.config/systemd/user/codex-rust-nnsims.slice" \
   "$downgrade_home/.config/systemd/user/codex-rust-babylon.slice"
-if run_installer_from "$old_host" "$downgrade_home" >/dev/null 2>&1; then
-  fail "a missing unit set let policy v12 replace the persisted v13 high-water mark"
-fi
-[ "$(readlink -f -- "$downgrade_home/.local/bin/cargo")" = \
-  "$downgrade_home/.local/share/codex-rust-host/v13/cargo" ] ||
-  fail "the refused downgrade changed the active Cargo shim"
+for downgrade_host in "$old_host" "$v13_host"; do
+  if run_installer_from "$downgrade_host" "$downgrade_home" >/dev/null 2>&1; then
+    fail "a missing unit set let $downgrade_host replace the persisted v14 high-water mark"
+  fi
+  [ "$(readlink -f -- "$downgrade_home/.local/bin/cargo")" = \
+    "$downgrade_home/.local/share/codex-rust-host/v14/cargo" ] ||
+    fail "the refused downgrade from $downgrade_host changed the active Cargo shim"
+done
 
 dedicated_shim_home="$temporary_root/unrelated-dedicated-shim-home"
 prepare_home "$dedicated_shim_home"
@@ -335,8 +393,8 @@ if unshare --user --map-root-user --mount true 2>/dev/null; then
 fi
 run_setup >/dev/null
 grep -q 'mise run check:worktree-contract' "$setup_home/setup-tools" || fail "setup skipped the worktree contract"
-[ -f "$checkout/.env" ] && [ "$(cat "$setup_home/.local/share/codex-rust-host/highest-policy-version")" = 13 ] ||
-  fail "setup did not install v13"
+[ -f "$checkout/.env" ] && [ "$(cat "$setup_home/.local/share/codex-rust-host/highest-policy-version")" = 14 ] ||
+  fail "setup did not install v14"
 mkdir "$temporary_root/unmounted"
 sed -i "s|^CODEX_RUST_BABYLON_MOUNT=.*|CODEX_RUST_BABYLON_MOUNT=$temporary_root/unmounted|" "$checkout/.codex/host/policy.sh"
 if run_setup >/dev/null 2>"$temporary_root/setup-error"; then

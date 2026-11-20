@@ -171,8 +171,9 @@ if [ ! -f "$config_guard" ]; then
   echo "cargo: managed Cargo configuration guard is missing: $config_guard" >&2
   exit 69
 fi
+max_jobs="$(codex_rust_max_jobs_for_repository "$repository")"
 config_status=0
-python3 "$config_guard" "$effective_directory" || config_status="$?"
+python3 "$config_guard" "$effective_directory" "$max_jobs" || config_status="$?"
 if [ "$config_status" -ne 0 ]; then
   exit "$config_status"
 fi
@@ -254,7 +255,7 @@ if [ "$socket_length" -gt 107 ]; then
   exit 65
 fi
 
-requested_jobs="${CARGO_BUILD_JOBS:-$CODEX_RUST_MAX_JOBS}"
+requested_jobs="${CARGO_BUILD_JOBS:-$max_jobs}"
 case "$requested_jobs" in
   ''|*[!0-9]*)
     echo "cargo: CARGO_BUILD_JOBS must be a whole number" >&2
@@ -264,11 +265,11 @@ case "$requested_jobs" in
     echo "cargo: CARGO_BUILD_JOBS must be positive" >&2
     exit 64
     ;;
-  1|2|3|4)
-    ;;
   *)
-    echo "cargo: CARGO_BUILD_JOBS exceeds the $CODEX_RUST_MAX_JOBS-job host limit" >&2
-    exit 64
+    if ! codex_rust_jobs_within_limit "$requested_jobs" "$max_jobs"; then
+      echo "cargo: CARGO_BUILD_JOBS exceeds the $max_jobs-job host limit" >&2
+      exit 64
+    fi
     ;;
 esac
 
@@ -309,14 +310,10 @@ for cargo_argument in "$@"; do
     continue
   fi
   if [ "$expect_jobs" -eq 1 ]; then
-    case "$cargo_argument" in
-      1|2|3|4)
-        ;;
-      *)
-        echo "cargo: --jobs exceeds or evades the $CODEX_RUST_MAX_JOBS-job host limit" >&2
-        exit 64
-        ;;
-    esac
+    if ! codex_rust_jobs_within_limit "$cargo_argument" "$max_jobs"; then
+      echo "cargo: --jobs exceeds or evades the $max_jobs-job host limit" >&2
+      exit 64
+    fi
     expect_jobs=0
     continue
   fi
@@ -327,11 +324,15 @@ for cargo_argument in "$@"; do
     -j|--jobs)
       expect_jobs=1
       ;;
-    -j1|-j2|-j3|-j4|--jobs=1|--jobs=2|--jobs=3|--jobs=4)
-      ;;
     -j*|--jobs=*)
-      echo "cargo: --jobs exceeds or evades the $CODEX_RUST_MAX_JOBS-job host limit" >&2
-      exit 64
+      case "$cargo_argument" in
+        --jobs=*) jobs_argument="${cargo_argument#--jobs=}" ;;
+        *) jobs_argument="${cargo_argument#-j}" ;;
+      esac
+      if ! codex_rust_jobs_within_limit "$jobs_argument" "$max_jobs"; then
+        echo "cargo: --jobs exceeds or evades the $max_jobs-job host limit" >&2
+        exit 64
+      fi
       ;;
     --config|--config=*)
       echo "cargo: caller-supplied --config is prohibited in a managed repository" >&2

@@ -172,9 +172,9 @@ if len(configs) > MAX_CONFIG_FILES:
     raise SystemExit("Cargo config include graph exceeds the setup bound")
 PY
 
-python3 "$CODEX_WORKTREE_PATH/.codex/host/cargo-config.py" "$CODEX_WORKTREE_PATH/rust"
-
 . "$CODEX_WORKTREE_PATH/.codex/host/policy.sh"
+python3 "$CODEX_WORKTREE_PATH/.codex/host/cargo-config.py" "$CODEX_WORKTREE_PATH/rust" "$CODEX_RUST_BABYLON_MAX_JOBS"
+
 codex_tools_root="$(codex_rust_babylon_tools_root)"
 codex_cache_root="$(codex_rust_babylon_cache_root)"
 codex_rust_babylon_validate_storage

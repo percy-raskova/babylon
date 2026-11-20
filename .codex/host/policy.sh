@@ -2,7 +2,7 @@
 # Shared constants for the Codex Rust host boundary. Keep this file POSIX so
 # the PATH dispatcher and the environment installer read one policy.
 
-CODEX_RUST_HOST_POLICY_VERSION=13
+CODEX_RUST_HOST_POLICY_VERSION=14
 CODEX_RUST_SCCACHE_POLICY_KEY=0.17.0-p2
 CODEX_RUST_SCCACHE_VERSION=0.17.0
 CODEX_RUST_BABYLON_MOUNT=/media/user/data
@@ -12,7 +12,8 @@ CODEX_RUST_BUDGET_SHA256=60d70d72e9decb133cd8e368f993e07c2c34c2e9e8cbe598a9f5bf1
 CODEX_RUST_BUDGET_BYTES=68719476736
 CODEX_RUST_RESERVE_BYTES=42949672960
 CODEX_RUST_MAX_ARGS=512
-CODEX_RUST_MAX_JOBS=4
+CODEX_RUST_NNSIMS_MAX_JOBS=4
+CODEX_RUST_BABYLON_MAX_JOBS=8
 CODEX_RUST_PARENT_SLICE=codex-rust.slice
 CODEX_RUST_NNSIMS_SLICE=codex-rust-nnsims.slice
 CODEX_RUST_BABYLON_SLICE=codex-rust-babylon.slice
@@ -69,6 +70,32 @@ codex_rust_target_dir_for_repository() {
       return 1
       ;;
   esac
+}
+
+codex_rust_max_jobs_for_repository() {
+  case "$1" in
+    nnsims)
+      printf '%s\n' "$CODEX_RUST_NNSIMS_MAX_JOBS"
+      ;;
+    babylon)
+      printf '%s\n' "$CODEX_RUST_BABYLON_MAX_JOBS"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# Accept only the canonical spellings 1 through the limit. Comparing strings
+# never parses an untrusted value as a number.
+codex_rust_jobs_within_limit() {
+  codex_rust_jobs_value="$1"
+  codex_rust_jobs_candidate=1
+  while [ "$codex_rust_jobs_candidate" -le "$2" ]; do
+    [ "$codex_rust_jobs_value" = "$codex_rust_jobs_candidate" ] && return 0
+    codex_rust_jobs_candidate=$((codex_rust_jobs_candidate + 1))
+  done
+  return 1
 }
 
 codex_rust_bootstrap_toolchain_for_repository() {
@@ -252,10 +279,18 @@ codex_rust_slice_matches_policy() {
         codex_rust_unit_property_is "$codex_rust_slice" IOWeight 500 &&
         codex_rust_unit_property_is "$codex_rust_slice" TasksMax 1024
       ;;
-    codex-rust-nnsims.slice|codex-rust-babylon.slice)
+    codex-rust-nnsims.slice)
       codex_rust_unit_property_is "$codex_rust_slice" CPUQuotaPerSecUSec 4s &&
         codex_rust_unit_property_is "$codex_rust_slice" MemoryHigh 10737418240 &&
         codex_rust_unit_property_is "$codex_rust_slice" MemoryMax 12884901888 &&
+        codex_rust_unit_property_is "$codex_rust_slice" MemorySwapMax 2147483648 &&
+        codex_rust_unit_property_is "$codex_rust_slice" IOWeight 500 &&
+        codex_rust_unit_property_is "$codex_rust_slice" TasksMax 512
+      ;;
+    codex-rust-babylon.slice)
+      codex_rust_unit_property_is "$codex_rust_slice" CPUQuotaPerSecUSec 8s &&
+        codex_rust_unit_property_is "$codex_rust_slice" MemoryHigh 17179869184 &&
+        codex_rust_unit_property_is "$codex_rust_slice" MemoryMax 21474836480 &&
         codex_rust_unit_property_is "$codex_rust_slice" MemorySwapMax 2147483648 &&
         codex_rust_unit_property_is "$codex_rust_slice" IOWeight 500 &&
         codex_rust_unit_property_is "$codex_rust_slice" TasksMax 512

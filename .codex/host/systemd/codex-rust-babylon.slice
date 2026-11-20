@@ -1,4 +1,4 @@
-# Managed by nnsims .codex/host/install.sh (policy v13).
+# Managed by nnsims .codex/host/install.sh (policy v14).
 [Unit]
 Description=Babylon Rust build budget
 
@@ -7,9 +7,9 @@ CPUAccounting=yes
 MemoryAccounting=yes
 IOAccounting=yes
 TasksAccounting=yes
-CPUQuota=400%
-MemoryHigh=10G
-MemoryMax=12G
+CPUQuota=800%
+MemoryHigh=16G
+MemoryMax=20G
 MemorySwapMax=2G
 IOWeight=500
 TasksMax=512

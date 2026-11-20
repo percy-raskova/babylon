@@ -6,7 +6,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
 readonly IMAGE="babylon-postgres-runtime:local"
 readonly PREBUILT_IMAGE_ID="${BABYLON_POSTGRES_IMAGE_ID:-}"
-export CARGO_BUILD_JOBS=4
+export CARGO_BUILD_JOBS=8
 readonly CARGO_BUILD_JOBS
 # Internal handshake for the ignored Rust test. This runner forwards it only
 # after it proves exact ownership of the random-canary container below.

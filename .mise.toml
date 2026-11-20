@@ -50,10 +50,11 @@ RAYON_NUM_THREADS = "1"
 NO_COLOR = "1"
 # PER-286 replaces the old cross-repository sccache directory with the
 # versioned PATH dispatcher in `.codex/host`. The dispatcher owns
-# repository-local target/build roots and cache directory/socket. Four jobs
-# remains the exact defense-in-depth ceiling for ordinary clones that have not
-# installed the Codex dispatcher; managed Cargo accepts but cannot raise it.
-CARGO_BUILD_JOBS = "4"
+# repository-local target/build roots and cache directory/socket. Eight jobs
+# (host policy v14, ADR302) is the exact defense-in-depth ceiling for ordinary
+# clones that have not installed the Codex dispatcher; managed Cargo accepts
+# but cannot raise it.
+CARGO_BUILD_JOBS = "8"
 # Soundfont for MIDI conversion
 SOUNDFONT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 MUSIC_DIR = "assets/music"
@@ -95,7 +96,7 @@ rustup toolchain install 1.99.1 --profile minimal --component rustfmt --componen
 uv sync --frozen
 uv run --frozen python tools/install_git_hooks.py
 mise run db:up
-(cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
+(cd rust && CARGO_BUILD_JOBS=8 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="$PWD/rust/target/debug:$PATH"
 BABYLON_RUNTIME_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test" babylon-runtime bootstrap
 if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
@@ -724,7 +725,7 @@ echo "── babylon_test size before:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "DROP DATABASE IF EXISTS babylon_test;"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "CREATE DATABASE babylon_test OWNER test;"
-(cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
+(cd rust && CARGO_BUILD_JOBS=8 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="$PWD/rust/target/debug:$PATH"
 BABYLON_RUNTIME_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test" babylon-runtime bootstrap
 echo "── babylon_test recycled:"
@@ -741,7 +742,7 @@ description = "Bootstrap the complete Rust-owned schema and activate sole persis
 run = """
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
 unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGOPTIONS PGSERVICE PGSERVICEFILE PGSYSCONFDIR
-(cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
+(cd rust && CARGO_BUILD_JOBS=8 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="${CARGO_TARGET_DIR:-$PWD/rust/target}/debug:$PATH"
 babylon-runtime bootstrap
 """
@@ -750,7 +751,7 @@ babylon-runtime bootstrap
 description = "One-shot Rust Postgres cutover proof: container + activation + restart smoke; leaves container running"
 run = """
 mise run db:up
-(cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
+(cd rust && CARGO_BUILD_JOBS=8 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="$PWD/rust/target/debug:$PATH"
 export BABYLON_RUNTIME_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test"
 integration_campaign_id="$(python3 tools/devtools/worktree_campaign.py --purpose test-int-pg --fresh)" || exit

@@ -613,6 +613,7 @@ impl MaterialCircuitState {
 pub enum MaterialCircuitError {
     CompanyPortfolioEvidence = 35,
     CompanyPortfolioSelection = 36,
+    MarketClearingInvariant = 38,
     HouseholdLifecycleInvariant = 37,
     HouseholdTimeInvariant = 31,
     AidInvariant = 32,
@@ -693,6 +694,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             34 => Ok(Self::CollectionInvariant),
             35 => Ok(Self::CompanyPortfolioEvidence),
             37 => Ok(Self::HouseholdLifecycleInvariant),
+            38 => Ok(Self::MarketClearingInvariant),
             36 => Ok(Self::CompanyPortfolioSelection),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }

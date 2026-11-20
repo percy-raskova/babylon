@@ -19,6 +19,7 @@ pub use collection::{
 };
 mod capacity;
 mod catalog;
+mod clearing;
 mod equipment;
 mod financial;
 mod household_lifecycle;
@@ -46,6 +47,7 @@ pub use accounts::{
     PurchaseMovementReceipt, ShiftId, ShiftState, WageAccrualReceipt,
 };
 pub use catalog::{MaterialCatalog, MaterialCatalogDefinition};
+pub use clearing::{clear_market, MarketBid, MarketOutcome};
 pub use equipment::{
     equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,
     EquipmentCarryingValue, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId,

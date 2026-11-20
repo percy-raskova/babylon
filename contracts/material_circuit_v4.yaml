@@ -541,6 +541,7 @@ error_codes:
   company_portfolio_evidence: 35
   company_portfolio_selection: 36
   household_lifecycle_invariant: 37
+  market_clearing_invariant: 38
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance

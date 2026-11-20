@@ -552,11 +552,11 @@ fn the_session_shows_only_a_session_held_by_the_viewed_period() {
     assert!(text.contains("Claimants' Assembly roll: 4 households came from the roll"));
     assert!(text.contains("Your contact at the session: Next 40%"));
     assert!(text.contains("2 households wanted to ask and had no hours"));
-    assert!(text.contains("rank 1"));
+    assert!(text.contains("rank 2"));
     assert!(
         text.contains("rank 3 · Bottom 50%")
-            && text.contains("Reasons are earned by contact. Reach a household here."),
-        "an uncontacted ranked position states the remedy: {text}"
+            && text.contains("Reasons are earned by contact: reach a household in a position"),
+        "an uncontacted listed position states the remedy once, under the list: {text}"
     );
     // The client holds only the live projection: a period from the first session on, before the
     // live one, had its session, and that record is in the Archive.
@@ -567,7 +567,7 @@ fn the_session_shows_only_a_session_held_by_the_viewed_period() {
         before_first,
         "No county session has been held as of period 1. The first is in period 2."
     );
-    assert!(!archived.contains("rank 1") && !before_first.contains("rank 1"));
+    assert!(!archived.contains("rank 2") && !before_first.contains("rank 2"));
     let none = county::session(&fixture(), 3);
     assert!(none.starts_with("No county session has been held"));
 }
@@ -647,42 +647,320 @@ fn a_slot_button_is_named_for_its_position_for_assistive_technology() {
         .is_some_and(|label| label.contains("no position on this page")));
 }
 
-#[test]
-fn a_new_session_record_pauses_with_a_notice_and_only_once() {
-    let before = fixture();
-    let after = held();
-    assert_eq!(
-        client::county_update(Some(&before), Some(&after)),
-        Some("The county's session record arrived.")
-    );
-    assert_eq!(client::county_update(Some(&after), Some(&after)), None);
-    assert_eq!(client::county_update(Some(&before), Some(&before)), None);
-    assert_eq!(client::county_update(None, Some(&after)), None);
-    assert_eq!(client::county_update(Some(&after), None), None);
+/// A county that has held a session in `period`: four household units on the roll, `payable` of
+/// them payable, and a contact only when `contact` says so. Its first session is period 4.
+fn session_held(period: u64, payable: u64, contact: bool) -> CountyReviewProjection {
+    let mut listed = position(key(Band::Bottom50, Some(0), 2, 4), Some(1), None);
+    listed.units_listed = 4;
+    CountyReviewProjection {
+        first_session_period: 4,
+        session_period: Some(period),
+        household_units_payable: Some(payable),
+        contact: contact.then(|| (key(Band::Bottom50, Some(0), 2, 4), ContactOutcome::Reached)),
+        positions: vec![listed],
+        ..fixture()
+    }
 }
 
 #[test]
-fn a_status_with_a_new_session_record_installs_the_notice_and_pauses_play() {
+fn the_first_session_record_pauses_with_the_plain_notice_and_only_once() {
+    let before = fixture();
+    let first = session_held(4, 4, false);
+    assert_eq!(
+        client::county_update(Some(&before), Some(&first)),
+        Some("The county's session record arrived.".to_owned())
+    );
+    assert_eq!(client::county_update(Some(&first), Some(&first)), None);
+    assert_eq!(client::county_update(Some(&before), Some(&before)), None);
+    assert_eq!(client::county_update(None, Some(&first)), None);
+    assert_eq!(client::county_update(Some(&first), None), None);
+}
+
+#[test]
+fn a_session_that_carries_the_players_contact_says_it_was_heard() {
+    let before = session_held(4, 4, false);
+    let after = session_held(5, 4, true);
+    assert_eq!(
+        client::county_update(Some(&before), Some(&after)),
+        Some("The county's session record arrived: your contact was heard.".to_owned())
+    );
+}
+
+#[test]
+fn a_session_that_changes_whether_the_county_can_pay_every_unit_says_so() {
+    let every = session_held(4, 4, false);
+    let some = session_held(5, 2, false);
+    let none = session_held(6, 0, false);
+    let again = session_held(7, 4, false);
+    let notice = |before: &CountyReviewProjection, after: &CountyReviewProjection| {
+        client::county_update(Some(before), Some(after))
+    };
+    assert_eq!(
+        notice(&every, &some),
+        Some(
+            "The county's session record arrived: the county could not pay every unit.".to_owned()
+        )
+    );
+    assert_eq!(
+        notice(&some, &none),
+        Some("The county's session record arrived: the county paid no household unit.".to_owned())
+    );
+    assert_eq!(
+        notice(&none, &again),
+        Some(
+            "The county's session record arrived: the county can pay every unit again.".to_owned()
+        )
+    );
+    assert_eq!(
+        notice(&some, &session_held(7, 4, false)),
+        Some(
+            "The county's session record arrived: the county can pay every unit again.".to_owned()
+        )
+    );
+}
+
+#[test]
+fn a_contact_and_a_change_of_standing_share_one_notice() {
+    let before = session_held(4, 4, false);
+    let after = session_held(5, 2, true);
+    assert_eq!(
+        client::county_update(Some(&before), Some(&after)),
+        Some(
+            "The county's session record arrived: your contact was heard, and the county could not pay every unit."
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn a_session_with_nothing_for_the_player_installs_silently() {
+    let every = session_held(4, 4, false);
+    let later = session_held(5, 4, false);
+    assert_eq!(client::county_update(Some(&every), Some(&later)), None);
+    let some = session_held(5, 2, false);
+    let still_some = session_held(6, 1, false);
+    assert_eq!(client::county_update(Some(&some), Some(&still_some)), None);
+    let none = session_held(5, 0, false);
+    let still_none = session_held(6, 0, false);
+    assert_eq!(client::county_update(Some(&none), Some(&still_none)), None);
+}
+
+fn status_after(
+    previous: CountyReviewProjection,
+    next: CountyReviewProjection,
+) -> (OrganizerClient, bool) {
     let (mut client, mut session, request, mut snapshot) =
         crate::organizer::tests::status_fixture();
     let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
         panic!("status");
     };
     snapshot.city_pd_encounters.clear();
-    client.county_review = Some(fixture());
-    snapshot.county_review = Some(held());
+    client.county_review = Some(previous);
+    snapshot.county_review = Some(next);
     session.playing = true;
     client
         .status(request_id, snapshot, &mut session)
         .expect("the status is admitted");
+    (client, session.playing)
+}
+
+#[test]
+fn a_status_with_a_first_session_record_installs_the_notice_and_pauses_play() {
+    let (client, playing) = status_after(fixture(), session_held(4, 4, false));
     assert_eq!(client.message, "The county's session record arrived.");
-    assert!(!session.playing, "the new session record pauses play");
+    assert!(!playing, "the first session record pauses play");
     assert_eq!(
         client
             .county_review
             .as_ref()
             .and_then(|view| view.session_period),
-        Some(3)
+        Some(4)
+    );
+}
+
+#[test]
+fn a_status_with_a_session_the_player_has_no_reason_to_read_leaves_play_running() {
+    let (client, playing) = status_after(session_held(4, 4, false), session_held(5, 4, false));
+    assert!(client.message.is_empty(), "{}", client.message);
+    assert!(playing, "a quiet session does not pause play");
+    assert_eq!(
+        client
+            .county_review
+            .as_ref()
+            .and_then(|view| view.session_period),
+        Some(5),
+        "the record is installed all the same"
+    );
+}
+
+/// A session held in period 3 in which a contact moved one unit: the contacted position gained a
+/// household that asked and was paid, the position below it lost a unit, and two others held
+/// nothing and saw nothing.
+fn moved() -> CountyReviewProjection {
+    let mut gained = position(key(Band::Next40, Some(0), 1, 0), Some(2), None);
+    gained.asked_paid = 1;
+    gained.contacted = true;
+    let mut lost = position(key(Band::Bottom50, Some(0), 2, 1), Some(3), None);
+    lost.units_unpaid = 1;
+    CountyReviewProjection {
+        positions: vec![
+            position(key(Band::Top1, None, 0, 0), Some(1), None),
+            gained,
+            lost,
+            position(key(Band::Next9, Some(0), 3, 0), Some(4), None),
+            position(key(Band::Next9, Some(0), 4, 0), Some(5), None),
+        ],
+        ..held()
+    }
+}
+
+#[test]
+fn the_session_names_what_it_changed_before_the_list() {
+    let text = county::session(&moved(), 3);
+    let changed = text
+        .find("What this session changed")
+        .expect("the record has a block of changes");
+    let list = text
+        .find("The list, in rank order")
+        .expect("the record has the list");
+    assert!(changed < list, "the block comes first: {text}");
+    let block = &text[changed..list];
+    assert!(
+        block.contains("rank 2 · Next 40%") && block.contains("1 household asked and was paid"),
+        "the gaining position is named: {block}"
+    );
+    assert!(
+        block.contains("rank 3 · Bottom 50%") && block.contains("1 unit left unpaid"),
+        "the losing position is named: {block}"
+    );
+    assert!(
+        !block.contains("rank 1 ·"),
+        "a quiet position is not: {block}"
+    );
+    assert!(!block.contains("Every listed unit was paid"), "{block}");
+}
+
+#[test]
+fn a_session_in_which_nothing_happened_says_so() {
+    let mut quiet = moved();
+    for position in &mut quiet.positions {
+        position.units_unpaid = 0;
+        position.asked_paid = 0;
+    }
+    let text = county::session(&quiet, 3);
+    assert!(
+        text.contains("Every listed unit was paid and nobody new asked."),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_position_with_nothing_listed_and_nothing_happening_is_counted_not_listed() {
+    let text = county::session(&moved(), 3);
+    let list = &text[text
+        .find("The list, in rank order")
+        .expect("the record has the list")..];
+    assert!(list.contains("rank 2 · Next 40%"), "{list}");
+    assert!(list.contains("rank 3 · Bottom 50%"), "{list}");
+    assert!(!list.contains("rank 1 ·"), "{list}");
+    assert!(
+        !list.contains("rank 4 ·") && !list.contains("rank 5 ·"),
+        "{list}"
+    );
+    assert!(
+        list.contains("3 other positions hold no unit; nobody there asked."),
+        "{list}"
+    );
+    let mut one_left = moved();
+    one_left.positions.truncate(4);
+    assert!(county::session(&one_left, 3)
+        .contains("2 other positions hold no unit; nobody there asked."),);
+    one_left.positions.truncate(3);
+    assert!(
+        county::session(&one_left, 3)
+            .contains("1 other position holds no unit; nobody there asked."),
+        "one reads in the singular"
+    );
+}
+
+#[test]
+fn the_session_states_the_remedy_once_under_the_list() {
+    let text = county::session(&moved(), 3);
+    let remedy = "Reasons are earned by contact: reach a household in a position to see why its households asked or stayed home.";
+    assert_eq!(text.matches(remedy).count(), 1, "{text}");
+    assert!(
+        text.find(remedy) > text.find("The list, in rank order"),
+        "it stands under the list's heading: {text}"
+    );
+    assert!(
+        !text.contains("Reach a household here."),
+        "no per-row remedy: {text}"
+    );
+}
+
+#[test]
+fn a_session_reads_a_count_of_one_in_the_singular_and_hides_reasons_without_earning() {
+    let mut view = moved();
+    view.claimants_roll_households = Some(1);
+    view.aid_roll_households = Some(1);
+    let text = county::session(&view, 3);
+    assert!(
+        text.contains("Claimants' Assembly roll: 1 household came from the roll"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Aid partners roll: 1 household asked and was paid"),
+        "{text}"
+    );
+    assert!(text.contains("1 unit listed"), "{text}");
+    assert!(
+        !text.contains("1 households") && !text.contains("1 units"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("wanted to ask and had no hours"),
+        "no earned reasons without contact: {text}"
+    );
+    let one = county::who_works(&CountyReviewProjection {
+        bands: vec![BandCount {
+            households: 1,
+            units: 1,
+            people_at_work: 1,
+            people_seeking: 1,
+            ..band(Band::Top1, 1)
+        }],
+        ..fixture()
+    });
+    assert!(
+        one.contains("1 household ·")
+            && one.contains("1 person at work")
+            && one.contains("1 person looking for work")
+            && one.contains("1 unit"),
+        "{one}"
+    );
+    assert!(
+        !one.contains("1 households") && !one.contains("1 units"),
+        "{one}"
+    );
+}
+
+#[test]
+fn an_earned_position_shows_its_reasons_in_the_block_and_an_unearned_one_does_not() {
+    let text = county::session(&held(), 3);
+    let list = text.find("The list, in rank order").expect("the list");
+    let block = &text[text.find("What this session changed").expect("the block")..list];
+    assert!(
+        block.contains("rank 2 · Next 40%")
+            && block.contains("2 households wanted to ask and had no hours"),
+        "an earned position's reasons are in the block: {block}"
+    );
+    let unearned = block
+        .lines()
+        .find(|line| line.contains("rank 3 · Bottom 50%"))
+        .expect("the unpaid unit is named");
+    assert!(
+        unearned.ends_with(": 1 unit left unpaid."),
+        "an unearned position shows no reasons: {unearned}"
     );
 }
 

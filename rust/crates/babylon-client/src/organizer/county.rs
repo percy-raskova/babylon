@@ -24,6 +24,15 @@ pub(super) const ROSTER_PAGE_ROWS: usize = 8;
 /// The slots of a page, by their index.
 const SLOTS: [u8; ROSTER_PAGE_ROWS] = [0, 1, 2, 3, 4, 5, 6, 7];
 
+/// A count with its noun, in the singular for one.
+fn counted(count: u64, one: &str, many: &str) -> String {
+    format!(
+        "{} {}",
+        human_numbers::grouped(u128::from(count)),
+        if count == 1 { one } else { many }
+    )
+}
+
 /// The line every view of this slice carries.
 pub(super) const STANDING_LINE: &str = "This slice has no nation, no solidarity and no consciousness. Households act on their own money only.";
 
@@ -88,16 +97,20 @@ const fn band_words(band: Band) -> &'static str {
 
 fn band_line(count: &BandCount) -> String {
     format!(
-        "{} · Designed: {}\n  {} households · {} with someone at work · {} only looking for work · {} with nobody in the labor force · {} people at work · {} people looking for work · {} units",
+        "{} · Designed: {}\n  {} · {} with someone at work · {} only looking for work · {} with nobody in the labor force · {} · {} · {}",
         runtime_session::band_label(count.band),
         band_words(count.band),
-        human_numbers::grouped(u128::from(count.households)),
+        counted(count.households, "household", "households"),
         human_numbers::grouped(u128::from(count.with_work)),
         human_numbers::grouped(u128::from(count.seeking_only)),
         human_numbers::grouped(u128::from(count.outside_labor_force)),
-        human_numbers::grouped(u128::from(count.people_at_work)),
-        human_numbers::grouped(u128::from(count.people_seeking)),
-        human_numbers::grouped(u128::from(count.units)),
+        counted(count.people_at_work, "person at work", "people at work"),
+        counted(
+            count.people_seeking,
+            "person looking for work",
+            "people looking for work"
+        ),
+        counted(count.units, "unit", "units"),
     )
 }
 
@@ -129,12 +142,12 @@ pub(super) fn name_of(view: &CountyReviewProjection, key: PositionKey) -> String
         .map_or_else(
             || {
                 format!(
-                    "{} · budget group {} · {} at work · {} looking for work · {} units held",
+                    "{} · budget group {} · {} at work · {} looking for work · {} held",
                     runtime_session::band_label(key.band),
                     key.group,
                     key.at_work,
                     key.seeking,
-                    key.units
+                    counted(u64::from(key.units), "unit", "units")
                 )
             },
             position_name,
@@ -199,18 +212,18 @@ fn income_lines(text: &mut String, position: &PositionView) {
 fn position_line(view: &CountyReviewProjection, position: &PositionView) -> String {
     let key = position.key;
     let mut text = format!(
-        "{} · {} at work · {} looking for work · {} units held",
+        "{} · {} at work · {} looking for work · {} held",
         position_name(position),
         key.at_work,
         key.seeking,
-        key.units
+        counted(u64::from(key.units), "unit", "units")
     );
     match (position.rank, view.session_period) {
         (Some(rank), _) => {
             let _ = write!(
                 text,
-                " · rank {rank} · {} units paid · {} unpaid",
-                human_numbers::grouped(u128::from(position.units_paid)),
+                " · rank {rank} · {} paid · {} unpaid",
+                counted(position.units_paid, "unit", "units"),
                 human_numbers::grouped(u128::from(position.units_unpaid))
             );
         }
@@ -224,8 +237,8 @@ fn position_line(view: &CountyReviewProjection, position: &PositionView) -> Stri
         Some(earned) => {
             let _ = write!(
                 text,
-                "\n  {} households, {} reached · a unit is worth {} to each",
-                human_numbers::grouped(u128::from(earned.households)),
+                "\n  {}, {} reached · a unit is worth {} to each",
+                counted(earned.households, "household", "households"),
                 human_numbers::grouped(u128::from(earned.reached)),
                 human_numbers::currency(earned.stake_micros)
             );
@@ -453,58 +466,165 @@ pub(super) fn ledger(view: &CountyReviewProjection) -> String {
     }
     text.push_str("\n\nThe roll by budget group");
     for (group, units) in &view.roll {
-        let _ = write!(
-            text,
-            "\n {group} · {} units",
-            human_numbers::grouped(u128::from(*units))
-        );
+        let _ = write!(text, "\n {group} · {}", counted(*units, "unit", "units"));
     }
     text.push_str("\n\nThe order of the list is public. Read it in the household roster.");
     text
 }
 
-fn reasons(text: &mut String, earned: &PositionEarned) {
-    let rows = [
-        (earned.asked_no_place, "asked, and no place was open"),
-        (earned.asked_no_time, "wanted to ask and had no hours"),
-        (
+/// One earned count as a clause: its households and what happened to them, in the singular for
+/// one household. `one` and `many` are the clause's words after the count.
+fn household_clause(count: u64, one: &str, many: &str) -> Option<String> {
+    (count > 0).then(|| {
+        let words = if count == 1 { one } else { many };
+        format!("{} {words}", counted(count, "household", "households"))
+    })
+}
+
+/// Why a reached household stayed home, for a position the player has contacted.
+fn reason_clauses(earned: &PositionEarned) -> Vec<String> {
+    [
+        household_clause(
+            earned.asked_no_place,
+            "asked, and no place was open",
+            "asked, and no place was open",
+        ),
+        household_clause(
+            earned.asked_no_time,
+            "wanted to ask and had no hours",
+            "wanted to ask and had no hours",
+        ),
+        household_clause(
             earned.roll_no_time,
             "would have come from the roll and had no hours",
+            "would have come from the roll and had no hours",
         ),
-        (earned.nothing_at_stake, "hold a unit and lose none"),
-        (
+        household_clause(
+            earned.nothing_at_stake,
+            "holds a unit and loses none",
+            "hold a unit and lose none",
+        ),
+        household_clause(
             earned.not_worth_time,
-            "a unit was worth less than their time",
+            "had a unit worth less than their time",
+            "had a unit worth less than their time",
         ),
-    ];
-    for (count, reason) in rows {
-        if count > 0 {
-            let _ = write!(
-                text,
-                "\n     {} households {reason}",
-                human_numbers::grouped(u128::from(count))
-            );
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// What happened at a position in the session, one clause for each thing that did. Empty when
+/// nothing did. The public figures come first; the earned ones only where the player has them.
+fn changed_clauses(position: &PositionView) -> Vec<String> {
+    let mut clauses = Vec::new();
+    clauses.extend(household_clause(
+        position.asked_paid,
+        "asked and was paid",
+        "asked and were paid",
+    ));
+    clauses.extend(household_clause(
+        position.came_from_roll,
+        "came from the roll",
+        "came from the roll",
+    ));
+    if position.units_unpaid > 0 {
+        clauses.push(format!(
+            "{} left unpaid",
+            counted(position.units_unpaid, "unit", "units")
+        ));
+    }
+    if let Some(earned) = &position.earned {
+        clauses.extend(household_clause(earned.asked, "asked", "asked"));
+        clauses.extend(reason_clauses(earned));
+        clauses.extend(household_clause(
+            earned.brought,
+            "was brought, to be reached from the next session",
+            "were brought, to be reached from the next session",
+        ));
+    }
+    clauses
+}
+
+fn rank_label(position: &PositionView) -> String {
+    position
+        .rank
+        .map_or_else(|| "unranked".to_owned(), |rank| format!("rank {rank}"))
+}
+
+fn session_row(text: &mut String, position: &PositionView) {
+    let _ = write!(
+        text,
+        "\n {} · {} · {} listed · {} paid · {} unpaid · {} asked and {} paid · {} came from the roll",
+        rank_label(position),
+        position_name(position),
+        counted(position.units_listed, "unit", "units"),
+        human_numbers::grouped(u128::from(position.units_paid)),
+        human_numbers::grouped(u128::from(position.units_unpaid)),
+        counted(position.asked_paid, "household", "households"),
+        if position.asked_paid == 1 { "was" } else { "were" },
+        counted(position.came_from_roll, "household", "households"),
+    );
+    if let Some(earned) = &position.earned {
+        for reason in reason_clauses(earned) {
+            let _ = write!(text, "\n     {reason}");
         }
     }
 }
 
-fn session_row(text: &mut String, position: &PositionView) {
-    let rank = position
-        .rank
-        .map_or_else(|| "unranked".to_owned(), |rank| format!("rank {rank}"));
-    let _ = write!(
-        text,
-        "\n {rank} · {} · {} units listed · {} paid · {} unpaid · {} asked and were paid · {} came from the roll",
-        position_name(position),
-        human_numbers::grouped(u128::from(position.units_listed)),
-        human_numbers::grouped(u128::from(position.units_paid)),
-        human_numbers::grouped(u128::from(position.units_unpaid)),
-        human_numbers::grouped(u128::from(position.asked_paid)),
-        human_numbers::grouped(u128::from(position.came_from_roll)),
-    );
-    match &position.earned {
-        Some(earned) => reasons(text, earned),
-        None => text.push_str("\n     Reasons are earned by contact. Reach a household here."),
+/// The positions of the last list, in rank order.
+fn listed(view: &CountyReviewProjection) -> impl Iterator<Item = &PositionView> {
+    view.positions.iter().filter(|p| p.rank.is_some())
+}
+
+/// What the session changed, one plain sentence for each position where something happened.
+fn session_changes(text: &mut String, view: &CountyReviewProjection) {
+    text.push_str("\n\nWhat this session changed");
+    let mut any = false;
+    for position in listed(view) {
+        let clauses = changed_clauses(position);
+        if clauses.is_empty() {
+            continue;
+        }
+        any = true;
+        let _ = write!(
+            text,
+            "\n {} · {}: {}.",
+            rank_label(position),
+            position_name(position),
+            clauses.join(", ")
+        );
+    }
+    if !any {
+        text.push_str("\n Every listed unit was paid and nobody new asked.");
+    }
+}
+
+/// The list in rank order: the positions that hold a unit or had something happen, then a count
+/// of the rest.
+fn session_list(text: &mut String, view: &CountyReviewProjection) {
+    text.push_str("\n\nThe list, in rank order");
+    let shown: Vec<&PositionView> = listed(view)
+        .filter(|p| p.units_listed > 0 || !changed_clauses(p).is_empty())
+        .collect();
+    if shown.iter().any(|position| position.earned.is_none()) {
+        text.push_str("\n Reasons are earned by contact: reach a household in a position to see why its households asked or stayed home.");
+    }
+    for position in &shown {
+        session_row(text, position);
+    }
+    let rest = listed(view).count().saturating_sub(shown.len());
+    if rest > 0 {
+        let _ = write!(
+            text,
+            "\n {rest} other {} no unit; nobody there asked.",
+            if rest == 1 {
+                "position holds"
+            } else {
+                "positions hold"
+            }
+        );
     }
 }
 
@@ -514,6 +634,33 @@ const fn contact_outcome_text(outcome: ContactOutcome) -> &'static str {
         ContactOutcome::NobodyLeft => "nobody was left to reach",
         ContactOutcome::NoSuchPosition => "the position was no longer on the roster",
     }
+}
+
+/// How the county's money stood against the household units on its roll at its last session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Standing {
+    /// Every listed unit was paid.
+    EveryUnit,
+    /// Some listed units were paid and some were not.
+    SomeUnits,
+    /// No listed unit was paid.
+    NoUnit,
+}
+
+/// The standing of the last session, by the projection's own figures: the household units payable
+/// against the household units listed. `None` before any session.
+pub(super) fn standing(view: &CountyReviewProjection) -> Option<Standing> {
+    let payable = view.household_units_payable?;
+    let listed = view.positions.iter().fold(0_u64, |total, position| {
+        total.saturating_add(position.units_listed)
+    });
+    Some(if payable >= listed {
+        Standing::EveryUnit
+    } else if payable == 0 {
+        Standing::NoUnit
+    } else {
+        Standing::SomeUnits
+    })
 }
 
 /// The last session: its money, its list in rank order, each body's roll and, for a position the
@@ -538,11 +685,24 @@ pub(super) fn session(view: &CountyReviewProjection, viewed_tick: u64) -> String
     );
     let _ = write!(
         text,
-        "\n{} roll: {} households came from the roll\n{} roll: {} households asked and were paid",
+        "\n{} roll: {} came from the roll\n{} roll: {} {} paid",
         view.claimants_body_label,
-        human_numbers::grouped(u128::from(view.claimants_roll_households.unwrap_or(0))),
+        counted(
+            view.claimants_roll_households.unwrap_or(0),
+            "household",
+            "households"
+        ),
         view.aid_body_label,
-        human_numbers::grouped(u128::from(view.aid_roll_households.unwrap_or(0))),
+        counted(
+            view.aid_roll_households.unwrap_or(0),
+            "household asked and",
+            "households asked and"
+        ),
+        if view.aid_roll_households == Some(1) {
+            "was"
+        } else {
+            "were"
+        },
     );
     if let Some((key, outcome)) = view.contact {
         let _ = write!(
@@ -552,10 +712,8 @@ pub(super) fn session(view: &CountyReviewProjection, viewed_tick: u64) -> String
             contact_outcome_text(outcome)
         );
     }
-    text.push_str("\n\nThe list, in rank order");
-    for position in view.positions.iter().filter(|p| p.rank.is_some()) {
-        session_row(&mut text, position);
-    }
+    session_changes(&mut text, view);
+    session_list(&mut text, view);
     text
 }
 
@@ -590,8 +748,8 @@ pub(super) fn food_run(client: &OrganizerClient) -> String {
     let delivered = match run.support.status {
         OrganizerFoodDelivery::Granted { granted_quantity } => {
             format!(
-                "{} parcels delivered",
-                human_numbers::grouped(u128::from(granted_quantity))
+                "{} delivered",
+                counted(granted_quantity, "parcel", "parcels")
             )
         }
         OrganizerFoodDelivery::NotRequested => "no food was selected".into(),
@@ -614,18 +772,22 @@ pub(super) fn food_run(client: &OrganizerClient) -> String {
         }) => {
             let _ = write!(
                 text,
-                "\nEaten: {} of {} parcels needed",
+                "\nEaten: {} of {} needed",
                 human_numbers::grouped(u128::from(consumed)),
-                human_numbers::grouped(u128::from(required))
+                counted(required, "parcel", "parcels")
             );
         }
         _ => text.push_str("\nEaten: no food report has reached you."),
     }
     let _ = write!(
         text,
-        "\nHours charged: the donor households {} hours of fulfillment, the organizer {} hours of coordination",
-        human_numbers::grouped(u128::from(run.support.material_postings.fulfillment_hours)),
-        human_numbers::grouped(u128::from(run.practice.hours_spent)),
+        "\nHours charged: the donor households {} of fulfillment, the organizer {} of coordination",
+        counted(
+            run.support.material_postings.fulfillment_hours,
+            "hour",
+            "hours"
+        ),
+        counted(run.practice.hours_spent, "hour", "hours"),
     );
     text
 }

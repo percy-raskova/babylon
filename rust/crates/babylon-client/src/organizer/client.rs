@@ -1,9 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::amount_editor::AmountEdits;
+use super::county::Standing;
 use super::developments::Developments;
 use super::scene::{OrganizerScene, OrganizerSceneMode, OrganizerSubject};
-use super::{draft, evidence, presentation, ui};
+use super::{county, draft, evidence, presentation, ui};
 use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::ArchiveEvidenceClass;
 
@@ -217,15 +218,46 @@ pub(super) fn hearing_update(
     Some("Invitation window open. Read the Wayne hearing notice before advancing.")
 }
 
-/// The notice for a county session record that has just arrived. Only a change seen by a client
-/// that already held a projection is news.
+/// The clause a change in how the county's money stands against the roll adds to the notice.
+fn standing_clause(before: Standing, after: Standing) -> Option<&'static str> {
+    match (before, after) {
+        (Standing::EveryUnit, Standing::EveryUnit) => None,
+        (_, Standing::EveryUnit) => Some("the county can pay every unit again"),
+        (Standing::EveryUnit, _) => Some("the county could not pay every unit"),
+        (Standing::SomeUnits, Standing::NoUnit) => Some("the county paid no household unit"),
+        _ => None,
+    }
+}
+
+/// The notice for a county session record that has just arrived, when the player has a reason to
+/// read it: it is the county's first session, it carries the player's contact, or it changes
+/// whether the county could pay every unit on the roll. Any other session installs silently.
+/// Only a change seen by a client that already held a projection is news.
 pub(super) fn county_update(
     previous: Option<&CountyReviewProjection>,
     county: Option<&CountyReviewProjection>,
-) -> Option<&'static str> {
-    let held = county?.session_period?;
+) -> Option<String> {
+    let county = county?;
+    let held = county.session_period?;
     let last = previous?;
-    (last.session_period != Some(held)).then_some("The county's session record arrived.")
+    if last.session_period == Some(held) {
+        return None;
+    }
+    let mut clauses = Vec::new();
+    if county.contact.is_some() {
+        clauses.push("your contact was heard");
+    }
+    if let (Some(before), Some(after)) = (county::standing(last), county::standing(county)) {
+        clauses.extend(standing_clause(before, after));
+    }
+    let first = held == county.first_session_period;
+    if clauses.is_empty() {
+        return first.then(|| "The county's session record arrived.".to_owned());
+    }
+    Some(format!(
+        "The county's session record arrived: {}.",
+        clauses.join(", and ")
+    ))
 }
 
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
@@ -787,7 +819,7 @@ impl OrganizerClient {
             }
         } else if let Some(hearing_notice) = hearing_notice {
             session.pause_playback();
-            self.message = hearing_notice.into();
+            self.message = hearing_notice;
         } else if development.is_some() {
             session.pause_playback();
             self.message = format!(
@@ -801,8 +833,9 @@ impl OrganizerClient {
     }
 
     /// What a new snapshot announces: the hearing's records first, then the county's session.
-    fn period_notice(&self, snapshot: &OrganizerSnapshot) -> Option<&'static str> {
+    fn period_notice(&self, snapshot: &OrganizerSnapshot) -> Option<String> {
         hearing_update(self.view.as_ref(), &snapshot.view)
+            .map(str::to_owned)
             .or_else(|| county_update(self.county_review.as_ref(), snapshot.county_review.as_ref()))
     }
 

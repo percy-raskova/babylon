@@ -28,6 +28,7 @@ fn shared_opening() -> Parts {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
     let mut catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site,

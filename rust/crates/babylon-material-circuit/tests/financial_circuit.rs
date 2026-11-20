@@ -116,6 +116,7 @@ fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
     )
     .expect("the fixture opens the authored source");
     let catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site(),

@@ -193,6 +193,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
     };
     fixture(
         MaterialCatalogDefinition {
+            market_clearing: None,
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![SiteLogisticsNode {
                 site_id: s(),

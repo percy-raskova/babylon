@@ -431,6 +431,7 @@ pub(crate) struct Materials {
 pub(crate) fn opening() -> Materials {
     let recurring = recurring();
     let catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()

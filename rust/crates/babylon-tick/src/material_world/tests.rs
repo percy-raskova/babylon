@@ -357,6 +357,7 @@ fn previous_receipt17_handling_semantics_are_not_admitted_as_current() {
 // wire path on one already-canonical engine state.
 fn admission_control() -> (MaterialCatalog, MaterialCircuitState) {
     let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],

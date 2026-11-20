@@ -22,6 +22,7 @@ fn merchant() -> (MaterialCatalog, MaterialCircuitState) {
     let source_node = LogisticsNodeId::from_bytes([1; 32]);
     let buyer_node = LogisticsNodeId::from_bytes([2; 32]);
     let catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![
             SiteLogisticsNode {

@@ -73,6 +73,7 @@ impl EconomicOpening {
 
 fn empty_catalog() -> MaterialCatalogDefinition {
     MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],

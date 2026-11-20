@@ -90,6 +90,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     )
     .expect("the fixture opens the authored source");
     let catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: vec![
             CommodityDefinition {

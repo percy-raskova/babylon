@@ -35,6 +35,7 @@ fn competition() -> (MaterialCatalog, MaterialCircuitState) {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],

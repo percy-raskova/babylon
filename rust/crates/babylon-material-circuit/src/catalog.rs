@@ -44,6 +44,8 @@ pub struct MaterialCatalogDefinition {
     pub household_time_policy: Vec<HouseholdTimePolicy>,
     pub service_inputs: Vec<ServiceInputPolicy>,
     pub household_needs: Vec<HouseholdNeed>,
+    /// The products that clear by price, or `None` for the posted-price rules.
+    pub market_clearing: Option<crate::MarketClearingPolicy>,
 }
 
 /// Validated campaign definitions and their immutable identity.
@@ -168,7 +170,8 @@ impl MaterialCatalogDefinition {
         self.validate_unique()?;
         self.validate_routes()?;
         self.validate_processes()?;
-        self.validate_definitions()
+        self.validate_definitions()?;
+        self.validate_market_clearing()
     }
 
     fn validate_unique(&self) -> Result<(), MaterialCircuitError> {
@@ -366,6 +369,39 @@ impl MaterialCatalogDefinition {
         Ok(())
     }
 
+    /// The order of paying names each product once, only declared ones, and every storable good
+    /// a household buys.
+    fn validate_market_clearing(&self) -> Result<(), MaterialCircuitError> {
+        let Some(policy) = &self.market_clearing else {
+            return Ok(());
+        };
+        let declared: BTreeMap<(GoodId, UnitId), bool> = self
+            .commodities
+            .iter()
+            .map(|row| {
+                (
+                    (row.good_id, row.unit_id),
+                    matches!(row.kind, CommodityKind::Storable { .. }),
+                )
+            })
+            .collect();
+        let named: BTreeSet<_> = policy.paying_order.iter().copied().collect();
+        if policy.paying_order.is_empty()
+            || named.len() != policy.paying_order.len()
+            || policy
+                .paying_order
+                .iter()
+                .any(|key| !declared.contains_key(key))
+            || self.household_needs.iter().any(|need| {
+                let key = (need.good_id, need.unit_id);
+                declared.get(&key) == Some(&true) && !named.contains(&key)
+            })
+        {
+            return Err(MaterialCircuitError::MarketClearingInvariant);
+        }
+        Ok(())
+    }
+
     fn route_stages(&self, route: RouteId) -> &[RouteStage] {
         let start = self
             .route_stages
@@ -425,5 +461,138 @@ impl MaterialCatalogDefinition {
         self.household_needs
             .sort_by_key(|row| (row.principal_id, row.good_id, row.unit_id));
         crate::capacity::canonicalize_policy(&mut self.capacity_policy);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{FinalDemandPrincipalId, HouseholdNeedBasis, MarketClearingPolicy};
+
+    const PINNED_BASE_DIGEST: [u8; 32] = [
+        45, 217, 79, 34, 238, 57, 4, 28, 215, 33, 7, 185, 21, 72, 34, 167, 59, 200, 187, 74, 130,
+        172, 93, 155, 160, 7, 158, 178, 154, 209, 170, 125,
+    ];
+
+    fn good(n: u8) -> GoodId {
+        GoodId::from_bytes([n; 32])
+    }
+
+    fn unit(n: u8) -> UnitId {
+        UnitId::from_bytes([n; 32])
+    }
+
+    fn storable(n: u8) -> CommodityDefinition {
+        CommodityDefinition {
+            good_id: good(n),
+            unit_id: unit(n),
+            kind: CommodityKind::Storable { grams_per_unit: 1 },
+        }
+    }
+
+    /// Two storable goods; a household needs the first.
+    fn base() -> MaterialCatalogDefinition {
+        MaterialCatalogDefinition {
+            company_portfolios: None,
+            company_payouts: vec![],
+            capacity_policy: CapacitySupply::FiniteSchedule,
+            site_logistics_nodes: vec![],
+            process_outputs: vec![],
+            input_coefficients: vec![],
+            labor_coefficients: vec![],
+            commodities: vec![storable(1), storable(2)],
+            supplier_routes: vec![],
+            route_stages: vec![],
+            merchants: vec![],
+            handling_coefficients: vec![],
+            maintenance_binding: None,
+            aid_mandates: vec![],
+            household_time_policy: vec![],
+            service_inputs: vec![],
+            household_needs: vec![HouseholdNeed {
+                principal_id: FinalDemandPrincipalId::from_bytes([9; 32]),
+                good_id: good(1),
+                unit_id: unit(1),
+                basis: HouseholdNeedBasis::Persons,
+                units_per_basis: 1,
+            }],
+            market_clearing: None,
+        }
+    }
+
+    fn policy(order: &[u8]) -> MarketClearingPolicy {
+        MarketClearingPolicy {
+            paying_order: order.iter().map(|&n| (good(n), unit(n))).collect(),
+        }
+    }
+
+    fn refused(definition: MaterialCatalogDefinition) -> bool {
+        matches!(
+            MaterialCatalog::try_new(definition),
+            Err(MaterialCircuitError::MarketClearingInvariant)
+        )
+    }
+
+    #[test]
+    fn a_catalog_without_a_market_policy_keeps_its_digest() {
+        let catalog = MaterialCatalog::try_new(base()).expect("the base catalog is valid");
+        assert_eq!(catalog.catalog_digest(), PINNED_BASE_DIGEST);
+    }
+
+    #[test]
+    fn a_market_policy_changes_the_digest_and_the_version() {
+        let plain = MaterialCatalog::try_new(base()).expect("valid");
+        let mut with = base();
+        with.market_clearing = Some(policy(&[1, 2]));
+        let with = MaterialCatalog::try_new(with).expect("valid");
+        assert_ne!(plain.catalog_digest(), with.catalog_digest());
+        let bytes = crate::wire::catalog_bytes(&with).expect("bytes");
+        let head = b"babylon.material-catalog.v2".len() + 1;
+        assert_eq!(bytes[head..head + 2], 6_u16.to_be_bytes());
+        assert_eq!(bytes[head + 2..head + 4], 2_u16.to_be_bytes());
+        let plain_bytes = crate::wire::catalog_bytes(&plain).expect("bytes");
+        assert_eq!(plain_bytes[head..head + 2], 2_u16.to_be_bytes());
+        // The body is the unchanged body, then the tail.
+        let body = &plain_bytes[head + 2..];
+        assert_eq!(&bytes[head + 4..head + 4 + body.len()], body);
+        let mut tail = 2_u32.to_be_bytes().to_vec();
+        for n in [1_u8, 2] {
+            tail.extend_from_slice(&[n; 32]);
+            tail.extend_from_slice(&[n; 32]);
+        }
+        assert_eq!(&bytes[head + 4 + body.len()..], tail.as_slice());
+    }
+
+    #[test]
+    fn a_market_policy_is_refused_when_empty_duplicated_unknown_or_missing_a_household_good() {
+        let mut empty = base();
+        empty.market_clearing = Some(policy(&[]));
+        assert!(refused(empty));
+        let mut twice = base();
+        twice.market_clearing = Some(policy(&[1, 1]));
+        assert!(refused(twice));
+        let mut unknown = base();
+        unknown.market_clearing = Some(policy(&[1, 7]));
+        assert!(refused(unknown));
+        let mut missing = base();
+        missing.market_clearing = Some(policy(&[2]));
+        assert!(refused(missing));
+    }
+
+    #[test]
+    fn place_follows_the_order_of_paying() {
+        let order = policy(&[2, 1]);
+        assert_eq!(order.place(good(2), unit(2)), Some(0));
+        assert_eq!(order.place(good(1), unit(1)), Some(1));
+        assert_eq!(order.place(good(1), unit(2)), None);
+        assert_eq!(order.place(good(3), unit(3)), None);
+    }
+
+    #[test]
+    fn a_market_policy_needs_no_company_portfolio() {
+        let mut with = base();
+        with.market_clearing = Some(policy(&[1]));
+        assert!(with.company_portfolios.is_none() && with.company_payouts.is_empty());
+        MaterialCatalog::try_new(with).expect("a policy alone is admitted");
     }
 }

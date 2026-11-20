@@ -441,6 +441,7 @@ mod engine_test {
             .expect("the fixture opens the authored source");
         let catalog =
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: vec![SiteLogisticsNode {
                     site_id: site,

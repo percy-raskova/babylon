@@ -12,6 +12,9 @@ pub const MATERIAL_CATALOG_DOMAIN_BYTES: &[u8] = b"babylon.material-catalog.v2";
 
 pub(super) const CATALOG_SCHEMA_VERSION: u16 = 2;
 
+/// A catalog with a market policy writes this version, then the version it would write without one.
+const MARKET_CATALOG_SCHEMA_VERSION: u16 = 6;
+
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
     out.extend_from_slice(&row.hours_per_basis.to_be_bytes());
@@ -168,6 +171,9 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         None if catalog.company_payouts.is_empty() => CATALOG_SCHEMA_VERSION,
         None => 3,
     };
+    if catalog.market_clearing.is_some() {
+        out.extend_from_slice(&MARKET_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
     out.extend_from_slice(&version.to_be_bytes());
     append_policy(&mut out, &catalog.capacity_policy)?;
     super::state::append_site_nodes(&mut out, &catalog.site_logistics_nodes)?;
@@ -209,6 +215,15 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         out.extend_from_slice(&policy.high_utilization_bps.to_be_bytes());
         out.push(policy.history_periods);
         out.extend_from_slice(&policy.modest_expansion_bps.to_be_bytes());
+    }
+    if let Some(policy) = &catalog.market_clearing {
+        let count = u32::try_from(policy.paying_order.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?;
+        out.extend_from_slice(&count.to_be_bytes());
+        for (good, unit) in &policy.paying_order {
+            out.extend_from_slice(&good.as_bytes());
+            out.extend_from_slice(&unit.as_bytes());
+        }
     }
     Ok(out)
 }

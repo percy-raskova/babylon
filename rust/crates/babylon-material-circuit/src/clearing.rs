@@ -4,8 +4,24 @@
 //! rises to the first level at which the two are equal, every buyer pays that price, and the seller
 //! keeps the difference. The rule is one pure function over exact integers.
 
-use crate::MaterialCircuitError;
+use crate::{GoodId, MaterialCircuitError, UnitId};
 use babylon_kernel::currency::Currency;
+
+/// The products that clear by price, in the order in which a buyer's purse reaches them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarketClearingPolicy {
+    pub paying_order: Vec<(GoodId, UnitId)>,
+}
+
+impl MarketClearingPolicy {
+    /// The product's place in the order, or `None` when it does not clear by price.
+    #[must_use]
+    pub fn place(&self, good: GoodId, unit: UnitId) -> Option<usize> {
+        self.paying_order
+            .iter()
+            .position(|&(g, u)| g == good && u == unit)
+    }
+}
 
 /// One buyer's bid in one market.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

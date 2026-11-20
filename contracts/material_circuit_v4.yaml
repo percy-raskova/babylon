@@ -69,7 +69,9 @@ encoding:
   header: [state_domain, terminator, schema_version, catalog_digest, period]
   catalog_digest: raw-32-byte SHA-256 of the canonical catalog bytes
   catalog_bytes: catalog_domain, terminator, catalog_version_u16, capacity_policy, content rows, nested definitions
-  catalog_version: u16; current value 1
+  catalog_version: >-
+    u16; without a market policy 2, 3, 4 or 5 as before; with one 6, followed by the u16 version the same
+    catalog writes without the policy, the body exactly as that version writes it, and the market tail
 
 state_field_order:
   - period
@@ -117,6 +119,8 @@ catalog_row_field_order:
   service_inputs: [buyer_site_id, provider_site_id, good_id, unit_id, quantity_per_period, maximum_purchase,
                    cash_floor_i128]
   household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
+  # Written only when the catalog has a market policy, after every other row family.
+  market_clearing: [count_u32, paying_order_rows_of_good_id_and_unit_id]
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -134,6 +138,51 @@ catalog_canonical_keys:
   household_time_policy: [principal_id]
   service_inputs: [buyer_site_id, good_id, unit_id]
   household_needs: [principal_id, good_id, unit_id]
+
+# Market policy (the price of a short market). A catalog carries it only by asking: the order of paying below.
+# Without it every catalog and state byte is the one of before. With it, in a period in which a private seller
+# is short, the price paid rises to the first level at which what its buyers can pay for equals what there is.
+market_clearing:
+  P1_market: >-
+    one seller, one product and one moment of sale in a period; its supply is what the seller has on offer to new
+    buyers; its buyers are the accounts whose policy names that seller for that product
+  P2_bid: >-
+    each buyer brings what it wants, its purse and, for a business, a limit; at price p it can pay for min(wanted,
+    floor(purse / p)) and for nothing above its limit
+  P3_price: >-
+    no more demand than supply at the posted price sells at the posted price; otherwise the price is the lowest
+    price above the posted one at which the demand no longer exceeds the supply, found exactly in millionths by
+    bisection, one price for every buyer of the market
+  P4_shares: >-
+    each buyer gets what it can pay for at that price; where demand falls past the supply in one step the price is
+    the last one before the step, the buyers who fall away share what is left in proportion to what each loses,
+    and the last indivisible units go in canonical order; everything on offer is sold
+  P5_limit: >-
+    a business bids no more than the price at which a batch just covers its cost, never under the posted price; a
+    merchant pays no more than its own posted price less its handling wage
+  P6_offer: >-
+    stock or output at the moment of sale less what the seller owes to orders accepted earlier; for a merchant
+    also no more than its hands and room can pass over
+  P7_order_of_paying: >-
+    the catalog names one order of its products; a buyer's purse reaches the markets in that order, and each
+    purchase is paid before the next market is cleared
+  P8_accepted_order: >-
+    money set aside keeps its price and quantity; a good a household buys is handed over at the purchase; a
+    business's goods sold and not yet moved are owed
+  P9_posted_price: keeps its rule of one step a period inside its bounds
+  P10_record: >-
+    a short market leaves one receipt of seller, product, moment, posted price, price paid, on offer, demand at
+    the posted price, sold, and buyers bid and served
+  P11_money: nothing is created or destroyed; the buyers' extra payments are the seller's receipts
+  P12_not_by_price: >-
+    a product left out of the order of paying, a seller with a fixed price, a catalog without an order, and a
+    world without money share in proportion as before
+  P13_asking: a catalog gets the rule only by naming an order of paying
+  admission:
+    - the order is not empty, names no product twice, and names only declared commodities
+    - every storable good that a household need names is in the order; a service may be left out
+    - a refusal is MarketClearingInvariant
+    - a market policy requires no company portfolio
 
 catalog_seal:
   - canonicalize every definition family once at admission, in the orders above
@@ -292,6 +341,8 @@ admission:
   - desired production or handling at an empty workplace cannot create workers, funded hours, wages or output
   - both recurring household phase cursors equal the preceding period at a canonical opening
   - responsive quotes remain inside positive captured bounds; admitted escrows retain their own prices
+  - without a market policy a short seller shares by the posted-price rules;
+    with one it clears by price (market_clearing)
 
 allocation:
   order_request: full remaining already-admitted native quantity for included eligible requests

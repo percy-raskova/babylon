@@ -112,6 +112,7 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
 
 fn base_catalog() -> MaterialCatalog {
     MaterialCatalog::try_new(MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],

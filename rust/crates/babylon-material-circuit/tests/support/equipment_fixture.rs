@@ -134,6 +134,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let (capacity_policy, equipment) = opening_capacity();
     let schedules = opening_labor();
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site(),

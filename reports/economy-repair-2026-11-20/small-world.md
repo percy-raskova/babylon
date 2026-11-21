@@ -348,7 +348,7 @@ accounts). Each run is set beside the same push under the market policy after Ta
 ### P1 with tiers: returns to the opening state
 
 Without tiers the owner, who counts half its persons, keeps $910 it has no need to spend and the world runs
-away slowly (care unmet 23 at period 34, the clinic at 12 units). With tiers the owner spends what its needs
+away slowly (care unmet 23 at period 34, the clinic at 12 units). With tiers (O7) the owner spends what its needs
 leave on its own comforts and luxuries: 5 persons' worth, $150 and $250 a period, 5 units of each good.
 Utility, clinic and shop sell what they did in the balanced opening, no quote falls, and every period equals
 the first, which equals the opening (cash, prices, plans, output). Nothing is unmet. The owner is the one
@@ -368,7 +368,9 @@ Beside it, P1 under the market policy after: period 34 cash 1116/760/880/1479, o
 
 Period 1 is P2's own. The households' money goes to needs: wants are bought in 7 of the 34 periods (periods 4 to 7, 12,
 16 and 24), never for more than $81 in a period, all of them comforts, and at period 34 every account goes without. No
-site stops (it is also so without tiers). The band is a little different: the clinic's output slides from 40 to between
+site stops (it is also so without tiers). The band is a little different, by two rules: under O8 a comfort is
+bought only in the periods when a worker's purse covers its needs at the clearing price (7 of 34 periods), and R12
+plans from the demand at the quote, wants' rungs included, so the markets' plans and prices move off the run without tiers. The clinic's output slides from 40 to between
 4 and 7 units from period 14 (between 5 and 11 from period 16 without tiers), the farm makes 36 units in most periods
 and 27 in some (36 without tiers), its cash is $1,320 at period 34, the utility's and the shop's markets clear short at
 period 34, and unmet at period 34 is food 5, utility 18, care 33 (4, 21, 34 without tiers). The largest worker account
@@ -398,7 +400,12 @@ Bought for wants: $0 at periods 1, 13 and 34.
 
 In period 1 the clinic's cash buys 36 units of utility, so four accounts go without care; the clinic's market clears
 short, at $31.66 where it cleared at its posted $30 without tiers; the owner holds $715 at the close, $670 without
-tiers, and no want is bought in period 1. The workers' surplus wage buys a comfort in 15 of the 34 periods: $62, $54 and
+tiers, and no want is bought in period 1. The cause is O8, the one price of ADR312 P2 as amended, through
+`clear_ladder_market`: the workers' care comfort rungs count in the demand at the $30 quote, which lifts it above
+the clinic's 36 units, so the short market clears above its posted price by bisection; at $31.66 each purse fills
+its need rung first and the comfort rungs get nothing, so the workers pay $1.66 more per unit of need (w_clinic,
+5 units, about $8.30 more: its cash falls from $39 to $31) and buy nothing for it. R12 plans the clinic from the
+demand at the quote, which includes those rungs (41 against 40). The workers' surplus wage buys a comfort in 15 of the 34 periods: $62, $54 and
 $56 of care at periods 2, 8 and 13 among them, never more than $62 and never a luxury. No site stops, and the clinic
 does not make nothing in periods 18, 27, 28 and 29 as it did without tiers; it ends at 3 units (7 without), unmet at
 period 34 is food 4, utility 7, care 37 (4, 12, 33), and every account goes without. The largest worker account holds

@@ -25,7 +25,7 @@ fn the_balanced_opening_with_tiers_is_still_for_34_periods() {
         planned_ok += 1;
     });
     assert_eq!(planned_ok, support::PERIODS);
-    let first = support::assert_still(&World::plain().with_tiers());
+    let first = support::assert_still_rows(&World::plain().with_tiers(), &rows);
     let market = support::run(&World::plain().with_market());
     for (row, plain) in rows.iter().zip(&market) {
         let mut row = row.clone();
@@ -188,8 +188,12 @@ fn less_money_with_tiers_settles_at_once_with_the_shop_at_half_its_cash() {
 }
 
 /// P4 with tiers: cycles in a depressed band, no site stopping. The workers' surplus wage buys a
-/// comfort in 15 of the 34 periods ($62, $54 and $56 of care at periods 2, 8 and 13 among them, none
-/// for luxuries), and by period 34 every account goes without; the clinic ends at 3 units where it ended at 7.
+/// comfort in 15 of the 34 periods ($62, $54 and $56 of care at periods 2, 8 and 13 among them,
+/// none for luxuries), and by period 34 every account goes without; the clinic ends at 3 units
+/// where it ended at 7. In period 1 the workers' care comfort rungs count in the demand at the $30
+/// quote (O8, ADR312 P2 as amended, `clear_ladder_market`), which lifts it above the clinic's 36
+/// units, so the short market clears at $31.66 while the need rung fills first and the comforts
+/// get nothing; R12 plans the clinic from that demand at the quote (41).
 #[test]
 fn higher_pay_with_tiers_cycles_in_a_depressed_band_buying_a_few_comforts() {
     let rows = support::run(&World::higher_pay().with_tiers());

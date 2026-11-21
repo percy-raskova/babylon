@@ -942,14 +942,15 @@ fn tier_measures(closed: &MaterialCircuitTransition) -> TierMeasures {
             row.wanted_value.micro_units() / 1_000_000,
             row.bought_value.micro_units() / 1_000_000,
         );
-        let standard = babylon_material_circuit::household_standard(
-            row.principal_id,
-            &closed.household_consumption,
-            &closed.household_services,
-            &closed.household_tiers,
-        )
-        .expect("every account has both tier rows");
-        standards.insert(name, standard);
+        standards.entry(name).or_insert_with(|| {
+            babylon_material_circuit::household_standard(
+                row.principal_id,
+                &closed.household_consumption,
+                &closed.household_services,
+                &closed.household_tiers,
+            )
+            .expect("every account has both tier rows")
+        });
     }
     (want_bought, tier_values, standards)
 }
@@ -1168,7 +1169,11 @@ pub(crate) fn run_observed(
 
 /// Every period's measures equal the first period's, and the first period's cash is the opening's.
 pub(crate) fn assert_still(world: &World) -> Snapshot {
-    let rows = run(world);
+    assert_still_rows(world, &run(world))
+}
+
+/// `assert_still` over rows the caller already produced from `world`.
+pub(crate) fn assert_still_rows(world: &World, rows: &[Snapshot]) -> Snapshot {
     assert_eq!(rows.len(), usize::try_from(PERIODS).expect("few periods"));
     let first = rows[0].clone();
     assert_eq!(
@@ -1176,7 +1181,7 @@ pub(crate) fn assert_still(world: &World) -> Snapshot {
         opening_cash(world),
         "period 1 closes with the opening cash"
     );
-    for row in &rows {
+    for row in rows {
         let mut same = row.clone();
         same.period = first.period;
         assert_eq!(same, first, "period {} moved", row.period);

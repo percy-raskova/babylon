@@ -640,6 +640,7 @@ impl World { pub(crate) fn pushed(self, push: Push) -> Self; }
 
 ## Later plan A: the tick, the stored records and the client
 
+Written as `docs/superpowers/plans/2026-11-20-opening-stage-4b-records.md`.
 The tick refuses this plan's records (Tasks 1 and 3) until this plan lands. It must land before
 later plan B, or the tick refuses every period of the shipped world. It must:
 

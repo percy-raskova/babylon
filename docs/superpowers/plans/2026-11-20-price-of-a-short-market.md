@@ -704,7 +704,9 @@ The lead then runs the whole gate.
 ### Task 7: The market's receipt reaches the stored records
 
 **Moved on 20 November 2026.** This task is built inside the one plan that carries the opening's new
-records into the register and the stored records, after the engine stages 3 and 4, so that the
+records into the register and the stored records
+(`docs/superpowers/plans/2026-11-20-opening-stage-4b-records.md`, its Task 3), after the engine
+stages 3 and 4, so that the
 format changes once: for the market's receipt, the rows of wants and tiers, and the public programs
 together. Its text stays as the specification of the market's part. Until then the tick refuses a
 transition with market rows (Task 3).

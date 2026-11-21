@@ -765,7 +765,8 @@ stage 4 plan (its Tasks 1 to 5) are built.
 ## What the later plan carries
 
 The engine's transition now holds the records; the tick register refuses them (Task 3a, decision 7).
-The plan that carries them into the register, the stored records and the client must do this, as the
+The plan that carries them into the register, the stored records and the client
+(`docs/superpowers/plans/2026-11-20-opening-stage-4b-records.md`) must do this, as the
 price plan's Task 7 did for the market's receipt, and then remove the refusal.
 
 **Two new families,** fixed width, before the register's framing:

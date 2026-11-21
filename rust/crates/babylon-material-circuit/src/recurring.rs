@@ -8,6 +8,8 @@ mod model;
 
 pub(crate) mod prices;
 
+pub(crate) mod spare_money;
+
 pub use firms::{recurring_procurement_order_id, ProcurementReceipt, ProductionPlanReceipt};
 
 pub use households::recurring_household_order_id;

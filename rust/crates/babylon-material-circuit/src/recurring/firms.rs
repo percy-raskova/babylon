@@ -19,7 +19,7 @@ use crate::{
 };
 use babylon_kernel::content_digest;
 
-type StockKey = (SiteId, GoodId, UnitId);
+pub(crate) type StockKey = (SiteId, GoodId, UnitId);
 type StockLedger = BTreeMap<StockKey, u64>;
 
 fn active(state: &MaterialCircuitState) -> bool {

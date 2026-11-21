@@ -357,8 +357,9 @@ mod tests {
     /// A bid as `(wanted, purse, limit)`.
     type FlatBid = (u64, i128, Option<i128>);
 
-    /// Every market of `clearing::rule`'s tests, as `(quote, bids as (wanted, purse, limit))`.
-    fn clearing_markets() -> Vec<(i128, Vec<FlatBid>)> {
+    /// Every market of `clearing::rule`'s tests, as `(quote, bids as (wanted, purse, limit),
+    /// the supply that test pins, if it pins one the strided sweep can miss)`.
+    fn clearing_markets() -> Vec<(i128, Vec<FlatBid>, Option<u64>)> {
         const DEEP: i128 = 1_000_000_000_000_000;
         vec![
             (
@@ -368,8 +369,9 @@ mod tests {
                     (100, 11_250 * M, None),
                     (100, DEEP, None),
                 ],
+                None,
             ),
-            (75 * M, vec![(4, 300 * M, None); 3]),
+            (75 * M, vec![(4, 300 * M, None); 3], None),
             (
                 100 * M,
                 vec![
@@ -377,8 +379,9 @@ mod tests {
                     (100, DEEP, Some(245 * M)),
                     (50, 5_000 * M, None),
                 ],
+                None,
             ),
-            (100 * M, vec![(100, DEEP, Some(40 * M)); 2]),
+            (100 * M, vec![(100, DEEP, Some(40 * M)); 2], None),
             (
                 100 * M,
                 vec![
@@ -386,6 +389,7 @@ mod tests {
                     (10, 1_000_000 * M, Some(100 * M)),
                     (4, 400 * M, None),
                 ],
+                None,
             ),
             (
                 100 * M,
@@ -393,6 +397,7 @@ mod tests {
                     (10, 1_000_000 * M, Some(40 * M)),
                     (10, 1_000_000 * M, Some(150 * M)),
                 ],
+                None,
             ),
             (
                 280 * M,
@@ -401,11 +406,13 @@ mod tests {
                     (1000, 9_000 * M, None),
                     (1000, 500 * M, None),
                 ],
+                None,
             ),
-            (280 * M, vec![(1000, 9_000 * M, None)]),
+            (280 * M, vec![(1000, 9_000 * M, None)], None),
             (
                 280 * M,
                 vec![(5, 0, None), (5, 1_400 * M, None), (5, 560 * M, None)],
+                None,
             ),
             (
                 280 * M,
@@ -415,13 +422,22 @@ mod tests {
                     (173_993, 24_359_020_000_000, None),
                     (19_334, 16_240_560_000_000, None),
                 ],
+                Some(400_000),
+            ),
+            (
+                75 * M,
+                vec![
+                    (2_000_000, 10_i128.pow(27), None),
+                    (2_000_000, 150_000_000_000_000, None),
+                ],
+                Some(1_000_000),
             ),
         ]
     }
 
     #[test]
     fn a_one_rung_ladder_is_clear_market() {
-        for (quote, bids) in clearing_markets() {
+        for (quote, bids, pinned) in clearing_markets() {
             let flat: Vec<MarketBid> = bids
                 .iter()
                 .map(|&(wanted, purse, limit)| MarketBid {
@@ -437,9 +453,9 @@ mod tests {
             let at_quote = clearing::clear_market(0, Currency::from_micro_units(quote), &flat)
                 .expect("clears")
                 .demand_at_quote;
-            for supply in
-                (0..=at_quote + 2).step_by(usize::try_from(at_quote / 40 + 1).expect("small"))
-            {
+            let swept =
+                (0..=at_quote + 2).step_by(usize::try_from(at_quote / 40 + 1).expect("small"));
+            for supply in swept.chain(pinned) {
                 let expected =
                     clearing::clear_market(supply, Currency::from_micro_units(quote), &flat)
                         .expect("clears");
@@ -489,6 +505,8 @@ mod tests {
                     for (k, (&got, rung)) in rungs.iter().zip(&bid.rungs).enumerate() {
                         assert!(got <= rung.wanted);
                         taken += got;
+                        // The reserve law is read as: every rung that buys anything
+                        // (k > 0 and got > 0) must have been paid for with its reserve.
                         if got > 0 {
                             assert!(
                                 i128::from(taken) * price + rung.reserve.micro_units()
@@ -523,7 +541,10 @@ mod tests {
         assert_eq!(refused(5, &[bid(10, None, &[(1, -1)])]), bad);
         assert_eq!(refused(5, &[bid(10, None, &[])]), bad);
         assert_eq!(
-            refused(5, &[bid(100, None, &[(1, 0), (1, 50), (1, 10)])]),
+            refused(
+                5,
+                &[bid(100 * M, None, &[(1, 0), (1, 50 * M), (1, 10 * M)])]
+            ),
             bad
         );
     }

@@ -633,7 +633,7 @@ fn recurring_demand_cap(state: &MaterialCircuitState, process: ProcessId) -> u64
 
 /// Existing funded freight can inform plans but never enters current usable
 /// stock. Each remaining stage's declared loss is applied to its forecast.
-fn planning_inventory(
+pub(crate) fn planning_inventory(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     next_period: u64,

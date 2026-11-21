@@ -16,5 +16,8 @@ mod tiers;
 #[path = "small_world/benefits.rs"]
 mod benefits;
 
+#[path = "small_world/spare_money.rs"]
+mod spare_money;
+
 #[path = "small_world/dump.rs"]
 mod dump;

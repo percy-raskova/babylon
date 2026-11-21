@@ -149,6 +149,10 @@ pub(crate) enum Push {
 
 /// Everything that sets one world. `World::plain()` and `World::taxed()` are the two openings.
 #[derive(Clone, Debug)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "each switch is one independent rule a run asks for"
+)]
 pub(crate) struct World {
     pub hours_per_person: u64,
     /// The hourly wage at each site.
@@ -172,6 +176,9 @@ pub(crate) struct World {
     /// Every household account wants, per person, one household service in tier 2 and one food
     /// and one utility in tier 3. Set with `with_tiers`, which also sets `market`.
     pub tiers: bool,
+    /// Rule A6 on the market policy: a workplace with spare money plans for what was asked of it.
+    /// Set with `with_spare_money`, which also sets `market`.
+    pub spare_money: bool,
 }
 
 impl World {
@@ -191,6 +198,7 @@ impl World {
             fund: None,
             market: false,
             tiers: false,
+            spare_money: false,
         }
     }
 
@@ -278,6 +286,14 @@ impl World {
     pub(crate) fn with_tiers(mut self) -> Self {
         self.market = true;
         self.tiers = true;
+        self
+    }
+
+    /// Rule A6 on the market policy: a workplace holding more money than one period of what it pays
+    /// out plans for what was asked of it, as far as that money carries.
+    pub(crate) fn with_spare_money(mut self) -> Self {
+        self.market = true;
+        self.spare_money = true;
         self
     }
 
@@ -403,7 +419,7 @@ impl World {
         }
         MaterialCatalogDefinition {
             market_clearing: self.market.then(|| MarketClearingPolicy {
-                plans_from_spare_money: false,
+                plans_from_spare_money: self.spare_money,
                 paying_order: [FOOD, POWER, CARE]
                     .into_iter()
                     .map(|g| (good(g), units()))

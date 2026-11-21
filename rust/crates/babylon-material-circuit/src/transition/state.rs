@@ -1684,6 +1684,8 @@ pub fn close_material_period_with_portfolios(
         Wanted {
             demand: &close.funded.household_demand,
             markets: &close.funded.markets,
+            services: &close.funded.services.markets,
+            procurement: &close.procurement,
         },
         &close.costs,
     )?;

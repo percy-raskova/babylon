@@ -11,6 +11,7 @@ use crate::valuation::CostClose;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::MaintenanceReceipt;
 use crate::MaterialCatalog;
+use crate::ServiceMarketReceipt;
 use crate::{
     AccountId, CircuitAccounting, GoodId, HouseholdDemandReceipt, LocalTransferReceipt,
     MaterialCircuitError, MaterialCircuitState, MonetaryCircuit, MoneyTransferReceipt,
@@ -492,6 +493,10 @@ pub(crate) fn cancel_unsent(
 pub(crate) struct Wanted<'a> {
     pub(crate) demand: &'a [HouseholdDemandReceipt],
     pub(crate) markets: &'a MarketTable,
+    /// The period's service markets: what each provider was asked and planned (rule A6).
+    pub(crate) services: &'a [ServiceMarketReceipt],
+    /// The period's restocking decisions (rule A6).
+    pub(crate) procurement: &'a [ProcurementReceipt],
 }
 
 /// What each seller was asked for and has not sent: orders still open, households' expired demand,
@@ -500,7 +505,9 @@ fn unshipped_quantities(
     state: &MaterialCircuitState,
     wanted: Wanted<'_>,
 ) -> Result<StockLedger, MaterialCircuitError> {
-    let Wanted { demand, markets } = wanted;
+    let Wanted {
+        demand, markets, ..
+    } = wanted;
     let mut unshipped = BTreeMap::new();
     for order in &state.orders {
         add(
@@ -629,7 +636,9 @@ fn handling_quantities(
     sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
 ) -> Result<StockLedger, MaterialCircuitError> {
     let (local, retail) = sold;
-    let Wanted { demand, markets } = wanted;
+    let Wanted {
+        demand, markets, ..
+    } = wanted;
     let mut merchandise = BTreeMap::new();
     for row in demand {
         add(
@@ -696,10 +705,53 @@ pub(crate) fn plan_attendance(
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
-    if !matches!(&state.accounting, CircuitAccounting::Monetary(economy) if economy.recurring.is_some())
-    {
+    if !active(state) {
         return Ok(());
     }
+    let mut hours = planned_hours(
+        catalog,
+        state,
+        wanted,
+        dispatches,
+        sold,
+        maintenance,
+        next_period,
+    )?;
+    if catalog
+        .market_clearing
+        .as_ref()
+        .is_some_and(|policy| policy.plans_from_spare_money)
+    {
+        let extension = super::spare_money::extend(catalog, state, &hours, wanted, next_period)?;
+        if extension.raised_batches {
+            hours = planned_hours(
+                catalog,
+                state,
+                wanted,
+                dispatches,
+                sold,
+                maintenance,
+                next_period,
+            )?;
+        }
+        for ((site, unit), extra) in extension.handling {
+            add_hours(&mut hours, site, unit, extra)?;
+        }
+    }
+    install_attendance_plans(state, &hours, next_period)
+}
+
+/// Today's hours: production through `derive_shared_labor_requests`, equipment work, merchant
+/// handling and maintenance.
+fn planned_hours(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    wanted: Wanted<'_>,
+    dispatches: &[RoutedDispatchReceipt],
+    sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
+    maintenance: Option<&MaintenanceReceipt>,
+    next_period: u64,
+) -> Result<BTreeMap<(SiteId, UnitId), u64>, MaterialCircuitError> {
     let production = crate::production::derive_shared_labor_requests(catalog, state, next_period)?;
     let mut hours = BTreeMap::<(SiteId, UnitId), u64>::new();
     for request in production {
@@ -748,7 +800,7 @@ pub(crate) fn plan_attendance(
             requested,
         )?;
     }
-    install_attendance_plans(state, &hours, next_period)
+    Ok(hours)
 }
 
 fn install_attendance_plans(

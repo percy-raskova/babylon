@@ -126,16 +126,24 @@ ADR312_the_price_of_a_short_market:
     the seller's receipts and reach its owners by the rules that exist.
 
     P12. WHAT DOES NOT CLEAR BY PRICE. A product left out of the order of
-    paying, which in the national world is public provision; a seller with a
-    fixed price; a campaign with no order of paying; a world without money. A
-    route that cannot move what was sold: its room is shared in proportion, as
-    before, and what is not sent is cancelled (P8). Equipment bought as
-    investment. Wages. There the engine shares in proportion, as before.
+    paying, which in the national world is public provision; a campaign with
+    no order of paying; a world without money. A route that cannot move what
+    was sold: its room is shared in proportion, as before, and what is not
+    sent is cancelled (P8). Equipment bought as investment. Wages. There the
+    engine shares in proportion, as before. A product that clears by price
+    may have no seller with a fixed price: such a catalog is refused.
 
     P13. ON ASKING. A campaign asks with `paying_order` in its policy's
     `[markets]` section. The catalog then carries the order, and the campaign
     compiles under a new compiler name. Without the key every byte is the one
     of before.
+
+    P14. A SERVICE PLANS FROM WHAT ITS BUYERS COULD PAY FOR. Under a market
+    policy a service's plan for the next period is what its buyers could pay
+    for at the posted price in this period's market, with what was already
+    funded for the period, or what is funded for the next period if that is
+    more. It is no longer what was asked, funded or not. What was asked stays
+    on the record.
   calls:
     - >-
         The price is found when the buyers bid and the supply is known, before
@@ -151,13 +159,26 @@ ADR312_the_price_of_a_short_market:
     - 'The order of paying is one order for the whole campaign (design 4).'
     - 'The inputs of business come after the needs of households in the order (design 4).'
     - 'The posted price keeps its rule (design 4).'
-    - 'A route is not priced, because carrying is not sold; a merchant''s hands are part of what it offers (design 4, 7).'
+    - >-
+        A route is not priced, because carrying is not sold; a merchant's hands
+        are part of what it offers (design 4, 7).
     - >-
         A household's goods are handed over at the purchase, before the
         seller's own production. In the national world a county with no
         retailer keeps its shelf at its largest employer, whose production
         draws on the same stock and hours (design 3, 9).
     - 'A campaign that clears by price prices every good its households buy; a service may be left out (plan Task 2).'
+    - >-
+        A service plans from what its buyers could pay for (P14). Measured on
+        2026-11-20 in a small balanced world: a provider that staffs for need it
+        is not paid for pays idle hours until its cash is gone, and is the first
+        workplace to fail in every pushed run (plan Task 6b).
+    - >-
+        A fixed price for a product that clears by price is refused, not
+        rationed (P12 as amended on 2026-11-20). The first text said such a
+        seller shares in proportion; nothing built it and no seller of the
+        national world has a fixed price. What a price control does is a
+        design of its own, not yet made (plan Task 6c).
     - >-
         What the pass after a sale does not send is cancelled and refunded, so
         that a business never counts as arriving what is not on its way.
@@ -177,7 +198,9 @@ ADR312_the_price_of_a_short_market:
     - >-
         A business that bids with its purse alone. One business that wants more
         than the whole supply would bid against itself until its cash was gone.
-    - 'The highest price at which everything on offer is still sold. It is above the first clearing price wherever the two differ.'
+    - >-
+        The highest price at which everything on offer is still sold. It is above
+        the first clearing price wherever the two differ.
     - >-
         Households buying goods after production, when the shelf is certain. A
         household would then pay for utility and services before food.

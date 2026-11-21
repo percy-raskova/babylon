@@ -579,8 +579,8 @@ pub(crate) fn limit_price(catalog: &MaterialCatalog, state: &MaterialCircuitStat
 1. For goods, `priced_out = MarketTable::priced_out(seller, product)`. `plan_production` adds it to
    `waiting`. `update_prices` adds it to the unserved quantity it reads, so the posted price steps
    up when stock is at or under its target. `handling_quantities` adds it for a merchant.
-2. For services nothing is added to the plan: a service is already planned from what was asked
-   (`services/market.rs:117-131`).
+2. For services nothing is added to the plan in this task: a service is still planned from what was
+   asked (`services/market.rs:117-131`). Task 6b replaces that under a market policy.
 3. A service market with a row of the period takes the reason `PricedOut`. `quote` decides it
    before `CostPressure` and `SpareCapacity`, and its posted price steps up as `FundedUnmet` does.
 4. Without a market policy there are no rows and every figure is today's.
@@ -596,6 +596,108 @@ pub(crate) fn limit_price(catalog: &MaterialCatalog, state: &MaterialCircuitStat
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** the binary, the crate, `-p babylon-tick`, `-p babylon-persistence`.
 - [ ] **Step 5: Commit** `feat(material-circuit): plan next period from what buyers wanted`.
+
+### Task 6b: A service plans from what its buyers could pay for
+
+Added on 20 November 2026 from the small world's record (rule P14).
+
+**Files:**
+- Modify: `src/clearing/table.rs` (the table keeps every market's demand at the quote, short or
+  not); `src/services/market.rs` (`planned_quantity` under a market policy); `src/services/close.rs`
+  (`ServiceClose::plan` reads the table); `contracts/material_circuit_v4.yaml` (the line that says
+  what a service plans from, in the form "without a market policy ...; with one ...") and the
+  digest; `tests/small_world/` and `reports/economy-repair-2026-11-20/small-world.md` (the runs
+  under a market policy)
+- Test: `tests/market_clearing/plans.rs`
+
+**Interfaces:**
+- Consumes: `MarketTable`, `MarketMoment::{Utility, LocalService}`, `ServiceClose::plan`.
+- Produces:
+
+```rust
+impl MarketTable {
+    /// What this market's buyers could pay for at the posted price this period, short or not.
+    /// `None` when no buyer bid in it.
+    pub(crate) fn demand_at_quote(&self, moment: MarketMoment, site: SiteId, good: GoodId,
+        unit: UnitId) -> Option<u64>;
+}
+```
+
+**Decisions:**
+1. Without a market policy: today's plan, `requested_quantity.max(future)`.
+2. With one: `planned_quantity = (owed + funded).max(future)`. `funded` is the stage market's demand
+   at the quote for this provider's product this period, 0 when no buyer bid. `owed` is the
+   quantity of the orders funded earlier for this period, which were served first. `future` is
+   what is already funded for the next period, as today.
+3. A product that is not in the order of paying keeps today's plan.
+4. `requested_quantity` on the market's receipt stays what was asked. The staffing request
+   follows the planned batches, as today.
+5. A provider whose buyers could pay for nothing plans nothing. When buyers return they are priced
+   out for a period: the market has a row, the reason is `PricedOut`, and the next plan is what
+   they could pay for.
+6. The small world's runs without a market policy do not move by one figure. Its runs under a
+   market policy are pinned again as the engine now does, and the record says what changed and
+   why, beside the runs before.
+
+- [ ] **Step 1: Write the failing tests** in `tests/market_clearing/plans.rs`:
+  `a_service_staffs_for_what_buyers_could_pay_for` (a provider with output for 40; its buyers ask
+  for 40 and can pay for 25 at the posted price: the next `planned_quantity` is 25, the receipt's
+  `requested_quantity` is 40); `an_order_funded_earlier_counts_in_the_plan` (10 owed and 25
+  funded give 35); `buyers_who_return_are_planned_for_after_one_period` (no buyer can pay in
+  period 1, so the plan is 0; in period 2 they can pay for 30, are priced out with reason
+  `PricedOut`, and the plan for period 3 is 30);
+  `without_a_market_policy_a_service_plans_for_what_was_asked` (40).
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** the binary, `binary(small_world)`, `binary(period_services)`, the crate,
+  then `-p babylon-tick`. Update the small world's pins under a market policy and its record.
+- [ ] **Step 5: Commit** `feat(material-circuit): a service plans from what its buyers could pay for`.
+
+### Task 6c: A product that clears by price has no fixed-price seller
+
+Added on 20 November 2026 (rule P12 as amended that day). The first text of P12 said that a seller
+with a fixed price shares in proportion. Tasks 3 to 5 did not build that: they clear every seller of
+a product in the order by price, and their fixtures give those sellers a fixed price.
+
+**Files:**
+- Modify: `src/recurring/validation.rs` (the check of the offers); `contracts/material_circuit_v4.yaml`
+  (`P12_not_by_price` and the market policy's `admission` list) and the digest; every fixture whose
+  seller of a product in the order has a fixed price: `tests/market_clearing/support.rs`,
+  `service_support.rs`, `restock_support.rs`, and whatever else the crate's and the tick's tests show
+  (`rg 'PricePolicy::Fixed'`)
+- Test: `tests/market_clearing/admission.rs` (new; declared in `tests/market_clearing.rs`)
+
+**Decisions:**
+1. Under a market policy, an offer of a product that is in the order of paying must be `Responsive`
+   or `ServiceResponsive`. A `Fixed` one is refused with `MarketClearingInvariant` wherever a state is
+   validated against its catalog. An offer of a product left out of the order may be fixed, as today.
+   Without a market policy nothing changes.
+2. A fixture whose seller must keep its posted price takes a responsive policy whose bounds pin it:
+   `minimum == maximum == unit_price`, `step` one millionth of a dollar, and for a good
+   `target_stock` 0. Its posted price then cannot move, so every pinned quantity, price and cash
+   figure of Tasks 1 to 6b holds. Where a test reads the reason of a price decision or a digest of
+   a state, the value changes: name each one in the report with its old and new value. No other
+   expected value may change. A fixture whose seller is already responsive is left alone.
+3. The contract's `P12_not_by_price` becomes: "a product left out of the order of paying, a catalog
+   without an order, and a world without money share in proportion as before; a product in the
+   order has no seller with a fixed price". Its `admission` list gains "under a market policy
+   every offer of a product in the order is responsive".
+4. Task 6b's rule for a service's plan needs no exception: every provider of a product in the order
+   is now responsive.
+
+- [ ] **Step 1: Write the failing tests** in `tests/market_clearing/admission.rs`:
+  `a_fixed_price_seller_of_a_priced_good_is_refused` (the goods fixture with its retailer's offer
+  `Fixed`: the period's close is `Err(MarketClearingInvariant)`);
+  `a_fixed_price_provider_of_a_priced_service_is_refused` (the service fixture likewise);
+  `a_fixed_price_is_admitted_for_a_service_left_out_of_the_order` (the service fixture with its
+  local service left out of the order and its provider `Fixed` closes, and the service's rows are
+  those of a run without the policy); `without_a_market_policy_a_fixed_price_is_admitted` (the goods
+  fixture with no policy and a `Fixed` retailer closes).
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement,** and move the fixtures.
+- [ ] **Step 4: Run** `binary(market_clearing)`, `binary(small_world)`, the crate, then
+  `-p babylon-tick`.
+- [ ] **Step 5: Commit** `fix(material-circuit): a product that clears by price has no fixed-price seller`.
 
 The lead then runs the whole gate.
 

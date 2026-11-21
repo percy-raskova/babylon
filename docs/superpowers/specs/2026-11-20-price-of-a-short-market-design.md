@@ -143,11 +143,23 @@ receipts, and reach its owners by the rules that exist: operating income, tax, t
 payout.
 
 **P12. What does not clear by price.** A product left out of the order of paying, which in the
-national world is public provision; a seller with a fixed price; a campaign with no order of
-paying; a world without money. There the engine shares in proportion, as today.
+national world is public provision; a campaign with no order of paying; a world without money.
+There the engine shares in proportion, as today. A product that clears by price may have no
+seller with a fixed price: such a campaign is refused. A price held fixed while goods are short
+is a price control, and what a price control does to the people who buy is a design of its own,
+not yet made. (The first text of this rule said such a seller shares in proportion. Nothing
+built that, and no seller of the national world has a fixed price.)
 
 **P13. On asking.** A campaign gets the rule only by asking for it (section 8). Without the
 asking, every byte is the one of before.
+
+**P14. A service plans from what its buyers could pay for.** Today a service plans its next
+period, and staffs it, for what was asked, funded or not. Under a market policy it plans for what
+its buyers could pay for at the posted price in this period's market, with what was already
+funded for the period, or for what is funded for the next period if that is more. Measured on 20
+November 2026 in a small balanced world (`reports/economy-repair-2026-11-20/small-world.md`): a
+provider that staffs for need it is not paid for pays idle hours until its cash is gone, and is
+the first workplace to fail in every run that was pushed. What was asked stays on the record.
 
 ## 5. Where it acts in the period
 

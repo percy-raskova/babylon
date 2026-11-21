@@ -76,6 +76,10 @@ pub(crate) struct ServiceFixture {
     /// The services in the order of paying, or `None` for a catalog without a policy.
     pub paying_order: Option<Vec<u8>>,
     pub funded: Vec<Funded>,
+    /// The posted-price policy of the utility.
+    pub utility_pricing: PricePolicy,
+    /// The hours the utility's workers can give, if fewer than its nameplate batches.
+    pub utility_hours: Option<u64>,
 }
 
 impl ServiceFixture {
@@ -89,6 +93,8 @@ impl ServiceFixture {
             business: None,
             paying_order: Some(vec![UTILITY, LOCAL]),
             funded: vec![],
+            utility_pricing: PricePolicy::Fixed,
+            utility_hours: None,
         }
     }
 
@@ -104,6 +110,14 @@ impl ServiceFixture {
             UTILITY => self.utility_capacity,
             LOCAL => self.local_capacity,
             _ => self.public_capacity,
+        }
+    }
+
+    /// The hours a producer can give: its nameplate batches, but for a utility with fewer hands.
+    fn hands(&self, id: u8, planned: u64) -> u64 {
+        match self.utility_hours {
+            Some(hours) if id == UTILITY => hours,
+            _ => planned,
         }
     }
 
@@ -281,7 +295,11 @@ impl ServiceFixture {
                 good_id: support::good(service),
                 unit_id: support::units(),
                 unit_price: posted(service),
-                pricing: PricePolicy::Fixed,
+                pricing: if service == UTILITY {
+                    self.utility_pricing.clone()
+                } else {
+                    PricePolicy::Fixed
+                },
             })
             .collect();
         if self.business.is_some() {
@@ -319,7 +337,7 @@ impl ServiceFixture {
                     site_id: support::site(id),
                     unit_id: support::hours(),
                     period: 1,
-                    planned_hours: planned,
+                    planned_hours: self.hands(id, planned),
                 })
                 .collect(),
             last_household_admission_period: 0,
@@ -424,10 +442,11 @@ impl ServiceFixture {
                 member_labor: producers
                     .iter()
                     .flat_map(|&(id, _, planned)| {
+                        let hours = self.hands(id, planned);
                         (1..=9).map(move |period| MemberLaborCapacityRow {
                             member_id: member(id),
                             period,
-                            available_hours: planned,
+                            available_hours: hours,
                         })
                     })
                     .collect(),
@@ -466,11 +485,12 @@ impl ServiceFixture {
             labor: producers
                 .iter()
                 .flat_map(|&(id, _, planned)| {
+                    let hours = self.hands(id, planned);
                     (1..=9).map(move |period| LaborCapacityRow {
                         site_id: support::site(id),
                         unit_id: support::hours(),
                         period,
-                        available: planned,
+                        available: hours,
                     })
                 })
                 .collect(),

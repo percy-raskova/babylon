@@ -17,3 +17,6 @@ mod restock_support;
 
 #[path = "market_clearing/restocking.rs"]
 mod restocking;
+
+#[path = "market_clearing/plans.rs"]
+mod plans;

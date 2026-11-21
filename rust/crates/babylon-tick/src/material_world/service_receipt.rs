@@ -219,6 +219,7 @@ pub(super) fn decode_market(
             [3] => ServicePriceDecision::FundedUnmet,
             [4] => ServicePriceDecision::CostPressure,
             [5] => ServicePriceDecision::SpareCapacity,
+            [6] => ServicePriceDecision::PricedOut,
             _ => return Err(MaterialWorldError::Wire),
         },
         planned_quantity: c.u64()?,

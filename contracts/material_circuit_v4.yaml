@@ -454,12 +454,14 @@ period_close:
     actual voluntary payment creates no membership, agreement, recurring withdrawal or new hour supply
   - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
   - admit ordinary equipment orders from post-financial free cash and explicit replacement or expansion policies
-  - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
+  - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers,
+    and with a market policy also from what buyers could pay for at the posted price and did not get
   - forecast already funded freight due before subsequent production without crediting current usable inventory
   - derive subsequent attendance from distinct production, merchant, maintenance and installation work requests
-  - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies
+  - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies; with a market
+    policy, what buyers were priced out of counts as unserved demand
   - update next service quotes from funded unmet requests, native capacity and whole-batch cost including provider
-    expiry
+    expiry; with a market policy, buyers priced out of a short service step its quote up, also with spare capacity
   - retire terminal physical and financial purchase principals together after their evidence is recorded
   - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
   - rebuild unshipped backlog
@@ -827,7 +829,8 @@ period_services:
     - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
       converts to batches.
     - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with
-      bounded steps.
+      bounded steps; with a market policy a service market with priced-out buyers is decided before cost pressure
+      and spare capacity and steps up.
     - Existing reserves keep their accepted price; no price or planning policy guarantees execution or profit.
 
 financial_institutions:

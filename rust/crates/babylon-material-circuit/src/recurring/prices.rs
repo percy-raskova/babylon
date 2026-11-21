@@ -1,12 +1,13 @@
 //! Current-period direct costs inform bounded quotes without valuing old stock anew.
 use std::collections::BTreeMap;
 
+use super::firms::Wanted;
 use crate::valuation::CostClose;
 use crate::MaterialCatalog;
 use crate::SellerOffer;
 use crate::{
-    CircuitAccounting, GoodId, HouseholdDemandReceipt, MaterialCircuitError, MaterialCircuitState,
-    PricePolicy, SiteId, UnitId,
+    CircuitAccounting, GoodId, MaterialCircuitError, MaterialCircuitState, PricePolicy, SiteId,
+    UnitId,
 };
 use babylon_kernel::currency::Currency;
 use std::result::Result as StdResult;
@@ -113,14 +114,14 @@ fn add(rows: &mut BTreeMap<StockKey, u64>, key: StockKey, quantity: u64) -> Resu
 pub(crate) fn update_prices(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
-    demand: &[HouseholdDemandReceipt],
+    wanted: Wanted<'_>,
     costs: &CostClose,
 ) -> Result<Vec<PriceReceipt>> {
     if !matches!(&state.accounting, CircuitAccounting::Monetary(e) if e.recurring.is_some()) {
         return Ok(Vec::new());
     }
     let mut unserved = BTreeMap::new();
-    for row in demand {
+    for row in wanted.demand {
         add(
             &mut unserved,
             (row.retailer_site_id, row.good_id, row.unit_id),
@@ -140,6 +141,11 @@ pub(crate) fn update_prices(
             (row.retailer_site_id, row.good_id, row.unit_id),
             row.ordered - row.fulfilled,
         )?;
+    }
+    // The market's price answers a shortage once; the posted price steps up with it, as it does for
+    // demand that went unserved.
+    for (key, quantity) in wanted.markets.priced_out_goods() {
+        add(&mut unserved, key, quantity)?;
     }
     let inventory: BTreeMap<_, _> = state
         .inventory

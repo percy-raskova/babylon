@@ -103,32 +103,38 @@ fn higher_pay_runs_away_until_the_clinic_farm_and_shop_stop() {
     assert_eq!(last.unmet, [40, 15, 40]);
 }
 
-/// P2 under the market policy: runs away, faster for food. Households buy at the market's price,
-/// so what the shop can hand over in its hours is all it sells, admitted and sold are the same,
-/// and its next hours follow what it sold (`recurring/firms.rs` `handling_quantities`): its plan
-/// stays at 33 hours until period 23; at period 24 the farm's stock is gone and the shop sells 31,
-/// so its plan falls with its sales. The dead clinic's quote falls to its minimum, because under the policy no
-/// order is admitted beyond output, so funded unmet demand never appears (`services/market.rs`
-/// `quote`).
+/// P2 under the market policy: runs away, and the sellers plan from what was wanted. Through
+/// period 8 it is P2's own run. At period 9 the shop's hours make its food market short and it
+/// clears above the posted price; what the buyers could pay for at the posted price and did not
+/// get is added to the shop's next hours (`recurring/firms.rs` `handling_quantities`), so its plan
+/// follows what was wanted, not only what it sold, and its posted price steps up
+/// (`recurring/prices.rs` `update_prices`). The dead clinic's buyers are priced out of an empty
+/// market, so its quote rises a step a period instead of falling to its minimum
+/// (`services/market.rs` `quote`, `PricedOut`). The farm plans 9 batches from period 29 for what
+/// was wanted and stops at period 28 all the same.
 #[test]
-fn less_supply_under_a_market_policy_runs_away_with_the_shop_held_at_its_last_sales() {
+fn less_supply_under_a_market_policy_runs_away_with_the_sellers_planning_from_what_was_wanted() {
     let rows = support::run(&World::less_supply().with_market());
-    for period in 7..=23 {
-        assert_eq!(at(&rows, period).planned[SHOP], 33, "period {period}");
-    }
-    assert_eq!(at(&rows, 24).planned[SHOP], 31);
+    let shop_hours: Vec<_> = (7..=14).map(|p| at(&rows, p).planned[SHOP]).collect();
+    assert_eq!(shop_hours, [33, 33, 34, 40, 38, 35, 35, 35]);
+    assert_eq!(at(&rows, 8).price_cents[SHOP], 3_800);
+    assert_eq!(at(&rows, 9).price_cents[SHOP], 3_900);
+    assert_eq!(at(&rows, 10).price_cents[SHOP], 4_000);
+    assert_eq!(at(&rows, 34).price_cents[SHOP], 4_700);
     for period in 11..=34 {
         assert_eq!(at(&rows, period).output[CLINIC], 0, "period {period}");
-    }
-    for period in 30..=34 {
         assert_eq!(
             at(&rows, period).price_cents[CLINIC],
-            100,
+            2_100 + 100 * i128::from(period - 10),
             "period {period}"
         );
     }
+    for period in 28..=34 {
+        assert_eq!(at(&rows, period).output[FARM], 0, "period {period}");
+    }
+    assert_eq!(at(&rows, 29).planned[FARM], 9);
     assert!(at(&rows, 10).cleared_cents[SHOP] > at(&rows, 10).price_cents[SHOP]);
     let last = at(&rows, 34);
     assert_eq!(last.unmet[FOOD], 40);
-    assert_eq!(last.output[UTILITY], 25);
+    assert_eq!(last.output[UTILITY], 30);
 }

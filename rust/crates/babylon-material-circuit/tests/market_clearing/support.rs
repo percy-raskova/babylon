@@ -77,6 +77,13 @@ pub(crate) struct Fixture {
     pub process_batches: Option<u64>,
     /// Write no inventory row and no carrying value for the retailer's shelves.
     pub no_stock_rows: bool,
+    /// The posted-price policy of every shelf.
+    pub pricing: PricePolicy,
+    /// The retailer's process makes the first good itself, from nothing but hours, instead of a
+    /// good of its own from the shelf. It needs `process_batches`.
+    pub makes_shelf: bool,
+    /// The output the seller's process keeps ready beyond what was sent and waited for.
+    pub output_buffer: u64,
 }
 
 impl Fixture {
@@ -94,6 +101,9 @@ impl Fixture {
             owed: 0,
             process_batches: None,
             no_stock_rows: false,
+            pricing: PricePolicy::Fixed,
+            makes_shelf: false,
+            output_buffer: 0,
         }
     }
 
@@ -104,6 +114,7 @@ impl Fixture {
         )
     }
 
+    #[allow(clippy::too_many_lines, reason = "a fixture builds its whole catalog")]
     fn definition(&self) -> MaterialCatalogDefinition {
         let retailer = site(RETAILER);
         let mut commodities: Vec<_> = self
@@ -119,21 +130,26 @@ impl Fixture {
         let mut input_coefficients = vec![];
         let mut labor_coefficients = vec![];
         if self.process_batches.is_some() {
-            commodities.push(CommodityDefinition {
-                good_id: good(50),
-                unit_id: units(),
-                kind: CommodityKind::Storable { grams_per_unit: 1 },
-            });
+            let made = if self.makes_shelf {
+                self.shelves[0].good
+            } else {
+                commodities.push(CommodityDefinition {
+                    good_id: good(50),
+                    unit_id: units(),
+                    kind: CommodityKind::Storable { grams_per_unit: 1 },
+                });
+                input_coefficients.push(InputOutputCoefficient {
+                    process_id: ProcessId::from_bytes([50; 32]),
+                    good_id: good(self.shelves[0].good),
+                    unit_id: units(),
+                    quantity_per_batch: 1,
+                });
+                50
+            };
             process_outputs.push(ProcessOutput {
                 process_id: ProcessId::from_bytes([50; 32]),
                 site_id: retailer,
-                good_id: good(50),
-                unit_id: units(),
-                quantity_per_batch: 1,
-            });
-            input_coefficients.push(InputOutputCoefficient {
-                process_id: ProcessId::from_bytes([50; 32]),
-                good_id: good(self.shelves[0].good),
+                good_id: good(made),
                 unit_id: units(),
                 quantity_per_batch: 1,
             });
@@ -246,7 +262,7 @@ impl Fixture {
                     good_id: good(shelf.good),
                     unit_id: units(),
                     unit_price: shelf.price,
-                    pricing: PricePolicy::Fixed,
+                    pricing: self.pricing.clone(),
                 })
                 .collect(),
             replenishment: vec![],
@@ -255,7 +271,7 @@ impl Fixture {
                 .map(|batches| ProductionDemandPolicy {
                     process_id: ProcessId::from_bytes([50; 32]),
                     site_id: retailer,
-                    output_buffer: 0,
+                    output_buffer: self.output_buffer,
                     planned_batches: batches,
                 })
                 .into_iter()
@@ -406,7 +422,7 @@ impl Fixture {
                             process_id: process,
                             site_id: retailer,
                             period,
-                            available_batches: batches,
+                            available_batches: if self.makes_shelf { 1_000 } else { batches },
                         })
                         .collect()
                 })

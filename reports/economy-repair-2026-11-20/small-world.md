@@ -81,8 +81,14 @@ posted price and no clearing is recorded; restocking between businesses clears b
 - R8 A provider is paid only for what it performed, after it worked (`services/close.rs:251`).
 - R9 A site distributes its earnings, never its cash beyond them (`financial/close.rs:200-204`).
 - R10 The shop's next hours are what households were admitted to buy (`recurring/firms.rs:343-
-  348`); under the market policy that is what it sold (`recurring/households.rs:369`), and what it
-  offers is bounded by its hours (`clearing/supply.rs:155-163`).
+  348`); under the market policy that is what it sold (`recurring/households.rs:369`) plus what
+  buyers could pay for at the posted price and did not get (R11), and what it offers is bounded by
+  its hours (`clearing/supply.rs:155-163`).
+- R11 Under the market policy a seller plans from what was wanted: the quantity buyers could pay
+  for at the posted price and did not get at the market's counts as waiting for a goods seller's
+  plan, its hours and its quote (`recurring/firms.rs` `unshipped_quantities`, `handling_quantities`;
+  `recurring/prices.rs` `update_prices`); a service quote with such buyers takes the reason
+  `PricedOut` and steps up a step, also with spare capacity (`services/market.rs` `quote`).
 
 ## P1, less demand: runs away
 
@@ -163,24 +169,31 @@ and its care goes unmet. The clinic stops at period 12 with $6, the farm at peri
 shop is down to $4 at period 30 and works no hour after (R6, R8). The sites' cash ends in workers'
 accounts.
 
-## P2 under the market policy: runs away, faster for food
+## P2 under the market policy: runs away, the sellers planning from what was wanted
 
-Identical to P2 through period 8. At period 9 the shop's hours (33, set by what it sold, R10)
-make its food market short; it clears at $47.10, then $82.61 at period 10, drawing the workers'
-idle cash to the shop and on to the owner ($1,862 at period 13). The shop's plan stays 33 hours
-from period 7 to 23, because admitted is sold (R10); at period 24 the farm's stock is gone, the shop
-sells 31 and plans 31. The clinic stops at period 11; under the
-policy no order is admitted beyond output, so funded unmet demand never appears and its quote
-falls to the $1 minimum by period 30 while it makes nothing (R2, `services/admission.rs:572`).
-From period 17 a business bids for the utility and for stock no higher than what a batch of its
-product earns after wages and its other inputs (`clearing/limit.rs`), so the utility clears at
-$10.70 and not $14.27 at period 17, the first period that moves; the later rows follow.
+Identical to P2 through period 8. At period 9 the shop's hours (33, set by what it sold, R10) make
+its food market short; it clears at $47.10, then $80.55 at period 10, drawing the workers' idle
+cash to the shop and on to the owner ($1,644 at period 10). What buyers could pay for at the
+posted price and did not get is now counted as wanted (R11): the shop's hours for period 10 are 34
+and for period 11 are 40 (they were 33 and 33), and its posted price steps up to $39 and $40. The
+shop's plan then follows what was wanted and sold, 38, 35, 35, ..., 25 at period 21, 15 at
+period 30 and 30 at period 34 (it was held at 33 until period 23, fell to 0 by period 31). Its food
+market is short again at periods 27, 28 and 30 to 34. The clinic stops at period 11 as before; its
+buyers are priced out of an empty market, so its quote rises a step a period from $22 at period 11
+to $45 at period 34 (R11), where it used to fall to the $1 minimum by period 30. The farm plans
+more as buyers are priced out of its output, 9 batches from period 29, and stops at period 28 (it
+stopped at period 29); its quote ends at $32. At period 34 the utility makes 30 (it made 25) and
+food unmet is 40, utility 10 (15 before), care 40.
+
+Moved by R11 and nothing else: every run without the market policy, and the market policy's quiet
+run, are unchanged by one figure; of the market P2 run, periods 1 to 8 are unchanged and every
+period from 9 differs.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
 |--:|---|---|---|---|---|---|---|
-| 13 | 649/870/9/1400 | 6/248/3/110, 1862 | 10/25/18/38 | 64/36/0 | 40/40 | 65/40/0/33 | 5/16/40 |
-| 21 | 630/763/9/1479 | 6/1144/3/545, 577 | 10/23/10/38 | 63/27/0 | 19/40 | 63/40/0/33 | 7/16/40 |
-| 34 | 257/6/9/2280 | 520/1636/3/437, 9 | 10/23/1/38 | 25/0/0 | 0/0 | 25/0/0/0 | 40/15/40 |
+| 13 | 759/1093/9/1400 | 120/460/0/383, 933 | 10/25/24/40 | 75/36/0 | 30/40 | 75/40/0/35 | 5/5/40 |
+| 21 | 510/634/9/1463 | 4/1447/0/950, 140 | 10/24/32/40 | 46/27/0 | 43/40 | 55/30/0/26 | 13/24/40 |
+| 34 | 300/8/9/1430 | 747/1/0/1070, 1591 | 10/32/45/47 | 30/0/0 | 0/0 | 30/0/0/30 | 40/10/40 |
 
 ## What this means for an opening that is in balance
 
@@ -199,5 +212,6 @@ $10.70 and not $14.27 at period 17, the first period that moves; the later rows 
    cycle between two plans (P1: 3, 4, 4, 4, then 3, 4).
 7. Cash held beyond a period's needs is never drawn on or rebuilt; halving it changes nothing
    else (P3).
-8. Under the market policy the shop's hours follow what it sold, so a short shop stays short, and
-   a stopped provider's quote falls to its minimum (P2 under the market policy).
+8. Under the market policy a seller plans from what buyers were priced out of as well as what it
+   sold, so a short shop asks for more hours and steps its quote up, and a stopped provider's quote
+   rises with its priced-out buyers instead of falling to its minimum (P2 under the market policy).

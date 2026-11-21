@@ -6,6 +6,7 @@ use super::ServiceMarketReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServicePriceDecision;
 use super::UnitId;
+use crate::clearing::MarketTable;
 use crate::MaterialCatalog;
 use crate::SiteId;
 use crate::{CircuitAccounting, PricePolicy, ServiceOrder};
@@ -78,10 +79,11 @@ fn sum(
 pub(super) fn update(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
-    performance: &[ServicePerformanceReceipt],
+    closed: (&[ServicePerformanceReceipt], &MarketTable),
     markets: &mut [ServiceMarketReceipt],
     next_period: u64,
 ) -> Result<()> {
+    let (performance, priced) = closed;
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         return Ok(());
     };
@@ -141,7 +143,8 @@ pub(super) fn update(
                 .ok_or(MaterialCircuitError::ProcessInvariant)?
                 .quantity_per_batch,
         );
-        let (price, reason) = quote(market, &offer.pricing)?;
+        let priced_out = priced.priced_out(market.site_id, market.good_id, market.unit_id) > 0;
+        let (price, reason) = quote(market, &offer.pricing, priced_out)?;
         offer.unit_price = price;
         market.next_price = price;
         market.reason = reason;
@@ -151,6 +154,7 @@ pub(super) fn update(
 fn quote(
     row: &ServiceMarketReceipt,
     policy: &PricePolicy,
+    priced_out: bool,
 ) -> Result<(Currency, ServicePriceDecision)> {
     let PricePolicy::ServiceResponsive {
         minimum,
@@ -171,6 +175,8 @@ fn quote(
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let reason = if row.admitted_quantity > row.performed_quantity {
         ServicePriceDecision::FundedUnmet
+    } else if priced_out {
+        ServicePriceDecision::PricedOut
     } else if row.performed_quantity > 0 && row.direct_cost.micro_units() > receipts_value {
         ServicePriceDecision::CostPressure
     } else if row.performed_quantity < row.available_capacity
@@ -181,14 +187,14 @@ fn quote(
         ServicePriceDecision::Hold
     };
     let price = match reason {
-        ServicePriceDecision::FundedUnmet | ServicePriceDecision::CostPressure => {
-            Currency::from_micro_units(
-                row.old_price
-                    .micro_units()
-                    .saturating_add(step.micro_units())
-                    .min(maximum.micro_units()),
-            )
-        }
+        ServicePriceDecision::FundedUnmet
+        | ServicePriceDecision::PricedOut
+        | ServicePriceDecision::CostPressure => Currency::from_micro_units(
+            row.old_price
+                .micro_units()
+                .saturating_add(step.micro_units())
+                .min(maximum.micro_units()),
+        ),
         ServicePriceDecision::SpareCapacity => Currency::from_micro_units(
             row.old_price
                 .micro_units()

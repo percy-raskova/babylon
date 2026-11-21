@@ -127,13 +127,28 @@ impl MarketTable {
     }
 
     /// What buyers could pay for at the posted price and did not get, at this seller's product.
-    #[allow(dead_code, reason = "the seller's plan reads it in a later task")]
     pub(crate) fn priced_out(&self, site: SiteId, good: GoodId, unit: UnitId) -> u64 {
         self.rows
             .iter()
             .filter(|row| (row.key.1, row.key.2, row.key.3) == (site, good, unit))
             .map(|row| row.priced_out)
             .sum()
+    }
+
+    /// What goods buyers were priced out of, by seller and product, for the seller's next plan.
+    /// Services are planned from what was asked and are left out.
+    pub(crate) fn priced_out_goods(
+        &self,
+    ) -> impl Iterator<Item = ((SiteId, GoodId, UnitId), u64)> + '_ {
+        self.rows
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row.key.0,
+                    MarketMoment::HouseholdGoods | MarketMoment::Restocking
+                ) && row.priced_out > 0
+            })
+            .map(|row| ((row.key.1, row.key.2, row.key.3), row.priced_out))
     }
 
     pub(crate) fn has_row(

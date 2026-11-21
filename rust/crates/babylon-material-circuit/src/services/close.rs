@@ -448,12 +448,13 @@ impl ServiceClose {
         &mut self,
         catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
+        priced: &MarketTable,
         next_period: u64,
     ) -> Result<()> {
         super::market::update(
             catalog,
             state,
-            &self.performance,
+            (&self.performance, priced),
             &mut self.markets,
             next_period,
         )

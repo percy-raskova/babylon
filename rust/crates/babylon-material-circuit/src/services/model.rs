@@ -91,6 +91,8 @@ pub enum ServicePriceDecision {
     FundedUnmet = 3,
     CostPressure = 4,
     SpareCapacity = 5,
+    /// Buyers were priced out of a short market: it took the price of the market, not the posted one.
+    PricedOut = 6,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceMarketReceipt {
@@ -217,6 +219,10 @@ impl ServiceMarketReceipt {
             }
             ServicePriceDecision::FundedUnmet => {
                 self.admitted_quantity > self.performed_quantity
+                    && self.next_price >= self.old_price
+            }
+            ServicePriceDecision::PricedOut => {
+                self.admitted_quantity == self.performed_quantity
                     && self.next_price >= self.old_price
             }
             ServicePriceDecision::CostPressure => {

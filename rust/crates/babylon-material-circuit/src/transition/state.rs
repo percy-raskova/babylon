@@ -38,6 +38,7 @@ use crate::inventory;
 use crate::inventory::InventoryLedger;
 use crate::production;
 use crate::production::ServiceStageBooks;
+use crate::recurring::firms::Wanted;
 use crate::services::ServiceClose;
 use crate::AidFreightLot;
 use crate::AidMandate;
@@ -1069,19 +1070,22 @@ pub(crate) fn next_plans(
     context: MaterialContext<'_>,
     dispatches: &[RoutedDispatchReceipt],
     outbound: &OutboundReceipts,
-    household_demand: &[HouseholdDemandReceipt],
     maintenance: Option<&MaintenanceReceipt>,
     next_period: u64,
+    wanted: Wanted<'_>,
     costs: &CostClose,
 ) -> Result<NextPlans, MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
+    let sold = (
+        &outbound.local_transfers[..],
+        &outbound.local_fulfillments[..],
+    );
     let production_plans = crate::recurring::firms::plan_production(
         catalog,
         state,
         dispatches,
-        &outbound.local_transfers,
-        &outbound.local_fulfillments,
-        household_demand,
+        sold,
+        wanted,
         next_period,
     )?;
     crate::recurring::firms::plan_attendance(
@@ -1089,14 +1093,13 @@ pub(crate) fn next_plans(
             catalog,
             state: &mut *state,
         },
-        household_demand,
+        wanted,
         dispatches,
-        &outbound.local_transfers,
-        &outbound.local_fulfillments,
+        sold,
         maintenance,
         next_period,
     )?;
-    let prices = crate::recurring::prices::update_prices(catalog, state, household_demand, costs)?;
+    let prices = crate::recurring::prices::update_prices(catalog, state, wanted, costs)?;
     Ok(NextPlans {
         production: production_plans,
         prices,
@@ -1588,10 +1591,12 @@ pub fn close_material_period_with_portfolios(
         &mut close.money_transfers,
         &portfolios,
     )?;
-    close
-        .funded
-        .services
-        .plan(catalog, &mut close.state, next_period)?;
+    close.funded.services.plan(
+        catalog,
+        &mut close.state,
+        &close.funded.markets,
+        next_period,
+    )?;
     let plans = next_plans(
         MaterialContext {
             catalog,
@@ -1599,9 +1604,12 @@ pub fn close_material_period_with_portfolios(
         },
         &close.dispatches,
         &close.outbound,
-        &close.funded.household_demand,
         close.funded.production.maintenance.as_ref(),
         next_period,
+        Wanted {
+            demand: &close.funded.household_demand,
+            markets: &close.funded.markets,
+        },
         &close.costs,
     )?;
     let settled = finish_close_accounting(

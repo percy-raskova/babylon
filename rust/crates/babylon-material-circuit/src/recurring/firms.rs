@@ -486,20 +486,64 @@ pub(crate) fn cancel_unsent(
     Ok(())
 }
 
+/// What a period's close tells the seller about what was wanted: what households asked for, and
+/// what buyers could pay for at the posted price and did not get at the market's.
+#[derive(Clone, Copy)]
+pub(crate) struct Wanted<'a> {
+    pub(crate) demand: &'a [HouseholdDemandReceipt],
+    pub(crate) markets: &'a MarketTable,
+}
+
+/// What each seller was asked for and has not sent: orders still open, households' expired demand,
+/// and what buyers were priced out of.
+fn unshipped_quantities(
+    state: &MaterialCircuitState,
+    wanted: Wanted<'_>,
+) -> Result<StockLedger, MaterialCircuitError> {
+    let Wanted { demand, markets } = wanted;
+    let mut unshipped = BTreeMap::new();
+    for order in &state.orders {
+        add(
+            &mut unshipped,
+            (order.supplier_site_id, order.good_id, order.unit_id),
+            order.ordered - order.shipped,
+        )?;
+    }
+    for row in demand {
+        add(
+            &mut unshipped,
+            (row.retailer_site_id, row.good_id, row.unit_id),
+            row.expired_quantity,
+        )?;
+    }
+    for row in &state.final_demand_orders {
+        add(
+            &mut unshipped,
+            (row.retailer_site_id, row.good_id, row.unit_id),
+            row.ordered - row.fulfilled,
+        )?;
+    }
+    // Under a market policy a buyer that could pay at the posted price and was priced out wanted
+    // the goods as much as one that held an order, and the seller plans from it.
+    for (key, quantity) in markets.priced_out_goods() {
+        add(&mut unshipped, key, quantity)?;
+    }
+    Ok(unshipped)
+}
+
 pub(crate) fn plan_production(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     dispatches: &[RoutedDispatchReceipt],
-    local: &[LocalTransferReceipt],
-    retail: &[LocalRetailFulfillmentReceipt],
-    demand: &[HouseholdDemandReceipt],
+    sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
+    wanted: Wanted<'_>,
     next_period: u64,
 ) -> Result<Vec<ProductionPlanReceipt>, MaterialCircuitError> {
     if !active(state) {
         return Ok(Vec::new());
     }
+    let (local, retail) = sold;
     let mut outbound = BTreeMap::new();
-    let mut unshipped = BTreeMap::new();
     let order_index: BTreeMap<_, _> = state.orders.iter().map(|row| (row.order_id, row)).collect();
     for row in dispatches {
         let order = order_index
@@ -525,27 +569,7 @@ pub(crate) fn plan_production(
             row.quantity,
         )?;
     }
-    for order in &state.orders {
-        add(
-            &mut unshipped,
-            (order.supplier_site_id, order.good_id, order.unit_id),
-            order.ordered - order.shipped,
-        )?;
-    }
-    for row in demand {
-        add(
-            &mut unshipped,
-            (row.retailer_site_id, row.good_id, row.unit_id),
-            row.expired_quantity,
-        )?;
-    }
-    for row in &state.final_demand_orders {
-        add(
-            &mut unshipped,
-            (row.retailer_site_id, row.good_id, row.unit_id),
-            row.ordered - row.fulfilled,
-        )?;
-    }
+    let unshipped = unshipped_quantities(state, wanted)?;
     let inventory: BTreeMap<_, _> = state
         .inventory
         .iter()
@@ -600,11 +624,12 @@ pub(crate) fn plan_production(
 
 fn handling_quantities(
     state: &MaterialCircuitState,
-    demand: &[HouseholdDemandReceipt],
+    wanted: Wanted<'_>,
     dispatches: &[RoutedDispatchReceipt],
-    local: &[LocalTransferReceipt],
-    retail: &[LocalRetailFulfillmentReceipt],
+    sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
 ) -> Result<StockLedger, MaterialCircuitError> {
+    let (local, retail) = sold;
+    let Wanted { demand, markets } = wanted;
     let mut merchandise = BTreeMap::new();
     for row in demand {
         add(
@@ -656,15 +681,17 @@ fn handling_quantities(
             order.ordered - order.fulfilled,
         )?;
     }
+    for (key, quantity) in markets.priced_out_goods() {
+        add(&mut merchandise, key, quantity)?;
+    }
     Ok(merchandise)
 }
 
 pub(crate) fn plan_attendance(
     context: MaterialContext<'_>,
-    demand: &[HouseholdDemandReceipt],
+    wanted: Wanted<'_>,
     dispatches: &[RoutedDispatchReceipt],
-    local: &[LocalTransferReceipt],
-    retail: &[LocalRetailFulfillmentReceipt],
+    sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
     maintenance: Option<&MaintenanceReceipt>,
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
@@ -691,7 +718,7 @@ pub(crate) fn plan_attendance(
         .iter()
         .map(|row| ((row.site_id, row.good_id, row.unit_id), row.hours_per_unit))
         .collect();
-    let merchandise = handling_quantities(state, demand, dispatches, local, retail)?;
+    let merchandise = handling_quantities(state, wanted, dispatches, sold)?;
     for (key, quantity) in merchandise {
         let Some(merchant) = merchants.get(&key.0) else {
             continue;

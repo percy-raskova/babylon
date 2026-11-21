@@ -1299,7 +1299,7 @@ pub(crate) fn opening_cash(world: &World) -> BTreeMap<&'static str, i128> {
         .collect()
 }
 
-/// Run a world for `PERIODS` periods: close, staff from the engine's own requests, finish.
+/// Run a world for `world.periods` periods: close, staff from the engine's own requests, finish.
 pub(crate) fn run(world: &World) -> Vec<Snapshot> {
     run_observed(world, &mut |_, _| {})
 }

@@ -952,7 +952,7 @@ in every period from 25 to 34, with no site's output 0.
 standards or program columns: the dump prints the fund's and the public account's cash only). Wants bought are
 tier 2 plus tier 3 at posted prices.
 
-##### spare tiers quiet
+#### spare tiers quiet
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|
 |--:|---|---|---|---|---|---|---|---|
@@ -965,7 +965,7 @@ tier 2 plus tier 3 at posted prices.
 | 21 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
 | 34 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
 
-##### spare tiers P4
+#### spare tiers P4
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|
 |--:|---|---|---|---|---|---|---|---|
@@ -978,7 +978,7 @@ tier 2 plus tier 3 at posted prices.
 | 21 | 1200/919/880/1400 | 13/25/7/24, 688 | 11/25/29/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/3 | 87+0 |
 | 34 | 1200/919/880/1400 | 21/27/5/25, 679 | 11/25/28/38 | 120/40/39 | 40/40 | 120/40/40/40 | 0/0/4 | 87+0 |
 
-##### spare fund quiet
+#### spare fund quiet
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|fund/public cash|
 |--:|---|---|---|---|---|---|---|---|---|
@@ -991,7 +991,7 @@ tier 2 plus tier 3 at posted prices.
 | 21 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
 | 34 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
 
-##### spare fund P5
+#### spare fund P5
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|fund/public cash|
 |--:|---|---|---|---|---|---|---|---|---|
@@ -1028,19 +1028,20 @@ runs).
 Without the rule the money sits with the owner and the utility; with it, it has moved to the utility's and the clinic's
 wage accounts, and the owner, the shop and, in P5, the farm and clinic hold almost none.
 
-**What carries the plain runs, and what the fund's runs lack.** Three lines, traced to the code.
+**What the dumps show, and what the record does not trace.** Three lines, each read from the runs' `describe` dumps (the
+`cash` lines at period 400), not from a table above except where it says so.
 
-1. The rule reads a workplace's cash against its outlay (`site_outlay`, `extend_site` in `recurring/spare_money.rs`). In
-   the plain runs the shop, farm, clinic and utility each close at 400 holding their opening cash ($1,400, $880 to
-   $1,434, $880, $1,200: tables above), so there is spare money to plan from every period and the raise is paid for.
-2. In the fund runs every shop closes at $0 at 400 and the other workplaces hold less than their opening cash in P5
-   (utility $144, farm $0, clinic $2): the wage and operating taxes (`Taxes`, `Fund` in `tests/small_world/support.rs`)
-   take cash out of the workplaces each period. A workplace holding less than one period of its outlay has no spare
-   money by the rule's definition, so there is nothing for it to plan from.
-3. The rule changes plans and pays no wages beyond cash (`payments/attendance.rs`); it does not move money back to a
-   workplace, so where taxes and the benefit leave the workplaces without spare money it has nothing to carry. That the
-   fund's three runs end where they do is read from the cash table above; the record does not trace the tax flows
-   period by period.
+1. In the plain runs with the rule, the four workplaces keep at least their opening cash to period 400 (utility $1,200;
+   farm $920 and $1,434; clinic $880; shop $1,400). The opening cash is exactly one period's outlay (`site_outlay`,
+   `extend_site` in `recurring/spare_money.rs`), so these runs hold no more than that, and the rule keeps them at full
+   work.
+2. Without the rule the fund's taxed workplaces also keep their cash (table above: utility $1,200, $1,175 and $1,182;
+   clinic $750, $880 and $880), so the taxes are not what empties the workplaces. With the rule they end low (P5: utility
+   $144, farm $0, clinic $2), and the money has moved into the utility's and the clinic's wage accounts (w_utility $3,267,
+   $3,323 and $5,929), where it stays while food goes 40/40 unmet. The plain runs P2 and P4 without the rule end the
+   same way (w_utility $4,094 and $4,126), so a shop at $0 and money stuck in a wage account mark ruin in both worlds.
+3. The cause of the fund runs' drain is not traced here: the record does not follow the wage payments or the
+   `extend_site` plan period by period. That is open for round five.
 
 ### What the fund changes
 

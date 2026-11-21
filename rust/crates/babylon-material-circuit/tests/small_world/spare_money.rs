@@ -316,6 +316,9 @@ fn the_pay_rise_holds_full_work_for_400_periods() {
     let world = World::higher_pay().with_tiers().for_periods(400);
     let asking = support::run(&world.clone().with_spare_money());
     assert!(asking.iter().all(|row| hours(row) == 240));
+    assert!(asking
+        .iter()
+        .all(|row| row.output.iter().all(|&out| out > 0)));
     assert_eq!(asking[399].unmet, [0, 0, 3]);
     assert!(only_the_owner_is_short(&asking[399]));
     assert_eq!(hours(&support::run(&world)[399]), 15);

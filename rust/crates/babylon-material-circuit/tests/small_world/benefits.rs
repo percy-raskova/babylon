@@ -4,7 +4,7 @@
 use super::support::{self, Fund, World, UTILITY};
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
-    MaterialCircuitTransition, TaxReceipt,
+    MaterialCircuitTransition, PublicSpendingRule, TaxReceipt,
 };
 
 /// A fund that taxes at the given rates, holds no cash and pays nothing.
@@ -58,8 +58,9 @@ fn rows_of(closed: &MaterialCircuitTransition, payer: AccountId) -> Vec<&TaxRece
         .collect()
 }
 
-fn cents(value: i128) -> i128 {
-    value / 1_000_000
+/// Whole dollars as exact micro-units, so a sub-dollar difference cannot pass.
+fn usd(whole: i128) -> i128 {
+    support::dollars(whole).micro_units()
 }
 
 /// A payer's wage is taxed at two rates for two recipients: the sum is the one rate's tax.
@@ -73,23 +74,16 @@ fn one_wage_tax_is_paid_to_two_public_accounts() {
         wage[0].public_recipient < wage[1].public_recipient,
         "treasury, then fund"
     );
-    let collected: Vec<_> = wage
-        .iter()
-        .map(|r| cents(r.collected.micro_units()))
-        .collect();
-    assert_eq!(collected, [60, 180]);
+    let collected: Vec<_> = wage.iter().map(|r| r.collected.micro_units()).collect();
+    assert_eq!(collected, [usd(60), usd(180)]);
     let s = AccountId::Site(support::site(UTILITY));
     let operating: Vec<_> = rows_of(&closed, s)
         .iter()
-        .map(|r| cents(r.collected.micro_units()))
+        .map(|r| r.collected.micro_units())
         .collect();
-    assert_eq!(operating, [12, 36]);
-    let sum: i128 = closed
-        .taxes
-        .iter()
-        .map(|r| cents(r.collected.micro_units()))
-        .sum();
-    assert_eq!(sum, 640, "the taxed run's total");
+    assert_eq!(operating, [usd(12), usd(36)]);
+    let sum: i128 = closed.taxes.iter().map(|r| r.collected.micro_units()).sum();
+    assert_eq!(sum, usd(640), "the taxed run's total");
 }
 
 /// Rows collect in key order from one running balance: the second is short and nothing is
@@ -99,21 +93,12 @@ fn a_payer_short_of_cash_pays_its_rows_in_order() {
     let (_, closed) = close_first(&world(1_000, 1_500));
     let w = AccountId::Household(support::worker(UTILITY));
     let wage = rows_of(&closed, w);
-    let assessed: Vec<_> = wage
-        .iter()
-        .map(|r| cents(r.assessed.micro_units()))
-        .collect();
-    let collected: Vec<_> = wage
-        .iter()
-        .map(|r| cents(r.collected.micro_units()))
-        .collect();
-    let uncollected: Vec<_> = wage
-        .iter()
-        .map(|r| cents(r.uncollected.micro_units()))
-        .collect();
-    assert_eq!(assessed, [120, 180]);
-    assert_eq!(collected, [120, 120]);
-    assert_eq!(uncollected, [0, 60]);
+    let assessed: Vec<_> = wage.iter().map(|r| r.assessed.micro_units()).collect();
+    let collected: Vec<_> = wage.iter().map(|r| r.collected.micro_units()).collect();
+    let uncollected: Vec<_> = wage.iter().map(|r| r.uncollected.micro_units()).collect();
+    assert_eq!(assessed, [usd(120), usd(180)]);
+    assert_eq!(collected, [usd(120), usd(120)]);
+    assert_eq!(uncollected, [usd(0), usd(60)]);
     let CircuitAccounting::Monetary(e) = &closed.state.accounting else {
         panic!("the small world is monetary")
     };
@@ -135,7 +120,17 @@ fn a_split_tax_writes_the_extended_state() {
         22,
         "one row for each payer keeps today's version"
     );
-    let (catalog, split) = world(500, 1_500).build();
+    let (catalog, mut split) = world(500, 1_500).build();
+    let CircuitAccounting::Monetary(e) = &mut split.accounting else {
+        panic!("the small world is monetary")
+    };
+    let budget = e
+        .financial
+        .public_budgets
+        .iter_mut()
+        .find(|b| b.public_account == support::fund_account())
+        .expect("the fund has a budget");
+    budget.rule = PublicSpendingRule::CappedInOrder;
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &split)
         .expect("the split state encodes");
     assert_eq!(version(&bytes), 25);

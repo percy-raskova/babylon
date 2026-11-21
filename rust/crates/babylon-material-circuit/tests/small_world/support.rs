@@ -89,7 +89,7 @@ fn treasury() -> PublicAccountId {
     PublicAccountId::from_bytes([30; 32])
 }
 
-fn fund_account() -> PublicAccountId {
+pub(crate) fn fund_account() -> PublicAccountId {
     PublicAccountId::from_bytes([31; 32])
 }
 
@@ -659,7 +659,7 @@ impl World {
             public_account: fund_account(),
             period_cap: dollars(0),
             cash_floor: dollars(0),
-            rule: PublicSpendingRule::CappedInOrder,
+            rule: PublicSpendingRule::CashInProportion,
         });
     }
 

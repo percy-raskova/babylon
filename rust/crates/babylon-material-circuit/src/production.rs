@@ -5,6 +5,7 @@ use crate::CompanyBasisAsset;
 use babylon_kernel::currency::Currency;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::clearing::MarketTable;
 use crate::inventory;
 use crate::inventory::{InventoryKey, InventoryLedger};
 use crate::services::ServiceClose;
@@ -16,6 +17,7 @@ use crate::InputOutputCoefficient;
 use crate::LaborCoefficient;
 use crate::MaterialCatalog;
 use crate::MaterialCircuitState;
+use crate::MoneyTransferReceipt;
 use crate::ProcessOutput;
 use crate::ProductionCommitment;
 use crate::ServiceStage;
@@ -180,9 +182,13 @@ fn initial_production_allocations(
     commitments: &[ProductionCommitment],
     period: u64,
     resources: ProductionResources,
+    funded: Option<&InventoryLedger>,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
     let mut service_requests = BTreeMap::<InventoryKey, u64>::new();
-    if period == state.period {
+    if let Some(funded) = funded {
+        // A market policy admits the orders in their stage; the cap is what buyers could fund.
+        service_requests.extend(funded.iter().map(|(&key, &quantity)| (key, quantity)));
+    } else if period == state.period {
         for order in state
             .service_orders
             .iter()
@@ -382,12 +388,20 @@ fn allocate_production_batches(
     commitments: &[ProductionCommitment],
     period: u64,
     resources: ProductionResources,
+    funded: Option<&InventoryLedger>,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
     let mut allocations =
-        initial_production_allocations(catalog, state, commitments, period, resources)?;
+        initial_production_allocations(catalog, state, commitments, period, resources, funded)?;
     let groups = production_resource_groups(catalog, commitments, &allocations, resources)?;
     apply_production_resource_limits(state, inventory, period, &groups, &mut allocations)?;
     Ok(allocations)
+}
+
+/// What a stage of services reads and writes beyond production itself.
+pub(crate) struct ServiceStageBooks<'a> {
+    pub(crate) services: &'a mut ServiceClose,
+    pub(crate) movements: &'a mut Vec<MoneyTransferReceipt>,
+    pub(crate) markets: &'a mut MarketTable,
 }
 
 fn execute_production(
@@ -397,8 +411,13 @@ fn execute_production(
     receipts: &mut Vec<ProductionReceipt>,
     costs: &mut CostClose,
     phase: Option<ServiceStage>,
-    services: &mut ServiceClose,
+    books: ServiceStageBooks<'_>,
 ) -> Result<(), MaterialCircuitError> {
+    let ServiceStageBooks {
+        services,
+        movements,
+        markets,
+    } = books;
     let mut commitments = Vec::new();
     let mut later = Vec::new();
     for row in std::mem::take(&mut state.production_commitments) {
@@ -411,6 +430,14 @@ fn execute_production(
         }
     }
     state.production_commitments = later;
+    // With a market policy the stage's orders are not admitted yet: batches are capped by what
+    // buyers could fund at the posted prices, and the orders are priced once the output is known.
+    let funded = match phase {
+        Some(this) if catalog.market_clearing.is_some() => {
+            Some(services.funded_at_quotes(catalog, state, this)?)
+        }
+        _ => None,
+    };
     let mut allocations = allocate_production_batches(
         catalog,
         state,
@@ -418,7 +445,12 @@ fn execute_production(
         &commitments,
         state.period,
         ProductionResources::InputsAndLabor,
+        funded.as_ref(),
     )?;
+    if let Some(stage) = phase {
+        let potential = crate::services::potential_output(catalog, &commitments, &allocations)?;
+        services.admit_stage(catalog, state, stage, &potential, costs, movements, markets)?;
+    }
     if phase.is_some() {
         services.allocate(catalog, state, &commitments, &mut allocations)?;
     }
@@ -443,7 +475,7 @@ pub(crate) fn execute_shared_production(
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
     phase: Option<ServiceStage>,
-    services: &mut ServiceClose,
+    books: ServiceStageBooks<'_>,
 ) -> Result<Vec<ProductionReceipt>, MaterialCircuitError> {
     let mut inventory = inventory::take_inventory(state);
     let mut receipts = Vec::new();
@@ -454,7 +486,7 @@ pub(crate) fn execute_shared_production(
         &mut receipts,
         costs,
         phase,
-        services,
+        books,
     )?;
     inventory::publish_inventory(state, inventory);
     Ok(receipts)
@@ -686,6 +718,7 @@ fn derive_next_period_production(
         &candidates,
         next_period,
         ProductionResources::InputsAndLabor,
+        None,
     )?;
     let bounded_candidates = candidates
         .into_iter()
@@ -721,6 +754,7 @@ pub(crate) fn derive_shared_labor_requests(
         &candidates,
         next_period,
         ProductionResources::InputsOnly,
+        None,
     )?;
     candidates
         .iter()
@@ -756,6 +790,7 @@ pub(crate) fn prospective_batches(
         &candidates,
         period,
         ProductionResources::InputsOnly,
+        None,
     )?;
     candidates
         .iter()

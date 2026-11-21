@@ -1,3 +1,4 @@
+use super::admission::Request;
 use super::kind;
 use super::CommodityKind;
 use super::GoodId;
@@ -11,6 +12,7 @@ use super::ServiceOutputReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServiceStage;
 use super::UnitId;
+use crate::clearing::MarketTable;
 use crate::collection_funding::ServiceAdmissions;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
@@ -32,6 +34,9 @@ pub(crate) struct ServiceClose {
     pub(crate) markets: Vec<ServiceMarketReceipt>,
     pub(crate) outputs: Vec<ServiceOutputReceipt>,
     households: BTreeMap<GrantKey, u64>,
+    /// The requests of the period, kept for the stages of a market policy to admit.
+    requests: Vec<Request>,
+    donor: Option<FinalDemandPrincipalId>,
 }
 impl ServiceClose {
     pub(crate) fn new(
@@ -41,6 +46,19 @@ impl ServiceClose {
         donor: Option<FinalDemandPrincipalId>,
     ) -> Result<Self> {
         let mut collection_admissions = ServiceAdmissions::capture_opening(state, donor)?;
+        if catalog.market_clearing.is_some() {
+            // The orders are admitted in their stages, when the output is known.
+            return Ok(Self {
+                collection_admissions,
+                markets: super::market::capture(catalog, state)?,
+                performance: vec![],
+                outputs: vec![],
+                household: vec![],
+                households: BTreeMap::new(),
+                requests: super::admission::requests(catalog, state)?,
+                donor,
+            });
+        }
         let performance = super::admission::admit(catalog, state, movements)?;
         collection_admissions.capture_requests(&performance, donor);
         Ok(Self {
@@ -50,7 +68,46 @@ impl ServiceClose {
             outputs: vec![],
             household: vec![],
             households: BTreeMap::new(),
+            requests: vec![],
+            donor,
         })
+    }
+    /// Bid for, price and fund the service orders of one stage. A no-op without a market policy.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the plan fixes this signature; the stage reads the catalog, the state, the stage's output and the period's books"
+    )]
+    pub(crate) fn admit_stage(
+        &mut self,
+        catalog: &MaterialCatalog,
+        state: &mut MaterialCircuitState,
+        phase: ServiceStage,
+        potential: &InventoryLedger,
+        _costs: &CostClose,
+        movements: &mut Vec<MoneyTransferReceipt>,
+        markets: &mut MarketTable,
+    ) -> Result<()> {
+        if catalog.market_clearing.is_none() {
+            return Ok(());
+        }
+        super::admission::admit_stage(
+            catalog,
+            state,
+            &self.requests,
+            (phase, potential),
+            &mut self.performance,
+            movements,
+            markets,
+        )
+    }
+    /// What buyers could fund at the posted prices, by market, for the stage's cap on batches.
+    pub(crate) fn funded_at_quotes(
+        &self,
+        catalog: &MaterialCatalog,
+        state: &MaterialCircuitState,
+        phase: ServiceStage,
+    ) -> Result<InventoryLedger> {
+        super::admission::funded_at_quotes(catalog, state, &self.requests, phase)
     }
     pub(crate) fn allocate(
         &mut self,
@@ -59,20 +116,7 @@ impl ServiceClose {
         commitments: &[ProductionCommitment],
         allocations: &mut [u64],
     ) -> Result<()> {
-        let mut potential = InventoryLedger::new();
-        for (c, q) in commitments.iter().zip(allocations.iter()) {
-            let output = catalog
-                .process_outputs
-                .binary_search_by_key(&c.process_id, |o| o.process_id)
-                .ok()
-                .map(|i| &catalog.process_outputs[i])
-                .ok_or(MaterialCircuitError::ProcessInvariant)?;
-            potential.insert(
-                (output.site_id, output.good_id, output.unit_id),
-                q.checked_mul(output.quantity_per_batch)
-                    .ok_or(MaterialCircuitError::Arithmetic)?,
-            );
-        }
+        let potential = potential_output(catalog, commitments, allocations)?;
         let due: Vec<_> = self
             .performance
             .iter()
@@ -278,6 +322,11 @@ impl ServiceClose {
         state: &mut MaterialCircuitState,
         costs: &mut CostClose,
     ) -> Result<()> {
+        if catalog.market_clearing.is_some() {
+            // Every stage has admitted its orders; the donor's requests are now complete.
+            self.collection_admissions
+                .capture_requests(&self.performance, self.donor);
+        }
         let mut remaining: BTreeMap<GrantKey, u64> = state
             .inventory
             .iter()
@@ -409,4 +458,27 @@ impl ServiceClose {
             next_period,
         )
     }
+}
+
+/// What the stage's providers could produce from these batches, by product.
+pub(crate) fn potential_output(
+    catalog: &MaterialCatalog,
+    commitments: &[ProductionCommitment],
+    allocations: &[u64],
+) -> Result<InventoryLedger> {
+    let mut potential = InventoryLedger::new();
+    for (c, q) in commitments.iter().zip(allocations.iter()) {
+        let output = catalog
+            .process_outputs
+            .binary_search_by_key(&c.process_id, |o| o.process_id)
+            .ok()
+            .map(|i| &catalog.process_outputs[i])
+            .ok_or(MaterialCircuitError::ProcessInvariant)?;
+        potential.insert(
+            (output.site_id, output.good_id, output.unit_id),
+            q.checked_mul(output.quantity_per_batch)
+                .ok_or(MaterialCircuitError::Arithmetic)?,
+        );
+    }
+    Ok(potential)
 }

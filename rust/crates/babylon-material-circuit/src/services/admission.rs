@@ -6,11 +6,14 @@ use super::ServiceOrder;
 use super::ServicePerformanceReceipt;
 use super::UnitId;
 use super::MAX_SERVICE_RECEIPTS_PER_PERIOD;
+use crate::clearing::{self, MarketMoment, MarketTable};
+use crate::inventory::InventoryLedger;
 use crate::MaterialCatalog;
 use crate::OrderId;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, PurchaseEscrow, SiteId,
 };
+use crate::{CommodityKind, MarketBid, MarketClearingPolicy, ServiceStage};
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
@@ -51,16 +54,19 @@ pub fn recurring_service_topup_order_id(
     }
     OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
-struct Request {
-    order_id: OrderId,
-    buyer: AccountId,
-    provider: SiteId,
-    good: GoodId,
-    unit: UnitId,
-    requested: u64,
-    floor: Currency,
+pub(super) struct Request {
+    pub(super) order_id: OrderId,
+    pub(super) buyer: AccountId,
+    pub(super) provider: SiteId,
+    pub(super) good: GoodId,
+    pub(super) unit: UnitId,
+    pub(super) requested: u64,
+    pub(super) floor: Currency,
 }
-fn requests(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<Vec<Request>> {
+pub(super) fn requests(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> Result<Vec<Request>> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Ok(vec![]);
     };
@@ -280,4 +286,333 @@ fn receipt(order: &ServiceOrder, requested: u64, price: Currency) -> ServicePerf
         expired_quantity: 0,
         unit_price: price,
     }
+}
+
+/// A phase's markets: the place in the order of paying, then the seller's product. A product left
+/// out of the order is last, and is shared in proportion as it always was.
+type StageKey = (usize, SiteId, GoodId, UnitId);
+
+fn phase_of(catalog: &MaterialCatalog, good: GoodId, unit: UnitId) -> Result<ServiceStage> {
+    match super::kind(catalog, good, unit)? {
+        CommodityKind::PeriodService { stage: found } => Ok(found),
+        CommodityKind::Storable { .. } => Err(MaterialCircuitError::ServiceInvariant),
+    }
+}
+
+fn market_policy(catalog: &MaterialCatalog) -> Result<&MarketClearingPolicy> {
+    catalog
+        .market_clearing
+        .as_ref()
+        .ok_or(MaterialCircuitError::MarketClearingInvariant)
+}
+
+/// The requests of one phase, by market, each market's buyers in order identity.
+fn phase_markets<'a>(
+    catalog: &MaterialCatalog,
+    requests: &'a [Request],
+    phase: ServiceStage,
+) -> Result<BTreeMap<StageKey, Vec<&'a Request>>> {
+    let policy = market_policy(catalog)?;
+    let mut markets = BTreeMap::<StageKey, Vec<&Request>>::new();
+    for request in requests {
+        if phase_of(catalog, request.good, request.unit)? != phase {
+            continue;
+        }
+        let place = policy
+            .place(request.good, request.unit)
+            .unwrap_or(usize::MAX);
+        markets
+            .entry((place, request.provider, request.good, request.unit))
+            .or_default()
+            .push(request);
+    }
+    for members in markets.values_mut() {
+        members.sort_by_key(|request| request.order_id);
+    }
+    Ok(markets)
+}
+
+fn quote(
+    state: &MaterialCircuitState,
+    provider: SiteId,
+    good: GoodId,
+    unit: UnitId,
+) -> Result<Currency> {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        return Err(MaterialCircuitError::MonetaryInvariant);
+    };
+    let recurring = e
+        .recurring
+        .as_ref()
+        .ok_or(MaterialCircuitError::ServiceInvariant)?;
+    recurring
+        .offers
+        .binary_search_by_key(&(provider, good, unit), |o| {
+            (o.site_id, o.good_id, o.unit_id)
+        })
+        .ok()
+        .map(|i| recurring.offers[i].unit_price)
+        .ok_or(MaterialCircuitError::PurchaseInvariant)
+}
+
+/// The funded orders of the period whose product belongs to this phase.
+fn funded_orders<'a>(
+    catalog: &MaterialCatalog,
+    state: &'a MaterialCircuitState,
+    phase: ServiceStage,
+) -> Result<Vec<&'a ServiceOrder>> {
+    let mut rows = vec![];
+    for order in state
+        .service_orders
+        .iter()
+        .filter(|o| o.performance_period == state.period)
+    {
+        if phase_of(catalog, order.good_id, order.unit_id)? == phase {
+            rows.push(order);
+        }
+    }
+    Ok(rows)
+}
+
+fn add_quantity(
+    ledger: &mut InventoryLedger,
+    key: (SiteId, GoodId, UnitId),
+    quantity: u64,
+) -> Result<()> {
+    let value = ledger.entry(key).or_default();
+    *value = value
+        .checked_add(quantity)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(())
+}
+
+/// What buyers could fund at the posted prices, by seller's product: the orders already funded for
+/// the period in this phase, and each phase request in the order of paying, each buyer spending
+/// from a scratch copy of its cash.
+pub(super) fn funded_at_quotes(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    requests: &[Request],
+    phase: ServiceStage,
+) -> Result<InventoryLedger> {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        return Ok(InventoryLedger::new());
+    };
+    let mut funded = InventoryLedger::new();
+    for order in funded_orders(catalog, state, phase)? {
+        add_quantity(
+            &mut funded,
+            (order.provider_site_id, order.good_id, order.unit_id),
+            order.quantity,
+        )?;
+    }
+    let mut scratch = BTreeMap::<AccountId, i128>::new();
+    for ((_, provider, good, unit), members) in phase_markets(catalog, requests, phase)? {
+        let price = quote(state, provider, good, unit)?.micro_units();
+        for request in members {
+            let cash = match scratch.get(&request.buyer) {
+                Some(&cash) => cash,
+                None => e.book.cash(request.buyer)?.micro_units(),
+            };
+            let usable = cash.saturating_sub(request.floor.micro_units()).max(0);
+            let quantity = u64::try_from((usable / price).min(i128::from(request.requested)))
+                .map_err(|_| MaterialCircuitError::Arithmetic)?;
+            scratch.insert(
+                request.buyer,
+                cash.saturating_sub(price.saturating_mul(i128::from(quantity))),
+            );
+            add_quantity(&mut funded, (provider, good, unit), quantity)?;
+        }
+    }
+    Ok(funded)
+}
+
+/// What a market's buyers get, and the price they pay.
+fn price_stage_market(
+    state: &MaterialCircuitState,
+    moment: MarketMoment,
+    members: &[&Request],
+    supply: Option<u64>,
+    markets: &mut MarketTable,
+) -> Result<(Currency, Vec<u64>)> {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        return Err(MaterialCircuitError::MonetaryInvariant);
+    };
+    let first = members[0];
+    let posted = quote(state, first.provider, first.good, first.unit)?;
+    let purse = |request: &Request| -> Result<Currency> {
+        Ok(Currency::from_micro_units(
+            e.book
+                .cash(request.buyer)?
+                .micro_units()
+                .saturating_sub(request.floor.micro_units())
+                .max(0),
+        ))
+    };
+    let Some(supply) = supply else {
+        // Public provision: admitted at the posted price for what each buyer can pay for.
+        let mut quantities = vec![];
+        for request in members {
+            let affordable = purse(request)?.micro_units() / posted.micro_units();
+            quantities.push(
+                u64::try_from(affordable.min(i128::from(request.requested)))
+                    .map_err(|_| MaterialCircuitError::Arithmetic)?,
+            );
+        }
+        return Ok((posted, quantities));
+    };
+    let mut bids = vec![];
+    let mut bidders = vec![];
+    for (index, request) in members.iter().enumerate() {
+        let money = purse(request)?;
+        if request.requested > 0 && money.micro_units() > 0 {
+            bids.push(MarketBid {
+                wanted: request.requested,
+                purse: money,
+                limit: None,
+            });
+            bidders.push(index);
+        }
+    }
+    let outcome = clearing::clear_market(supply, posted, &bids)?;
+    markets.record(
+        state.period,
+        moment,
+        (first.provider, first.good, first.unit),
+        posted,
+        supply,
+        bids.len(),
+        &outcome,
+    )?;
+    let mut quantities = vec![0; members.len()];
+    for (&index, &quantity) in bidders.iter().zip(&outcome.quantities) {
+        quantities[index] = quantity;
+    }
+    Ok((outcome.price, quantities))
+}
+
+/// Fund one order of a request, or only its receipt when nothing was bought.
+fn book_order(
+    state: &mut MaterialCircuitState,
+    order_ids: &mut BTreeSet<OrderId>,
+    request: &Request,
+    sale: (u64, Currency),
+    movements: &mut Vec<MoneyTransferReceipt>,
+) -> Result<ServicePerformanceReceipt> {
+    let (quantity, price) = sale;
+    let order = ServiceOrder {
+        order_id: request.order_id,
+        performance_period: state.period,
+        provider_site_id: request.provider,
+        buyer: request.buyer,
+        good_id: request.good,
+        unit_id: request.unit,
+        quantity,
+    };
+    if order_ids.contains(&order.order_id) {
+        return Err(MaterialCircuitError::DuplicateRow);
+    }
+    if quantity > 0 {
+        crate::transition::check_order_principal_limits(
+            state.orders.len(),
+            state.final_demand_orders.len(),
+            state
+                .service_orders
+                .len()
+                .checked_add(1)
+                .ok_or(MaterialCircuitError::Arithmetic)?,
+        )?;
+        let CircuitAccounting::Monetary(e) = &mut state.accounting else {
+            return Err(MaterialCircuitError::MonetaryInvariant);
+        };
+        movements.push(e.book.reserve_purchase(PurchaseEscrow::new(
+            OutboundOrderId::Service(order.order_id),
+            order.buyer,
+            AccountId::Site(order.provider_site_id),
+            quantity,
+            price,
+        )?)?);
+        order_ids.insert(order.order_id);
+        state.service_orders.push(order.clone());
+    }
+    Ok(receipt(&order, request.requested, price))
+}
+
+/// The receipts of the orders already funded for the period in this phase, and what they owe of
+/// each product.
+fn funded_receipts(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    phase: ServiceStage,
+    performance: &mut Vec<ServicePerformanceReceipt>,
+) -> Result<InventoryLedger> {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        return Ok(InventoryLedger::new());
+    };
+    let mut owed = InventoryLedger::new();
+    for order in funded_orders(catalog, state, phase)? {
+        let price = e
+            .book
+            .purchase(OutboundOrderId::Service(order.order_id))?
+            .unit_price;
+        performance.push(receipt(order, order.quantity, price));
+        add_quantity(
+            &mut owed,
+            (order.provider_site_id, order.good_id, order.unit_id),
+            order.quantity,
+        )?;
+    }
+    Ok(owed)
+}
+
+/// Bid for, price and fund the service orders of one phase. The potential output of the phase is
+/// what its providers can supply once the funded orders of the period are served first.
+pub(super) fn admit_stage(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    requests: &[Request],
+    phase: (ServiceStage, &InventoryLedger),
+    performance: &mut Vec<ServicePerformanceReceipt>,
+    movements: &mut Vec<MoneyTransferReceipt>,
+    markets: &mut MarketTable,
+) -> Result<()> {
+    let (phase, potential) = phase;
+    let owed = funded_receipts(catalog, state, phase, performance)?;
+    let moment = match phase {
+        ServiceStage::UtilityProvision => MarketMoment::Utility,
+        ServiceStage::LocalServiceProvision => MarketMoment::LocalService,
+    };
+    let mut order_ids: BTreeSet<_> = state.service_orders.iter().map(|r| r.order_id).collect();
+    for ((place, provider, good, unit), members) in phase_markets(catalog, requests, phase)? {
+        let key = (provider, good, unit);
+        let supply = (place != usize::MAX).then(|| {
+            potential
+                .get(&key)
+                .copied()
+                .unwrap_or(0)
+                .saturating_sub(owed.get(&key).copied().unwrap_or(0))
+        });
+        let (price, quantities) = price_stage_market(state, moment, &members, supply, markets)?;
+        for (request, quantity) in members.into_iter().zip(quantities) {
+            performance.push(book_order(
+                state,
+                &mut order_ids,
+                request,
+                (quantity, price),
+                movements,
+            )?);
+        }
+    }
+    performance.sort_by_key(|r| r.order_id);
+    state.service_orders.sort_by_key(|r| r.order_id);
+    if performance.len() > MAX_SERVICE_RECEIPTS_PER_PERIOD {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    if performance
+        .windows(2)
+        .any(|r| r[0].order_id == r[1].order_id)
+    {
+        return Err(MaterialCircuitError::DuplicateRow);
+    }
+    Ok(())
 }

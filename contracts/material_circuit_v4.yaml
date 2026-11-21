@@ -392,12 +392,13 @@ period_close:
   - fund planned attendance in canonical site-unit order, bounded by spendable cash and available whole hours
   - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
   - admit recurring household orders after payroll, sharing actual cash in canonical household-good-unit order
-  - admit finite current service requirements from captured production commitments and input coefficients, bounded
-    by cash and policies
+  - without a market policy, admit finite current service requirements from captured production commitments and
+    input coefficients before any stage, bounded by cash and policies; with one, admit them in their own stage,
+    after the stage's batches are fitted and before its output is allocated, at the market's price
   - execute UtilityProvision then LocalServiceProvision then GoodsProduction through shared input, labor and
     process residuals
-  - each service stage produces complete funded-request-bounded batches and grants finite output through the
-    existing outbound allocator
+  - each service stage produces complete funded-request-bounded batches (with a market policy, bounded by what buyers
+    could fund at the posted prices) and grants finite output through the existing outbound allocator
   - settle actual service grants and refund unperformed orders; expire unallocated provider output at exact
     remaining cost
   - complete all service seller debits and provider expiry before crediting that stage buyers
@@ -815,7 +816,8 @@ period_services:
     - Matching provider-buyer-good-unit funded orders due now reduce fresh household and B2B requests before admission.
     - Top-up identity hashes its domain, ordinary recurring identity, and sorted matching due order identities,
       quantities and accepted prices.
-    - Due orders retain their accepted price; only residual need can obtain a new reserve at the current quote.
+    - Due orders retain their accepted price and are served first; without a market policy only residual need can
+      obtain a new reserve at the current quote, and with one at the price of the market of its stage.
     - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
       converts to batches.
     - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with

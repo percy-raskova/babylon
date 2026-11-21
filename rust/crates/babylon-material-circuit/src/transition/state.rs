@@ -37,6 +37,7 @@ use crate::financial::FinancialClose;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
 use crate::production;
+use crate::production::ServiceStageBooks;
 use crate::services::ServiceClose;
 use crate::AidFreightLot;
 use crate::AidMandate;
@@ -1104,6 +1105,7 @@ pub(crate) fn execute_production_stages(
     costs: &mut CostClose,
     services: &mut ServiceClose,
     movements: &mut Vec<MoneyTransferReceipt>,
+    markets: &mut MarketTable,
 ) -> Result<ProductionStageReceipts, MaterialCircuitError> {
     let mut production = Vec::new();
     for stage in [
@@ -1115,12 +1117,24 @@ pub(crate) fn execute_production_stages(
             state,
             costs,
             Some(stage),
-            services,
+            ServiceStageBooks {
+                services: &mut *services,
+                movements: &mut *movements,
+                markets: &mut *markets,
+            },
         )?);
         services.handoff(catalog, state, stage, costs, movements)?;
     }
     production.extend(production::execute_shared_production(
-        catalog, state, costs, None, services,
+        catalog,
+        state,
+        costs,
+        None,
+        ServiceStageBooks {
+            services: &mut *services,
+            movements: &mut *movements,
+            markets: &mut *markets,
+        },
     )?);
     production.sort_by_key(|r| (r.site_id, r.process_id));
     services.finish(catalog, state, costs)?;
@@ -1359,6 +1373,7 @@ pub(crate) fn close_funded_production(
         costs,
         &mut services,
         money_transfers,
+        &mut markets,
     )?;
     Ok(FundedProductionReceipts {
         finance,

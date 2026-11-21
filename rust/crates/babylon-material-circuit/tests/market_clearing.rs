@@ -5,3 +5,9 @@ mod support;
 
 #[path = "market_clearing/households.rs"]
 mod households;
+
+#[path = "market_clearing/service_support.rs"]
+mod service_support;
+
+#[path = "market_clearing/services.rs"]
+mod services;

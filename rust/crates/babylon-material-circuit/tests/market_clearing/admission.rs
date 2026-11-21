@@ -1,7 +1,7 @@
 //! A product that clears by price has no seller with a fixed price (P12).
 
 use super::service_support::{ServiceFixture, LOCAL, UTILITY};
-use super::support::{self, Fixture};
+use super::support::{self, Fixture, Product};
 use babylon_material_circuit::{
     MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
 };
@@ -52,7 +52,8 @@ fn a_fixed_price_provider_of_a_priced_service_is_refused() {
 fn a_fixed_price_is_admitted_for_a_service_left_out_of_the_order() {
     let mut with = services();
     with.paying_order = Some(vec![UTILITY]);
-    with.utility_pricing = support::pinned(super::service_support::posted(UTILITY), true);
+    with.utility_pricing =
+        support::pinned(super::service_support::posted(UTILITY), Product::Service);
     with.keep_fixed = true;
     let mut without = with.clone();
     without.paying_order = None;

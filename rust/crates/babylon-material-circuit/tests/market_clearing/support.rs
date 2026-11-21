@@ -43,11 +43,36 @@ pub(crate) fn dollars(value: i128) -> Currency {
     Currency::from_micro_units(value * 1_000_000)
 }
 
+/// Whether a seller's offer is a good or a service.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Product {
+    Good,
+    Service,
+}
+
+/// Whether a fixed-price offer of a product that clears by price is held at its price or kept fixed
+/// on purpose.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FixedPrice {
+    Held,
+    Kept,
+}
+
+impl From<bool> for FixedPrice {
+    fn from(keep_fixed: bool) -> Self {
+        if keep_fixed {
+            Self::Kept
+        } else {
+            Self::Held
+        }
+    }
+}
+
 /// A posted price that cannot move: bounds that both equal it. A product that clears by price has no
 /// seller with a fixed price (P12), so a fixture whose seller must keep its price holds it here.
-pub(crate) fn pinned(price: Currency, service: bool) -> PricePolicy {
+pub(crate) fn pinned(price: Currency, product: Product) -> PricePolicy {
     let step = Currency::from_micro_units(1);
-    if service {
+    if product == Product::Service {
         PricePolicy::ServiceResponsive {
             minimum: price,
             maximum: price,
@@ -68,14 +93,14 @@ pub(crate) fn pinned(price: Currency, service: bool) -> PricePolicy {
 pub(crate) fn held(
     wanted: &PricePolicy,
     order: Option<&[u8]>,
-    keep_fixed: bool,
+    fixed: FixedPrice,
     good: u8,
     price: Currency,
-    service: bool,
+    product: Product,
 ) -> PricePolicy {
     let priced = order.is_some_and(|order| order.contains(&good));
-    if matches!(wanted, PricePolicy::Fixed) && priced && !keep_fixed {
-        pinned(price, service)
+    if matches!(wanted, PricePolicy::Fixed) && priced && fixed == FixedPrice::Held {
+        pinned(price, product)
     } else {
         wanted.clone()
     }
@@ -379,10 +404,10 @@ impl Fixture {
                     pricing: held(
                         &self.pricing,
                         self.paying_order.as_deref(),
-                        self.keep_fixed,
+                        self.keep_fixed.into(),
                         shelf.good,
                         shelf.price,
-                        false,
+                        Product::Good,
                     ),
                 })
                 .collect(),

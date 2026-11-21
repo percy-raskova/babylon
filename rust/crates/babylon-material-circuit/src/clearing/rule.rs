@@ -25,6 +25,10 @@ impl MarketClearingPolicy {
     }
 
     /// One account's wants, in canonical order.
+    ///
+    /// It reads an admitted catalog, whose wants are in canonical order (sorted by account), so
+    /// the account's rows are one contiguous run found by binary search. On a catalog that was not
+    /// admitted the run is not defined.
     #[must_use]
     pub fn wants_of(&self, principal: FinalDemandPrincipalId) -> &[HouseholdWant] {
         let start = self

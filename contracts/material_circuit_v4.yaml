@@ -867,7 +867,8 @@ period_services:
       geography or class.
     - Service orders have a positive quantity, current-or-future performance period and a matching accepted-price
       monetary reserve.
-    - Service offers use Fixed or ServiceResponsive; service output stock buffers are zero.
+    - Service offers use Fixed or ServiceResponsive; under a market policy a service in the order of paying is
+      ServiceResponsive; service output stock buffers are zero.
   partition:
     - Complete produced native output equals allocated grants plus unallocated provider expiry.
     - Admitted requests equal performed plus refunded unperformed quantity.

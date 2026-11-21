@@ -893,8 +893,8 @@ fn assert_returns_to_opening_cash(world: &World, rows: &[Snapshot]) {
 }
 
 /// P1 on the fund under tiers: returns to its opening state, as P1 with tiers and no tax does.
-/// The owner has no comforts to buy with, no tax is spent first, no site is laid off and every
-/// period equals the first.
+/// The owner buys only what its own freed money allows ($120 of comforts and $200 of luxuries in
+/// every period), no tax is spent first, no site is laid off and every period equals the first.
 #[test]
 fn p1_with_a_fund_and_tiers_returns_to_its_opening_state() {
     let world = pushed_with_tiers(Push::LessDemand);

@@ -1,7 +1,7 @@
 //! A small economy of businesses that restock an input: suppliers that hold it, and buyers that
 //! are makers of something else or merchants of the input itself.
 
-use super::support;
+use super::support::{self, FixedPrice, Product};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
@@ -307,10 +307,10 @@ impl Restock {
                 pricing: support::held(
                     &PricePolicy::Fixed,
                     self.paying_order.as_deref(),
-                    false,
+                    FixedPrice::Held,
                     INPUT,
                     supplier.price,
-                    false,
+                    Product::Good,
                 ),
             });
         }
@@ -342,10 +342,10 @@ impl Restock {
                 pricing: support::held(
                     &PricePolicy::Fixed,
                     self.paying_order.as_deref(),
-                    false,
+                    FixedPrice::Held,
                     good_number,
                     price,
-                    false,
+                    Product::Good,
                 ),
             });
             for s in 0..self.suppliers.len() {

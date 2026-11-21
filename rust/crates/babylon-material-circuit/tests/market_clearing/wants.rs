@@ -293,6 +293,11 @@ fn an_empty_shelf_leaves_a_want_unbought() {
         .local_fulfillments
         .iter()
         .all(|row| row.order_id != order));
+    assert!(closed
+        .state
+        .final_demand_orders
+        .iter()
+        .all(|row| row.order_id != order));
     assert!(closed.money_transfers.iter().all(|row| !matches!(
         row.purpose,
         MoneyTransferPurpose::PurchaseReservation(OutboundOrderId::LocalFinalDemand(id))

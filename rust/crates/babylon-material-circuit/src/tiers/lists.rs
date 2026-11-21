@@ -297,7 +297,8 @@ impl HouseholdLists {
     ///
     /// # Errors
     /// `MarketClearingInvariant` for an order that is not an item of the product (the bare need rung
-    /// of a product only wanted is one, but may buy only 0), more bought than wanted, a price below the posted one, or a product settled twice.
+    /// of a product only wanted is one, but may buy only 0), more bought than wanted, a price below
+    /// the posted one, or a product settled twice.
     pub(crate) fn settle(
         &mut self,
         principal: FinalDemandPrincipalId,

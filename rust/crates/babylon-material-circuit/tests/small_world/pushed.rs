@@ -107,7 +107,8 @@ fn higher_pay_runs_away_until_the_clinic_farm_and_shop_stop() {
 /// A service plans from what its buyers could pay for, not from what they asked
 /// (`services/market.rs` `planned_quantity`), so the clinic no longer staffs hours it is not paid
 /// for; it makes 38 units at period 2 and from period 16 holds between 5 and 11 units, with its
-/// cash never under $755 (it stopped at period 13 before). The sellers still plan from what was
+/// cash never under $755 (before Task 6b it stopped at period 11; without a market policy, at
+/// period 13). The sellers still plan from what was
 /// wanted (`recurring/firms.rs` `handling_quantities`, `recurring/prices.rs` `update_prices`): the
 /// shop's food market is short from period 9 and clears above its posted price, its plan follows
 /// what was wanted, and its hours stay between 31 and 40. The farm stops at no period.
@@ -208,8 +209,9 @@ fn less_money_under_a_market_policy_settles_with_the_shop_at_half_its_cash() {
 /// wage as in P4. A service plans from what its buyers could pay for (`services/market.rs`
 /// `planned_quantity`), so no site runs dry: the clinic's output slides from 36 to 6, makes
 /// nothing in periods 18, 27, 28 and 29 and is back at 11 at period 30, and the farm and the shop
-/// swing between 20 and 40 units and between 24 and 40 hours. The clinic stopped at period 12,
-/// the farm at period 21 and the shop at period 30 before.
+/// swing between 20 and 40 units and between 24 and 40 hours. Before Task 6b the clinic stopped
+/// at period 19, the farm at period 19 and the shop at period 26; without a market policy they
+/// stop at periods 12, 21 and 30.
 #[test]
 fn higher_pay_under_a_market_policy_cycles_in_a_depressed_band_with_no_site_stopping() {
     let rows = support::run(&World::higher_pay().with_market());

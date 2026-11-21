@@ -154,7 +154,8 @@ impl MarketTable {
     }
 
     /// What goods buyers were priced out of, by seller and product, for the seller's next plan.
-    /// Services are planned from what was asked and are left out.
+    /// Services are left out: without a market policy they are planned from what was asked, and
+    /// under one from the demand at the quote (rule P14).
     pub(crate) fn priced_out_goods(
         &self,
     ) -> impl Iterator<Item = ((SiteId, GoodId, UnitId), u64)> + '_ {

@@ -1,7 +1,7 @@
 //! A small economy of service providers: a utility, a local service, a public service, any number of
 //! household accounts and one business that takes the utility as an input.
 
-use super::support;
+use super::support::{self, Product};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
@@ -86,6 +86,9 @@ pub(crate) struct ServiceFixture {
     /// one household. A want of a service the account does not need adds its purchase row and
     /// connection.
     pub household_wants: Vec<(u8, WantTier, u8, u64)>,
+    /// Put the public service in the utility stage, ahead of the local service's market, instead of
+    /// the local stage where it shares a stage with the local service.
+    pub public_in_utility_stage: bool,
 }
 
 impl ServiceFixture {
@@ -103,6 +106,7 @@ impl ServiceFixture {
             utility_hours: None,
             keep_fixed: false,
             household_wants: vec![],
+            public_in_utility_stage: false,
         }
     }
 
@@ -180,8 +184,10 @@ impl ServiceFixture {
 
     #[allow(clippy::too_many_lines, reason = "a fixture builds its whole catalog")]
     fn definition(&self) -> MaterialCatalogDefinition {
+        let public_first = self.public_in_utility_stage;
         let stage = |service: u8| match service {
             UTILITY => ServiceStage::UtilityProvision,
+            PUBLIC if public_first => ServiceStage::UtilityProvision,
             _ => ServiceStage::LocalServiceProvision,
         };
         let mut commodities: Vec<_> = [UTILITY, LOCAL, PUBLIC]
@@ -342,10 +348,10 @@ impl ServiceFixture {
                         PricePolicy::Fixed
                     },
                     self.paying_order.as_deref(),
-                    self.keep_fixed,
+                    self.keep_fixed.into(),
                     service,
                     posted(service),
-                    true,
+                    Product::Service,
                 ),
             })
             .collect();
@@ -360,10 +366,10 @@ impl ServiceFixture {
                 pricing: support::held(
                     &PricePolicy::Fixed,
                     self.paying_order.as_deref(),
-                    self.keep_fixed,
+                    self.keep_fixed.into(),
                     PRODUCT,
                     support::dollars(100),
-                    false,
+                    Product::Good,
                 ),
             });
             offers.sort_by_key(|o| (o.site_id, o.good_id, o.unit_id));

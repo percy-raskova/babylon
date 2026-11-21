@@ -166,6 +166,25 @@ fn a_utility_comfort_keeps_the_money_for_a_local_need() {
 }
 
 #[test]
+fn a_public_need_bought_frees_the_later_want() {
+    // The public service is provided in the utility stage and is left out of the order of paying.
+    // Its need is bought in full ($300 of $500), so it no longer holds money back from the local
+    // comfort of the next stage: the comfort buys what the remaining $200 reach, 66 units.
+    let mut fixture = ServiceFixture::new(&[support::dollars(500)], &[vec![(PUBLIC, 100)]]);
+    fixture.public_in_utility_stage = true;
+    fixture.household_wants = vec![(0, WantTier::Comfort, LOCAL, 100)];
+    let closed = close(&fixture);
+    assert_eq!(
+        want_receipt(&closed, 0, LOCAL, WantTier::Comfort),
+        (100, 66)
+    );
+    let public = household_rows(&closed, 0, PUBLIC);
+    assert_eq!(public.len(), 1);
+    assert_eq!(public[0].unmet_quantity, 0);
+    assert_eq!(purse(&closed, 0).micro_units(), 2_000_000);
+}
+
+#[test]
 fn a_short_local_service_sells_a_comfort_before_a_poor_need() {
     let mut fixture = ServiceFixture::new(
         &[support::dollars(150), support::dollars(10_000)],

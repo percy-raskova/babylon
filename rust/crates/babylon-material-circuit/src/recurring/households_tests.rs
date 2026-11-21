@@ -1,3 +1,4 @@
+use crate::tiers::HouseholdLists;
 use crate::AccountId;
 use crate::AidBook;
 use crate::AttendancePlan;
@@ -22,6 +23,7 @@ use crate::HouseholdStock;
 use crate::HouseholdTimeAccounting;
 use crate::InventoryRow;
 use crate::LaborCapacityRow;
+use crate::LaborCompensation;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::LogisticsNodeId;
 use crate::MaterialCatalog;
@@ -36,12 +38,14 @@ use crate::MonetaryCircuit;
 use crate::OrderId;
 use crate::OutboundOrderId;
 use crate::PricePolicy;
+use crate::PublicAccountId;
 use crate::PurchaseEscrow;
 use crate::RecurringEconomy;
 use crate::SellerOffer;
 use crate::SiteId;
 use crate::SiteLogisticsNode;
 use crate::StockCarryingValue;
+use crate::TaxBasis;
 use crate::UnitId;
 use babylon_kernel::currency::Currency;
 
@@ -151,7 +155,7 @@ fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
             site_id: s(),
             unit_id: hours(),
             payee: h(),
-            compensation: crate::LaborCompensation::Wage(cash(4)),
+            compensation: LaborCompensation::Wage(cash(4)),
         }],
         recurring: Some(Box::new(recurring(stock))),
     }
@@ -760,4 +764,104 @@ fn a_purchase_row_for_a_want_alone_with_a_stock_target_is_refused() {
         super::validate(&catalog, &state),
         Err(MaterialCircuitError::FinalDemandInvariant)
     );
+}
+
+/// The fixture with a want, paid a wage of $4.000012 at its opening (4 hours at $1.000003), taxed at
+/// two wage rates (20 and 5 percent) by two public accounts. The amounts are odd so that every
+/// rate rounds.
+fn taxed_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening_with_a_want();
+    let publics = [
+        PublicAccountId::from_bytes([40; 32]),
+        PublicAccountId::from_bytes([41; 32]),
+    ];
+    let location = "county:26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
+    let e = economy(&mut state);
+    e.employment[0].compensation = LaborCompensation::Wage(cash(1_000_003));
+    let mut accounts = vec![
+        CashAccount {
+            id: AccountId::Site(s()),
+            cash: cash(10_000_000),
+        },
+        CashAccount {
+            id: AccountId::Household(h()),
+            cash: cash(16),
+        },
+    ];
+    for public in publics {
+        accounts.push(CashAccount {
+            id: AccountId::Public(public),
+            cash: cash(0),
+        });
+    }
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(
+        &e.book,
+        [AccountId::Site(s()), AccountId::Household(h())]
+            .into_iter()
+            .map(|owner| StockCarryingValue {
+                owner,
+                good_id: g(),
+                unit_id: u(),
+                amount: cash(0),
+            })
+            .collect(),
+        vec![],
+        vec![],
+        vec![],
+    )
+    .expect("the fixture opens the authored source");
+    for (public, rate_bps) in publics.into_iter().zip([2_000, 500]) {
+        e.financial.locations.push(crate::InstitutionLocation {
+            account: AccountId::Public(public),
+            location,
+        });
+        e.financial.taxes.push(crate::TaxPolicy {
+            payer: AccountId::Household(h()),
+            public_recipient: public,
+            basis: TaxBasis::WageIncome,
+            rate_bps,
+            cash_floor: cash(0),
+        });
+    }
+    (catalog, state)
+}
+
+#[test]
+fn the_tax_held_back_is_what_the_close_assesses_to_the_millionth() {
+    let (catalog, state) = taxed_with_a_want();
+    let closed = crate::advance_material_circuit(&catalog, &state)
+        .expect("the taxed fixture's period closes");
+    let paid: i128 = closed
+        .wage_accruals
+        .iter()
+        .map(|accrual| accrual.amount.micro_units())
+        .sum();
+    assert_eq!(paid, 4_000_012, "the wage was booked at the opening");
+    let opened = HouseholdLists::open(&catalog, &state, &closed.wage_accruals)
+        .expect("the taxed fixture's lists open");
+    for principal in [h(), FinalDemandPrincipalId::from_bytes([77; 32])] {
+        let assessed: i128 = closed
+            .taxes
+            .iter()
+            .filter(|row| {
+                row.payer == AccountId::Household(principal) && row.basis == TaxBasis::WageIncome
+            })
+            .map(|row| row.assessed.micro_units())
+            .sum();
+        assert_eq!(
+            opened.tax_ahead(principal).micro_units(),
+            assessed,
+            "the account {principal:?}"
+        );
+    }
+    // Each row is rounded alone: the two rates give two assessments that are not zero.
+    assert!(closed
+        .taxes
+        .iter()
+        .filter(|row| row.payer == AccountId::Household(h()))
+        .all(|row| row.assessed.micro_units() > 0));
+    assert!(opened.tax_ahead(h()).micro_units() > 0);
 }

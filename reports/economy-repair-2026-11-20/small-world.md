@@ -370,11 +370,12 @@ Period 1 is P2's own. The households' money goes to needs: wants are bought in 7
 16 and 24), never for more than $81 in a period, all of them comforts, and at period 34 every account goes without. No
 site stops (it is also so without tiers). The band is a little different, by two rules: under O8 a comfort is
 bought only in the periods when a worker's purse covers its needs at the clearing price (7 of 34 periods), and R12
-plans from the demand at the quote, wants' rungs included, so the markets' plans and prices move off the run without tiers. The clinic's output slides from 40 to between
-4 and 7 units from period 14 (between 5 and 11 from period 16 without tiers), the farm makes 36 units in most periods
-and 27 in some (36 without tiers), its cash is $1,320 at period 34, the utility's and the shop's markets clear short at
-period 34, and unmet at period 34 is food 5, utility 18, care 33 (4, 21, 34 without tiers). The largest worker account
-holds $20 at period 13 and $24 at period 34 (without tiers $274 and $26).
+plans from the demand at the quote, wants' rungs included, so the markets' plans and prices move off the run without
+tiers. The clinic's output slides from 40 to between 4 and 7 units from period 14 (between 5 and 11 from period 16
+without tiers), the farm makes 36 units in most periods and 27 in some (36 without tiers), its cash is $1,320 at
+period 34, the utility's and the shop's markets clear short at period 34, and unmet at period 34 is food 5, utility
+18, care 33 (4, 21, 34 without tiers). The largest worker account holds $20 at period 13 and $24 at period 34 (without
+tiers $274 and $26).
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|
 |--:|---|---|---|---|---|---|---|---|---|
@@ -405,11 +406,11 @@ tiers, and no want is bought in period 1. The cause is O8, the one price of ADR3
 the clinic's 36 units, so the short market clears above its posted price by bisection; at $31.66 each purse fills
 its need rung first and the comfort rungs get nothing, so the workers pay $1.66 more per unit of need (w_clinic,
 5 units, about $8.30 more: its cash falls from $39 to $31) and buy nothing for it. R12 plans the clinic from the
-demand at the quote, which includes those rungs (41 against 40). The workers' surplus wage buys a comfort in 15 of the 34 periods: $62, $54 and
-$56 of care at periods 2, 8 and 13 among them, never more than $62 and never a luxury. No site stops, and the clinic
-does not make nothing in periods 18, 27, 28 and 29 as it did without tiers; it ends at 3 units (7 without), unmet at
-period 34 is food 4, utility 7, care 37 (4, 12, 33), and every account goes without. The largest worker account holds
-$19 at period 13 and $12 at period 34 (without tiers $252 and $49).
+demand at the quote, which includes those rungs (41 against 40). The workers' surplus wage buys a comfort in 15 of the
+34 periods: $62, $54 and $56 of care at periods 2, 8 and 13 among them, never more than $62 and never a luxury. No
+site stops, and the clinic does not make nothing in periods 18, 27, 28 and 29 as it did without tiers; it ends at 3
+units (7 without), unmet at period 34 is food 4, utility 7, care 37 (4, 12, 33), and every account goes without. The
+largest worker account holds $19 at period 13 and $12 at period 34 (without tiers $252 and $49).
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|
 |--:|---|---|---|---|---|---|---|---|---|
@@ -624,7 +625,6 @@ in the record.
 They are kept as they were. The same runs after it follow in "Form (b) after", and the sentences below that say the
 quiet run cannot be made still, or that a run slides, cycles or runs short, describe this engine only.
 
-
 This is the form the country will run in (`World::benefits().with_tiers()`): the fund's two taxes, per-person benefit
 and half pay, under the market policy with household wants (rules O7 and O8; section "Tiers").
 
@@ -792,6 +792,21 @@ collect the 640 they assess in every period, the fund pays its 480 from what it 
 the owner holds $640, no want is bought, and every period equals the first
 (`the_fund_with_tiers_is_still_the_wage_tax_is_ahead_of_the_wants`, by `assert_still`). The taxed world with tiers and
 no fund (the control) is exactly still too.
+
+#### Quiet on the fund with tiers (after): exactly still
+
+Every period equals the first; the periods shown are those of the table of the same run before.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
+|--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 2 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 3 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 5 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 8 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 13 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 21 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 34 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
 
 Nothing else moved: the figures of form (a) (no market policy) and every run of `quiet.rs`, `pushed.rs` and `tiers.rs`
 are as they were. The controls below are printed by the ignored dump and pinned by no test.

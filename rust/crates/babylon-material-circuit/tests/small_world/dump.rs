@@ -51,6 +51,26 @@ fn dump_every_run() {
             World::benefits().with_tiers().pushed(Push::LowerFundTaxes),
         ),
         ("taxed tiers quiet", World::taxed().with_tiers()),
+        ("taxed P1", World::taxed().pushed(Push::LessDemand)),
+        ("taxed P2", World::taxed().pushed(Push::LessSupply)),
+        ("taxed P3", World::taxed().pushed(Push::LessMoney)),
+        ("taxed P4", World::taxed().pushed(Push::HigherPay)),
+        (
+            "taxed tiers P1",
+            World::taxed().with_tiers().pushed(Push::LessDemand),
+        ),
+        (
+            "taxed tiers P2",
+            World::taxed().with_tiers().pushed(Push::LessSupply),
+        ),
+        (
+            "taxed tiers P3",
+            World::taxed().with_tiers().pushed(Push::LessMoney),
+        ),
+        (
+            "taxed tiers P4",
+            World::taxed().with_tiers().pushed(Push::HigherPay),
+        ),
     ];
     for (name, world) in runs {
         println!("{}", support::describe(name, &support::run(&world)));

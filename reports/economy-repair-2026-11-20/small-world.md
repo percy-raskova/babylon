@@ -487,6 +487,16 @@ account's wage income falls by $100 (and the benefit it is paid replaces some of
 across a pool's households people would go back in proportion to each one's people looking for work, and in the small
 world each pool has one household, so that rule is not exercised here.
 
+### How each fund run is compared
+
+Every fund run is set beside **its control**: the same push on the same opening with no fund. The fund's opening is
+the taxed world (`World::taxed`: 10 hours, 12/4/4/4 workers, owner 8, a 20% tax, a supported account), so the control
+is `World::taxed().pushed(P)` for form (a) and `World::taxed().with_tiers().pushed(P)` for form (b), the treasury
+alone paying the whole support. What differs between a fund run and its control is the fund and nothing else. The
+earlier runs of this record (`World::plain()`: 8 hours, 15/5/5/5, no tax) are a different opening; they are given only
+as a second, labeled comparison and no difference between them and a fund run is credited to the fund. The controls
+are printed by the ignored dump (`taxed P1` to `taxed P4`, `taxed tiers P1` to `taxed tiers P4`); no test pins them.
+
 ### Form (a): the taxed world, no market policy
 
 **Quiet: exactly still.** Every period equals the first, which equals the opening
@@ -497,10 +507,14 @@ nobody is laid off, and the record of layoffs is empty in all 34 periods.
 
 The owner counts 4 persons instead of 8. The record: no one is laid off in play (employment stays 12/4/4/4), the fund
 is cut from period 6 (465.57 of 480), and from period 18 the farm, clinic and shop stop (periods 18, 19, 18), the
-utility ending at 28 units; unmet need at period 34 is 36/8/36 and the fund holds $46. Class: runs away, beside P1
-without a fund (runs away slowly: clinic stopped from 17, unmet 10/24/35 at period 34). A person sees the same
+utility ending at 28 units; unmet need at period 34 is 36/8/36 and the fund holds $46. Class: runs away.
+**Control (taxed, no fund):** also runs away. The farm and clinic stop at periods 18 and 17, unmet at period 34 is
+36/11/36, the utility makes 25 units, and employment first falls at period 26 (one person of the shop's pool). **What
+the fund changed:** the clinic stops two periods later (19), the utility makes 28 units and its unmet is 8 rather than
+11, and nobody is laid off; the farm stops at the same period and the class is the same. A person sees the same
 collapse in both; with the fund the supported household's $60 a person is paid in full to period 5, then shrinks to
-$5.85 a person (46.8 of 480) by period 34.
+$5.85 a person (46.8 of 480) by period 34. *Second comparison (plain world, a different opening):* P1 there runs away
+too, with the clinic stopped from 17 and unmet 10/24/35.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|
@@ -515,13 +529,17 @@ $5.85 a person (46.8 of 480) by period 34.
 
 #### P2 on the fund: runs away
 
-The farm's yield is 9 a batch. The clinic stops at period 14 (13 without a fund), the farm's output falls from 36 to 9
+The farm's yield is 9 a batch. The clinic stops at period 14, the farm's output falls from 36 to 9
 units by period 34, the fund is cut from period 9 and holds $121 at period 34; unmet 18/29/40. The first layoff in
 play is at period 28 (one person of the shop's pool): 50 due for six periods, 25 in the seventh, paid at 10 to 13
 dollars of the 50 (the fund pays about a quarter of every claim, cut in proportion), so the two steps show in the
-receipts at periods 28 to 33 and 34 (50, 50, 50, 50, 50, 50, 25). Class: runs away, as without the fund (clinic and
-farm stop, unmet 40/28/40). A person sees the same stop, but a laid-off shop worker is paid a quarter of the half pay
-it is owed.
+receipts at periods 28 to 33 and 34 (50, 50, 50, 50, 50, 50, 25). Class: runs away.
+**Control (taxed, no fund):** also runs away. The clinic stops at 13, the farm makes 18 units at 34, unmet is
+17/30/40, and employment first falls at period 23. **What the fund changed:** the clinic stops one period later (14),
+the farm makes fewer units (9, not 18), unmet is 18/29/40 (one more of food, one fewer of utility), and the first fall
+in employment comes four periods later (27). The fund did not keep the farm up. A person sees the same stop, but a
+laid-off shop worker is paid a quarter of the half pay it is owed. *Second comparison (plain world):* the clinic stops
+at 13 and unmet is 40/28/40.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|
@@ -537,8 +555,9 @@ it is owed.
 #### P3 on the fund: settles at once
 
 The shop opens with $700. Every period equals the first, as without the fund: the shop holds $700, the fund $960, no
-one is laid off and the fund is never cut. Class: settles at once in a different steady state, beside P3 without a
-fund (the same). A person sees nothing different with the fund.
+one is laid off and the fund is never cut. Class: settles at once in a different steady state.
+**Control (taxed, no fund):** the same, exactly still with the shop at $700 and the treasury holding $160. **What the
+fund changed:** nothing. A person sees nothing different with the fund. *Second comparison (plain world):* the same.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|
@@ -554,10 +573,14 @@ fund (the same). A person sees nothing different with the fund.
 #### P4 on the fund: runs away
 
 The clinic pays $11. The fund is cut from period 11 (385.17 of 480), the farm, clinic and shop stop (periods 24, 14,
-24), and unmet at period 34 is 40/15/40, exactly the figures of P4 without a fund. One shop worker is laid off at 27:
+24), and unmet at period 34 is 40/15/40. One shop worker is laid off at 27:
 the two steps show in the dues, 50 for periods 27 to 32, 25 at 33, 0 at 34, but the fund paid $5.80 of every $50
-(about 12%). Class: runs away, as without the fund. A person sees the same stop, and a laid-off worker is paid a tenth
-of the half pay it is owed.
+(about 12%). Class: runs away. **Control (taxed, no fund):** also runs away. The farm and clinic stop at 26 and 12,
+the utility makes 11 units at 34, unmet is 40/29/40, and employment first falls at period 23. **What the fund
+changed:** the farm stops two periods earlier (24) and the clinic two later (14), the utility makes 25 units and its
+unmet is 15 rather than 29. The fund's 40/15/40 equals the *plain* P4's unmet, but that is a different opening and is
+not a fund effect. A person sees the same stop, and a laid-off worker is paid about 12% of the half pay it is owed.
+*Second comparison (plain world):* unmet 40/15/40 there too.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|
@@ -637,14 +660,18 @@ the fund pays 222.98.
 
 #### P1 on the fund with tiers: slides down, nothing stops
 
-Without the fund (P1 with tiers) the world returns to its opening state: the owner spends its freed money on its own
-comforts and luxuries and every period equals the first. With the fund it does not: the owner spends it the same way
-and holds $1,000 to $1,480 over the run (the one affluent account from period 2), but the fund's cut leaves the
-supported household going without all 34 periods and the utility and the clinic slide, to 88 and 16 units. A layoff in
-play comes at period 18 (the utility): 50 for periods 18 to 23, 25 at 24, 0 at 25, paid $14 to $16 of the 50. At 34
-unmet is 4/9/24, no site has stopped. Class: slides down without stopping (runs away slowly), not returning to the
-opening state. A person sees: the owner's household is better off than at the opening and the supported household and
-the clinic's patients are worse off.
+The owner spends its freed money on its own comforts and luxuries and holds $1,000 to $1,480 over the run (the one
+affluent account from period 2); the utility and the clinic slide, to 88 and 16 units. A layoff in play comes at
+period 18 (the utility): 50 for periods 18 to 23, 25 at 24, 0 at 25, paid $14 to $16 of the 50. At 34 unmet is 4/9/24,
+no site has stopped. Class: slides down without stopping (runs away slowly).
+**Control (taxed with tiers, no fund):** not still either, and it slides the same way: the utility makes 88 units and
+the clinic 14, unmet at 34 is 6/4/26, no site stops, employment first falls at period 15, and the owner holds $895 at
+34. **What the fund changed:** the clinic makes 2 more units (16), care unmet is 24 rather than 26, utility unmet is 9
+rather than 4, and the owner holds $1,096; the utility's output is the same (88). The class is the same. *Second
+comparison (plain world with tiers, no tax):* P1 returns to its opening state, every period equal to the first. That
+return is not the fund's absence: the taxed world with tiers and no fund does not return, because the tax is levied
+after the purchases. A person sees: the owner's household is better off than at the opening and the clinic's patients
+are worse off, with or without the fund.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -659,13 +686,17 @@ the clinic's patients are worse off.
 
 #### P2 on the fund with tiers: cycles in a depressed band
 
-Beside P2 with tiers without a fund (settles in a depressed band; unmet 5/18/33; clinic 7 units at 34): the same band
-and no site stopping; unmet at 34 is 6/8/30, the clinic makes 18 units, and the shop's cash falls to $420. Layoffs in
+Class: cycles in a depressed band, no site stopping; unmet at 34 is 6/8/30, the clinic makes 18 units, and the shop's
+cash falls to $420. **Control (taxed with tiers, no fund):** also depressed with no site stopping: unmet 4/14/31, the
+clinic makes 9 units, the shop holds $852, and employment first falls at period 8. **What the fund changed:** the
+clinic makes twice as many units (18 against 9), utility unmet is 8 rather than 14, the shop ends with $420 against
+$852, and the first fall in employment comes at 14, not 8. *Second comparison (plain world with tiers):* settles in a
+depressed band, unmet 5/18/33, clinic 7 units. Layoffs in
 play come in waves from period 15 (the clinic) and 16 (the utility), up to 3 persons of the utility at once at periods
 20 to 22. The clinic's pinned window shows two cohorts: one person at 50 for periods 15 to 18, a second laid off at 19
 makes it 100 for periods 19 and 20, then 75 at 21 (the first at its half step, 25, plus the second's 50) and 50 at 22,
-paid at 30 to 48% of what is due. Class: cycles in a depressed band. A person sees about the same, with a clinic that
-serves more of its patients and worker accounts that hold $0 of cash.
+paid at 30 to 48% of what is due. A person sees about the same as the control, with a clinic that makes more and
+worker accounts that hold $0 of cash.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -681,9 +712,12 @@ serves more of its patients and worker accounts that hold $0 of cash.
 #### P3 on the fund with tiers: the quiet run, the shop at half its cash
 
 Every period equals the quiet run with tiers on the fund, apart from the shop's cash: $700 where the quiet run has
-$1,400 (outputs, unmet need, the fund's cash and every other account agree in all 34 periods). Beside P3 with tiers
-and no fund (settles at once, exactly still) the world is therefore not still but is in the quiet run's band. Class:
-cycles in the quiet run's narrow band. A person sees nothing the quiet run does not show.
+$1,400 (outputs, unmet need, the fund's cash and every other account agree in all 34 periods). Class:
+cycles in the quiet run's narrow band. **Control (taxed with tiers, no fund):** not still, and equal to the taxed
+quiet run with tiers in every measure but the shop's cash ($620 at 34): the clinic slides to 4 units and unmet at 34 is
+5/4/36. **What the fund changed:** the clinic holds 39 units and unmet is 2/6/9. As in the quiet run, the fund holds
+the clinic up. *Second comparison (plain world with tiers):* settles at once, exactly still. A person sees nothing the
+quiet run does not show.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -698,12 +732,15 @@ cycles in the quiet run's narrow band. A person sees nothing the quiet run does 
 
 #### P4 on the fund with tiers: cycles, with layoffs from period 6
 
-Beside P4 with tiers without a fund (cycles in a depressed band; clinic at 3 units and unmet 4/7/37 at period 34): the
-world cycles in a band with no site stopping and the clinic holds at 32 units, unmet 3/3/16 at 34. The first layoff in
-play is at period 6, in the clinic's pool at $11 an hour: 55 due for periods 6 to 11, 27.5 at 12, 0 at 13 (the two
-steps), paid at $23 to $27 of the 55 (43 to 49%). A person sees: the care shortage that ends at 37 unmet without the
-fund ends at 16, and a laid-off clinic worker is paid 43 to 49% of the half pay owed. Class: cycles in a depressed
-band.
+The world cycles in a band with no site stopping and the clinic holds at 32 units, unmet 3/3/16 at 34. The first
+layoff in play is at period 6, in the clinic's pool at $11 an hour: 55 due for periods 6 to 11, 27.5 at 12, 0 at 13
+(the two steps), paid at $23 to $27 of the 55 (43 to 49%). Class: cycles in a depressed band. **Control (taxed with
+tiers, no fund):** no site stops, but the clinic ends at 2 units, unmet at 34 is 5/9/38, and employment first falls at
+period 16. **What the fund changed:** the clinic holds 32 units rather than 2, care unmet is 16 rather than 38, food
+and utility unmet are 3/3 rather than 5/9, and the first fall in employment comes at 5 (a layoff at 6) rather than 16.
+*Second comparison (plain world with tiers):* the clinic at 3 units and unmet 4/7/37. A person sees: the care shortage
+that ends at 38 unmet without the fund ends at 16, and a laid-off clinic worker is paid 43 to 49% of the half pay
+owed.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
 |--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -747,7 +784,10 @@ a little less at period 34 ($22 of $60 a person, rather than $28).
    fraction (4 to 49%) of its due: a laid-off worker's income falls by nearly the whole wage, not by half, so the
    expectation that a layoff cuts a household's spending by about half for six and a half periods is not what the
    record shows, and the program would give it only to a fund that stays solvent (the rich fund of
-   `a_layoff_is_paid_half_pay_for_six_and_a_half_periods`).
+   `a_layoff_is_paid_half_pay_for_six_and_a_half_periods`). The laid-off account's income, from the due/paid columns: a
+   wage of $100 a person ($110 in the clinic) becomes half pay of $50 ($55) when the fund is solvent, and in the runs
+   above it was paid $2 to $27 of that. The record does not give each account's purchases; the worker accounts close
+   every period of the tiers runs at $0, so they buy what they receive and no more.
 4. Layoffs in play are few and come after a site has begun to fail, when it asks staffing for fewer hours: none in P1
    and P3 of form (a), and at periods 20 (P5), 27 (P4) and 28 (P2) elsewhere in it; under tiers at 6 (P4), 15 (P2) and
    18 (P1), none in the quiet run, P3 and P5.
@@ -757,9 +797,17 @@ a little less at period 34 ($22 of $60 a person, rather than $28).
 6. Under tiers no run of the fund's world returns to its opening state, and none stops a site: the timing of the tax
    against the purchase of wants (the taxed world with tiers and no fund does the same) keeps the quiet run off a
    fixed point, and the fund, holding $108 to $339 after period 3, pays its household $14 to $38 a person rather than
-   $60. Without tiers three of four pushes (P1, P2, P4) and P5 run away, as without the fund; with tiers the same
-   pushes cycle in a band (P2, P4, P5) or slide (P1).
-7. The class of each end, beside the same push without a fund (the existing records, which have no tax): P1 runs away
-   (runs away slowly; with tiers slides vs returns to the opening state); P2 runs away (runs away; with tiers cycles
-   vs settles in a depressed band); P3 settles at once (same; with tiers settles in the quiet run's band vs exactly
-   still); P4 runs away (runs away; with tiers cycles vs cycles).
+   $60. Without tiers three of four pushes (P1, P2, P4) and P5 run away, as they do on the taxed world with no fund;
+   with tiers the same pushes cycle in a band (P2, P4, P5) or slide (P1). Against the no-fund control the fund holds
+   the clinic up in P2, P3 and P4 (18, 39 and 32 units at period 34, against 9, 4 and 2) and barely in P1 (16 against
+   14); in P2 under form (a) it does not help the farm (9 units against 18).
+7. The class of each end, beside the same push on the same opening with no fund (the controls). Form (a): P1 runs
+   away, and so does its control (the clinic stops 2 periods later with the fund); P2 runs away, and so does its control
+   (clinic 1 period later); P3 settles at once, and so does its control; P4 runs away, and so does its control (farm 2
+   periods earlier, clinic 2 later). The fund moves each runaway's timing by a few periods and changes no class. Form
+   (b): P1 slides, and so does its control (clinic 16 against 14 units); P2 cycles in a depressed band, its control is
+   depressed too (clinic 18 against 9); P3 cycles in the quiet run's band, its control slides (clinic 39 against 4);
+   P4 cycles with the clinic at 32 units, its control ends the clinic at 2. Only under tiers does the fund change what
+   the clinic ends at by more than a few units. The plain-world runs (no tax, a different opening) are a second
+   comparison only: there P1 with tiers returns to its opening state and P3 with tiers is exactly still, which no
+   world with the tax does, with or without a fund.

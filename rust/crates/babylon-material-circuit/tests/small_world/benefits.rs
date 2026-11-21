@@ -687,8 +687,11 @@ fn assert_pin(rows: &[Snapshot], pin: &Pin) {
             );
         }
         let first = usize::try_from(cohort.from - 1).expect("a small period");
+        let before = first
+            .checked_sub(1)
+            .expect("a cohort starts after period 1, so a period precedes it");
         assert_eq!(
-            due_of(&rows[first - 1], cohort.account),
+            due_of(&rows[before], cohort.account),
             0,
             "the cohort is the first of its account's run"
         );
@@ -1023,8 +1026,7 @@ fn p5_with_a_fund_and_tiers_cycles_with_the_fund_holding_a_reserve() {
 }
 
 /// Every cut is in proportion. In each period of P5 where the fund is short, with `total` the
-/// rank's
-/// dues and `budget` the fund's cash as the period opens, each rank-0 receipt pays
+/// rank's dues and `budget` the fund's cash as the period opens, each rank-0 receipt pays
 /// `floor(due x budget / total)` or that plus one, and the paid amounts add to the budget. Both
 /// forms run: the taxed world without a market policy and the one with tiers.
 #[test]

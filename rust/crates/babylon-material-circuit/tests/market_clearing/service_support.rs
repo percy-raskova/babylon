@@ -9,13 +9,13 @@ use babylon_material_circuit::{
     CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, EmploymentTerms,
     FinalDemandPrincipal, FinalDemandPrincipalId, FinancialInstitutions, GoodId,
     HistoricalCostBook, HouseholdCohort, HouseholdKind, HouseholdNeed, HouseholdNeedBasis,
-    HouseholdPurchasePolicy, HouseholdTimeAccounting, InputOutputCoefficient, LaborCapacityRow,
-    LaborCoefficient, LaborCompensation, LogisticsNodeId, MarketClearingPolicy, MaterialCatalog,
-    MaterialCatalogDefinition, MaterialCircuitState, MemberLaborCapacityRow, MonetaryBook,
-    MonetaryCircuit, OrderId, OutboundOrderId, PricePolicy, ProcessId, ProcessOutput,
+    HouseholdPurchasePolicy, HouseholdTimeAccounting, HouseholdWant, InputOutputCoefficient,
+    LaborCapacityRow, LaborCoefficient, LaborCompensation, LogisticsNodeId, MarketClearingPolicy,
+    MaterialCatalog, MaterialCatalogDefinition, MaterialCircuitState, MemberLaborCapacityRow,
+    MonetaryBook, MonetaryCircuit, OrderId, OutboundOrderId, PricePolicy, ProcessId, ProcessOutput,
     ProductionCommitment, ProductionDemandPolicy, PurchaseEscrow, RecurringEconomy, SellerOffer,
     ServiceConnection, ServiceInputPolicy, ServiceOrder, ServiceStage, SiteLogisticsNode,
-    StaffingMemberId,
+    StaffingMemberId, WantTier,
 };
 
 /// The utility, a service of the first stage.
@@ -82,6 +82,10 @@ pub(crate) struct ServiceFixture {
     pub utility_hours: Option<u64>,
     /// Keep every provider's fixed price even where its service is in the order (to see it refused).
     pub keep_fixed: bool,
+    /// What each account wants after its needs: account, tier, service, quantity. Each account is
+    /// one household. A want of a service the account does not need adds its purchase row and
+    /// connection.
+    pub household_wants: Vec<(u8, WantTier, u8, u64)>,
 }
 
 impl ServiceFixture {
@@ -98,7 +102,28 @@ impl ServiceFixture {
             utility_pricing: PricePolicy::Fixed,
             utility_hours: None,
             keep_fixed: false,
+            household_wants: vec![],
         }
+    }
+
+    /// The accounts' purchase rows: what each needs and what it only wants, once each.
+    fn bought(&self) -> Vec<(u8, u8, u64)> {
+        let mut rows: Vec<(u8, u8, u64)> = vec![];
+        for (index, needs) in self.wants.iter().enumerate() {
+            let index = u8::try_from(index).expect("few accounts");
+            rows.extend(
+                needs
+                    .iter()
+                    .map(|&(service, quantity)| (index, service, quantity)),
+            );
+        }
+        for &(index, _, service, quantity) in &self.household_wants {
+            if !rows.iter().any(|&(i, s, _)| (i, s) == (index, service)) {
+                rows.push((index, service, quantity));
+            }
+        }
+        rows.sort_unstable();
+        rows
     }
 
     pub(crate) fn build(&self) -> (MaterialCatalog, MaterialCircuitState) {
@@ -232,7 +257,18 @@ impl ServiceFixture {
                         .iter()
                         .map(|&g| (support::good(g), support::units()))
                         .collect(),
-                    household_wants: vec![],
+                    household_wants: self
+                        .household_wants
+                        .iter()
+                        .map(|&(index, tier, service, quantity)| HouseholdWant {
+                            principal_id: account(index),
+                            tier,
+                            good_id: support::good(service),
+                            unit_id: support::units(),
+                            basis: HouseholdNeedBasis::Households,
+                            units_per_basis: quantity,
+                        })
+                        .collect(),
                 }),
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: self
@@ -272,7 +308,7 @@ impl ServiceFixture {
     fn recurring(&self) -> RecurringEconomy {
         let mut households = vec![];
         let mut purchases = vec![];
-        for (index, wants) in self.wants.iter().enumerate() {
+        for index in 0..self.wants.len() {
             let principal = account(u8::try_from(index).expect("few accounts"));
             households.push(HouseholdCohort {
                 kind: HouseholdKind::Ordinary,
@@ -280,17 +316,17 @@ impl ServiceFixture {
                 households: 1,
                 persons: 1,
             });
-            for &(service, quantity) in wants {
-                purchases.push(HouseholdPurchasePolicy {
-                    principal_id: principal,
-                    retailer_site_id: support::site(provider(service)),
-                    good_id: support::good(service),
-                    unit_id: support::units(),
-                    target_closing_stock: 0,
-                    maximum_purchase: quantity,
-                    enabled: true,
-                });
-            }
+        }
+        for (index, service, quantity) in self.bought() {
+            purchases.push(HouseholdPurchasePolicy {
+                principal_id: account(index),
+                retailer_site_id: support::site(provider(service)),
+                good_id: support::good(service),
+                unit_id: support::units(),
+                target_closing_stock: 0,
+                maximum_purchase: quantity,
+                enabled: true,
+            });
         }
         let mut offers: Vec<_> = [UTILITY, LOCAL, PUBLIC]
             .into_iter()
@@ -365,17 +401,13 @@ impl ServiceFixture {
 
     fn connections(&self) -> Vec<ServiceConnection> {
         let mut rows = vec![];
-        for (index, wants) in self.wants.iter().enumerate() {
-            for &(service, _) in wants {
-                rows.push(ServiceConnection {
-                    provider_site_id: support::site(provider(service)),
-                    buyer: AccountId::Household(account(
-                        u8::try_from(index).expect("few accounts"),
-                    )),
-                    good_id: support::good(service),
-                    unit_id: support::units(),
-                });
-            }
+        for (index, service, _) in self.bought() {
+            rows.push(ServiceConnection {
+                provider_site_id: support::site(provider(service)),
+                buyer: AccountId::Household(account(index)),
+                good_id: support::good(service),
+                unit_id: support::units(),
+            });
         }
         if self.business.is_some() {
             rows.push(ServiceConnection {

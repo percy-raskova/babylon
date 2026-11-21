@@ -26,3 +26,6 @@ mod admission;
 
 #[path = "market_clearing/wants.rs"]
 mod wants;
+
+#[path = "market_clearing/service_wants.rs"]
+mod service_wants;

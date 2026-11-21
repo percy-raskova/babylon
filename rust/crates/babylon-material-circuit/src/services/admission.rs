@@ -8,13 +8,16 @@ use super::UnitId;
 use super::MAX_SERVICE_RECEIPTS_PER_PERIOD;
 use crate::clearing::{self, MarketMoment, MarketTable};
 use crate::inventory::InventoryLedger;
+use crate::tiers::HouseholdLists;
 use crate::valuation::CostClose;
 use crate::MaterialCatalog;
 use crate::OrderId;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, PurchaseEscrow, SiteId,
 };
-use crate::{CommodityKind, MarketBid, MarketClearingPolicy, ServiceStage};
+use crate::{
+    CommodityKind, MarketBid, MarketClearingPolicy, RecurringEconomy, ServiceStage, WantTier,
+};
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
@@ -63,6 +66,8 @@ pub(crate) struct Request {
     pub(crate) unit: UnitId,
     pub(crate) requested: u64,
     pub(super) floor: Currency,
+    /// The tier of a want; `None` for a need and for a business.
+    pub(super) tier: Option<WantTier>,
 }
 pub(crate) fn requests(
     catalog: &MaterialCatalog,
@@ -91,6 +96,7 @@ pub(crate) fn requests(
             unit: p.unit_id,
             requested: super::required_input(&requirements, p),
             floor: p.cash_floor,
+            tier: None,
         });
     }
     for p in &r.household_purchases {
@@ -110,7 +116,7 @@ pub(crate) fn requests(
             })
             .map(|i| &catalog.household_needs[i])
         else {
-            // A want alone: no need request (Task 4a gives it a stage of its own).
+            // A want alone: no need request; its wants are requested below.
             continue;
         };
         let required = need.required_quantity(cohort)?;
@@ -132,11 +138,63 @@ pub(crate) fn requests(
                 0
             },
             floor: Currency::from_micro_units(0),
+            tier: None,
         });
     }
+    want_requests(catalog, state, r, &mut result)?;
     deduct_due_commitments(state, &mut result)?;
     result.sort_by_key(|r| (r.buyer, r.good, r.unit, r.provider));
     Ok(result)
+}
+/// One request for each want of a service: its own order, the purchase row's provider, no floor.
+fn want_requests(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    rows: &RecurringEconomy,
+    result: &mut Vec<Request>,
+) -> Result<()> {
+    let Some(policy) = &catalog.market_clearing else {
+        return Ok(());
+    };
+    for want in &policy.household_wants {
+        if !super::is_service(catalog, want.good_id, want.unit_id) {
+            continue;
+        }
+        let key = (want.principal_id, want.good_id, want.unit_id);
+        let purchase = rows
+            .household_purchases
+            .iter()
+            .find(|p| (p.principal_id, p.good_id, p.unit_id) == key)
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        let cohort = rows
+            .households
+            .binary_search_by_key(&want.principal_id, |r| r.principal_id)
+            .ok()
+            .map(|i| &rows.households[i])
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        result.push(Request {
+            order_id: crate::recurring_service_want_order_id(
+                state.period,
+                want.principal_id,
+                purchase.retailer_site_id,
+                want.good_id,
+                want.unit_id,
+                want.tier,
+            ),
+            buyer: AccountId::Household(want.principal_id),
+            provider: purchase.retailer_site_id,
+            good: want.good_id,
+            unit: want.unit_id,
+            requested: if purchase.enabled {
+                want.quantity(cohort)?
+            } else {
+                0
+            },
+            floor: Currency::from_micro_units(0),
+            tier: Some(want.tier),
+        });
+    }
+    Ok(())
 }
 type DueKey = (AccountId, SiteId, GoodId, UnitId);
 fn deduct_due_commitments(state: &MaterialCircuitState, requests: &mut [Request]) -> Result<()> {
@@ -163,7 +221,7 @@ fn deduct_due_commitments(state: &MaterialCircuitState, requests: &mut [Request]
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Ok(());
     };
-    for request in requests {
+    for request in requests.iter_mut().filter(|r| r.tier.is_none()) {
         if let Some((quantity, orders)) =
             due.get(&(request.buyer, request.provider, request.good, request.unit))
         {
@@ -354,7 +412,7 @@ fn phase_markets<'a>(
     Ok(markets)
 }
 
-fn quote(
+pub(super) fn quote(
     state: &MaterialCircuitState,
     provider: SiteId,
     good: GoodId,
@@ -416,6 +474,7 @@ pub(super) fn funded_at_quotes(
     state: &MaterialCircuitState,
     requests: &[Request],
     phase: ServiceStage,
+    lists: &HouseholdLists,
 ) -> Result<InventoryLedger> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Ok(InventoryLedger::new());
@@ -429,7 +488,15 @@ pub(super) fn funded_at_quotes(
         )?;
     }
     let mut scratch = BTreeMap::<AccountId, i128>::new();
+    // With wants, each market is read through the households' rungs, in a scratch clone of the lists.
+    let mut scratch_lists = lists.clone();
     for ((_, provider, good, unit), members) in phase_markets(catalog, requests, phase)? {
+        if !lists.is_empty() {
+            let quantity =
+                super::tiers::fund_market(state, &members, &mut scratch, &mut scratch_lists)?;
+            add_quantity(&mut funded, (provider, good, unit), quantity)?;
+            continue;
+        }
         let price = quote(state, provider, good, unit)?.micro_units();
         for request in members {
             let cash = match scratch.get(&request.buyer) {
@@ -534,10 +601,10 @@ fn book_order(
     state: &mut MaterialCircuitState,
     order_ids: &mut BTreeSet<OrderId>,
     request: &Request,
-    sale: (u64, Currency),
+    sale: (u64, u64, Currency),
     movements: &mut Vec<MoneyTransferReceipt>,
 ) -> Result<ServicePerformanceReceipt> {
-    let (quantity, price) = sale;
+    let (requested, quantity, price) = sale;
     let order = ServiceOrder {
         order_id: request.order_id,
         performance_period: state.period,
@@ -573,7 +640,7 @@ fn book_order(
         order_ids.insert(order.order_id);
         state.service_orders.push(order.clone());
     }
-    Ok(receipt(&order, request.requested, price))
+    Ok(receipt(&order, requested, price))
 }
 
 /// The receipts of the orders already funded for the period in this phase, and what they owe of
@@ -612,10 +679,10 @@ pub(super) fn admit_stage(
     phase: (ServiceStage, &InventoryLedger),
     performance: &mut Vec<ServicePerformanceReceipt>,
     movements: &mut Vec<MoneyTransferReceipt>,
-    books: (&mut MarketTable, &CostClose),
+    books: (&mut MarketTable, &CostClose, &mut HouseholdLists),
 ) -> Result<()> {
     let (phase, potential) = phase;
-    let (markets, costs) = books;
+    let (markets, costs, lists) = books;
     let owed = funded_receipts(catalog, state, phase, performance)?;
     let moment = match phase {
         ServiceStage::UtilityProvision => MarketMoment::Utility,
@@ -631,14 +698,33 @@ pub(super) fn admit_stage(
                 .unwrap_or(0)
                 .saturating_sub(owed.get(&key).copied().unwrap_or(0))
         });
-        let (price, quantities) =
-            price_stage_market((catalog, state, costs), moment, &members, supply, markets)?;
-        for (request, quantity) in members.into_iter().zip(quantities) {
+        if lists.is_empty() {
+            let (price, quantities) =
+                price_stage_market((catalog, state, costs), moment, &members, supply, markets)?;
+            for (request, quantity) in members.into_iter().zip(quantities) {
+                performance.push(book_order(
+                    state,
+                    &mut order_ids,
+                    request,
+                    (request.requested, quantity, price),
+                    movements,
+                )?);
+            }
+            continue;
+        }
+        let cleared = super::tiers::price_market(
+            (catalog, state, costs),
+            moment,
+            &members,
+            supply,
+            (&mut *markets, &mut *lists),
+        )?;
+        for taken in cleared.taken {
             performance.push(book_order(
                 state,
                 &mut order_ids,
-                request,
-                (quantity, price),
+                taken.request,
+                (taken.requested, taken.quantity, cleared.price),
                 movements,
             )?);
         }

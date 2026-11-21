@@ -7,6 +7,8 @@ mod market;
 
 mod model;
 
+mod tiers;
+
 mod validation;
 
 pub use admission::{recurring_service_order_id, recurring_service_topup_order_id};

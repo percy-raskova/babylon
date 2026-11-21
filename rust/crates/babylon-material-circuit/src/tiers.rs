@@ -4,7 +4,7 @@
 mod lists;
 mod records;
 
-pub(crate) use lists::HouseholdLists;
+pub(crate) use lists::{HouseholdLists, ListRung};
 pub use records::{
     household_standard, recurring_household_want_order_id, recurring_service_want_order_id,
     HouseholdStandard, HouseholdTierReceipt, HouseholdWantReceipt,

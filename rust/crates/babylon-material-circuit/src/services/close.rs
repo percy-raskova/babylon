@@ -36,6 +36,8 @@ pub(crate) struct ServiceClose {
     pub(crate) markets: Vec<ServiceMarketReceipt>,
     pub(crate) outputs: Vec<ServiceOutputReceipt>,
     households: BTreeMap<GrantKey, u64>,
+    /// What households were granted of their wants, used at the grant and never a need's supply.
+    wants_used: BTreeMap<GrantKey, u64>,
     /// The requests of the period, kept for the stages of a market policy to admit.
     requests: Vec<Request>,
     donor: Option<FinalDemandPrincipalId>,
@@ -60,6 +62,7 @@ impl ServiceClose {
                 outputs: vec![],
                 household: vec![],
                 households: BTreeMap::new(),
+                wants_used: BTreeMap::new(),
                 requests: super::admission::requests(catalog, state)?,
                 donor,
                 lists,
@@ -74,6 +77,7 @@ impl ServiceClose {
             outputs: vec![],
             household: vec![],
             households: BTreeMap::new(),
+            wants_used: BTreeMap::new(),
             requests: vec![],
             donor,
             lists,
@@ -111,7 +115,7 @@ impl ServiceClose {
             (phase, potential),
             &mut self.performance,
             movements,
-            (markets, costs),
+            (markets, costs, &mut self.lists),
         )
     }
     /// What buyers could fund at the posted prices, by market, for the stage's cap on batches.
@@ -121,7 +125,7 @@ impl ServiceClose {
         state: &MaterialCircuitState,
         phase: ServiceStage,
     ) -> Result<InventoryLedger> {
-        super::admission::funded_at_quotes(catalog, state, &self.requests, phase)
+        super::admission::funded_at_quotes(catalog, state, &self.requests, phase, &self.lists)
     }
     pub(crate) fn allocate(
         &mut self,
@@ -309,6 +313,12 @@ impl ServiceClose {
             {
                 continue;
             }
+            if self.lists.is_want_order(row.order_id)
+                && row.performed_quantity != row.admitted_quantity
+            {
+                // Under a market policy every admitted order is performed in full.
+                return Err(MaterialCircuitError::ServiceInvariant);
+            }
             costs.receive_service(row)?;
             match row.buyer {
                 AccountId::Site(site) => inventory::credit_inventory(
@@ -317,8 +327,12 @@ impl ServiceClose {
                     row.performed_quantity,
                 )?,
                 AccountId::Household(_) => {
-                    let quantity = self
-                        .households
+                    let grants = if self.lists.is_want_order(row.order_id) {
+                        &mut self.wants_used
+                    } else {
+                        &mut self.households
+                    };
+                    let quantity = grants
                         .entry((row.buyer, row.good_id, row.unit_id))
                         .or_default();
                     *quantity = quantity
@@ -379,13 +393,23 @@ impl ServiceClose {
             );
             costs.expire_service(key, unused)?;
         }
-        for r in &mut self.performance {
-            let q = used
-                .get_mut(&(r.buyer, r.good_id, r.unit_id))
-                .ok_or(MaterialCircuitError::ServiceInvariant)?;
-            r.used_quantity = (*q).min(r.performed_quantity);
-            *q -= r.used_quantity;
-            r.unused_quantity = r.performed_quantity - r.used_quantity;
+        // A want is used at its grant: its rows take their performed quantity first, and the need
+        // rows share what is left in order identity.
+        for wants in [true, false] {
+            for r in &mut self.performance {
+                if self.lists.is_want_order(r.order_id) != wants {
+                    continue;
+                }
+                let q = used
+                    .get_mut(&(r.buyer, r.good_id, r.unit_id))
+                    .ok_or(MaterialCircuitError::ServiceInvariant)?;
+                if wants && *q < r.performed_quantity {
+                    return Err(MaterialCircuitError::ServiceInvariant);
+                }
+                r.used_quantity = (*q).min(r.performed_quantity);
+                *q -= r.used_quantity;
+                r.unused_quantity = r.performed_quantity - r.used_quantity;
+            }
         }
         let services: BTreeSet<_> = catalog
             .commodities
@@ -413,6 +437,12 @@ impl ServiceClose {
             return Ok(());
         };
         let mut controlled = BTreeSet::new();
+        // A want is used first: its part leaves the key's pool before the need reads its own.
+        for (&key, &want) in &self.wants_used {
+            let need = self.households.get(&key).copied().unwrap_or(0);
+            costs.consume_service(key, need + want, want, false)?;
+            remaining.insert(key, need);
+        }
         if let Some(r) = &e.recurring {
             for need in &catalog.household_needs {
                 if !super::is_service(catalog, need.good_id, need.unit_id) {

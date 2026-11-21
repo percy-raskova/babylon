@@ -221,6 +221,10 @@ household_tiers:
   unreached: >-
     a want with nothing on offer, a disabled row or a price it cannot pay buys 0, leaves no order, no unmet need
     and no division by zero
+  service_wants: >-
+    a want of a service is bought in the service's stage market, as a rung of its account's bid; its performance row
+    requests what its rung could pay for at the posted price with the account's cash at that moment and admits what
+    it bought; the list settles after every stage market of an account, one left out of the order of paying included
 
 catalog_seal:
   - canonicalize every definition family once at admission, in the orders above
@@ -436,7 +440,10 @@ period_close:
   - admit recurring household orders after payroll, sharing actual cash in canonical household-good-unit order
   - without a market policy, admit finite current service requirements from captured production commitments and
     input coefficients before any stage, bounded by cash and policies; with one, admit them in their own stage,
-    after the stage's batches are fitted and before its output is allocated, at the market's price
+    after the stage's batches are fitted and before its output is allocated, at the market's price; without wants a
+    stage market has one bid per buyer; with wants each household bids its need and its wants of the service as
+    the rungs of one bid, in an order of the need's identity (an account that only wants sorts by the identity its need
+    would have), and a want whose rung money cannot reach at the posted price leaves no performance row and no order
   - execute UtilityProvision then LocalServiceProvision then GoodsProduction through shared input, labor and
     process residuals
   - each service stage produces complete funded-request-bounded batches (with a market policy, bounded by what buyers
@@ -444,7 +451,10 @@ period_close:
   - settle actual service grants and refund unperformed orders; expire unallocated provider output at exact
     remaining cost
   - complete all service seller debits and provider expiry before crediting that stage buyers
-  - direct household service satisfaction consumes current performance without pantry stock
+  - direct household service satisfaction consumes current performance without pantry stock; without wants all of it
+    is a need's, with them a want's performed quantity is used at the grant and withdrawn first, the need reads only
+    its own quantity, want rows take used equal to performed before need rows share the rest, and a want row whose
+    performed quantity is not its admitted quantity is refused
   - expense unused acquired service grants and remove all transient service quantity and carrying rows before
     publication
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits

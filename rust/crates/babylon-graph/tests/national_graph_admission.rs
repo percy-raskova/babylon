@@ -26,6 +26,7 @@ fn rows(count: usize) -> StableGraphStateRowsInput {
         edge_f64: vec![],
         node_currency: vec![],
         hyperedge_f64: vec![],
+        membership_f64: Vec::new(),
     }
 }
 

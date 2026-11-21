@@ -42,6 +42,9 @@ pub type StableGraphEdgeF64Row = (String, String, String, String, u64);
 pub type StableGraphNodeCurrencyRow = (String, String, i128);
 /// One stable graph binary64 hyperedge-attribute row.
 pub type StableGraphHyperedgeF64Row = (String, String, u64);
+/// One stable graph binary64 membership-value row:
+/// `(hyperedge local name, member local name, qname, bits)`.
+pub type StableMembershipF64Row = (String, String, String, u64);
 
 struct Listings {
     nodes: Vec<(NodeId, String)>,
@@ -51,6 +54,7 @@ struct Listings {
     edge_f64: Vec<(String, NodeId, NodeId, String, f64)>,
     node_currency: Vec<(NodeId, String, Currency)>,
     hyperedge_f64: Vec<(HyperedgeId, String, f64)>,
+    membership_f64: Vec<(HyperedgeId, NodeId, String, f64)>,
 }
 
 /// Typed stable graph rows in the same canonical order as the identity bytes.
@@ -63,6 +67,7 @@ pub struct StableGraphStateRows {
     edge_f64: Vec<StableGraphEdgeF64Row>,
     node_currency: Vec<StableGraphNodeCurrencyRow>,
     hyperedge_f64: Vec<StableGraphHyperedgeF64Row>,
+    membership_f64: Vec<StableMembershipF64Row>,
 }
 
 /// Owned stable graph rows loaded from an external typed store.
@@ -85,6 +90,9 @@ pub struct StableGraphStateRowsInput {
     pub node_currency: Vec<StableGraphNodeCurrencyRow>,
     /// Stable binary64 hyperedge-attribute rows.
     pub hyperedge_f64: Vec<StableGraphHyperedgeF64Row>,
+    /// Stable binary64 membership-value rows, written as section 0x09 only
+    /// when there is at least one.
+    pub membership_f64: Vec<StableMembershipF64Row>,
 }
 
 impl StableGraphStateRows {
@@ -128,6 +136,12 @@ impl StableGraphStateRows {
     #[must_use]
     pub fn hyperedge_f64(&self) -> &[StableGraphHyperedgeF64Row] {
         &self.hyperedge_f64
+    }
+
+    /// Borrow stable binary64 membership-value rows in canonical order.
+    #[must_use]
+    pub fn membership_f64(&self) -> &[StableMembershipF64Row] {
+        &self.membership_f64
     }
 }
 
@@ -234,6 +248,7 @@ pub fn compose_stable_graph_state_from_rows(
         edge_f64: input.edge_f64,
         node_currency: input.node_currency,
         hyperedge_f64: input.hyperedge_f64,
+        membership_f64: input.membership_f64,
     };
     validate_loaded_rows(&mut rows)?;
     let capacity = stable_state_capacity(scenario, &rows)?;
@@ -363,6 +378,7 @@ fn decode_state_rows(
             ))
         },
     )?;
+    let membership_f64 = decode_membership_f64(cursor)?;
     Ok(StableGraphStateRowsInput {
         nodes,
         node_f64,
@@ -371,7 +387,37 @@ fn decode_state_rows(
         edge_f64,
         node_currency,
         hyperedge_f64,
+        membership_f64,
     })
+}
+
+/// Section 0x09 exists only when it has rows: a field-free world's bytes end
+/// at section 0x08 and keep every digest bound to them.
+fn decode_membership_f64(
+    cursor: &mut GraphStateCursor<'_>,
+) -> Result<Vec<StableMembershipF64Row>, StableIdentityError> {
+    match cursor.bytes.get(cursor.position) {
+        None => return Ok(Vec::new()),
+        Some(0x09) => {}
+        Some(_) => return Err(canonical_refusal("stable graph trailing bytes")),
+    }
+    let rows = cursor.section(
+        "membership f64 attributes",
+        0x09,
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+        |cursor| {
+            Ok((
+                cursor.string("stable hyperedge name")?,
+                cursor.string("stable hyperedge member")?,
+                cursor.string("stable membership attribute")?,
+                cursor.u64()?,
+            ))
+        },
+    )?;
+    if rows.is_empty() {
+        return Err(canonical_refusal("stable graph empty membership section"));
+    }
+    Ok(rows)
 }
 
 fn canonical_refusal(field: &'static str) -> StableIdentityError {
@@ -513,6 +559,11 @@ fn validate_loaded_rows(rows: &mut StableGraphStateRows) -> Result<(), StableIde
         rows.hyperedge_f64.len(),
         MAX_STABLE_GRAPH_ATTRIBUTES,
     )?;
+    validate_section(
+        "membership f64 attributes",
+        rows.membership_f64.len(),
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+    )?;
     let mut fact_units = [
         rows.nodes.len(),
         rows.node_f64.len(),
@@ -521,6 +572,7 @@ fn validate_loaded_rows(rows: &mut StableGraphStateRows) -> Result<(), StableIde
         rows.edge_f64.len(),
         rows.node_currency.len(),
         rows.hyperedge_f64.len(),
+        rows.membership_f64.len(),
     ]
     .into_iter()
     .try_fold(0_usize, |total, count| {
@@ -556,6 +608,10 @@ fn validate_loaded_rows(rows: &mut StableGraphStateRows) -> Result<(), StableIde
         crate::stable_element::validate_qname("hyperedge attribute qname", qname)?;
         *bits = finite_bits(f64::from_bits(*bits), "hyperedge f64 attributes")?;
     }
+    for (_, _, qname, bits) in &mut rows.membership_f64 {
+        crate::stable_element::validate_qname("membership attribute qname", qname)?;
+        *bits = finite_bits(f64::from_bits(*bits), "membership f64 attributes")?;
+    }
     for (_, _, members) in &mut rows.hyperedges {
         members.sort_unstable();
         ensure_unique("hyperedge members", members, |left, right| left == right)?;
@@ -572,6 +628,7 @@ fn collect_listings<G: CanonicalState>(graph: &G) -> Listings {
         edge_f64: graph.all_edge_attributes(),
         node_currency: graph.all_currency_attributes(),
         hyperedge_f64: graph.all_hyperedge_attributes(),
+        membership_f64: graph.all_membership_attributes(),
     }
 }
 
@@ -601,6 +658,11 @@ fn validate_listing_bounds(value: &Listings) -> Result<(), StableIdentityError> 
     validate_section(
         "hyperedge f64 attributes",
         value.hyperedge_f64.len(),
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+    )?;
+    validate_section(
+        "membership f64 attributes",
+        value.membership_f64.len(),
         MAX_STABLE_GRAPH_ATTRIBUTES,
     )?;
     let mut fact_units = listing_row_count(value)?;
@@ -634,6 +696,7 @@ fn listing_row_count(value: &Listings) -> Result<usize, StableIdentityError> {
         value.edge_f64.len(),
         value.node_currency.len(),
         value.hyperedge_f64.len(),
+        value.membership_f64.len(),
     ];
     let mut total = 0usize;
     for count in counts {
@@ -682,6 +745,7 @@ fn resolve_rows(
         edge_f64: resolve_edge_f64(&value.edge_f64, resolver)?,
         node_currency: resolve_node_currency(&value.node_currency, resolver)?,
         hyperedge_f64: resolve_hyperedge_f64(&value.hyperedge_f64, resolver)?,
+        membership_f64: resolve_membership_f64(&value.membership_f64, resolver)?,
     };
     sort_and_validate(&mut rows)?;
     Ok(rows)
@@ -833,6 +897,27 @@ fn resolve_hyperedge_f64(
     Ok(rows)
 }
 
+fn resolve_membership_f64(
+    source: &[(HyperedgeId, NodeId, String, f64)],
+    resolver: &StableElementResolver,
+) -> Result<Vec<StableMembershipF64Row>, StableIdentityError> {
+    let mut rows = reserve_rows("stable graph membership attributes", source.len())?;
+    for (hyperedge, member, qname, value) in source.iter().take(MAX_STABLE_GRAPH_ATTRIBUTES + 1) {
+        crate::stable_element::validate_qname("membership attribute qname", qname)?;
+        let StableElementKey::Hyperedge { local_name, .. } = resolver.hyperedge_key(*hyperedge)?
+        else {
+            return Err(StableIdentityError::ElementNotSealed);
+        };
+        rows.push((
+            local_name.clone(),
+            resolver.node_local_name(*member)?.to_owned(),
+            qname.clone(),
+            finite_bits(*value, "membership f64 attributes")?,
+        ));
+    }
+    Ok(rows)
+}
+
 fn sort_and_validate(rows: &mut StableGraphStateRows) -> Result<(), StableIdentityError> {
     rows.nodes.sort_unstable();
     ensure_unique("nodes", &rows.nodes, |left, right| left.0 == right.0)?;
@@ -869,7 +954,43 @@ fn sort_and_validate(rows: &mut StableGraphStateRows) -> Result<(), StableIdenti
         &rows.hyperedge_f64,
         |left, right| left.0 == right.0 && left.1 == right.1,
     )?;
+    rows.membership_f64
+        .sort_unstable_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
+    ensure_unique(
+        "membership f64 attributes",
+        &rows.membership_f64,
+        |left, right| left.0 == right.0 && left.1 == right.1 && left.2 == right.2,
+    )?;
+    validate_membership_rows(rows)?;
     validate_numeric_lanes(rows)
+}
+
+/// Every membership value must hang on a (hyperedge, member) pair the member
+/// lists carry. The hyperedge rows are sorted by name and each member list is
+/// sorted before this runs, so both lookups are binary searches.
+fn validate_membership_rows(rows: &StableGraphStateRows) -> Result<(), StableIdentityError> {
+    for (hyperedge, member, _, _) in rows
+        .membership_f64
+        .iter()
+        .take(MAX_STABLE_GRAPH_ATTRIBUTES + 1)
+    {
+        let carried = rows
+            .hyperedges
+            .binary_search_by(|row| row.0.as_str().cmp(hyperedge.as_str()))
+            .is_ok_and(|index| {
+                rows.hyperedges[index]
+                    .2
+                    .binary_search_by(|name| name.as_str().cmp(member.as_str()))
+                    .is_ok()
+            });
+        if !carried {
+            return Err(StableIdentityError::MembershipNotInHyperedge {
+                hyperedge_local_name: hyperedge.clone(),
+                member_local_name: member.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn ensure_unique<T, F: Fn(&T, &T) -> bool>(
@@ -932,8 +1053,14 @@ fn stable_state_capacity(
     size = add_rows_capacity(size, &rows.node_currency, |row| {
         add_fixed(strings_capacity(&[&row.0, &row.1])?, 16)
     })?;
-    add_rows_capacity(size, &rows.hyperedge_f64, |row| {
+    size = add_rows_capacity(size, &rows.hyperedge_f64, |row| {
         add_fixed(strings_capacity(&[&row.0, &row.1])?, 8)
+    })?;
+    if rows.membership_f64.is_empty() {
+        return Ok(size);
+    }
+    add_rows_capacity(size, &rows.membership_f64, |row| {
+        add_fixed(strings_capacity(&[&row.0, &row.1, &row.2])?, 8)
     })
 }
 
@@ -994,6 +1121,9 @@ fn encode_rows(
     append_edge_f64(&mut output, &rows.edge_f64)?;
     append_node_currency(&mut output, &rows.node_currency)?;
     append_hyperedge_f64(&mut output, &rows.hyperedge_f64)?;
+    if !rows.membership_f64.is_empty() {
+        append_membership_f64(&mut output, &rows.membership_f64)?;
+    }
     debug_assert_eq!(output.len(), capacity);
     Ok(output)
 }
@@ -1102,6 +1232,20 @@ fn append_hyperedge_f64(
     Ok(())
 }
 
+fn append_membership_f64(
+    output: &mut Vec<u8>,
+    rows: &[StableMembershipF64Row],
+) -> Result<(), StableIdentityError> {
+    append_count(output, 0x09, rows.len())?;
+    for row in rows.iter().take(MAX_STABLE_GRAPH_ATTRIBUTES + 1) {
+        append_str32(output, "stable hyperedge name", &row.0)?;
+        append_str32(output, "stable hyperedge member", &row.1)?;
+        append_str32(output, "stable membership attribute", &row.2)?;
+        output.extend_from_slice(&row.3.to_be_bytes());
+    }
+    Ok(())
+}
+
 fn append_str32(
     output: &mut Vec<u8>,
     field: &'static str,
@@ -1149,6 +1293,7 @@ fn reserve_bytes(field: &'static str, capacity: usize) -> Result<Vec<u8>, Stable
 
 #[cfg(test)]
 mod tests {
+    use super::StableMembershipF64Row;
     use super::{
         MAX_STABLE_GRAPH_ATTRIBUTES, MAX_STABLE_GRAPH_ELEMENTS, MAX_STABLE_GRAPH_FACT_UNITS,
         MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS, MAX_STABLE_GRAPH_NODES, MAX_STABLE_GRAPH_STATE_BYTES,
@@ -1165,6 +1310,7 @@ mod tests {
             ("edge f64 attributes", MAX_STABLE_GRAPH_ATTRIBUTES),
             ("node Currency attributes", MAX_STABLE_GRAPH_ATTRIBUTES),
             ("hyperedge f64 attributes", MAX_STABLE_GRAPH_ATTRIBUTES),
+            ("membership f64 attributes", MAX_STABLE_GRAPH_ATTRIBUTES),
             ("hyperedge members", MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS),
         ];
         for (section, maximum) in section_limits {
@@ -1261,9 +1407,87 @@ mod tests {
                     "market/probability".to_owned(),
                     0.75_f64.to_bits(),
                 )],
+                membership_f64: Vec::new(),
             },
         )
         .expect("the authored rows compose one canonical state")
+    }
+
+    fn input_with_membership(
+        membership_f64: Vec<StableMembershipF64Row>,
+    ) -> crate::stable_state::StableGraphStateRowsInput {
+        let state = authored_state();
+        let rows = state.rows();
+        crate::stable_state::StableGraphStateRowsInput {
+            nodes: rows.nodes().to_vec(),
+            node_f64: rows.node_f64().to_vec(),
+            edges: rows.edges().to_vec(),
+            hyperedges: rows.hyperedges().to_vec(),
+            edge_f64: rows.edge_f64().to_vec(),
+            node_currency: rows.node_currency().to_vec(),
+            hyperedge_f64: rows.hyperedge_f64().to_vec(),
+            membership_f64,
+        }
+    }
+
+    fn membership_row(hyperedge: &str, member: &str) -> StableMembershipF64Row {
+        (
+            hyperedge.to_owned(),
+            member.to_owned(),
+            "market/households".to_owned(),
+            2.0_f64.to_bits(),
+        )
+    }
+
+    #[test]
+    fn stable_graph_refuses_a_value_for_a_non_member() {
+        let compose = |row| {
+            super::compose_stable_graph_state_from_rows(
+                "test/stable-state",
+                input_with_membership(vec![row]),
+            )
+        };
+        assert!(compose(membership_row("hyperedge-a", "node-a")).is_ok());
+        assert_eq!(
+            compose(membership_row("hyperedge-a", "node-z")),
+            Err(StableIdentityError::MembershipNotInHyperedge {
+                hyperedge_local_name: "hyperedge-a".to_owned(),
+                member_local_name: "node-z".to_owned(),
+            })
+        );
+        assert_eq!(
+            compose(membership_row("hyperedge-z", "node-a")),
+            Err(StableIdentityError::MembershipNotInHyperedge {
+                hyperedge_local_name: "hyperedge-z".to_owned(),
+                member_local_name: "node-a".to_owned(),
+            })
+        );
+        assert_eq!(
+            super::compose_stable_graph_state_from_rows(
+                "test/stable-state",
+                input_with_membership(vec![
+                    membership_row("hyperedge-a", "node-a"),
+                    membership_row("hyperedge-a", "node-a"),
+                ]),
+            ),
+            Err(StableIdentityError::DuplicateFact {
+                section: "membership f64 attributes"
+            })
+        );
+    }
+
+    #[test]
+    fn stable_graph_refuses_an_empty_ninth_section() {
+        let state = authored_state();
+        let mut bytes = state.canonical_bytes().to_vec();
+        bytes.push(0x09);
+        bytes.extend_from_slice(&0_u32.to_be_bytes());
+        assert_eq!(
+            super::StableGraphState::decode(&bytes),
+            Err(StableIdentityError::CanonicalBytes {
+                field: "stable graph empty membership section"
+            })
+        );
     }
 
     #[test]

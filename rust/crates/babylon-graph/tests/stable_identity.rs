@@ -883,3 +883,176 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
         Err(StableIdentityError::StrengthAttribute)
     );
 }
+
+/// Two nations over the same two groups, with a value on three memberships.
+fn membership_store(valued: bool) -> StateFixture<HypergraphStore> {
+    let mut graph = HypergraphStore::default();
+    let a = graph
+        .add_node("group")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("group")
+        .expect("the fixture adds a node with a registered kind");
+    let first = graph
+        .add_hyperedge("nation", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let second = graph
+        .add_hyperedge("nation", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    if valued {
+        for (hyperedge, member, value) in [(first, a, 3.0), (second, a, 7.0), (first, b, -0.5)] {
+            graph
+                .update_membership_attribute(hyperedge, member, "nation/households", value)
+                .expect("the fixture membership carries the authored value");
+        }
+    }
+    StateFixture {
+        graph,
+        node_names: HashMap::from([(a, "group-a".to_owned()), (b, "group-b".to_owned())]),
+        hyperedge_names: HashMap::from([
+            (first, "nation-1".to_owned()),
+            (second, "nation-2".to_owned()),
+        ]),
+    }
+}
+
+fn membership_state(
+    value: &StateFixture<HypergraphStore>,
+) -> (StableElementResolver, StableGraphState) {
+    let resolver = StableElementResolver::seal(
+        &value.graph,
+        "demo/world",
+        &value.node_names,
+        &value.hyperedge_names,
+    )
+    .expect("the fixture seals the prepared period");
+    let state = stable_state::encode_stable_graph_state(&value.graph, &resolver)
+        .expect("the fixture graph encodes its stable state");
+    (resolver, state)
+}
+
+#[test]
+fn a_membership_free_stable_graph_keeps_its_bytes() {
+    let value = state_fixture::<MemoryGraph>(false);
+    let state = stable_state(&value);
+    assert_eq!(state.rows().membership_f64().len(), 0);
+    // Section 0x08 is the last: no ninth section, not even a zero count.
+    let tail = [
+        &[0x08_u8][..],
+        &1_u32.to_be_bytes(),
+        &str32("coalition-a"),
+        &str32("coalition/cohesion"),
+        &0.25_f64.to_bits().to_be_bytes(),
+    ]
+    .concat();
+    assert!(state.canonical_bytes().ends_with(&tail));
+    let decoded =
+        StableGraphState::decode(state.canonical_bytes()).expect("a membership-free state decodes");
+    assert_eq!(decoded, state);
+}
+
+#[test]
+fn the_ninth_section_is_pinned_byte_for_byte() {
+    let mut value = state_fixture::<MemoryGraph>(false);
+    let (coalition, workers) = (
+        *value
+            .hyperedge_names
+            .keys()
+            .next()
+            .expect("the fixture has one hyperedge"),
+        *value
+            .node_names
+            .iter()
+            .find(|(_, name)| name.as_str() == "workers")
+            .expect("the fixture has workers")
+            .0,
+    );
+    value
+        .graph
+        .update_membership_attribute(coalition, workers, "coalition/households", 2.5)
+        .expect("the fixture membership carries the authored value");
+    let state = stable_state(&value);
+    let tail = [
+        &[0x09_u8][..],
+        &1_u32.to_be_bytes(),
+        &str32("coalition-a"),
+        &str32("workers"),
+        &str32("coalition/households"),
+        &2.5_f64.to_bits().to_be_bytes(),
+    ]
+    .concat();
+    assert!(state.canonical_bytes().ends_with(&tail));
+    assert_eq!(
+        state.rows().membership_f64(),
+        &[(
+            "coalition-a".to_owned(),
+            "workers".to_owned(),
+            "coalition/households".to_owned(),
+            2.5_f64.to_bits()
+        )]
+    );
+}
+
+#[test]
+fn membership_values_round_trip_through_stable_bytes_and_restore() {
+    let source = membership_store(true);
+    let (_, state) = membership_state(&source);
+    assert_eq!(state.rows().membership_f64().len(), 3);
+    let decoded =
+        StableGraphState::decode(state.canonical_bytes()).expect("the encoded state decodes");
+    assert_eq!(decoded, state);
+
+    let mut target = membership_store(false);
+    let (resolver, bare) = membership_state(&target);
+    assert_eq!(bare.rows().membership_f64().len(), 0);
+    target
+        .graph
+        .restore_stable_state(&resolver, &decoded)
+        .expect("the same topology accepts the checkpoint");
+    assert_eq!(
+        target
+            .graph
+            .state_hash()
+            .expect("the restored store hashes"),
+        source.graph.state_hash().expect("the source store hashes"),
+    );
+    let (_, again) = membership_state(&target);
+    assert_eq!(again.canonical_bytes(), state.canonical_bytes());
+}
+
+#[test]
+fn a_restore_clears_values_the_source_does_not_carry() {
+    let source = membership_store(false);
+    let (_, bare) = membership_state(&source);
+    let mut live = membership_store(true);
+    let (resolver, _) = membership_state(&live);
+    let (hyperedge, member) = {
+        let id = *live
+            .hyperedge_names
+            .iter()
+            .find(|(_, name)| name.as_str() == "nation-1")
+            .expect("nation-1")
+            .0;
+        let node = *live
+            .node_names
+            .iter()
+            .find(|(_, name)| name.as_str() == "group-a")
+            .expect("group-a")
+            .0;
+        (id, node)
+    };
+    assert_eq!(
+        live.graph
+            .membership_attribute(hyperedge, member, "nation/households"),
+        Ok(3.0)
+    );
+    live.graph
+        .restore_stable_state(&resolver, &bare)
+        .expect("the same topology accepts the checkpoint");
+    let error = live
+        .graph
+        .membership_attribute(hyperedge, member, "nation/households")
+        .expect_err("no value of the live store survives a restore");
+    assert!(error.message.contains("never written"), "{}", error.message);
+    assert_eq!(live.graph.all_membership_attributes().len(), 0);
+}

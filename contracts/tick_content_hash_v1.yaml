@@ -189,7 +189,7 @@ layouts:
   stable_graph_v1:
     domain_ascii_nul: babylon.stable-graph
     layout_u32: 1
-    tags: [1, 2, 3, 4, 5, 6, 7, 8]
+    tags: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     sections:
       - {tag: 1, body: scenario_str32}
       - {tag: 2, body: "node_count_u32 then local_name_str32, node_type_str32 rows", order: local_name}
@@ -215,6 +215,12 @@ layouts:
       - tag: 8
         body: hyperedge_f64_count_u32 then local_name_str32, qname_str32, canonical_f64_bits_u64 rows
         order: [local_name, qname]
+      - tag: 9
+        body: >-
+          membership_f64_count_u32 then hyperedge_local_name_str32, member_local_name_str32,
+          qname_str32, canonical_f64_bits_u64 rows
+        order: [hyperedge_local_name, member_local_name, qname]
+        written: only when there is at least one row; a zero count is refused, and the layout version stays 1
     float_rule: finite nonzero raw binary64 bits; either signed zero becomes all-zero bits
     bounds:
       - stable_graph_nodes

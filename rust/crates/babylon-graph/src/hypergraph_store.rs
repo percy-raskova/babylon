@@ -36,7 +36,7 @@
 
 use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::stable_element::{StableElementResolver, StableIdentityError};
-use crate::stable_state::StableGraphState;
+use crate::stable_state::{StableGraphState, StableGraphStateRows};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use crate::working_copy::DetachedCopy;
@@ -236,12 +236,58 @@ impl HypergraphStore {
             hyperedge_attributes.insert((hyperedge, qname.clone()), f64::from_bits(*bits));
         }
 
+        let membership_writes = self.restored_membership_payloads(resolver, source)?;
+
         self.attributes = attributes;
         self.currency_attributes = currency_attributes;
         self.edges = edges;
         self.edge_attributes = edge_attributes;
         self.hyperedge_attributes = hyperedge_attributes;
+        for (edge_key, node, payload) in membership_writes {
+            self.inner
+                .set_member_data(&edge_key, &node, payload)
+                .map_err(|_| StableIdentityError::TopologyChanged)?;
+        }
         Ok(())
+    }
+
+    /// Every membership whose value must change to match `source`: the ones
+    /// the checkpoint carries values for, and the ones the live store carries
+    /// values for that the checkpoint does not (they get an empty map). A
+    /// membership with an empty map on both sides is left alone, so a
+    /// field-free world costs nothing here.
+    fn restored_membership_payloads(
+        &self,
+        resolver: &StableElementResolver,
+        source: &StableGraphStateRows,
+    ) -> Result<Vec<(String, String, MembershipPayload)>, StableIdentityError> {
+        let mut carried: HashMap<(String, String), MembershipPayload> = HashMap::new();
+        for (hyperedge_name, member_name, qname, bits) in source.membership_f64() {
+            let hyperedge = resolver.hyperedge_handle_by_local_name(hyperedge_name)?;
+            let member = resolver.node_handle_by_local_name(member_name)?;
+            carried
+                .entry((hyperedge_key(hyperedge), node_key(member)))
+                .or_default()
+                .fields
+                .insert(qname.clone(), f64::from_bits(*bits));
+        }
+        let mut writes = Vec::new();
+        for edge_key in self.hyperedge_keys.keys() {
+            for (node, payload) in self.inner.members_with_data(edge_key).unwrap_or_default() {
+                match carried.remove(&(edge_key.clone(), node.clone())) {
+                    Some(replacement) => writes.push((edge_key.clone(), node, replacement)),
+                    None if !payload.fields.is_empty() => {
+                        writes.push((edge_key.clone(), node, MembershipPayload::default()));
+                    }
+                    None => {}
+                }
+            }
+        }
+        if carried.is_empty() {
+            Ok(writes)
+        } else {
+            Err(StableIdentityError::TopologyChanged)
+        }
     }
 
     /// The three existence faults of a membership read or write: no such

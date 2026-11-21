@@ -174,6 +174,7 @@ impl CapturedGraphState {
                 edge_f64: decode_graph_edge_f64(self.edge_f64)?,
                 node_currency: decode_graph_node_currency(self.node_currency)?,
                 hyperedge_f64: decode_graph_hyperedge_f64(self.hyperedge_f64)?,
+                membership_f64: Vec::new(),
             },
         )
         .map_err(|_| RustPersistenceRuntimeError::ReplaySource)

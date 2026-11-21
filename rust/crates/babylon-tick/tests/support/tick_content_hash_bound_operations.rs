@@ -1166,6 +1166,7 @@ fn stable_graph_hyperedge_rows(recipe: &Value) -> Result<(), StableIdentityError
             edge_f64: vec![],
             node_currency: vec![],
             hyperedge_f64: vec![],
+            membership_f64: Vec::new(),
             hyperedges: (0..count)
                 .map(|index| {
                     (

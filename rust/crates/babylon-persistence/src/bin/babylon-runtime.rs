@@ -1526,6 +1526,7 @@ mod tests {
                     edge_f64: rows.edge_f64().to_vec(),
                     node_currency: rows.node_currency().to_vec(),
                     hyperedge_f64: rows.hyperedge_f64().to_vec(),
+                    membership_f64: Vec::new(),
                 },
             )
             .expect("the authored rows compose a stable graph state");

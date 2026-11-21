@@ -179,6 +179,8 @@ pub(crate) struct World {
     /// Rule A6 on the market policy: a workplace with spare money plans for what was asked of it.
     /// Set with `with_spare_money`, which also sets `market`.
     pub spare_money: bool,
+    /// How many periods a run lasts: `PERIODS` unless a test asks for a longer look.
+    pub periods: u64,
 }
 
 impl World {
@@ -199,6 +201,7 @@ impl World {
             market: false,
             tiers: false,
             spare_money: false,
+            periods: PERIODS,
         }
     }
 
@@ -294,6 +297,12 @@ impl World {
     pub(crate) fn with_spare_money(mut self) -> Self {
         self.market = true;
         self.spare_money = true;
+        self
+    }
+
+    /// The same world, run for `periods` periods. The catalog's horizon follows it.
+    pub(crate) fn for_periods(mut self, periods: u64) -> Self {
+        self.periods = periods;
         self
     }
 
@@ -842,7 +851,7 @@ impl World {
         let costs = HistoricalCostBook::open(&book, carrying, vec![], equity, vec![])
             .expect("the small world opens its historical costs");
         let hours = self.site_hours();
-        let horizon = PERIODS + 2;
+        let horizon = self.periods + 2;
         let capacity = [utility, 2 * farm, clinic];
         MaterialCircuitState {
             period: 1,
@@ -1408,7 +1417,7 @@ pub(crate) fn run_staffed(
         .micro_units();
     let mut rows = Vec::new();
     let mut before = world.workers;
-    for period in 1..=PERIODS {
+    for period in 1..=world.periods {
         let closed = babylon_material_circuit::close_material_period(&catalog, &state)
             .unwrap_or_else(|e| panic!("period {period} closes: {e:?}"));
         let requests = closed
@@ -1466,7 +1475,10 @@ pub(crate) fn assert_still(world: &World) -> Snapshot {
 
 /// `assert_still` over rows the caller already produced from `world`.
 pub(crate) fn assert_still_rows(world: &World, rows: &[Snapshot]) -> Snapshot {
-    assert_eq!(rows.len(), usize::try_from(PERIODS).expect("few periods"));
+    assert_eq!(
+        rows.len(),
+        usize::try_from(world.periods).expect("few periods")
+    );
     let first = rows[0].clone();
     assert_eq!(
         first.cash,

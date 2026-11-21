@@ -909,6 +909,139 @@ where it was 3), the clinic ends at 31 units, unmet at 34 is 4/5/15 and the fund
 | 21 | 1200/1099/880/1400 | 0/0/0/0, 1264 | 11/25/27/55 | 113/40/37 | 30/40 | 117/40/37/40 | 3/8/10 | 182+210 | 3/3/0/0 | 166 | 480/163.71 | 0/0 | 0 |
 | 34 | 1180/1093/880/1400 | 0/0/0/0, 1275 | 10/25/26/62 | 112/40/31 | 32/40 | 114/40/31/40 | 4/5/15 | 150+304 | 3/3/0/0 | 171 | 480/177.72 | 0/0 | 0 |
 
+### Spare money (rule A6)
+
+Rule A6 (ADR314, `recurring/spare_money.rs`): a workplace holding more money than one period of what it pays out
+plans for what was asked of it and not paid for, as far as that money carries, and never beyond nameplate or the
+stocked inputs a paid-for plan needs. Every run below is `.with_spare_money()` on the tiers world (`World::plain()` or
+`World::benefits()`), with the rule and without it. Every figure was printed by `dump_every_run` and
+`dump_spare_money_long_runs` (`-E 'test(dump_)' --run-ignored only --no-capture`). Full work means 240 hours attended
+in every period from 25 to 34, with no site's output 0.
+
+**Findings, the failure first.**
+
+1. **With taxes and the fund the rule alone saves no pushed run.** The fund's P2, P4 and P5 each end below 120 hours at
+   period 400 with the rule (66, 70 and 16) and without it (80, 63 and 58)
+   (`spare_money_alone_does_not_save_the_fund_world`). The tax cut (P5) is worse with the rule at 400 (16 hours against
+   58), though better at 34 (234 against 225). At 34 periods the rule's hours are below the same run's without it in
+   periods 17, 24, 25 and 26 and above in 23 periods
+   (`p5_on_the_fund_with_tiers_and_spare_money_does_not_return_alone`).
+2. **Without taxes the rule alone turns ruin into a steady economy.** The plain pay rise attends 240 hours in every
+   period from 1 to 400 (without the rule 15 at 400); the plain poor harvest never attends fewer than 230 hours (without
+   the rule 15 at 400). At 400 the unmet need is the owner's alone in both
+   (`the_pay_rise_holds_full_work_for_400_periods`, `the_poor_harvest_holds_most_work_for_400_periods`).
+3. **A quiet world does not move**, for 34 periods and for 400, with or without the fund
+   (`asking_changes_nothing_in_a_quiet_world`, `..._for_400_periods`).
+
+**Hours attended (of 240) and unmet need (food/power/care) at the long look.**
+
+|run|rule|p34 hours (unmet F/U/C)|p100|p200|p300|p400|
+|---|---|---|---|---|---|---|
+| plain P2 | no | 156 (5/18/33) | 116 (16/22/40) | 15 (40/25/40) | 15 (40/25/40) | 15 (40/25/40) |
+| plain P2 | yes | 237 (6/10/10) | 230 (3/10/10) | 237 (5/9/10) | 239 (4/9/10) | 240 (6/10/10) |
+| plain P4 | no | 179 (4/7/37) | 129 (12/21/40) | 15 (40/25/40) | 15 (40/25/40) | 15 (40/25/40) |
+| plain P4 | yes | 240 (0/0/4) | 240 (0/0/3) | 240 (0/0/4) | 240 (0/0/4) | 240 (0/0/3) |
+| fund P2 | no | 197 (6/8/30) | 177 (14/14/31) | 113 (40/8/12) | 100 (40/8/14) | 80 (40/8/21) |
+| fund P2 | yes | 190 (9/19/30) | 128 (40/5/9) | 120 (40/8/10) | 66 (40/16/22) | 66 (40/16/22) |
+| fund P4 | no | 237 (2/5/9) | 238 (2/4/8) | 122 (40/6/13) | 101 (40/8/14) | 63 (40/6/29) |
+| fund P4 | yes | 191 (7/18/32) | 174 (10/18/30) | 120 (40/8/10) | 112 (40/8/9) | 70 (40/16/21) |
+| fund P5 | no | 225 (4/5/15) | 183 (7/14/30) | 116 (40/8/11) | 70 (40/7/28) | 58 (40/8/30) |
+| fund P5 | yes | 234 (1/7/8) | 156 (8/9/40) | 129 (13/22/40) | 19 (40/21/40) | 16 (40/26/40) |
+
+**The four runs of 34 periods that ask for the rule**, in the columns and periods of "Form (b) after" (no wants
+standards or program columns: the dump prints the fund's and the public account's cash only). Wants bought are
+tier 2 plus tier 3 at posted prices.
+
+##### spare tiers quiet
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|
+|--:|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 2 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 3 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 5 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 8 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 13 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 21 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+| 34 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 |
+
+##### spare tiers P4
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|
+|--:|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 6/23/31/23, 715 | 11/25/31/38 | 116/40/36 | 40/40 | 120/40/40/40 | 0/0/4 | 0+0 |
+| 2 | 1200/900/880/1400 | 6/23/9/23, 717 | 11/25/30/38 | 120/40/39 | 40/40 | 120/40/40/40 | 0/0/3 | 62+0 |
+| 3 | 1200/910/880/1400 | 21/28/24/28, 667 | 11/25/29/38 | 120/40/38 | 40/40 | 120/40/40/40 | 0/0/3 | 30+0 |
+| 5 | 1200/917/880/1400 | 29/11/28/11, 682 | 11/25/29/38 | 120/40/38 | 40/40 | 120/40/40/40 | 0/0/3 | 30+0 |
+| 8 | 1200/919/880/1400 | 10/5/24/4, 715 | 11/25/29/38 | 120/40/39 | 40/40 | 120/40/40/40 | 0/0/4 | 90+0 |
+| 13 | 1200/919/880/1400 | 28/20/6/20, 684 | 11/25/29/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/3 | 87+0 |
+| 21 | 1200/919/880/1400 | 13/25/7/24, 688 | 11/25/29/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/3 | 87+0 |
+| 34 | 1200/919/880/1400 | 21/27/5/25, 679 | 11/25/28/38 | 120/40/39 | 40/40 | 120/40/40/40 | 0/0/4 | 87+0 |
+
+##### spare fund quiet
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|fund/public cash|
+|--:|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 2 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 3 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 5 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 8 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 13 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 21 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+| 34 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 960/160 |
+
+##### spare fund P5
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours attended|unmet F/U/C|wants bought $|fund/public cash|
+|--:|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 15/15/15/15, 700 | 12/25/31/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/1 | 30+0 | 840/160 |
+| 2 | 1200/880/880/1400 | 32/20/20/20, 756 | 12/25/32/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/1 | 31+0 | 730/164 |
+| 3 | 1200/880/880/1400 | 9/13/13/13, 895 | 12/25/33/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/1 | 32+0 | 635/175 |
+| 5 | 1200/1000/880/1400 | 0/0/0/0, 1231 | 13/25/35/39 | 120/30/38 | 30/40 | 120/40/40/40 | 0/0/8 | 204+36 | 197/188 |
+| 8 | 1200/1113/880/1400 | 0/0/0/0, 1194 | 11/25/34/42 | 120/40/40 | 30/40 | 120/40/40/40 | 0/4/8 | 272+167 | 159/167 |
+| 13 | 1175/1156/880/1400 | 0/0/0/0, 1049 | 11/25/34/47 | 116/40/40 | 30/40 | 116/40/40/40 | 1/4/8 | 272+46 | 188/264 |
+| 21 | 1200/1042/880/1400 | 0/0/0/0, 1042 | 10/25/35/47 | 113/40/40 | 34/40 | 120/40/40/40 | 1/8/8 | 280+58 | 187/360 |
+| 34 | 1140/997/880/1400 | 0/0/0/0, 1072 | 10/25/35/47 | 114/40/40 | 38/40 | 114/40/40/40 | 1/7/8 | 280+57 | 179/447 |
+
+
+**Each pushed run, against decision 1 (full work from 25 to 34) and against 400 periods.**
+
+- Plain P4 with the rule: meets it (240 in every period from 1 to 34) and holds 240 to period 400.
+- Fund P5 with the rule: does not meet it (234 hours at 34, the farm at 40 and the shop at 40 but the utility at 114);
+  at 400 it has fallen to 16 hours.
+- Plain P2 with the rule: 237 at 34, so not full work, and holds 230 or more to period 400.
+- Fund P2 and P4 with the rule: 190 and 191 hours at 34, so neither meets it, and 66 and 70 hours at 400.
+
+**Where the money sits at period 400 in the fund's three runs** (whole dollars, rounded; the shop holds $0 in all six
+runs).
+
+|run|rule|utility|farm|clinic|owner|wage accounts (w_utility, w_clinic)|supported|fund|public|
+|---|---|---|---|---|---|---|---|---|---|
+| P2 | no | 1,200 | 22 | 750 | 3,285 | 0, 602 | 27 | 160 | 73 |
+| P2 | yes | 475 | 50 | 441 | 6 | 3,267, 1,722 | 13 | 105 | 35 |
+| P4 | no | 1,175 | 880 | 880 | 2,601 | 24, 53 | 130 | 274 | 91 |
+| P4 | yes | 506 | 74 | 494 | 2 | 3,323, 1,545 | 13 | 112 | 37 |
+| P5 | no | 1,182 | 748 | 880 | 2,708 | 108, 48 | 73 | 250 | 111 |
+| P5 | yes | 144 | 0 | 2 | 5 | 5,929, 0 | 9 | 18 | 8 |
+
+Without the rule the money sits with the owner and the utility; with it, it has moved to the utility's and the clinic's
+wage accounts, and the owner, the shop and, in P5, the farm and clinic hold almost none.
+
+**What carries the plain runs, and what the fund's runs lack.** Three lines, traced to the code.
+
+1. The rule reads a workplace's cash against its outlay (`site_outlay`, `extend_site` in `recurring/spare_money.rs`). In
+   the plain runs the shop, farm, clinic and utility each close at 400 holding their opening cash ($1,400, $880 to
+   $1,434, $880, $1,200: tables above), so there is spare money to plan from every period and the raise is paid for.
+2. In the fund runs every shop closes at $0 at 400 and the other workplaces hold less than their opening cash in P5
+   (utility $144, farm $0, clinic $2): the wage and operating taxes (`Taxes`, `Fund` in `tests/small_world/support.rs`)
+   take cash out of the workplaces each period. A workplace holding less than one period of its outlay has no spare
+   money by the rule's definition, so there is nothing for it to plan from.
+3. The rule changes plans and pays no wages beyond cash (`payments/attendance.rs`); it does not move money back to a
+   workplace, so where taxes and the benefit leave the workplaces without spare money it has nothing to carry. That the
+   fund's three runs end where they do is read from the cash table above; the record does not trace the tax flows
+   period by period.
+
 ### What the fund changes
 
 1. A fund of $960 (two periods) with a $480 benefit and no layoffs is exactly still in the taxed world with no market

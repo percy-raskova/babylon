@@ -2,7 +2,7 @@
 //! pays out plans for what was asked of it, as far as that money carries. The record is
 //! `reports/economy-repair-2026-11-20/small-world.md`.
 
-use super::support::{self, Push, World, CLINIC, UTILITY};
+use super::support::{self, Push, Snapshot, World, CLINIC, UTILITY};
 use babylon_material_circuit::{
     CircuitAccounting, MaterialCircuitTransition, ProcessId, ProductionPlanReceipt,
     ServiceMarketReceipt, SiteId,
@@ -220,3 +220,135 @@ fn a_raise_stops_at_nameplate() {
 
 /// The first raise under the pay rise, read from the run: its period and its site's index.
 const FIRST_RAISE: (u64, usize) = (1, UTILITY);
+
+/// Hours attended in a period, all four sites.
+fn hours(row: &Snapshot) -> u64 {
+    row.hours_attended.iter().sum()
+}
+
+/// Full work: 240 hours attended in every period from 25 to 34, no site's output 0 in any of them.
+fn is_full_work(rows: &[Snapshot]) -> bool {
+    rows.iter()
+        .filter(|row| (25..=34).contains(&row.period))
+        .all(|row| hours(row) == 240 && row.output.iter().all(|&out| out > 0))
+}
+
+/// The hours of every period of a run.
+fn hours_by_period(world: &World) -> Vec<u64> {
+    support::run(world).iter().map(hours).collect()
+}
+
+/// Whole dollars in the accounts a record pins, in the order given.
+fn cash_of(row: &Snapshot, accounts: &[&str]) -> Vec<i128> {
+    accounts.iter().map(|name| row.cash[name]).collect()
+}
+
+/// The pay rise with the tiers and the rule: full work from the first period to the last of 34, and
+/// the same world not asking does not return.
+#[test]
+fn p4_with_tiers_and_spare_money_returns_to_full_work() {
+    let asking = World::higher_pay().with_tiers().with_spare_money();
+    let rows = support::run(&asking);
+    assert!(is_full_work(&rows), "decision 1 does not hold");
+    for row in &rows {
+        assert_eq!(hours(row), 240, "period {}", row.period);
+    }
+    let last = &rows[33];
+    assert_eq!(last.unmet, [0, 0, 4]);
+    assert_eq!(last.output, [120, 40, 39, 40]);
+    assert_eq!(
+        cash_of(last, &["utility", "farm", "clinic", "shop", "owner"]),
+        [1_200, 919, 880, 1_400, 679]
+    );
+    let not_asking = support::run(&World::higher_pay().with_tiers());
+    assert_eq!(hours(&not_asking[33]), 179);
+}
+
+/// The tax cut on the fund with the rule: full work does not come back alone. In four periods the
+/// rule's hours are below the same world's without it, and in 23 above.
+#[test]
+fn p5_on_the_fund_with_tiers_and_spare_money_does_not_return_alone() {
+    let base = World::benefits().with_tiers().pushed(Push::LowerFundTaxes);
+    let asking = support::run(&base.clone().with_spare_money());
+    let not_asking = support::run(&base);
+    assert!(!is_full_work(&asking), "decision 1 holds");
+    assert_eq!(hours(&asking[33]), 234);
+    assert_eq!(hours(&not_asking[33]), 225);
+    let below: Vec<u64> = (0..34)
+        .filter(|&n| hours(&asking[n]) < hours(&not_asking[n]))
+        .map(|n| n as u64 + 1)
+        .collect();
+    let above = (0..34)
+        .filter(|&n| hours(&asking[n]) > hours(&not_asking[n]))
+        .count();
+    assert_eq!(below, [17, 24, 25, 26]);
+    assert_eq!(above, 23);
+    let last = &asking[33];
+    assert_eq!(last.unmet, [1, 7, 8]);
+    assert_eq!(last.output, [114, 40, 40, 40]);
+    assert_eq!(
+        cash_of(
+            last,
+            &["utility", "farm", "clinic", "shop", "owner", "fund", "public"]
+        ),
+        [1_140, 997, 880, 1_400, 1_072, 179, 447]
+    );
+}
+
+/// The long look: a quiet world still does not move in 400 periods.
+#[test]
+fn asking_changes_nothing_in_a_quiet_world_for_400_periods() {
+    for world in [World::plain().with_tiers(), World::benefits().with_tiers()] {
+        let asking = world.for_periods(400).with_spare_money();
+        support::assert_still_rows(&asking, &support::run(&asking));
+    }
+}
+
+/// `unmet_by_account` at the last period holds the owner's shortfall only.
+fn only_the_owner_is_short(row: &Snapshot) -> bool {
+    row.unmet_by_account
+        .iter()
+        .all(|(name, unmet)| *name == "owner" || *unmet == [0, 0, 0])
+}
+
+#[test]
+fn the_pay_rise_holds_full_work_for_400_periods() {
+    let world = World::higher_pay().with_tiers().for_periods(400);
+    let asking = support::run(&world.clone().with_spare_money());
+    assert!(asking.iter().all(|row| hours(row) == 240));
+    assert_eq!(asking[399].unmet, [0, 0, 3]);
+    assert!(only_the_owner_is_short(&asking[399]));
+    assert_eq!(hours(&support::run(&world)[399]), 15);
+}
+
+#[test]
+fn the_poor_harvest_holds_most_work_for_400_periods() {
+    let world = World::plain()
+        .with_tiers()
+        .pushed(Push::LessSupply)
+        .for_periods(400);
+    let asking = support::run(&world.clone().with_spare_money());
+    assert!(asking.iter().all(|row| hours(row) >= 230));
+    assert_eq!(asking[399].unmet, [6, 10, 10]);
+    assert!(only_the_owner_is_short(&asking[399]));
+    assert_eq!(hours(&support::run(&world)[399]), 15);
+}
+
+/// With the fund and its taxes the rule alone saves none of the three pushed runs: each ends below
+/// 120 hours at period 400, with the rule and without it.
+#[test]
+fn spare_money_alone_does_not_save_the_fund_world() {
+    // (push, hours without the rule, hours with it) at period 400.
+    let expected = [
+        (Push::LessSupply, 80, 66),
+        (Push::HigherPay, 63, 70),
+        (Push::LowerFundTaxes, 58, 16),
+    ];
+    for (push, without, with) in expected {
+        let world = World::benefits().with_tiers().pushed(push).for_periods(400);
+        let plain = hours_by_period(&world)[399];
+        let asking = hours_by_period(&world.with_spare_money())[399];
+        assert_eq!((plain, asking), (without, with), "{push:?}");
+        assert!(plain < 120 && asking < 120, "{push:?}");
+    }
+}

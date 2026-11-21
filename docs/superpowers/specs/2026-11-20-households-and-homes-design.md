@@ -1,5 +1,11 @@
 # Households and their homes: design
 
+**Amended on 21 November 2026** by the design of homes, rent and nation
+(`2026-11-21-homes-rent-and-nation-design.md`, ADR315). Its section 5 lists every part changed
+here: nation, homes outside Wayne, who lets a home, what rent is, values and equity, mortgages,
+the steps by which a tenant loses a home, and a tenant claim at the County Review. The rules of
+step A stand as written; where the two designs differ on homes, the later one holds.
+
 **Status:** Third draft, 20 November 2026. **Approved by the Director on that day,** with the
 answers of section 13, for the plan of step A to be written. Nothing is built. The Director chose
 the subject, stated its aim, corrected one reading and approved the direction. Three architects

@@ -192,6 +192,14 @@ ADR306_household_units_in_wayne:
         "Household unit" and "relief unit" on screen, and "relief units" in the
         organizer archive's sentence about what the county could pay, for every
         campaign, as derived text and not a stored field (design 7.1, 8).
+    - >-
+        Amended on 2026-11-21 by ADR315. The units' own accounts stand as
+        decided here. The homes part of the design changes: nations are
+        hyperedges over household groups, homes exist in every place, a holder
+        lets its own homes or hires the company, rent is the upkeep and the
+        holder's take, values move and equity is weighed, mortgages are loans
+        from banks and a lender forecloses, a tenant loses a home by the law's
+        stages, and tenants get a claim at the County Review.
   alternatives_rejected:
     - 'A ledger inside the pooled account (design 6).'
     - 'A unit for every position (design 6).'
@@ -228,6 +236,7 @@ ADR306_household_units_in_wayne:
     add-back of design 7.6 and `grain = "group"` (Task 4). The tick test of R11
     (Task 5). The recorded playthroughs (Task 8).
   related:
+    - ADR315_homes_rent_and_nation
     - ADR182_derivation_inspector_rulings
     - ADR184_capacity_belongs_to_organizations
     - ADR208_docket_sitting_2026_08_17

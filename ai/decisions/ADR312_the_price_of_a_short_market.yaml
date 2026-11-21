@@ -192,6 +192,10 @@ ADR312_the_price_of_a_short_market:
         close (P14). Every posted price follows one test, the seller's buffer
         and what was sold, and raw goods and energy move in large steps and open
         where a short market closed (the one-step rule).
+    - >-
+        Amended on 2026-11-21 by ADR315. One price for every buyer of a market
+        (P1, P3) holds for empty homes at a holding's asking rent; a tenancy is
+        a standing agreement and keeps its own rent.
   alternatives_rejected:
     - >-
         Raising the price of money already set aside at the hand-over. It breaks
@@ -251,6 +255,7 @@ ADR312_the_price_of_a_short_market:
   related:
     - ADR313_the_national_economy_opens_in_balance
     - ADR314_how_the_economy_adjusts
+    - ADR315_homes_rent_and_nation
     - ADR306_household_units_in_wayne
     - ADR302_household_roster_and_counting
     - ADR184_capacity_belongs_to_organizations

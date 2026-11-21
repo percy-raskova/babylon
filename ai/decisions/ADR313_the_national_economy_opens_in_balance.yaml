@@ -187,6 +187,13 @@ ADR313_the_national_economy_opens_in_balance:
         adjustment: it carries banks, observed bank debts, unions and core-owned
         workplaces abroad, and the top no longer has to spend nearly all it
         earns. Stages 5 and 6 follow that design.
+    - >-
+        Amended on 2026-11-21 by ADR315. Tenants pay the observed rent to the
+        holder of the home and owners buy the upkeep of their own homes, so
+        call 6 (owners' rent left out, every household buys housing) no longer
+        holds and the opening's balances are recomputed. Every county gets
+        tenant and owner groups in each band, where rule O17 had three earning
+        accounts.
   alternatives_rejected:
     - 'Changing the numbers of today''s table. Measured: twelve candidates, none holds.'
     - >-
@@ -215,6 +222,7 @@ ADR313_the_national_economy_opens_in_balance:
     pushed runs that must show, spread and not collapse. Wayne played for
     twelve periods in the real client.
   related:
+    - ADR315_homes_rent_and_nation
     - ADR314_how_the_economy_adjusts
     - ADR312_the_price_of_a_short_market
     - ADR306_household_units_in_wayne

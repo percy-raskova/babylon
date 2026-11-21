@@ -10,8 +10,9 @@ use crate::recurring::households::Intent;
 use crate::services::Request;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdNeed, HouseholdWant,
-    MarketClearingPolicy, MaterialCatalog, MaterialCircuitError, MaterialCircuitState, OrderId,
-    RecurringEconomy, SiteId, UnitId, WantTier,
+    MarketClearingPolicy, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
+    MonetaryCircuit, OrderId, RecurringEconomy, SiteId, TaxBasis, UnitId, WageAccrualReceipt,
+    WantTier,
 };
 use babylon_kernel::currency::Currency;
 use std::collections::{BTreeMap, BTreeSet};
@@ -98,17 +99,24 @@ pub(crate) struct HouseholdLists {
     bare_needs: BTreeMap<Product, OrderId>,
     /// The order id of every want, so a household moment asks once per order, not once per item.
     want_orders: BTreeSet<OrderId>,
+    /// The wage tax each account owes for the period as the lists opened: held back from every want.
+    tax_ahead: BTreeMap<FinalDemandPrincipalId, Currency>,
 }
 
 impl HouseholdLists {
     /// The list of the period: empty unless the catalog has a market policy with wants.
     ///
+    /// `wage_accruals` are the wages the period has booked so far: those paid at its opening, before
+    /// any buying (rule R6). They give each account's wage tax, which is ahead of its wants.
+    ///
     /// # Errors
     /// The refusals of the household intents and of the service requests; `PurchaseInvariant` for a
-    /// bought product with no offer; `FinalDemandInvariant` for a want with no purchase row or cohort.
+    /// bought product with no offer; `FinalDemandInvariant` for a want with no purchase row or cohort;
+    /// `Arithmetic`, or `FinancialInvariant` for a tax row the close would refuse too.
     pub(crate) fn open(
         catalog: &MaterialCatalog,
         state: &MaterialCircuitState,
+        wage_accruals: &[WageAccrualReceipt],
     ) -> Result<Self, MaterialCircuitError> {
         let Some(policy) = catalog
             .market_clearing
@@ -136,6 +144,7 @@ impl HouseholdLists {
         };
         let mut lists = Self {
             principals: rows.households.iter().map(|r| r.principal_id).collect(),
+            tax_ahead: wage_tax_ahead(economy, state.period, wage_accruals)?,
             ..Self::default()
         };
         for need in &catalog.household_needs {
@@ -181,7 +190,29 @@ impl HouseholdLists {
             principals,
             bare_needs: BTreeMap::new(),
             want_orders,
+            tax_ahead: BTreeMap::new(),
         }
+    }
+
+    /// Tests only: the wage tax an account owes for the period.
+    #[cfg(test)]
+    pub(crate) fn with_tax_ahead(
+        mut self,
+        principal: FinalDemandPrincipalId,
+        amount: Currency,
+    ) -> Self {
+        self.tax_ahead.insert(principal, amount);
+        self
+    }
+
+    /// The wage tax the account owes for the period as the lists opened: what the close will assess
+    /// on the wages paid at the opening. 0 for an account with no wage tax row.
+    #[must_use]
+    pub(crate) fn tax_ahead(&self, principal: FinalDemandPrincipalId) -> Currency {
+        self.tax_ahead
+            .get(&principal)
+            .copied()
+            .unwrap_or_else(|| Currency::from_micro_units(0))
     }
 
     /// Tests only: seed the need rung of a product the account only wants.
@@ -226,6 +257,7 @@ impl HouseholdLists {
         need: u64,
     ) -> Result<Vec<ListRung>, MaterialCircuitError> {
         let account = self.account(principal);
+        let tax = self.tax_ahead(principal).micro_units();
         let key = (principal, good, unit);
         let need_order = account
             .iter()
@@ -247,7 +279,12 @@ impl HouseholdLists {
                 order_id: want.order_id,
                 rung: BidRung {
                     wanted: want.wanted,
-                    reserve: Self::reserve(account, want)?,
+                    reserve: Currency::from_micro_units(
+                        Self::reserve(account, want)?
+                            .micro_units()
+                            .checked_add(tax)
+                            .ok_or(MaterialCircuitError::Arithmetic)?,
+                    ),
                 },
             });
         }
@@ -365,6 +402,43 @@ impl HouseholdLists {
         records::validate_records(&wants, &tiers)?;
         Ok((wants, tiers))
     }
+}
+
+/// The wage tax each account owes for the period: for every wage tax row of a household payer,
+/// the same fraction of the wages booked that `collect_taxes` assesses at the close.
+fn wage_tax_ahead(
+    economy: &MonetaryCircuit,
+    period: u64,
+    accruals: &[WageAccrualReceipt],
+) -> Result<BTreeMap<FinalDemandPrincipalId, Currency>, MaterialCircuitError> {
+    let mut owed = BTreeMap::new();
+    for row in &economy.financial.taxes {
+        let (AccountId::Household(principal), TaxBasis::WageIncome) = (row.payer, row.basis) else {
+            continue;
+        };
+        let mut wages = 0_i128;
+        for accrual in accruals
+            .iter()
+            .filter(|a| a.period == period && a.payee == row.payer)
+        {
+            wages = wages
+                .checked_add(accrual.amount.micro_units())
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+        let due = crate::financial::fraction(
+            Currency::from_micro_units(wages),
+            u64::from(row.rate_bps),
+            10_000,
+        )?;
+        let total = owed.entry(principal).or_insert(0_i128);
+        *total = total
+            .checked_add(due.micro_units())
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+    }
+    Ok(owed
+        .into_iter()
+        .map(|(principal, micro)| (principal, Currency::from_micro_units(micro)))
+        .collect())
 }
 
 /// What the list of a period is read from.

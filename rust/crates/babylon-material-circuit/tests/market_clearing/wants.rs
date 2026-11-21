@@ -6,7 +6,7 @@ use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, HouseholdStandard, HouseholdTierReceipt, HouseholdWantReceipt,
     MaterialCircuitState, MaterialCircuitTransition, MoneyTransferPurpose, OutboundOrderId,
-    WantTier,
+    TaxReceipt, WantTier,
 };
 
 fn three_accounts(stock: u64) -> Fixture {
@@ -348,4 +348,87 @@ fn a_market_policy_without_wants_writes_no_tier_rows() {
     assert_eq!(closed.household_demand.len(), 3);
     assert_eq!(closed.household_wants.len(), 0);
     assert_eq!(closed.household_tiers.len(), 0);
+}
+
+/// One account paid a wage of $100 at the opening (100,000 hours at a thousandth of a dollar), a
+/// need of 15 units at $4 ($60), and a comfort of 50 units of the same shelf, wanted for more than
+/// the rest.
+fn paid_a_wage(tax_bps: &[u16]) -> Fixture {
+    let mut fixture = Fixture::new(1_000, &[support::dollars(0)]);
+    fixture.wanted = 15;
+    fixture.household_wants = vec![(0, WantTier::Comfort, 2, 50)];
+    fixture.wage = Some((0, support::money(1_000)));
+    fixture.wage_taxes = tax_bps.to_vec();
+    fixture
+}
+
+fn tax_rows(closed: &MaterialCircuitTransition, index: u8) -> Vec<&TaxReceipt> {
+    closed
+        .taxes
+        .iter()
+        .filter(|row| row.payer == AccountId::Household(support::account(index)))
+        .collect()
+}
+
+#[test]
+fn a_taxed_household_pays_its_tax_after_its_comforts() {
+    let (_, taxed) = close(&paid_a_wage(&[2_000]));
+    let comfort = want_row(&taxed, 0, WantTier::Comfort, 2);
+    assert_eq!((comfort.wanted_quantity, comfort.bought_quantity), (50, 5));
+    assert_eq!(unmet(&taxed, 0), 0);
+    let rows = tax_rows(&taxed, 0);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].taxable_amount.micro_units(), m(100));
+    assert_eq!(
+        (
+            rows[0].assessed.micro_units(),
+            rows[0].collected.micro_units(),
+            rows[0].uncollected.micro_units()
+        ),
+        (m(20), m(20), 0)
+    );
+    let (_, untaxed) = close(&paid_a_wage(&[]));
+    assert_eq!(
+        want_row(&untaxed, 0, WantTier::Comfort, 2).bought_quantity,
+        10,
+        "without the wage tax row the same household buys $40 of comforts"
+    );
+    assert_eq!(tax_rows(&untaxed, 0).len(), 0);
+}
+
+#[test]
+fn the_amount_held_back_is_what_the_close_assesses() {
+    // Two wage tax rows of one basis, 20 and 5 percent; three accounts, one of them paid. The
+    // comforts are wanted for more than the two poorer accounts have, so each buys exactly its cash
+    // less its need less the tax the close assesses: what was held back is that tax, summed over
+    // the rows.
+    let mut fixture = three_accounts(100_000);
+    fixture.wanted = 15;
+    fixture.household_wants = (0..3).map(|i| (i, WantTier::Comfort, 2, 1_000)).collect();
+    fixture.wage = Some((1, support::money(1_000)));
+    fixture.wage_taxes = vec![2_000, 500];
+    let (opening, closed) = close(&fixture);
+    for index in 0..3 {
+        let assessed: i128 = tax_rows(&closed, index)
+            .iter()
+            .map(|row| row.assessed.micro_units())
+            .sum();
+        let collected: i128 = tax_rows(&closed, index)
+            .iter()
+            .map(|row| row.collected.micro_units())
+            .sum();
+        assert_eq!(assessed, if index == 1 { m(25) } else { 0 });
+        assert_eq!(
+            collected, assessed,
+            "the money held back was there to collect"
+        );
+        let cash = purse(&opening, index) + if index == 1 { m(100) } else { 0 };
+        let bought = want_row(&closed, index, WantTier::Comfort, 2).bought_quantity;
+        let left = cash - m(60) - assessed;
+        assert_eq!(
+            i128::from(bought),
+            (left / 4_000_000).min(1_000),
+            "account {index}"
+        );
+    }
 }

@@ -862,152 +862,134 @@ fn p3_with_a_fund_settles_at_once_with_the_shop_at_half_its_cash() {
     );
 }
 
-/// The fund's world under the market policy with tiers, unpushed. It is not exactly still, and
-/// the fund is not the cause: the taxed world with tiers and no fund is not still either (the
-/// record shows both). A worker account's purse at its moments of sale holds the gross wage and
-/// the 20% tax is levied after, so its room for wants is the tax it is about to pay: in period
-/// 1 the workers buy $150 of comforts, the public accounts collect 280 of 640 assessed, the
-/// fund pays its 480 from its reserve, and the owner ends with $1,000 where it opened with $640.
-/// The reserve is gone by period 3, when the first cut falls (396 of 480 paid). After that it
-/// moves in a narrow band, no site stopping.
+/// The fund's world under the market policy with tiers, unpushed, is exactly still. The wage tax
+/// is ahead of the comforts and luxuries (rule O8): a worker account's purse at its moments of sale
+/// holds the gross wage, and the tax it is about to pay is held back from every want, so each
+/// account's room for wants is what its needs and its tax leave, $0. Nothing is bought but needs,
+/// the public accounts collect the 640 they assess, the fund pays its 480 from what it collects and
+/// holds $960 at every close. (Before this was so, the workers spent their tax on comforts in period
+/// 1 and the quiet run cycled in a narrow band: see "Form (b) before".)
 #[test]
-fn the_fund_with_tiers_is_not_still_the_wants_are_bought_before_the_tax() {
-    let rows = support::run(&World::benefits().with_tiers());
+fn the_fund_with_tiers_is_still_the_wage_tax_is_ahead_of_the_wants() {
+    let first = support::assert_still(&World::benefits().with_tiers());
+    assert_eq!(first.public_receipts, 640);
+    assert_eq!(first.public_payments, 640);
+    assert_eq!(first.cash["fund"], 960);
+    assert_eq!(first.cash["public"], 160);
+    let key = (NO_EARNER.to_owned(), "supported");
+    assert_eq!(first.program_due[&key], usd(480));
+    assert_eq!(first.program_paid[&key], usd(480));
+}
+
+/// Every period of `rows` is the first, and the first closes with the opening cash.
+fn assert_returns_to_opening_cash(world: &World, rows: &[Snapshot]) {
+    let first = rows[0].clone();
+    assert_eq!(first.cash, support::opening_cash(world), "period 1");
+    for row in rows {
+        let mut same = row.clone();
+        same.period = first.period;
+        assert_eq!(same, first, "period {} moved", row.period);
+    }
+}
+
+/// P1 on the fund under tiers: returns to its opening state, as P1 with tiers and no tax does.
+/// The owner has no comforts to buy with, no tax is spent first, no site is laid off and every
+/// period equals the first.
+#[test]
+fn p1_with_a_fund_and_tiers_returns_to_its_opening_state() {
+    let world = pushed_with_tiers(Push::LessDemand);
+    let rows = support::run(&world);
+    assert_returns_to_opening_cash(&world, &rows);
     assert_pin(
         &rows,
         &Pin {
             first_layoff: None,
-            first_cut: Some(3),
+            first_cut: None,
             first_zero: [None, None, None, None],
             cohort: None,
-            output: [117, 40, 39, 40],
-            unmet: [2, 6, 9],
-            fund_cash: 233,
+            output: [120, 40, 40, 40],
+            unmet: [0, 0, 0],
+            fund_cash: 960,
         },
     );
 }
 
-/// P1 on the fund under tiers: does not return to the opening state, as P1 with tiers and no
-/// fund does. The owner spends its extra on comforts and luxuries and is the one affluent
-/// account, but the fund's cut (from period 3) leaves the supported account going without, the
-/// clinic's output slides from 40 to 16 and the utility's to 88, and nothing stops.
-#[test]
-fn p1_with_a_fund_and_tiers_slides_down_with_no_site_stopping() {
-    let rows = support::run(&pushed_with_tiers(Push::LessDemand));
-    assert_pin(
-        &rows,
-        &Pin {
-            first_layoff: Some(18),
-            first_cut: Some(3),
-            first_zero: [None, None, None, None],
-            cohort: Some(Cohort {
-                account: "w_utility",
-                from: 18,
-                rows: &[
-                    (50_000_000, 1),
-                    (50_000_000, 1),
-                    (50_000_000, 1),
-                    (50_000_000, 1),
-                    (50_000_000, 1),
-                    (50_000_000, 1),
-                    (25_000_000, 1),
-                    (0, 0),
-                ],
-            }),
-            output: [88, 30, 16, 34],
-            unmet: [4, 9, 24],
-            fund_cash: 212,
-        },
-    );
-}
-
-/// P2 on the fund under tiers: cycles in a depressed band, no site stopping, as P2 with tiers
-/// does. The layoffs in play come in waves from period 15 (clinic, utility).
+/// P2 on the fund under tiers: cycles in a depressed band, no site stopping. The layoffs in play
+/// come in waves from period 11 (the clinic, then the utility), and the fund's first cut falls at
+/// period 9.
 #[test]
 fn p2_with_a_fund_and_tiers_cycles_in_a_depressed_band() {
     let rows = support::run(&pushed_with_tiers(Push::LessSupply));
     assert_pin(
         &rows,
         &Pin {
-            first_layoff: Some(15),
-            first_cut: Some(3),
+            first_layoff: Some(11),
+            first_cut: Some(9),
             first_zero: [None, None, None, None],
             cohort: Some(Cohort {
                 account: "w_clinic",
-                from: 15,
+                from: 11,
                 rows: &[
-                    (50_000_000, 1),
-                    (50_000_000, 1),
+                    (100_000_000, 2),
                     (50_000_000, 1),
                     (50_000_000, 1),
                     (100_000_000, 2),
-                    (100_000_000, 2),
-                    (75_000_000, 2),
                     (50_000_000, 1),
+                    (50_000_000, 1),
+                    (25_000_000, 1),
+                    (0, 0),
                 ],
             }),
-            output: [90, 36, 18, 36],
+            output: [92, 36, 18, 36],
             unmet: [6, 8, 30],
-            fund_cash: 269,
+            fund_cash: 279,
         },
     );
 }
 
-/// P3 on the fund under tiers: the quiet run of the same world, its outputs and its unmet need
-/// those of the quiet run at period 34, the shop holding $700 where it holds $1,400.
+/// P3 on the fund under tiers: the quiet run of the same world, exactly still, the shop holding
+/// $700 where the quiet run holds $1,400.
 #[test]
-fn p3_with_a_fund_and_tiers_runs_as_the_quiet_run_with_the_shop_at_half_its_cash() {
-    let rows = support::run(&pushed_with_tiers(Push::LessMoney));
+fn p3_with_a_fund_and_tiers_is_still_with_the_shop_at_half_its_cash() {
+    let world = pushed_with_tiers(Push::LessMoney);
+    let rows = support::run(&world);
+    assert_returns_to_opening_cash(&world, &rows);
+    assert_eq!(rows[0].cash["shop"], 700);
     assert_pin(
         &rows,
         &Pin {
             first_layoff: None,
-            first_cut: Some(3),
+            first_cut: None,
             first_zero: [None, None, None, None],
             cohort: None,
-            output: [117, 40, 39, 40],
-            unmet: [2, 6, 9],
+            output: [120, 40, 40, 40],
+            unmet: [0, 0, 0],
+            fund_cash: 960,
+        },
+    );
+}
+
+/// P4 on the fund under tiers: cycles in a band, no site stopping and nobody laid off in play. The
+/// fund's first cut falls at period 4, and the clinic ends at 39 units.
+#[test]
+fn p4_with_a_fund_and_tiers_cycles_with_no_layoff_in_play() {
+    let rows = support::run(&pushed_with_tiers(Push::HigherPay));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: None,
+            first_cut: Some(4),
+            first_zero: [None, None, None, None],
+            cohort: None,
+            output: [116, 40, 39, 40],
+            unmet: [2, 5, 9],
             fund_cash: 233,
         },
     );
 }
 
-/// P4 on the fund under tiers: cycles in a depressed band, no site stopping. The first layoff
-/// in play is at period 6 (the clinic), and the clinic's half pay is the first full cohort the
-/// record follows.
-#[test]
-fn p4_with_a_fund_and_tiers_cycles_with_layoffs_in_the_first_periods() {
-    let rows = support::run(&pushed_with_tiers(Push::HigherPay));
-    assert_pin(
-        &rows,
-        &Pin {
-            first_layoff: Some(6),
-            first_cut: Some(3),
-            first_zero: [None, None, None, None],
-            cohort: Some(Cohort {
-                account: "w_clinic",
-                from: 6,
-                rows: &[
-                    (55_000_000, 1),
-                    (55_000_000, 1),
-                    (55_000_000, 1),
-                    (55_000_000, 1),
-                    (55_000_000, 1),
-                    (55_000_000, 1),
-                    (27_500_000, 1),
-                    (0, 0),
-                ],
-            }),
-            output: [111, 40, 32, 39],
-            unmet: [3, 3, 16],
-            fund_cash: 225,
-        },
-    );
-}
-
-/// P5 on the fund under tiers: cycles in a band. Nobody is laid off in play and the fund, cut
-/// from period 3 as in its quiet run, is never empty: it holds $173 at period 34 against $233
-/// without the push.
+/// P5 on the fund under tiers: cycles in a band. Nobody is laid off in play and the fund, cut from
+/// period 5, is never empty: it holds $171 at period 34.
 #[test]
 fn p5_with_a_fund_and_tiers_cycles_with_the_fund_holding_a_reserve() {
     let rows = support::run(&pushed_with_tiers(Push::LowerFundTaxes));
@@ -1015,12 +997,12 @@ fn p5_with_a_fund_and_tiers_cycles_with_the_fund_holding_a_reserve() {
         &rows,
         &Pin {
             first_layoff: None,
-            first_cut: Some(3),
+            first_cut: Some(5),
             first_zero: [None, None, None, None],
             cohort: None,
-            output: [114, 40, 33, 40],
-            unmet: [4, 7, 15],
-            fund_cash: 173,
+            output: [112, 40, 31, 40],
+            unmet: [4, 5, 15],
+            fund_cash: 171,
         },
     );
 }

@@ -28,4 +28,5 @@ pub(crate) use validation::{canonicalize, validate};
 #[path = "financial/arithmetic.rs"]
 mod arithmetic;
 
-use arithmetic::{add, available, fraction, sub, zero, Result};
+pub(crate) use arithmetic::fraction;
+use arithmetic::{add, available, sub, zero, Result};

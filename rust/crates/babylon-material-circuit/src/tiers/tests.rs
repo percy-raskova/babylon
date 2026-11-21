@@ -299,3 +299,56 @@ fn the_bare_need_rung_of_a_want_only_product_settles() {
         "a bare need rung wants 0 and may not buy more"
     );
 }
+
+/// One account: a food need of 15 at $4 ($60 still to buy) and a tier 2 want of 10 utility at $4.
+fn taxed(tax_ahead: i128) -> HouseholdLists {
+    HouseholdLists::from_items(vec![
+        item(FOOD, 1, 10, 4, 15, 0),
+        item(UTILITY, 2, 12, 4, 10, 1),
+    ])
+    .with_bare_need((account(), good(UTILITY), unit()), order(20))
+    .with_tax_ahead(account(), money(tax_ahead))
+}
+
+/// What a bid with `cash` dollars can pay for at $4 on its want rung: cash less its reserve, over the price.
+fn can_pay_for(lists: &HouseholdLists, cash: i128) -> i128 {
+    let reserve = reserves(lists, UTILITY, 0)[1];
+    (cash - reserve) / 4
+}
+
+#[test]
+fn a_want_leaves_the_wage_tax_untouched() {
+    assert_eq!(reserves(&taxed(20), UTILITY, 0), vec![0, 80]);
+    assert_eq!(can_pay_for(&taxed(20), 100), 5);
+    assert_eq!(reserves(&taxed(0), UTILITY, 0), vec![0, 60]);
+    assert_eq!(can_pay_for(&taxed(0), 100), 10);
+    assert_eq!(taxed(20).tax_ahead(account()), money(20));
+    assert_eq!(
+        taxed(20).tax_ahead(FinalDemandPrincipalId::from_bytes([2; 32])),
+        money(0),
+        "an account with no wage tax row owes nothing"
+    );
+}
+
+#[test]
+fn the_tax_is_added_to_every_want_rung_and_to_no_need() {
+    let lists = |tax: i128| {
+        HouseholdLists::from_items(vec![
+            item(FOOD, 1, 10, 4, 15, 0),
+            item(UTILITY, 2, 12, 4, 10, 1),
+            item(UTILITY, 3, 14, 4, 3, 1),
+        ])
+        .with_bare_need((account(), good(UTILITY), unit()), order(20))
+        .with_tax_ahead(account(), money(tax))
+    };
+    let (without, with) = (lists(0), lists(20));
+    assert_eq!(reserves(&without, UTILITY, 10), vec![0, 60, 60]);
+    assert_eq!(reserves(&with, UTILITY, 10), vec![0, 80, 80]);
+    for lists in [&without, &with] {
+        for good_n in [FOOD, UTILITY] {
+            let r = reserves(lists, good_n, 10);
+            assert_eq!(r[0], 0, "a need keeps reserve 0");
+            assert!(r.windows(2).all(|w| w[0] <= w[1]), "{r:?}");
+        }
+    }
+}

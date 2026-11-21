@@ -205,8 +205,11 @@ household_tiers:
   O8_reserve: >-
     a want rung of tier t at place q in the order of paying holds back the posted cost, quantity still to buy times
     posted price, of the account's items of every other product that are needs, or wants of an earlier tier, or
-    wants of tier t at an earlier place; the account's own need and earlier wants of the product are the rungs
-    before it, so reserves never fall along a bid
+    wants of tier t at an earlier place, and, when the account has a wage tax row, the wage tax it owes for the
+    period (the sum, over its wage tax rows, of the wage income booked at the opening of the period times each
+    rate, as the close will assess it); the account's own need and earlier wants of the product are the rungs
+    before it, so reserves never fall along a bid; a need rung holds back nothing, and the money held back for the
+    tax stays in the account until the close collects it
   still_to_buy: >-
     a need is still to buy for the rest of the period by the part the household did not get, and that part's
     posted cost is held back from every want and from no later need; a want is done once its market has cleared

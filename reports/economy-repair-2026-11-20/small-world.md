@@ -618,7 +618,12 @@ in the record.
 | 21 | 515/715/5/1607 | 654/1185/2/996, 209 | 11/20/34/38 | 51/20/0 | 35/40 | 51/30/0/30 | 8/18/40 | 152 | 480/127.85 | 100/26.64 | 2 |
 | 34 | 221/6/5/4 | 612/1552/2/2300, 80 | 15/32/47/49 | 16/0/0 | 0/0 | 16/0/0/0 | 40/24/40 | 25 | 480/18.07 | 25/0.94 | 1 |
 
-### Form (b): the same fund under the market policy with tiers
+### Form (b) before: the engine before the wage tax was ahead of comforts
+
+**These tables show the engine before the task "The wage tax is ahead of comforts and luxuries" (21 November 2026).**
+They are kept as they were. The same runs after it follow in "Form (b) after", and the sentences below that say the
+quiet run cannot be made still, or that a run slides, cycles or runs short, describe this engine only.
+
 
 This is the form the country will run in (`World::benefits().with_tiers()`): the fund's two taxes, per-person benefit
 and half pay, under the market policy with household wants (rules O7 and O8; section "Tiers").
@@ -772,6 +777,122 @@ a little less at period 34 ($22 of $60 a person, rather than $28).
 | 21 | 1180/1107/880/1400 | 0/0/0/0, 1255 | 10/25/30/56 | 117/40/38 | 32/40 | 119/40/40/39 | 3/8/10 | 248+160 | 3/2/1/0 | 169 | 480/163.15 | 0/0 | 0 |
 | 34 | 1200/1031/880/1400 | 0/0/0/0, 1289 | 10/25/23/64 | 114/40/33 | 34/40 | 119/40/35/40 | 4/7/15 | 192+318 | 5/0/1/0 | 173 | 480/178.42 | 0/0 | 0 |
 
+### Form (b) after: the wage tax is ahead of comforts and luxuries
+
+The same six runs of `World::benefits().with_tiers()` (quiet, P1 to P5) after rule O8 as amended on 21 November 2026:
+the wage tax an account owes for the period is held back from every comfort and luxury it wants, so a want's room is the
+account's cash less its needs still to buy less its tax. The tax is what the close will assess, read when the lists open
+from the wages the period has booked by then (the wage accruals of the opening, before any buying, rule R6; the income
+statement is only filled at the household close, so `HouseholdLists::open` is given the period's wage accruals and
+applies each wage tax row of a household account to them: `tax_ahead`). A need keeps reserve 0. The money held back
+stays in the account until the close collects it, and no record is added.
+
+**Quiet: exactly still.** The cause named above is gone: each worker account's room for wants is $0, the public accounts
+collect the 640 they assess in every period, the fund pays its 480 from what it collects and holds $960 at every close,
+the owner holds $640, no want is bought, and every period equals the first
+(`the_fund_with_tiers_is_still_the_wage_tax_is_ahead_of_the_wants`, by `assert_still`). The taxed world with tiers and
+no fund (the control) is exactly still too.
+
+Nothing else moved: the figures of form (a) (no market policy) and every run of `quiet.rs`, `pushed.rs` and `tiers.rs`
+are as they were. The controls below are printed by the ignored dump and pinned by no test.
+
+#### P1 on the fund with tiers (after): returns to its opening state
+
+Before: the owner and the tax spent first, the clinic and the utility slid to 16 and 88 units, a layoff at 18, a cut
+from period 3. After: no tax is spent on comforts, the owner buys only what its own freed money allows ($120 of comforts
+and $200 of luxuries, every period), the fund never falls short (cut at none, $960 at every close), nobody is laid off
+and every period equals the first, with the shop at $1,400 and unmet need 0/0/0 at 34. **Control (taxed with tiers, no
+fund):** also returns to its opening state (outputs 120/40/40/40, unmet 0/0/0, the owner at $640), so the fund changes
+nothing here.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
+|--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 2 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 3 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 5 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 8 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 13 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 21 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+| 34 | 1200/880/880/1400 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 120+200 | 0/5/0/1 | 960 | 480/480 | 0/0 | 0 |
+
+#### P2 on the fund with tiers (after): cycles in a depressed band
+
+Before: the first cut at period 3, layoffs from 15, the clinic at 18 units, unmet 6/8/30. After: the reserve is no
+longer spent on the tax-paid comforts of the first periods, so the fund holds $872 at period 3 and its first cut falls
+at 9 (405.08 of 480 paid); layoffs in play start at 11 (two people of the clinic, 100 due), the clinic ends at 18 units
+and the utility at 92, unmet at 34 is 6/8/30 as before, and the fund holds $279 (269 before). Class: a depressed band,
+no site stopping. **Control (taxed with tiers, no fund):** a depressed band too, the clinic at 15 units, unmet 5/12/25,
+the shop at $1,400, and employment first falls at period 7. The fund holds the clinic up by 3 units and keeps utility
+unmet lower (8 against 12), at the price of care unmet (30 against 25); the first fall in employment comes at 10, not 7.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
+|--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/926/880/1400 | 0/0/0/0, 602 | 12/25/30/38 | 120/36/40 | 36/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 953 | 480/480 | 0/0 | 0 |
+| 2 | 1200/998/880/1400 | 0/0/0/0, 533 | 12/25/29/38 | 120/36/37 | 32/40 | 120/40/40/40 | 0/0/3 | 0+0 | 2/4/0/0 | 928 | 480/480 | 0/0 | 0 |
+| 3 | 1200/1084/880/1400 | 12/4/0/4, 487 | 11/25/28/38 | 117/36/36 | 28/40 | 120/40/37/40 | 0/0/4 | 0+0 | 1/5/0/0 | 872 | 480/480 | 0/0 | 0 |
+| 5 | 1200/1303/880/1400 | 14/4/0/4, 416 | 10/25/28/38 | 116/36/36 | 20/40 | 116/40/36/40 | 0/0/7 | 81+0 | 1/5/0/0 | 727 | 480/480 | 0/0 | 0 |
+| 8 | 1150/1760/880/1308 | 0/30/0/0, 426 | 10/26/29/38 | 106/36/33 | 0/39 | 111/40/33/40 | 0/7/8 | 28+0 | 1/5/0/0 | 405 | 480/480 | 0/0 | 0 |
+| 13 | 1183/1760/182/1248 | 0/0/0/0, 1317 | 10/31/28/43 | 83/36/2 | 0/36 | 93/40/20/40 | 8/17/38 | 0+0 | 6/0/0/0 | 280 | 480/161.41 | 150/50.44 | 3 |
+| 21 | 1200/1760/585/960 | 0/0/0/0, 1193 | 11/39/31/51 | 80/36/18 | 0/36 | 80/40/18/40 | 4/18/30 | 256+50 | 5/0/1/0 | 264 | 480/307.63 | 50/32.04 | 1 |
+| 34 | 1200/1760/880/492 | 0/0/0/0, 1363 | 10/52/32/64 | 92/36/18 | 0/36 | 98/40/20/39 | 6/8/30 | 264+126 | 5/0/1/0 | 279 | 480/224.31 | 75/35.05 | 2 |
+
+#### P3 on the fund with tiers (after): exactly still, the shop at half its cash
+
+Before: the quiet run's band, with the shop at $700. After: every period equals the first and the first closes with the
+opening cash, the shop holding $700 throughout (the push only moves the shop's opening cash), outputs 120/40/40/40 and
+unmet 0/0/0 at 34, the fund at $960 (`p3_with_a_fund_and_tiers_is_still_with_the_shop_at_half_its_cash`). **Control
+(taxed with tiers, no fund):** also exactly still, the shop at $700.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
+|--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 2 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 3 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 5 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 8 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 13 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 21 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+| 34 | 1200/880/880/700 | 0/0/0/0, 640 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/6/0/0 | 960 | 480/480 | 0/0 | 0 |
+
+#### P4 on the fund with tiers (after): cycles, with no layoff in play
+
+Before: layoffs from period 6, the clinic at 32 units, unmet 3/3/16, the fund at $225. After: the first cut falls at 4
+(476.96 of 480 paid) and nobody is laid off in play; the clinic holds 39 units, unmet at 34 is 2/5/9 and the fund holds
+$233, near the old quiet run's figures: raising the pay no longer sends the workers' tax into comforts. Class: cycles in
+a band. **Control (taxed with tiers, no fund):** the clinic at 27 units, unmet 2/8/14, and employment first falls at
+period 13 (it was 2 units, 5/9/38 and period 16 before). The fund holds the clinic up by 12 units, utility and care
+unmet are lower (5 and 9 against 8 and 14, food 2 in both), and no one is laid off in play with it.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
+|--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 0/0/14/0, 669 | 11/25/31/38 | 116/40/36 | 40/40 | 120/40/40/40 | 0/0/4 | 0+0 | 2/4/0/0 | 879 | 480/480 | 0/0 | 0 |
+| 2 | 1200/882/880/1400 | 0/0/10/0, 841 | 12/25/32/38 | 116/40/36 | 40/40 | 116/40/40/40 | 0/0/4 | 0+0 | 2/4/0/0 | 694 | 480/480 | 0/0 | 0 |
+| 3 | 1200/881/880/1400 | 0/0/0/0, 1130 | 11/25/33/38 | 116/40/36 | 40/40 | 120/40/40/40 | 0/0/4 | 0+0 | 2/4/0/0 | 476 | 480/480 | 0/0 | 0 |
+| 5 | 1200/1098/880/1400 | 0/0/0/0, 1130 | 11/25/33/40 | 114/40/35 | 30/40 | 120/40/37/40 | 0/7/13 | 272+126 | 5/0/1/0 | 238 | 480/230.96 | 0/0 | 0 |
+| 8 | 1200/1127/880/1400 | 0/0/0/0, 1150 | 10/25/34/43 | 114/40/38 | 30/40 | 116/40/38/40 | 0/8/9 | 231+86 | 2/4/0/0 | 217 | 480/228.4 | 0/0 | 0 |
+| 13 | 1200/1102/880/1400 | 0/0/0/0, 1166 | 11/25/37/48 | 116/40/38 | 30/40 | 118/40/38/40 | 1/6/9 | 252+95 | 2/4/0/0 | 219 | 480/252.56 | 0/0 | 0 |
+| 21 | 1200/1093/880/1400 | 0/0/0/0, 1188 | 10/25/37/50 | 113/40/38 | 32/40 | 114/40/38/40 | 1/8/10 | 304+83 | 2/3/1/0 | 222 | 480/230.16 | 0/0 | 0 |
+| 34 | 1200/1085/880/1400 | 0/0/0/0, 1188 | 10/25/34/53 | 116/40/39 | 32/40 | 118/40/39/40 | 2/5/9 | 280+128 | 2/3/1/0 | 233 | 480/233.97 | 0/0 | 0 |
+
+#### P5 on the fund with tiers (after): cycles with a thin reserve
+
+Before: the first cut at 3, the clinic at 33 units, unmet 4/7/15, the fund at $173. After: the fund's rates fall to
+1,125 points and, with the tax paid first, it keeps its reserve longer: the first cut falls at 5 (435.28 of 480 paid,
+where it was 3), the clinic ends at 31 units, unmet at 34 is 4/5/15 and the fund holds $171. Nobody is laid off in play.
+`every_cut_is_in_proportion` checks every short period of this run and of form (a)'s. Class: cycles in a band.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|fund cash|due/paid no_earner|due/paid laid_off|covered|
+|--:|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 15/15/15/15, 700 | 12/25/31/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/1 | 30+0 | 1/5/0/0 | 840 | 480/480 | 0/0 | 0 |
+| 2 | 1200/880/880/1400 | 32/20/20/20, 756 | 12/25/32/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/1 | 31+0 | 1/5/0/0 | 730 | 480/480 | 0/0 | 0 |
+| 3 | 1200/880/880/1400 | 9/13/13/13, 895 | 12/25/33/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/1 | 32+0 | 1/5/0/0 | 635 | 480/480 | 0/0 | 0 |
+| 5 | 1200/1000/880/1400 | 0/0/0/0, 1231 | 13/25/35/39 | 120/30/38 | 30/40 | 120/40/40/40 | 0/0/8 | 204+36 | 4/2/0/0 | 197 | 480/435.28 | 0/0 | 0 |
+| 8 | 1200/1072/880/1400 | 0/0/0/0, 1258 | 12/25/32/42 | 114/40/36 | 30/40 | 115/40/36/40 | 0/4/12 | 264+149 | 3/2/1/0 | 180 | 480/182.73 | 0/0 | 0 |
+| 13 | 1200/1058/880/1400 | 0/0/0/0, 1305 | 13/25/29/47 | 113/40/36 | 30/40 | 113/40/37/40 | 4/4/12 | 240+196 | 3/2/1/0 | 174 | 480/172.15 | 0/0 | 0 |
+| 21 | 1200/1099/880/1400 | 0/0/0/0, 1264 | 11/25/27/55 | 113/40/37 | 30/40 | 117/40/37/40 | 3/8/10 | 182+210 | 3/3/0/0 | 166 | 480/163.71 | 0/0 | 0 |
+| 34 | 1180/1093/880/1400 | 0/0/0/0, 1275 | 10/25/26/62 | 112/40/31 | 32/40 | 114/40/31/40 | 4/5/15 | 150+304 | 3/3/0/0 | 171 | 480/177.72 | 0/0 | 0 |
+
 ### What the fund changes
 
 1. A fund of $960 (two periods) with a $480 benefit and no layoffs is exactly still in the taxed world with no market
@@ -790,7 +911,8 @@ a little less at period 34 ($22 of $60 a person, rather than $28).
    every period of the tiers runs at $0, so they buy what they receive and no more.
 4. Layoffs in play are few and come after a site has begun to fail, when it asks staffing for fewer hours: none in P1
    and P3 of form (a), and at periods 20 (P5), 27 (P4) and 28 (P2) elsewhere in it; under tiers at 6 (P4), 15 (P2) and
-   18 (P1), none in the quiet run, P3 and P5.
+   18 (P1), none in the quiet run, P3 and P5. After the wage tax was ahead of comforts, under tiers: at 11 (P2), and
+   none in the quiet run, P1, P3, P4 and P5.
 5. A short fund is cut in proportion: every claim of a rank is paid the same share of its due, a zero claim gets
    nothing, and the paid amounts add to the budget (`every_cut_is_in_proportion`), so a laid-off cohort and the
    no-earner household lose alike.
@@ -800,7 +922,10 @@ a little less at period 34 ($22 of $60 a person, rather than $28).
    $60. Without tiers three of four pushes (P1, P2, P4) and P5 run away, as they do on the taxed world with no fund;
    with tiers the same pushes cycle in a band (P2, P4, P5) or slide (P1). Against the no-fund control the fund holds
    the clinic up in P2, P3 and P4 (18, 39 and 32 units at period 34, against 9, 4 and 2) and barely in P1 (16 against
-   14); in P2 under form (a) it does not help the farm (9 units against 18).
+   14); in P2 under form (a) it does not help the farm (9 units against 18). **After the wage tax was ahead of comforts
+   this item no longer holds for form (b):** the quiet run, P1 and P3 are exactly still or return to their opening
+   state (as do their controls); P2, P4 and P5 cycle in a band with no site stopping, and the fund holds the clinic up
+   in P2 and P4 (18 and 39 units against 15 and 27).
 7. The class of each end, beside the same push on the same opening with no fund (the controls). Form (a): P1 runs
    away, and so does its control (the clinic stops 2 periods later with the fund); P2 runs away, and so does its control
    (clinic 1 period later); P3 settles at once, and so does its control; P4 runs away, and so does its control (farm 2

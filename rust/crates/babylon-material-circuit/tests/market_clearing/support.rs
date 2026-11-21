@@ -8,13 +8,14 @@ use babylon_material_circuit::{
     CorridorId, EmploymentTerms, FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId,
     FinancialInstitutions, GoodId, HistoricalCostBook, HouseholdCohort, HouseholdKind,
     HouseholdNeed, HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock,
-    HouseholdTimeAccounting, HouseholdWant, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, LaborCompensation, LogisticsNodeId, MarketClearingPolicy, MaterialCatalog,
-    MaterialCatalogDefinition, MaterialCircuitState, MemberLaborCapacityRow, MerchantHandling,
-    MerchantHandlingCoefficient, MerchantRole, MonetaryBook, MonetaryCircuit, OrderId,
-    OutboundOrderId, PricePolicy, ProcessId, ProcessOutput, ProductionCommitment,
-    ProductionDemandPolicy, PurchaseEscrow, RecurringEconomy, SellerOffer, SiteId,
-    SiteLogisticsNode, StaffingMemberId, StockCarryingValue, UnitId, WantTier,
+    HouseholdTimeAccounting, HouseholdWant, InputOutputCoefficient, InstitutionLocation,
+    InventoryRow, LaborCapacityRow, LaborCoefficient, LaborCompensation, LogisticsNodeId,
+    MarketClearingPolicy, MaterialCatalog, MaterialCatalogDefinition, MaterialCircuitState,
+    MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
+    MonetaryBook, MonetaryCircuit, OrderId, OutboundOrderId, PricePolicy, ProcessId, ProcessOutput,
+    ProductionCommitment, ProductionDemandPolicy, PublicAccountId, PurchaseEscrow,
+    RecurringEconomy, SellerOffer, SiteId, SiteLogisticsNode, StaffingMemberId, StockCarryingValue,
+    TaxBasis, TaxPolicy, UnitId, WantTier,
 };
 
 pub(crate) fn site(id: u8) -> SiteId {
@@ -130,6 +131,17 @@ pub(crate) struct Fixture {
     /// What the accounts want: account, tier, shelf good and quantity, written as a `Households`
     /// want of that many units (each account is one household).
     pub household_wants: Vec<(u8, WantTier, u8, u64)>,
+    /// The account the retailer's hours are paid to, and the wage for an hour. `None` pays the
+    /// earlier buyer one millionth of a dollar an hour.
+    pub wage: Option<(u8, Currency)>,
+    /// A wage tax row for every household account at each of these rates (points), each to a public
+    /// account of its own.
+    pub wage_taxes: Vec<u16>,
+}
+
+/// The public account that takes the `row`th wage tax of a fixture.
+pub(crate) fn public(row: usize) -> PublicAccountId {
+    PublicAccountId::from_bytes([40 + u8::try_from(row).expect("few tax rows"); 32])
 }
 
 impl Fixture {
@@ -153,7 +165,34 @@ impl Fixture {
             output_buffer: 0,
             keep_fixed: false,
             household_wants: vec![],
+            wage: None,
+            wage_taxes: vec![],
         }
+    }
+
+    fn financial(&self) -> FinancialInstitutions {
+        let mut financial = FinancialInstitutions::empty();
+        let location: EconomicLocation = "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type");
+        for (row, &rate_bps) in self.wage_taxes.iter().enumerate() {
+            financial.locations.push(InstitutionLocation {
+                account: AccountId::Public(public(row)),
+                location,
+            });
+            for index in 0..self.purses.len() {
+                financial.taxes.push(TaxPolicy {
+                    payer: AccountId::Household(account(
+                        u8::try_from(index).expect("the fixture has few accounts"),
+                    )),
+                    public_recipient: public(row),
+                    basis: TaxBasis::WageIncome,
+                    rate_bps,
+                    cash_floor: money(0),
+                });
+            }
+        }
+        financial
     }
 
     /// Whether the account buys the shelf's good: it needs it or wants it.
@@ -384,6 +423,12 @@ impl Fixture {
                 cash: *purse,
             });
         }
+        for row in 0..self.wage_taxes.len() {
+            accounts.push(CashAccount {
+                id: AccountId::Public(public(row)),
+                cash: money(0),
+            });
+        }
         let earlier = FinalDemandPrincipalId::from_bytes([EARLIER_BUYER; 32]);
         accounts.push(CashAccount {
             id: AccountId::Household(earlier),
@@ -454,7 +499,7 @@ impl Fixture {
             accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
                 aid: AidBook::default(),
                 household_time: HouseholdTimeAccounting::NotModeled,
-                financial: FinancialInstitutions::empty(),
+                financial: self.financial(),
                 member_labor: (1..=9)
                     .map(|period| MemberLaborCapacityRow {
                         member_id: member,
@@ -469,8 +514,10 @@ impl Fixture {
                     member_id: member,
                     site_id: retailer,
                     unit_id: hours(),
-                    payee: FinalDemandPrincipalId::from_bytes([EARLIER_BUYER; 32]),
-                    compensation: LaborCompensation::Wage(money(1)),
+                    payee: self.wage.map_or(earlier, |(index, _)| account(index)),
+                    compensation: LaborCompensation::Wage(
+                        self.wage.map_or(money(1), |(_, rate)| rate),
+                    ),
                 }],
             })),
             service_connections: vec![],

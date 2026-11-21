@@ -2838,6 +2838,60 @@ mod c14_rng_draw_retirement {
     }
 }
 
+// ====================================================== family 23 — Amendment AG (i)
+// Attributed membership: the value a membership carries (§2.8, §2.9, §2.10,
+// §2.12, §3.9 clause 6). This module began with the field-free twin of the
+// nation fixture (Task 10 of the memberships plan): the world with NO
+// membership `deffield` and bare member items, whose state hash was pinned on
+// the tree before any membership value existed. Every later task of the plan
+// runs it, so a byte that moves for a field-free world is caught in the task
+// that moved it. The tests that read and write a membership's value join this
+// module with the tasks that serve them.
+mod ag_attributed_membership {
+    use babylon_bsl::scenario;
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::state_hash::CanonicalState;
+
+    /// Groups g1 and g2; nations n1 over {g1, g2} and n2 over {g1}; each
+    /// nation carries `nation/code` (1 and 2) so a rule can tell them apart.
+    const FIELD_FREE_NATIONS: &str = r"
+(scenario ft/field-free-nations
+  (defvocabulary NodeType (GROUP))
+  (defvocabulary HyperedgeType (NATION))
+  (deffield nation/code int extensive)
+  (node g1 NodeType/GROUP)
+  (node g2 NodeType/GROUP)
+  (hyperedge n1 HyperedgeType/NATION (members g1 g2))
+  (hyperedge n2 HyperedgeType/NATION (members g1))
+  (hyperedge-attr n1 nation/code 1)
+  (hyperedge-attr n2 nation/code 2))
+";
+
+    fn hex(bytes: &[u8; 32]) -> String {
+        use std::fmt::Write as _;
+        bytes.iter().fold(String::new(), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+    }
+
+    /// Review Focus 1: a world with no membership field keeps every byte.
+    /// The hex was captured on the tree before the library pin moved.
+    #[test]
+    fn a_world_without_the_field_hashes_as_before() {
+        let mut graph = MemoryGraph::new();
+        scenario::load_scenario(FIELD_FREE_NATIONS, &mut graph)
+            .expect("the field-free nation fixture loads");
+        let digest = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
+        assert_eq!(
+            hex(&digest),
+            "f8d13e4278245c1f3c2600b8082980e5616b94d26177d876d1224d09bc9dc9a2"
+        );
+    }
+}
+
 // ============================================ R9 verification repairs
 //
 // The vectors the adversarial review of this PR showed were missing. Every

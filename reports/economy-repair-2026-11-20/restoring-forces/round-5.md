@@ -175,6 +175,11 @@ Each rule taken away from the set with L, hours against that set.
 
 ## 6. Credit in place of top-ups
 
+The prototype is cruder than the approved design's rules for credit (A7 to A11) in four ways. It has no test
+that a loan pays for itself. It repays only from cash above the plan, and profit is still paid out. It leaves a
+merchant's restocking out of what may be borrowed for. A taken workplace is not sold. So what follows is about
+this stand-in, not about the design's credit.
+
 - **Who borrows.** The farm, the utility and the clinic. The shop borrows only once, because its restocking is
   not counted in what it may borrow for.
 - **How much.** In the set with every rule, small figures: $12,654 to $22,314 lent in most pushed runs of 200
@@ -224,7 +229,9 @@ the measuring agents, and this file follows the check:
 - The explanation of why the built rule is weaker (idle wages) does not hold.
 - **The bank's capital is new money.** The prototype was to carve it from the owner. It did not: every run with
   credit opens $2,400 to $2,440 richer than its twin. The agent disclosed it. It fails the stated check, so
-  every credit figure here is for a world that opens with more money than the others.
+  every credit figure here is for a world that opens with more money than the others. That money buys nothing:
+  the bank's cash is only lent against, written off, and paid to the owner where it stands above the opening
+  capital.
 
 ## 9. What this round did not do
 
@@ -236,13 +243,32 @@ the measuring agents, and this file follows the check:
 - There is one seller of each good, so a refused buyer has nowhere else to go.
 - No rule was measured alone at the national figures. There was one check, not a second reader of the code.
 
-## 10. Questions the rows do not settle
+## 10. The open points, against the approved design
 
-1. Is a merchant's limit its posted price, or the price its own short market cleared at? Should it buy part of
-   an order instead of refusing all of it?
-2. Is the bank's capital carved from the owner, with a richer opening, or new money?
-3. May a workplace pay out profit while it owes and has paid nothing?
-4. Does the bound on a loan use planned sales or earlier sales, and may a loan be made in the first period?
-5. Is there a smallest debt below which a workplace is not taken?
-6. Does a merchant's restocking count toward what it may borrow for?
-7. The rule as built gives up the support its prototype gave. Is that accepted, or is the rule changed?
+The measuring agents left seven questions. Read against the design of how the economy adjusts (ADR314), most
+are gaps in the prototypes and not open questions:
+
+1. **A merchant's limit, and part orders.** Rule L is not a rule of the design. The design's answer to a buyer
+   who does not answer a price is A4: a buyer takes from the cheapest seller it can reach. That needs a second
+   seller, which the bench does not have. Open only if L is still wanted once A4 is measured.
+2. **The bank's capital.** A7 and A8 settle it: a bank has its own capital, and the money in all accounts, the
+   banks' capital included, equals base money plus the principal owed. So the capital is part of the money the
+   opening holds. For a like-for-like run, the twin without lending must hold the same money.
+3. **Profit paid out while in debt.** A9 settles it: a business "repays from its sales at the close, before any
+   profit is paid out". The prototype did not.
+4. **The bound on a loan.** A10 says "a loan to keep running by its last sales". The prototype did that, and it
+   is what refuses a workplace whose sales have just fallen. This one is a finding about the design. It is
+   measured again with the rest of A9 in place before it is brought to the Director.
+5. **A smallest debt before a workplace is taken.** Not in the design. The takings over a few dollars follow
+   from point 3. Measure with A9's order first.
+6. **A merchant's restocking.** A9 settles it: a business borrows when short of money "for its planned wages and
+   supplies". What a merchant restocks is its supplies. The prototype left it out.
+7. **The spare-money rule as built.** Its prototype was measured, and then a different rule was built. The cause
+   of the gap is to be isolated by experiment.
+
+## 11. What comes next
+
+The design says how its first part is to be proven: "The small test economy grows with the pieces: a second
+seller of each product in piece 1". Rounds four and five measured that part with one seller of each product.
+Round six gives the bench a second seller of each product and lets buyers take from the cheapest, and isolates
+the gap between the built rule and its prototype. Credit is measured again after that, as the design states it.

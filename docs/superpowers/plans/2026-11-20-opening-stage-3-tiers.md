@@ -27,12 +27,12 @@ that its Task 5 gives a service bid. Task 6b plans a service, under a market pol
 `MarketTable::demand_at_quote(moment, site, good, unit) -> Option<u64>`: `planned_quantity = (owed +
 funded).max(future)`, `funded` being that demand (0 when no buyer bid). This plan's ladder markets
 record their totals, so that demand counts every rung, wants included, and no planning rule is added.
-Its Task 7 may land before or after; the two register refusals sit side by side until the later plan
-(last section) removes both. Task 6c refuses a fixed-price seller of a product that is in the order
-of paying. So a fixture that puts such a seller under a market policy pins its posted price with a
-responsive policy (`minimum == maximum == unit_price`, `step` one millionth of a dollar), as Task
-6c's fixtures do; this plan's lifecycle tests on `time_opening(4)` do that for the retailer's $4
-offer. Tasks go in order: 1, 2, 3a, 3b, 4a, 4b, 5.
+Its Task 7 is built later, inside the one plan that carries every new record of the opening; the two
+register refusals sit side by side until that plan (last section) removes both. Task 6c refuses a
+fixed-price seller of a product that is in the order of paying. So a fixture that puts such a seller
+under a market policy pins its posted price with a responsive policy (`minimum == maximum ==
+unit_price`, `step` one millionth of a dollar), as Task 6c's fixtures do; this plan's lifecycle tests
+on `time_opening(4)` do that for the retailer's $4 offer. Tasks go in order: 1, 2, 3a, 3b, 4a, 4b, 5.
 
 **Checked once against the code by a second reader on 20 November 2026; its findings are in the tasks.**
 
@@ -725,9 +725,9 @@ lifecycle/services.rs:199, merchants.rs:264}`, `qualification_audit/production_r
 `national_economy/opening/markets.rs:160, 392`. A catalog with wants writes version 7;
 `economic_catalog/compile.rs` builds none until the scenario plan sizes the tiers.
 
-**The format.** Receipt format 24, chosen when the catalog has wants (the price rule's Task 7 takes 23;
-the benefits plan's carrier takes 25 as a superset of 24), with its storage domain, budget test and tool
-tables, as that plan's Task 7 lists them.
+**The format.** One later plan carries the market's receipt (the price rule's Task 7), these rows and the
+public programs of stage 4 together, as receipt format 23, with one storage domain, budget test and set
+of tool tables, as that Task 7 lists them.
 
 **Organizer reports** must leave want orders out: in `babylon-tick/src/material_world/organizer_reports.rs`
 `food()` (about 121 to 214) finds a hand-off's escrow through a demand receipt, so every want hand-off

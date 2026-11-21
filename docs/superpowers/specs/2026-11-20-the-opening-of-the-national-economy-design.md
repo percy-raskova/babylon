@@ -123,9 +123,10 @@ same trade. Two figures that read today's single wage get their own: the County 
 is the county's average pay, and the City PD's payroll is the pay of Wayne's public workplaces.
 
 Where a county's jobs in a finer industry are withheld and the industry above it is published, the
-withheld industries share what is left of the published figure, by their number of
-establishments. Where that is withheld too, today's rule places them. (At the finer cut most
-counties' car-plant jobs are withheld. Wayne's 53,000 are the published part.)
+withheld industries share what is left of the published figure, jobs and pay, by their number of
+establishments. That sets the pay of the trade in that county; where the figure above is withheld
+too, the state's wage stands in, then the nation's. Where residents work is decided as today. (At
+the finer cut most counties' car-plant jobs are withheld. Wayne's 53,000 are the published part.)
 
 **O3. The accounts.** One committed table gives, for the twelve trades, what each buys from each,
 what it sells to households, to public bodies and abroad, what it pays in wages and what it keeps.
@@ -316,13 +317,19 @@ is deeper than two periods.
     from the first period and rich ones would hoard.
 11. **The map's places are pinned** (O15), and machines open at every age and for the whole
     workforce, so nothing expands at the opening (O14).
-12. **Withheld jobs** are placed from what is left of the published figure above them (O2).
+12. **Withheld jobs** are placed from what is left of the published figure above them, to set the
+    pay of a trade in its county (O2). Where residents work is decided as today.
 13. **Abroad:** the tiers apply, the benefits do not (O8, O12).
 14. **A household with no earner is covered whether or not it owns business shares** (O12).
 15. **Each band holds jobs in proportion to its households** (O17). Bands then differ by the pay of
     their trades, not by how many of their people work.
 16. **The unemployment benefit is for a job lost in play.** Those looking for work at the opening
     keep today's county support (O12).
+17. **Bands are dealt county by county** (O17). Inside each county its jobs are ranked by pay and
+    dealt to that county's three bands; a place's accounts are the sums over its counties.
+18. **The County Review's floor follows the wage** (O2): two hours at Wayne's average pay, about
+    $74, where the earlier ruling named $48 (two hours at $24).
+19. **The City PD pays the wage of its one payroll workplace** (O2).
 
 ## 10. Build order
 

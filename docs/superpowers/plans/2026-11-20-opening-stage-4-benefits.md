@@ -29,7 +29,8 @@ O12 and O13, section 2 ("A layoff has two steps", "Public money that is spent") 
 taxes fall, the benefits and state services and disability pension etc can become a site of
 struggle eventually and be modified, tweaked, increased, etc thru the political/electoral system".
 
-**Prerequisites:** the price rule's Tasks 1 to 7 and the tiers plan (stage 3) are built.
+**Prerequisites:** the price rule's Tasks 1 to 6c and the tiers plan (stage 3) are built. The price
+rule's Task 7 is built later, inside the one plan that carries every new record of the opening.
 **Build order:** Tasks 1 to 5 in order. Each leaves every earlier byte unchanged. No shipped world
 holds a program before later plan B, so the tick's gates (Tasks 1 and 3) are never met in play.
 Lines were read on 20 November while the price rule's Task 5 was uncommitted: find each by its text.
@@ -127,7 +128,7 @@ collected, its support paid).
   get `rule: CappedInOrder`
 - Modify: `rust/crates/babylon-tick/src/material_world/register.rs` (in `company_receipt_format`,
   before the format is chosen, refuse `transition.state` when `has_public_program_extension()`,
-  with `MaterialWorldError::Wire`; the price rule's Task 7 removes the market refusal there)
+  with `MaterialWorldError::Wire`; the later plan removes the market refusal there)
 - Test: `src/financial/cut.rs`; `tests/financial_circuit.rs`
 
 **Interfaces:**
@@ -648,9 +649,9 @@ later plan B, or the tick refuses every period of the shipped world. It must:
    world with an after-layoff program and must say so, or take the staffed path.
 2. **The register.** A new receipt family for `PublicProgramReceipt`. It is not fixed width: the key
    is a `u8` length and 1 to 32 bytes; then period `u64`, account 32, recipient 32, rank `u32`,
-   covered `u64`, three `i128`. Formats are ordered: the price rule's Task 7 takes 23, the tiers
-   plan's carrier 24, and this carrier 25, a superset of 24, chosen whenever the state has the
-   extension; its row limit; the decoder. Tax receipts are ordered by `(payer, basis,
+   covered `u64`, three `i128`. One plan carries the market's receipt (the price rule's Task 7),
+   the tiers plan's rows and this family together, as receipt format 23; its row limit; the
+   decoder. Tax receipts are ordered by `(payer, basis,
    public_recipient)` in `material_world/financial_receipt.rs:289`, bound 262,144. Remove both gates.
 3. **The state.** Persistence's state storage (`receipt_storage`, `state_storage/layout.rs`)
    accepts state versions 25 and 26; `tools/devtools/national_storage_qualification.py` and its

@@ -361,17 +361,19 @@ def build(*, artifact_out: Path = ARTIFACT_OUT, metadata_out: Path = METADATA_OU
    empty: `left = max(0, parent - (published + already placed leaves of its subtree))`, for jobs and for payroll each;
    share `left` over W by establishments with `apportion`. The `max(0, ...)` is O2's one clamp (rounded averages).
    A withheld parent is skipped, so its leaves move up to the next parent. Leaves still withheld after `10` stay
-   unplaced; stage 2 applies today's rule to them.
+   unplaced.
 4. `apportion(total, weights)`: each share is `floor(total x w / sum(w))`; the units left go one each to the largest
    remainders, ties by code in lexical order. Weights all zero share equally by the same rule.
 5. A group's `jobs` and `payroll_usd` are its published members plus its placed members. `jobs_rule` is `published`
    when no member was withheld, `placed` when every withheld member was placed, else `partial`. The `jobs` of a
-   `partial` group leave out its unplaced members; stage 2 adds today's rule's jobs for them on top.
-6. Wage. `county` when `jobs_rule` is not `partial` and `jobs > 0`: the pair is `(jobs, payroll_usd)`. Else `state`:
-   the published `state_leaf` rows of the county's state for the same trade and ownership, summed, if their jobs are
-   above 0. Else `nation`: the same over `nation_leaf` rows. Else `nation_all_ownerships`: published `nation_leaf`
-   rows of the trade over the four ownerships. Else `no_wage: <county>/<function>/<ownership>`. The hourly wage is
-   `wage_payroll_usd / (wage_jobs x 2080)`, computed by the reader, not stored.
+   `partial` group leave out its unplaced members. The pair sets pay and nothing else: where residents work is
+   decided by the cohort table's weights, as today (design O2).
+6. Wage. `county` when `jobs_rule` is not `partial`, `jobs > 0` and `payroll_usd > 0`: the pair is
+   `(jobs, payroll_usd)`. Else `state`: the published `state_leaf` rows of the county's state for the same trade
+   and ownership, summed, if their jobs and their payroll are above 0. Else `nation`: the same over `nation_leaf`
+   rows. Else `nation_all_ownerships`: published `nation_leaf` rows of the trade over the four ownerships. Else
+   `no_wage: <county>/<function>/<ownership>`. The hourly wage is `wage_payroll_usd / (wage_jobs x 2080)`,
+   computed by the reader, not stored.
 7. Metadata contract `NationalTradePay2024V1`, evidence `Derived` for placed values and `Observed` for published,
    counts by `jobs_rule` and `wage_rule`, and jobs placed in all.
 
@@ -396,8 +398,9 @@ def build(*, artifact_out: Path = ARTIFACT_OUT, metadata_out: Path = METADATA_OU
     is `nation_all_ownerships` with pair (14,198,298, 425,830,875,729).
   - `no_wage_anywhere_is_refused`: a group with no published row at any level raises `no_wage: 26163/`.
   - `the_committed_pay_table` (reads the committed tables): keys equal the admitted keys of the v2 cohort table; every
-    `jobs_rule` and `wage_rule` is in its set; `wage_jobs > 0` on every row; counts by rule equal the metadata; the
-    Wayne `consumer_goods` own 5 row has `jobs >= 53_000` and `wage_rule == "county"`; registry digest agrees.
+    `jobs_rule` and `wage_rule` is in its set; `wage_jobs > 0` and `wage_payroll_usd > 0` on every row; counts by
+    rule equal the metadata; the Wayne `consumer_goods` own 5 row has `jobs >= 53_000` and
+    `wage_rule == "county"`; registry digest agrees.
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement** the functions above and `main`.
 - [ ] **Step 4: Build, prove determinism, register** (`checked` 40), and apply the size rule if it passes 1,024 KB.

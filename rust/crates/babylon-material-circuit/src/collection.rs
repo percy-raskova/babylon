@@ -8,10 +8,12 @@ use crate::{
     MaterialCircuitState, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
     OrganizationAccountId, TaxReceipt, UnitId,
 };
-use crate::{GoodId, HouseholdNeed, MaterialCatalog, RecurringEconomy, ServicePerformanceReceipt};
+use crate::{
+    GoodId, HouseholdNeed, MaterialCatalog, OrderId, RecurringEconomy, ServicePerformanceReceipt,
+};
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
@@ -176,6 +178,8 @@ pub(crate) struct CollectionEvidence<'a> {
     pub consumption: &'a [HouseholdConsumptionReceipt],
     pub services: &'a [HouseholdServiceReceipt],
     pub admissions: &'a ServiceAdmissions,
+    /// The orders for wants, whose money is checked and whose units fund no need.
+    pub want_orders: &'a BTreeSet<OrderId>,
     pub performance: &'a [ServicePerformanceReceipt],
     pub time: &'a [HouseholdTimeReceipt],
     pub taxes: &'a [TaxReceipt],
@@ -210,9 +214,13 @@ fn protected(
         .iter()
         .filter(|row| row.principal_id == input.donor))?;
     let mut outcome = None;
-    let funded = facts
-        .admissions
-        .reconcile(input.donor, state.period, facts.performance, money)?;
+    let funded = facts.admissions.reconcile(
+        input.donor,
+        state.period,
+        facts.performance,
+        money,
+        facts.want_orders,
+    )?;
     let mut protected_refunds = 0_i128;
     let mut has_needs = false;
     for need in catalog

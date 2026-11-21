@@ -21,7 +21,7 @@ use crate::valuation::CostClose;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, ProductionCommitment,
 };
-use crate::{FinalDemandPrincipalId, MaterialCatalog};
+use crate::{FinalDemandPrincipalId, MaterialCatalog, OrderId};
 use crate::{HouseholdTierReceipt, HouseholdWantReceipt};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
@@ -82,6 +82,14 @@ impl ServiceClose {
             donor,
             lists,
         })
+    }
+    /// The orders of this period that buy wants: the rows of `performance` that are no need's.
+    pub(crate) fn want_orders(&self) -> BTreeSet<OrderId> {
+        self.performance
+            .iter()
+            .map(|row| row.order_id)
+            .filter(|&id| self.lists.is_want_order(id))
+            .collect()
     }
     /// What each account wanted and bought of its wants, and in each tier, this period.
     pub(crate) fn tier_receipts(

@@ -1211,15 +1211,19 @@ fn fully_satisfied_need_releases_the_expired_surplus_unit_refund() {
     assert_eq!(control::cash(&closed.state, donor), floor);
 }
 
-#[test]
-fn a_donors_service_orders_reconcile_under_a_market_policy() {
+/// The worked control under a market policy with the given wants, each seller posting its price
+/// through bounds that both equal it.
+fn market_policy_opening(
+    wants: Vec<babylon_material_circuit::HouseholdWant>,
+    spare_utility: bool,
+) -> (MaterialCatalog, MaterialCircuitState) {
     let (catalog, mut state) = control::opening();
     let mut definition = catalog.into_definition();
     definition.market_clearing = Some(babylon_material_circuit::MarketClearingPolicy {
         paying_order: (1..=7)
             .map(|g| (control::good(g), control::unit(g)))
             .collect(),
-        household_wants: vec![],
+        household_wants: wants,
     });
     // A product that clears by price has no seller with a fixed price (P12): each offer keeps its
     // posted price through bounds that both equal it.
@@ -1258,7 +1262,24 @@ fn a_donors_service_orders_reconcile_under_a_market_policy() {
             }
         };
     }
-    let catalog = MaterialCatalog::try_new(definition).expect("the policy catalog is valid");
+    if spare_utility {
+        // The donor needs one unit of utility per household, half what the provider can give, so
+        // the want has supply left to buy.
+        for need in &mut definition.household_needs {
+            if need.principal_id == control::donor() && need.good_id == control::good(3) {
+                need.basis = babylon_material_circuit::HouseholdNeedBasis::Households;
+            }
+        }
+    }
+    (
+        MaterialCatalog::try_new(definition).expect("the policy catalog is valid"),
+        state,
+    )
+}
+
+#[test]
+fn a_donors_service_orders_reconcile_under_a_market_policy() {
+    let (catalog, state) = market_policy_opening(vec![], false);
     let closed = control::close(&catalog, &state, &[], &[control::collection(1)])
         .expect("the donor's funding reconciles when requests are captured after the stages");
     assert_eq!(closed.collections.len(), 1);
@@ -1270,4 +1291,40 @@ fn a_donors_service_orders_reconcile_under_a_market_policy() {
             .any(|row| row.buyer == AccountId::Household(control::donor())),
         "the donor's service orders are in the close"
     );
+}
+
+#[test]
+fn a_donor_with_a_service_want_reconciles() {
+    use babylon_material_circuit::{HouseholdNeedBasis, HouseholdWant, WantTier};
+    let want = HouseholdWant {
+        principal_id: control::donor(),
+        tier: WantTier::Comfort,
+        good_id: control::good(3),
+        unit_id: control::unit(3),
+        basis: HouseholdNeedBasis::Households,
+        units_per_basis: 1,
+    };
+    let (plain_catalog, plain_state) = market_policy_opening(vec![], true);
+    let plain = control::close(&plain_catalog, &plain_state, &[], &[control::collection(1)])
+        .expect("the case without the want closes");
+    let (catalog, state) = market_policy_opening(vec![want], true);
+    let closed = control::close(&catalog, &state, &[], &[control::collection(1)])
+        .expect("a want's payment legs reconcile with the donor's collection");
+    assert_eq!(closed.collections.len(), 1);
+    assert_eq!(closed.collections[0].outcome, CollectionOutcome::Collected);
+    let bought: u64 = closed
+        .household_wants
+        .iter()
+        .filter(|row| row.principal_id == control::donor())
+        .map(|row| row.bought_quantity)
+        .sum();
+    assert!(bought >= 1, "the donor's money reaches the want");
+    let donors = |t: &MaterialCircuitTransition| {
+        t.household_services
+            .iter()
+            .filter(|row| row.principal_id == control::donor())
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(donors(&closed), donors(&plain));
 }

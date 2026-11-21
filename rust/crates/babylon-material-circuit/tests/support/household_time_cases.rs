@@ -797,3 +797,26 @@ fn the_next_periods_wants_follow_a_birth() {
         first.household_wants[0].wanted_quantity + 2
     );
 }
+
+#[test]
+fn an_unreached_want_leaves_household_time_as_it_was() {
+    let (catalog, opening) = want_opening();
+    let wanting = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("the want's period closes");
+    let mut definition = catalog.into_definition();
+    definition
+        .market_clearing
+        .as_mut()
+        .expect("a market policy")
+        .household_wants
+        .clear();
+    let plain_catalog = MaterialCatalog::try_new(definition).expect("a catalog without wants");
+    let plain = babylon_material_circuit::advance_material_circuit(&plain_catalog, &opening)
+        .expect("the period without the want closes");
+    assert_eq!(wanting.household_wants.len(), 1);
+    assert_eq!(
+        wanting.household_wants[0].bought_quantity, 0,
+        "the household's money does not reach its want"
+    );
+    assert_eq!(wanting.household_time, plain.household_time);
+}

@@ -1430,6 +1430,7 @@ pub(crate) fn close_household_finance(
         support.aid,
     )?;
     finance.collect_taxes(state, costs, money_transfers)?;
+    let want_orders = services.want_orders();
     let collections = crate::collection::close(
         catalog,
         support.collections,
@@ -1440,6 +1441,7 @@ pub(crate) fn close_household_finance(
             consumption: &households.consumption,
             services: &services.household,
             admissions: &services.collection_admissions,
+            want_orders: &want_orders,
             performance: &services.performance,
             time: &households.time,
             taxes: &finance.taxes,

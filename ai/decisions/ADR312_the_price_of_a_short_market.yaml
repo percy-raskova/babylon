@@ -14,7 +14,9 @@ ADR312_the_price_of_a_short_market:
         can pay for equals is what there is".
     - >-
         Director, 2026-11-20, on the repair of the national economy, chose "Fix
-        what is broken, keep what households pay": wages stay.
+        what is broken, keep what households pay": wages stay. (Replaced on
+        the same day by the rulings of ADR313: pay by trade and place, and
+        recipes and prices from the national accounts.)
     - >-
         Capital, Volume III, chapter 10: when demand exceeds supply "one buyer
         outbids another, within certain limits, and so raises the price of the
@@ -217,6 +219,7 @@ ADR312_the_price_of_a_short_market:
     (Tasks 8 and 9). The design and the plan were checked once against the code
     by a second reader before the build; its findings are in both.
   related:
+    - ADR313_the_national_economy_opens_in_balance
     - ADR306_household_units_in_wayne
     - ADR302_household_roster_and_counting
     - ADR184_capacity_belongs_to_organizations

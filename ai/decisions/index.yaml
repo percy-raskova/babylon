@@ -1,5 +1,5 @@
 meta:
-  version: 1.101.0
+  version: 1.102.0
   updated: '2026-11-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR313_the_national_economy_opens_in_balance:
+    title: The national economy opens in balance, with twelve trades, observed pay, tiers and benefits
+    status: accepted
+    date: '2026-11-20'
+    file: ADR313_the_national_economy_opens_in_balance.yaml
   ADR312_the_price_of_a_short_market:
     title: In a short market the price paid rises until what buyers can pay for equals what there is
     status: accepted

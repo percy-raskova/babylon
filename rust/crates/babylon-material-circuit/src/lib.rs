@@ -65,7 +65,8 @@ pub use financial::{
     validate_company_distributions, validate_distribution_receipts, CapitalContributionOrder,
     CapitalContributionReceipt, CompanyDistributionReceipt, CompanyPayoutPolicy, ContributionId,
     DistributionPolicy, DistributionReceipt, FinancialInstitutions, InstitutionLocation,
-    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicSpendingRule,
+    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicProgram,
+    PublicProgramKey, PublicProgramReceipt, PublicProgramTerms, PublicSpendingRule,
     PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt,
 };
 pub use household_time::{

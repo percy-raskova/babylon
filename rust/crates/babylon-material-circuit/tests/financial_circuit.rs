@@ -80,6 +80,7 @@ fn financial() -> FinancialInstitutions {
         public_budgets: vec![],
         public_allocations: vec![],
         contributions: vec![],
+        programs: vec![],
     }
 }
 fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {

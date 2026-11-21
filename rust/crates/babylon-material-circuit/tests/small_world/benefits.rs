@@ -1,10 +1,11 @@
 //! The small world with a fund: a second public account beside the treasury. The record is
 //! `reports/economy-repair-2026-11-20/small-world.md`, section "The fund".
 
-use super::support::{self, Fund, World, UTILITY};
+use super::support::{self, Fund, World, NO_EARNER, UTILITY};
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
-    MaterialCircuitTransition, PublicSpendingRule, TaxReceipt,
+    MaterialCircuitTransition, MonetaryCircuit, PublicProgram, PublicProgramKey,
+    PublicProgramTerms, PublicSpendingRule, PublicTransferTreatment, TaxReceipt,
 };
 
 /// A fund that taxes at the given rates, holds no cash and pays nothing.
@@ -154,5 +155,217 @@ fn a_tax_row_repeated_for_one_recipient_is_refused() {
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&catalog, &state).err(),
         Some(MaterialCircuitError::DuplicateRow)
+    );
+}
+
+fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
+    let CircuitAccounting::Monetary(e) = &mut state.accounting else {
+        panic!("the small world is monetary")
+    };
+    e
+}
+
+/// The fund pays 480 a period to the account that does not work; the world is as still as the taxed
+/// one, with the support shared between the treasury and the fund.
+#[test]
+fn the_fund_pays_each_person_and_the_world_is_still() {
+    let world = World::benefits();
+    let first = support::assert_still(&world);
+    assert_eq!(first.employed, [12, 4, 4, 4]);
+    assert_eq!(first.public_receipts, 640);
+    assert_eq!(first.public_payments, 640);
+    assert_eq!(first.cash["fund"], 960);
+    assert_eq!(first.cash["public"], 160);
+    let key = (NO_EARNER.to_owned(), "supported");
+    assert_eq!(first.program_due[&key], usd(480));
+    assert_eq!(first.program_paid[&key], usd(480));
+    assert_eq!(first.covered["supported"], 8);
+}
+
+fn set_supported_persons(state: &mut MaterialCircuitState, persons: u64) {
+    let cohort = economy_mut(state)
+        .recurring
+        .as_mut()
+        .expect("the world is recurring")
+        .households
+        .iter_mut()
+        .find(|h| h.principal_id == support::supported())
+        .expect("the supported account has a cohort");
+    cohort.persons = persons;
+}
+
+/// A per-person benefit reads the persons of the cohort as the period opens.
+#[test]
+fn per_person_reads_the_persons_of_the_cohort() {
+    let (catalog, mut state) = World::benefits().build();
+    set_supported_persons(&mut state, 6);
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("period 1 closes");
+    let [row] = closed.public_programs.as_slice() else {
+        panic!("one program and one recipient give one receipt")
+    };
+    assert_eq!(row.covered_persons, 6);
+    assert_eq!(row.due.micro_units(), usd(360));
+    assert_eq!(row.paid.micro_units(), usd(360));
+}
+
+/// The treasury is paid as today whatever the fund does: a fund with no cash pays nothing, and the
+/// treasury's receipt is the one it has without the fund's program and budget.
+#[test]
+fn the_place_pays_as_today_beside_the_funds_program() {
+    let mut world = World::benefits();
+    world.fund.as_mut().expect("a fund").opening_cash = support::dollars(0);
+    let (catalog, closed) = close_first(&world);
+    let [row] = closed.public_programs.as_slice() else {
+        panic!("one program and one recipient give one receipt")
+    };
+    assert_eq!(row.due.micro_units(), usd(480));
+    assert_eq!(row.paid.micro_units(), 0);
+    assert_eq!(row.unfunded.micro_units(), usd(480));
+    let amounts: Vec<_> = closed
+        .public_budgets
+        .iter()
+        .map(|r| {
+            (
+                r.requested.micro_units(),
+                r.paid.micro_units(),
+                r.unfunded.micro_units(),
+            )
+        })
+        .collect();
+    assert_eq!(amounts, [(usd(160), usd(160), 0)]);
+    let (_, mut state) = world.build();
+    let fund = support::fund_account();
+    let e = economy_mut(&mut state);
+    e.financial.programs.clear();
+    e.financial
+        .public_budgets
+        .retain(|b| b.public_account != fund);
+    let control = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the control closes");
+    assert_eq!(closed.public_budgets, control.public_budgets);
+}
+
+/// A standing row and a program of one rank draw on one budget and are cut together.
+#[test]
+fn a_program_and_a_standing_row_of_one_rank_are_cut_together() {
+    let mut world = World::benefits();
+    world.fund.as_mut().expect("a fund").opening_cash = support::dollars(480);
+    let (catalog, mut state) = world.build();
+    economy_mut(&mut state).financial.public_allocations.push(
+        babylon_material_circuit::PublicAllocation {
+            public_account: support::fund_account(),
+            recipient: AccountId::Household(support::supported()),
+            treatment: PublicTransferTreatment::HouseholdIncomeSupport,
+            priority: 0,
+            amount_per_period: support::dollars(480),
+        },
+    );
+    let before = total(&state);
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("period 1 closes");
+    assert_eq!(total(&closed.state), before, "money is conserved");
+    let fund_row = closed
+        .public_budgets
+        .iter()
+        .find(|r| r.public_account == support::fund_account())
+        .expect("the standing row has a receipt");
+    assert_eq!(fund_row.paid.micro_units(), usd(240));
+    assert_eq!(closed.public_programs[0].paid.micro_units(), usd(240));
+}
+
+fn refused(mutate: impl FnOnce(&mut MaterialCircuitState)) {
+    let (catalog, mut state) = World::benefits().build();
+    mutate(&mut state);
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &state).err(),
+        Some(MaterialCircuitError::PublicProgramInvariant)
+    );
+}
+
+fn first_program(state: &mut MaterialCircuitState) -> &mut PublicProgram {
+    &mut economy_mut(state).financial.programs[0]
+}
+
+#[test]
+fn bad_programs_are_refused() {
+    for text in [
+        "No-earner",
+        "",
+        "1earner",
+        "a_very_long_key_of_more_than_32_bytes",
+    ] {
+        assert_eq!(
+            PublicProgramKey::new(text),
+            Err(MaterialCircuitError::PublicProgramInvariant),
+            "{text:?}"
+        );
+    }
+    refused(|state| {
+        let again = first_program(state).clone();
+        economy_mut(state).financial.programs.push(again);
+    });
+    refused(|state| first_program(state).payer = support::treasury());
+    refused(|state| {
+        economy_mut(state)
+            .recurring
+            .as_mut()
+            .expect("recurring")
+            .households
+            .retain(|h| h.principal_id != support::supported());
+    });
+    refused(|state| {
+        first_program(state).terms = PublicProgramTerms::PerPerson {
+            amount_per_person: support::dollars(0),
+        };
+    });
+    refused(|state| first_program(state).recipients = vec![support::supported(); 2]);
+}
+
+fn two_programs() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = World::benefits().build();
+    let programs = &mut economy_mut(&mut state).financial.programs;
+    let mut first = programs[0].clone();
+    first.key = PublicProgramKey::new("aa_prog").expect("a key");
+    let mut second = first.clone();
+    second.key = PublicProgramKey::new("bb_prog").expect("a key");
+    *programs = vec![first, second];
+    (catalog, state)
+}
+
+#[test]
+fn a_program_writes_the_extended_state_and_round_trips() {
+    let (catalog, state) = World::benefits().build();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("the state encodes");
+    assert_eq!(version(&bytes), 25);
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+        .expect("the state decodes");
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &restored)
+            .expect("it encodes again"),
+        bytes
+    );
+    // Two programs written out of order: decode refuses them.
+    let (catalog, state) = two_programs();
+    let mut bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("two programs encode");
+    let find = |bytes: &[u8], key: &[u8]| {
+        let mut needle = vec![u8::try_from(key.len()).expect("short")];
+        needle.extend_from_slice(key);
+        bytes
+            .windows(needle.len())
+            .position(|w| w == needle)
+            .expect("the key is in the bytes")
+    };
+    let (a, b) = (find(&bytes, b"aa_prog"), find(&bytes, b"bb_prog"));
+    let row = b - a;
+    let first = bytes[a..b].to_vec();
+    let second = bytes[b..b + row].to_vec();
+    bytes[a..b].copy_from_slice(&second);
+    bytes[b..b + row].copy_from_slice(&first);
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes).err(),
+        Some(MaterialCircuitError::WireNoncanonical)
     );
 }

@@ -1871,7 +1871,7 @@ fn company_receipt_format(
 ) -> Result<MaterialReceiptFormat, MaterialWorldError> {
     // The stored records do not yet carry a budget in proportion, a program or a layoff record; a
     // later change teaches the register, its stored records and its projections.
-    if transition.state.has_public_program_extension() {
+    if transition.state.has_public_program_extension() || !transition.public_programs.is_empty() {
         return Err(MaterialWorldError::Wire);
     }
     let format = if super::lifecycle_receipt::validate_close(

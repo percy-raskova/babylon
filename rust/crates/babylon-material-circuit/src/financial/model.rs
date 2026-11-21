@@ -1,5 +1,7 @@
 //! Captured claims and budgets; identity does not infer class or jurisdiction.
-use crate::{AccountId, CompanyId, PublicAccountId, SiteId};
+use crate::{
+    AccountId, CompanyId, FinalDemandPrincipalId, MaterialCircuitError, PublicAccountId, SiteId,
+};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use std::collections::BTreeSet;
@@ -114,6 +116,8 @@ pub struct FinancialInstitutions {
     pub public_budgets: Vec<PublicBudget>,
     pub public_allocations: Vec<PublicAllocation>,
     pub contributions: Vec<CapitalContributionOrder>,
+    /// Named programs of the public accounts that spend in proportion, in key order.
+    pub programs: Vec<PublicProgram>,
 }
 impl FinancialInstitutions {
     /// Whether the state needs the tail of the financial rows (version 25 or 26): a budget in
@@ -121,9 +125,11 @@ impl FinancialInstitutions {
     #[must_use]
     pub(crate) fn has_public_program_extension(&self) -> bool {
         let mut payers = BTreeSet::new();
-        self.public_budgets
-            .iter()
-            .any(|b| b.rule != PublicSpendingRule::CappedInOrder)
+        !self.programs.is_empty()
+            || self
+                .public_budgets
+                .iter()
+                .any(|b| b.rule != PublicSpendingRule::CappedInOrder)
             || !self.taxes.iter().all(|r| payers.insert(r.payer))
     }
     #[must_use]
@@ -136,7 +142,78 @@ impl FinancialInstitutions {
             public_budgets: vec![],
             public_allocations: vec![],
             contributions: vec![],
+            programs: vec![],
         }
+    }
+}
+/// A short name that politics refers to: 1 to 32 bytes of `a-z`, `0-9` and `_`, a letter first.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PublicProgramKey(String);
+impl PublicProgramKey {
+    /// # Errors
+    /// `PublicProgramInvariant` for an empty, long or ill-formed key.
+    pub fn new(text: &str) -> Result<Self, MaterialCircuitError> {
+        let mut bytes = text.bytes();
+        let well_formed = bytes.next().is_some_and(|b| b.is_ascii_lowercase())
+            && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+        if !well_formed || text.len() > 32 {
+            return Err(MaterialCircuitError::PublicProgramInvariant);
+        }
+        Ok(Self(text.to_owned()))
+    }
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+/// What a program pays; its kind is fixed and its figures may change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublicProgramTerms {
+    /// For each person of the recipient account's cohort (tag 1).
+    PerPerson { amount_per_person: Currency },
+    /// A share of the pay lost, for a worker laid off in play (tag 2).
+    AfterLayoff {
+        wage_share_bps: u16,
+        half_periods: u16,
+    },
+}
+/// A named rule of one public account that pays each of its recipients every period.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicProgram {
+    /// Fixed.
+    pub key: PublicProgramKey,
+    /// Fixed.
+    pub payer: PublicAccountId,
+    /// May change.
+    pub rank: u32,
+    /// Its kind is fixed; its figures may change.
+    pub terms: PublicProgramTerms,
+    /// May change. Each is the principal of a household account.
+    pub recipients: Vec<FinalDemandPrincipalId>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicProgramReceipt {
+    pub period: u64,
+    pub public_account: PublicAccountId,
+    pub program: PublicProgramKey,
+    pub recipient: FinalDemandPrincipalId,
+    pub rank: u32,
+    /// Per person: the account's persons. After a layoff: the persons covered this period.
+    pub covered_persons: u64,
+    pub due: Currency,
+    pub paid: Currency,
+    pub unfunded: Currency,
+}
+impl PublicProgramReceipt {
+    /// # Errors
+    /// `PublicProgramInvariant` unless `period > 0` and `0 <= paid <= due = paid + unfunded`.
+    pub fn validate(&self) -> Result<(), MaterialCircuitError> {
+        let sum = self.paid.checked_add(self.unfunded);
+        let zero = Currency::from_micro_units(0);
+        if self.period == 0 || self.paid < zero || self.unfunded < zero || sum != Ok(self.due) {
+            return Err(MaterialCircuitError::PublicProgramInvariant);
+        }
+        Ok(())
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]

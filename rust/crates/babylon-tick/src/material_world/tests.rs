@@ -933,3 +933,30 @@ fn the_register_refuses_a_state_with_the_extension() {
         Err(MaterialWorldError::Wire)
     );
 }
+
+#[test]
+fn the_register_refuses_program_receipts() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{
+        FinalDemandPrincipalId, PublicAccountId, PublicProgramKey, PublicProgramReceipt,
+    };
+    let (catalog, mut transition) = round2_agency_transition(true, false);
+    assert!(!transition.state.has_public_program_extension());
+    assert!(material_world::encode_material_receipts(&catalog, 1, &transition).is_ok());
+    let zero = Currency::from_micro_units(0);
+    transition.public_programs.push(PublicProgramReceipt {
+        period: 1,
+        public_account: PublicAccountId::from_bytes([240; 32]),
+        program: PublicProgramKey::new("benefit").expect("a well-formed key"),
+        recipient: FinalDemandPrincipalId::from_bytes([241; 32]),
+        rank: 0,
+        covered_persons: 0,
+        due: zero,
+        paid: zero,
+        unfunded: zero,
+    });
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 1, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}

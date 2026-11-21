@@ -7,6 +7,8 @@ pub(crate) use company::{validate_company_accounts, validate_company_policy};
 
 mod model;
 
+mod programs;
+
 mod receipts;
 
 mod validation;

@@ -1570,6 +1570,10 @@ pub fn close_material_period_with_support(
 /// Close using the prior authenticated company evidence and finite-kernel outcomes.
 /// # Errors
 /// Refuses incomplete, duplicated, stale or ineligible company choices.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one transition record is assembled from every receipt family"
+)]
 pub fn close_material_period_with_portfolios(
     catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
@@ -1644,6 +1648,7 @@ pub fn close_material_period_with_portfolios(
             equipment_wear: settled.equipment_wear,
             investment,
             public_budgets: close.funded.finance.public_budgets,
+            public_programs: close.funded.finance.programs,
             taxes: close.funded.finance.taxes,
             distributions: close.funded.finance.distributions,
             company_distributions: close.funded.finance.company_distributions,

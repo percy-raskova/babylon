@@ -1,11 +1,12 @@
 use super::FinancialInstitutions;
+use super::PublicProgramTerms;
 use super::PublicSpendingRule;
 use super::PublicTransferTreatment;
 use super::Result;
 use crate::MonetaryBook;
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState,
-    MAX_MATERIAL_CIRCUIT_ROWS,
+    MAX_MATERIAL_CIRCUIT_ROWS, MAX_PUBLIC_PROGRAMS,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -20,6 +21,10 @@ pub(crate) fn canonicalize(f: &mut FinancialInstitutions) {
     f.public_allocations
         .sort_by_key(|r| (r.public_account, r.priority, r.recipient, r.treatment));
     f.contributions.sort_by_key(|r| r.id);
+    f.programs.sort_by(|a, b| a.key.cmp(&b.key));
+    for program in &mut f.programs {
+        program.recipients.sort();
+    }
 }
 fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<()> {
     bounded_unique(rows, MAX_MATERIAL_CIRCUIT_ROWS, key)
@@ -123,6 +128,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
         }
     }
     validate_public(f, &e.book)?;
+    validate_programs(state, f)?;
     for r in &f.contributions {
         if r.due_period < state.period
             || r.amount.micro_units() <= 0
@@ -175,6 +181,61 @@ fn validate_public(f: &FinancialInstitutions, book: &MonetaryBook) -> Result<()>
         {
             return Err(MaterialCircuitError::FinancialInvariant);
         }
+    }
+    Ok(())
+}
+/// Keys unique, payer in proportion, recipients household accounts; per person, each with a cohort.
+fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) -> Result<()> {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        return Ok(());
+    };
+    let invalid = MaterialCircuitError::PublicProgramInvariant;
+    if f.programs.len() > MAX_PUBLIC_PROGRAMS {
+        return Err(invalid);
+    }
+    let mut keys = BTreeSet::new();
+    let mut recipients = 0_usize;
+    for program in &f.programs {
+        let in_proportion = f.public_budgets.iter().any(|b| {
+            b.public_account == program.payer && b.rule == PublicSpendingRule::CashInProportion
+        });
+        let mut seen = BTreeSet::new();
+        recipients = recipients.saturating_add(program.recipients.len());
+        if !keys.insert(&program.key)
+            || !in_proportion
+            || program.recipients.is_empty()
+            || program.recipients.iter().any(|r| !seen.insert(*r))
+            || program
+                .recipients
+                .iter()
+                .any(|r| e.book.cash(AccountId::Household(*r)).is_err())
+        {
+            return Err(invalid);
+        }
+        match program.terms {
+            PublicProgramTerms::PerPerson { amount_per_person } => {
+                let cohorts = e.recurring.as_ref().map(|r| &r.households);
+                if amount_per_person.micro_units() <= 0
+                    || program
+                        .recipients
+                        .iter()
+                        .any(|r| !cohorts.is_some_and(|c| c.iter().any(|h| h.principal_id == *r)))
+                {
+                    return Err(invalid);
+                }
+            }
+            PublicProgramTerms::AfterLayoff {
+                wage_share_bps,
+                half_periods,
+            } => {
+                if !(1..=10_000).contains(&wage_share_bps) || !(1..=26).contains(&half_periods) {
+                    return Err(invalid);
+                }
+            }
+        }
+    }
+    if recipients > MAX_MATERIAL_CIRCUIT_ROWS {
+        return Err(invalid);
     }
     Ok(())
 }

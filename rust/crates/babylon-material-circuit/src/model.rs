@@ -36,6 +36,8 @@ pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
 pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
 /// Two bases and two recipients for each captured account.
 pub const MAX_TAX_POLICIES: usize = 262_144;
+/// Named programs of the public accounts.
+pub const MAX_PUBLIC_PROGRAMS: usize = 256;
 /// Designed ceiling for 87,960 captured household needs and purchase policies.
 pub const MAX_HOUSEHOLD_NEEDS: usize = 131_072;
 /// Two tiers of the bound on household needs.
@@ -96,6 +98,8 @@ use crate::PriceReceipt;
 use crate::ProcurementReceipt;
 use crate::ProductionPlanReceipt;
 use crate::PublicBudgetReceipt;
+use crate::PublicProgramReceipt;
+use crate::RecurringEconomy;
 use crate::RollingProcessSupply;
 use crate::ServiceConnection;
 use crate::ServiceMarketReceipt;
@@ -535,6 +539,14 @@ pub struct MaterialCircuitState {
 }
 
 impl MaterialCircuitState {
+    /// The recurring economy of a monetary state that has one.
+    #[must_use]
+    pub(crate) fn recurring_economy(&self) -> Option<&RecurringEconomy> {
+        let CircuitAccounting::Monetary(e) = &self.accounting else {
+            return None;
+        };
+        e.recurring.as_deref()
+    }
     /// Version 25 or 26: a budget in proportion, a program or a layoff record.
     #[must_use]
     pub fn has_public_program_extension(&self) -> bool {
@@ -748,6 +760,8 @@ pub struct MaterialCircuitTransition {
     pub equipment_wear: Vec<EquipmentWearReceipt>,
     pub investment: Vec<InvestmentReceipt>,
     pub public_budgets: Vec<PublicBudgetReceipt>,
+    /// One row for each program and recipient, in (program key, recipient) order.
+    pub public_programs: Vec<PublicProgramReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
     pub company_basis: Vec<CompanyBasisMovement>,

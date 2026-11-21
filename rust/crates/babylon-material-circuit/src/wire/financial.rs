@@ -2,9 +2,10 @@
 use super::accounting;
 use super::Cursor;
 use crate::{
-    CapitalContributionOrder, ContributionId, DistributionPolicy, FinancialInstitutions,
-    InstitutionLocation, MaterialCircuitError, OwnershipClaim, PublicAccountId, PublicAllocation,
-    PublicBudget, PublicSpendingRule, PublicTransferTreatment, SiteId, TaxBasis, TaxPolicy,
+    CapitalContributionOrder, ContributionId, DistributionPolicy, FinalDemandPrincipalId,
+    FinancialInstitutions, InstitutionLocation, MaterialCircuitError, OwnershipClaim,
+    PublicAccountId, PublicAllocation, PublicBudget, PublicProgram, PublicProgramKey,
+    PublicProgramTerms, PublicSpendingRule, PublicTransferTreatment, SiteId, TaxBasis, TaxPolicy,
 };
 use babylon_kernel::economic_location::EconomicLocation;
 use std::result::Result as StdResult;
@@ -33,6 +34,7 @@ pub(super) fn decode(c: &mut Cursor<'_>, extended: bool) -> Result<FinancialInst
         public_budgets: decode_public_budgets(c)?,
         public_allocations: decode_public_allocations(c)?,
         contributions: decode_contributions(c)?,
+        programs: vec![],
     };
     if extended {
         decode_tail(c, &mut f)?;
@@ -43,7 +45,7 @@ pub(super) fn decode(c: &mut Cursor<'_>, extended: bool) -> Result<FinancialInst
 /// budget in its order; then (later tasks) the programs and the layoff records, each a `u32` count.
 fn append_tail(out: &mut Vec<u8>, f: &FinancialInstitutions) -> Result<()> {
     super::append_rows(out, &f.public_budgets, |b, r| b.push(r.rule as u8))?;
-    out.extend_from_slice(&0_u32.to_be_bytes());
+    append_programs(out, &f.programs)?;
     out.extend_from_slice(&0_u32.to_be_bytes());
     Ok(())
 }
@@ -59,13 +61,78 @@ fn decode_tail(c: &mut Cursor<'_>, f: &mut FinancialInstitutions) -> Result<()> 
     for (budget, rule) in f.public_budgets.iter_mut().zip(rules) {
         budget.rule = rule;
     }
-    // No programs and no records yet: a nonzero count is not canonical.
-    for _ in 0..2 {
-        if c.u32()? != 0 {
-            return Err(MaterialCircuitError::WireNoncanonical);
-        }
+    f.programs = decode_programs(c)?;
+    // No records yet: a nonzero count is not canonical.
+    if c.u32()? != 0 {
+        return Err(MaterialCircuitError::WireNoncanonical);
     }
     Ok(())
+}
+/// Per program: key length `u8` and its bytes, payer, rank `u32`, a tag `u8`, the terms, then a `u32`
+/// count of recipients and 32 bytes each. Terms: tag 1 the amount per person, tag 2 the wage share
+/// `u16` and the half periods `u16`.
+fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
+    super::append_bounded_rows(out, rows, crate::MAX_PUBLIC_PROGRAMS, |b, r| {
+        let key = r.key.as_str().as_bytes();
+        b.push(u8::try_from(key.len()).unwrap_or(u8::MAX));
+        b.extend_from_slice(key);
+        b.extend_from_slice(&r.payer.as_bytes());
+        b.extend_from_slice(&r.rank.to_be_bytes());
+        match r.terms {
+            PublicProgramTerms::PerPerson { amount_per_person } => {
+                b.push(1);
+                b.extend_from_slice(&amount_per_person.micro_units().to_be_bytes());
+            }
+            PublicProgramTerms::AfterLayoff {
+                wage_share_bps,
+                half_periods,
+            } => {
+                b.push(2);
+                b.extend_from_slice(&wage_share_bps.to_be_bytes());
+                b.extend_from_slice(&half_periods.to_be_bytes());
+            }
+        }
+        b.extend_from_slice(
+            &u32::try_from(r.recipients.len())
+                .unwrap_or(u32::MAX)
+                .to_be_bytes(),
+        );
+        for recipient in &r.recipients {
+            b.extend_from_slice(&recipient.as_bytes());
+        }
+    })
+}
+fn decode_programs(c: &mut Cursor<'_>) -> Result<Vec<PublicProgram>> {
+    let rows = super::decode_bounded_rows(c, crate::MAX_PUBLIC_PROGRAMS, |b| {
+        let length = usize::from(b.u8()?);
+        let text = std::str::from_utf8(b.take(length)?)
+            .map_err(|_| MaterialCircuitError::WireNoncanonical)?;
+        let key = PublicProgramKey::new(text)?;
+        let payer = PublicAccountId::from_bytes(b.array()?);
+        let rank = b.u32()?;
+        let terms = match b.u8()? {
+            1 => PublicProgramTerms::PerPerson {
+                amount_per_person: accounting::decode_currency(b)?,
+            },
+            2 => PublicProgramTerms::AfterLayoff {
+                wage_share_bps: b.u16()?,
+                half_periods: b.u16()?,
+            },
+            _ => return Err(MaterialCircuitError::WireEnum),
+        };
+        let recipients =
+            super::decode_rows(b, |b| Ok(FinalDemandPrincipalId::from_bytes(b.array()?)))?;
+        accounting::ordered_rows(&recipients, |r| *r)?;
+        Ok(PublicProgram {
+            key,
+            payer,
+            rank,
+            terms,
+            recipients,
+        })
+    })?;
+    accounting::ordered_rows(&rows, |r| r.key.clone())?;
+    Ok(rows)
 }
 fn append_locations(out: &mut Vec<u8>, rows: &[InstitutionLocation]) -> Result<()> {
     super::append_rows(out, rows, |b, r| {

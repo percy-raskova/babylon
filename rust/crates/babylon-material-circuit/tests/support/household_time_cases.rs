@@ -14,6 +14,7 @@ use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::MoneyTransferPurpose;
 use babylon_material_circuit::ShiftId;
@@ -602,6 +603,93 @@ fn lifecycle_changes_only_next_opening_needs_and_restarts_without_a_new_job() {
     assert_eq!(second_order.requested_quantity, 8);
     assert!(second_order.admitted_quantity <= second_order.requested_quantity);
     assert!(second_order.fulfilled_quantity <= second_order.admitted_quantity);
+}
+
+#[test]
+fn a_benefit_per_person_follows_births() {
+    use babylon_material_circuit::{
+        CashAccount, HouseholdLifecycleBook, HouseholdLifecycleRates, InstitutionLocation,
+        PublicAccountId, PublicBudget, PublicProgram, PublicProgramKey, PublicProgramTerms,
+        PublicSpendingRule, ResidentAges,
+    };
+    let (catalog, mut opening) = time_opening(4);
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary")
+    };
+    // A fund with cash, a place and a budget in proportion, paying $10 for each resident person.
+    let fund = PublicAccountId::from_bytes([77; 32]);
+    let mut accounts = e.book.snapshot().accounts;
+    accounts.push(CashAccount {
+        id: AccountId::Public(fund),
+        cash: crate::money(1_000_000_000),
+    });
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    let costs = e.costs.snapshot();
+    e.costs = HistoricalCostBook::open(&e.book, costs.stocks, costs.freight, vec![], vec![])
+        .expect("the fixture opens the authored source");
+    let location = "county:26163"
+        .parse()
+        .expect("the authored literal parses as a county");
+    e.financial.locations.push(InstitutionLocation {
+        account: AccountId::Public(fund),
+        location,
+    });
+    e.financial.public_budgets.push(PublicBudget {
+        public_account: fund,
+        period_cap: crate::money(0),
+        cash_floor: crate::money(0),
+        rule: PublicSpendingRule::CashInProportion,
+    });
+    e.financial.programs.push(PublicProgram {
+        key: PublicProgramKey::new("per_person").expect("a well-formed key"),
+        payer: fund,
+        rank: 0,
+        terms: PublicProgramTerms::PerPerson {
+            amount_per_person: crate::money(10_000_000),
+        },
+        recipients: vec![crate::household()],
+    });
+    let recurring = e.recurring.as_mut().expect("recurring household economy");
+    let purchase = &mut recurring.household_purchases[0];
+    purchase.enabled = true;
+    purchase.maximum_purchase = 4;
+    purchase.target_closing_stock = 4;
+    let c = &recurring.households[0];
+    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+        panic!("time")
+    };
+    time.lifecycle = Some(
+        HouseholdLifecycleBook::new(
+            HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: 1_000_000,
+                deaths_per_million_per_period: [0; 4],
+            },
+            vec![(
+                c.principal_id,
+                ResidentAges {
+                    under_16: c.persons - 4,
+                    age_18_64: 4,
+                    ..ResidentAges::default()
+                },
+            )],
+        )
+        .expect("valid captured age exposure"),
+    );
+    time.lifecycle
+        .as_mut()
+        .expect("modeled household lifecycle")
+        .purchase_buffer_periods = Some(1);
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("valid recurring economic close");
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+        .expect("valid recurring economic close");
+    assert_eq!(first.household_lifecycle[0].births, 4);
+    let due = |t: &MaterialCircuitTransition| t.public_programs[0].due.micro_units();
+    assert_eq!(due(&next) - due(&first), 40_000_000, "four births at $10");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
+        .expect("canonical state encodes");
+    let at = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
+    assert_eq!(u16::from_be_bytes([bytes[at], bytes[at + 1]]), 26);
 }
 
 #[test]

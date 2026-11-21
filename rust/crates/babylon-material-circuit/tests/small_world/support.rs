@@ -21,13 +21,17 @@ use babylon_material_circuit::{
     MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MerchantHandling,
     MerchantHandlingCoefficient, MerchantRole, MonetaryBook, MonetaryCircuit, OwnershipClaim,
     PricePolicy, ProcessId, ProcessOutput, ProductionCommitment, ProductionDemandPolicy,
-    PublicAccountId, PublicAllocation, PublicBudget, PublicTransferTreatment, RecurringEconomy,
-    ReplenishmentPolicy, RouteId, SellerOffer, ServiceConnection, ServiceInputPolicy, ServiceStage,
-    SiteId, SiteLogisticsNode, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
-    StaffingPoolId, StaffingPoolState, StaffingState, StaffingWorkSource, StockCarryingValue,
-    SupplierRoute, SupplierTransport, TaxBasis, TaxPolicy, UnitId, WantTier,
+    PublicAccountId, PublicAllocation, PublicBudget, PublicProgram, PublicProgramKey,
+    PublicProgramTerms, PublicTransferTreatment, RecurringEconomy, ReplenishmentPolicy, RouteId,
+    SellerOffer, ServiceConnection, ServiceInputPolicy, ServiceStage, SiteId, SiteLogisticsNode,
+    StaffingMemberId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState,
+    StaffingState, StaffingWorkSource, StockCarryingValue, SupplierRoute, SupplierTransport,
+    TaxBasis, TaxPolicy, UnitId, WantTier,
 };
 use std::collections::BTreeMap;
+
+/// The key of the fund's benefit for each person.
+pub(crate) const NO_EARNER: &str = "no_earner";
 
 /// The number of periods of every run.
 pub(crate) const PERIODS: u64 = 34;
@@ -81,11 +85,11 @@ fn owner() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([20; 32])
 }
 
-fn supported() -> FinalDemandPrincipalId {
+pub(crate) fn supported() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([21; 32])
 }
 
-fn treasury() -> PublicAccountId {
+pub(crate) fn treasury() -> PublicAccountId {
     PublicAccountId::from_bytes([30; 32])
 }
 
@@ -123,8 +127,7 @@ pub(crate) struct Fund {
     pub wage_bps: u16,
     pub operating_bps: u16,
     pub opening_cash: Currency,
-    /// The benefit for each person of the account that does not work (Task 3).
-    #[allow(dead_code, reason = "the benefits of the next task read it")]
+    /// The benefit for each person of the account that does not work.
     pub per_person: Option<Currency>,
     /// The share of a laid-off worker's pay and its length in half periods (Task 4).
     #[allow(dead_code, reason = "the layoff benefit of a later task reads it")]
@@ -192,6 +195,26 @@ impl World {
             }),
             ..Self::plain()
         }
+    }
+
+    /// The taxed world with its tax shared between the treasury and a fund: the treasury at 500
+    /// points and the fund at 1,500. The fund opens with two periods of payments and pays `no_earner`,
+    /// $60 a person, to the account that does not work; the treasury pays the rest of the support.
+    pub(crate) fn benefits() -> Self {
+        let mut world = Self::taxed();
+        let taxes = world
+            .taxes
+            .as_mut()
+            .expect("the taxed world has a treasury");
+        taxes.wage_bps = 500;
+        taxes.operating_bps = 500;
+        world.with_fund(Fund {
+            wage_bps: 1_500,
+            operating_bps: 1_500,
+            opening_cash: dollars(960),
+            per_person: Some(dollars(60)),
+            after_layoff: None,
+        })
     }
 
     /// P1, less demand: the owner account needs half as much.
@@ -661,6 +684,15 @@ impl World {
             cash_floor: dollars(0),
             rule: PublicSpendingRule::CashInProportion,
         });
+        if let Some(amount_per_person) = fund.per_person {
+            f.programs.push(PublicProgram {
+                key: PublicProgramKey::new(NO_EARNER).expect("a well-formed key"),
+                payer: fund_account(),
+                rank: 0,
+                terms: PublicProgramTerms::PerPerson { amount_per_person },
+                recipients: vec![supported()],
+            });
+        }
     }
 
     /// The basket of one person at the opening prices.
@@ -672,9 +704,15 @@ impl World {
         )
     }
 
+    /// What the treasury pays the supported account: its basket, less the fund's benefit.
     fn support_payment(&self) -> Currency {
+        let benefit = self
+            .fund
+            .as_ref()
+            .and_then(|fund| fund.per_person)
+            .map_or(0, Currency::micro_units);
         Currency::from_micro_units(
-            self.basket().micro_units() * i128::from(self.supported_persons()),
+            (self.basket().micro_units() - benefit) * i128::from(self.supported_persons()),
         )
     }
 
@@ -946,6 +984,11 @@ pub(crate) struct Snapshot {
     pub tier_values: BTreeMap<&'static str, [(i128, i128); 2]>,
     /// By account, how well it lived this period. Empty without wants.
     pub standards: BTreeMap<&'static str, HouseholdStandard>,
+    /// By program key and account name, in micro-units, what each program owed and paid.
+    pub program_due: BTreeMap<(String, &'static str), i128>,
+    pub program_paid: BTreeMap<(String, &'static str), i128>,
+    /// By account name, the persons the programs counted for it.
+    pub covered: BTreeMap<&'static str, u64>,
     pub public_receipts: i128,
     pub public_payments: i128,
     pub total_money: i128,
@@ -1124,7 +1167,20 @@ fn snapshot(
         cleared_cents[i] = cleared_cents[i].max(row.clearing_price.micro_units() / 10_000);
     }
     let (want_bought, tier_values, standards) = tier_measures(closed);
+    let mut program_due = BTreeMap::new();
+    let mut program_paid = BTreeMap::new();
+    let mut covered = BTreeMap::new();
+    for row in &closed.public_programs {
+        let name = account_name(AccountId::Household(row.recipient));
+        let key = (row.program.as_str().to_owned(), name);
+        program_due.insert(key.clone(), row.due.micro_units());
+        program_paid.insert(key, row.paid.micro_units());
+        *covered.entry(name).or_insert(0) += row.covered_persons;
+    }
     Snapshot {
+        program_due,
+        program_paid,
+        covered,
         period: state.period - 1,
         cleared_cents,
         want_bought,
@@ -1153,11 +1209,12 @@ fn snapshot(
             .map(|r| r.collected.micro_units())
             .sum::<i128>()
             / 1_000_000,
-        public_payments: closed
+        public_payments: (closed
             .public_budgets
             .iter()
             .map(|r| r.paid.micro_units())
-            .sum::<i128>()
+            .chain(closed.public_programs.iter().map(|r| r.paid.micro_units()))
+            .sum::<i128>())
             / 1_000_000,
         total_money: e
             .book
@@ -1303,6 +1360,13 @@ pub(crate) fn describe(name: &str, rows: &[Snapshot]) -> String {
             row.tier_values,
             row.standards,
         );
+        if !row.program_due.is_empty() {
+            let _ = writeln!(
+                text,
+                "    programs due {:?} paid {:?} covered {:?}",
+                row.program_due, row.program_paid, row.covered
+            );
+        }
     }
     text
 }

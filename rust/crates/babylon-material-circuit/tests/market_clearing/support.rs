@@ -75,6 +75,8 @@ pub(crate) struct Fixture {
     pub owed: u64,
     /// A process at the retailer that takes the first good as an input and plans this many batches.
     pub process_batches: Option<u64>,
+    /// Write no inventory row and no carrying value for the retailer's shelves.
+    pub no_stock_rows: bool,
 }
 
 impl Fixture {
@@ -91,6 +93,7 @@ impl Fixture {
             paying_order: Some(vec![2]),
             owed: 0,
             process_batches: None,
+            no_stock_rows: false,
         }
     }
 
@@ -317,6 +320,7 @@ impl Fixture {
         let mut carrying: Vec<_> = self
             .shelves
             .iter()
+            .filter(|_| !self.no_stock_rows)
             .map(|shelf| StockCarryingValue {
                 owner: AccountId::Site(retailer),
                 good_id: good(shelf.good),
@@ -377,6 +381,7 @@ impl Fixture {
             inventory: self
                 .shelves
                 .iter()
+                .filter(|_| !self.no_stock_rows)
                 .map(|shelf| InventoryRow {
                     site_id: retailer,
                     good_id: good(shelf.good),

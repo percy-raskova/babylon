@@ -3,7 +3,7 @@
 use super::support::{self, Fixture, Shelf};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CircuitAccounting, MaterialCircuitState, MaterialCircuitTransition,
+    AccountId, CircuitAccounting, MaterialCircuitState, MaterialCircuitTransition, MoneyLocation,
     MoneyTransferPurpose, OutboundOrderId,
 };
 
@@ -87,6 +87,28 @@ fn a_short_shelf_raises_the_price_for_everyone() {
         );
     }
     assert_eq!(total(&opening), total(&closed.state));
+    let retailer = AccountId::Site(support::site(support::RETAILER));
+    let into_retailer: i128 = closed
+        .money_transfers
+        .iter()
+        .filter(|row| row.credit.location == MoneyLocation::Cash(retailer))
+        .map(|row| row.credit.delta.micro_units())
+        .sum();
+    let out_of_retailer: i128 = closed
+        .money_transfers
+        .iter()
+        .filter(|row| row.debit.location == MoneyLocation::Cash(retailer))
+        .map(|row| row.debit.delta.micro_units().abs())
+        .sum();
+    assert_eq!(
+        cash(&closed.state, retailer).micro_units() - cash(&opening, retailer).micro_units(),
+        into_retailer - out_of_retailer
+    );
+    assert!(into_retailer >= settled(&closed));
+    assert!(closed.money_transfers.iter().all(|row| !matches!(
+        row.purpose,
+        MoneyTransferPurpose::PurchaseRefund(OutboundOrderId::LocalFinalDemand(_))
+    )));
     assert_eq!(closed.market_clearings.len(), 1);
     let market = &closed.market_clearings[0];
     assert_eq!(
@@ -153,6 +175,20 @@ fn an_empty_shelf_sells_nothing_and_moves_no_money() {
     assert_eq!((market.supply, market.sold_quantity), (0, 0));
     assert_eq!(market.clearing_price, market.quote_price);
     assert_eq!(market.demand_at_quote, 300);
+}
+
+#[test]
+fn a_shelf_with_no_inventory_row_sells_nothing_and_closes() {
+    let mut fixture = three_accounts(0);
+    fixture.no_stock_rows = true;
+    let (state, closed) = close(&fixture);
+    assert_eq!(state.inventory.len(), 0);
+    assert!(closed
+        .household_demand
+        .iter()
+        .all(|row| row.fulfilled_quantity == 0));
+    assert_eq!(total(&state), total(&closed.state));
+    assert_eq!(closed.market_clearings[0].sold_quantity, 0);
 }
 
 #[test]
@@ -248,5 +284,4 @@ fn too_few_hands_make_a_short_market() {
     assert_eq!(closed.market_clearings.len(), 1);
     assert_eq!(closed.market_clearings[0].supply, 240);
     assert!(closed.market_clearings[0].clearing_price > support::dollars(4));
-    let _ = support::units();
 }

@@ -177,6 +177,9 @@ impl<'a> Offer<'a> {
         if quantity > self.supply(site, good, unit)? {
             return Err(MaterialCircuitError::MarketClearingInvariant);
         }
+        if quantity == 0 {
+            return Ok(());
+        }
         let stock = self
             .stock
             .get_mut(&(site, good, unit))

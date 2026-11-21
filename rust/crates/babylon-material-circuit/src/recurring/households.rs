@@ -438,9 +438,9 @@ fn sell_market(
         .filter(|(_, &quantity)| quantity > 0)
         .map(|(&index, &quantity)| (index, quantity))
         .collect();
-    let hand_over = complete_purchases(catalog, state, intents, &sold, outcome.price, selling)?;
     let total = sold.values().sum();
     selling.offer.take(seller.0, seller.1, seller.2, total)?;
+    let hand_over = complete_purchases(catalog, state, intents, &sold, outcome.price, selling)?;
     Ok(ClearedMarket {
         price: outcome.price,
         sold,

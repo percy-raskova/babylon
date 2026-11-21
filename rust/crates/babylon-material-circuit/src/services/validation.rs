@@ -161,7 +161,7 @@ fn validate_policies(
             return Err(MaterialCircuitError::ServiceInvariant);
         }
     }
-    refuse_unhandled_resale(catalog, &r.offers)?;
+    refuse_unhandled_resale(catalog, &r.offers, &r.replenishment)?;
     for offer in &r.offers {
         let service = super::is_service(catalog, offer.good_id, offer.unit_id);
         match offer.pricing {
@@ -214,31 +214,35 @@ fn validate_policies(
 }
 
 /// A merchant that buys a product of the order of paying and also offers it must have a handling
-/// coefficient for it: its limit price (P5) is its own price less the wages of handling.
+/// coefficient for it: its limit price (P5) is its own price less the wages of handling. The limit
+/// is asked for a service input and for a restocking purchase alike, so both are walked.
 ///
 /// # Errors
 /// `MerchantInvariant` for such a merchant with no handling coefficient.
-fn refuse_unhandled_resale(catalog: &MaterialCatalog, offers: &[SellerOffer]) -> Result<()> {
+fn refuse_unhandled_resale(
+    catalog: &MaterialCatalog,
+    offers: &[SellerOffer],
+    replenishment: &[crate::ReplenishmentPolicy],
+) -> Result<()> {
     let Some(policy) = &catalog.market_clearing else {
         return Ok(());
     };
-    for input in &catalog.service_inputs {
-        let offered = offers.iter().any(|o| {
-            (o.site_id, o.good_id, o.unit_id) == (input.buyer_site_id, input.good_id, input.unit_id)
-        });
+    let service_buys = catalog
+        .service_inputs
+        .iter()
+        .map(|i| (i.buyer_site_id, i.good_id, i.unit_id));
+    let restock_buys = replenishment
+        .iter()
+        .map(|r| (r.buyer_site_id, r.good_id, r.unit_id));
+    for (buyer, good, unit) in service_buys.chain(restock_buys) {
+        let offered = offers
+            .binary_search_by_key(&(buyer, good, unit), |o| (o.site_id, o.good_id, o.unit_id))
+            .is_ok();
         if offered
-            && policy.place(input.good_id, input.unit_id).is_some()
-            && catalog
-                .merchants
-                .iter()
-                .any(|m| m.site_id == input.buyer_site_id)
+            && policy.place(good, unit).is_some()
+            && crate::transition::merchant_admission::merchant(catalog, buyer).is_some()
         {
-            crate::transition::merchant_admission::hours_per_unit(
-                catalog,
-                input.buyer_site_id,
-                input.good_id,
-                input.unit_id,
-            )?;
+            crate::transition::merchant_admission::hours_per_unit(catalog, buyer, good, unit)?;
         }
     }
     Ok(())
@@ -250,13 +254,33 @@ mod tests {
     use crate::clearing::limit_fixture;
     use crate::{
         CapacitySupply, CommodityDefinition, CorridorId, LogisticsNodeId, MarketClearingPolicy,
-        MaterialCatalogDefinition, MerchantHandling, MerchantRole, ServiceInputPolicy,
-        ServiceStage, SiteLogisticsNode,
+        MaterialCatalogDefinition, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
+        ReplenishmentPolicy, ServiceInputPolicy, ServiceStage, SiteLogisticsNode,
     };
     use babylon_kernel::currency::Currency;
 
     /// Site 7 is a merchant and buys the service of good 1 from site 5; it is in the order of paying.
     fn catalog(merchant: bool, ordered: bool) -> MaterialCatalog {
+        build(merchant, ordered, false, service_kind())
+    }
+
+    const STORED: CommodityKind = CommodityKind::Storable { grams_per_unit: 1 };
+
+    fn service_kind() -> CommodityKind {
+        CommodityKind::PeriodService {
+            stage: ServiceStage::UtilityProvision,
+        }
+    }
+
+    /// The same world, with or without a handling coefficient for site 7's good 1, and with or
+    /// without the service input (a restocking buyer needs none).
+    fn build(
+        merchant: bool,
+        ordered: bool,
+        coefficient: bool,
+        kind: CommodityKind,
+    ) -> MaterialCatalog {
+        let service = matches!(kind, CommodityKind::PeriodService { .. });
         MaterialCatalog::try_new(MaterialCatalogDefinition {
             company_portfolios: None,
             company_payouts: vec![],
@@ -274,9 +298,7 @@ mod tests {
             commodities: vec![CommodityDefinition {
                 good_id: limit_fixture::good(1),
                 unit_id: limit_fixture::units(),
-                kind: CommodityKind::PeriodService {
-                    stage: ServiceStage::UtilityProvision,
-                },
+                kind,
             }],
             supplier_routes: vec![],
             route_stages: vec![],
@@ -291,19 +313,32 @@ mod tests {
             } else {
                 vec![]
             },
-            handling_coefficients: vec![],
+            handling_coefficients: if coefficient {
+                vec![MerchantHandlingCoefficient {
+                    site_id: limit_fixture::site(7),
+                    good_id: limit_fixture::good(1),
+                    unit_id: limit_fixture::units(),
+                    hours_per_unit: 1,
+                }]
+            } else {
+                vec![]
+            },
             maintenance_binding: None,
             aid_mandates: vec![],
             household_time_policy: vec![],
-            service_inputs: vec![ServiceInputPolicy {
-                buyer_site_id: limit_fixture::site(7),
-                provider_site_id: limit_fixture::site(5),
-                good_id: limit_fixture::good(1),
-                unit_id: limit_fixture::units(),
-                quantity_per_period: 1,
-                maximum_purchase: 1,
-                cash_floor: Currency::from_micro_units(0),
-            }],
+            service_inputs: if service {
+                vec![ServiceInputPolicy {
+                    buyer_site_id: limit_fixture::site(7),
+                    provider_site_id: limit_fixture::site(5),
+                    good_id: limit_fixture::good(1),
+                    unit_id: limit_fixture::units(),
+                    quantity_per_period: 1,
+                    maximum_purchase: 1,
+                    cash_floor: Currency::from_micro_units(0),
+                }]
+            } else {
+                vec![]
+            },
             household_needs: vec![],
             market_clearing: ordered.then(|| MarketClearingPolicy {
                 paying_order: vec![(limit_fixture::good(1), limit_fixture::units())],
@@ -317,7 +352,7 @@ mod tests {
     fn a_merchant_that_resells_what_it_buys_needs_its_handling_coefficient() {
         let resale = [limit_fixture::offer(7, 1, limit_fixture::dollars(5))];
         assert_eq!(
-            refuse_unhandled_resale(&catalog(true, true), &resale),
+            refuse_unhandled_resale(&catalog(true, true), &resale, &[]),
             Err(MaterialCircuitError::MerchantInvariant)
         );
         // Without its own offer, without being a merchant or outside the order of paying, the
@@ -325,16 +360,44 @@ mod tests {
         assert_eq!(
             refuse_unhandled_resale(
                 &catalog(true, true),
-                &[limit_fixture::offer(5, 1, limit_fixture::dollars(5))]
+                &[limit_fixture::offer(5, 1, limit_fixture::dollars(5))],
+                &[]
             ),
             Ok(())
         );
         assert_eq!(
-            refuse_unhandled_resale(&catalog(false, true), &resale),
+            refuse_unhandled_resale(&catalog(false, true), &resale, &[]),
             Ok(())
         );
         assert_eq!(
-            refuse_unhandled_resale(&catalog(true, false), &resale),
+            refuse_unhandled_resale(&catalog(true, false), &resale, &[]),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_merchant_that_restocks_what_it_offers_needs_its_handling_coefficient() {
+        let resale = [limit_fixture::offer(7, 1, limit_fixture::dollars(5))];
+        let restock = [ReplenishmentPolicy {
+            buyer_site_id: limit_fixture::site(7),
+            supplier_site_id: limit_fixture::site(5),
+            good_id: limit_fixture::good(1),
+            unit_id: limit_fixture::units(),
+            target_stock: 3,
+            maximum_purchase: 3,
+            cash_floor: Currency::from_micro_units(0),
+        }];
+        assert_eq!(
+            refuse_unhandled_resale(&build(true, true, false, STORED), &resale, &restock),
+            Err(MaterialCircuitError::MerchantInvariant)
+        );
+        // With its coefficient, or outside the order of paying, the limit has its figure.
+        assert_eq!(
+            refuse_unhandled_resale(&build(true, true, true, STORED), &resale, &restock),
+            Ok(())
+        );
+        assert_eq!(
+            refuse_unhandled_resale(&build(true, false, false, STORED), &resale, &restock),
             Ok(())
         );
     }

@@ -1895,6 +1895,11 @@ fn company_receipt_format(
     if !transition.market_clearings.is_empty() {
         return Err(MaterialWorldError::Wire);
     }
+    // Nor do they carry the tiers' records; any period of a catalog with wants has both, so this also
+    // covers the rows wants add to other families (fulfillments, handling, transfers, performance).
+    if !transition.household_wants.is_empty() || !transition.household_tiers.is_empty() {
+        return Err(MaterialWorldError::Wire);
+    }
     if format != MaterialReceiptFormat::Site {
         super::basis_receipt::validate(
             &transition.company_basis,

@@ -36,6 +36,7 @@ mod production;
 mod recurring;
 mod services;
 mod staffing;
+mod tiers;
 mod transition;
 mod valuation;
 mod wire;
@@ -103,6 +104,10 @@ pub use valuation::{
     IncomeStatement, StockCarryingValue, MAX_CARRYING_STOCKS, MAX_COMPANY_BASIS_MOVEMENTS,
 };
 
+pub use tiers::{
+    household_standard, recurring_household_want_order_id, recurring_service_want_order_id,
+    HouseholdStandard, HouseholdTierReceipt, HouseholdWantReceipt,
+};
 pub use transition::{
     advance_material_circuit, advance_material_circuit_with_aid, close_material_period,
     close_material_period_with_aid, close_material_period_with_portfolios,

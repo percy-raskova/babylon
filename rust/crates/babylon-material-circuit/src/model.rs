@@ -2,6 +2,8 @@
 
 use crate::CompanyBasisMovement;
 use crate::HouseholdLifecycleReceipt;
+use crate::HouseholdTierReceipt;
+use crate::HouseholdWantReceipt;
 use crate::MarketClearingReceipt;
 use crate::ResidentWorkforceAttrition;
 use babylon_kernel::economic_location::EconomicLocation;
@@ -768,4 +770,9 @@ pub struct MaterialCircuitTransition {
     /// The short markets of the period, in the order of the moments of sale. Empty without a market
     /// policy.
     pub market_clearings: Vec<MarketClearingReceipt>,
+    /// What each account wanted and bought of each want, by account, tier, good and unit. Empty
+    /// unless the catalog has wants.
+    pub household_wants: Vec<HouseholdWantReceipt>,
+    /// What each account wanted and bought in each tier, at posted prices, by account and tier.
+    pub household_tiers: Vec<HouseholdTierReceipt>,
 }

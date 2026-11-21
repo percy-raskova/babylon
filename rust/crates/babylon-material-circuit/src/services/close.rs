@@ -16,11 +16,13 @@ use crate::clearing::MarketTable;
 use crate::collection_funding::ServiceAdmissions;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
+use crate::tiers::HouseholdLists;
 use crate::valuation::CostClose;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, ProductionCommitment,
 };
 use crate::{FinalDemandPrincipalId, MaterialCatalog};
+use crate::{HouseholdTierReceipt, HouseholdWantReceipt};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -37,6 +39,8 @@ pub(crate) struct ServiceClose {
     /// The requests of the period, kept for the stages of a market policy to admit.
     requests: Vec<Request>,
     donor: Option<FinalDemandPrincipalId>,
+    /// What every household has still to buy this period; kept for the stages that buy wants.
+    lists: HouseholdLists,
 }
 impl ServiceClose {
     pub(crate) fn new(
@@ -44,6 +48,7 @@ impl ServiceClose {
         state: &mut MaterialCircuitState,
         movements: &mut Vec<MoneyTransferReceipt>,
         donor: Option<FinalDemandPrincipalId>,
+        lists: HouseholdLists,
     ) -> Result<Self> {
         let mut collection_admissions = ServiceAdmissions::capture_opening(state, donor)?;
         if catalog.market_clearing.is_some() {
@@ -57,6 +62,7 @@ impl ServiceClose {
                 households: BTreeMap::new(),
                 requests: super::admission::requests(catalog, state)?,
                 donor,
+                lists,
             });
         }
         let performance = super::admission::admit(catalog, state, movements)?;
@@ -70,7 +76,15 @@ impl ServiceClose {
             households: BTreeMap::new(),
             requests: vec![],
             donor,
+            lists,
         })
+    }
+    /// What each account wanted and bought of its wants, and in each tier, this period.
+    pub(crate) fn tier_receipts(
+        &self,
+        period: u64,
+    ) -> Result<(Vec<HouseholdWantReceipt>, Vec<HouseholdTierReceipt>)> {
+        self.lists.receipts(period)
     }
     /// Bid for, price and fund the service orders of one stage. A no-op without a market policy.
     #[allow(

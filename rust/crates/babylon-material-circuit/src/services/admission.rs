@@ -55,16 +55,16 @@ pub fn recurring_service_topup_order_id(
     }
     OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
-pub(super) struct Request {
-    pub(super) order_id: OrderId,
-    pub(super) buyer: AccountId,
-    pub(super) provider: SiteId,
-    pub(super) good: GoodId,
-    pub(super) unit: UnitId,
-    pub(super) requested: u64,
+pub(crate) struct Request {
+    pub(crate) order_id: OrderId,
+    pub(crate) buyer: AccountId,
+    pub(crate) provider: SiteId,
+    pub(crate) good: GoodId,
+    pub(crate) unit: UnitId,
+    pub(crate) requested: u64,
     pub(super) floor: Currency,
 }
-pub(super) fn requests(
+pub(crate) fn requests(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
 ) -> Result<Vec<Request>> {

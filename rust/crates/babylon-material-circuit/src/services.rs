@@ -10,6 +10,7 @@ mod model;
 mod validation;
 
 pub use admission::{recurring_service_order_id, recurring_service_topup_order_id};
+pub(crate) use admission::{requests, Request};
 
 pub(crate) use close::{potential_output, ServiceClose};
 

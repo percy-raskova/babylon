@@ -855,3 +855,53 @@ fn round2_cancelled_reservation_must_precede_cancellation() {
         "cancellation before reserve must refuse"
     );
 }
+
+fn closed_admission_period() -> (MaterialCatalog, MaterialCircuitTransition) {
+    let (catalog, state) = admission_control();
+    let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the control circuit closes one period");
+    (catalog, transition)
+}
+
+#[test]
+fn a_transition_with_household_wants_is_refused() {
+    use babylon_material_circuit::{HouseholdWantReceipt, OrderId, WantTier};
+    let (catalog, mut transition) = closed_admission_period();
+    assert!(material_world::encode_material_receipts(&catalog, 2, &transition).is_ok());
+    let price = babylon_kernel::currency::Currency::from_micro_units(4_000_000);
+    transition.household_wants.push(HouseholdWantReceipt {
+        period: 2,
+        principal_id: FinalDemandPrincipalId::from_bytes([1; 32]),
+        tier: WantTier::Comfort,
+        seller_site_id: SiteId::from_bytes([2; 32]),
+        good_id: GoodId::from_bytes([3; 32]),
+        unit_id: UnitId::from_bytes([4; 32]),
+        order_id: OrderId::from_bytes([5; 32]),
+        wanted_quantity: 1,
+        bought_quantity: 0,
+        posted_price: price,
+        unit_price: price,
+    });
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 2, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}
+
+#[test]
+fn a_transition_with_tier_rows_is_refused() {
+    use babylon_material_circuit::{HouseholdTierReceipt, WantTier};
+    let (catalog, mut transition) = closed_admission_period();
+    let zero = babylon_kernel::currency::Currency::from_micro_units(0);
+    transition.household_tiers.push(HouseholdTierReceipt {
+        period: 2,
+        principal_id: FinalDemandPrincipalId::from_bytes([1; 32]),
+        tier: WantTier::Luxury,
+        wanted_value: zero,
+        bought_value: zero,
+    });
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 2, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}

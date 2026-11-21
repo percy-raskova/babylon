@@ -40,6 +40,7 @@ use crate::production;
 use crate::production::ServiceStageBooks;
 use crate::recurring::firms::Wanted;
 use crate::services::ServiceClose;
+use crate::tiers::HouseholdLists;
 use crate::AidFreightLot;
 use crate::AidMandate;
 use crate::AidOutcome;
@@ -1359,6 +1360,7 @@ pub(crate) fn close_funded_production(
     costs.admit_attendance(attendance);
     let agency = crate::agency_attendance::reserve(opening, state, agency_inputs, money_transfers)?;
     let mut markets = MarketTable::default();
+    let lists = HouseholdLists::open(catalog, state)?;
     let (household_demand, household_sale) = if catalog.market_clearing.is_some() {
         let sale = crate::recurring::sell_household_goods(
             catalog,
@@ -1380,7 +1382,7 @@ pub(crate) fn close_funded_production(
             None,
         )
     };
-    let mut services = ServiceClose::new(catalog, state, money_transfers, collection_donor)?;
+    let mut services = ServiceClose::new(catalog, state, money_transfers, collection_donor, lists)?;
     let productive = execute_production_stages(
         catalog,
         opening,
@@ -1622,6 +1624,7 @@ pub fn close_material_period_with_portfolios(
         &mut close.dispatches,
     )?;
     let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
+    let tiers = close.funded.services.tier_receipts(close.state.period)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
@@ -1669,6 +1672,8 @@ pub fn close_material_period_with_portfolios(
             local_transfers: close.outbound.local_transfers,
             maintenance: close.funded.production.maintenance,
             market_clearings: close.funded.markets.into_receipts(),
+            household_wants: tiers.0,
+            household_tiers: tiers.1,
         },
     })
 }

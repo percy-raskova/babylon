@@ -191,21 +191,21 @@ pub(crate) struct HouseholdGoodsSale {
 }
 
 /// A household's plan to buy one good at its retailer in this period.
-struct Intent {
-    principal_id: FinalDemandPrincipalId,
-    retailer_site_id: SiteId,
-    good_id: GoodId,
-    unit_id: UnitId,
-    order_id: OrderId,
+pub(crate) struct Intent {
+    pub(crate) principal_id: FinalDemandPrincipalId,
+    pub(crate) retailer_site_id: SiteId,
+    pub(crate) good_id: GoodId,
+    pub(crate) unit_id: UnitId,
+    pub(crate) order_id: OrderId,
     opening_stock: u64,
     required_quantity: u64,
     desired_quantity: u64,
-    requested_quantity: u64,
+    pub(crate) requested_quantity: u64,
     quote: Currency,
 }
 
 /// The plans of every household with a stock row, in household, good and unit order.
-fn household_intents(
+pub(crate) fn household_intents(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     rows: &RecurringEconomy,

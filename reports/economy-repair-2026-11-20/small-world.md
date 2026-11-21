@@ -1031,11 +1031,10 @@ wage accounts, and the owner, the shop and, in P5, the farm and clinic hold almo
 **What the dumps show, and what the record does not trace.** Three lines, each read from the runs' `describe` dumps (the
 `cash` lines at period 400), not from a table above except where it says so.
 
-1. In the plain runs with the rule, the four workplaces keep at least their opening cash to period 400 (utility $1,200;
-   farm $920 and $1,434; clinic $880; shop $1,400). The opening cash is exactly one period's outlay (`site_outlay`,
-   `extend_site` in `recurring/spare_money.rs`), so these runs hold no more than that, and the rule keeps them at full
-   work.
-2. Without the rule the fund's taxed workplaces also keep their cash (table above: utility $1,200, $1,175 and $1,182;
+1. In the plain runs with the rule, the workplaces close period 400 at or above their opening cash (utility $1,200;
+   farm $920 and $1,434; clinic $880; shop $1,400). The opening cash is one period's outlay (`site_outlay`,
+   `extend_site` in `recurring/spare_money.rs`). Plain P4 holds 240 hours to period 400, and plain P2 holds 230 or more.
+2. Without the rule the fund's utility and clinic also keep their cash (table above: utility $1,200, $1,175 and $1,182;
    clinic $750, $880 and $880), so the taxes are not what empties the workplaces. With the rule they end low (P5: utility
    $144, farm $0, clinic $2), and the money has moved into the utility's and the clinic's wage accounts (w_utility $3,267,
    $3,323 and $5,929), where it stays while food goes 40/40 unmet. The plain runs P2 and P4 without the rule end the

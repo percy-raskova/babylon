@@ -101,7 +101,11 @@ fn share_step(
     supply: u64,
     stop: i128,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
-    let below = quantities_at(readings, stop - 1)?;
+    let below = quantities_at(
+        readings,
+        stop.checked_sub(1)
+            .ok_or(MaterialCircuitError::Arithmetic)?,
+    )?;
     let base = quantities_at(readings, stop)?;
     let base_sum: u128 = base.iter().map(|&q| u128::from(q)).sum();
     let rest = u128::from(supply)
@@ -189,16 +193,22 @@ pub fn clear_market(
     let ceiling = deepest
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
+    let above_quote = quote_micro
+        .checked_add(1)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
     let stop = least_price_within(
         &readings,
         u128::from(supply),
-        quote_micro + 1,
-        ceiling.max(quote_micro + 1),
+        above_quote,
+        ceiling.max(above_quote),
     )?;
     if demand(&readings, stop)? == u128::from(supply) {
         return Ok(sold_at(stop, quantities_at(&readings, stop)?));
     }
-    Ok(sold_at(stop - 1, share_step(&readings, supply, stop)?))
+    let below_stop = stop
+        .checked_sub(1)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(sold_at(below_stop, share_step(&readings, supply, stop)?))
 }
 
 #[cfg(test)]
@@ -431,6 +441,15 @@ mod tests {
         let bids = vec![bid(u64::MAX, DEEP * DEEP, None); 2];
         assert_eq!(
             clear_market(1, Currency::from_micro_units(1), &bids),
+            Err(MaterialCircuitError::Arithmetic)
+        );
+    }
+
+    #[test]
+    fn a_quote_at_the_top_of_the_range_is_refused_not_panicked() {
+        let bids = vec![bid(1, i128::MAX, None); 2];
+        assert_eq!(
+            clear_market(1, Currency::from_micro_units(i128::MAX), &bids),
             Err(MaterialCircuitError::Arithmetic)
         );
     }

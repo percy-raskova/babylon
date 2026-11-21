@@ -128,7 +128,9 @@ impl MarketTable {
             .priced_out_by_product
             .entry((seller.0, seller.1, seller.2))
             .or_insert(0);
-        *total = total.saturating_add(priced_out);
+        *total = total
+            .checked_add(priced_out)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
         self.by_key.insert(key, self.rows.len());
         self.rows.push(MarketRow {
             key,

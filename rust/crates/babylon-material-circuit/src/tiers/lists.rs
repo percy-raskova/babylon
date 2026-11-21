@@ -401,20 +401,21 @@ fn wage_tax_ahead(
     period: u64,
     accruals: &[WageAccrualReceipt],
 ) -> Result<BTreeMap<FinalDemandPrincipalId, Currency>, MaterialCircuitError> {
+    // The period's wages of each payee, summed once: a scan of the accruals for every tax row is a
+    // square when both families hold a row for every account.
+    let mut booked: BTreeMap<AccountId, i128> = BTreeMap::new();
+    for accrual in accruals.iter().filter(|a| a.period == period) {
+        let sum = booked.entry(accrual.payee).or_insert(0_i128);
+        *sum = sum
+            .checked_add(accrual.amount.micro_units())
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+    }
     let mut owed = BTreeMap::new();
     for row in &economy.financial.taxes {
         let (AccountId::Household(principal), TaxBasis::WageIncome) = (row.payer, row.basis) else {
             continue;
         };
-        let mut wages = 0_i128;
-        for accrual in accruals
-            .iter()
-            .filter(|a| a.period == period && a.payee == row.payer)
-        {
-            wages = wages
-                .checked_add(accrual.amount.micro_units())
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-        }
+        let wages = booked.get(&row.payer).copied().unwrap_or(0);
         let due = crate::financial::fraction(
             Currency::from_micro_units(wages),
             u64::from(row.rate_bps),

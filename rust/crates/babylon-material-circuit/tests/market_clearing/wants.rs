@@ -453,6 +453,8 @@ fn a_large_world_of_wants_closes() {
     });
     fixture.paying_order = Some(vec![2, 3]);
     fixture.hours = 1_000_000_000;
+    // A wage tax row for every account, so the tax held back is read at the size of the country too.
+    fixture.wage_taxes = vec![500];
     for index in 0..ACCOUNTS {
         // One want of the good the account needs, and two of a good it only wants.
         fixture
@@ -477,6 +479,7 @@ fn a_large_world_of_wants_closes() {
             )),
         )
         .micro_units();
+        sum += cash(state, AccountId::Public(support::public(0))).micro_units();
         for index in 0..ACCOUNTS {
             sum += cash(state, AccountId::Household(support::account_at(index))).micro_units();
         }

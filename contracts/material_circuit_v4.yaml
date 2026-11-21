@@ -152,7 +152,9 @@ market_clearing:
     buyers; its buyers are the accounts whose policy names that seller for that product
   P2_bid: >-
     each buyer brings what it wants, its purse and, for a business, a limit; at price p it can pay for min(wanted,
-    floor(purse / p)) and for nothing above its limit
+    floor(purse / p)) and for nothing above its limit; a household brings a rung for its need and one for each want
+    of the product, each with a reserve (the posted cost of what is ahead of it in its list and still to buy), and
+    at price p a rung can pay for min(wanted, floor((purse - reserve - spent on the rungs before it) / p))
   P3_price: >-
     no more demand than supply at the posted price sells at the posted price; otherwise the price is the lowest
     price above the posted one at which the demand no longer exceeds the supply, found exactly in millionths by
@@ -160,7 +162,8 @@ market_clearing:
   P4_shares: >-
     each buyer gets what it can pay for at that price; where demand falls past the supply in one step the price is
     the last one before the step, the buyers who fall away share what is left in proportion to what each loses,
-    and the last indivisible units go in canonical order; everything on offer is sold
+    and the last indivisible units go in canonical order; everything on offer is sold; a buyer's share fills its
+    rungs in order, each up to what it can pay for at that price
   P5_limit: >-
     a business bids no more than the price at which a batch just covers its cost, never under the posted price; a
     merchant pays no more than its own posted price less its handling wage
@@ -169,7 +172,8 @@ market_clearing:
     also no more than its hands and room can pass over
   P7_order_of_paying: >-
     the catalog names one order of its products; a buyer's purse reaches the markets in that order, and each
-    purchase is paid before the next market is cleared
+    purchase is paid before the next market is cleared; a household's list goes by tier first and by the order
+    inside a tier
   P8_accepted_order: >-
     money set aside keeps its price and quantity; a good a household buys is handed over at the purchase; a
     business's goods sold and not yet moved are owed
@@ -190,6 +194,33 @@ market_clearing:
     - a refusal is MarketClearingInvariant
     - a market policy requires no company portfolio
     - under a market policy every offer of a product in the order is responsive
+
+# Households buy in tiers (O7, O8). A catalog without wants has none of this: no list, no record, today's bytes.
+household_tiers:
+  O7_tiers: >-
+    a household account buys its needs (tier 1), then its comforts (tier 2), then its luxuries (tier 3), in the same
+    markets at the same price as everyone else, with the money its own list does not need
+  O8_reserve: >-
+    a want rung of tier t at place q in the order of paying holds back the posted cost, quantity still to buy times
+    posted price, of the account's items of every other product that are needs, or wants of an earlier tier, or
+    wants of tier t at an earlier place; the account's own need and earlier wants of the product are the rungs
+    before it, so reserves never fall along a bid
+  still_to_buy: >-
+    a need is still to buy for the rest of the period by the part the household did not get, and that part's
+    posted cost is held back from every want and from no later need; a want is done once its market has cleared
+    for the household, whatever it got
+  want_is_used: >-
+    a want is used at its purchase: it has its own order, made, handed over, paid and retired inside the household
+    moment, and reaches no pantry; its payment is the household's consumption expense
+  records: >-
+    each period, for every want one receipt of wanted, bought, posted and market price; for every account and tier
+    one receipt of wanted and bought value at posted prices; an unreached want is bought 0 at its posted price
+  standard: >-
+    going without when a need row of the account has unmet quantity; else getting by when tier 2 bought less than
+    it wanted; else comfortable when tier 3 did; else affluent
+  unreached: >-
+    a want with nothing on offer, a disabled row or a price it cannot pay buys 0, leaves no order, no unmet need
+    and no division by zero
 
 catalog_seal:
   - canonicalize every definition family once at admission, in the orders above
@@ -341,7 +372,8 @@ admission:
     policy for a want alone has a zero stock target
   - period-service household needs have no pantry, zero stock target and a captured provider connection
   - household service providers need not be Retail merchants
-  - every finite order of a configured household names a captured recipient stock before admission
+  - every finite order of a configured household names a captured recipient stock before admission; a want's
+    order, made and retired within the household moment, names none
   - recurring production has one policy per process and at most one process per site-output-good-unit
   - recurring attendance exactly covers distinct employment and current labor principals at the opening period
   - an attendance principal without employment has an explicit zero available-hours row and zero planned hours
@@ -430,7 +462,8 @@ period_close:
   - record handling receipts including explicit zero feasible and actual work
   - without a market policy, credit actual household handoffs to stock and settle them and expire unfilled
     recurring requests with refunds; with one, a household's purchase is made at the market's price before
-    production, handed over, credited to stock, settled and retired at that moment, and nothing is expired
+    production, handed over, credited to stock, settled and retired at that moment, and nothing is expired; a want
+    is handed over and used at once, never credited to stock
   - replenish firm inventory positions, counting undelivered order quantities once including their transit;
     without a market policy each policy orders what its cash affords at the posted price; with one, the products
     in the order of paying clear market by market at a price at which what the buyers can pay for equals what the
@@ -499,7 +532,7 @@ conservation:
     closing stock
   - local fulfilled cumulative quantity increments only by positive local fulfillment receipts
   - finite final-demand fulfillment remains distinct from household consumption
-  - household opening stock plus actual handoffs equals consumption plus closing stock
+  - household opening stock plus actual need handoffs equals consumption plus closing stock
   - required household consumption equals consumed plus unmet quantity, independently of employment
   - generated household admitted quantity equals fulfilled plus expired refunded quantity
   - total spendable cash plus purchase reserves plus payroll reserves is unchanged by the close
@@ -776,7 +809,8 @@ historical_cost_book:
     - staged loss expenses the seller's withdrawn carrying amount; its cash refund remains the money book's authority
     - final arrival recognizes seller sales and COGS; buyer inventory receives the fixed settled acquisition amount
     - local seller withdrawal and sale precede delayed buyer stock and carrying-value credits after both outbound passes
-    - household handoff capitalizes pantry purchases; actual household consumption withdraws carrying value as expense
+    - household handoff capitalizes pantry purchases; a want's purchase is consumption expense at the hand-over;
+      actual household consumption withdraws carrying value as expense
     - finite final-demand sinks recognize a distinct outlay at fulfillment without adding a pantry or consumption need
     - wages earned are household income; productive wages capitalized are not a second current expense
     - unused funded attendance, handling, maintenance labor and materials, and freight losses are separate expenses

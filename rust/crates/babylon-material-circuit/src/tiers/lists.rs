@@ -74,7 +74,6 @@ impl ListItem {
         (self.principal, self.good, self.unit)
     }
 
-    #[allow(dead_code, reason = "the reserves of Task 3b's bids read it")]
     fn cost_still(&self) -> Result<i128, MaterialCircuitError> {
         records::value(self.still, self.posted)
     }
@@ -82,7 +81,6 @@ impl ListItem {
 
 /// One rung of a bid with the order it would be bought under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code, reason = "the household moment of Task 3b reads it")]
 pub(crate) struct ListRung {
     pub tier: u8,
     pub order_id: OrderId,
@@ -193,7 +191,6 @@ impl HouseholdLists {
         self
     }
 
-    #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
     fn account(&self, principal: FinalDemandPrincipalId) -> &[ListItem] {
         let start = self.items.partition_point(|i| i.principal < principal);
         let end = self.items.partition_point(|i| i.principal <= principal);
@@ -202,7 +199,6 @@ impl HouseholdLists {
 
     /// The posted cost of what is ahead of `want` in its account's list and still to buy: needs, and
     /// wants of an earlier tier or, inside its tier, of an earlier place, of every other product.
-    #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
     fn reserve(account: &[ListItem], want: &ListItem) -> Result<Currency, MaterialCircuitError> {
         let mut total = 0_i128;
         for item in account {
@@ -222,7 +218,6 @@ impl HouseholdLists {
     ///
     /// # Errors
     /// `MarketClearingInvariant` for a product the account neither needs nor wants; `Arithmetic`.
-    #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
     pub(crate) fn rungs(
         &self,
         principal: FinalDemandPrincipalId,
@@ -266,7 +261,6 @@ impl HouseholdLists {
     /// # Errors
     /// `MarketClearingInvariant` for an order that is not an item of the product (the bare need rung
     /// of a product only wanted is one, but may buy only 0), more bought than wanted, a price below the posted one, or a product settled twice.
-    #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
     pub(crate) fn settle(
         &mut self,
         principal: FinalDemandPrincipalId,
@@ -309,7 +303,11 @@ impl HouseholdLists {
         Ok(())
     }
 
-    #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
+    /// Whether the period's lists hold nothing: a catalog without wants.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     pub(crate) fn is_want_order(&self, order: OrderId) -> bool {
         self.want_orders.contains(&order)
     }

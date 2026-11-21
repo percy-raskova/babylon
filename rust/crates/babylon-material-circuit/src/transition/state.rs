@@ -1360,7 +1360,7 @@ pub(crate) fn close_funded_production(
     costs.admit_attendance(attendance);
     let agency = crate::agency_attendance::reserve(opening, state, agency_inputs, money_transfers)?;
     let mut markets = MarketTable::default();
-    let lists = HouseholdLists::open(catalog, state)?;
+    let mut lists = HouseholdLists::open(catalog, state)?;
     let (household_demand, household_sale) = if catalog.market_clearing.is_some() {
         let sale = crate::recurring::sell_household_goods(
             catalog,
@@ -1368,6 +1368,7 @@ pub(crate) fn close_funded_production(
             costs,
             money_transfers,
             &mut markets,
+            &mut lists,
         )?;
         (
             sale.demand,

@@ -749,3 +749,51 @@ fn wants_follow_births_and_deaths() {
         );
     }
 }
+
+#[test]
+fn the_next_periods_wants_follow_a_birth() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    let (catalog, mut opening) = want_opening();
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary")
+    };
+    // The worked control's purchase rows are disabled, and a disabled row wants nothing.
+    for row in &mut e
+        .recurring
+        .as_mut()
+        .expect("recurring household economy")
+        .household_purchases
+    {
+        row.enabled = true;
+    }
+    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+        panic!("time")
+    };
+    time.lifecycle = Some(
+        HouseholdLifecycleBook::new(
+            HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: 250_000,
+                deaths_per_million_per_period: [0; 4],
+            },
+            vec![(
+                crate::household(),
+                ResidentAges {
+                    age_18_64: 4,
+                    ..ResidentAges::default()
+                },
+            )],
+        )
+        .expect("valid captured age exposure"),
+    );
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("valid recurring economic close");
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+        .expect("the next period closes");
+    assert_eq!(first.household_wants.len(), 1);
+    assert_eq!(next.household_wants.len(), 1);
+    assert_eq!(first.household_wants[0].wanted_quantity, 8);
+    assert_eq!(
+        next.household_wants[0].wanted_quantity,
+        first.household_wants[0].wanted_quantity + 2
+    );
+}

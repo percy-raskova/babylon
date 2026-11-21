@@ -25,7 +25,7 @@ use crate::MoneyTransferReceipt;
 use crate::ServicePerformanceReceipt;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FreightLotId, MaterialCircuitError,
-    MaterialCircuitState, MemberLaborUseReceipt, OrderRow, OutboundOrderId, ProcessOutput,
+    MaterialCircuitState, MemberLaborUseReceipt, OrderId, OrderRow, OutboundOrderId, ProcessOutput,
     RoutedFreightLot, SiteId, UnitId, WageAccrualReceipt, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_kernel::currency::Currency;
@@ -37,6 +37,8 @@ pub(crate) struct CostClose {
     pub(super) attendance: AttendanceLedger,
     pub(crate) wear_receipts: Vec<EquipmentWearReceipt>,
     pub(super) goods: GoodsCostLedger,
+    /// Household orders whose goods are used at the purchase and never stocked: wants.
+    used_at_purchase: BTreeSet<OrderId>,
 }
 pub(super) struct ActiveCosts {
     pub(super) company_basis: Option<Vec<CompanyBasisMovement>>,
@@ -94,7 +96,14 @@ impl CostClose {
             wear_receipts: Vec::new(),
             goods: GoodsCostLedger::default(),
             attendance: AttendanceLedger::default(),
+            used_at_purchase: BTreeSet::new(),
         }
+    }
+
+    /// The goods of this household order are used at the purchase, not stocked: the payment is the
+    /// household's consumption expense.
+    pub(crate) fn use_at_purchase(&mut self, order: OrderId) {
+        self.used_at_purchase.insert(order);
     }
 
     pub(crate) fn take_company_basis(&mut self) -> Vec<CompanyBasisMovement> {
@@ -610,7 +619,10 @@ impl CostClose {
             cost,
         )?;
         let key = (buyer, order.good_id, order.unit_id);
-        if active.book.stocks.contains_key(&key) {
+        if self.used_at_purchase.contains(&order.order_id) {
+            let statement = active.statement(buyer)?;
+            statement.consumption_expense = super::add(statement.consumption_expense, payment)?;
+        } else if active.book.stocks.contains_key(&key) {
             active.book.credit_stock(key, payment)?;
         } else {
             let statement = active.statement(buyer)?;
@@ -914,6 +926,7 @@ mod funded_wage_tests {
             ]),
             wear_receipts: Vec::new(),
             goods: GoodsCostLedger::default(),
+            used_at_purchase: BTreeSet::new(),
         };
         let (wages, hours) = costs
             .funded_wage(SiteId::from_bytes([7; 32]), UnitId::from_bytes([2; 32]))

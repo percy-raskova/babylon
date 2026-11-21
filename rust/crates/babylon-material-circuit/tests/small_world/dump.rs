@@ -18,6 +18,11 @@ fn dump_every_run() {
         ("market P2", World::less_supply().with_market()),
         ("market P3", World::less_money().with_market()),
         ("market P4", World::higher_pay().with_market()),
+        ("tiers quiet", World::plain().with_tiers()),
+        ("tiers P1", World::less_demand().with_tiers()),
+        ("tiers P2", World::less_supply().with_tiers()),
+        ("tiers P3", World::less_money().with_tiers()),
+        ("tiers P4", World::higher_pay().with_tiers()),
     ];
     for (name, world) in runs {
         println!("{}", support::describe(name, &support::run(&world)));

@@ -10,5 +10,8 @@ mod quiet;
 #[path = "small_world/pushed.rs"]
 mod pushed;
 
+#[path = "small_world/tiers.rs"]
+mod tiers;
+
 #[path = "small_world/dump.rs"]
 mod dump;

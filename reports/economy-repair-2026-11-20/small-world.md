@@ -2,7 +2,7 @@
 
 Probe of the material circuit's own rules, 2026-11-20, branch `codex/households-and-homes`. The
 world and every run are the test binary `rust/crates/babylon-material-circuit/tests/small_world.rs`
-(`small_world/support.rs` builds it, `quiet.rs` and `pushed.rs` pin what is reported here; the
+(`small_world/support.rs` builds it, `quiet.rs`, `pushed.rs` and `tiers.rs` pin what is reported here; the
 ignored test `dump_every_run` prints every measure). No engine code was changed to make these runs; Task 6b
 later changed the runs under a market policy, and its tables are at the end of the runs.
 
@@ -323,6 +323,101 @@ period 30, while the farm and the shop swing between 20 and 40 units and 24 and 
 | 21 | 1106/829/880/1599 | 0/21/1/0, 720 | 12/21/23/41 | 70/30/8 | 29/40 | 70/40/10/39 | 3/9/32 |
 | 34 | 1200/1588/652/1299 | 1/49/0/30, 337 | 13/27/28/49 | 75/40/7 | 2/40 | 82/40/7/38 | 4/12/33 |
 
+## Tiers
+
+The same world under the market policy with household wants (`tiers.rs`, `World::with_tiers`; spec rules
+O7 and O8). Every household account wants, per person, one household service in tier 2 (comforts) and one
+food and one utility in tier 3 (luxuries), so its wants follow its cohort as its needs do: the owner,
+counted at 10 persons, wants 10 of each. The order of paying is unchanged: food, utility, household
+services. A want is bought in the same market at the same price as a need, with the money its own list
+does not need.
+
+**Why the quiet run stays still at any size.** An account's cash at its moments of sale is exactly its
+needs' posted cost (workers are paid their need at the opening, the owner holds its need), so every want's
+room is $0: wants bid nothing, leave no order and no performance row, and the markets' demand at the quote,
+from which a service plans, is the needs' alone. Every measure of the quiet run with tiers equals the quiet
+run under the market policy in all 34 periods, the clinic plans 40 batches and the utility 120 each period,
+and the clinic's service market receipt plans 40. Bought for wants: 0. Wanted, at posted prices (comforts,
+luxuries): workers of the utility $450 and $750, the other three workers $150 and $250, the owner $300 and
+$500. Every account is getting by (its needs are met and it bought no comfort).
+
+The columns are those of the runs above, with "wants bought $" (comforts + luxuries, all accounts, at
+posted prices) and "standards" (accounts going without / getting by / comfortable / affluent; five
+accounts). Each run is set beside the same push under the market policy after Task 6b (the tables above).
+
+### P1 with tiers: returns to the opening state
+
+Without tiers the owner, who counts half its persons, keeps $910 it has no need to spend and the world runs
+away slowly (care unmet 23 at period 34, the clinic at 12 units). With tiers the owner spends what its needs
+leave on its own comforts and luxuries: 5 persons' worth, $150 and $250 a period, 5 units of each good.
+Utility, clinic and shop sell what they did in the balanced opening, no quote falls, and every period equals
+the first, which equals the opening (cash, prices, plans, output). Nothing is unmet. The owner is the one
+affluent account; the four worker accounts buy no want and are getting by.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|
+|--:|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 150+250 | 0/4/0/1 |
+| 2 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 150+250 | 0/4/0/1 |
+| 13 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 150+250 | 0/4/0/1 |
+| 34 | 1200/880/880/1400 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 | 150+250 | 0/4/0/1 |
+
+Beside it, P1 under the market policy after: period 34 cash 1116/760/880/1479, owner $883, prices
+10/23/28/43, output 62/30/12, unmet 2/19/23, no wants.
+
+### P2 with tiers: settles in the same depressed band
+
+Period 1 is P2's own. The households' money goes to needs: wants are bought in 7 of the 34 periods (periods 4 to 7, 12,
+16 and 24), never for more than $81 in a period, all of them comforts, and at period 34 every account goes without. No
+site stops (it is also so without tiers). The band is a little different: the clinic's output slides from 40 to between
+4 and 7 units from period 14 (between 5 and 11 from period 16 without tiers), the farm makes 36 units in most periods
+and 27 in some (36 without tiers), its cash is $1,320 at period 34, the utility's and the shop's markets clear short at
+period 34, and unmet at period 34 is food 5, utility 18, care 33 (4, 21, 34 without tiers). The largest worker account
+holds $20 at period 13 and $24 at period 34 (without tiers $274 and $26).
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|
+|--:|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/926/880/1400 | 0/0/0/0, 753 | 12/25/30/38 | 120/36/40 | 36/40 | 120/40/40/40 | 0/0/0 | 0+0 | 0/5/0/0 |
+| 2 | 1200/998/880/1400 | 0/0/0/0, 681 | 12/25/29/38 | 120/36/38 | 32/40 | 120/40/40/40 | 0/0/2 | 0+0 | 1/4/0/0 |
+| 3 | 1200/1084/880/1400 | 15/5/14/5, 556 | 11/25/28/38 | 118/36/35 | 28/40 | 120/40/38/40 | 0/0/5 | 0+0 | 2/3/0/0 |
+| 5 | 1110/1303/880/1400 | 10/18/6/18, 414 | 10/25/26/38 | 106/36/31 | 20/40 | 115/40/32/40 | 0/6/12 | 81+0 | 2/3/0/0 |
+| 8 | 1200/1560/695/1400 | 13/5/1/11, 272 | 11/25/25/39 | 97/27/18 | 3/40 | 97/40/29/38 | 0/7/22 | 0+0 | 3/2/0/0 |
+| 13 | 1200/1553/635/1359 | 20/17/3/4, 364 | 11/26/24/40 | 80/27/8 | 2/40 | 80/40/15/32 | 8/11/32 | 0+0 | 4/1/0/0 |
+| 21 | 1200/1406/659/1359 | 5/19/2/22, 485 | 13/26/24/44 | 64/27/7 | 8/40 | 64/40/7/37 | 4/17/33 | 0+0 | 5/0/0/0 |
+| 34 | 1200/1320/588/1280 | 2/24/13/16, 713 | 14/28/25/49 | 67/27/7 | 5/40 | 67/40/14/35 | 5/18/33 | 0+0 | 5/0/0/0 |
+
+Beside it, P2 under the market policy after (the table above): period 13 cash 840/1359/880/1400, workers
+23/274/5/54, owner $322, output 79/36/13; period 34 cash 1140/1258/851/1360, owner $515, output 65/36/6.
+
+### P3 with tiers: settles at once
+
+As P3 and as the quiet run with tiers: the shop holds its $700, every period equals the first, nothing is
+short and no account has money beyond its needs, so no want is bought. Every account is getting by.
+Bought for wants: $0 at periods 1, 13 and 34.
+
+### P4 with tiers: cycles in a depressed band, nothing stops
+
+In period 1 the clinic's cash buys 36 units of utility, so four accounts go without care; the clinic's market clears
+short, at $31.66 where it cleared at its posted $30 without tiers; the owner holds $715 at the close, $670 without
+tiers, and no want is bought in period 1. The workers' surplus wage buys a comfort in 15 of the 34 periods: $62, $54 and
+$56 of care at periods 2, 8 and 13 among them, never more than $62 and never a luxury. No site stops, and the clinic
+does not make nothing in periods 18, 27, 28 and 29 as it did without tiers; it ends at 3 units (7 without), unmet at
+period 34 is food 4, utility 7, care 37 (4, 12, 33), and every account goes without. The largest worker account holds
+$19 at period 13 and $12 at period 34 (without tiers $252 and $49).
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|wants bought $|standards|
+|--:|---|---|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 6/23/31/23, 715 | 11/25/31/38 | 116/40/36 | 40/40 | 120/40/40/40 | 0/0/4 | 0+0 | 4/1/0/0 |
+| 2 | 1200/882/880/1400 | 15/18/5/18, 739 | 12/25/30/38 | 116/40/36 | 40/40 | 116/40/40/40 | 0/0/6 | 62+0 | 2/3/0/0 |
+| 3 | 1200/881/880/1400 | 11/17/30/17, 721 | 11/25/31/38 | 116/40/36 | 40/40 | 120/40/36/40 | 0/0/4 | 0+0 | 2/3/0/0 |
+| 5 | 1200/1100/880/1400 | 18/12/27/12, 509 | 11/25/29/38 | 116/40/32 | 30/40 | 117/40/36/40 | 0/0/8 | 0+0 | 3/2/0/0 |
+| 8 | 1170/1152/880/1400 | 27/8/9/8, 502 | 10/25/28/38 | 109/40/29 | 30/40 | 109/40/29/40 | 0/0/13 | 54+0 | 3/2/0/0 |
+| 13 | 1200/1099/880/1400 | 17/11/19/10, 520 | 11/25/27/38 | 102/40/23 | 30/40 | 102/40/26/40 | 0/4/19 | 56+0 | 3/2/0/0 |
+| 21 | 1200/1162/734/1400 | 0/10/19/8, 623 | 11/25/27/38 | 99/30/18 | 20/40 | 99/40/25/40 | 0/3/22 | 0+0 | 3/2/0/0 |
+| 34 | 1183/1544/143/1359 | 7/12/1/1, 906 | 10/26/25/43 | 83/40/3 | 10/40 | 93/40/10/36 | 4/7/37 | 0+0 | 5/0/0/0 |
+
+Beside it, P4 under the market policy after (the table above): period 13 cash 1136/1043/804/1400, workers
+14/252/11/232, output 86/40/15; period 34 cash 1200/1588/652/1299, owner $337, output 75/40/7.
+
 ## What this means for an opening that is in balance
 
 1. An opening balanced in whole numbers is exactly still for 34 periods, with or without taxes
@@ -346,3 +441,14 @@ period 30, while the farm and the shop swing between 20 and 40 units and 24 and 
 9. Under the market policy a service plans and staffs for what its buyers can pay for (R12), so the idle
    hours of item 5 are not paid: no pushed run stops a site for good, and the three that ran away now slide
    or cycle in a depressed band (P1, P2, P4 under the market policy).
+10. With tiers, money a push frees is spent on wants only where an account has it and its needs are met:
+    the owner of P1 spends $400 a period on 5 persons' comforts and luxuries and the world returns to its
+    opening state, which no run without tiers does. In P2 and P4 the money is spent on needs that go unmet,
+    so wants are bought in 7 and 15 of the 34 periods and never for more than $81 (P2) or $62 (P4), and
+    no luxury is ever bought there; every account ends going without.
+11. Workplaces no longer run dry from idle cash in workers' accounts (point 3), but that was already so
+    under the market policy after Task 6b, and the tiers change it only a little: the largest worker
+    account at period 34 is $0 in P1 (it was $27), $24 in P2 (it was $26) and $12 in P4 (it was $49), at
+    period 13 $0, $20 and $19 (it was $113, $274 and $252). The clinic of P4 stops at no period, where it
+    made nothing in periods 18, 27, 28 and 29 under the market policy. What tiers do not do is put the
+    shortage right: unmet need in P2 and P4 is as large as without them (P4 care 37, was 33).

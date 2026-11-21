@@ -13,18 +13,18 @@ use babylon_material_circuit::{
     CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, CorridorCapacity,
     CorridorId, DistributionPolicy, EmploymentTerms, EquityCarryingValue, FinalDemandPrincipal,
     FinalDemandPrincipalId, FinancialInstitutions, GoodId, HistoricalCostBook, HouseholdCohort,
-    HouseholdKind, HouseholdNeed, HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock,
-    HouseholdTimeAccounting, InputOutputCoefficient, InstitutionLocation, InventoryRow,
-    LaborCapacityRow, LaborCoefficient, LaborCompensation, LogisticsNodeId, MarketClearingPolicy,
-    MaterialCatalog, MaterialCatalogDefinition, MaterialCircuitState, MaterialCircuitTransition,
-    MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
-    MonetaryBook, MonetaryCircuit, OwnershipClaim, PricePolicy, ProcessId, ProcessOutput,
-    ProductionCommitment, ProductionDemandPolicy, PublicAccountId, PublicAllocation, PublicBudget,
-    PublicTransferTreatment, RecurringEconomy, ReplenishmentPolicy, RouteId, SellerOffer,
-    ServiceConnection, ServiceInputPolicy, ServiceStage, SiteId, SiteLogisticsNode,
-    StaffingMemberId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState,
-    StaffingState, StaffingWorkSource, StockCarryingValue, SupplierRoute, SupplierTransport,
-    TaxBasis, TaxPolicy, UnitId,
+    HouseholdKind, HouseholdNeed, HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStandard,
+    HouseholdStock, HouseholdTimeAccounting, HouseholdWant, InputOutputCoefficient,
+    InstitutionLocation, InventoryRow, LaborCapacityRow, LaborCoefficient, LaborCompensation,
+    LogisticsNodeId, MarketClearingPolicy, MaterialCatalog, MaterialCatalogDefinition,
+    MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MerchantHandling,
+    MerchantHandlingCoefficient, MerchantRole, MonetaryBook, MonetaryCircuit, OwnershipClaim,
+    PricePolicy, ProcessId, ProcessOutput, ProductionCommitment, ProductionDemandPolicy,
+    PublicAccountId, PublicAllocation, PublicBudget, PublicTransferTreatment, RecurringEconomy,
+    ReplenishmentPolicy, RouteId, SellerOffer, ServiceConnection, ServiceInputPolicy, ServiceStage,
+    SiteId, SiteLogisticsNode, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
+    StaffingPoolId, StaffingPoolState, StaffingState, StaffingWorkSource, StockCarryingValue,
+    SupplierRoute, SupplierTransport, TaxBasis, TaxPolicy, UnitId, WantTier,
 };
 use std::collections::BTreeMap;
 
@@ -88,6 +88,10 @@ fn treasury() -> PublicAccountId {
     PublicAccountId::from_bytes([30; 32])
 }
 
+pub(crate) fn clinic_process() -> ProcessId {
+    process(CLINIC)
+}
+
 fn member(index: usize) -> StaffingMemberId {
     StaffingMemberId::from_bytes(site(index).as_bytes())
 }
@@ -127,6 +131,9 @@ pub(crate) struct World {
     pub taxes: Option<Taxes>,
     /// The market policy on the catalog, in the order food, utility, household services.
     pub market: bool,
+    /// Every household account wants, per person, one household service in tier 2 and one food
+    /// and one utility in tier 3. Set with `with_tiers`, which also sets `market`.
+    pub tiers: bool,
 }
 
 impl World {
@@ -144,6 +151,7 @@ impl World {
             farm_output_per_batch: 10,
             taxes: None,
             market: false,
+            tiers: false,
         }
     }
 
@@ -195,6 +203,13 @@ impl World {
 
     pub(crate) fn with_market(mut self) -> Self {
         self.market = true;
+        self
+    }
+
+    /// The market policy with the household wants: comforts and luxuries bought in tiers.
+    pub(crate) fn with_tiers(mut self) -> Self {
+        self.market = true;
+        self.tiers = true;
         self
     }
 
@@ -290,13 +305,34 @@ impl World {
         }
         household_needs.sort_by_key(|row| (row.principal_id, row.good_id, row.unit_id));
         let farm_utility = farm * FARM_BATCH_INPUT;
+        let mut household_wants = vec![];
+        if self.tiers {
+            for (principal, _, _, _) in self.households() {
+                for (tier, g) in [
+                    (WantTier::Comfort, CARE),
+                    (WantTier::Luxury, FOOD),
+                    (WantTier::Luxury, POWER),
+                ] {
+                    household_wants.push(HouseholdWant {
+                        principal_id: principal,
+                        tier,
+                        good_id: good(g),
+                        unit_id: units(),
+                        basis: HouseholdNeedBasis::Persons,
+                        units_per_basis: 1,
+                    });
+                }
+            }
+            household_wants
+                .sort_by_key(|row| (row.principal_id, row.tier, row.good_id, row.unit_id));
+        }
         MaterialCatalogDefinition {
             market_clearing: self.market.then(|| MarketClearingPolicy {
                 paying_order: [FOOD, POWER, CARE]
                     .into_iter()
                     .map(|g| (good(g), units()))
                     .collect(),
-                household_wants: vec![],
+                household_wants,
             }),
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: (0..4)
@@ -834,6 +870,12 @@ pub(crate) struct Snapshot {
     pub unmet_by_account: BTreeMap<&'static str, [u64; 3]>,
     /// By site: the price at which a short market cleared this period, in cents; 0 if none.
     pub cleared_cents: [i128; 4],
+    /// Units bought for wants, by good.
+    pub want_bought: [u64; 3],
+    /// By account, in whole dollars at posted prices, (wanted, bought) in tiers 2 and 3.
+    pub tier_values: BTreeMap<&'static str, [(i128, i128); 2]>,
+    /// By account, how well it lived this period. Empty without wants.
+    pub standards: BTreeMap<&'static str, HouseholdStandard>,
     pub public_receipts: i128,
     pub public_payments: i128,
     pub total_money: i128,
@@ -873,6 +915,43 @@ fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
         panic!("the small world is monetary")
     };
     e
+}
+
+type TierMeasures = (
+    [u64; 3],
+    BTreeMap<&'static str, [(i128, i128); 2]>,
+    BTreeMap<&'static str, HouseholdStandard>,
+);
+
+/// What the period's want and tier records say: units bought for wants, each account's values by
+/// tier, and each account's standard.
+fn tier_measures(closed: &MaterialCircuitTransition) -> TierMeasures {
+    let mut want_bought = [0; 3];
+    for row in &closed.household_wants {
+        want_bought[good_index(row.good_id)] += row.bought_quantity;
+    }
+    let mut tier_values = BTreeMap::new();
+    let mut standards = BTreeMap::new();
+    for row in &closed.household_tiers {
+        let name = account_name(AccountId::Household(row.principal_id));
+        let slot = match row.tier {
+            WantTier::Comfort => 0,
+            WantTier::Luxury => 1,
+        };
+        tier_values.entry(name).or_insert([(0, 0); 2])[slot] = (
+            row.wanted_value.micro_units() / 1_000_000,
+            row.bought_value.micro_units() / 1_000_000,
+        );
+        let standard = babylon_material_circuit::household_standard(
+            row.principal_id,
+            &closed.household_consumption,
+            &closed.household_services,
+            &closed.household_tiers,
+        )
+        .expect("every account has both tier rows");
+        standards.insert(name, standard);
+    }
+    (want_bought, tier_values, standards)
 }
 
 #[allow(clippy::too_many_lines, reason = "one reduction of every measured row")]
@@ -972,9 +1051,13 @@ fn snapshot(
         let i = site_index(row.site_id);
         cleared_cents[i] = cleared_cents[i].max(row.clearing_price.micro_units() / 10_000);
     }
+    let (want_bought, tier_values, standards) = tier_measures(closed);
     Snapshot {
         period: state.period - 1,
         cleared_cents,
+        want_bought,
+        tier_values,
+        standards,
         cash,
         micro_cash,
         planned,
@@ -1026,6 +1109,14 @@ pub(crate) fn opening_cash(world: &World) -> BTreeMap<&'static str, i128> {
 
 /// Run a world for `PERIODS` periods: close, staff from the engine's own requests, finish.
 pub(crate) fn run(world: &World) -> Vec<Snapshot> {
+    run_observed(world, &mut |_, _| {})
+}
+
+/// `run`, showing each finished period's transition to `observe`.
+pub(crate) fn run_observed(
+    world: &World,
+    observe: &mut dyn FnMut(u64, &MaterialCircuitTransition),
+) -> Vec<Snapshot> {
     let (catalog, mut state) = world.build();
     let (bindings, mut staffing) = world.staffing();
     let opening_money = economy(&state)
@@ -1062,6 +1153,7 @@ pub(crate) fn run(world: &World) -> Vec<Snapshot> {
         let closed = closed
             .finish_with_workforce(&catalog, labor, members)
             .unwrap_or_else(|e| panic!("period {period} finishes: {e:?}"));
+        observe(period, &closed);
         staffing = staffed.into_state();
         let row = snapshot(&catalog, &closed, asked, employed);
         assert_eq!(
@@ -1074,6 +1166,35 @@ pub(crate) fn run(world: &World) -> Vec<Snapshot> {
     rows
 }
 
+/// Every period's measures equal the first period's, and the first period's cash is the opening's.
+pub(crate) fn assert_still(world: &World) -> Snapshot {
+    let rows = run(world);
+    assert_eq!(rows.len(), usize::try_from(PERIODS).expect("few periods"));
+    let first = rows[0].clone();
+    assert_eq!(
+        first.cash,
+        opening_cash(world),
+        "period 1 closes with the opening cash"
+    );
+    for row in &rows {
+        let mut same = row.clone();
+        same.period = first.period;
+        assert_eq!(same, first, "period {} moved", row.period);
+    }
+    assert_eq!(first.planned, [120, 4, 40, 40]);
+    assert_eq!(first.hours_attended, [120, 40, 40, 40]);
+    assert_eq!(first.output, [120, 40, 40, 40]);
+    assert_eq!(first.stock, [0, 40, 0, 40]);
+    assert_eq!(first.price_cents, [1_200, 2_500, 3_000, 3_800]);
+    assert_eq!(first.sales, [120, 40, 40, 40]);
+    for good in [FOOD, POWER, CARE] {
+        assert_eq!(first.required[good], 40);
+        assert_eq!(first.consumed[good], 40);
+        assert_eq!(first.unmet[good], 0);
+    }
+    first
+}
+
 /// One table line per shown period, for the record. Printed only by the ignored dump test.
 pub(crate) fn describe(name: &str, rows: &[Snapshot]) -> String {
     use std::fmt::Write;
@@ -1081,7 +1202,7 @@ pub(crate) fn describe(name: &str, rows: &[Snapshot]) -> String {
     for row in rows {
         let _ = writeln!(
             text,
-            "p{:>2} cash {:?} | planned {:?} asked {:?} hp {:?} att {:?} used {:?} emp {:?} | out {:?} stock {:?} price {:?} sales {:?} | req {:?} bought {:?} cons {:?} unmet {:?} {:?} | pub {} {} | cleared {:?}",
+            "p{:>2} cash {:?} | planned {:?} asked {:?} hp {:?} att {:?} used {:?} emp {:?} | out {:?} stock {:?} price {:?} sales {:?} | req {:?} bought {:?} cons {:?} unmet {:?} {:?} | pub {} {} | cleared {:?} | wants {:?} tiers {:?} standards {:?}",
             row.period,
             row.cash,
             row.planned,
@@ -1102,6 +1223,9 @@ pub(crate) fn describe(name: &str, rows: &[Snapshot]) -> String {
             row.public_receipts,
             row.public_payments,
             row.cleared_cents,
+            row.want_bought,
+            row.tier_values,
+            row.standards,
         );
     }
     text

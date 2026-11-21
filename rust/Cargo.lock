@@ -3452,8 +3452,8 @@ dependencies = [
 
 [[package]]
 name = "hypergraph-rs"
-version = "0.1.0"
-source = "git+https://github.com/percy-raskova/hypergraph-rs.git?rev=dc1c06abbbc7a3f8633d1561451e61e101ad2090#dc1c06abbbc7a3f8633d1561451e61e101ad2090"
+version = "0.2.0"
+source = "git+https://github.com/percy-raskova/hypergraph-rs.git?rev=fb2b4b85a76fcd512af46d4511c874024fc86e93#fb2b4b85a76fcd512af46d4511c874024fc86e93"
 dependencies = [
  "indexmap",
  "ndarray",

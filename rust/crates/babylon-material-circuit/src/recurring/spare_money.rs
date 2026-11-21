@@ -262,12 +262,10 @@ fn paid_for(
     for row in recurring.production.iter().filter(|r| r.site_id == site) {
         let nameplate = reads.nameplate.get(&row.process_id).copied().unwrap_or(0);
         let batches = row.planned_batches.min(nameplate);
-        for input in reads
-            .catalog
-            .input_coefficients
-            .iter()
-            .filter(|c| c.process_id == row.process_id)
-        {
+        for input in reads.catalog.input_coefficients.iter().filter(|c| {
+            c.process_id == row.process_id
+                && !crate::services::is_service(reads.catalog, c.good_id, c.unit_id)
+        }) {
             let entry = asked
                 .entry((input.good_id, input.unit_id))
                 .or_insert(0_u128);
@@ -333,7 +331,10 @@ fn raise_maker(
     let needs: Vec<_> = catalog
         .input_coefficients
         .iter()
-        .filter(|row| row.process_id == output.process_id)
+        .filter(|row| {
+            row.process_id == output.process_id
+                && !crate::services::is_service(catalog, row.good_id, row.unit_id)
+        })
         .collect();
     for input in &needs {
         let key = (input.good_id, input.unit_id);

@@ -7,6 +7,7 @@ use babylon_material_circuit::{
     CircuitAccounting, MaterialCircuitTransition, ProcessId, ProductionPlanReceipt,
     ServiceMarketReceipt, SiteId,
 };
+use std::collections::BTreeSet;
 
 /// The batches the state plans for a process at the next close.
 fn state_batches(closed: &MaterialCircuitTransition, process: ProcessId) -> u64 {
@@ -73,8 +74,9 @@ fn first_raise(world: &World) -> Option<(u64, SiteId)> {
     first
 }
 
-/// Under the pay rise the clinic's buyers ask for more than they can pay for at the posted price,
-/// and the clinic, holding more than one period of its outlay, plans for the difference.
+/// Under the pay rise the buyers ask for more than they can pay for at the posted price, and the
+/// first workplace holding more than one period of its outlay to plan for the difference is the
+/// utility (see `a_maker_with_a_service_input_is_raised_too` for the clinic).
 #[test]
 fn spare_money_extends_a_plan_under_the_pay_rise() {
     let asking = World::higher_pay().with_tiers().with_spare_money();
@@ -84,6 +86,27 @@ fn spare_money_extends_a_plan_under_the_pay_rise() {
     );
     let not_asking = World::higher_pay().with_tiers();
     assert_eq!(first_raise(&not_asking), None);
+}
+
+/// A maker whose only input is a service is raised too: the clinic, which takes POWER, plans for
+/// the difference in some period of the pay-rise run.
+#[test]
+fn a_maker_with_a_service_input_is_raised_too() {
+    let mut raised = BTreeSet::new();
+    support::run_observed(
+        &World::higher_pay().with_tiers().with_spare_money(),
+        &mut |_, closed| {
+            for market in &closed.service_markets {
+                if state_batches(closed, market.process_id) > market.planned_quantity {
+                    raised.insert(market.site_id);
+                }
+            }
+        },
+    );
+    assert!(
+        raised.contains(&support::site(CLINIC)),
+        "the clinic is never raised: {raised:?}"
+    );
 }
 
 /// The paid-for plans and service markets of period 1 of a run.

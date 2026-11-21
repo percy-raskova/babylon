@@ -358,8 +358,9 @@ mod tests {
     type FlatBid = (u64, i128, Option<i128>);
 
     /// Every market of `clearing::rule`'s tests, as `(quote, bids as (wanted, purse, limit),
-    /// the supply that test pins, if it pins one the strided sweep can miss)`.
-    fn clearing_markets() -> Vec<(i128, Vec<FlatBid>, Option<u64>)> {
+    /// every supply at which one of those tests pins a row)`. The pinned supplies are run beside
+    /// the strided sweep, so that each row of that table is compared through the ladder.
+    fn clearing_markets() -> Vec<(i128, Vec<FlatBid>, &'static [u64])> {
         const DEEP: i128 = 1_000_000_000_000_000;
         vec![
             (
@@ -369,9 +370,14 @@ mod tests {
                     (100, 11_250 * M, None),
                     (100, DEEP, None),
                 ],
-                None,
+                &[300, 240, 150],
             ),
-            (75 * M, vec![(4, 300 * M, None); 3], None),
+            (75 * M, vec![(4, 300 * M, None); 3], &[5]),
+            (
+                75 * M,
+                vec![(100, 7_500 * M, None), (100, DEEP, None)],
+                &[0],
+            ),
             (
                 100 * M,
                 vec![
@@ -379,9 +385,9 @@ mod tests {
                     (100, DEEP, Some(245 * M)),
                     (50, 5_000 * M, None),
                 ],
-                None,
+                &[120],
             ),
-            (100 * M, vec![(100, DEEP, Some(40 * M)); 2], None),
+            (100 * M, vec![(100, DEEP, Some(40 * M)); 2], &[60]),
             (
                 100 * M,
                 vec![
@@ -389,7 +395,7 @@ mod tests {
                     (10, 1_000_000 * M, Some(100 * M)),
                     (4, 400 * M, None),
                 ],
-                None,
+                &[7],
             ),
             (
                 100 * M,
@@ -397,7 +403,7 @@ mod tests {
                     (10, 1_000_000 * M, Some(40 * M)),
                     (10, 1_000_000 * M, Some(150 * M)),
                 ],
-                None,
+                &[4],
             ),
             (
                 280 * M,
@@ -406,13 +412,13 @@ mod tests {
                     (1000, 9_000 * M, None),
                     (1000, 500 * M, None),
                 ],
-                None,
+                &[1],
             ),
-            (280 * M, vec![(1000, 9_000 * M, None)], None),
+            (280 * M, vec![(1000, 9_000 * M, None)], &[10]),
             (
                 280 * M,
                 vec![(5, 0, None), (5, 1_400 * M, None), (5, 560 * M, None)],
-                None,
+                &[3],
             ),
             (
                 280 * M,
@@ -422,7 +428,7 @@ mod tests {
                     (173_993, 24_359_020_000_000, None),
                     (19_334, 16_240_560_000_000, None),
                 ],
-                Some(400_000),
+                &[400_000],
             ),
             (
                 75 * M,
@@ -430,7 +436,7 @@ mod tests {
                     (2_000_000, 10_i128.pow(27), None),
                     (2_000_000, 150_000_000_000_000, None),
                 ],
-                Some(1_000_000),
+                &[1_000_000],
             ),
         ]
     }
@@ -455,7 +461,7 @@ mod tests {
                 .demand_at_quote;
             let swept =
                 (0..=at_quote + 2).step_by(usize::try_from(at_quote / 40 + 1).expect("small"));
-            for supply in swept.chain(pinned) {
+            for supply in swept.chain(pinned.iter().copied()) {
                 let expected =
                     clearing::clear_market(supply, Currency::from_micro_units(quote), &flat)
                         .expect("clears");

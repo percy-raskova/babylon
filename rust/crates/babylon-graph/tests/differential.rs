@@ -140,6 +140,29 @@ impl Twin {
         m
     }
 
+    /// Amendment AG (i): a membership write, applied to both stores; the
+    /// two must read back the same value as well as agree on every byte.
+    fn update_membership_attribute(
+        &mut self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+        value: f64,
+    ) {
+        self.memory
+            .update_membership_attribute(id, member, attribute, value)
+            .expect("the fixture membership carries the authored field");
+        self.hyper
+            .update_membership_attribute(id, member, attribute, value)
+            .expect("the fixture membership carries the authored field");
+        assert_eq!(
+            self.memory.membership_attribute(id, member, attribute),
+            self.hyper.membership_attribute(id, member, attribute),
+            "the two stores read a membership value differently"
+        );
+        self.assert_synced("update_membership_attribute");
+    }
+
     /// D2 (PR #494 adversarial review): the ONE mutating `GraphSubstrate`
     /// method the original script never drove — and the one touching all
     /// three structures `add_hyperedge` also touches but `remove_node`'s
@@ -226,6 +249,10 @@ fn canonical_bytes_agree_after_every_operation_in_a_mixed_script() {
     // D2: a hyperedge over members NONE of which the removals below touch,
     // so its own explicit removal (not a remove_node cascade) is what
     // exercises the direct path.
+    // Amendment AG (i): membership values, then the removals below sweep them.
+    let sector = twin.add_hyperedge("economic_sector", &[nodes[8], nodes[10]]);
+    twin.update_membership_attribute(sector, nodes[8], "sector/weight", 0.5);
+    twin.update_membership_attribute(sector, nodes[10], "sector/weight", 0.25);
     let directly_removed = twin.add_hyperedge("economic_sector", &[nodes[3], nodes[4], nodes[6]]);
 
     // Removals exercising the CASCADE (a multi-member hyperedge shrinks,

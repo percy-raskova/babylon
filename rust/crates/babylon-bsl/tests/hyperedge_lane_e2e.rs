@@ -429,6 +429,31 @@ impl GraphSubstrate for OrderSpyGraph {
         self.inner.update_hyperedge_attribute(id, attribute, value)
     }
 
+    // The membership lane (Amendment AG (i)): pure delegation, un-spied.
+    fn update_membership_attribute(
+        &mut self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        self.inner
+            .update_membership_attribute(id, member, attribute, value)
+    }
+
+    fn membership_attribute(
+        &self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError> {
+        self.inner.membership_attribute(id, member, attribute)
+    }
+
+    fn is_member(&self, id: HyperedgeId, member: NodeId) -> Result<bool, GraphError> {
+        self.inner.is_member(id, member)
+    }
+
     fn hyperedge_attribute(&self, id: HyperedgeId, attribute: &str) -> Result<f64, GraphError> {
         self.inner.hyperedge_attribute(id, attribute)
     }

@@ -314,6 +314,37 @@ pub trait GraphSubstrate {
     /// never a default `0.0`.
     fn hyperedge_attribute(&self, id: HyperedgeId, attribute: &str) -> Result<f64, GraphError>;
 
+    /// Write one `f64` field of the membership of `member` in `id`.
+    ///
+    /// # Errors
+    /// No such hyperedge, no such node, `member` not in `id`'s member list,
+    /// or a non-finite value.
+    fn update_membership_attribute(
+        &mut self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError>;
+
+    /// Read it back.
+    ///
+    /// # Errors
+    /// The three existence faults above, or the field was never written on
+    /// this membership (never a default).
+    fn membership_attribute(
+        &self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError>;
+
+    /// Whether `member` is in `id`'s member list, without listing the members.
+    ///
+    /// # Errors
+    /// No such hyperedge, or no such node.
+    fn is_member(&self, id: HyperedgeId, member: NodeId) -> Result<bool, GraphError>;
+
     /// Members of one hyperedge, in **ascending [`NodeId`] order** — declared
     /// member order is never observable (BSL §2.6 draft ruling D25).
     ///

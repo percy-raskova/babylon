@@ -64,6 +64,10 @@ where
     currency_attribute_round_trips_moves_the_hash_and_cascades_on_removal(&make);
     hyperedge_attribute_round_trips_moves_the_hash_and_cascades_on_removal(&make);
     hyperedge_attribute_honest_null_unknown_id_and_non_finite_are_loud(&make);
+    membership_attribute_round_trips_and_reads_honest_null(&make);
+    overlapping_hyperedges_keep_separate_membership_values(&make);
+    membership_write_is_loud_off_a_membership(&make);
+    membership_values_die_with_their_membership_and_never_return(&make);
 }
 
 /// ADR185 R2: removing a node takes its incident dyadic edges, its
@@ -1512,6 +1516,211 @@ where
             .update_hyperedge_attribute(cell, "community/heat", f64::NAN)
             .is_err(),
         "a non-finite write refuses"
+    );
+}
+
+/// A membership's value round-trips, and an unwritten field reads as the
+/// honest null on a member that exists (never a default 0.0).
+fn membership_attribute_round_trips_and_reads_honest_null<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let h = graph
+        .add_hyperedge("nation", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+
+    graph
+        .update_membership_attribute(h, a, "nation/households", 12.0)
+        .expect("the fixture membership carries the authored field");
+    assert_eq!(
+        graph.membership_attribute(h, a, "nation/households"),
+        Ok(12.0)
+    );
+    let other = graph
+        .membership_attribute(h, a, "nation/other")
+        .expect_err("a field never written on this membership is loud");
+    assert!(other.message.contains("never written"), "{}", other.message);
+    let unwritten = graph
+        .membership_attribute(h, b, "nation/households")
+        .expect_err("a member with no write reads as the honest null");
+    assert!(
+        unwritten.message.contains("never written"),
+        "{}",
+        unwritten.message
+    );
+
+    graph
+        .update_membership_attribute(h, a, "nation/zero", -0.0)
+        .expect("the fixture membership carries the authored field");
+    let stored = graph
+        .membership_attribute(h, a, "nation/zero")
+        .expect("the written field reads back");
+    assert!(stored.is_sign_positive(), "-0.0 stores as +0.0");
+}
+
+/// One group in two hyperedges keeps two values, one per membership.
+fn overlapping_hyperedges_keep_separate_membership_values<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let h1 = graph
+        .add_hyperedge("nation", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let h2 = graph
+        .add_hyperedge("nation", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+
+    graph
+        .update_membership_attribute(h1, a, "nation/households", 3.0)
+        .expect("the fixture membership carries the authored field");
+    graph
+        .update_membership_attribute(h2, a, "nation/households", 7.0)
+        .expect("the fixture membership carries the authored field");
+    assert_eq!(
+        graph.membership_attribute(h1, a, "nation/households"),
+        Ok(3.0)
+    );
+    assert_eq!(
+        graph.membership_attribute(h2, a, "nation/households"),
+        Ok(7.0)
+    );
+
+    graph
+        .update_membership_attribute(h1, a, "nation/households", 4.0)
+        .expect("the fixture membership carries the authored field");
+    assert_eq!(
+        graph.membership_attribute(h1, a, "nation/households"),
+        Ok(4.0)
+    );
+    assert_eq!(
+        graph.membership_attribute(h2, a, "nation/households"),
+        Ok(7.0),
+        "writing one nation leaves the other"
+    );
+    assert!(
+        graph
+            .membership_attribute(h1, b, "nation/households")
+            .is_err(),
+        "another member of the same hyperedge is untouched"
+    );
+}
+
+/// A membership write off a membership is loud and changes no byte.
+fn membership_write_is_loud_off_a_membership<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let outsider = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let h = graph
+        .add_hyperedge("nation", &[a])
+        .expect("the fixture graph admits the authored hyperedge");
+    let before = graph
+        .encode_state()
+        .expect("the fixture graph encodes its canonical state");
+
+    assert!(graph
+        .update_membership_attribute(HyperedgeId(999), a, "nation/households", 1.0)
+        .is_err());
+    assert!(graph
+        .update_membership_attribute(h, NodeId(999), "nation/households", 1.0)
+        .is_err());
+    assert!(graph
+        .update_membership_attribute(h, outsider, "nation/households", 1.0)
+        .is_err());
+    assert!(graph
+        .update_membership_attribute(h, a, "nation/households", f64::NAN)
+        .is_err());
+    assert!(graph
+        .update_membership_attribute(h, a, "nation/households", f64::INFINITY)
+        .is_err());
+    let after = graph
+        .encode_state()
+        .expect("the fixture graph encodes its canonical state");
+    assert_eq!(
+        before.as_bytes(),
+        after.as_bytes(),
+        "a refused write changes no byte"
+    );
+
+    assert_eq!(graph.is_member(h, a), Ok(true));
+    assert_eq!(graph.is_member(h, outsider), Ok(false));
+    assert!(graph.is_member(HyperedgeId(999), a).is_err());
+    assert!(graph.is_member(h, NodeId(999)).is_err());
+}
+
+/// A value dies with its membership and never comes back with a new one.
+fn membership_values_die_with_their_membership_and_never_return<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let h = graph
+        .add_hyperedge("nation", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    graph
+        .update_membership_attribute(h, a, "nation/households", 5.0)
+        .expect("the fixture membership carries the authored field");
+    graph
+        .remove_node(a)
+        .expect("the fixture node exists before removal");
+    assert!(
+        graph
+            .membership_attribute(h, a, "nation/households")
+            .is_err(),
+        "a removed node has no membership to read"
+    );
+
+    let h2 = graph
+        .add_hyperedge("nation", &[b])
+        .expect("the fixture graph admits the authored hyperedge");
+    graph
+        .update_membership_attribute(h2, b, "nation/households", 9.0)
+        .expect("the fixture membership carries the authored field");
+    graph
+        .remove_hyperedge(h2)
+        .expect("the fixture hyperedge exists before removal");
+    let again = graph
+        .add_hyperedge("nation", &[b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let err = graph
+        .membership_attribute(again, b, "nation/households")
+        .expect_err("a new membership starts with no values");
+    assert!(err.message.contains("never written"), "{}", err.message);
+    assert!(
+        graph
+            .membership_attribute(h2, b, "nation/households")
+            .is_err(),
+        "the removed hyperedge's membership is gone"
     );
 }
 

@@ -42,7 +42,7 @@ use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeI
 use crate::working_copy::DetachedCopy;
 use babylon_kernel::currency::Currency;
 use hypergraph_rs::Hypergraph;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// The 16-character lowercase zero-padded hex of `id`'s big-endian `u64` —
 /// the library key a [`NodeId`] mints under.
@@ -56,20 +56,18 @@ fn hyperedge_key(id: HyperedgeId) -> String {
 }
 
 /// The membership payload slot `hypergraph-rs`'s `MembershipEdge<M>` carries
-/// on every (member, hyperedge) incidence edge — the `petgraph` edge
-/// weight, structurally the right home for Amendment AG (i) / ADR189's
-/// attributed membership, because the (member, hyperedge) pair it names is
-/// exactly the key this slot hangs on.
+/// on every (member, hyperedge) incidence edge (Amendment AG (i) / ADR189's
+/// attributed membership). The (member, hyperedge) pair it names is exactly
+/// the key a membership's values hang on, and the library removes the slot
+/// with the membership, so no sweep is owed here.
 ///
-/// **Carried, empty, unhashed — nothing in this train writes it.** The
-/// library exposes the slot with zero accessors (six construction sites
-/// hard-code `M::default()`, zero reads —
-/// `percy-raskova/hypergraph-rs#2`, filed Phase B Task 4 Step 4). This type
-/// exists so the slot already sits in the adapter's type when the accessor
-/// lands upstream; the moment an AG task adds a write through it, this
-/// comment is the first thing it must revisit.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct MembershipPayload;
+/// An empty map allocates nothing: a world with no membership field costs
+/// no memory and writes no byte.
+#[derive(Debug, Default, Clone, PartialEq)]
+struct MembershipPayload {
+    /// qname -> value; a `BTreeMap` so the listing order is the qname order.
+    fields: BTreeMap<String, f64>,
+}
 
 /// The `hypergraph-rs`-backed [`GraphSubstrate`]/[`CanonicalState`] adapter.
 /// See the module documentation. Nothing but [`Self::new`] is public — a
@@ -244,6 +242,18 @@ impl HypergraphStore {
         self.edge_attributes = edge_attributes;
         self.hyperedge_attributes = hyperedge_attributes;
         Ok(())
+    }
+
+    /// The three existence faults of a membership read or write: no such
+    /// hyperedge, no such node, or a node that is not in the member list.
+    fn require_membership(&self, id: HyperedgeId, member: NodeId) -> Result<(), GraphError> {
+        if self.is_member(id, member)? {
+            Ok(())
+        } else {
+            Err(GraphError {
+                message: format!("{member:?} is not a member of {id:?}"),
+            })
+        }
     }
 
     /// The frozen pre-check (delta §8 covenant 6, CD4) at the head of every
@@ -710,6 +720,74 @@ impl GraphSubstrate for HypergraphStore {
                     "attribute {attribute} was never written on {id:?} — never a default 0.0"
                 ),
             })
+    }
+
+    fn update_membership_attribute(
+        &mut self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        self.check_not_frozen()?;
+        if !value.is_finite() {
+            return Err(GraphError {
+                message: format!(
+                    "non-finite membership attribute {attribute} on {member:?} in {id:?}"
+                ),
+            });
+        }
+        self.require_membership(id, member)?;
+        let edge_key = hyperedge_key(id);
+        let node = node_key(member);
+        let mut payload = self
+            .inner
+            .member_data(&edge_key, &node)
+            .cloned()
+            .unwrap_or_default();
+        // `-0.0` stores as `+0.0`: one value, one set of bytes.
+        let value = if value == 0.0 { 0.0 } else { value };
+        payload.fields.insert(attribute.to_owned(), value);
+        self.inner
+            .set_member_data(&edge_key, &node, payload)
+            .map_err(|e| GraphError {
+                message: format!("membership write of {member:?} in {id:?}: {e}"),
+            })
+    }
+
+    fn membership_attribute(
+        &self,
+        id: HyperedgeId,
+        member: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError> {
+        self.require_membership(id, member)?;
+        self.inner
+            .member_data(&hyperedge_key(id), &node_key(member))
+            .and_then(|payload| payload.fields.get(attribute).copied())
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "membership attribute {attribute} was never written on {member:?} in {id:?} \
+                     — never a default 0.0"
+                ),
+            })
+    }
+
+    fn is_member(&self, id: HyperedgeId, member: NodeId) -> Result<bool, GraphError> {
+        if self.inner.edge_attrs(&hyperedge_key(id)).is_none() {
+            return Err(GraphError {
+                message: format!("no such hyperedge: {id:?}"),
+            });
+        }
+        if !self.node_exists(member) {
+            return Err(GraphError {
+                message: format!("no such node: {member:?}"),
+            });
+        }
+        Ok(self
+            .inner
+            .member_data(&hyperedge_key(id), &node_key(member))
+            .is_some())
     }
 
     fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError> {

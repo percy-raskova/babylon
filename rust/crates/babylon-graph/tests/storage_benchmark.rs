@@ -193,3 +193,35 @@ fn measure_the_quadratic_cliff() {
     measure_size(10_000, 5);
     measure_size(20_000, 5);
 }
+
+/// Amendment AG (i): a membership read is the member's own lookup, never a
+/// scan of the hyperedge's members, so its cost must not grow with the
+/// hyperedge. 10,000 reads on a 10,000-member hyperedge.
+#[test]
+#[ignore = "wall-clock measurement, not a gate — run explicitly, see module docs"]
+fn measure_membership_reads_on_a_large_hyperedge() {
+    let mut hyper = HypergraphStore::new();
+    let members: Vec<NodeId> = (0..10_000)
+        .map(|_| {
+            hyper
+                .add_node("social_class")
+                .expect("the fixture adds a node with a registered kind")
+        })
+        .collect();
+    let nation = hyper
+        .add_hyperedge("nation", &members)
+        .expect("the fixture graph admits the authored hyperedge");
+    for member in &members {
+        hyper
+            .update_membership_attribute(nation, *member, "nation/households", 1.0)
+            .expect("the fixture membership carries the authored field");
+    }
+    let ((), t) = time_it(|| {
+        for member in &members {
+            hyper
+                .membership_attribute(nation, *member, "nation/households")
+                .expect("the fixture membership carries the authored field");
+        }
+    });
+    println!("HypergraphStore::membership_attribute x10000 on 10000 members {t:?}");
+}

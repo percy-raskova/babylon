@@ -19,8 +19,8 @@ use crate::{
     HouseholdTimePolicy, InputOutputCoefficient, LaborCoefficient, MaintenanceBinding,
     MaterialCircuitError, MerchantHandling, MerchantHandlingCoefficient, ProcessOutput,
     ProductiveEquipment, RollingProcessSupply, RouteStage, ServiceInputPolicy, SiteLogisticsNode,
-    SupplierRoute, SupplierTransport, MAX_HOUSEHOLD_NEEDS, MAX_INPUT_COEFFICIENTS,
-    MAX_MATERIAL_CIRCUIT_ROWS, MAX_SUPPLIER_ROUTES,
+    SupplierRoute, SupplierTransport, MAX_HOUSEHOLD_NEEDS, MAX_HOUSEHOLD_WANTS,
+    MAX_INPUT_COEFFICIENTS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_SUPPLIER_ROUTES,
 };
 use std::collections::BTreeMap;
 
@@ -386,6 +386,16 @@ impl MaterialCatalogDefinition {
             })
             .collect();
         let named: BTreeSet<_> = policy.paying_order.iter().copied().collect();
+        let mut want_keys = BTreeSet::new();
+        if policy.household_wants.len() > MAX_HOUSEHOLD_WANTS
+            || policy.household_wants.iter().any(|want| {
+                want.units_per_basis == 0
+                    || !named.contains(&(want.good_id, want.unit_id))
+                    || !want_keys.insert((want.principal_id, want.tier, want.good_id, want.unit_id))
+            })
+        {
+            return Err(MaterialCircuitError::MarketClearingInvariant);
+        }
         if policy.paying_order.is_empty()
             || named.len() != policy.paying_order.len()
             || policy
@@ -460,6 +470,11 @@ impl MaterialCatalogDefinition {
             .sort_by_key(|row| (row.buyer_site_id, row.good_id, row.unit_id));
         self.household_needs
             .sort_by_key(|row| (row.principal_id, row.good_id, row.unit_id));
+        if let Some(policy) = &mut self.market_clearing {
+            policy
+                .household_wants
+                .sort_by_key(|row| (row.principal_id, row.tier, row.good_id, row.unit_id));
+        }
         crate::capacity::canonicalize_policy(&mut self.capacity_policy);
     }
 }
@@ -467,11 +482,19 @@ impl MaterialCatalogDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FinalDemandPrincipalId, HouseholdNeedBasis, MarketClearingPolicy};
+    use crate::{
+        FinalDemandPrincipalId, HouseholdNeedBasis, HouseholdWant, MarketClearingPolicy, WantTier,
+    };
 
     const PINNED_BASE_DIGEST: [u8; 32] = [
         45, 217, 79, 34, 238, 57, 4, 28, 215, 33, 7, 185, 21, 72, 34, 167, 59, 200, 187, 74, 130,
         172, 93, 155, 160, 7, 158, 178, 154, 209, 170, 125,
+    ];
+
+    /// The digest of a market policy with no wants, as it was before wants existed.
+    const PINNED_POLICY_DIGEST: [u8; 32] = [
+        79, 35, 61, 235, 96, 80, 116, 63, 67, 215, 134, 178, 2, 40, 152, 5, 119, 138, 172, 34, 5,
+        117, 185, 146, 251, 13, 226, 77, 88, 99, 168, 184,
     ];
 
     fn good(n: u8) -> GoodId {
@@ -523,6 +546,7 @@ mod tests {
     fn policy(order: &[u8]) -> MarketClearingPolicy {
         MarketClearingPolicy {
             paying_order: order.iter().map(|&n| (good(n), unit(n))).collect(),
+            household_wants: vec![],
         }
     }
 
@@ -537,6 +561,14 @@ mod tests {
     fn a_catalog_without_a_market_policy_keeps_its_digest() {
         let catalog = MaterialCatalog::try_new(base()).expect("the base catalog is valid");
         assert_eq!(catalog.catalog_digest(), PINNED_BASE_DIGEST);
+    }
+
+    #[test]
+    fn a_market_policy_without_wants_keeps_its_digest() {
+        let mut with = base();
+        with.market_clearing = Some(policy(&[1, 2]));
+        let catalog = MaterialCatalog::try_new(with).expect("valid");
+        assert_eq!(catalog.catalog_digest(), PINNED_POLICY_DIGEST);
     }
 
     #[test]
@@ -594,5 +626,117 @@ mod tests {
         with.market_clearing = Some(policy(&[1]));
         assert!(with.company_portfolios.is_none() && with.company_payouts.is_empty());
         MaterialCatalog::try_new(with).expect("a policy alone is admitted");
+    }
+
+    fn want(principal: u8, tier: WantTier, n: u8, units: u64) -> HouseholdWant {
+        HouseholdWant {
+            principal_id: FinalDemandPrincipalId::from_bytes([principal; 32]),
+            tier,
+            good_id: good(n),
+            unit_id: unit(n),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: units,
+        }
+    }
+
+    fn with_wants(wants: Vec<HouseholdWant>) -> MaterialCatalogDefinition {
+        let mut definition = base();
+        let mut order = policy(&[1, 2]);
+        order.household_wants = wants;
+        definition.market_clearing = Some(order);
+        definition
+    }
+
+    #[test]
+    fn wants_write_version_seven_and_change_the_digest() {
+        let plain = MaterialCatalog::try_new(with_wants(vec![])).expect("valid");
+        let rows = vec![
+            want(9, WantTier::Comfort, 2, 3),
+            want(9, WantTier::Luxury, 2, 1),
+        ];
+        let wanting = MaterialCatalog::try_new(with_wants(rows)).expect("valid");
+        assert_ne!(plain.catalog_digest(), wanting.catalog_digest());
+        let bytes = crate::wire::catalog_bytes(&wanting).expect("bytes");
+        let plain_bytes = crate::wire::catalog_bytes(&plain).expect("bytes");
+        let head = b"babylon.material-catalog.v2".len() + 1;
+        assert_eq!(bytes[head..head + 2], 7_u16.to_be_bytes());
+        assert_eq!(bytes[head + 2..head + 4], 2_u16.to_be_bytes());
+        // The body and the market tail are the bytes without wants; the wants tail follows.
+        assert_eq!(
+            &bytes[head + 2..plain_bytes.len()],
+            &plain_bytes[head + 2..]
+        );
+        let mut tail = 2_u32.to_be_bytes().to_vec();
+        for (tier, units) in [(2_u8, 3_u64), (3, 1)] {
+            tail.extend_from_slice(&[9; 32]);
+            tail.push(tier);
+            tail.extend_from_slice(&[2; 32]);
+            tail.extend_from_slice(&[2; 32]);
+            tail.push(1);
+            tail.extend_from_slice(&units.to_be_bytes());
+        }
+        assert_eq!(tail.len(), 4 + 2 * 106);
+        assert_eq!(&bytes[plain_bytes.len()..], tail.as_slice());
+    }
+
+    #[test]
+    fn a_want_is_refused_when_zero_unlisted_twice_or_too_many() {
+        assert!(refused(with_wants(vec![want(9, WantTier::Comfort, 2, 0)])));
+        let mut unlisted = base();
+        unlisted.commodities.push(storable(3));
+        let mut order = policy(&[1, 2]);
+        order.household_wants = vec![want(9, WantTier::Comfort, 3, 1)];
+        unlisted.market_clearing = Some(order);
+        assert!(refused(unlisted));
+        assert!(refused(with_wants(vec![
+            want(9, WantTier::Comfort, 2, 1),
+            want(9, WantTier::Comfort, 2, 5),
+        ])));
+        // One more than the bound, every key distinct.
+        let many = (0..=crate::MAX_HOUSEHOLD_WANTS as u64)
+            .map(|k| {
+                let mut row = want(9, WantTier::Comfort, 2, 1);
+                let mut id = [9_u8; 32];
+                id[..8].copy_from_slice(&k.to_be_bytes());
+                row.principal_id = FinalDemandPrincipalId::from_bytes(id);
+                row
+            })
+            .collect();
+        assert!(refused(with_wants(many)));
+    }
+
+    #[test]
+    fn wants_are_sorted_and_found_by_principal() {
+        let catalog = MaterialCatalog::try_new(with_wants(vec![
+            want(9, WantTier::Luxury, 2, 1),
+            want(4, WantTier::Luxury, 1, 1),
+            want(9, WantTier::Comfort, 2, 2),
+            want(9, WantTier::Comfort, 1, 2),
+        ]))
+        .expect("valid");
+        let order = catalog.market_clearing.as_ref().expect("a policy");
+        let tiers: Vec<_> = order
+            .household_wants
+            .iter()
+            .map(|row| (row.principal_id, row.tier, row.good_id))
+            .collect();
+        assert!(tiers.windows(2).all(|pair| pair[0] < pair[1]));
+        let nine = order.wants_of(FinalDemandPrincipalId::from_bytes([9; 32]));
+        assert_eq!(nine.len(), 3);
+        assert_eq!(nine[0].tier, WantTier::Comfort);
+        assert_eq!(nine[0].good_id, good(1));
+        assert_eq!(nine[2].tier, WantTier::Luxury);
+        assert_eq!(
+            order
+                .wants_of(FinalDemandPrincipalId::from_bytes([4; 32]))
+                .len(),
+            1
+        );
+        assert_eq!(
+            order
+                .wants_of(FinalDemandPrincipalId::from_bytes([5; 32]))
+                .len(),
+            0
+        );
     }
 }

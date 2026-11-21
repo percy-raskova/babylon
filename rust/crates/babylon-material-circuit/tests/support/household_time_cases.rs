@@ -659,3 +659,93 @@ fn surviving_opening_children_keep_their_dated_birthdays_across_canonical_restar
         world = next.state;
     }
 }
+
+/// `time_opening(4)` under a market policy whose order of paying is its one stored need, with a
+/// comfort want of the same product, two units a person. Each seller of the product posts its price
+/// through bounds that both equal it, as a product that clears by price has no fixed-price seller.
+fn want_opening() -> (MaterialCatalog, MaterialCircuitState) {
+    use babylon_material_circuit::{HouseholdWant, MarketClearingPolicy, PricePolicy, WantTier};
+    let (catalog, mut state) = time_opening(4);
+    let mut definition = catalog.into_definition();
+    definition.market_clearing = Some(MarketClearingPolicy {
+        paying_order: vec![(crate::good(2), crate::units())],
+        household_wants: vec![HouseholdWant {
+            principal_id: crate::household(),
+            tier: WantTier::Comfort,
+            good_id: crate::good(2),
+            unit_id: crate::units(),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 2,
+        }],
+    });
+    let recurring = crate::recurring_mut(&mut state);
+    for offer in &mut recurring.offers {
+        if offer.good_id == crate::good(2) {
+            offer.pricing = PricePolicy::Responsive {
+                minimum: offer.unit_price,
+                maximum: offer.unit_price,
+                step: crate::money(1),
+                target_stock: 4,
+            };
+        }
+    }
+    (
+        MaterialCatalog::try_new(definition).expect("a catalog with one want is valid"),
+        state,
+    )
+}
+
+/// The want's quantity for the household's cohort, as the closed state holds it.
+fn closed_want_quantity(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> u64 {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        panic!("monetary")
+    };
+    let recurring = economy.recurring.as_ref().expect("recurring economy");
+    let want = &catalog
+        .market_clearing
+        .as_ref()
+        .expect("a market policy")
+        .wants_of(crate::household())[0];
+    want.quantity(&recurring.households[0])
+        .expect("the want's quantity for the cohort")
+}
+
+#[test]
+fn wants_follow_births_and_deaths() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    for (births, deaths, expected_change) in [(250_000, [0; 4], 2_i64), (0, [0, 0, 250_000, 0], -2)]
+    {
+        let (catalog, mut opening) = want_opening();
+        let before = closed_want_quantity(&catalog, &opening);
+        assert_eq!(before, 8);
+        let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+            panic!("monetary")
+        };
+        let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+            panic!("time")
+        };
+        time.lifecycle = Some(
+            HouseholdLifecycleBook::new(
+                HouseholdLifecycleRates {
+                    births_per_million_working_age_per_period: births,
+                    deaths_per_million_per_period: deaths,
+                },
+                vec![(
+                    crate::household(),
+                    ResidentAges {
+                        age_18_64: 4,
+                        ..ResidentAges::default()
+                    },
+                )],
+            )
+            .expect("valid captured age exposure"),
+        );
+        let closed = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+            .expect("valid recurring economic close");
+        let after = closed_want_quantity(&catalog, &closed.state);
+        assert_eq!(
+            i64::try_from(after).expect("small") - i64::try_from(before).expect("small"),
+            expected_change
+        );
+    }
+}

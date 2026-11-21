@@ -103,14 +103,16 @@ pub(super) fn requests(
             .ok()
             .map(|i| &r.households[i])
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        let need = catalog
+        let Ok(need) = catalog
             .household_needs
             .binary_search_by_key(&(p.principal_id, p.good_id, p.unit_id), |r| {
                 (r.principal_id, r.good_id, r.unit_id)
             })
-            .ok()
             .map(|i| &catalog.household_needs[i])
-            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        else {
+            // A want alone: no need request (Task 4a gives it a stage of its own).
+            continue;
+        };
         let required = need.required_quantity(cohort)?;
         result.push(Request {
             order_id: recurring_service_order_id(

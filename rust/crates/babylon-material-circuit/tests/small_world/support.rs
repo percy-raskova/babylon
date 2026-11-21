@@ -296,6 +296,7 @@ impl World {
                     .into_iter()
                     .map(|g| (good(g), units()))
                     .collect(),
+                household_wants: vec![],
             }),
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: (0..4)

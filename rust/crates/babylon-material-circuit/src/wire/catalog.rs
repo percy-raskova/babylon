@@ -3,7 +3,7 @@
 use crate::MaintenanceBinding;
 use crate::{
     AidMandate, AidTransport, HouseholdNeed, HouseholdTimeCommitment, HouseholdTimePolicy,
-    MaterialCatalogDefinition, MaterialCircuitError, ServiceInputPolicy,
+    HouseholdWant, MaterialCatalogDefinition, MaterialCircuitError, ServiceInputPolicy,
 };
 use crate::{CapacitySupply, CompanyConditionOrder};
 
@@ -14,6 +14,9 @@ pub(super) const CATALOG_SCHEMA_VERSION: u16 = 2;
 
 /// A catalog with a market policy writes this version, then the version it would write without one.
 const MARKET_CATALOG_SCHEMA_VERSION: u16 = 6;
+
+/// A market policy with household wants writes this version where 6 is written.
+const MARKET_TIERS_CATALOG_SCHEMA_VERSION: u16 = 7;
 
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
@@ -111,6 +114,17 @@ pub(super) fn append_needs(
     })
 }
 
+fn append_wants(out: &mut Vec<u8>, rows: &[HouseholdWant]) -> Result<(), MaterialCircuitError> {
+    super::state::append_bounded_rows(out, rows, crate::MAX_HOUSEHOLD_WANTS, |b, row| {
+        b.extend_from_slice(&row.principal_id.as_bytes());
+        b.push(row.tier as u8);
+        b.extend_from_slice(&row.good_id.as_bytes());
+        b.extend_from_slice(&row.unit_id.as_bytes());
+        b.push(row.basis as u8);
+        b.extend_from_slice(&row.units_per_basis.to_be_bytes());
+    })
+}
+
 fn append_maintenance(out: &mut Vec<u8>, binding: Option<&MaintenanceBinding>) {
     out.push(u8::from(binding.is_some()));
     if let Some(binding) = binding {
@@ -171,8 +185,13 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         None if catalog.company_payouts.is_empty() => CATALOG_SCHEMA_VERSION,
         None => 3,
     };
-    if catalog.market_clearing.is_some() {
-        out.extend_from_slice(&MARKET_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    if let Some(policy) = &catalog.market_clearing {
+        let market = if policy.household_wants.is_empty() {
+            MARKET_CATALOG_SCHEMA_VERSION
+        } else {
+            MARKET_TIERS_CATALOG_SCHEMA_VERSION
+        };
+        out.extend_from_slice(&market.to_be_bytes());
     }
     out.extend_from_slice(&version.to_be_bytes());
     append_policy(&mut out, &catalog.capacity_policy)?;
@@ -223,6 +242,9 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         for (good, unit) in &policy.paying_order {
             out.extend_from_slice(&good.as_bytes());
             out.extend_from_slice(&unit.as_bytes());
+        }
+        if !policy.household_wants.is_empty() {
+            append_wants(&mut out, &policy.household_wants)?;
         }
     }
     Ok(out)

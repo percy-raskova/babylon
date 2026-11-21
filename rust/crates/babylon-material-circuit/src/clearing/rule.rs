@@ -4,13 +4,15 @@
 //! rises to the first level at which the two are equal, every buyer pays that price, and the seller
 //! keeps the difference. The rule is one pure function over exact integers.
 
-use crate::{GoodId, MaterialCircuitError, UnitId};
+use crate::{FinalDemandPrincipalId, GoodId, HouseholdWant, MaterialCircuitError, UnitId};
 use babylon_kernel::currency::Currency;
 
 /// The products that clear by price, in the order in which a buyer's purse reaches them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarketClearingPolicy {
     pub paying_order: Vec<(GoodId, UnitId)>,
+    /// What household accounts buy after their needs, in canonical order (empty without wants).
+    pub household_wants: Vec<HouseholdWant>,
 }
 
 impl MarketClearingPolicy {
@@ -20,6 +22,18 @@ impl MarketClearingPolicy {
         self.paying_order
             .iter()
             .position(|&(g, u)| g == good && u == unit)
+    }
+
+    /// One account's wants, in canonical order.
+    #[must_use]
+    pub fn wants_of(&self, principal: FinalDemandPrincipalId) -> &[HouseholdWant] {
+        let start = self
+            .household_wants
+            .partition_point(|row| row.principal_id < principal);
+        let end = self
+            .household_wants
+            .partition_point(|row| row.principal_id <= principal);
+        &self.household_wants[start..end]
     }
 }
 

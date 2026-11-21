@@ -23,3 +23,6 @@ mod plans;
 
 #[path = "market_clearing/admission.rs"]
 mod admission;
+
+#[path = "market_clearing/wants.rs"]
+mod wants;

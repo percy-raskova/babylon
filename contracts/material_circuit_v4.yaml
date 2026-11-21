@@ -71,7 +71,8 @@ encoding:
   catalog_bytes: catalog_domain, terminator, catalog_version_u16, capacity_policy, content rows, nested definitions
   catalog_version: >-
     u16; without a market policy 2, 3, 4 or 5 as before; with one 6, followed by the u16 version the same
-    catalog writes without the policy, the body exactly as that version writes it, and the market tail
+    catalog writes without the policy, the body exactly as that version writes it, and the market tail; with
+    household wants 7 where 6 is written, and the wants tail after the market tail
 
 state_field_order:
   - period
@@ -121,6 +122,8 @@ catalog_row_field_order:
   household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
   # Written only when the catalog has a market policy, after every other row family.
   market_clearing: [count_u32, paying_order_rows_of_good_id_and_unit_id]
+  # Written only when the market policy has household wants, after the market tail (catalog version 7).
+  household_wants: [count_u32, rows of principal_id, tier_u8, good_id, unit_id, need_basis_u8, units_per_basis]
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -138,6 +141,7 @@ catalog_canonical_keys:
   household_time_policy: [principal_id]
   service_inputs: [buyer_site_id, good_id, unit_id]
   household_needs: [principal_id, good_id, unit_id]
+  household_wants: [principal_id, tier_u8, good_id, unit_id]
 
 # Market policy (the price of a short market). A catalog carries it only by asking: the order of paying below.
 # Without it every catalog and state byte is the one of before. With it, in a period in which a private seller
@@ -181,6 +185,8 @@ market_clearing:
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out
+    - a household want has a positive units per basis, names a product in the order, and no key twice
+    - a market policy has at most 262144 household wants
     - a refusal is MarketClearingInvariant
     - a market policy requires no company portfolio
     - under a market policy every offer of a product in the order is responsive
@@ -331,7 +337,8 @@ admission:
   - committed shift rows contain only accrued unpaid obligations earned in a positive period before the opening period
   - all monetary row families have strictly increasing canonical keys before book reconstruction
   - recurring households are explicit resident cohorts, never inferred from workplace jobs
-  - each configured household need has a purchase policy; only stored goods have an explicit pantry row including zeros
+  - each household need and want has a purchase policy; only stored needs have a pantry row including zeros; a
+    policy for a want alone has a zero stock target
   - period-service household needs have no pantry, zero stock target and a captured provider connection
   - household service providers need not be Retail merchants
   - every finite order of a configured household names a captured recipient stock before admission
@@ -518,6 +525,7 @@ limits:
     delivery_orders_and_backlog: 131072
     capital_accounts: 131072
     household_needs_and_purchase_policies: 131072
+    household_wants: 262144
     ownership_and_equity_claims: 131072
     tax_policies: 131072 # One per captured cash account.
     replenishment: 262144

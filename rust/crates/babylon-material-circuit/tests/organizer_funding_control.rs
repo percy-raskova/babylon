@@ -1219,6 +1219,7 @@ fn a_donors_service_orders_reconcile_under_a_market_policy() {
         paying_order: (1..=7)
             .map(|g| (control::good(g), control::unit(g)))
             .collect(),
+        household_wants: vec![],
     });
     // A product that clears by price has no seller with a fixed price (P12): each offer keeps its
     // posted price through bounds that both equal it.

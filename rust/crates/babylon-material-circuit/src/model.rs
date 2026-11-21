@@ -34,6 +34,8 @@ pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
 pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
 /// Designed ceiling for 87,960 captured household needs and purchase policies.
 pub const MAX_HOUSEHOLD_NEEDS: usize = 131_072;
+/// Two tiers of the bound on household needs.
+pub const MAX_HOUSEHOLD_WANTS: usize = 262_144;
 /// Designed ceiling for 90,794 independently captured ownership/equity claims.
 pub const MAX_OWNERSHIP_CLAIMS: usize = 131_072;
 /// Designed ceiling for the measured 138,337 national procurement policies.

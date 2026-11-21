@@ -8,13 +8,13 @@ use babylon_material_circuit::{
     CorridorId, EmploymentTerms, FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId,
     FinancialInstitutions, GoodId, HistoricalCostBook, HouseholdCohort, HouseholdKind,
     HouseholdNeed, HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock,
-    HouseholdTimeAccounting, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
+    HouseholdTimeAccounting, HouseholdWant, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
     LaborCoefficient, LaborCompensation, LogisticsNodeId, MarketClearingPolicy, MaterialCatalog,
     MaterialCatalogDefinition, MaterialCircuitState, MemberLaborCapacityRow, MerchantHandling,
     MerchantHandlingCoefficient, MerchantRole, MonetaryBook, MonetaryCircuit, OrderId,
     OutboundOrderId, PricePolicy, ProcessId, ProcessOutput, ProductionCommitment,
     ProductionDemandPolicy, PurchaseEscrow, RecurringEconomy, SellerOffer, SiteId,
-    SiteLogisticsNode, StaffingMemberId, StockCarryingValue, UnitId,
+    SiteLogisticsNode, StaffingMemberId, StockCarryingValue, UnitId, WantTier,
 };
 
 pub(crate) fn site(id: u8) -> SiteId {
@@ -95,6 +95,9 @@ pub(crate) struct Shelf {
     pub good: u8,
     pub price: Currency,
     pub stock: u64,
+    /// Households need the good. When false it has a purchase row for the wants that name it, and
+    /// no need row and no stock row.
+    pub needed: bool,
 }
 
 /// What one fixture holds.
@@ -124,6 +127,9 @@ pub(crate) struct Fixture {
     pub output_buffer: u64,
     /// Keep the retailer's fixed price even where its good is in the order (to see it refused).
     pub keep_fixed: bool,
+    /// What the accounts want: account, tier, shelf good and quantity, written as a `Households`
+    /// want of that many units (each account is one household).
+    pub household_wants: Vec<(u8, WantTier, u8, u64)>,
 }
 
 impl Fixture {
@@ -133,6 +139,7 @@ impl Fixture {
                 good: 2,
                 price: dollars(4),
                 stock,
+                needed: true,
             }],
             purses: purses.to_vec(),
             wanted: 100,
@@ -145,7 +152,17 @@ impl Fixture {
             makes_shelf: false,
             output_buffer: 0,
             keep_fixed: false,
+            household_wants: vec![],
         }
+    }
+
+    /// Whether the account buys the shelf's good: it needs it or wants it.
+    fn bought(&self, holder: u8, row: &Shelf) -> bool {
+        row.needed
+            || self
+                .household_wants
+                .iter()
+                .any(|&(account, _, good, _)| account == holder && good == row.good)
     }
 
     pub(crate) fn build(&self) -> (MaterialCatalog, MaterialCircuitState) {
@@ -203,7 +220,7 @@ impl Fixture {
         let mut household_needs = vec![];
         for index in 0..self.purses.len() {
             let index = u8::try_from(index).expect("the fixture has few accounts");
-            for shelf in &self.shelves {
+            for shelf in self.shelves.iter().filter(|shelf| shelf.needed) {
                 household_needs.push(HouseholdNeed {
                     principal_id: account(index),
                     good_id: good(shelf.good),
@@ -219,6 +236,18 @@ impl Fixture {
                 .as_ref()
                 .map(|order| MarketClearingPolicy {
                     paying_order: order.iter().map(|&g| (good(g), units())).collect(),
+                    household_wants: self
+                        .household_wants
+                        .iter()
+                        .map(|&(index, tier, shelf, quantity)| HouseholdWant {
+                            principal_id: account(index),
+                            tier,
+                            good_id: good(shelf),
+                            unit_id: units(),
+                            basis: HouseholdNeedBasis::Households,
+                            units_per_basis: quantity,
+                        })
+                        .collect(),
                 }),
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![SiteLogisticsNode {
@@ -274,12 +303,17 @@ impl Fixture {
                 persons: self.wanted,
             });
             for shelf in &self.shelves {
-                stocks.push(HouseholdStock {
-                    principal_id: account(index),
-                    good_id: good(shelf.good),
-                    unit_id: units(),
-                    quantity: 0,
-                });
+                if shelf.needed {
+                    stocks.push(HouseholdStock {
+                        principal_id: account(index),
+                        good_id: good(shelf.good),
+                        unit_id: units(),
+                        quantity: 0,
+                    });
+                }
+                if !self.bought(index, shelf) {
+                    continue;
+                }
                 purchases.push(HouseholdPurchasePolicy {
                     principal_id: account(index),
                     retailer_site_id: retailer,
@@ -393,7 +427,7 @@ impl Fixture {
             })
             .collect();
         for index in 0..self.purses.len() {
-            for shelf in &self.shelves {
+            for shelf in self.shelves.iter().filter(|shelf| shelf.needed) {
                 carrying.push(StockCarryingValue {
                     owner: AccountId::Household(account(
                         u8::try_from(index).expect("the fixture has few accounts"),

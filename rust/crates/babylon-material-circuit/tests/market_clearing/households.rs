@@ -198,6 +198,7 @@ fn a_household_pays_for_food_before_materials() {
         good: 3,
         price: support::dollars(10),
         stock: 50,
+        needed: true,
     });
     fixture.paying_order = Some(vec![2, 3]);
     let (_, closed) = close(&fixture);

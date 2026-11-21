@@ -287,3 +287,99 @@ fn all_surviving_openers_cross_each_birthday_within_their_original_age_span() {
         assert_eq!(book.positions[0].ages.age_65_plus, 1_000_000);
     }
 }
+#[test]
+fn a_purchase_row_for_a_want_alone_survives_the_rebase() {
+    use crate::{
+        CapacitySupply, CommodityDefinition, CommodityKind, GoodId, HouseholdCohort, HouseholdKind,
+        HouseholdNeed, HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdWant,
+        MarketClearingPolicy, MaterialCatalog, MaterialCatalogDefinition, RecurringEconomy, SiteId,
+        UnitId, WantTier,
+    };
+    let principal = FinalDemandPrincipalId::from_bytes([1; 32]);
+    let storable = |n: u8| CommodityDefinition {
+        good_id: GoodId::from_bytes([n; 32]),
+        unit_id: UnitId::from_bytes([n; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    };
+    let catalog = MaterialCatalog::try_new(MaterialCatalogDefinition {
+        company_portfolios: None,
+        company_payouts: vec![],
+        capacity_policy: CapacitySupply::FiniteSchedule,
+        site_logistics_nodes: vec![],
+        process_outputs: vec![],
+        input_coefficients: vec![],
+        labor_coefficients: vec![],
+        commodities: vec![storable(1), storable(2)],
+        supplier_routes: vec![],
+        route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![HouseholdNeed {
+            principal_id: principal,
+            good_id: GoodId::from_bytes([1; 32]),
+            unit_id: UnitId::from_bytes([1; 32]),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 2,
+        }],
+        market_clearing: Some(MarketClearingPolicy {
+            paying_order: (1..=2)
+                .map(|n| (GoodId::from_bytes([n; 32]), UnitId::from_bytes([n; 32])))
+                .collect(),
+            household_wants: vec![HouseholdWant {
+                principal_id: principal,
+                tier: WantTier::Comfort,
+                good_id: GoodId::from_bytes([2; 32]),
+                unit_id: UnitId::from_bytes([2; 32]),
+                basis: HouseholdNeedBasis::Persons,
+                units_per_basis: 2,
+            }],
+        }),
+    })
+    .expect("a catalog with one need and one want");
+    let row = |n: u8, target: u64, maximum: u64| HouseholdPurchasePolicy {
+        principal_id: principal,
+        retailer_site_id: SiteId::from_bytes([7; 32]),
+        good_id: GoodId::from_bytes([n; 32]),
+        unit_id: UnitId::from_bytes([n; 32]),
+        target_closing_stock: target,
+        maximum_purchase: maximum,
+        enabled: true,
+    };
+    let mut recurring = RecurringEconomy {
+        households: vec![HouseholdCohort {
+            kind: HouseholdKind::Ordinary,
+            principal_id: principal,
+            households: 1,
+            persons: 4,
+        }],
+        household_stocks: vec![],
+        household_purchases: vec![row(1, 0, 0), row(2, 0, 5)],
+        offers: vec![],
+        replenishment: vec![],
+        production: vec![],
+        attendance: vec![],
+        last_household_admission_period: 0,
+        last_household_consumption_period: 0,
+    };
+    let rates = HouseholdLifecycleRates {
+        births_per_million_working_age_per_period: 0,
+        deaths_per_million_per_period: [0; 4],
+    };
+    let opening = ResidentAges {
+        age_18_64: 4,
+        ..ResidentAges::default()
+    };
+    let mut book = HouseholdLifecycleBook::new(rates, vec![(principal, opening)])
+        .expect("captured resident exposure");
+    book.purchase_buffer_periods = Some(3);
+    super::close::rebase_purchases(&catalog, &mut recurring, &book, 3)
+        .expect("a want-only row is left as written");
+    let need = &recurring.household_purchases[0];
+    assert_eq!((need.target_closing_stock, need.maximum_purchase), (8, 24));
+    let want = &recurring.household_purchases[1];
+    assert_eq!((want.target_closing_stock, want.maximum_purchase), (0, 5));
+}

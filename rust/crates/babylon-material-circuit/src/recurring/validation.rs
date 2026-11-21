@@ -2,7 +2,7 @@
 
 use super::PricePolicy;
 use super::RecurringEconomy;
-use crate::HouseholdCohort;
+use crate::{FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdWant, UnitId};
 
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,
@@ -70,6 +70,41 @@ fn admitted_counts(state: &MaterialCircuitState, row: &HouseholdCohort) -> bool 
                 .is_some_and(|book| book.position(row.principal_id).is_some()))
 }
 
+fn catalog_wants(catalog: &MaterialCatalog) -> &[HouseholdWant] {
+    catalog
+        .market_clearing
+        .as_ref()
+        .map_or(&[][..], |policy| policy.household_wants.as_slice())
+}
+
+fn want_keys(wants: &[HouseholdWant]) -> BTreeSet<(FinalDemandPrincipalId, GoodId, UnitId)> {
+    wants
+        .iter()
+        .map(|want| (want.principal_id, want.good_id, want.unit_id))
+        .collect()
+}
+
+/// Every need and want has a cohort and a quantity this period.
+fn check_quantities(
+    catalog: &MaterialCatalog,
+    wants: &[HouseholdWant],
+    households: &BTreeMap<FinalDemandPrincipalId, &HouseholdCohort>,
+) -> Result<()> {
+    for need in &catalog.household_needs {
+        let cohort = households
+            .get(&need.principal_id)
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        need.required_quantity(cohort)?;
+    }
+    for want in wants {
+        let cohort = households
+            .get(&want.principal_id)
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        want.quantity(cohort)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_households(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
@@ -105,9 +140,13 @@ pub(crate) fn validate_households(
         .filter(|key| !crate::services::is_service(catalog, key.1, key.2))
         .copied()
         .collect();
+    let wants = catalog_wants(catalog);
+    let want_keys = want_keys(wants);
+    let bought_keys: BTreeSet<_> = need_keys.union(&want_keys).copied().collect();
     if stock_keys != stored_need_keys
-        || purchase_keys != need_keys
+        || purchase_keys != bought_keys
         || need_keys.iter().map(|key| key.0).collect::<BTreeSet<_>>() != household_ids
+        || want_keys.iter().any(|key| !household_ids.contains(&key.0))
     {
         return Err(MaterialCircuitError::FinalDemandInvariant);
     }
@@ -117,12 +156,7 @@ pub(crate) fn validate_households(
     }) {
         return Err(MaterialCircuitError::FinalDemandInvariant);
     }
-    for need in &catalog.household_needs {
-        let cohort = households
-            .get(&need.principal_id)
-            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        need.required_quantity(cohort)?;
-    }
+    check_quantities(catalog, wants, &households)?;
     let offers: BTreeSet<_> = rows
         .offers
         .iter()
@@ -152,6 +186,12 @@ pub(crate) fn validate_households(
                 return Err(MaterialCircuitError::ServiceInvariant);
             }
             continue;
+        }
+        if policy.target_closing_stock != 0
+            && !need_keys.contains(&(policy.principal_id, policy.good_id, policy.unit_id))
+        {
+            // A want is used at its purchase: it has no pantry and so no stock target.
+            return Err(MaterialCircuitError::FinalDemandInvariant);
         }
         let merchant = merchants
             .get(&policy.retailer_site_id)

@@ -664,3 +664,100 @@ fn consumption_cannot_skip_an_unresolved_generated_order() {
     );
     assert_eq!(state, before);
 }
+
+/// The fixture with a market policy, and one comfort want of a second good that is no need: its
+/// commodity, its handling, its offer and its purchase row, but no need and no stock row.
+fn opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening(16, 0);
+    let mut catalog = catalog.into_definition();
+    let other = GoodId::from_bytes([33; 32]);
+    catalog.commodities.push(CommodityDefinition {
+        good_id: other,
+        unit_id: u(),
+        kind: crate::CommodityKind::Storable { grams_per_unit: 1 },
+    });
+    catalog
+        .handling_coefficients
+        .push(MerchantHandlingCoefficient {
+            site_id: s(),
+            good_id: other,
+            unit_id: u(),
+            hours_per_unit: 1,
+        });
+    catalog.market_clearing = Some(crate::MarketClearingPolicy {
+        paying_order: vec![(g(), u()), (other, u())],
+        household_wants: vec![crate::HouseholdWant {
+            principal_id: h(),
+            tier: crate::WantTier::Comfort,
+            good_id: other,
+            unit_id: u(),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+        }],
+    });
+    let rows = household_rows(&mut state);
+    for key in [g(), other] {
+        rows.offers.retain(|offer| offer.good_id != key);
+        rows.offers.push(SellerOffer {
+            site_id: s(),
+            good_id: key,
+            unit_id: u(),
+            unit_price: cash(4),
+            pricing: PricePolicy::Responsive {
+                minimum: cash(4),
+                maximum: cash(4),
+                step: cash(1),
+                target_stock: 0,
+            },
+        });
+    }
+    rows.offers
+        .sort_by_key(|r| (r.site_id, r.good_id, r.unit_id));
+    rows.household_purchases.push(HouseholdPurchasePolicy {
+        principal_id: h(),
+        retailer_site_id: s(),
+        good_id: other,
+        unit_id: u(),
+        target_closing_stock: 0,
+        maximum_purchase: 4,
+        enabled: true,
+    });
+    rows.household_purchases
+        .sort_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture definitions"),
+        state,
+    )
+}
+
+#[test]
+fn a_purchase_row_for_a_want_alone_is_admitted() {
+    let (catalog, state) = opening_with_a_want();
+    super::validate(&catalog, &state).expect("a want-only purchase row passes validation");
+}
+
+#[test]
+fn a_want_without_a_purchase_row_is_refused() {
+    let (catalog, mut state) = opening_with_a_want();
+    household_rows(&mut state)
+        .household_purchases
+        .retain(|row| row.good_id == g());
+    assert_eq!(
+        super::validate(&catalog, &state),
+        Err(MaterialCircuitError::FinalDemandInvariant)
+    );
+}
+
+#[test]
+fn a_purchase_row_for_a_want_alone_with_a_stock_target_is_refused() {
+    let (catalog, mut state) = opening_with_a_want();
+    for row in &mut household_rows(&mut state).household_purchases {
+        if row.good_id != g() {
+            row.target_closing_stock = 1;
+        }
+    }
+    assert_eq!(
+        super::validate(&catalog, &state),
+        Err(MaterialCircuitError::FinalDemandInvariant)
+    );
+}

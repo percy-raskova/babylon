@@ -232,6 +232,7 @@ impl ServiceFixture {
                         .iter()
                         .map(|&g| (support::good(g), support::units()))
                         .collect(),
+                    household_wants: vec![],
                 }),
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: self

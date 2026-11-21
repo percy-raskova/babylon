@@ -123,7 +123,7 @@ fn decode_distributions(c: &mut Cursor<'_>) -> Result<Vec<DistributionPolicy>> {
     Ok(rows)
 }
 fn append_taxes(out: &mut Vec<u8>, rows: &[TaxPolicy]) -> Result<()> {
-    super::append_bounded_rows(out, rows, crate::MAX_MONETARY_ACCOUNTS, |b, r| {
+    super::append_bounded_rows(out, rows, crate::MAX_TAX_POLICIES, |b, r| {
         accounting::append_account(b, r.payer);
         b.extend_from_slice(&r.public_recipient.as_bytes());
         b.push(r.basis as u8);
@@ -132,7 +132,7 @@ fn append_taxes(out: &mut Vec<u8>, rows: &[TaxPolicy]) -> Result<()> {
     })
 }
 fn decode_taxes(c: &mut Cursor<'_>) -> Result<Vec<TaxPolicy>> {
-    let rows = super::decode_bounded_rows(c, crate::MAX_MONETARY_ACCOUNTS, |b| {
+    let rows = super::decode_bounded_rows(c, crate::MAX_TAX_POLICIES, |b| {
         Ok(TaxPolicy {
             payer: accounting::decode_account(b)?,
             public_recipient: PublicAccountId::from_bytes(b.array()?),
@@ -145,7 +145,7 @@ fn decode_taxes(c: &mut Cursor<'_>) -> Result<Vec<TaxPolicy>> {
             cash_floor: accounting::decode_currency(b)?,
         })
     })?;
-    accounting::ordered_rows(&rows, |r| r.payer)?;
+    accounting::ordered_rows(&rows, |r| (r.payer, r.basis, r.public_recipient))?;
     Ok(rows)
 }
 fn append_public_budgets(out: &mut Vec<u8>, rows: &[PublicBudget]) -> Result<()> {

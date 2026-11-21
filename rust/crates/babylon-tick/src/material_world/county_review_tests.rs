@@ -11,8 +11,8 @@ use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, CompanyConditionOrder, CompanyId,
     CompanyPayoutPolicy, CompanyPortfolioPolicy, DistributionPolicy, EquityCarryingValue,
     FinalDemandPrincipalId, HistoricalCostBook, HouseholdTimeAccounting, MaterialCatalog,
-    MaterialCircuitState, MonetaryBook, OwnershipClaim, PublicAccountId, PublicAllocation,
-    PublicBudget, PublicTransferTreatment,
+    MaterialCircuitState, MaterialCircuitTransition, MonetaryBook, OwnershipClaim, PublicAccountId,
+    PublicAllocation, PublicBudget, PublicTransferTreatment,
 };
 use babylon_practice_contract::{
     Band, CountyPeriodFacts, CountyReviewConfig, CountyReviewCrew, CountyReviewError,
@@ -23,6 +23,7 @@ use babylon_practice_contract::{
     ORGANIZER_SCHEMA_VERSION,
 };
 
+use super::county_review;
 use super::county_review_execution;
 use super::tests::agency_control;
 use super::{
@@ -596,6 +597,120 @@ fn cutting_the_tax_receipt_changes_the_list() {
     );
     assert_eq!(asked_paid(&without), Some(0), "no tax, no place");
     assert_eq!(held_paid(&without), 1, "the holder keeps its unit");
+}
+
+/// The facts of one close of `state` as the county reads them, with the transition they came from.
+fn closed_facts(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> (
+    MaterialCircuitTransition,
+    CountyLaborFacts,
+    CountyPeriodFacts,
+) {
+    let transition = babylon_material_circuit::advance_material_circuit(catalog, state)
+        .expect("the paid world closes");
+    let config = config(1);
+    let labor = county_review::labor_facts(&county_with(config.clone()), &transition)
+        .expect("the labor facts read");
+    let facts = county_review_execution::period_facts(&config, &labor, &transition.state, 1)
+        .expect("the period facts read");
+    (transition, labor, facts)
+}
+
+#[test]
+fn the_county_review_counts_only_its_own_account() {
+    use babylon_material_circuit::{TaxBasis, TaxPolicy};
+    let (catalog, state) = world();
+    let (plain, plain_labor, plain_facts) = closed_facts(&catalog, &state);
+    // A fund beside the county: its cash, its location, a budget that pays the donors $50 a
+    // period, and a second wage tax on the donors, paid to the fund.
+    let fund = PublicAccountId::from_bytes([98; 32]);
+    let mut with_fund = state.clone();
+    let CircuitAccounting::Monetary(economy) = &mut with_fund.accounting else {
+        panic!("the paid world is monetary");
+    };
+    let mut cash = economy.book.snapshot();
+    cash.accounts.push(CashAccount {
+        id: AccountId::Public(fund),
+        cash: money(1_000_000_000),
+    });
+    economy.book = MonetaryBook::from_snapshot(cash).expect("the fund holds cash");
+    let costs = economy.costs.snapshot();
+    economy.costs = HistoricalCostBook::open(
+        &economy.book,
+        costs.stocks,
+        costs.freight,
+        costs.equity,
+        costs.equipment,
+    )
+    .expect("the fund opens in the historical costs");
+    let location = economy
+        .financial
+        .locations
+        .iter()
+        .find(|row| row.account == AccountId::Public(public_account()))
+        .expect("the county has a location")
+        .location;
+    economy
+        .financial
+        .locations
+        .push(babylon_material_circuit::InstitutionLocation {
+            account: AccountId::Public(fund),
+            location,
+        });
+    economy.financial.taxes.push(TaxPolicy {
+        payer: AccountId::Household(agency_control::donor()),
+        public_recipient: fund,
+        basis: TaxBasis::WageIncome,
+        rate_bps: 500,
+        cash_floor: money(0),
+    });
+    economy.financial.public_budgets.push(PublicBudget {
+        public_account: fund,
+        period_cap: money(1_000_000_000),
+        cash_floor: money(0),
+        rule: PublicSpendingRule::CappedInOrder,
+    });
+    economy.financial.public_allocations.push(PublicAllocation {
+        public_account: fund,
+        recipient: AccountId::Household(agency_control::donor()),
+        treatment: PublicTransferTreatment::HouseholdIncomeSupport,
+        priority: 0,
+        amount_per_period: money(50_000_000),
+    });
+    let (split, split_labor, split_facts) = closed_facts(&catalog, &with_fund);
+    assert!(
+        split
+            .taxes
+            .iter()
+            .any(|row| row.public_recipient == fund && row.collected.micro_units() > 0),
+        "the fund collected a wage tax"
+    );
+    assert!(
+        split
+            .public_budgets
+            .iter()
+            .any(|row| row.public_account == fund && row.paid.micro_units() == 50_000_000),
+        "the fund paid the donors"
+    );
+    assert_eq!(split_labor, plain_labor);
+    assert_eq!(split_facts, plain_facts);
+    let county = |rows: &MaterialCircuitTransition| {
+        (
+            rows.taxes
+                .iter()
+                .filter(|row| row.public_recipient == public_account())
+                .cloned()
+                .collect::<Vec<_>>(),
+            rows.public_budgets
+                .iter()
+                .filter(|row| row.public_account == public_account())
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(county(&split), county(&plain));
 }
 
 /// An organizer with one participant, the county review it may reach a household for, and a

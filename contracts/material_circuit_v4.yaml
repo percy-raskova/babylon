@@ -574,7 +574,7 @@ limits:
     household_needs_and_purchase_policies: 131072
     household_wants: 262144
     ownership_and_equity_claims: 131072
-    tax_policies: 131072 # One per captured cash account.
+    tax_policies: 262144 # Two bases and two recipients for each captured cash account.
     replenishment: 262144
   staffing_work_sources_and_requests: 131072
   measured_national_opening:
@@ -615,7 +615,7 @@ limits:
   income_receipts_per_period: 131072 # At most one per cash/capital account.
   collection_receipts_per_period: 1 # Original authenticated ruling, not a recurring withdrawal.
   aid_receipts_per_period: 458752 # Five fresh leg rows plus two due-lot rows times 65536.
-  tax_receipts_per_period: 131072 # At most one per captured payer.
+  tax_receipts_per_period: 262144 # At most one per captured tax policy.
   distribution_receipts_per_period: 131072 # At most one per ownership claim.
   receipt_bounds: Named receipt-family limits cover their corresponding captured row families;
     the independent money-transfer and complete-byte ceilings can still refuse an oversized close
@@ -897,11 +897,11 @@ financial_institutions:
   authority: ADR266
   evidence_class: Designed
   field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions]
-  tail: Written only under schema versions 25 and 26 (a state with a budget in proportion, and later a program or a
-    layoff record), after the contributions. A u32 count equal to the count of public_budgets and one
-    budget_rule_u8 for each budget in its order; then a u32 count of programs and a u32 count of layoff records,
-    both 0 until their rules exist. A state without the extension is written without the tail, under 22 or 24,
-    byte for byte as before.
+  tail: Written only under schema versions 25 and 26 (a state with a budget in proportion or a payer with two tax
+    rows, and later a program or a layoff record), after the contributions. A u32 count equal to the count of
+    public_budgets and one budget_rule_u8 for each budget in its order; then a u32 count of programs and a u32 count
+    of layoff records, both 0 until their rules exist. A state without the extension is written without the tail,
+    under 22 or 24, byte for byte as before.
   budget_rule_u8: {capped_in_order: 1, cash_in_proportion: 2}
   row_fields:
     locations: [account, economic_location]
@@ -917,7 +917,7 @@ financial_institutions:
     locations: [account]
     ownership: [issuer_site_id, beneficiary_account]
     distributions: [issuer_site_id]
-    taxes: [payer_account]
+    taxes: [payer_account, tax_basis_u8, public_recipient_id]
     public_budgets: [public_account_id]
     public_allocations: [public_account_id, priority, recipient_account, transfer_treatment]
     contributions: [id]
@@ -937,7 +937,9 @@ financial_institutions:
       floor remainder going one micro-unit each in canonical order.
     - Household income support and provider operating grants produce paired expense and income only when paid.
     - Public capital support uses the separate finite contribution instruction and its equity claim.
-    - One tax policy per eligible payer; bases are earned wages or positive operating income before financial flows.
+    - One tax policy per payer, basis and public recipient, without one per payer; with it a payer may pay one basis to
+      two public accounts. Bases are earned wages or positive operating income before financial flows. A payer's rows
+      collect in key order from one running balance above each row's floor, so no row overdraws the payer.
     - Taxes exclude contributions, distribution income and reporting remittances; uncollected assessments create no
       debt.
     - Capture tax bases and cash before credits; capture distribution earnings and cash after tax but before any payout.

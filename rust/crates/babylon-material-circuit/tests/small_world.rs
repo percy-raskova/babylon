@@ -13,5 +13,8 @@ mod pushed;
 #[path = "small_world/tiers.rs"]
 mod tiers;
 
+#[path = "small_world/benefits.rs"]
+mod benefits;
+
 #[path = "small_world/dump.rs"]
 mod dump;

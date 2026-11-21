@@ -188,29 +188,31 @@ impl FinancialClose {
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             return Ok(());
         };
-        // All bases and free cash are observed before any current tax credits.
-        let assessments = e
-            .financial
-            .taxes
-            .iter()
-            .map(|r| {
-                let taxable_amount = costs.tax_base(r.payer, r.basis)?;
-                let assessed = super::fraction(taxable_amount, u64::from(r.rate_bps), 10_000)?;
-                let collected =
-                    assessed.min(super::available(e.book.cash(r.payer)?, r.cash_floor)?);
-                Ok(TaxReceipt {
-                    period: state.period,
-                    payer: r.payer,
-                    public_recipient: r.public_recipient,
-                    basis: r.basis,
-                    rate_bps: r.rate_bps,
-                    taxable_amount,
-                    assessed,
-                    collected,
-                    uncollected: super::sub(assessed, collected)?,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        // All bases and free cash are observed before any current tax credits. A payer's rows
+        // collect in key order from one running balance, so nothing is overdrawn.
+        let mut balances = BTreeMap::new();
+        let mut assessments = Vec::with_capacity(e.financial.taxes.len());
+        for r in &e.financial.taxes {
+            let taxable_amount = costs.tax_base(r.payer, r.basis)?;
+            let assessed = super::fraction(taxable_amount, u64::from(r.rate_bps), 10_000)?;
+            let balance = match balances.get(&r.payer) {
+                Some(balance) => *balance,
+                None => e.book.cash(r.payer)?,
+            };
+            let collected = assessed.min(super::available(balance, r.cash_floor)?);
+            balances.insert(r.payer, super::sub(balance, collected)?);
+            assessments.push(TaxReceipt {
+                period: state.period,
+                payer: r.payer,
+                public_recipient: r.public_recipient,
+                basis: r.basis,
+                rate_bps: r.rate_bps,
+                taxable_amount,
+                assessed,
+                collected,
+                uncollected: super::sub(assessed, collected)?,
+            });
+        }
         for r in assessments {
             if r.collected > super::zero() {
                 let recipient = AccountId::Public(r.public_recipient);

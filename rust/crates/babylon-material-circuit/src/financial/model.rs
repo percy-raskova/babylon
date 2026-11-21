@@ -2,6 +2,7 @@
 use crate::{AccountId, CompanyId, PublicAccountId, SiteId};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
+use std::collections::BTreeSet;
 
 crate::model::identity_type!(ContributionId);
 /// Source-derived, immutable shareholder capital weights and captured payout rate.
@@ -51,7 +52,7 @@ pub enum TaxBasis {
     WageIncome = 1,
     PositiveOperatingIncome = 2,
 }
-/// One explicitly captured public jurisdiction per payer in this bounded policy.
+/// One row for each basis and public recipient of a payer in this bounded policy.
 /// Uncollected assessment is disclosed, not an implied debt or receivable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaxPolicy {
@@ -115,12 +116,15 @@ pub struct FinancialInstitutions {
     pub contributions: Vec<CapitalContributionOrder>,
 }
 impl FinancialInstitutions {
-    /// Whether the state needs the tail of the financial rows (version 25 or 26).
+    /// Whether the state needs the tail of the financial rows (version 25 or 26): a budget in
+    /// proportion, or a payer with more than one tax row.
     #[must_use]
     pub(crate) fn has_public_program_extension(&self) -> bool {
+        let mut payers = BTreeSet::new();
         self.public_budgets
             .iter()
             .any(|b| b.rule != PublicSpendingRule::CappedInOrder)
+            || !self.taxes.iter().all(|r| payers.insert(r.payer))
     }
     #[must_use]
     pub const fn empty() -> Self {

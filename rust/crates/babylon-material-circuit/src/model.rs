@@ -34,6 +34,8 @@ pub const MAX_ROUTE_CAPACITY_MEMBERSHIPS: usize = 262_144;
 pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
 /// Designed ceiling for the measured 79,489 cash and capital account owners.
 pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
+/// Two bases and two recipients for each captured account.
+pub const MAX_TAX_POLICIES: usize = 262_144;
 /// Designed ceiling for 87,960 captured household needs and purchase policies.
 pub const MAX_HOUSEHOLD_NEEDS: usize = 131_072;
 /// Two tiers of the bound on household needs.

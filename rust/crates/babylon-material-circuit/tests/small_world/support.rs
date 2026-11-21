@@ -53,7 +53,7 @@ pub(crate) fn dollars(value: i128) -> Currency {
     Currency::from_micro_units(value * 1_000_000)
 }
 
-fn site(index: usize) -> SiteId {
+pub(crate) fn site(index: usize) -> SiteId {
     SiteId::from_bytes([u8::try_from(index + 1).expect("four sites"); 32])
 }
 
@@ -73,7 +73,7 @@ fn hours() -> UnitId {
     UnitId::from_bytes([2; 32])
 }
 
-fn worker(index: usize) -> FinalDemandPrincipalId {
+pub(crate) fn worker(index: usize) -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([u8::try_from(index + 11).expect("four sites"); 32])
 }
 
@@ -87,6 +87,10 @@ fn supported() -> FinalDemandPrincipalId {
 
 fn treasury() -> PublicAccountId {
     PublicAccountId::from_bytes([30; 32])
+}
+
+fn fund_account() -> PublicAccountId {
+    PublicAccountId::from_bytes([31; 32])
 }
 
 pub(crate) fn clinic_process() -> ProcessId {
@@ -112,6 +116,21 @@ pub(crate) struct Taxes {
     pub supported_persons: u64,
 }
 
+/// The fund: a second public account beside the treasury. It taxes the same payers, holds cash,
+/// and spends by its own budget.
+#[derive(Clone, Debug)]
+pub(crate) struct Fund {
+    pub wage_bps: u16,
+    pub operating_bps: u16,
+    pub opening_cash: Currency,
+    /// The benefit for each person of the account that does not work (Task 3).
+    #[allow(dead_code, reason = "the benefits of the next task read it")]
+    pub per_person: Option<Currency>,
+    /// The share of a laid-off worker's pay and its length in half periods (Task 4).
+    #[allow(dead_code, reason = "the layoff benefit of a later task reads it")]
+    pub after_layoff: Option<(u16, u16)>,
+}
+
 /// Everything that sets one world. `World::plain()` and `World::taxed()` are the two openings.
 #[derive(Clone, Debug)]
 pub(crate) struct World {
@@ -130,6 +149,8 @@ pub(crate) struct World {
     pub owner_cash: Currency,
     pub farm_output_per_batch: u64,
     pub taxes: Option<Taxes>,
+    /// A second public account, the fund. Set with `with_fund`.
+    pub fund: Option<Fund>,
     /// The market policy on the catalog, in the order food, utility, household services.
     pub market: bool,
     /// Every household account wants, per person, one household service in tier 2 and one food
@@ -151,6 +172,7 @@ impl World {
             owner_cash: dollars(800),
             farm_output_per_batch: 10,
             taxes: None,
+            fund: None,
             market: false,
             tiers: false,
         }
@@ -211,6 +233,13 @@ impl World {
     pub(crate) fn with_tiers(mut self) -> Self {
         self.market = true;
         self.tiers = true;
+        self
+    }
+
+    /// A fund beside the treasury: it taxes the same payers at its own rates, holds its cash, and
+    /// spends by a budget that is capped at nothing until a program gives it something to pay.
+    pub(crate) fn with_fund(mut self, fund: Fund) -> Self {
+        self.fund = Some(fund);
         self
     }
 
@@ -598,7 +627,40 @@ impl World {
                 amount_per_period: support,
             });
         }
+        if let Some(fund) = &self.fund {
+            Self::add_fund(&mut f, fund);
+        }
         f
+    }
+
+    /// The fund's location, its tax rows on every worker household and site, and its budget.
+    fn add_fund(f: &mut FinancialInstitutions, fund: &Fund) {
+        f.locations.push(InstitutionLocation {
+            account: AccountId::Public(fund_account()),
+            location: place(),
+        });
+        for i in 0..4 {
+            f.taxes.push(TaxPolicy {
+                payer: AccountId::Household(worker(i)),
+                public_recipient: fund_account(),
+                basis: TaxBasis::WageIncome,
+                rate_bps: fund.wage_bps,
+                cash_floor: dollars(0),
+            });
+            f.taxes.push(TaxPolicy {
+                payer: AccountId::Site(site(i)),
+                public_recipient: fund_account(),
+                basis: TaxBasis::PositiveOperatingIncome,
+                rate_bps: fund.operating_bps,
+                cash_floor: dollars(0),
+            });
+        }
+        f.public_budgets.push(PublicBudget {
+            public_account: fund_account(),
+            period_cap: dollars(0),
+            cash_floor: dollars(0),
+            rule: PublicSpendingRule::CappedInOrder,
+        });
     }
 
     /// The basket of one person at the opening prices.
@@ -637,6 +699,12 @@ impl World {
             accounts.push(CashAccount {
                 id: AccountId::Public(treasury()),
                 cash: self.support_payment(),
+            });
+        }
+        if let Some(fund) = &self.fund {
+            accounts.push(CashAccount {
+                id: AccountId::Public(fund_account()),
+                cash: fund.opening_cash,
             });
         }
         let book = MonetaryBook::open(accounts).expect("the small world opens its accounts");
@@ -895,6 +963,7 @@ fn account_name(id: AccountId) -> &'static str {
         AccountId::Household(h) if h == worker(SHOP) => "w_shop",
         AccountId::Household(h) if h == owner() => "owner",
         AccountId::Household(h) if h == supported() => "supported",
+        AccountId::Public(p) if p == fund_account() => "fund",
         AccountId::Public(_) => "public",
         other => panic!("an account outside the small world: {other:?}"),
     }

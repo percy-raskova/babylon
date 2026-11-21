@@ -503,12 +503,21 @@ fn group_facts(
         .get(position)
         .ok_or(CountyReviewRegisterError::Receipt)?;
     let principal = FinalDemandPrincipalId::from_bytes(group.group_id);
+    let account = PublicAccountId::from_bytes(config.public_account_id);
     let (mut taxed, mut collected) = (0_i128, 0_i128);
     for tax in transition.taxes.iter().filter(|tax| {
-        tax.payer == AccountId::Household(principal) && tax.basis == TaxBasis::WageIncome
+        tax.payer == AccountId::Household(principal)
+            && tax.basis == TaxBasis::WageIncome
+            && tax.public_recipient == account
     }) {
         taxed = checked_add_micros(taxed, tax.taxable_amount.micro_units())?;
         collected = checked_add_micros(collected, tax.collected.micro_units())?;
+    }
+    let mut support_paid = 0_i128;
+    for budget in transition.public_budgets.iter().filter(|budget| {
+        budget.public_account == account && budget.recipient == AccountId::Household(principal)
+    }) {
+        support_paid = checked_add_micros(support_paid, budget.paid.micro_units())?;
     }
     let income = only(
         transition
@@ -533,8 +542,7 @@ fn group_facts(
         wage_tax_collected_micros: collected,
         ownership_income_micros: income
             .map_or(0, |row| row.statement.distribution_income.micro_units()),
-        support_income_micros: income
-            .map_or(0, |row| row.statement.public_transfer_income.micro_units()),
+        support_income_micros: support_paid,
         aid_income_micros: income.map_or(0, |row| row.statement.gift_income.micro_units()),
         closing_households,
     })

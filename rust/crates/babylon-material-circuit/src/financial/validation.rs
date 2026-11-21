@@ -14,7 +14,8 @@ pub(crate) fn canonicalize(f: &mut FinancialInstitutions) {
     f.ownership
         .sort_by_key(|r| (r.issuer_site_id, r.beneficiary));
     f.distributions.sort_by_key(|r| r.issuer_site_id);
-    f.taxes.sort_by_key(|r| r.payer);
+    f.taxes
+        .sort_by_key(|r| (r.payer, r.basis, r.public_recipient));
     f.public_budgets.sort_by_key(|r| r.public_account);
     f.public_allocations
         .sort_by_key(|r| (r.public_account, r.priority, r.recipient, r.treatment));
@@ -39,7 +40,9 @@ fn structure(f: &FinancialInstitutions) -> Result<()> {
         (r.issuer_site_id, r.beneficiary)
     })?;
     unique(&f.distributions, |r| r.issuer_site_id)?;
-    bounded_unique(&f.taxes, crate::MAX_MONETARY_ACCOUNTS, |r| r.payer)?;
+    bounded_unique(&f.taxes, crate::MAX_TAX_POLICIES, |r| {
+        (r.payer, r.basis, r.public_recipient)
+    })?;
     unique(&f.public_budgets, |r| r.public_account)?;
     unique(&f.public_allocations, |r| {
         (r.public_account, r.recipient, r.treatment)

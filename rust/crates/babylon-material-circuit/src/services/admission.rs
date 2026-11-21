@@ -65,9 +65,9 @@ pub(crate) struct Request {
     pub(crate) good: GoodId,
     pub(crate) unit: UnitId,
     pub(crate) requested: u64,
-    pub(super) floor: Currency,
+    pub(crate) floor: Currency,
     /// The tier of a want; `None` for a need and for a business.
-    pub(super) tier: Option<WantTier>,
+    pub(crate) tier: Option<WantTier>,
 }
 pub(crate) fn requests(
     catalog: &MaterialCatalog,

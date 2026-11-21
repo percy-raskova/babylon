@@ -448,7 +448,10 @@ impl ServiceClose {
         // A want is used first: its part leaves the key's pool before the need reads its own.
         for (&key, &want) in &self.wants_used {
             let need = self.households.get(&key).copied().unwrap_or(0);
-            costs.consume_service(key, need + want, want, false)?;
+            let available = need
+                .checked_add(want)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            costs.consume_service(key, available, want, false)?;
             remaining.insert(key, need);
         }
         if let Some(r) = &e.recurring {
@@ -535,4 +538,36 @@ pub(crate) fn potential_output(
         );
     }
     Ok(potential)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clearing::limit_fixture;
+
+    #[test]
+    fn a_need_and_a_want_past_the_largest_quantity_are_refused() {
+        let (catalog, recurring) = limit_fixture::world();
+        let state = limit_fixture::state_of(recurring);
+        let mut costs = CostClose::new(&state, &catalog);
+        let key = (
+            AccountId::Site(limit_fixture::site(7)),
+            limit_fixture::good(1),
+            limit_fixture::units(),
+        );
+        let mut close = ServiceClose {
+            collection_admissions: ServiceAdmissions::default(),
+            performance: vec![],
+            household: vec![],
+            markets: vec![],
+            outputs: vec![],
+            households: BTreeMap::from([(key, u64::MAX)]),
+            wants_used: BTreeMap::from([(key, 1)]),
+            requests: vec![],
+            donor: None,
+            lists: HouseholdLists::default(),
+        };
+        let result = close.consume_households(&catalog, &state, &mut costs, &mut BTreeMap::new());
+        assert_eq!(result, Err(MaterialCircuitError::Arithmetic));
+    }
 }

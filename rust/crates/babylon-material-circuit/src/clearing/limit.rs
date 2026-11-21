@@ -215,31 +215,32 @@ fn merchant_figure(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{
-        CapacitySupply, CommodityDefinition, CommodityKind, CorridorId, InputOutputCoefficient,
-        LaborCoefficient, LogisticsNodeId, MaterialCatalogDefinition, MerchantHandling,
+        CapacitySupply, CommodityDefinition, CommodityKind, CorridorId, FinalDemandPrincipalId,
+        InputOutputCoefficient, LaborCoefficient, LaborCompensation, LogisticsNodeId,
+        MaterialCatalogDefinition, MemberLaborUseReceipt, MerchantHandling,
         MerchantHandlingCoefficient, MerchantRole, PricePolicy, ProcessId, ReplenishmentPolicy,
-        SellerOffer, SiteLogisticsNode,
+        SellerOffer, SiteLogisticsNode, StaffingMemberId,
     };
 
-    fn site(id: u8) -> SiteId {
+    pub(crate) fn site(id: u8) -> SiteId {
         SiteId::from_bytes([id; 32])
     }
-    fn good(id: u8) -> GoodId {
+    pub(crate) fn good(id: u8) -> GoodId {
         GoodId::from_bytes([id; 32])
     }
-    fn units() -> UnitId {
+    pub(crate) fn units() -> UnitId {
         UnitId::from_bytes([1; 32])
     }
-    fn hours() -> UnitId {
+    pub(crate) fn hours() -> UnitId {
         UnitId::from_bytes([2; 32])
     }
-    fn dollars(value: i128) -> Currency {
+    pub(crate) fn dollars(value: i128) -> Currency {
         Currency::from_micro_units(value * 1_000_000)
     }
-    fn offer(owner: u8, item: u8, price: Currency) -> SellerOffer {
+    pub(crate) fn offer(owner: u8, item: u8, price: Currency) -> SellerOffer {
         SellerOffer {
             site_id: site(owner),
             good_id: good(item),
@@ -251,7 +252,7 @@ mod tests {
 
     /// Site 7 makes good 9 (4 per batch) from 2 of good 1 and 1 of good 2, with 3 hours a batch;
     /// good 2 comes from sites 5 at $30 and 6 at $40. Site 7 also sells good 1 over a counter.
-    fn world() -> (MaterialCatalog, RecurringEconomy) {
+    pub(crate) fn world() -> (MaterialCatalog, RecurringEconomy) {
         let process = ProcessId::from_bytes([9; 32]);
         let definition = MaterialCatalogDefinition {
             company_portfolios: None,
@@ -350,6 +351,84 @@ mod tests {
         )
     }
 
+    /// A monetary state holding the recurring rows and a cash account for site 7.
+    pub(crate) fn state_of(recurring: RecurringEconomy) -> MaterialCircuitState {
+        use crate::{
+            AidBook, CapacityReservations, CashAccount, FinancialInstitutions, HistoricalCostBook,
+            HouseholdTimeAccounting, MonetaryBook, MonetaryCircuit,
+        };
+        let book = MonetaryBook::open(vec![CashAccount {
+            id: crate::AccountId::Site(site(7)),
+            cash: dollars(1_000),
+        }])
+        .expect("the fixture book opens");
+        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
+            .expect("the fixture costs open");
+        MaterialCircuitState {
+            period: 1,
+            accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+                aid: AidBook::default(),
+                household_time: HouseholdTimeAccounting::NotModeled,
+                financial: FinancialInstitutions::empty(),
+                member_labor: vec![],
+                costs,
+                book,
+                recurring: Some(Box::new(recurring)),
+                employment: vec![],
+            })),
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            inventory: vec![],
+            orders: vec![],
+            freight: vec![],
+            corridor_capacities: vec![],
+            capacities: vec![],
+            labor: vec![],
+            production_commitments: vec![],
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            maintenance_service: None,
+            capacity_reservations: CapacityReservations::default(),
+        }
+    }
+
+    /// One member row of site 7's hours: attended hours at a compensation.
+    pub(crate) fn member_row(
+        member: u8,
+        compensation: LaborCompensation,
+        hours_worked: u64,
+    ) -> MemberLaborUseReceipt {
+        let wages = Currency::from_micro_units(
+            compensation.wage_rate().micro_units() * i128::from(hours_worked),
+        );
+        let none = Currency::from_micro_units(0);
+        MemberLaborUseReceipt {
+            member_id: StaffingMemberId::from_bytes([member; 32]),
+            site_id: site(7),
+            unit_id: hours(),
+            payee: FinalDemandPrincipalId::from_bytes([member; 32]),
+            compensation,
+            period: 1,
+            available_hours: hours_worked,
+            planned_hours: hours_worked,
+            unplanned_hours: 0,
+            attended_hours: hours_worked,
+            unattended_hours: 0,
+            production_hours: hours_worked,
+            handling_hours: 0,
+            maintenance_hours: 0,
+            installation_hours: 0,
+            idle_hours: 0,
+            accrued_wages: wages,
+            production_wages: wages,
+            handling_wages: none,
+            maintenance_wages: none,
+            installation_wages: none,
+            idle_wages: none,
+        }
+    }
+
     /// $200 funded over 20 hours: one wage earner and one working owner of 10 hours each.
     fn funded(site_id: SiteId, unit: UnitId) -> (Currency, u64) {
         if site_id == site(7) && unit == hours() {
@@ -431,5 +510,32 @@ mod tests {
         .expect("the limit reads");
         // receipts $320 less the other input $30, over 2 units.
         assert_eq!(limit, dollars(145));
+    }
+
+    #[test]
+    fn the_limit_reads_the_sites_own_funded_wage() {
+        let (catalog, recurring) = world();
+        let state = state_of(recurring);
+        // One wage earner at $20 and one working owner, 10 hours each: $200 funded over 20 hours.
+        let costs = CostClose::with_members(
+            &state,
+            &catalog,
+            vec![
+                member_row(1, LaborCompensation::Wage(dollars(20)), 10),
+                member_row(2, LaborCompensation::WorkingOwner, 10),
+            ],
+        );
+        let limit = limit_price(
+            &catalog,
+            &state,
+            &costs,
+            site(7),
+            good(1),
+            units(),
+            dollars(50),
+        )
+        .expect("the limit reads");
+        // The maker's figure of the example above: floor(($320 - $30 - $30) / 2).
+        assert_eq!(limit, dollars(130));
     }
 }

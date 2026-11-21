@@ -75,6 +75,17 @@ impl CostClose {
         }
         Ok((wages, hours))
     }
+    /// Tests only: a close whose attendance holds these member rows, for what reads the funded wages.
+    #[cfg(test)]
+    pub(crate) fn with_members(
+        state: &MaterialCircuitState,
+        catalog: &MaterialCatalog,
+        members: Vec<MemberLaborUseReceipt>,
+    ) -> Self {
+        let mut costs = Self::new(state, catalog);
+        costs.attendance = AttendanceLedger::from_members(members);
+        costs
+    }
     pub(crate) fn new(state: &MaterialCircuitState, catalog: &MaterialCatalog) -> Self {
         let active = match &state.accounting {
             CircuitAccounting::PhysicalControl => None,

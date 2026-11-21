@@ -1088,17 +1088,23 @@ fn refuse_open_want_orders(
     let Some(policy) = &catalog.market_clearing else {
         return Ok(());
     };
-    for want in &policy.household_wants {
-        let id = crate::tiers::recurring_household_want_order_id(
-            period,
-            (want.principal_id, want.good_id, want.unit_id),
-            want.tier,
-        );
-        if orders.iter().any(|r| r.order_id == id)
-            || book.purchase(OutboundOrderId::LocalFinalDemand(id)).is_ok()
-        {
-            return Err(MaterialCircuitError::PurchaseInvariant);
-        }
+    let ids: BTreeSet<OrderId> = policy
+        .household_wants
+        .iter()
+        .map(|want| {
+            crate::tiers::recurring_household_want_order_id(
+                period,
+                (want.principal_id, want.good_id, want.unit_id),
+                want.tier,
+            )
+        })
+        .collect();
+    if orders.iter().any(|r| ids.contains(&r.order_id))
+        || ids
+            .iter()
+            .any(|&id| book.purchase(OutboundOrderId::LocalFinalDemand(id)).is_ok())
+    {
+        return Err(MaterialCircuitError::PurchaseInvariant);
     }
     Ok(())
 }
@@ -1136,4 +1142,108 @@ pub(crate) fn preview_household_needs(
         });
     }
     Ok(receipts)
+}
+
+#[cfg(test)]
+mod open_want_order_tests {
+    use super::*;
+    use crate::{
+        CapacitySupply, CommodityDefinition, CommodityKind, HouseholdNeed, HouseholdNeedBasis,
+        HouseholdWant, MarketClearingPolicy, MaterialCatalogDefinition, WantTier,
+    };
+
+    fn principal() -> FinalDemandPrincipalId {
+        FinalDemandPrincipalId::from_bytes([9; 32])
+    }
+    fn good(n: u8) -> GoodId {
+        GoodId::from_bytes([n; 32])
+    }
+    fn unit(n: u8) -> UnitId {
+        UnitId::from_bytes([n; 32])
+    }
+
+    fn want(n: u8, tier: WantTier) -> HouseholdWant {
+        HouseholdWant {
+            principal_id: principal(),
+            tier,
+            good_id: good(n),
+            unit_id: unit(n),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+        }
+    }
+
+    /// Two wants, a comfort of good 2 and a luxury of good 3, over a need of good 1.
+    fn catalog() -> MaterialCatalog {
+        let commodity = |n: u8| CommodityDefinition {
+            good_id: good(n),
+            unit_id: unit(n),
+            kind: CommodityKind::Storable { grams_per_unit: 1 },
+        };
+        MaterialCatalog::try_new(MaterialCatalogDefinition {
+            company_portfolios: None,
+            company_payouts: vec![],
+            capacity_policy: CapacitySupply::FiniteSchedule,
+            site_logistics_nodes: vec![],
+            process_outputs: vec![],
+            input_coefficients: vec![],
+            labor_coefficients: vec![],
+            commodities: vec![commodity(1), commodity(2), commodity(3)],
+            supplier_routes: vec![],
+            route_stages: vec![],
+            merchants: vec![],
+            handling_coefficients: vec![],
+            maintenance_binding: None,
+            aid_mandates: vec![],
+            household_time_policy: vec![],
+            service_inputs: vec![],
+            household_needs: vec![HouseholdNeed {
+                principal_id: principal(),
+                good_id: good(1),
+                unit_id: unit(1),
+                basis: HouseholdNeedBasis::Persons,
+                units_per_basis: 1,
+            }],
+            market_clearing: Some(MarketClearingPolicy {
+                paying_order: vec![(good(1), unit(1)), (good(2), unit(2)), (good(3), unit(3))],
+                household_wants: vec![want(2, WantTier::Comfort), want(3, WantTier::Luxury)],
+            }),
+        })
+        .expect("the fixture catalog is valid")
+    }
+
+    fn order(id: OrderId) -> FinalDemandOrder {
+        FinalDemandOrder {
+            order_id: id,
+            retailer_site_id: SiteId::from_bytes([5; 32]),
+            demand_principal_id: principal(),
+            good_id: good(2),
+            unit_id: unit(2),
+            ordered: 1,
+            fulfilled: 0,
+        }
+    }
+
+    fn id_of(n: u8, tier: WantTier, period: u64) -> OrderId {
+        crate::tiers::recurring_household_want_order_id(
+            period,
+            (principal(), good(n), unit(n)),
+            tier,
+        )
+    }
+
+    #[test]
+    fn the_second_wants_open_order_is_refused_among_three_orders() {
+        let catalog = catalog();
+        let book = MonetaryBook::open(vec![]).expect("an empty book opens");
+        let others = [OrderId::from_bytes([1; 32]), OrderId::from_bytes([2; 32])];
+        let open = id_of(3, WantTier::Luxury, 4);
+        let orders = [order(others[0]), order(open), order(others[1])];
+        assert_eq!(
+            refuse_open_want_orders(&catalog, &book, &orders, 4),
+            Err(MaterialCircuitError::PurchaseInvariant)
+        );
+        // The same orders of another period carry no want's identity of this one.
+        assert_eq!(refuse_open_want_orders(&catalog, &book, &orders, 5), Ok(()));
+    }
 }

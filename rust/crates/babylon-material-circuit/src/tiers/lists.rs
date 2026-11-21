@@ -475,7 +475,11 @@ impl Opening<'_> {
                 .requests
                 .iter()
                 .find(|r| {
-                    r.buyer == AccountId::Household(key.0) && (r.good, r.unit) == (key.1, key.2)
+                    // The requests also hold the want requests of the same key: a need's is the one
+                    // without a tier, whatever the order of the requests.
+                    r.tier.is_none()
+                        && r.buyer == AccountId::Household(key.0)
+                        && (r.good, r.unit) == (key.1, key.2)
                 })
                 .ok_or(MaterialCircuitError::ServiceInvariant)?;
             (request.provider, request.order_id, request.requested)
@@ -554,5 +558,96 @@ fn tier_of(tier: u8) -> Result<WantTier, MaterialCircuitError> {
         2 => Ok(WantTier::Comfort),
         3 => Ok(WantTier::Luxury),
         _ => Err(MaterialCircuitError::MarketClearingInvariant),
+    }
+}
+
+#[cfg(test)]
+mod opening_tests {
+    use super::*;
+    use crate::clearing::limit_fixture;
+    use crate::{
+        CapacitySupply, CommodityDefinition, CommodityKind, HouseholdNeedBasis, ServiceStage,
+    };
+
+    fn principal() -> FinalDemandPrincipalId {
+        FinalDemandPrincipalId::from_bytes([9; 32])
+    }
+
+    fn order(n: u8) -> OrderId {
+        OrderId::from_bytes([n; 32])
+    }
+
+    fn request(order_n: u8, tier: Option<WantTier>, requested: u64) -> Request {
+        Request {
+            order_id: order(order_n),
+            buyer: AccountId::Household(principal()),
+            provider: limit_fixture::site(7),
+            good: limit_fixture::good(1),
+            unit: limit_fixture::units(),
+            requested,
+            floor: Currency::from_micro_units(0),
+            tier,
+        }
+    }
+
+    /// A service need whose requests hold the want's request ahead of the need's own.
+    #[test]
+    fn a_service_need_takes_its_own_request_not_a_wants() {
+        let need = HouseholdNeed {
+            principal_id: principal(),
+            good_id: limit_fixture::good(1),
+            unit_id: limit_fixture::units(),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+        };
+        let policy = MarketClearingPolicy {
+            paying_order: vec![(limit_fixture::good(1), limit_fixture::units())],
+            household_wants: vec![],
+        };
+        let catalog = MaterialCatalog::try_new(crate::MaterialCatalogDefinition {
+            company_portfolios: None,
+            company_payouts: vec![],
+            capacity_policy: CapacitySupply::FiniteSchedule,
+            site_logistics_nodes: vec![],
+            process_outputs: vec![],
+            input_coefficients: vec![],
+            labor_coefficients: vec![],
+            commodities: vec![CommodityDefinition {
+                good_id: limit_fixture::good(1),
+                unit_id: limit_fixture::units(),
+                kind: CommodityKind::PeriodService {
+                    stage: ServiceStage::UtilityProvision,
+                },
+            }],
+            supplier_routes: vec![],
+            route_stages: vec![],
+            merchants: vec![],
+            handling_coefficients: vec![],
+            maintenance_binding: None,
+            aid_mandates: vec![],
+            household_time_policy: vec![],
+            service_inputs: vec![],
+            household_needs: vec![need.clone()],
+            market_clearing: Some(policy.clone()),
+        })
+        .expect("the fixture catalog is valid");
+        let (_, recurring) = limit_fixture::world();
+        let state = limit_fixture::state_of(recurring);
+        let rows = state
+            .recurring_economy()
+            .expect("the fixture state is monetary");
+        let opening = Opening {
+            catalog: &catalog,
+            state: &state,
+            policy: &policy,
+            rows,
+            intents: vec![],
+            requests: vec![
+                request(20, Some(WantTier::Comfort), 5),
+                request(10, None, 3),
+            ],
+        };
+        let item = opening.need_item(&need).expect("the need has its request");
+        assert_eq!((item.order_id, item.wanted), (order(10), 3));
     }
 }

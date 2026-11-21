@@ -12,6 +12,8 @@ mod table;
 
 pub use ladder::{clear_ladder_market, BidRung, LadderBid, LadderOutcome};
 pub(crate) use limit::limit_price;
+#[cfg(test)]
+pub(crate) use limit::tests as limit_fixture;
 pub use rule::{clear_market, MarketBid, MarketClearingPolicy, MarketOutcome};
 pub(crate) use supply::{sale_commitments, Offer};
 pub(crate) use table::MarketTable;

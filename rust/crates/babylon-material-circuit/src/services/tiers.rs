@@ -159,9 +159,11 @@ fn seat_of(
         return Err(MaterialCircuitError::ServiceInvariant);
     };
     let request = buyer.need.ok_or(MaterialCircuitError::ServiceInvariant)?;
-    // A business stops at its limit (P5); public provision has none.
-    let limit = if limited {
-        Some(clearing::limit_price(
+    // A business stops at its limit (P5); public provision has none. Only a seat that bids has one:
+    // a seat that asks for nothing, or has no money, is never priced.
+    let mut seat = business_seat(request, cash, None);
+    if limited && wanted(&seat)? > 0 && seat.bid.purse.micro_units() > 0 {
+        seat.bid.limit = Some(clearing::limit_price(
             catalog,
             state,
             costs,
@@ -169,11 +171,9 @@ fn seat_of(
             request.good,
             request.unit,
             posted,
-        )?)
-    } else {
-        None
-    };
-    Ok(business_seat(request, cash, limit))
+        )?);
+    }
+    Ok(seat)
 }
 
 /// Each seat's quantities per rung at the market's price, and the price. Records the market.
@@ -333,4 +333,66 @@ pub(super) fn fund_market(
             .ok_or(MaterialCircuitError::Arithmetic)?;
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clearing::limit_fixture;
+
+    /// Site 7 buys good 1 and makes good 9; the price of good 9 is so high that no limit for good 1
+    /// can be computed.
+    fn unlimited_world() -> (MaterialCatalog, MaterialCircuitState) {
+        let (catalog, mut recurring) = limit_fixture::world();
+        for offer in &mut recurring.offers {
+            if offer.good_id == limit_fixture::good(9) {
+                offer.unit_price = Currency::from_micro_units(i128::MAX / 2);
+            }
+        }
+        (catalog, limit_fixture::state_of(recurring))
+    }
+
+    fn request(requested: u64) -> Request {
+        Request {
+            order_id: OrderId::from_bytes([3; 32]),
+            buyer: AccountId::Site(limit_fixture::site(7)),
+            provider: limit_fixture::site(5),
+            good: limit_fixture::good(1),
+            unit: limit_fixture::units(),
+            requested,
+            floor: Currency::from_micro_units(0),
+            tier: None,
+        }
+    }
+
+    fn seat(requested: u64) -> Result<Seat> {
+        let (catalog, state) = unlimited_world();
+        let costs = CostClose::new(&state, &catalog);
+        let request = request(requested);
+        let buyer = Buyer {
+            key: request.order_id,
+            account: request.buyer,
+            need: Some(&request),
+            wants: vec![],
+            first: &request,
+        };
+        let posted = Currency::from_micro_units(50_000_000);
+        seat_of(
+            (&catalog, &state, &costs),
+            &HouseholdLists::default(),
+            &buyer,
+            (posted, true),
+        )
+    }
+
+    #[test]
+    fn a_seat_that_asks_for_nothing_needs_no_limit() {
+        let seat = seat(0).expect("a seat that bids for nothing is not refused");
+        assert_eq!(seat.bid.limit, None);
+    }
+
+    #[test]
+    fn a_seat_that_bids_still_needs_its_limit() {
+        assert!(matches!(seat(4), Err(MaterialCircuitError::Arithmetic)));
+    }
 }

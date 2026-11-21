@@ -701,6 +701,9 @@ staffing:
   population_transfer: aggregate hires or separations use largest remainders over member reserves or employed stocks
   opening_hours: graph employment times captured schedule must equal each current derived member-hour budget
   receipt_join: member receipts reconcile aggregate staffing, resident payees, hours, actual use and wage accruals
+  layoff_record: Without an after_layoff program nothing changes; with one, the record of layoffs lives in the circuit
+    state (financial_institutions.layoff_records), not in the staffing pools, and is advanced from the member receipts
+    by finish_with_staffing.
   production_request: next-period input and process-capacity feasible work before service and employment constraints
   maintenance_request: prospective requested whole jobs multiplied by hours per job before resource constraints
   merchant_request: recorded current-period nonlabor-feasible outbound handling hours
@@ -898,9 +901,10 @@ financial_institutions:
   evidence_class: Designed
   field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions]
   tail: Written only under schema versions 25 and 26 (a state with a budget in proportion, a program, or a payer with
-    two tax rows, and later a layoff record), after the contributions. A u32 count equal to the count of
+    two tax rows, or a layoff record), after the contributions. A u32 count equal to the count of
     public_budgets and one budget_rule_u8 for each budget in its order; then the programs (u32 count, rows of
-    public_programs below, in key order); then a u32 count of layoff records, 0 until its rule exists. A state
+    public_programs below, in key order); then a u32 count of layoff records (layoff_records below), in member
+    order. A state
     without the extension is written without the tail, under 22 or 24, byte for byte as before.
   budget_rule_u8: {capped_in_order: 1, cash_in_proportion: 2}
   public_programs:
@@ -921,9 +925,33 @@ financial_institutions:
         organization or a public account.
       - per_person needs amount_per_person above 0 and a household cohort row for each recipient; it owes amount times
         the cohort's persons at the opening of the period, 0 for 0 persons. after_layoff needs 1 to 10,000 points and 1
-        to 26 half periods, and owes nothing until a record of layoffs exists.
+        to 26 half periods; it owes each recipient what the layoff records of the household's members are owed
+        (layoff_records below), without a record nothing. A household is a recipient of at most one after_layoff
+        program. A state that holds one is advanced only by finish_with_staffing, which ages the records from the
+        member receipts; the other finishes refuse it.
       - A program's dues and the budget's standing rows of one rank are cut together in proportion; a paid amount is a
         public transfer, not wage income, and is not taxed.
+  layoff_records:
+    row: [member_id, hours_per_person_u64, cohort_count_u8, cohorts_u64]
+    canonical_keys: {layoffs: [member_id]}
+    meaning: >-
+      The people of one staffing member laid off in play and still looking, newest first. cohorts[k] were laid
+      off at the staffing of the period k + 1 before the opening. The last cohort is not 0, 1 to 13 cohorts, the
+      hours of the job lost are set when the record is made and never refreshed.
+    rules:
+      - A member has a record while it has someone covered, is paid a wage and its payee is a recipient of an
+        after_layoff program. A record whose cohorts are all 0, or whose payee is no longer a recipient, is removed by
+        the next finish_with_staffing; a state that holds one is valid and owes nothing for it.
+      - A finish ages the record in order, from the member receipt of the closing period. People who left the reserve
+        unhired leave from the oldest end until the record is at most the opening reserve; each cohort ages one period
+        and the one past the longest term, the greatest ceil(half_periods / 2) of the programs and at most 13,
+        leaves; the separations start a new cohort; the hires take the newest cohort first, then the uncovered.
+      - Across a pool's households hires follow the staffing members' split in proportion to each one's people
+        looking for work; the last laid off go back first inside one household's share only.
+      - Owed in a period, with H the half periods, a cohort at k < H / 2 counts two half periods, the cohort at
+        k = H / 2 when H is odd counts one, older ones nothing. The due is floor(wage x hours_per_person x
+        wage_share_bps x units / 20,000) for each member, units the persons times those counts, and the household's
+        due is the sum over its members. A benefit is not taxed.
   row_fields:
     locations: [account, economic_location]
     ownership: [issuer_site_id, beneficiary_account, shares_u64]

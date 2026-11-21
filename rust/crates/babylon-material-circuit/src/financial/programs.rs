@@ -1,14 +1,20 @@
 //! What each public program owes each of its recipients this period.
+use super::layoffs;
 use super::{PublicProgram, PublicProgramReceipt, PublicProgramTerms, Result};
-use crate::{MaterialCircuitError, MaterialCircuitState};
+use crate::{
+    CircuitAccounting, FinalDemandPrincipalId, LaborCompensation, MaterialCircuitError,
+    MaterialCircuitState,
+};
 use babylon_kernel::currency::Currency;
+use std::collections::BTreeMap;
 
 /// One claim for each program and recipient, in (program key, recipient) order. The receipt carries
 /// the claim as `due`, with nothing paid yet.
 ///
 /// A per-person program owes `amount_per_person x persons` of the recipient's cohort, read from the
-/// state as the period opens. A cohort of no persons owes nothing. An after-layoff program owes
-/// nothing until a record of layoffs says whom it covers.
+/// state as the period opens. A cohort of no persons owes nothing. An after-layoff program owes each
+/// recipient the sum, over that household's members with a record of layoffs, of what the record is
+/// owed (`layoff_due`) at the member's wage; a member that does not pay a wage owes nothing.
 ///
 /// # Errors
 /// `PublicProgramInvariant` for a recipient without a cohort; `Arithmetic` on overflow.
@@ -18,6 +24,13 @@ pub(crate) fn program_dues(
 ) -> Result<Vec<(PublicProgramReceipt, Currency)>> {
     let mut dues = Vec::new();
     for program in programs {
+        let layoffs = match program.terms {
+            PublicProgramTerms::AfterLayoff {
+                wage_share_bps,
+                half_periods,
+            } => owed_by_household(state, wage_share_bps, half_periods)?,
+            PublicProgramTerms::PerPerson { .. } => BTreeMap::new(),
+        };
         for &recipient in &program.recipients {
             let (covered_persons, due) = match program.terms {
                 PublicProgramTerms::PerPerson { amount_per_person } => {
@@ -32,7 +45,9 @@ pub(crate) fn program_dues(
                         .ok_or(MaterialCircuitError::Arithmetic)?;
                     (persons, Currency::from_micro_units(owed))
                 }
-                PublicProgramTerms::AfterLayoff { .. } => (0, super::zero()),
+                PublicProgramTerms::AfterLayoff { .. } => layoffs
+                    .get(&recipient)
+                    .map_or((0, super::zero()), |&(persons, owed)| (persons, owed)),
             };
             dues.push((
                 PublicProgramReceipt {
@@ -52,6 +67,41 @@ pub(crate) fn program_dues(
     }
     dues.sort_by(|a, b| (&a.0.program, a.0.recipient).cmp(&(&b.0.program, b.0.recipient)));
     Ok(dues)
+}
+
+/// For each household, the persons covered and the amount owed over the records of its members.
+fn owed_by_household(
+    state: &MaterialCircuitState,
+    wage_share_bps: u16,
+    half_periods: u16,
+) -> Result<BTreeMap<FinalDemandPrincipalId, (u64, Currency)>> {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        return Ok(BTreeMap::new());
+    };
+    let terms: BTreeMap<_, _> = e.employment.iter().map(|t| (t.member_id, t)).collect();
+    let mut owed = BTreeMap::new();
+    for record in &e.financial.layoffs {
+        let Some(term) = terms.get(&record.member_id) else {
+            continue;
+        };
+        let LaborCompensation::Wage(wage) = term.compensation else {
+            continue;
+        };
+        let (persons, due) = layoffs::layoff_due(
+            wage,
+            record.hours_per_person,
+            wage_share_bps,
+            half_periods,
+            &record.cohorts,
+        )?;
+        let entry = owed.entry(term.payee).or_insert((0_u64, super::zero()));
+        entry.0 = entry
+            .0
+            .checked_add(persons)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        entry.1 = super::add(entry.1, due)?;
+    }
+    Ok(owed)
 }
 
 #[cfg(test)]

@@ -3,9 +3,10 @@ use super::accounting;
 use super::Cursor;
 use crate::{
     CapitalContributionOrder, ContributionId, DistributionPolicy, FinalDemandPrincipalId,
-    FinancialInstitutions, InstitutionLocation, MaterialCircuitError, OwnershipClaim,
+    FinancialInstitutions, InstitutionLocation, LayoffRecord, MaterialCircuitError, OwnershipClaim,
     PublicAccountId, PublicAllocation, PublicBudget, PublicProgram, PublicProgramKey,
-    PublicProgramTerms, PublicSpendingRule, PublicTransferTreatment, SiteId, TaxBasis, TaxPolicy,
+    PublicProgramTerms, PublicSpendingRule, PublicTransferTreatment, SiteId, StaffingMemberId,
+    TaxBasis, TaxPolicy, MAX_LAYOFF_PERIODS,
 };
 use babylon_kernel::economic_location::EconomicLocation;
 use std::result::Result as StdResult;
@@ -35,6 +36,7 @@ pub(super) fn decode(c: &mut Cursor<'_>, extended: bool) -> Result<FinancialInst
         public_allocations: decode_public_allocations(c)?,
         contributions: decode_contributions(c)?,
         programs: vec![],
+        layoffs: vec![],
     };
     if extended {
         decode_tail(c, &mut f)?;
@@ -42,12 +44,11 @@ pub(super) fn decode(c: &mut Cursor<'_>, extended: bool) -> Result<FinancialInst
     Ok(f)
 }
 /// The tail after the financial rows: one `u32` count equal to the budgets' and one `u8` rule for each
-/// budget in its order; then (later tasks) the programs and the layoff records, each a `u32` count.
+/// budget in its order; then the programs and the layoff records, each a `u32` count.
 fn append_tail(out: &mut Vec<u8>, f: &FinancialInstitutions) -> Result<()> {
     super::append_rows(out, &f.public_budgets, |b, r| b.push(r.rule as u8))?;
     append_programs(out, &f.programs)?;
-    out.extend_from_slice(&0_u32.to_be_bytes());
-    Ok(())
+    append_layoffs(out, &f.layoffs)
 }
 fn decode_tail(c: &mut Cursor<'_>, f: &mut FinancialInstitutions) -> Result<()> {
     let rules = super::decode_rows(c, |b| match b.u8()? {
@@ -62,11 +63,38 @@ fn decode_tail(c: &mut Cursor<'_>, f: &mut FinancialInstitutions) -> Result<()> 
         budget.rule = rule;
     }
     f.programs = decode_programs(c)?;
-    // No records yet: a nonzero count is not canonical.
-    if c.u32()? != 0 {
-        return Err(MaterialCircuitError::WireNoncanonical);
-    }
+    f.layoffs = decode_layoffs(c)?;
     Ok(())
+}
+/// Per record: the member 32 bytes, the hours of the job lost `u64`, a `u8` count of cohorts and each
+/// cohort `u64`, newest first.
+fn append_layoffs(out: &mut Vec<u8>, rows: &[LayoffRecord]) -> Result<()> {
+    super::append_bounded_rows(out, rows, crate::MAX_STAFFING_MEMBERS, |b, r| {
+        b.extend_from_slice(&r.member_id.as_bytes());
+        b.extend_from_slice(&r.hours_per_person.to_be_bytes());
+        b.push(u8::try_from(r.cohorts.len()).unwrap_or(u8::MAX));
+        for cohort in &r.cohorts {
+            b.extend_from_slice(&cohort.to_be_bytes());
+        }
+    })
+}
+fn decode_layoffs(c: &mut Cursor<'_>) -> Result<Vec<LayoffRecord>> {
+    let rows = super::decode_bounded_rows(c, crate::MAX_STAFFING_MEMBERS, |b| {
+        let member_id = StaffingMemberId::from_bytes(b.array()?);
+        let hours_per_person = b.u64()?;
+        let count = usize::from(b.u8()?);
+        let mut cohorts = Vec::with_capacity(count.min(MAX_LAYOFF_PERIODS));
+        for _ in 0..count {
+            cohorts.push(b.u64()?);
+        }
+        Ok(LayoffRecord {
+            member_id,
+            hours_per_person,
+            cohorts,
+        })
+    })?;
+    accounting::ordered_rows(&rows, |r| r.member_id)?;
+    Ok(rows)
 }
 /// Per program: key length `u8` and its bytes, payer, rank `u32`, a tag `u8`, the terms, then a `u32`
 /// count of recipients and 32 bytes each. Terms: tag 1 the amount per person, tag 2 the wage share

@@ -65,9 +65,10 @@ pub use financial::{
     validate_company_distributions, validate_distribution_receipts, CapitalContributionOrder,
     CapitalContributionReceipt, CompanyDistributionReceipt, CompanyPayoutPolicy, ContributionId,
     DistributionPolicy, DistributionReceipt, FinancialInstitutions, InstitutionLocation,
-    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicProgram,
-    PublicProgramKey, PublicProgramReceipt, PublicProgramTerms, PublicSpendingRule,
-    PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt,
+    LayoffRecord, OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt,
+    PublicProgram, PublicProgramKey, PublicProgramReceipt, PublicProgramTerms, PublicSpendingRule,
+    PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt, MAX_LAYOFF_HALF_PERIODS,
+    MAX_LAYOFF_PERIODS,
 };
 pub use household_time::{
     consume_household_contributions, HouseholdContributionReceipt, HouseholdContributionUse,

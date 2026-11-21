@@ -3,10 +3,11 @@ use super::PublicProgramTerms;
 use super::PublicSpendingRule;
 use super::PublicTransferTreatment;
 use super::Result;
+use super::{MAX_LAYOFF_HALF_PERIODS, MAX_LAYOFF_PERIODS};
 use crate::MonetaryBook;
 use crate::{
-    AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState,
-    MAX_MATERIAL_CIRCUIT_ROWS, MAX_PUBLIC_PROGRAMS,
+    AccountId, CircuitAccounting, LaborCompensation, MaterialCircuitError, MaterialCircuitState,
+    MonetaryCircuit, MAX_MATERIAL_CIRCUIT_ROWS, MAX_PUBLIC_PROGRAMS, MAX_STAFFING_MEMBERS,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -22,6 +23,7 @@ pub(crate) fn canonicalize(f: &mut FinancialInstitutions) {
         .sort_by_key(|r| (r.public_account, r.priority, r.recipient, r.treatment));
     f.contributions.sort_by_key(|r| r.id);
     f.programs.sort_by(|a, b| a.key.cmp(&b.key));
+    f.layoffs.sort_by_key(|r| r.member_id);
     for program in &mut f.programs {
         program.recipients.sort();
     }
@@ -194,6 +196,7 @@ fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) ->
         return Err(invalid);
     }
     let mut keys = BTreeSet::new();
+    let mut after_layoff = BTreeSet::new();
     let mut recipients = 0_usize;
     for program in &f.programs {
         let in_proportion = f.public_budgets.iter().any(|b| {
@@ -228,7 +231,11 @@ fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) ->
                 wage_share_bps,
                 half_periods,
             } => {
-                if !(1..=10_000).contains(&wage_share_bps) || !(1..=26).contains(&half_periods) {
+                // A household is a recipient of at most one program of this kind.
+                if !(1..=10_000).contains(&wage_share_bps)
+                    || !(1..=MAX_LAYOFF_HALF_PERIODS).contains(&half_periods)
+                    || program.recipients.iter().any(|r| !after_layoff.insert(*r))
+                {
                     return Err(invalid);
                 }
             }
@@ -236,6 +243,36 @@ fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) ->
     }
     if recipients > MAX_MATERIAL_CIRCUIT_ROWS {
         return Err(invalid);
+    }
+    validate_layoffs(e, f)
+}
+/// Records unique and sorted by member, each of a member with a wage: a schedule, one to thirteen
+/// cohorts, the last not 0. A record whose payee is no longer a recipient is valid and owed nothing,
+/// so a change of programs never makes the state unreadable.
+fn validate_layoffs(e: &MonetaryCircuit, f: &FinancialInstitutions) -> Result<()> {
+    let invalid = MaterialCircuitError::PublicProgramInvariant;
+    if f.layoffs.len() > MAX_STAFFING_MEMBERS {
+        return Err(invalid);
+    }
+    let mut members = BTreeSet::new();
+    for record in &f.layoffs {
+        let paid = e.employment.iter().any(|t| {
+            t.member_id == record.member_id && matches!(t.compensation, LaborCompensation::Wage(_))
+        });
+        if !paid
+            || record.hours_per_person == 0
+            || !(1..=MAX_LAYOFF_PERIODS).contains(&record.cohorts.len())
+            || record.cohorts.last() == Some(&0)
+            || !members.insert(record.member_id)
+        {
+            return Err(invalid);
+        }
+    }
+    if f.layoffs
+        .windows(2)
+        .any(|w| w[0].member_id > w[1].member_id)
+    {
+        return Err(MaterialCircuitError::FinancialInvariant);
     }
     Ok(())
 }

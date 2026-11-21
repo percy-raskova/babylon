@@ -91,6 +91,7 @@ fn financial_session() -> Session {
             amount_per_period: money(10),
         }],
         programs: vec![],
+        layoffs: vec![],
         contributions: vec![CapitalContributionOrder {
             id: ContributionId::from_bytes([7; 32]),
             due_period: 2,

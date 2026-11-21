@@ -1,6 +1,7 @@
 //! Captured claims and budgets; identity does not infer class or jurisdiction.
 use crate::{
     AccountId, CompanyId, FinalDemandPrincipalId, MaterialCircuitError, PublicAccountId, SiteId,
+    StaffingMemberId,
 };
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
@@ -118,6 +119,23 @@ pub struct FinancialInstitutions {
     pub contributions: Vec<CapitalContributionOrder>,
     /// Named programs of the public accounts that spend in proportion, in key order.
     pub programs: Vec<PublicProgram>,
+    /// The people laid off in play and still looking, one record for each staffing member that has
+    /// any, in member order.
+    pub layoffs: Vec<LayoffRecord>,
+}
+/// The most half periods an after-layoff program may pay for.
+pub const MAX_LAYOFF_HALF_PERIODS: u16 = 26;
+/// The most cohorts of one record: the periods of the longest term, rounded up.
+pub const MAX_LAYOFF_PERIODS: usize = 13;
+/// One staffing member's people laid off in play and still looking, newest first: `cohorts[k]`
+/// were laid off at the staffing of the period `k + 1` before this opening. Never empty; the last
+/// entry is not 0.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayoffRecord {
+    pub member_id: StaffingMemberId,
+    /// The schedule of the job lost, set when the record is made and never refreshed.
+    pub hours_per_person: u64,
+    pub cohorts: Vec<u64>,
 }
 impl FinancialInstitutions {
     /// Whether the state needs the tail of the financial rows (version 25 or 26): a budget in
@@ -130,6 +148,7 @@ impl FinancialInstitutions {
                 .public_budgets
                 .iter()
                 .any(|b| b.rule != PublicSpendingRule::CappedInOrder)
+            || !self.layoffs.is_empty()
             || !self.taxes.iter().all(|r| payers.insert(r.payer))
     }
     #[must_use]
@@ -143,6 +162,7 @@ impl FinancialInstitutions {
             public_allocations: vec![],
             contributions: vec![],
             programs: vec![],
+            layoffs: vec![],
         }
     }
 }

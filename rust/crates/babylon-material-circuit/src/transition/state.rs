@@ -71,6 +71,7 @@ use crate::ProductionPlanReceipt;
 use crate::ProductionReceipt;
 use crate::RouteStageCapacity;
 use crate::ServiceStage;
+use crate::StaffingMemberReceipt;
 use crate::StaffingWorkSource;
 use crate::SupplierTransport;
 use crate::WageAccrualReceipt;
@@ -757,6 +758,77 @@ impl ClosedMaterialPeriod {
     /// Refuses missing/foreign/duplicate principals, wrong periods, row bounds,
     /// arithmetic and any invalid final circuit. No partial successor escapes.
     pub fn finish_with_labor(
+        self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        self.refuse_without_record_of_layoffs()?;
+        self.finish_labor_unchecked(catalog, next_labor)
+    }
+
+    /// Replace graph-derived aggregate and member hours together before planning.
+    /// # Errors
+    /// Refuses missing, duplicate, foreign or inconsistent hour principals, and a state with an
+    /// after-layoff program: the record of layoffs could not age (use `finish_with_staffing`).
+    pub fn finish_with_workforce(
+        self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<MemberLaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        self.refuse_without_record_of_layoffs()?;
+        self.finish_workforce_unchecked(catalog, next_labor, member_labor)
+    }
+
+    /// `finish_with_workforce`, after advancing the record of layoffs from the member receipts.
+    ///
+    /// The receipts are those of the closing period. Every member that holds a record, and every
+    /// member that can have one at a workplace that has any receipt, needs its own; receipts of
+    /// members that cannot have a record are ignored. With no after-layoff program this equals
+    /// `finish_with_workforce`.
+    /// # Errors
+    /// `PublicProgramInvariant` for a missing, repeated or inconsistent member receipt.
+    pub fn finish_with_staffing(
+        mut self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<MemberLaborCapacityRow>,
+        members: &[StaffingMemberReceipt],
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        let closing = self
+            .next_period
+            .checked_sub(1)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            crate::financial::advance_records(economy, closing, members)?;
+        }
+        self.finish_workforce_unchecked(catalog, next_labor, member_labor)
+    }
+
+    fn refuse_without_record_of_layoffs(&self) -> Result<(), MaterialCircuitError> {
+        match &self.transition.state.accounting {
+            CircuitAccounting::Monetary(economy)
+                if crate::financial::holds_after_layoff_program(economy) =>
+            {
+                Err(MaterialCircuitError::PublicProgramInvariant)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn finish_workforce_unchecked(
+        mut self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<MemberLaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            economy.member_labor = member_labor;
+        }
+        self.finish_labor_unchecked(catalog, next_labor)
+    }
+
+    fn finish_labor_unchecked(
         mut self,
         catalog: &MaterialCatalog,
         mut next_labor: Vec<LaborCapacityRow>,
@@ -766,21 +838,6 @@ impl ClosedMaterialPeriod {
         next_labor.sort_unstable_by_key(|row| (row.period, row.site_id, row.unit_id));
         self.transition.state.labor = next_labor;
         self.finish(catalog)
-    }
-
-    /// Replace graph-derived aggregate and member hours together before planning.
-    /// # Errors
-    /// Refuses missing, duplicate, foreign or inconsistent hour principals.
-    pub fn finish_with_workforce(
-        mut self,
-        catalog: &MaterialCatalog,
-        next_labor: Vec<LaborCapacityRow>,
-        member_labor: Vec<MemberLaborCapacityRow>,
-    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
-            economy.member_labor = member_labor;
-        }
-        self.finish_with_labor(catalog, next_labor)
     }
 
     fn finish(
@@ -941,7 +998,9 @@ pub fn advance_material_circuit(
     catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-    close_material_period(catalog, opening)?.finish(catalog)
+    let closed = close_material_period(catalog, opening)?;
+    closed.refuse_without_record_of_layoffs()?;
+    closed.finish(catalog)
 }
 
 /// Close a control using the same authenticated aid boundary as the tick adapter.
@@ -952,7 +1011,9 @@ pub fn advance_material_circuit_with_aid(
     opening: &MaterialCircuitState,
     inputs: &[AidResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-    close_material_period_with_aid(catalog, opening, inputs)?.finish(catalog)
+    let closed = close_material_period_with_aid(catalog, opening, inputs)?;
+    closed.refuse_without_record_of_layoffs()?;
+    closed.finish(catalog)
 }
 
 pub(crate) struct AidResolve<'a> {

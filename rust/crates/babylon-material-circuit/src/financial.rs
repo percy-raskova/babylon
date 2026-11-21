@@ -5,6 +5,8 @@ mod cut;
 pub use company::validate_company_distributions;
 pub(crate) use company::{validate_company_accounts, validate_company_policy};
 
+mod layoffs;
+
 mod model;
 
 mod programs;
@@ -14,6 +16,8 @@ mod receipts;
 mod validation;
 
 pub(crate) use close::FinancialClose;
+
+pub(crate) use layoffs::{advance_records, holds_after_layoff_program};
 
 pub use model::*;
 

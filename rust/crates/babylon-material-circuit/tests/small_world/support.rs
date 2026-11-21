@@ -24,14 +24,17 @@ use babylon_material_circuit::{
     PublicAccountId, PublicAllocation, PublicBudget, PublicProgram, PublicProgramKey,
     PublicProgramTerms, PublicTransferTreatment, RecurringEconomy, ReplenishmentPolicy, RouteId,
     SellerOffer, ServiceConnection, ServiceInputPolicy, ServiceStage, SiteId, SiteLogisticsNode,
-    StaffingMemberId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState,
-    StaffingState, StaffingWorkSource, StockCarryingValue, SupplierRoute, SupplierTransport,
-    TaxBasis, TaxPolicy, UnitId, WantTier,
+    StaffingMemberBinding, StaffingMemberId, StaffingMemberReceipt, StaffingMemberState,
+    StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState, StaffingState,
+    StaffingWorkSource, StockCarryingValue, SupplierRoute, SupplierTransport, TaxBasis, TaxPolicy,
+    UnitId, WantTier,
 };
 use std::collections::BTreeMap;
 
 /// The key of the fund's benefit for each person.
 pub(crate) const NO_EARNER: &str = "no_earner";
+/// The key of the fund's half pay after a layoff.
+pub(crate) const LAID_OFF: &str = "laid_off";
 
 /// The number of periods of every run.
 pub(crate) const PERIODS: u64 = 34;
@@ -101,7 +104,7 @@ pub(crate) fn clinic_process() -> ProcessId {
     process(CLINIC)
 }
 
-fn member(index: usize) -> StaffingMemberId {
+pub(crate) fn member(index: usize) -> StaffingMemberId {
     StaffingMemberId::from_bytes(site(index).as_bytes())
 }
 
@@ -129,8 +132,8 @@ pub(crate) struct Fund {
     pub opening_cash: Currency,
     /// The benefit for each person of the account that does not work.
     pub per_person: Option<Currency>,
-    /// The share of a laid-off worker's pay and its length in half periods (Task 4).
-    #[allow(dead_code, reason = "the layoff benefit of a later task reads it")]
+    /// The share of a laid-off worker's pay and its length in half periods, paid to the four
+    /// worker accounts at rank 0.
     pub after_layoff: Option<(u16, u16)>,
 }
 
@@ -213,7 +216,7 @@ impl World {
             operating_bps: 1_500,
             opening_cash: dollars(960),
             per_person: Some(dollars(60)),
-            after_layoff: None,
+            after_layoff: Some((5_000, 13)),
         })
     }
 
@@ -692,6 +695,21 @@ impl World {
                 terms: PublicProgramTerms::PerPerson { amount_per_person },
                 recipients: vec![supported()],
             });
+        }
+        if let Some((wage_share_bps, half_periods)) = fund.after_layoff {
+            let mut recipients: Vec<_> = (0..4).map(worker).collect();
+            recipients.sort();
+            f.programs.push(PublicProgram {
+                key: PublicProgramKey::new(LAID_OFF).expect("a well-formed key"),
+                payer: fund_account(),
+                rank: 0,
+                terms: PublicProgramTerms::AfterLayoff {
+                    wage_share_bps,
+                    half_periods,
+                },
+                recipients,
+            });
+            f.programs.sort_by(|a, b| a.key.cmp(&b.key));
         }
     }
 
@@ -1246,6 +1264,105 @@ pub(crate) fn run_observed(
     world: &World,
     observe: &mut dyn FnMut(u64, &MaterialCircuitTransition),
 ) -> Vec<Snapshot> {
+    run_staffed(world, None, observe)
+}
+
+/// A run in which staffing is done by hand: `employed(p)` is each site's persons after period `p`.
+/// It tests the programs, not the staffing rule.
+pub(crate) fn run_driven(world: &World, employed: impl Fn(u64) -> [u64; 4]) -> Vec<Snapshot> {
+    run_staffed(world, Some(&employed), &mut |_, _| {})
+}
+
+/// The one member of a site's pool, as the engine's staffing sees it.
+fn member_state(world: &World, site_index: usize, employed: u64) -> StaffingMemberState {
+    let force = world.workers[site_index];
+    let binding = StaffingMemberBinding::from_living_force(
+        member(site_index),
+        worker(site_index),
+        place(),
+        force,
+    );
+    StaffingMemberState::try_new(binding, employed, force - employed)
+        .expect("the member's persons are the pool's")
+}
+
+/// What the engine's staffing decided for the next period.
+pub(crate) struct Staffed {
+    pub labor: Vec<LaborCapacityRow>,
+    pub receipts: Vec<StaffingMemberReceipt>,
+    pub employed: [u64; 4],
+}
+impl Staffed {
+    /// One member row for each site's labor row.
+    pub(crate) fn member_labor(&self) -> Vec<MemberLaborCapacityRow> {
+        self.labor
+            .iter()
+            .map(|row| MemberLaborCapacityRow {
+                member_id: member(site_index(row.site_id)),
+                period: row.period,
+                available_hours: row.available,
+            })
+            .collect()
+    }
+}
+
+fn labor_row(world: &World, closed_period: u64, i: usize, employed: u64) -> LaborCapacityRow {
+    LaborCapacityRow {
+        site_id: site(i),
+        unit_id: self::hours(),
+        period: closed_period + 1,
+        available: employed * world.hours_per_person,
+    }
+}
+
+/// Staffing by hand: each site's persons after the period are given.
+pub(crate) fn staff_by_hand(
+    world: &World,
+    period: u64,
+    before: [u64; 4],
+    after: [u64; 4],
+) -> Staffed {
+    let mut labor = Vec::new();
+    let mut receipts = Vec::new();
+    for i in 0..4 {
+        labor.push(labor_row(world, period, i, after[i]));
+        let force = world.workers[i];
+        let (hires, separations) = (
+            after[i].saturating_sub(before[i]),
+            before[i].saturating_sub(after[i]),
+        );
+        let receipt = StaffingMemberReceipt {
+            period,
+            pool_id: StaffingPoolId::from_bytes(site(i).as_bytes()),
+            site_id: site(i),
+            unit_id: self::hours(),
+            member: member_state(world, i, before[i]).binding().clone(),
+            hours_per_person: world.hours_per_person,
+            opening_employed: before[i],
+            opening_reserve: force - before[i],
+            hires,
+            separations,
+            closing_employed: after[i],
+            closing_reserve: force - after[i],
+            next_opening_hours: after[i] * world.hours_per_person,
+        };
+        receipt
+            .validate()
+            .expect("the hand staffing conserves persons");
+        receipts.push(receipt);
+    }
+    Staffed {
+        labor,
+        receipts,
+        employed: after,
+    }
+}
+
+pub(crate) fn run_staffed(
+    world: &World,
+    by_hand: Option<&dyn Fn(u64) -> [u64; 4]>,
+    observe: &mut dyn FnMut(u64, &MaterialCircuitTransition),
+) -> Vec<Snapshot> {
     let (catalog, mut state) = world.build();
     let (bindings, mut staffing) = world.staffing();
     let opening_money = economy(&state)
@@ -1254,6 +1371,7 @@ pub(crate) fn run_observed(
         .expect("the book totals")
         .micro_units();
     let mut rows = Vec::new();
+    let mut before = world.workers;
     for period in 1..=PERIODS {
         let closed = babylon_material_circuit::close_material_period(&catalog, &state)
             .unwrap_or_else(|e| panic!("period {period} closes: {e:?}"));
@@ -1264,27 +1382,37 @@ pub(crate) fn run_observed(
         for request in &requests {
             asked[site_index(request.site_id())] += request.hours();
         }
-        let staffed = babylon_material_circuit::advance_staffing(&staffing, &requests)
-            .unwrap_or_else(|e| panic!("period {period} staffs: {e:?}"));
-        let mut employed = [0; 4];
-        for receipt in staffed.receipts() {
-            employed[site_index(receipt.binding().site_id())] = receipt.closing_employed();
-        }
-        let labor = staffed.next_labor().to_vec();
-        let members = labor
-            .iter()
-            .map(|row| MemberLaborCapacityRow {
-                member_id: member(site_index(row.site_id)),
-                period: row.period,
-                available_hours: row.available,
-            })
-            .collect();
+        let staffed = if let Some(employed) = by_hand {
+            staff_by_hand(world, period, before, employed(period))
+        } else {
+            let staffed = babylon_material_circuit::advance_staffing(&staffing, &requests)
+                .unwrap_or_else(|e| panic!("period {period} staffs: {e:?}"));
+            let mut employed = [0; 4];
+            let mut receipts = Vec::new();
+            for receipt in staffed.receipts() {
+                let i = site_index(receipt.binding().site_id());
+                employed[i] = receipt.closing_employed();
+                let members = [member_state(world, i, receipt.opening_employed())];
+                receipts.extend(
+                    babylon_material_circuit::distribute_staffing_members(receipt, &members)
+                        .unwrap_or_else(|e| panic!("period {period} has members: {e:?}")),
+                );
+            }
+            let labor = staffed.next_labor().to_vec();
+            staffing = staffed.into_state();
+            Staffed {
+                labor,
+                receipts,
+                employed,
+            }
+        };
+        let members = staffed.member_labor();
         let closed = closed
-            .finish_with_workforce(&catalog, labor, members)
+            .finish_with_staffing(&catalog, staffed.labor, members, &staffed.receipts)
             .unwrap_or_else(|e| panic!("period {period} finishes: {e:?}"));
         observe(period, &closed);
-        staffing = staffed.into_state();
-        let row = snapshot(&catalog, &closed, asked, employed);
+        before = staffed.employed;
+        let row = snapshot(&catalog, &closed, asked, staffed.employed);
         assert_eq!(
             row.total_money, opening_money,
             "period {period}: money is conserved"

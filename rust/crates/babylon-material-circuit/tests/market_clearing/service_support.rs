@@ -80,6 +80,8 @@ pub(crate) struct ServiceFixture {
     pub utility_pricing: PricePolicy,
     /// The hours the utility's workers can give, if fewer than its nameplate batches.
     pub utility_hours: Option<u64>,
+    /// Keep every provider's fixed price even where its service is in the order (to see it refused).
+    pub keep_fixed: bool,
 }
 
 impl ServiceFixture {
@@ -95,6 +97,7 @@ impl ServiceFixture {
             funded: vec![],
             utility_pricing: PricePolicy::Fixed,
             utility_hours: None,
+            keep_fixed: false,
         }
     }
 
@@ -295,11 +298,18 @@ impl ServiceFixture {
                 good_id: support::good(service),
                 unit_id: support::units(),
                 unit_price: posted(service),
-                pricing: if service == UTILITY {
-                    self.utility_pricing.clone()
-                } else {
-                    PricePolicy::Fixed
-                },
+                pricing: support::held(
+                    &if service == UTILITY {
+                        self.utility_pricing.clone()
+                    } else {
+                        PricePolicy::Fixed
+                    },
+                    self.paying_order.as_deref(),
+                    self.keep_fixed,
+                    service,
+                    posted(service),
+                    true,
+                ),
             })
             .collect();
         if self.business.is_some() {
@@ -310,7 +320,14 @@ impl ServiceFixture {
                 good_id: support::good(PRODUCT),
                 unit_id: support::units(),
                 unit_price: support::dollars(100),
-                pricing: PricePolicy::Fixed,
+                pricing: support::held(
+                    &PricePolicy::Fixed,
+                    self.paying_order.as_deref(),
+                    self.keep_fixed,
+                    PRODUCT,
+                    support::dollars(100),
+                    false,
+                ),
             });
             offers.sort_by_key(|o| (o.site_id, o.good_id, o.unit_id));
         }

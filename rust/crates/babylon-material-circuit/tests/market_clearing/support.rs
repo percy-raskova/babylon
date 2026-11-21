@@ -42,6 +42,44 @@ pub(crate) fn dollars(value: i128) -> Currency {
     Currency::from_micro_units(value * 1_000_000)
 }
 
+/// A posted price that cannot move: bounds that both equal it. A product that clears by price has no
+/// seller with a fixed price (P12), so a fixture whose seller must keep its price holds it here.
+pub(crate) fn pinned(price: Currency, service: bool) -> PricePolicy {
+    let step = Currency::from_micro_units(1);
+    if service {
+        PricePolicy::ServiceResponsive {
+            minimum: price,
+            maximum: price,
+            step,
+        }
+    } else {
+        PricePolicy::Responsive {
+            minimum: price,
+            maximum: price,
+            step,
+            target_stock: 0,
+        }
+    }
+}
+
+/// What a seller's offer of `good` carries: `wanted` as it is when the product is left out of the
+/// order of paying or the fixture keeps its fixed price on purpose, else a price that is held.
+pub(crate) fn held(
+    wanted: &PricePolicy,
+    order: Option<&[u8]>,
+    keep_fixed: bool,
+    good: u8,
+    price: Currency,
+    service: bool,
+) -> PricePolicy {
+    let priced = order.is_some_and(|order| order.contains(&good));
+    if matches!(wanted, PricePolicy::Fixed) && priced && !keep_fixed {
+        pinned(price, service)
+    } else {
+        wanted.clone()
+    }
+}
+
 /// The retailer's site.
 pub(crate) const RETAILER: u8 = 3;
 /// The buyer of an order that was accepted in an earlier period.
@@ -84,6 +122,8 @@ pub(crate) struct Fixture {
     pub makes_shelf: bool,
     /// The output the seller's process keeps ready beyond what was sent and waited for.
     pub output_buffer: u64,
+    /// Keep the retailer's fixed price even where its good is in the order (to see it refused).
+    pub keep_fixed: bool,
 }
 
 impl Fixture {
@@ -104,6 +144,7 @@ impl Fixture {
             pricing: PricePolicy::Fixed,
             makes_shelf: false,
             output_buffer: 0,
+            keep_fixed: false,
         }
     }
 
@@ -262,7 +303,14 @@ impl Fixture {
                     good_id: good(shelf.good),
                     unit_id: units(),
                     unit_price: shelf.price,
-                    pricing: self.pricing.clone(),
+                    pricing: held(
+                        &self.pricing,
+                        self.paying_order.as_deref(),
+                        self.keep_fixed,
+                        shelf.good,
+                        shelf.price,
+                        false,
+                    ),
                 })
                 .collect(),
             replenishment: vec![],

@@ -16,6 +16,7 @@ use crate::control::EMPLOYER;
 use crate::control::FOOD;
 use crate::control::MATERIALS;
 use crate::control::PAPER_CASH;
+use babylon_kernel::currency::Currency;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidOutcome;
 use babylon_material_circuit::AidResolveInput;
@@ -1212,13 +1213,50 @@ fn fully_satisfied_need_releases_the_expired_surplus_unit_refund() {
 
 #[test]
 fn a_donors_service_orders_reconcile_under_a_market_policy() {
-    let (catalog, state) = control::opening();
+    let (catalog, mut state) = control::opening();
     let mut definition = catalog.into_definition();
     definition.market_clearing = Some(babylon_material_circuit::MarketClearingPolicy {
         paying_order: (1..=7)
             .map(|g| (control::good(g), control::unit(g)))
             .collect(),
     });
+    // A product that clears by price has no seller with a fixed price (P12): each offer keeps its
+    // posted price through bounds that both equal it.
+    let services: Vec<_> = definition
+        .commodities
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.kind,
+                babylon_material_circuit::CommodityKind::PeriodService { .. }
+            )
+        })
+        .map(|c| (c.good_id, c.unit_id))
+        .collect();
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("the opening is monetary")
+    };
+    let recurring = economy
+        .recurring
+        .as_mut()
+        .expect("the opening is recurring");
+    for offer in &mut recurring.offers {
+        let (minimum, step) = (offer.unit_price, Currency::from_micro_units(1));
+        offer.pricing = if services.contains(&(offer.good_id, offer.unit_id)) {
+            PricePolicy::ServiceResponsive {
+                minimum,
+                maximum: minimum,
+                step,
+            }
+        } else {
+            PricePolicy::Responsive {
+                minimum,
+                maximum: minimum,
+                step,
+                target_stock: 0,
+            }
+        };
+    }
     let catalog = MaterialCatalog::try_new(definition).expect("the policy catalog is valid");
     let closed = control::close(&catalog, &state, &[], &[control::collection(1)])
         .expect("the donor's funding reconciles when requests are captured after the stages");

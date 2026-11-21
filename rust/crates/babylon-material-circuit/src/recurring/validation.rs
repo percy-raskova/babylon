@@ -190,6 +190,15 @@ pub(crate) fn validate_offers(catalog: &MaterialCatalog, rows: &RecurringEconomy
         {
             return Err(MaterialCircuitError::PurchaseInvariant);
         }
+        if matches!(offer.pricing, PricePolicy::Fixed)
+            && catalog
+                .market_clearing
+                .as_ref()
+                .is_some_and(|policy| policy.place(offer.good_id, offer.unit_id).is_some())
+        {
+            // A product that clears by price has no seller with a fixed price (P12).
+            return Err(MaterialCircuitError::MarketClearingInvariant);
+        }
         if let PricePolicy::Responsive {
             minimum,
             maximum,

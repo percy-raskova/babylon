@@ -20,3 +20,6 @@ mod restocking;
 
 #[path = "market_clearing/plans.rs"]
 mod plans;
+
+#[path = "market_clearing/admission.rs"]
+mod admission;

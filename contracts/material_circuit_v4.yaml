@@ -175,14 +175,15 @@ market_clearing:
     the posted price, sold, and buyers bid and served
   P11_money: nothing is created or destroyed; the buyers' extra payments are the seller's receipts
   P12_not_by_price: >-
-    a product left out of the order of paying, a seller with a fixed price, a catalog without an order, and a
-    world without money share in proportion as before
+    a product left out of the order of paying, a catalog without an order, and a world without money share in
+    proportion as before; a product in the order has no seller with a fixed price
   P13_asking: a catalog gets the rule only by naming an order of paying
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out
     - a refusal is MarketClearingInvariant
     - a market policy requires no company portfolio
+    - under a market policy every offer of a product in the order is responsive
 
 catalog_seal:
   - canonicalize every definition family once at admission, in the orders above

@@ -303,7 +303,14 @@ impl Restock {
                 good_id: support::good(INPUT),
                 unit_id: support::units(),
                 unit_price: supplier.price,
-                pricing: PricePolicy::Fixed,
+                pricing: support::held(
+                    &PricePolicy::Fixed,
+                    self.paying_order.as_deref(),
+                    false,
+                    INPUT,
+                    supplier.price,
+                    false,
+                ),
             });
         }
         let mut replenishment = vec![];
@@ -318,16 +325,27 @@ impl Restock {
                     planned_batches: 0,
                 });
             }
-            let (good_id, price) = match buyer.uses {
-                Use::Makes(price) => (output_good(index), price),
-                Use::Sells(price) => (support::good(INPUT), price),
+            let (good_id, price, good_number) = match buyer.uses {
+                Use::Makes(price) => (
+                    output_good(index),
+                    price,
+                    20 + u8::try_from(index).expect("few buyers"),
+                ),
+                Use::Sells(price) => (support::good(INPUT), price, INPUT),
             };
             offers.push(SellerOffer {
                 site_id: buyer_site(index),
                 good_id,
                 unit_id: support::units(),
                 unit_price: price,
-                pricing: PricePolicy::Fixed,
+                pricing: support::held(
+                    &PricePolicy::Fixed,
+                    self.paying_order.as_deref(),
+                    false,
+                    good_number,
+                    price,
+                    false,
+                ),
             });
             for s in 0..self.suppliers.len() {
                 replenishment.push(ReplenishmentPolicy {

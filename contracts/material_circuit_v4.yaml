@@ -826,8 +826,10 @@ period_services:
     - Due orders retain their accepted price; without a market policy only residual need can obtain a new reserve at
       the current quote and shares output with due orders; with one, due orders are served first and residual need is
       priced at the market of its stage.
-    - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
-      converts to batches.
+    - Service next planned native output, without a market policy, covers observed requests or explicit
+      next-period claims; with one, for a product in the order of paying, it covers what the stage market's buyers
+      could pay for at the posted price plus the orders funded earlier for the period, or the explicit next-period
+      claims if more, and the receipt still records what was asked. Ceiling division converts to batches.
     - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with
       bounded steps; with a market policy a service market with priced-out buyers is decided before cost pressure
       and spare capacity and steps up.

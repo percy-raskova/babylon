@@ -307,6 +307,25 @@ fn market_policy(catalog: &MaterialCatalog) -> Result<&MarketClearingPolicy> {
         .ok_or(MaterialCircuitError::MarketClearingInvariant)
 }
 
+/// What each provider's product owes for the period to orders funded before its stage: the
+/// admitted quantity of every performance row that is not one of this close's requests.
+pub(super) fn owed_quantities(
+    performance: &[ServicePerformanceReceipt],
+    requests: &[Request],
+) -> Result<BTreeMap<(SiteId, GoodId, UnitId), u64>> {
+    let asked: BTreeSet<OrderId> = requests.iter().map(|r| r.order_id).collect();
+    let mut owed = BTreeMap::new();
+    for row in performance.iter().filter(|r| !asked.contains(&r.order_id)) {
+        let total: &mut u64 = owed
+            .entry((row.provider_site_id, row.good_id, row.unit_id))
+            .or_default();
+        *total = total
+            .checked_add(row.admitted_quantity)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+    }
+    Ok(owed)
+}
+
 /// The requests of one phase, by market, each market's buyers in order identity.
 fn phase_markets<'a>(
     catalog: &MaterialCatalog,

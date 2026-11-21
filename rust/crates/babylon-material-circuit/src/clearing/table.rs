@@ -60,6 +60,8 @@ type MarketKey = (MarketMoment, SiteId, GoodId, UnitId);
 struct MarketRow {
     key: MarketKey,
     price: Currency,
+    /// What the buyers could pay for at the posted price, `None` when no buyer bid.
+    demand: Option<u64>,
     priced_out: u64,
     receipt: Option<MarketClearingReceipt>,
 }
@@ -120,6 +122,7 @@ impl MarketTable {
         self.rows.push(MarketRow {
             key,
             price: outcome.price,
+            demand: (bids > 0).then_some(outcome.demand_at_quote),
             priced_out,
             receipt,
         });
@@ -133,6 +136,21 @@ impl MarketTable {
             .filter(|row| (row.key.1, row.key.2, row.key.3) == (site, good, unit))
             .map(|row| row.priced_out)
             .sum()
+    }
+
+    /// What this market's buyers could pay for at the posted price this period, short or not.
+    /// `None` when no buyer bid in it.
+    pub(crate) fn demand_at_quote(
+        &self,
+        moment: MarketMoment,
+        site: SiteId,
+        good: GoodId,
+        unit: UnitId,
+    ) -> Option<u64> {
+        self.rows
+            .iter()
+            .find(|row| row.key == (moment, site, good, unit))
+            .and_then(|row| row.demand)
     }
 
     /// What goods buyers were priced out of, by seller and product, for the seller's next plan.

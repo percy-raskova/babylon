@@ -1,7 +1,7 @@
 //! The seller plans from what was wanted: a buyer that was priced out raises the seller's next
 //! plan and steps its posted price up, and a short market closes its gap within a few periods.
 
-use super::service_support::{ServiceFixture, UTILITY};
+use super::service_support::{Funded, ServiceFixture, UTILITY};
 use super::support::{self, Fixture};
 use babylon_material_circuit::{
     MaterialCircuitState, MaterialCircuitTransition, PriceDecision, PricePolicy,
@@ -209,4 +209,85 @@ fn a_run_of_three_periods_closes_the_gap() {
         .household_demand
         .iter()
         .all(|row| row.unit_price == support::dollars(4) && row.fulfilled_quantity > 0));
+}
+
+/// The utility's receipt of the period: what was asked, and what it plans for the next.
+fn utility_plan(closed: &MaterialCircuitTransition) -> (u64, u64, ServicePriceDecision) {
+    let row = closed
+        .service_markets
+        .iter()
+        .find(|row| row.good_id == support::good(UTILITY))
+        .expect("the utility has a market receipt");
+    (row.requested_quantity, row.planned_quantity, row.reason)
+}
+
+fn close_service(fixture: &ServiceFixture) -> MaterialCircuitTransition {
+    let (catalog, state) = fixture.build();
+    babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the fixture period closes")
+}
+
+/// One household that asks for 40 units of utility at $4 with money for 25 of them.
+fn buyers_who_can_pay_for_25() -> ServiceFixture {
+    ServiceFixture::new(&[support::dollars(100)], &[vec![(UTILITY, 40)]])
+}
+
+#[test]
+fn a_service_staffs_for_what_buyers_could_pay_for() {
+    let closed = close_service(&buyers_who_can_pay_for_25());
+    let (requested, planned, _) = utility_plan(&closed);
+    // What was asked stays on the receipt; the plan is what the buyers could pay for.
+    assert_eq!((requested, planned), (40, 25));
+}
+
+#[test]
+fn an_order_funded_earlier_counts_in_the_plan() {
+    // One account needs 20 and holds a funded order for 10; with the $40 it has left it can pay for
+    // the other 10. Another asks for 40 and can pay for 15. The buyers could pay for 25 new units
+    // and 10 are owed, so the plan is 35.
+    let mut fixture = ServiceFixture::new(
+        &[support::dollars(80), support::dollars(60)],
+        &[vec![(UTILITY, 20)], vec![(UTILITY, 40)]],
+    );
+    fixture.funded = vec![Funded {
+        buyer: 0,
+        service: UTILITY,
+        quantity: 10,
+        price: support::dollars(4),
+        order: 7,
+    }];
+    let closed = close_service(&fixture);
+    let (_, planned, _) = utility_plan(&closed);
+    assert_eq!(planned, 35);
+}
+
+#[test]
+fn buyers_who_return_are_planned_for_after_one_period() {
+    // Period 1: nobody has money, so nobody bids and the provider plans nothing.
+    let mut broke = buyers_who_can_pay_for_25();
+    broke.purses = vec![support::dollars(0)];
+    let (requested, planned, _) = utility_plan(&close_service(&broke));
+    assert_eq!((requested, planned), (40, 0));
+    // Period 2: the provider has no hands, the buyers can pay for 30, so they are priced out of an
+    // empty market with the reason `PricedOut` and the plan for the next period is 30.
+    let mut returned = ServiceFixture::new(&[support::dollars(120)], &[vec![(UTILITY, 40)]]);
+    returned.utility_hours = Some(0);
+    returned.utility_pricing = PricePolicy::ServiceResponsive {
+        minimum: support::dollars(1),
+        maximum: support::dollars(10),
+        step: support::dollars(1),
+    };
+    let closed = close_service(&returned);
+    assert_eq!(closed.market_clearings.len(), 1);
+    assert_eq!(closed.market_clearings[0].supply, 0);
+    let (_, planned, reason) = utility_plan(&closed);
+    assert_eq!((planned, reason), (30, ServicePriceDecision::PricedOut));
+}
+
+#[test]
+fn without_a_market_policy_a_service_plans_for_what_was_asked() {
+    let mut fixture = buyers_who_can_pay_for_25();
+    fixture.paying_order = None;
+    let (requested, planned, _) = utility_plan(&close_service(&fixture));
+    assert_eq!((requested, planned), (40, 40));
 }

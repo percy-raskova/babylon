@@ -6,10 +6,10 @@ use super::ServiceMarketReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServicePriceDecision;
 use super::UnitId;
-use crate::clearing::MarketTable;
+use crate::clearing::{MarketMoment, MarketTable};
 use crate::MaterialCatalog;
 use crate::SiteId;
-use crate::{CircuitAccounting, PricePolicy, ServiceOrder};
+use crate::{CircuitAccounting, CommodityKind, PricePolicy, ServiceOrder, ServiceStage};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
@@ -79,11 +79,15 @@ fn sum(
 pub(super) fn update(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
-    closed: (&[ServicePerformanceReceipt], &MarketTable),
+    closed: (
+        &[ServicePerformanceReceipt],
+        &MarketTable,
+        &BTreeMap<MarketKey, u64>,
+    ),
     markets: &mut [ServiceMarketReceipt],
     next_period: u64,
 ) -> Result<()> {
-    let (performance, priced) = closed;
+    let (performance, priced, owed) = closed;
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         return Ok(());
     };
@@ -128,7 +132,12 @@ pub(super) fn update(
                 n.checked_add(o.quantity)
                     .ok_or(MaterialCircuitError::Arithmetic)
             })?;
-        market.planned_quantity = market.requested_quantity.max(future);
+        market.planned_quantity = planned_quantity(
+            catalog,
+            (market, key),
+            (priced, owed.get(&key).copied().unwrap_or(0)),
+            future,
+        )?;
         r.production
             .binary_search_by_key(&market.process_id, |p| p.process_id)
             .ok()
@@ -150,6 +159,41 @@ pub(super) fn update(
         market.reason = reason;
     }
     Ok(())
+}
+/// The quantity a provider plans for the next period. Without a market policy, and for a product
+/// left out of the order of paying, it is what was asked, or what is funded for the next period if
+/// that is more. With a policy it is what the buyers could pay for at the posted price in this
+/// period's market, with what was funded for the period before the stage, or what is funded for the
+/// next period if that is more (P14).
+fn planned_quantity(
+    catalog: &MaterialCatalog,
+    market: (&ServiceMarketReceipt, MarketKey),
+    books: (&MarketTable, u64),
+    future: u64,
+) -> Result<u64> {
+    let (row, key) = market;
+    let (priced, owed) = books;
+    let asked = row.requested_quantity.max(future);
+    let Some(policy) = &catalog.market_clearing else {
+        return Ok(asked);
+    };
+    if policy.place(key.1, key.2).is_none() {
+        return Ok(asked);
+    }
+    let moment = match super::kind(catalog, key.1, key.2)? {
+        CommodityKind::PeriodService {
+            stage: ServiceStage::UtilityProvision,
+        } => MarketMoment::Utility,
+        CommodityKind::PeriodService { .. } => MarketMoment::LocalService,
+        CommodityKind::Storable { .. } => return Err(MaterialCircuitError::ServiceInvariant),
+    };
+    let funded = priced
+        .demand_at_quote(moment, key.0, key.1, key.2)
+        .unwrap_or(0);
+    let wanted = owed
+        .checked_add(funded)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(wanted.max(future))
 }
 fn quote(
     row: &ServiceMarketReceipt,

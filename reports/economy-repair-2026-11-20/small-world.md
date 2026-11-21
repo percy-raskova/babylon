@@ -3,7 +3,8 @@
 Probe of the material circuit's own rules, 2026-11-20, branch `codex/households-and-homes`. The
 world and every run are the test binary `rust/crates/babylon-material-circuit/tests/small_world.rs`
 (`small_world/support.rs` builds it, `quiet.rs` and `pushed.rs` pin what is reported here; the
-ignored test `dump_every_run` prints every measure). No engine code was changed.
+ignored test `dump_every_run` prints every measure). No engine code was changed to make these runs; Task 6b
+later changed the runs under a market policy, and its tables are at the end of the runs.
 
 ## The world and its numbers
 
@@ -90,6 +91,10 @@ posted price and no clearing is recorded; restocking between businesses clears b
   `recurring/prices.rs` `update_prices`); a service quote with such buyers takes the reason
   `PricedOut` and steps up a step, also with spare capacity (`services/market.rs` `quote`).
 
+- R12 Under the market policy a service in the order of paying plans what the buyers of its stage market could
+  pay for at the posted price plus the orders funded earlier for the period, and staffs for that, not for what
+  was asked (`services/market.rs` `planned_quantity`); the receipt keeps what was asked.
+
 ## P1, less demand: runs away
 
 The owner's cohort counts 5 persons instead of 10; cash, stock and purchase policy unchanged.
@@ -169,7 +174,7 @@ and its care goes unmet. The clinic stops at period 12 with $6, the farm at peri
 shop is down to $4 at period 30 and works no hour after (R6, R8). The sites' cash ends in workers'
 accounts.
 
-## P2 under the market policy: runs away, the sellers planning from what was wanted
+## P2 under the market policy, before Task 6b: runs away, the sellers planning from what was wanted
 
 Identical to P2 through period 8. At period 9 the shop's hours (33, set by what it sold, R10) make
 its food market short; it clears at $47.10, then $80.55 at period 10, drawing the workers' idle
@@ -253,6 +258,71 @@ nothing from period 19, and the shop works no hour from period 26. End: food 40,
 | 21 | 355/6/9/1320 | 811/1/268/952, 1435 | 10/27/29/46 | 35/0/0 | 0/0 | 35/0/0/35 | 40/5/40 |
 | 34 | 305/6/9/0 | 3071/1/8/1622, 135 | 10/30/42/59 | 30/0/0 | 0/0 | 30/0/0/0 | 40/10/40 |
 
+## The pushes under the market policy after Task 6b: a service plans from what its buyers could pay for
+
+Task 6b adds rule R12 (spec rule P14, `services/market.rs` `planned_quantity`): under a market policy a
+service in the order of paying plans, and so staffs, for what the buyers of its stage market could pay
+for at the posted price, with the orders funded earlier for the period, and not for what was asked; the
+receipt still records what was asked. The runs without a market policy and the market policy's quiet run
+and P3 are unchanged by one figure. Every period of the other three differs from the tables above, from
+period 2 in P1 and P2 and from period 1 in P4 (the plan for the next period). Before, a provider that
+staffed for need it was not paid for paid idle hours until its cash was gone; now none of them does.
+
+### P1 under the market policy, after: runs away slowly, nothing stops
+
+R12 changed it: the clinic no longer pays idle hours, so its cash stays above $719 where it ran out at
+period 27, and its output slides from 35 to 12 units as care goes unfunded (care unmet 23, was 35).
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
+|--:|---|---|---|---|---|---|---|
+| 1 | 1200/770/880/1400 | 0/0/0/0, 910 | 11/24/29/38 | 115/40/35 | 45/40 | 120/40/40/40 | 0/0/0 |
+| 2 | 1150/896/880/1435 | 9/26/18/18, 728 | 10/24/28/38 | 100/30/26 | 40/40 | 115/30/35/35 | 0/0/9 |
+| 3 | 1200/852/880/1439 | 0/33/25/3, 723 | 11/24/27/38 | 100/30/23 | 35/40 | 100/40/26/35 | 0/0/12 |
+| 5 | 1200/851/880/1439 | 19/66/4/18, 679 | 11/24/27/38 | 98/30/22 | 35/40 | 98/40/24/35 | 0/0/13 |
+| 8 | 1200/851/880/1439 | 17/80/1/30, 658 | 10/24/28/38 | 93/40/21 | 40/40 | 99/40/21/35 | 0/3/14 |
+| 13 | 1200/852/880/1439 | 1/113/4/20, 648 | 11/24/27/38 | 91/30/20 | 35/40 | 91/40/22/35 | 0/2/15 |
+| 21 | 1200/852/880/1439 | 25/116/11/20, 613 | 11/24/27/38 | 89/30/18 | 35/40 | 89/40/22/35 | 0/3/17 |
+| 34 | 1116/760/880/1479 | 8/27/1/2, 883 | 10/23/28/43 | 62/30/12 | 2/40 | 66/40/12/33 | 2/19/23 |
+
+### P2 under the market policy, after: settles in a depressed band, nothing stops
+
+R12 changed it: the clinic staffs only what its buyers can pay for, so it makes between 5 and 11 units
+from period 16 with its cash over $755 where it stopped at period 11, the farm never stops (it stopped at
+period 28), and the shop's hours stay between 31 and 40; the end is care 34, utility 21 and food 4 unmet.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
+|--:|---|---|---|---|---|---|---|
+| 1 | 1200/926/880/1400 | 0/0/0/0, 753 | 12/25/30/38 | 120/36/40 | 36/40 | 120/40/40/40 | 0/0/0 |
+| 2 | 1200/998/880/1400 | 0/0/0/0, 681 | 12/25/29/38 | 120/36/38 | 32/40 | 120/40/40/40 | 0/0/2 |
+| 3 | 1200/1084/880/1400 | 15/5/14/5, 556 | 11/25/28/38 | 118/36/35 | 28/40 | 120/40/38/40 | 0/0/5 |
+| 5 | 1080/1303/880/1400 | 65/45/23/45, 318 | 10/25/26/38 | 103/36/27 | 20/40 | 115/40/31/40 | 0/8/13 |
+| 8 | 960/1381/880/1400 | 25/142/1/102, 267 | 10/25/25/38 | 91/36/20 | 17/40 | 98/40/20/38 | 0/9/20 |
+| 13 | 840/1359/880/1400 | 23/274/5/54, 322 | 10/25/24/40 | 79/36/13 | 18/40 | 82/40/13/35 | 5/14/27 |
+| 21 | 1160/1065/880/1400 | 0/282/8/24, 338 | 10/25/24/44 | 73/36/8 | 31/40 | 77/40/8/34 | 8/15/32 |
+| 34 | 1140/1258/851/1360 | 4/3/1/26, 515 | 10/26/25/49 | 65/36/6 | 22/40 | 71/40/6/35 | 4/21/34 |
+
+### P3 under the market policy, after: unchanged
+
+No market is ever short and every service is paid for what it performs, so R12 moves nothing; the table
+above stands.
+
+### P4 under the market policy, after: cycles in a depressed band, nothing stops for good
+
+R12 changed it: no site runs dry (the clinic stopped at period 19, the farm at 19 and the shop at 26);
+the clinic's output slides from 36 to 6, is zero at periods 18, 27, 28 and 29 and returns to 11 at
+period 30, while the farm and the shop swing between 20 and 40 units and 24 and 40 hours.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
+|--:|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 29/29/39/29, 670 | 11/25/31/38 | 116/40/36 | 40/40 | 120/40/40/40 | 0/0/4 |
+| 2 | 1200/882/880/1400 | 7/25/75/25, 663 | 12/25/30/38 | 116/40/34 | 40/40 | 116/40/40/40 | 0/0/6 |
+| 3 | 1200/881/880/1400 | 30/22/46/22, 675 | 11/25/31/38 | 114/40/34 | 40/40 | 120/40/34/40 | 0/0/6 |
+| 5 | 1200/1100/880/1400 | 27/17/19/17, 497 | 11/25/29/38 | 113/40/29 | 30/40 | 115/40/33/40 | 0/0/11 |
+| 8 | 1110/1152/880/1400 | 21/72/15/72, 435 | 10/25/26/38 | 100/40/24 | 30/40 | 107/40/25/40 | 0/5/16 |
+| 13 | 1136/1043/804/1400 | 14/252/11/232, 264 | 11/25/23/38 | 86/40/15 | 34/40 | 86/40/19/38 | 0/13/25 |
+| 21 | 1106/829/880/1599 | 0/21/1/0, 720 | 12/21/23/41 | 70/30/8 | 29/40 | 70/40/10/39 | 3/9/32 |
+| 34 | 1200/1588/652/1299 | 1/49/0/30, 337 | 13/27/28/49 | 75/40/7 | 2/40 | 82/40/7/38 | 4/12/33 |
+
 ## What this means for an opening that is in balance
 
 1. An opening balanced in whole numbers is exactly still for 34 periods, with or without taxes
@@ -273,3 +343,6 @@ nothing from period 19, and the shop works no hour from period 26. End: food 40,
 8. Under the market policy a seller plans from what buyers were priced out of as well as what it
    sold, so a short shop asks for more hours and steps its quote up, and a stopped provider's quote
    rises with its priced-out buyers instead of falling to its minimum (P2 under the market policy).
+9. Under the market policy a service plans and staffs for what its buyers can pay for (R12), so the idle
+   hours of item 5 are not paid: no pushed run stops a site for good, and the three that ran away now slide
+   or cycle in a depressed band (P1, P2, P4 under the market policy).

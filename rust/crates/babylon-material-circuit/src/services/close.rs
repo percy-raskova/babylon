@@ -451,10 +451,11 @@ impl ServiceClose {
         priced: &MarketTable,
         next_period: u64,
     ) -> Result<()> {
+        let owed = super::admission::owed_quantities(&self.performance, &self.requests)?;
         super::market::update(
             catalog,
             state,
-            (&self.performance, priced),
+            (&self.performance, priced, &owed),
             &mut self.markets,
             next_period,
         )

@@ -2,6 +2,7 @@
 
 use crate::CompanyBasisMovement;
 use crate::HouseholdLifecycleReceipt;
+use crate::MarketClearingReceipt;
 use crate::ResidentWorkforceAttrition;
 use babylon_kernel::economic_location::EconomicLocation;
 
@@ -762,4 +763,7 @@ pub struct MaterialCircuitTransition {
     pub local_fulfillments: Vec<LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<LocalTransferReceipt>,
     pub maintenance: Option<MaintenanceReceipt>,
+    /// The short markets of the period, in the order of the moments of sale. Empty without a market
+    /// policy.
+    pub market_clearings: Vec<MarketClearingReceipt>,
 }

@@ -5,46 +5,8 @@ use super::InstallationTarget;
 use super::ProductiveEquipment;
 use super::Result;
 use crate::inventory::InventoryLedger;
-use crate::GoodId;
 use crate::ProcessId;
-use crate::SiteId;
-use crate::UnitId;
 use crate::{CircuitAccounting, EquipmentPosition, MaterialCircuitError, MaterialCircuitState};
-
-pub(super) fn sale_commitments(state: &MaterialCircuitState) -> Result<InventoryLedger> {
-    let mut rows = InventoryLedger::new();
-    for order in &state.orders {
-        let quantity = order
-            .ordered
-            .checked_sub(order.shipped)
-            .ok_or(MaterialCircuitError::EquipmentInvariant)?;
-        add(
-            &mut rows,
-            (order.supplier_site_id, order.good_id, order.unit_id),
-            quantity,
-        )?;
-    }
-    for order in &state.final_demand_orders {
-        let quantity = order
-            .ordered
-            .checked_sub(order.fulfilled)
-            .ok_or(MaterialCircuitError::EquipmentInvariant)?;
-        add(
-            &mut rows,
-            (order.retailer_site_id, order.good_id, order.unit_id),
-            quantity,
-        )?;
-    }
-    Ok(rows)
-}
-
-fn add(rows: &mut InventoryLedger, key: (SiteId, GoodId, UnitId), quantity: u64) -> Result<()> {
-    let value = rows.entry(key).or_default();
-    *value = value
-        .checked_add(quantity)
-        .ok_or(MaterialCircuitError::Arithmetic)?;
-    Ok(())
-}
 
 /// A temporary eligibility mask, not a stock reservation or another durable owner.
 /// Uncovered pledges remain available to mask prospective inbound units too.
@@ -64,7 +26,10 @@ pub(super) fn eligible_inventory(state: &MaterialCircuitState) -> Result<Invento
         .iter()
         .map(|r| ((r.site_id, r.good_id, r.unit_id), r.quantity))
         .collect();
-    protect_sales(&mut available, &mut sale_commitments(state)?);
+    protect_sales(
+        &mut available,
+        &mut crate::clearing::sale_commitments(state)?,
+    );
     Ok(available)
 }
 

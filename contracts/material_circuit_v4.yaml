@@ -417,7 +417,9 @@ period_close:
   - debit merchant handling mass and labor exactly once per actual outbound
   - debit retail stock and credit positive local order fulfillment exactly once without a freight lot
   - record handling receipts including explicit zero feasible and actual work
-  - credit actual household handoffs to stock and settle them; expire unfilled recurring requests with refunds
+  - without a market policy, credit actual household handoffs to stock and settle them and expire unfilled
+    recurring requests with refunds; with one, a household's purchase is made at the market's price before
+    production, handed over, credited to stock, settled and retired at that moment, and nothing is expired
   - replenish firm inventory positions, counting undelivered order quantities once including their transit
   - allocate only newly admitted deliveries in a second pass through the same remaining resource budgets
   - credit local internal buyers only after both outbound passes fix all grants and debits

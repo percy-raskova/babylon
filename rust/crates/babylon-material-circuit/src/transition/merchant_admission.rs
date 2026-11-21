@@ -6,7 +6,7 @@ use crate::{
     MerchantRole, SiteId, UnitId,
 };
 
-pub(super) fn merchant(catalog: &MaterialCatalog, site: SiteId) -> Option<&MerchantHandling> {
+pub(crate) fn merchant(catalog: &MaterialCatalog, site: SiteId) -> Option<&MerchantHandling> {
     catalog
         .merchants
         .binary_search_by_key(&site, |row| row.site_id)
@@ -14,7 +14,7 @@ pub(super) fn merchant(catalog: &MaterialCatalog, site: SiteId) -> Option<&Merch
         .map(|index| &catalog.merchants[index])
 }
 
-pub(super) fn hours_per_unit(
+pub(crate) fn hours_per_unit(
     catalog: &MaterialCatalog,
     site: SiteId,
     good: GoodId,

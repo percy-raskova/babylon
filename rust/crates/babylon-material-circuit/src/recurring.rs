@@ -14,6 +14,7 @@ pub use households::recurring_household_order_id;
 
 pub(crate) use households::{
     admit_household_orders, complete_household_orders, consume_household_needs,
+    sell_household_goods,
 };
 
 pub use model::*;

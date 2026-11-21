@@ -32,6 +32,7 @@ use crate::{
     UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
+use crate::clearing::MarketTable;
 use crate::financial::FinancialClose;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
@@ -72,6 +73,7 @@ use crate::SupplierTransport;
 use crate::WageAccrualReceipt;
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
+use outbound::HandOver;
 use outbound::OutboundReceipts;
 use outbound::OutboundSelection;
 
@@ -982,13 +984,16 @@ pub(crate) fn dispatch_and_replenish(
         costs,
     )?;
     inventory::publish_inventory(state, inventory);
-    crate::recurring::complete_household_orders(
-        catalog,
-        state,
-        household_demand,
-        &outbound.local_fulfillments,
-        money_transfers,
-    )?;
+    // With a market policy households were handed their goods when they bought them.
+    if catalog.market_clearing.is_none() {
+        crate::recurring::complete_household_orders(
+            catalog,
+            state,
+            household_demand,
+            &outbound.local_fulfillments,
+            money_transfers,
+        )?;
+    }
     crate::payments::settle_deliveries(state, money_transfers)?;
     let (new_orders, procurement) =
         crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
@@ -1303,6 +1308,9 @@ pub(crate) struct FundedProductionReceipts {
     services: ServiceClose,
     production: ProductionStageReceipts,
     agency: Option<PendingAgency>,
+    /// What households bought at the market's price and took home before production.
+    household_sale: Option<HandOver>,
+    markets: MarketTable,
 }
 
 pub(crate) fn close_funded_production(
@@ -1321,8 +1329,28 @@ pub(crate) fn close_funded_production(
     let attendance = crate::payments::fund_attendance(state, money_transfers, wage_accruals)?;
     costs.admit_attendance(attendance);
     let agency = crate::agency_attendance::reserve(opening, state, agency_inputs, money_transfers)?;
-    let household_demand =
-        crate::recurring::admit_household_orders(catalog, state, money_transfers)?;
+    let mut markets = MarketTable::default();
+    let (household_demand, household_sale) = if catalog.market_clearing.is_some() {
+        let sale = crate::recurring::sell_household_goods(
+            catalog,
+            state,
+            costs,
+            money_transfers,
+            &mut markets,
+        )?;
+        (
+            sale.demand,
+            Some(HandOver {
+                fulfillments: sale.fulfillments,
+                handling: sale.handling,
+            }),
+        )
+    } else {
+        (
+            crate::recurring::admit_household_orders(catalog, state, money_transfers)?,
+            None,
+        )
+    };
     let mut services = ServiceClose::new(catalog, state, money_transfers, collection_donor)?;
     let productive = execute_production_stages(
         catalog,
@@ -1338,6 +1366,8 @@ pub(crate) fn close_funded_production(
         services,
         production: productive,
         agency,
+        household_sale,
+        markets,
     })
 }
 
@@ -1429,7 +1459,7 @@ fn close_support_parts(
         agency_inputs,
         collection_inputs.first().map(|row| row.donor),
     )?;
-    let (outbound, procurement) = dispatch_and_replenish(
+    let (mut outbound, procurement) = dispatch_and_replenish(
         catalog,
         &mut state,
         &mut dispatches,
@@ -1443,6 +1473,12 @@ fn close_support_parts(
             agency: funded.agency.as_ref(),
         },
     )?;
+    if let Some(sale) = funded.household_sale.take() {
+        let mut fulfillments = sale.fulfillments;
+        fulfillments.append(&mut outbound.local_fulfillments);
+        outbound.local_fulfillments = fulfillments;
+        outbound.handling.extend(sale.handling);
+    }
     let (households, collections) = close_household_finance(
         MaterialContext {
             catalog,
@@ -1597,6 +1633,7 @@ pub fn close_material_period_with_portfolios(
             local_fulfillments: close.outbound.local_fulfillments,
             local_transfers: close.outbound.local_transfers,
             maintenance: close.funded.production.maintenance,
+            market_clearings: close.funded.markets.into_receipts(),
         },
     })
 }

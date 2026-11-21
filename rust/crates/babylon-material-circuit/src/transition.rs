@@ -1,6 +1,6 @@
 //! Pure per-period transition for the exact routed material circuit.
 
-mod merchant_admission;
+pub(crate) mod merchant_admission;
 
 pub(crate) mod outbound;
 

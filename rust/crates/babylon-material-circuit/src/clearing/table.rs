@@ -1,0 +1,176 @@
+//! The moments at which a market is priced, the market's receipt, and the period's table of markets.
+
+use super::rule::MarketOutcome;
+use crate::{GoodId, MaterialCircuitError, SiteId, UnitId};
+use babylon_kernel::currency::Currency;
+
+/// The moments of a period at which a market is priced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum MarketMoment {
+    HouseholdGoods = 1,
+    Utility = 2,
+    LocalService = 3,
+    Restocking = 4,
+}
+
+/// What one short market cleared at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarketClearingReceipt {
+    pub period: u64,
+    pub moment: MarketMoment,
+    /// The seller.
+    pub site_id: SiteId,
+    pub good_id: GoodId,
+    pub unit_id: UnitId,
+    pub quote_price: Currency,
+    pub clearing_price: Currency,
+    /// On offer to new buyers.
+    pub supply: u64,
+    pub demand_at_quote: u64,
+    pub sold_quantity: u64,
+    pub bidders: u32,
+    pub served_bidders: u32,
+}
+
+impl MarketClearingReceipt {
+    /// # Errors
+    /// `MarketClearingInvariant` unless the period is positive, the quote is positive, the clearing
+    /// price is at least the quote, the demand at the quote exceeds the supply, everything on offer
+    /// was sold, no more buyers were served than bid, and the price is the quote when nothing was
+    /// on offer.
+    pub fn validate(&self) -> Result<(), MaterialCircuitError> {
+        if self.period == 0
+            || self.quote_price.micro_units() <= 0
+            || self.clearing_price < self.quote_price
+            || self.demand_at_quote <= self.supply
+            || self.sold_quantity != self.supply
+            || self.served_bidders > self.bidders
+            || (self.supply == 0 && self.clearing_price != self.quote_price)
+        {
+            return Err(MaterialCircuitError::MarketClearingInvariant);
+        }
+        Ok(())
+    }
+}
+
+type MarketKey = (MarketMoment, SiteId, GoodId, UnitId);
+
+#[derive(Debug)]
+struct MarketRow {
+    key: MarketKey,
+    price: Currency,
+    priced_out: u64,
+    receipt: Option<MarketClearingReceipt>,
+}
+
+/// The markets of one close, in the order they cleared.
+#[derive(Debug, Default)]
+pub(crate) struct MarketTable {
+    rows: Vec<MarketRow>,
+}
+
+impl MarketTable {
+    /// Record one market: always its price, and a receipt when it was short.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the plan fixes this signature; later tasks call it at four moments"
+    )]
+    pub(crate) fn record(
+        &mut self,
+        period: u64,
+        moment: MarketMoment,
+        seller: (SiteId, GoodId, UnitId),
+        quote: Currency,
+        supply: u64,
+        bids: usize,
+        outcome: &MarketOutcome,
+    ) -> Result<(), MaterialCircuitError> {
+        let key = (moment, seller.0, seller.1, seller.2);
+        if self.has_row(moment, seller.0, seller.1, seller.2) {
+            return Err(MaterialCircuitError::MarketClearingInvariant);
+        }
+        let sold = outcome
+            .quantities
+            .iter()
+            .try_fold(0_u64, |sum, &quantity| sum.checked_add(quantity))
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let mut priced_out = 0;
+        let mut receipt = None;
+        if outcome.demand_at_quote > supply {
+            let count = |n: usize| u32::try_from(n).map_err(|_| MaterialCircuitError::Arithmetic);
+            let row = MarketClearingReceipt {
+                period,
+                moment,
+                site_id: seller.0,
+                good_id: seller.1,
+                unit_id: seller.2,
+                quote_price: quote,
+                clearing_price: outcome.price,
+                supply,
+                demand_at_quote: outcome.demand_at_quote,
+                sold_quantity: sold,
+                bidders: count(bids)?,
+                served_bidders: count(outcome.quantities.iter().filter(|&&q| q > 0).count())?,
+            };
+            row.validate()?;
+            priced_out = outcome.demand_at_quote.saturating_sub(sold);
+            receipt = Some(row);
+        }
+        self.rows.push(MarketRow {
+            key,
+            price: outcome.price,
+            priced_out,
+            receipt,
+        });
+        Ok(())
+    }
+
+    /// What buyers could pay for at the posted price and did not get, at this seller's product.
+    #[allow(dead_code, reason = "the seller's plan reads it in a later task")]
+    pub(crate) fn priced_out(&self, site: SiteId, good: GoodId, unit: UnitId) -> u64 {
+        self.rows
+            .iter()
+            .filter(|row| (row.key.1, row.key.2, row.key.3) == (site, good, unit))
+            .map(|row| row.priced_out)
+            .sum()
+    }
+
+    pub(crate) fn has_row(
+        &self,
+        moment: MarketMoment,
+        site: SiteId,
+        good: GoodId,
+        unit: UnitId,
+    ) -> bool {
+        self.rows
+            .iter()
+            .any(|row| row.key == (moment, site, good, unit))
+    }
+
+    /// The price paid at one market of this close, if it cleared.
+    #[allow(dead_code, reason = "later moments and the stored records read it")]
+    pub(crate) fn price(
+        &self,
+        moment: MarketMoment,
+        site: SiteId,
+        good: GoodId,
+        unit: UnitId,
+    ) -> Option<Currency> {
+        self.rows
+            .iter()
+            .find(|row| row.key == (moment, site, good, unit))
+            .map(|row| row.price)
+    }
+
+    /// Sorted by (moment, site, good, unit).
+    pub(crate) fn into_receipts(self) -> Vec<MarketClearingReceipt> {
+        let mut receipts: Vec<_> = self
+            .rows
+            .into_iter()
+            .filter_map(|row| row.receipt)
+            .collect();
+        receipts.sort_by_key(|row| (row.moment, row.site_id, row.good_id, row.unit_id));
+        receipts
+    }
+}

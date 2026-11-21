@@ -1891,6 +1891,10 @@ fn company_receipt_format(
     {
         return Err(MaterialWorldError::Wire);
     }
+    // The stored records do not yet carry the market's receipt; a later change teaches them.
+    if !transition.market_clearings.is_empty() {
+        return Err(MaterialWorldError::Wire);
+    }
     if format != MaterialReceiptFormat::Site {
         super::basis_receipt::validate(
             &transition.company_basis,

@@ -683,6 +683,54 @@ pub(in crate::transition) fn apply_local_fulfillments(
     Ok(receipts)
 }
 
+/// What handing goods to households at the moment of purchase leaves as evidence.
+pub(crate) struct HandOver {
+    pub fulfillments: Vec<LocalRetailFulfillmentReceipt>,
+    pub handling: Vec<MerchantHandlingReceipt>,
+}
+
+/// Hand each sale over to its household now: the merchant's hours and room are spent and the goods
+/// leave its stock, with the postings the first shipping pass makes. Every sale names an order of
+/// `state.final_demand_orders` that is funded and not yet filled.
+///
+/// # Errors
+/// `FinalDemandInvariant` for a sale whose order is missing; the postings' own refusals when the
+/// seller holds less than it sold.
+pub(crate) fn hand_over_household_goods(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    inventory: &mut InventoryLedger,
+    sales: &[(OrderId, u64)],
+    costs: &mut CostClose,
+) -> Result<HandOver, MaterialCircuitError> {
+    let mut allocations = vec![0_u64; state.final_demand_orders.len()];
+    let mut orders = Vec::with_capacity(sales.len());
+    let mut quantities = Vec::with_capacity(sales.len());
+    for &(order_id, quantity) in sales {
+        let index = state
+            .final_demand_orders
+            .binary_search_by_key(&order_id, |row| row.order_id)
+            .map_err(|_| MaterialCircuitError::FinalDemandInvariant)?;
+        let row = &state.final_demand_orders[index];
+        allocations[index] = quantity;
+        quantities.push(quantity);
+        orders.push(OutboundOrder {
+            id: OutboundOrderId::LocalFinalDemand(order_id),
+            stock: (row.retailer_site_id, row.good_id, row.unit_id),
+            requested: quantity,
+            route: None,
+            eligible: true,
+            included: true,
+        });
+    }
+    let handling = apply_handling(catalog, state, &orders, &quantities, &quantities, costs)?;
+    let fulfillments = apply_local_fulfillments(state, inventory, &allocations, costs)?;
+    Ok(HandOver {
+        fulfillments,
+        handling,
+    })
+}
+
 pub(in crate::transition) struct OutboundReceipts {
     pub handling: Vec<MerchantHandlingReceipt>,
     pub local_fulfillments: Vec<LocalRetailFulfillmentReceipt>,

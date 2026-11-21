@@ -73,7 +73,7 @@ impl Evidence {
             observed_stock: stock.clone(),
             stock,
             inbound: BTreeMap::new(),
-            accepted: super::choice::sale_commitments(state)?,
+            accepted: crate::clearing::sale_commitments(state)?,
             pending: BTreeMap::new(),
             outputs: catalog
                 .process_outputs

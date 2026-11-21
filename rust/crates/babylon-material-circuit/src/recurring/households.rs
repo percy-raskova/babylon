@@ -1,14 +1,18 @@
 //! Admission spends existing cash; physical handoff and period consumption differ.
 
 use super::{HouseholdConsumptionReceipt, HouseholdDemandReceipt, RecurringEconomy, Result};
+use crate::clearing::{self, MarketMoment, MarketTable, Offer};
+use crate::transition::outbound::HandOver;
+use crate::valuation::CostClose;
 use crate::MaterialCatalog;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FinalDemandPrincipalId, GoodId,
-    LocalRetailFulfillmentReceipt, MaterialCircuitError, MaterialCircuitState, MonetaryBook,
-    MoneyTransferReceipt, OrderId, OutboundOrderId, PurchaseEscrow, UnitId,
-    MAX_MATERIAL_CIRCUIT_ROWS,
+    LocalRetailFulfillmentReceipt, MarketBid, MaterialCircuitError, MaterialCircuitState,
+    MerchantHandlingReceipt, MonetaryBook, MonetaryCircuit, MoneyTransferReceipt, OrderId,
+    OutboundOrderId, PurchaseEscrow, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
 use std::collections::{BTreeMap, BTreeSet};
 
 type HouseholdKey = (FinalDemandPrincipalId, GoodId, UnitId);
@@ -176,6 +180,368 @@ pub(crate) fn admit_household_orders(
     state.final_demand_orders.sort_by_key(|r| r.order_id);
     transfers.extend(movements);
     Ok(receipts)
+}
+
+/// What selling goods to households at the market's price leaves behind.
+pub(crate) struct HouseholdGoodsSale {
+    /// Final: fulfilled equals admitted and nothing is expired.
+    pub demand: Vec<HouseholdDemandReceipt>,
+    pub fulfillments: Vec<LocalRetailFulfillmentReceipt>,
+    pub handling: Vec<MerchantHandlingReceipt>,
+}
+
+/// A household's plan to buy one good at its retailer in this period.
+struct Intent {
+    principal_id: FinalDemandPrincipalId,
+    retailer_site_id: SiteId,
+    good_id: GoodId,
+    unit_id: UnitId,
+    order_id: OrderId,
+    opening_stock: u64,
+    required_quantity: u64,
+    desired_quantity: u64,
+    requested_quantity: u64,
+    quote: Currency,
+}
+
+/// The plans of every household with a stock row, in household, good and unit order.
+fn household_intents(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    rows: &RecurringEconomy,
+) -> Result<Vec<Intent>> {
+    let required = requirements(catalog, rows)?;
+    let stock: BTreeMap<_, _> = rows
+        .household_stocks
+        .iter()
+        .map(|r| ((r.principal_id, r.good_id, r.unit_id), r.quantity))
+        .collect();
+    let offers: BTreeMap<_, _> = rows
+        .offers
+        .iter()
+        .map(|r| ((r.site_id, r.good_id, r.unit_id), r.unit_price))
+        .collect();
+    let existing: BTreeSet<_> = state
+        .final_demand_orders
+        .iter()
+        .map(|r| r.order_id)
+        .collect();
+    let mut policies: Vec<_> = rows.household_purchases.iter().collect();
+    policies.sort_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
+    let mut intents = vec![];
+    for policy in policies {
+        let key = (policy.principal_id, policy.good_id, policy.unit_id);
+        let Some(&opening_stock) = stock.get(&key) else {
+            continue;
+        };
+        let order_id = recurring_household_order_id(state.period, key);
+        if existing.contains(&order_id) {
+            return Err(MaterialCircuitError::DuplicateRow);
+        }
+        let required_quantity = *required
+            .get(&key)
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        let desired_quantity = desired(
+            required_quantity,
+            policy.target_closing_stock,
+            opening_stock,
+        )?;
+        let requested_quantity = if policy.enabled {
+            desired_quantity.min(policy.maximum_purchase)
+        } else {
+            0
+        };
+        let quote = *offers
+            .get(&(policy.retailer_site_id, policy.good_id, policy.unit_id))
+            .ok_or(MaterialCircuitError::PurchaseInvariant)?;
+        intents.push(Intent {
+            principal_id: policy.principal_id,
+            retailer_site_id: policy.retailer_site_id,
+            good_id: policy.good_id,
+            unit_id: policy.unit_id,
+            order_id,
+            opening_stock,
+            required_quantity,
+            desired_quantity,
+            requested_quantity,
+            quote,
+        });
+    }
+    Ok(intents)
+}
+
+fn economy_mut(state: &mut MaterialCircuitState) -> Result<&mut MonetaryCircuit> {
+    match &mut state.accounting {
+        CircuitAccounting::Monetary(economy) => Ok(economy),
+        CircuitAccounting::PhysicalControl => Err(MaterialCircuitError::MonetaryInvariant),
+    }
+}
+
+/// Sell goods to households at the market's price, where `admit_household_orders` admits them at
+/// the posted price. Each retailer's markets clear in the campaign's order of paying, and the
+/// buyers of one market in order identity. A household's purchase is handed over, paid and retired
+/// at once, so nothing the seller does later in the period can take it back.
+///
+/// # Errors
+/// `MarketClearingInvariant` for a catalog without a market policy, or for a household that still
+/// holds an order of an earlier period; the refusals of the rule, the hand-over and the book.
+pub(crate) fn sell_household_goods(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    transfers: &mut Vec<MoneyTransferReceipt>,
+    markets: &mut MarketTable,
+) -> Result<HouseholdGoodsSale> {
+    super::validate(catalog, state)?;
+    let policy = catalog
+        .market_clearing
+        .as_ref()
+        .ok_or(MaterialCircuitError::MarketClearingInvariant)?;
+    let mut sale = HouseholdGoodsSale {
+        demand: vec![],
+        fulfillments: vec![],
+        handling: vec![],
+    };
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return Ok(sale);
+    };
+    let Some(rows) = &economy.recurring else {
+        return Ok(sale);
+    };
+    let households: BTreeSet<_> = rows.households.iter().map(|r| r.principal_id).collect();
+    if state
+        .final_demand_orders
+        .iter()
+        .any(|order| households.contains(&order.demand_principal_id))
+    {
+        return Err(MaterialCircuitError::MarketClearingInvariant);
+    }
+    let intents = household_intents(catalog, state, rows)?;
+    let mut by_market: BTreeMap<_, Vec<usize>> = BTreeMap::new();
+    for (index, intent) in intents.iter().enumerate() {
+        let place = policy
+            .place(intent.good_id, intent.unit_id)
+            .unwrap_or(usize::MAX);
+        by_market
+            .entry((
+                place,
+                intent.retailer_site_id,
+                intent.good_id,
+                intent.unit_id,
+            ))
+            .or_default()
+            .push(index);
+    }
+    let mut offer = Offer::new(catalog, state)?;
+    let mut paid = vec![(Currency::from_micro_units(0), 0_u64); intents.len()];
+    let mut selling = Selling {
+        offer: &mut offer,
+        costs,
+        transfers,
+        markets,
+    };
+    for mut members in by_market.into_values() {
+        members.sort_by_key(|&index| intents[index].order_id);
+        let cleared = sell_market((catalog, &mut *state), &intents, &members, &mut selling)?;
+        sale.fulfillments.extend(cleared.hand_over.fulfillments);
+        sale.handling.extend(cleared.hand_over.handling);
+        for &index in &members {
+            paid[index] = (
+                cleared.price,
+                cleared.sold.get(&index).copied().unwrap_or(0),
+            );
+        }
+    }
+    sale.demand = intents
+        .iter()
+        .zip(&paid)
+        .map(|(intent, &(unit_price, sold))| HouseholdDemandReceipt {
+            period: state.period,
+            principal_id: intent.principal_id,
+            retailer_site_id: intent.retailer_site_id,
+            good_id: intent.good_id,
+            unit_id: intent.unit_id,
+            order_id: intent.order_id,
+            opening_stock: intent.opening_stock,
+            required_quantity: intent.required_quantity,
+            desired_quantity: intent.desired_quantity,
+            requested_quantity: intent.requested_quantity,
+            admitted_quantity: sold,
+            fulfilled_quantity: sold,
+            expired_quantity: 0,
+            unit_price,
+        })
+        .collect();
+    let period = state.period;
+    let economy = economy_mut(state)?;
+    let rows = economy
+        .recurring
+        .as_mut()
+        .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+    rows.last_household_admission_period = period;
+    Ok(sale)
+}
+
+/// The accumulators that every market of one moment of sale shares.
+struct Selling<'a, 'c> {
+    offer: &'a mut Offer<'c>,
+    costs: &'a mut CostClose,
+    transfers: &'a mut Vec<MoneyTransferReceipt>,
+    markets: &'a mut MarketTable,
+}
+
+struct ClearedMarket {
+    price: Currency,
+    /// What each buyer, by intent index, bought.
+    sold: BTreeMap<usize, u64>,
+    hand_over: HandOver,
+}
+
+/// Clear one market: find its price, then complete each household's purchase.
+fn sell_market(
+    context: (&MaterialCatalog, &mut MaterialCircuitState),
+    intents: &[Intent],
+    members: &[usize],
+    selling: &mut Selling<'_, '_>,
+) -> Result<ClearedMarket> {
+    let (catalog, state) = context;
+    let first = &intents[members[0]];
+    let seller = (first.retailer_site_id, first.good_id, first.unit_id);
+    let supply = selling.offer.supply(seller.0, seller.1, seller.2)?;
+    let mut bids = vec![];
+    let mut bidders = vec![];
+    for &index in members {
+        let intent = &intents[index];
+        let purse = household_cash(state, intent.principal_id)?;
+        if intent.requested_quantity > 0 && purse.micro_units() > 0 {
+            bids.push(MarketBid {
+                wanted: intent.requested_quantity,
+                purse,
+                limit: None,
+            });
+            bidders.push(index);
+        }
+    }
+    let outcome = clearing::clear_market(supply, first.quote, &bids)?;
+    selling.markets.record(
+        state.period,
+        MarketMoment::HouseholdGoods,
+        seller,
+        first.quote,
+        supply,
+        bids.len(),
+        &outcome,
+    )?;
+    let sold: BTreeMap<usize, u64> = bidders
+        .iter()
+        .zip(&outcome.quantities)
+        .filter(|(_, &quantity)| quantity > 0)
+        .map(|(&index, &quantity)| (index, quantity))
+        .collect();
+    let hand_over = complete_purchases(catalog, state, intents, &sold, outcome.price, selling)?;
+    let total = sold.values().sum();
+    selling.offer.take(seller.0, seller.1, seller.2, total)?;
+    Ok(ClearedMarket {
+        price: outcome.price,
+        sold,
+        hand_over,
+    })
+}
+
+fn household_cash(
+    state: &MaterialCircuitState,
+    principal: FinalDemandPrincipalId,
+) -> Result<Currency> {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return Err(MaterialCircuitError::MonetaryInvariant);
+    };
+    Ok(economy.book.cash(AccountId::Household(principal))?)
+}
+
+/// Fund, hand over, pay and retire each purchase of one market, in order identity.
+fn complete_purchases(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    intents: &[Intent],
+    sold: &BTreeMap<usize, u64>,
+    price: Currency,
+    selling: &mut Selling<'_, '_>,
+) -> Result<HandOver> {
+    let mut sales = vec![];
+    for (&index, &quantity) in sold {
+        let intent = &intents[index];
+        let retail = state
+            .final_demand_orders
+            .len()
+            .checked_add(1)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        crate::transition::check_order_principal_limits(
+            state.orders.len(),
+            retail,
+            state.service_orders.len(),
+        )?;
+        let movement = economy_mut(state)?
+            .book
+            .reserve_purchase(PurchaseEscrow::new(
+                OutboundOrderId::LocalFinalDemand(intent.order_id),
+                AccountId::Household(intent.principal_id),
+                AccountId::Site(intent.retailer_site_id),
+                quantity,
+                price,
+            )?)?;
+        selling.transfers.push(movement);
+        state.final_demand_orders.push(FinalDemandOrder {
+            order_id: intent.order_id,
+            retailer_site_id: intent.retailer_site_id,
+            demand_principal_id: intent.principal_id,
+            good_id: intent.good_id,
+            unit_id: intent.unit_id,
+            ordered: quantity,
+            fulfilled: 0,
+        });
+        sales.push((intent.order_id, quantity));
+    }
+    state.final_demand_orders.sort_by_key(|row| row.order_id);
+    let mut inventory = crate::inventory::take_inventory(state);
+    let handed = crate::transition::outbound::hand_over_household_goods(
+        catalog,
+        state,
+        &mut inventory,
+        &sales,
+        selling.costs,
+    );
+    crate::inventory::publish_inventory(state, inventory);
+    let handed = handed?;
+    for (&index, &quantity) in sold {
+        let intent = &intents[index];
+        let id = OutboundOrderId::LocalFinalDemand(intent.order_id);
+        let economy = economy_mut(state)?;
+        let rows = economy
+            .recurring
+            .as_mut()
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        let stock = rows
+            .household_stocks
+            .iter_mut()
+            .find(|row| {
+                (row.principal_id, row.good_id, row.unit_id)
+                    == (intent.principal_id, intent.good_id, intent.unit_id)
+            })
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        stock.quantity = stock
+            .quantity
+            .checked_add(quantity)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        selling
+            .transfers
+            .push(economy.book.settle_purchase(id, quantity)?.transfer);
+        economy.book.retire_purchase(id)?;
+    }
+    let done: BTreeSet<_> = sales.iter().map(|&(id, _)| id).collect();
+    state
+        .final_demand_orders
+        .retain(|row| !done.contains(&row.order_id));
+    Ok(handed)
 }
 
 fn fund_order(

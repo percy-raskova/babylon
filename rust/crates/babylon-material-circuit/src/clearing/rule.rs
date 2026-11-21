@@ -107,18 +107,28 @@ fn share_step(
             .ok_or(MaterialCircuitError::Arithmetic)?,
     )?;
     let base = quantities_at(readings, stop)?;
+    share_margins(&base, &below, supply)
+}
+
+/// Gives each buyer its quantity at the stop (`base`), then shares the `supply` left among the
+/// buyers by the margin between their quantity just below the stop and at it.
+pub(super) fn share_margins(
+    base: &[u64],
+    below: &[u64],
+    supply: u64,
+) -> Result<Vec<u64>, MaterialCircuitError> {
     let base_sum: u128 = base.iter().map(|&q| u128::from(q)).sum();
     let rest = u128::from(supply)
         .checked_sub(base_sum)
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let margins: Vec<u128> = below
         .iter()
-        .zip(&base)
+        .zip(base)
         .map(|(&high, &low)| u128::from(high.saturating_sub(low)))
         .collect();
     let total: u128 = margins.iter().sum();
     if total == 0 {
-        return Ok(base);
+        return Ok(base.to_vec());
     }
     let mut shares = Vec::with_capacity(margins.len());
     for &margin in &margins {

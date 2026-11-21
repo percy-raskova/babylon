@@ -48,8 +48,8 @@ pub use accounts::{
 };
 pub use catalog::{MaterialCatalog, MaterialCatalogDefinition};
 pub use clearing::{
-    clear_market, MarketBid, MarketClearingPolicy, MarketClearingReceipt, MarketMoment,
-    MarketOutcome,
+    clear_ladder_market, clear_market, BidRung, LadderBid, LadderOutcome, MarketBid,
+    MarketClearingPolicy, MarketClearingReceipt, MarketMoment, MarketOutcome,
 };
 pub use equipment::{
     equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,

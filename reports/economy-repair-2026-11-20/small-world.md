@@ -195,6 +195,64 @@ period from 9 differs.
 | 21 | 510/634/9/1463 | 4/1447/0/950, 140 | 10/24/32/40 | 46/27/0 | 43/40 | 55/30/0/26 | 13/24/40 |
 | 34 | 300/8/9/1430 | 747/1/0/1070, 1591 | 10/32/45/47 | 30/0/0 | 0/0 | 30/0/0/30 | 40/10/40 |
 
+## The other three pushes under the market policy: the engine before Task 6b
+
+Added with Task 6b's first commit; the engine is as it stood after the plan for what buyers wanted
+(R11) and before a service plans from what its buyers could pay for (rule P14). The tests are in
+`pushed.rs`, built as the runs without a policy are, on the world with the policy.
+
+### P1 under the market policy: runs away
+
+Through period 2 it is P1's own run. The farm's plan climbs from period 16 to 8 batches, its stock
+runs out at period 22, and the clinic, still planning and staffing for what households asked (R1),
+is down to $9 at period 27 and makes nothing from then on. End: food 15, utility 20, care 35
+unmet.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
+|--:|---|---|---|---|---|---|---|
+| 1 | 1200/770/880/1400 | 0/0/0/0, 910 | 11/24/29/38 | 115/40/35 | 45/40 | 120/40/40/40 | 0/0/0 |
+| 2 | 1150/896/880/1435 | 9/26/18/18, 728 | 10/24/28/38 | 100/30/26 | 40/40 | 115/30/35/35 | 0/0/9 |
+| 3 | 1200/916/712/1439 | 5/26/24/24, 813 | 11/24/27/38 | 100/30/24 | 35/40 | 100/40/35/35 | 0/0/11 |
+| 5 | 1200/820/880/1439 | 9/76/1/1, 732 | 10/23/25/38 | 110/40/35 | 45/40 | 110/40/35/35 | 0/0/0 |
+| 8 | 1200/909/817/1479 | 29/76/0/0, 649 | 10/23/22/38 | 110/40/35 | 40/40 | 110/40/35/35 | 0/0/0 |
+| 13 | 1200/900/880/1559 | 26/43/11/11, 528 | 11/21/22/38 | 100/30/31 | 35/40 | 100/40/35/35 | 0/0/4 |
+| 21 | 1012/740/880/1559 | 28/390/0/41, 507 | 10/21/21/38 | 92/30/27 | 5/40 | 103/40/35/35 | 0/0/8 |
+| 34 | 458/704/9/1700 | 7/828/9/0, 1441 | 10/30/28/46 | 41/20/0 | 0/20 | 43/40/0/24 | 15/20/35 |
+
+### P3 under the market policy: settles at once
+
+Every period equals the first, as in P3: no market is ever short, so the rule has nothing to
+price, and the shop holds its $700.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
+|--:|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 2 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 3 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 5 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 8 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 13 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 21 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+| 34 | 1200/880/880/700 | 0/0/0/0, 800 | 12/25/30/38 | 120/40/40 | 40/40 | 120/40/40/40 | 0/0/0 |
+
+### P4 under the market policy: runs away
+
+In period 1 the clinic's market clears at its posted price with four buyers priced out, and the
+workers keep their surplus wage as in P4. The clinic stops at period 19 with $9, the farm makes
+nothing from period 19, and the shop works no hour from period 26. End: food 40, utility 10, care
+40 unmet.
+
+|p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
+|--:|---|---|---|---|---|---|---|
+| 1 | 1200/880/880/1400 | 29/29/39/29, 670 | 11/25/31/38 | 116/40/36 | 40/40 | 120/40/40/40 | 0/0/4 |
+| 2 | 1200/900/880/1400 | 29/29/79/29, 610 | 11/25/30/38 | 120/40/35 | 40/40 | 120/40/40/40 | 0/0/5 |
+| 3 | 1200/910/880/1400 | 44/34/124/34, 530 | 11/25/29/38 | 120/40/34 | 40/40 | 120/40/40/40 | 0/0/6 |
+| 5 | 1200/917/840/1400 | 119/59/229/59, 332 | 10/25/27/38 | 114/40/30 | 40/40 | 120/40/40/40 | 0/6/10 |
+| 8 | 1050/772/750/1475 | 179/149/439/99, 241 | 10/22/24/38 | 105/40/30 | 49/40 | 107/40/40/37 | 0/9/10 |
+| 13 | 903/861/472/1599 | 8/69/659/16, 570 | 11/20/23/40 | 90/10/18 | 11/40 | 90/40/40/36 | 4/6/22 |
+| 21 | 355/6/9/1320 | 811/1/268/952, 1435 | 10/27/29/46 | 35/0/0 | 0/0 | 35/0/0/35 | 40/5/40 |
+| 34 | 305/6/9/0 | 3071/1/8/1622, 135 | 10/30/42/59 | 30/0/0 | 0/0 | 30/0/0/0 | 40/10/40 |
+
 ## What this means for an opening that is in balance
 
 1. An opening balanced in whole numbers is exactly still for 34 periods, with or without taxes

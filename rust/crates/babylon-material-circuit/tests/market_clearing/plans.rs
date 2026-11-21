@@ -81,6 +81,30 @@ fn the_posted_price_steps_up_after_buyers_are_priced_out() {
     assert_eq!(closed.prices[0].next_price, support::dollars(4));
 }
 
+#[test]
+fn a_priced_out_goods_price_stays_inside_its_bounds() {
+    // The posted price is the maximum: buyers priced out cannot lift it past its bound.
+    let mut fixture = retailer_that_makes_its_shelf(150);
+    fixture.pricing = PricePolicy::Responsive {
+        minimum: support::dollars(1),
+        maximum: support::dollars(4),
+        step: support::dollars(1),
+        target_stock: 10,
+    };
+    let (_, state) = fixture.build();
+    let closed = advance(&fixture, &state);
+    assert_eq!(closed.market_clearings.len(), 1);
+    assert_eq!(closed.market_clearings[0].demand_at_quote, 200);
+    let row = closed
+        .prices
+        .iter()
+        .find(|row| row.site_id == support::site(support::RETAILER))
+        .expect("the retailer's good is priced");
+    assert_eq!(row.unserved_quantity, 50);
+    assert_eq!(row.old_price, support::dollars(4));
+    assert_eq!(row.next_price, support::dollars(4));
+}
+
 fn short_utility(provider_hours: u64) -> ServiceFixture {
     let mut fixture = ServiceFixture::new(
         &[support::dollars(400), support::dollars(600)],

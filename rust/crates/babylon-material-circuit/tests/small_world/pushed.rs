@@ -106,8 +106,8 @@ fn higher_pay_runs_away_until_the_clinic_farm_and_shop_stop() {
 /// P2 under the market policy: runs away, and the sellers plan from what was wanted. Through
 /// period 8 it is P2's own run. At period 9 the shop's hours make its food market short and it
 /// clears above the posted price; what the buyers could pay for at the posted price and did not
-/// get is added to the shop's next hours (`recurring/firms.rs` `handling_quantities`), so its plan
-/// follows what was wanted, not only what it sold, and its posted price steps up
+/// get is added to the shop's next hours (`recurring/firms.rs` `handling_quantities`), so its
+/// plan follows what was wanted, not only what it sold, and its posted price steps up
 /// (`recurring/prices.rs` `update_prices`). The dead clinic's buyers are priced out of an empty
 /// market, so its quote rises a step a period instead of falling to its minimum
 /// (`services/market.rs` `quote`, `PricedOut`). The farm plans 9 batches from period 29 for what
@@ -133,8 +133,85 @@ fn less_supply_under_a_market_policy_runs_away_with_the_sellers_planning_from_wh
         assert_eq!(at(&rows, period).output[FARM], 0, "period {period}");
     }
     assert_eq!(at(&rows, 29).planned[FARM], 9);
+    // The shop's plan and its attended hours, as the record's table and text give them.
+    let plans: Vec<_> = [21, 30, 34].map(|p| at(&rows, p).planned[SHOP]).to_vec();
+    assert_eq!(plans, [25, 15, 30]);
+    let hours: Vec<_> = [21, 30, 34]
+        .map(|p| at(&rows, p).hours_attended[SHOP])
+        .to_vec();
+    assert_eq!(hours, [26, 21, 30]);
     assert!(at(&rows, 10).cleared_cents[SHOP] > at(&rows, 10).price_cents[SHOP]);
     let last = at(&rows, 34);
     assert_eq!(last.unmet[FOOD], 40);
     assert_eq!(last.output[UTILITY], 30);
+}
+
+/// P1 under the market policy, as the engine stood before Task 6b: runs away. No market is
+/// short, so through period 2 it is P1's own run. The farm's stock then runs down to nothing by
+/// period 22 and its plan climbs from period 16 to 8 batches. The clinic still plans and staffs
+/// for what households asked, not what they could pay for (`services/market.rs` `update`), so it
+/// pays idle hours as in P1; it is down to nine dollars at period 27 and its output is zero from
+/// then on.
+#[test]
+fn less_demand_under_a_market_policy_runs_away_until_the_clinic_cannot_pay_one_hour() {
+    let rows = support::run(&World::less_demand().with_market());
+    let first = at(&rows, 1);
+    assert_eq!(first.price_cents, [1_100, 2_400, 2_900, 3_800]);
+    assert_eq!(first.stock[FARM], 45);
+    let plans: Vec<_> = (1..=12).map(|p| at(&rows, p).planned[FARM]).collect();
+    assert_eq!(plans, [3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 3, 4]);
+    for period in 27..=34 {
+        let row = at(&rows, period);
+        assert_eq!(row.cash["clinic"], 9, "period {period}");
+        assert_eq!(row.output[CLINIC], 0, "period {period}");
+    }
+    let last = at(&rows, 34);
+    assert_eq!(last.unmet, [15, 20, 35]);
+    assert_eq!((last.cash["owner"], last.cash["w_farm"]), (1_441, 828));
+}
+
+/// P3 under the market policy, as the engine stood before Task 6b: settles at once with the shop
+/// at half its cash, exactly as P3 does. No market is ever short, so the rule has nothing to
+/// price and every period equals the first.
+#[test]
+fn less_money_under_a_market_policy_settles_with_the_shop_at_half_its_cash() {
+    let world = World::less_money().with_market();
+    let rows = support::run(&world);
+    let first = at(&rows, 1).clone();
+    assert_eq!(first.cash, support::opening_cash(&world));
+    assert_eq!(first.cash["shop"], 700);
+    for row in &rows {
+        let mut same = row.clone();
+        same.period = first.period;
+        assert_eq!(same, first, "period {} moved", row.period);
+    }
+    let plain = at(&support::run(&World::plain().with_market()), 1).clone();
+    assert_eq!(plain.total_money - first.total_money, 700_000_000);
+    assert_eq!(first.unmet, [0, 0, 0]);
+    assert_eq!(first.cleared_cents, [0; 4]);
+}
+
+/// P4 under the market policy, as the engine stood before Task 6b: runs away. In period 1 the
+/// clinic's cash buys 36 units of utility, so four households go without care and the clinic's
+/// market clears at its posted price with its buyers priced out; the workers keep their surplus
+/// wage as in P4. The clinic stops at period 19 with nine dollars, the farm has no output from
+/// period 19, and the shop works no hour from period 26.
+#[test]
+fn higher_pay_under_a_market_policy_runs_away_until_the_clinic_farm_and_shop_stop() {
+    let rows = support::run(&World::higher_pay().with_market());
+    let first = at(&rows, 1);
+    assert_eq!(first.output[CLINIC], 36);
+    assert_eq!(first.unmet[CARE], 4);
+    assert_eq!(first.cash["w_clinic"], 39);
+    assert_eq!(first.cleared_cents[CLINIC], 3_000);
+    for period in 19..=34 {
+        assert_eq!(at(&rows, period).output[CLINIC], 0, "period {period}");
+        assert_eq!(at(&rows, period).cash["clinic"], 9, "period {period}");
+    }
+    for period in 26..=34 {
+        assert_eq!(at(&rows, period).hours_attended[SHOP], 0, "period {period}");
+    }
+    let last = at(&rows, 34);
+    assert_eq!((last.cash["farm"], last.cash["shop"]), (6, 0));
+    assert_eq!(last.unmet, [40, 10, 40]);
 }

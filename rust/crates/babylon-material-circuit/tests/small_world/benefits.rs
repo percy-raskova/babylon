@@ -1,7 +1,7 @@
 //! The small world with a fund: a second public account beside the treasury. The record is
 //! `reports/economy-repair-2026-11-20/small-world.md`, section "The fund".
 
-use super::support::{self, Fund, Snapshot, World, LAID_OFF, NO_EARNER, UTILITY};
+use super::support::{self, Fund, Push, Snapshot, World, LAID_OFF, NO_EARNER, UTILITY};
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, LayoffRecord, MaterialCatalog, MaterialCircuitError,
     MaterialCircuitState, MaterialCircuitTransition, MonetaryCircuit, PublicProgram,
@@ -628,5 +628,439 @@ fn a_record_of_layoffs_round_trips_and_a_bad_one_is_refused() {
             babylon_material_circuit::close_material_period(&catalog, &state).err(),
             Some(MaterialCircuitError::PublicProgramInvariant)
         );
+    }
+}
+
+/// What the record names of one run of the fund's world: the first period of a layoff and of a cut,
+/// the first period each site's output is 0, the first layoff cohort that is not taken back (its
+/// account, first period, and for each period up to 8 the due in micro-units and the persons
+/// covered), and the measures at period 34.
+struct Pin {
+    first_layoff: Option<u64>,
+    first_cut: Option<u64>,
+    first_zero: [Option<u64>; 4],
+    cohort: Option<Cohort>,
+    output: [u64; 4],
+    unmet: [u64; 3],
+    fund_cash: i128,
+}
+
+struct Cohort {
+    account: &'static str,
+    from: u64,
+    rows: &'static [(i128, u64)],
+}
+
+const WORKERS: [&str; 4] = ["w_utility", "w_farm", "w_clinic", "w_shop"];
+
+fn assert_pin(rows: &[Snapshot], pin: &Pin) {
+    let due_of = |row: &Snapshot, account: &str| row.program_due[&(LAID_OFF.to_owned(), account)];
+    let first_layoff = rows
+        .iter()
+        .find(|row| WORKERS.iter().any(|a| due_of(row, a) > 0))
+        .map(|row| row.period);
+    assert_eq!(first_layoff, pin.first_layoff, "first layoff");
+    let first_cut = rows
+        .iter()
+        .find(|row| {
+            row.program_paid.values().sum::<i128>() < row.program_due.values().sum::<i128>()
+        })
+        .map(|row| row.period);
+    assert_eq!(first_cut, pin.first_cut, "first cut");
+    for site in 0..4 {
+        let zero = rows.iter().find(|row| row.output[site] == 0);
+        assert_eq!(
+            zero.map(|row| row.period),
+            pin.first_zero[site],
+            "site {site}"
+        );
+    }
+    if let Some(cohort) = &pin.cohort {
+        for (k, (due, persons)) in cohort.rows.iter().enumerate() {
+            let row = &rows[usize::try_from(cohort.from - 1).expect("a small period") + k];
+            assert_eq!(
+                (due_of(row, cohort.account), row.covered[cohort.account]),
+                (*due, *persons),
+                "{} at period {}",
+                cohort.account,
+                row.period
+            );
+        }
+        let first = usize::try_from(cohort.from - 1).expect("a small period");
+        assert_eq!(
+            due_of(&rows[first - 1], cohort.account),
+            0,
+            "the cohort is the first of its account's run"
+        );
+    }
+    let last = rows.last().expect("34 periods");
+    assert_eq!(last.period, support::PERIODS);
+    assert_eq!(last.output, pin.output);
+    assert_eq!(last.unmet, pin.unmet);
+    assert_eq!(last.cash["fund"], pin.fund_cash);
+}
+
+fn fund_cash(state: &MaterialCircuitState) -> i128 {
+    economy_ref(state)
+        .book
+        .cash(AccountId::Public(support::fund_account()))
+        .expect("the fund has an account")
+        .micro_units()
+}
+
+/// The fund's world with each of the five pushes, form (a): taxed, no market policy.
+fn pushed(push: Push) -> World {
+    World::benefits().pushed(push)
+}
+
+/// Form (b): the same fund under the market policy with tiers.
+fn pushed_with_tiers(push: Push) -> World {
+    World::benefits().with_tiers().pushed(push)
+}
+
+/// P1 on the fund, no market policy: runs away as P1 does without one. The owner buys half; the
+/// farm, clinic and shop stop (periods 18, 19, 18) and the fund, paid by the taxes of a world
+/// that is shrinking, is cut from period 6. Nobody is laid off in play: no site sheds a person,
+/// so the half pay is never owed.
+#[test]
+fn p1_with_a_fund_runs_away_until_the_farm_the_clinic_and_the_shop_stop() {
+    let rows = support::run(&pushed(Push::LessDemand));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: None,
+            first_cut: Some(6),
+            first_zero: [None, Some(18), Some(19), Some(18)],
+            cohort: None,
+            output: [28, 0, 0, 0],
+            unmet: [36, 8, 36],
+            fund_cash: 46,
+        },
+    );
+}
+
+/// P2 on the fund: runs away as without it, the clinic stopping at period 14. The fund is cut
+/// from period 9, and the first layoff in play comes at period 28, when the shop lets one
+/// person go: half pay for six and a half periods, cut to a quarter of its due by the fund's
+/// short purse.
+#[test]
+fn p2_with_a_fund_runs_away_until_the_clinic_stops() {
+    let rows = support::run(&pushed(Push::LessSupply));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: Some(28),
+            first_cut: Some(9),
+            first_zero: [None, None, Some(14), None],
+            cohort: Some(Cohort {
+                account: "w_shop",
+                from: 28,
+                rows: &[
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (25_000_000, 1),
+                ],
+            }),
+            output: [21, 9, 0, 22],
+            unmet: [18, 29, 40],
+            fund_cash: 121,
+        },
+    );
+}
+
+/// P4 on the fund: runs away; the farm, clinic and shop stop (periods 24, 14, 24). The fund is
+/// cut from period 11; one shop worker is laid off at 27, and the layoff is paid, in the two
+/// steps, at a few dollars of its $50 because the fund has little cash.
+#[test]
+fn p4_with_a_fund_runs_away_until_the_farm_the_clinic_and_the_shop_stop() {
+    let rows = support::run(&pushed(Push::HigherPay));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: Some(27),
+            first_cut: Some(11),
+            first_zero: [None, Some(24), Some(14), Some(24)],
+            cohort: Some(Cohort {
+                account: "w_shop",
+                from: 27,
+                rows: &[
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (25_000_000, 1),
+                    (0, 0),
+                ],
+            }),
+            output: [25, 0, 0, 0],
+            unmet: [40, 15, 40],
+            fund_cash: 57,
+        },
+    );
+}
+
+/// P5 on the fund: the fund collects 360 against 480 and its reserve is spent by period 6, when
+/// the first cut falls on the only program with a claim (480 due, 360 paid). The world then
+/// runs away: the farm, clinic and shop stop (periods 26, 15, 26).
+#[test]
+fn p5_with_a_fund_runs_away_after_the_fund_runs_short() {
+    let rows = support::run(&pushed(Push::LowerFundTaxes));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: Some(20),
+            first_cut: Some(6),
+            first_zero: [None, Some(26), Some(15), Some(26)],
+            cohort: Some(Cohort {
+                account: "w_shop",
+                from: 28,
+                rows: &[
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (25_000_000, 1),
+                ],
+            }),
+            output: [16, 0, 0, 0],
+            unmet: [40, 24, 40],
+            fund_cash: 25,
+        },
+    );
+}
+
+/// P3 on the fund: settles at once. The shop holds $700; every period equals the first; no one is
+/// laid off and the fund is never cut.
+#[test]
+fn p3_with_a_fund_settles_at_once_with_the_shop_at_half_its_cash() {
+    let world = pushed(Push::LessMoney);
+    let rows = support::run(&world);
+    let first = support::assert_still_rows(&world, &rows);
+    assert_eq!(first.cash["shop"], 700);
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: None,
+            first_cut: None,
+            first_zero: [None, None, None, None],
+            cohort: None,
+            output: [120, 40, 40, 40],
+            unmet: [0, 0, 0],
+            fund_cash: 960,
+        },
+    );
+}
+
+/// The fund's world under the market policy with tiers, unpushed. It is not exactly still, and
+/// the fund is not the cause: the taxed world with tiers and no fund is not still either (the
+/// record shows both). A worker account's purse at its moments of sale holds the gross wage and
+/// the 20% tax is levied after, so its room for wants is the tax it is about to pay: in period
+/// 1 the workers buy $150 of comforts, the public accounts collect 280 of 640 assessed, the
+/// fund pays its 480 from its reserve, and the owner ends with $1,000 where it opened with $640.
+/// The reserve is gone by period 3, when the first cut falls (396 of 480 paid). After that it
+/// moves in a narrow band, no site stopping.
+#[test]
+fn the_fund_with_tiers_is_not_still_the_wants_are_bought_before_the_tax() {
+    let rows = support::run(&World::benefits().with_tiers());
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: None,
+            first_cut: Some(3),
+            first_zero: [None, None, None, None],
+            cohort: None,
+            output: [117, 40, 39, 40],
+            unmet: [2, 6, 9],
+            fund_cash: 233,
+        },
+    );
+}
+
+/// P1 on the fund under tiers: does not return to the opening state, as P1 with tiers and no
+/// fund does. The owner spends its extra on comforts and luxuries and is the one affluent
+/// account, but the fund's cut (from period 3) leaves the supported account going without, the
+/// clinic's output slides from 40 to 16 and the utility's to 88, and nothing stops.
+#[test]
+fn p1_with_a_fund_and_tiers_slides_down_with_no_site_stopping() {
+    let rows = support::run(&pushed_with_tiers(Push::LessDemand));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: Some(18),
+            first_cut: Some(3),
+            first_zero: [None, None, None, None],
+            cohort: Some(Cohort {
+                account: "w_utility",
+                from: 18,
+                rows: &[
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (25_000_000, 1),
+                    (0, 0),
+                ],
+            }),
+            output: [88, 30, 16, 34],
+            unmet: [4, 9, 24],
+            fund_cash: 212,
+        },
+    );
+}
+
+/// P2 on the fund under tiers: cycles in a depressed band, no site stopping, as P2 with tiers
+/// does. The layoffs in play come in waves from period 15 (clinic, utility).
+#[test]
+fn p2_with_a_fund_and_tiers_cycles_in_a_depressed_band() {
+    let rows = support::run(&pushed_with_tiers(Push::LessSupply));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: Some(15),
+            first_cut: Some(3),
+            first_zero: [None, None, None, None],
+            cohort: Some(Cohort {
+                account: "w_clinic",
+                from: 15,
+                rows: &[
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (50_000_000, 1),
+                    (100_000_000, 2),
+                    (100_000_000, 2),
+                    (75_000_000, 2),
+                    (50_000_000, 1),
+                ],
+            }),
+            output: [90, 36, 18, 36],
+            unmet: [6, 8, 30],
+            fund_cash: 269,
+        },
+    );
+}
+
+/// P3 on the fund under tiers: the quiet run of the same world, its outputs and its unmet need
+/// those of the quiet run at period 34, the shop holding $700 where it holds $1,400.
+#[test]
+fn p3_with_a_fund_and_tiers_runs_as_the_quiet_run_with_the_shop_at_half_its_cash() {
+    let rows = support::run(&pushed_with_tiers(Push::LessMoney));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: None,
+            first_cut: Some(3),
+            first_zero: [None, None, None, None],
+            cohort: None,
+            output: [117, 40, 39, 40],
+            unmet: [2, 6, 9],
+            fund_cash: 233,
+        },
+    );
+}
+
+/// P4 on the fund under tiers: cycles in a depressed band, no site stopping. The first layoff
+/// in play is at period 6 (the clinic), and the clinic's half pay is the first full cohort the
+/// record follows.
+#[test]
+fn p4_with_a_fund_and_tiers_cycles_with_layoffs_in_the_first_periods() {
+    let rows = support::run(&pushed_with_tiers(Push::HigherPay));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: Some(6),
+            first_cut: Some(3),
+            first_zero: [None, None, None, None],
+            cohort: Some(Cohort {
+                account: "w_clinic",
+                from: 6,
+                rows: &[
+                    (55_000_000, 1),
+                    (55_000_000, 1),
+                    (55_000_000, 1),
+                    (55_000_000, 1),
+                    (55_000_000, 1),
+                    (55_000_000, 1),
+                    (27_500_000, 1),
+                    (0, 0),
+                ],
+            }),
+            output: [111, 40, 32, 39],
+            unmet: [3, 3, 16],
+            fund_cash: 225,
+        },
+    );
+}
+
+/// P5 on the fund under tiers: cycles in a band. Nobody is laid off in play and the fund, cut
+/// from period 3 as in its quiet run, is never empty: it holds $173 at period 34 against $233
+/// without the push.
+#[test]
+fn p5_with_a_fund_and_tiers_cycles_with_the_fund_holding_a_reserve() {
+    let rows = support::run(&pushed_with_tiers(Push::LowerFundTaxes));
+    assert_pin(
+        &rows,
+        &Pin {
+            first_layoff: None,
+            first_cut: Some(3),
+            first_zero: [None, None, None, None],
+            cohort: None,
+            output: [114, 40, 33, 40],
+            unmet: [4, 7, 15],
+            fund_cash: 173,
+        },
+    );
+}
+
+/// Every cut is in proportion. In each period of P5 where the fund is short, with `total` the
+/// rank's
+/// dues and `budget` the fund's cash as the period opens, each rank-0 receipt pays
+/// `floor(due x budget / total)` or that plus one, and the paid amounts add to the budget. Both
+/// forms run: the taxed world without a market policy and the one with tiers.
+#[test]
+fn every_cut_is_in_proportion() {
+    for world in [
+        pushed(Push::LowerFundTaxes),
+        pushed_with_tiers(Push::LowerFundTaxes),
+    ] {
+        let (_, opening) = world.build();
+        let mut budget = fund_cash(&opening);
+        let mut cuts = 0;
+        support::run_observed(&world, &mut |period, closed| {
+            let rows: Vec<_> = closed
+                .public_programs
+                .iter()
+                .filter(|row| row.public_account == support::fund_account() && row.rank == 0)
+                .collect();
+            let total: i128 = rows.iter().map(|row| row.due.micro_units()).sum();
+            let paid: i128 = rows.iter().map(|row| row.paid.micro_units()).sum();
+            if total > budget {
+                cuts += 1;
+                assert_eq!(paid, budget, "period {period}: the budget is paid out");
+                for row in rows {
+                    let (due, got) = (row.due.micro_units(), row.paid.micro_units());
+                    let floor = due * budget / total;
+                    assert!(
+                        got == floor || got == floor + 1,
+                        "period {period}: {due} of {total} from {budget} paid {got}"
+                    );
+                    assert!(got <= due, "period {period}");
+                }
+            } else {
+                assert_eq!(paid, total, "period {period}: paid in full");
+            }
+            budget = fund_cash(&closed.state);
+        });
+        assert!(cuts > 0, "the fund is short in some period");
     }
 }

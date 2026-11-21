@@ -137,6 +137,16 @@ pub(crate) struct Fund {
     pub after_layoff: Option<(u16, u16)>,
 }
 
+/// One change to an opening: the four pushes of the record and one to the fund's taxes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Push {
+    LessDemand,
+    LessSupply,
+    LessMoney,
+    HigherPay,
+    LowerFundTaxes,
+}
+
 /// Everything that sets one world. `World::plain()` and `World::taxed()` are the two openings.
 #[derive(Clone, Debug)]
 pub(crate) struct World {
@@ -222,32 +232,41 @@ impl World {
 
     /// P1, less demand: the owner account needs half as much.
     pub(crate) fn less_demand() -> Self {
-        Self {
-            owner_needs_half: true,
-            ..Self::plain()
-        }
+        Self::plain().pushed(Push::LessDemand)
     }
 
     /// P2, less supply: the farm's output per batch is a tenth lower.
     pub(crate) fn less_supply() -> Self {
-        Self {
-            farm_output_per_batch: 9,
-            ..Self::plain()
-        }
+        Self::plain().pushed(Push::LessSupply)
     }
 
     /// P3, less money: the shop opens with half its cash.
     pub(crate) fn less_money() -> Self {
-        let mut world = Self::plain();
-        world.cash[SHOP] = dollars(700);
-        world
+        Self::plain().pushed(Push::LessMoney)
     }
 
     /// P4, higher pay: the clinic's wage is a tenth higher.
     pub(crate) fn higher_pay() -> Self {
-        let mut world = Self::plain();
-        world.wage[CLINIC] = dollars(11);
-        world
+        Self::plain().pushed(Push::HigherPay)
+    }
+
+    /// One push applied to this world, whatever its opening is.
+    pub(crate) fn pushed(mut self, push: Push) -> Self {
+        match push {
+            Push::LessDemand => self.owner_needs_half = true,
+            Push::LessSupply => self.farm_output_per_batch = 9,
+            Push::LessMoney => self.cash[SHOP] = dollars(700),
+            Push::HigherPay => self.wage[CLINIC] = dollars(11),
+            Push::LowerFundTaxes => {
+                let fund = self
+                    .fund
+                    .as_mut()
+                    .expect("only a world with a fund has fund taxes to lower");
+                fund.wage_bps = fund.wage_bps / 4 * 3;
+                fund.operating_bps = fund.operating_bps / 4 * 3;
+            }
+        }
+        self
     }
 
     pub(crate) fn with_market(mut self) -> Self {

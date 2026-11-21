@@ -27,9 +27,13 @@ mod valuation;
 #[path = "wire/state.rs"]
 mod state;
 
+#[cfg(test)]
+pub(crate) use catalog::MATERIAL_CATALOG_DOMAIN_BYTES;
 pub(crate) use state::catalog_bytes;
 pub(crate) use state::Cursor;
-use state::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows};
+use state::{
+    append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, try_append_bounded_rows,
+};
 #[cfg(test)]
 use state::{
     append_inventory, decode_input_coefficients, decode_inventory, decode_stage_capacities,
@@ -38,6 +42,8 @@ use state::{
 pub use state::{
     decode_material_circuit_state, decode_material_circuit_state_for_encoding,
     encode_material_circuit_state, material_circuit_state_digest, DecodedMaterialCircuitState,
-    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
+    MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
     MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
 };

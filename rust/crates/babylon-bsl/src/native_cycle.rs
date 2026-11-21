@@ -43,6 +43,7 @@ pub(crate) fn classify(rule: &SExpr) -> Result<RuleExecution, SurfaceError> {
             "after",
             "ooda",
         ),
+        "county-review" => (RuleExecution::CountyReview, Some("intent"), "after", "ooda"),
         _ => unreachable!("only closed operation names enter classification"),
     };
     let SExpr::List(items) = rule else {
@@ -109,7 +110,7 @@ fn find_operation(rule: &SExpr) -> Option<&str> {
         if let SExpr::List(items) = expr {
             if let Some(
                 operation @ ("material-cycle" | "organizer-products" | "organizer-practice"
-                | "city-pd-observe"),
+                | "city-pd-observe" | "county-review"),
             ) = head(items)
             {
                 return Some(operation);

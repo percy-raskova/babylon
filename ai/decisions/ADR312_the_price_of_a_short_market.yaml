@@ -1,0 +1,262 @@
+ADR312_the_price_of_a_short_market:
+  title: In a short market the price paid rises until what buyers can pay for equals what there is
+  date: '2026-11-20'
+  status: accepted
+  issue: PER-370
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-20, asked of a short seller: "what does Marxian theory
+        say happens here in the volumes of Capital and what not?"
+    - >-
+        Director, 2026-11-20, on the two forms the answer offered: "i want the
+        full price form where prices rise within the period until what buyers
+        can pay for equals is what there is".
+    - >-
+        Director, 2026-11-20, on the repair of the national economy, chose "Fix
+        what is broken, keep what households pay": wages stay. (Replaced on
+        the same day by the rulings of ADR313: pay by trade and place, and
+        recipes and prices from the national accounts.)
+    - >-
+        Capital, Volume III, chapter 10: when demand exceeds supply "one buyer
+        outbids another, within certain limits, and so raises the price of the
+        commodity for all of them above the market-value"; the demand that
+        counts is need backed by money, set by the relation of the classes and
+        their incomes. Volume III, chapter 1: the cost price is the lower limit
+        of the capitalist's selling price.
+    - >-
+        ADR306 ruling R9: a short unit pays for food, materials, utility,
+        housing, household services and public provision, in that order,
+        storable goods before services.
+    - >-
+        The engine's contract (`contracts/material_circuit_v4.yaml`): admitted
+        escrows retain their own prices.
+  context: |
+    A seller that has less than its buyers ordered shares what it has among the
+    orders in proportion to what each ordered, and gives the last indivisible
+    units in the order of the orders' identifiers
+    (`babylon-material-circuit/src/transition/outbound/orders.rs`,
+    `limit_allocations`, and `residual.rs`, `Matrix::augment`). The posted price
+    moves one step for the next period. So in a shortage every buyer goes
+    without the same share whatever its cash, the buyers' money comes back to
+    them, and the seller earns nothing from the scarcity. That was measured on
+    20 November 2026: every Wayne group went without the same share of a need.
+
+    ADR306's first open question and the households design's section 12 said
+    that a short seller serves its buyers in the order of their identifiers.
+    That was wrong, and this record corrects it.
+
+    Sharing in proportion is rationing. It is not what a market of private
+    sellers does. The Director asked for the market's own answer.
+  decision: |
+    P1. THE MARKET. A market is one seller, one product and one moment of sale
+    in a period. Its supply is what the seller has on offer to new buyers at
+    that moment (P6). Its buyers are the accounts whose policy names that
+    seller for that product.
+
+    P2. A BID. A buyer brings what it wants (the quantity it asks for today,
+    before any cash limit; for a storable good that includes the refill of its
+    pantry), its purse (a household's cash; a business's cash above its floor),
+    and, for a business, a limit (P5). At a price p it can pay for min(wanted,
+    floor(purse / p)), and for nothing when p is above its limit.
+
+    P3. THE PRICE. If the buyers can pay, at the posted price, for no more than
+    the supply, the sale is at the posted price. Otherwise the price paid is the
+    lowest price above the posted one at which what the buyers can pay for no
+    longer exceeds the supply, found exactly in millionths of a dollar. It is
+    one price for every buyer of the market.
+
+    P4. WHO GETS WHAT. Each buyer gets what it can pay for at that price. Where
+    the demand falls past the supply in one step, the price is the last one
+    before the step, and the buyers who fall away at the step share what is left
+    in proportion to what each loses there; the last indivisible units go by
+    the engine's residual rule. Everything on offer is sold. Equal purses share
+    in proportion.
+
+    P5. A BUSINESS OUTBIDS ONLY UP TO ITS COST PRICE. A maker pays for an input
+    no more than the price at which a batch just covers its cost: the batch's
+    receipts at the maker's own posted price, less the batch's wages and its
+    other inputs at their posted prices, over the input's quantity in a batch.
+    The wage is the site's own for the period: the wages it has funded over the
+    hours it has funded, a working owner's unpaid hours included. Another input
+    counts at the lowest posted price among the maker's own sellers of it. A
+    merchant pays no more than its own posted price for the good less its
+    handling wage. The limit is never under the
+    posted price: a business below its cost at posted prices buys at the posted
+    price and never bids above it. A buyer with no selling price that covers
+    its cost, such as a public body, pays the posted price and no more.
+
+    P6. WHAT IS ON OFFER. The seller's stock or output at the moment of sale,
+    less what it owes to orders accepted earlier (P8). For a merchant, also no
+    more than its hands and its handling room can pass over at that moment,
+    after the hours and the room its owed orders will need, the products taken
+    in the order of paying.
+
+    P7. THE ORDER OF PAYING. A campaign that clears by price names one order of
+    its products: ADR306 R9's order with the inputs of business after the needs
+    of households. A buyer's purse reaches the markets in that order, inside
+    the order of the period's own steps: households' goods, the utility stage,
+    the local service stage, businesses' restocking. Each purchase is paid
+    before the next market is cleared. Every household of the campaign follows
+    it. ADR306 R9 is amended accordingly: the order is the campaign's, not a
+    rule of Wayne's units alone.
+
+    P8. AN ACCEPTED ORDER IS A SALE. Money set aside keeps its price and its
+    quantity. A good that a household buys is handed over when it is bought: it
+    leaves the shelf, the hours that hand it over are spent and the money is
+    paid at that moment, so nothing the seller does later in the period can
+    take it back. A business's goods are sent in the shipping pass that follows
+    the sale. What that pass does not send is no sale: the goods stay with the
+    seller and the money returns to the buyer. Goods that a seller still owes
+    are taken out of what it offers. A business no longer places a held order
+    with a seller that has nothing; it bids again next period. What the buyers
+    wanted at the posted price and did not get is recorded, and the seller
+    plans its next production from it.
+
+    P9. THE POSTED PRICE. It keeps its rule: one step a period inside its
+    bounds, up after a period in which buyers were priced out. It is the price
+    below which the seller does not sell.
+
+    P10. THE RECORD. Each order's receipt carries the price paid. A short
+    market leaves one receipt: the seller, the product, the moment, the posted
+    price, the price paid, what was on offer, what the buyers could pay for at
+    the posted price, what was sold, and how many buyers bid and were served.
+
+    P11. MONEY. Nothing is created or destroyed. The buyers' extra payments are
+    the seller's receipts and reach its owners by the rules that exist.
+
+    P12. WHAT DOES NOT CLEAR BY PRICE. A product left out of the order of
+    paying, which in the national world is public provision; a campaign with
+    no order of paying; a world without money. A route that cannot move what
+    was sold: its room is shared in proportion, as before, and what is not
+    sent is cancelled (P8). Equipment bought as investment. Wages. There the
+    engine shares in proportion, as before. A product that clears by price
+    may have no seller with a fixed price: such a catalog is refused.
+
+    P13. ON ASKING. A campaign asks with `paying_order` in its policy's
+    `[markets]` section. The catalog then carries the order, and the campaign
+    compiles under a new compiler name. Without the key every byte is the one
+    of before.
+
+    P14. A SERVICE PLANS FROM WHAT ITS BUYERS COULD PAY FOR. Under a market
+    policy a service's plan for the next period is what its buyers could pay
+    for at the posted price in this period's market, with what was already
+    funded for the period, or what is funded for the next period if that is
+    more. It is no longer what was asked, funded or not. What was asked stays
+    on the record.
+  calls:
+    - >-
+        The price is found when the buyers bid and the supply is known, before
+        money is set aside, so the contract's sentence about accepted prices
+        stands. The admission of service orders moves into its stage for that
+        (design 5, 10).
+    - >-
+        The price stops at the first level at which demand fits supply, not at
+        the top of the range of prices that would fit (design 10).
+    - 'The limit of P5, its form, and that it is never under the posted price (design 4).'
+    - 'A public body does not outbid (design 4, 9).'
+    - 'Equipment bought as investment is left for later (design 7).'
+    - 'The order of paying is one order for the whole campaign (design 4).'
+    - 'The inputs of business come after the needs of households in the order (design 4).'
+    - 'The posted price keeps its rule (design 4).'
+    - >-
+        A route is not priced, because carrying is not sold; a merchant's hands
+        are part of what it offers (design 4, 7).
+    - >-
+        A household's goods are handed over at the purchase, before the
+        seller's own production. In the national world a county with no
+        retailer keeps its shelf at its largest employer, whose production
+        draws on the same stock and hours (design 3, 9).
+    - 'A campaign that clears by price prices every good its households buy; a service may be left out (plan Task 2).'
+    - >-
+        A service plans from what its buyers could pay for (P14). Measured on
+        2026-11-20 in a small balanced world: a provider that staffs for need it
+        is not paid for pays idle hours until its cash is gone, and is the first
+        workplace to fail in every pushed run (plan Task 6b).
+    - >-
+        A fixed price for a product that clears by price is refused, not
+        rationed (P12 as amended on 2026-11-20). The first text said such a
+        seller shares in proportion; nothing built it and no seller of the
+        national world has a fixed price. What a price control does is a
+        design of its own, not yet made (plan Task 6c).
+    - >-
+        What the pass after a sale does not send is cancelled and refunded, so
+        that a business never counts as arriving what is not on its way.
+        Measured on 2026-11-20 under today's rule: orders stuck behind a full
+        route filled a buyer's position, it stopped ordering at home, and its
+        home supplier laid off (design 7, 9; plan Task 5).
+    - >-
+        Amended on 2026-11-21 by ADR314. A market is one product in one place,
+        with all its sellers, and a buyer takes from the cheapest it can reach
+        (P1). A supplier plans from the orders its business buyers place at the
+        close (P14). Every posted price follows one test, the seller's buffer
+        and what was sold, and raw goods and energy move in large steps and open
+        where a short market closed (the one-step rule).
+    - >-
+        Amended on 2026-11-21 by ADR315. One price for every buyer of a market
+        (P1, P3) holds for empty homes at a holding's asking rent; a tenancy is
+        a standing agreement and keeps its own rent.
+  alternatives_rejected:
+    - >-
+        Raising the price of money already set aside at the hand-over. It breaks
+        the contract's sentence, needs an order to hold two prices when part of
+        it is in transit, and spends a household's spare cash on utility before
+        food.
+    - >-
+        Serving the deepest purse first at the posted price. The Director set it
+        aside: the seller keeps no scarcity profit.
+    - 'Sharing in proportion. It is rationing, and stays for the cases of P12.'
+    - >-
+        A business that bids with its purse alone. One business that wants more
+        than the whole supply would bid against itself until its cash was gone.
+    - >-
+        The highest price at which everything on offer is still sold. It is above
+        the first clearing price wherever the two differ.
+    - >-
+        Households buying goods after production, when the shelf is certain. A
+        household would then pay for utility and services before food.
+    - >-
+        Keeping the hand-over at the shipping pass and barring production,
+        maintenance and installation from goods and hours that are owed. Four
+        guards for one result, and one missed guard brings back refunds at a
+        price that did not clear.
+    - >-
+        Leaving the unsent part of a business's order as an accepted order.
+        Behind a route that stays full, the orders and the money set aside for
+        them grow every period, and the buyer stops ordering anywhere.
+    - >-
+        Limiting each bid beforehand to what its route can carry. A corridor is
+        shared by the flows of many sellers and products at once, so the limit
+        of one market would depend on every other market of the period.
+  open_questions:
+    - >-
+        A deep shortage empties purses: buyers bid what they can pay, so a
+        county whose utility delivers a twentieth of what is wanted pays all its
+        cash for that twentieth. Task 9's record measures it. Does the Director
+        want a bound?
+    - >-
+        Does a public body bid with its appropriation, so that private buyers
+        cannot always outbid it?
+    - 'When is equipment bought as investment brought under the rule?'
+    - >-
+        The County Review values a relief unit at the opening price of food,
+        and the organizer's preview of a purchase shows the posted price. Should
+        either follow the price paid?
+    - >-
+        Rationing imposed on a market by a state or an organization is the
+        political rule this record leaves for play. It is not designed here.
+  verification: |
+    The worked examples of design 6, pinned in the engine's tests of the price
+    rule (plan Task 1), from an exact model checked over 200,000 random
+    markets. The four moments of sale in the engine's tests (Tasks 3 to 5). The
+    recorded health of the national economy with prices, and its standing test
+    (Tasks 8 and 9). The design and the plan were checked once against the code
+    by a second reader before the build; its findings are in both.
+  related:
+    - ADR313_the_national_economy_opens_in_balance
+    - ADR314_how_the_economy_adjusts
+    - ADR315_homes_rent_and_nation
+    - ADR306_household_units_in_wayne
+    - ADR302_household_roster_and_counting
+    - ADR184_capacity_belongs_to_organizations
+    - ADR182_derivation_inspector_rulings

@@ -483,7 +483,7 @@ pub(super) fn resolve(
         };
         let (remaining, supply) =
             super::time_resources::remaining_after_uses(config, resources, &used)?;
-        let Some(debits) = super::time_resources::allocate_hearing_hours(
+        let Some(debits) = super::time_resources::allocate_single_actor_hours(
             &remaining,
             intent,
             hearing.attendance_hours,

@@ -19,6 +19,7 @@ pub use collection::{
 };
 mod capacity;
 mod catalog;
+mod clearing;
 mod equipment;
 mod financial;
 mod household_lifecycle;
@@ -35,6 +36,7 @@ mod production;
 mod recurring;
 mod services;
 mod staffing;
+mod tiers;
 mod transition;
 mod valuation;
 mod wire;
@@ -46,6 +48,10 @@ pub use accounts::{
     PurchaseMovementReceipt, ShiftId, ShiftState, WageAccrualReceipt,
 };
 pub use catalog::{MaterialCatalog, MaterialCatalogDefinition};
+pub use clearing::{
+    clear_ladder_market, clear_market, BidRung, LadderBid, LadderOutcome, MarketBid,
+    MarketClearingPolicy, MarketClearingReceipt, MarketMoment, MarketOutcome,
+};
 pub use equipment::{
     equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,
     EquipmentCarryingValue, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId,
@@ -59,8 +65,10 @@ pub use financial::{
     validate_company_distributions, validate_distribution_receipts, CapitalContributionOrder,
     CapitalContributionReceipt, CompanyDistributionReceipt, CompanyPayoutPolicy, ContributionId,
     DistributionPolicy, DistributionReceipt, FinancialInstitutions, InstitutionLocation,
-    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicTransferTreatment,
-    TaxBasis, TaxPolicy, TaxReceipt,
+    LayoffRecord, OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt,
+    PublicProgram, PublicProgramKey, PublicProgramReceipt, PublicProgramTerms, PublicSpendingRule,
+    PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt, MAX_LAYOFF_HALF_PERIODS,
+    MAX_LAYOFF_PERIODS,
 };
 pub use household_time::{
     consume_household_contributions, HouseholdContributionReceipt, HouseholdContributionUse,
@@ -98,6 +106,10 @@ pub use valuation::{
     IncomeStatement, StockCarryingValue, MAX_CARRYING_STOCKS, MAX_COMPANY_BASIS_MOVEMENTS,
 };
 
+pub use tiers::{
+    household_standard, recurring_household_want_order_id, recurring_service_want_order_id,
+    HouseholdStandard, HouseholdTierReceipt, HouseholdWantReceipt,
+};
 pub use transition::{
     advance_material_circuit, advance_material_circuit_with_aid, close_material_period,
     close_material_period_with_aid, close_material_period_with_portfolios,
@@ -106,6 +118,8 @@ pub use transition::{
 pub use wire::{
     decode_material_circuit_state, decode_material_circuit_state_for_encoding,
     encode_material_circuit_state, material_circuit_state_digest, DecodedMaterialCircuitState,
-    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
+    MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
     MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
 };

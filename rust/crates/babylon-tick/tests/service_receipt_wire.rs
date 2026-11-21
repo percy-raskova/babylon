@@ -96,6 +96,37 @@ fn service_receipts_keep_performance_satisfaction_market_and_output_distinct() {
     );
 }
 #[test]
+fn a_priced_out_market_decision_round_trips_and_keeps_its_direction() {
+    // Requested 3, admitted 3, performed 3 of 4: the price was the market's, so the next one is not
+    // below the old (2 to 3).
+    let mut priced_out = row(22, 1);
+    priced_out[160..168].copy_from_slice(&3_u64.to_be_bytes());
+    assert_eq!(priced_out[224], 3);
+    priced_out[224] = 6;
+    let decoded = material_world::decode_material_receipts(&envelope(22, &[priced_out.clone()]))
+        .expect("reason 6 is a declared decision");
+    let market = &decoded.service_markets[0];
+    assert_eq!(market.reason as u8, 6);
+    assert_eq!(
+        (
+            market.old_price.micro_units(),
+            market.next_price.micro_units()
+        ),
+        (2, 3)
+    );
+    // A price that fell is not a priced-out decision, and neither is an admission left unperformed.
+    let mut fell = priced_out.clone();
+    fell[208..224].copy_from_slice(&1_i128.to_be_bytes());
+    assert!(material_world::decode_material_receipts(&envelope(22, &[fell])).is_err());
+    let mut unperformed = priced_out;
+    unperformed[160..168].copy_from_slice(&2_u64.to_be_bytes());
+    assert!(material_world::decode_material_receipts(&envelope(22, &[unperformed])).is_err());
+    // The tag after it is still undeclared.
+    let mut beyond = row(22, 1);
+    beyond[224] = 7;
+    assert!(material_world::decode_material_receipts(&envelope(22, &[beyond])).is_err());
+}
+#[test]
 fn service_rows_refuse_false_partitions_costs_periods_and_noncanonical_keys() {
     for (tag, offset, value) in [(20, 193, 2_u64), (21, 120, 3), (22, 168, 1), (23, 152, 3)] {
         let mut damaged = row(tag, 1);

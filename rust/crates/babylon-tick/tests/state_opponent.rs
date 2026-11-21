@@ -47,7 +47,7 @@ fn run_decision(
 }
 fn config() -> CityPdConfig {
     CityPdConfig {
-        schema_version: 1,
+        schema_version: 2,
         campaign_id: [1; 16],
         actor_id: 9,
         authority_id: [2; 16],
@@ -60,11 +60,24 @@ fn config() -> CityPdConfig {
         visit_hours: 2,
         hourly_wage_micros: 3,
         visit_cost_micros: 6,
-        appropriation_micros: 10,
+        appropriation_micros: 6,
         appropriation_priority: 0,
+        payroll_site_account_id: [10; 32],
+        payroll_positions: 2,
+        payroll_hours_per_position: 4,
+        payroll_micros: 24,
+        visits_per_period: 1,
         content_digest: [8; 32],
         policy_source_digest: [9; 32],
     }
+}
+/// One visit hour at `wage`: the visit, the appropriation and the payroll follow the wage.
+fn reprice(c: &mut CityPdConfig, wage: i128) {
+    c.hourly_wage_micros = wage;
+    c.visit_cost_micros = wage;
+    c.appropriation_micros = wage;
+    c.payroll_micros =
+        i128::from(c.payroll_positions) * i128::from(c.payroll_hours_per_position) * wage;
 }
 fn case(subject_id: u64, source: u8) -> CityPdCase {
     let mut c = CityPdCase {
@@ -240,9 +253,9 @@ fn basis_is_independently_pinned_and_price_bound_is_inclusive() {
     assert_eq!(
         d.decision_basis_digest,
         [
-            0x97, 0x0e, 0xcc, 0xfb, 0xeb, 0x9c, 0x5a, 0x7c, 0x87, 0xe8, 0x55, 0x9b, 0x13, 0x23,
-            0x90, 0x55, 0xcd, 0xd6, 0xd1, 0xb4, 0xf9, 0x80, 0xa9, 0x77, 0x5a, 0x6d, 0xf4, 0xdf,
-            0x42, 0x4f, 0xae, 0xdc,
+            0x7d, 0x60, 0xf7, 0x3c, 0xc3, 0x63, 0xdc, 0xe8, 0xc5, 0x53, 0x2b, 0xd4, 0x68, 0xfd,
+            0x69, 0x36, 0xe6, 0x61, 0xc6, 0x71, 0x7c, 0xfe, 0x50, 0xe1, 0x4f, 0x94, 0x66, 0x18,
+            0x6e, 0xf5, 0x63, 0x48,
         ]
     );
     assert_eq!(
@@ -256,16 +269,14 @@ fn basis_is_independently_pinned_and_price_bound_is_inclusive() {
     );
     let mut c = config();
     c.visit_hours = 1;
-    c.hourly_wage_micros = CITY_PD_MAX_COST;
-    c.visit_cost_micros = CITY_PD_MAX_COST;
+    reprice(&mut c, CITY_PD_MAX_COST);
     assert!(matches!(
         run_decision(&c, &state, Currency::from_micro_units(CITY_PD_MAX_COST), 1)
             .expect("valid City PD test fixture")
             .decision,
         CityPdDecision::Selected(_)
     ));
-    c.hourly_wage_micros += 1;
-    c.visit_cost_micros += 1;
+    reprice(&mut c, CITY_PD_MAX_COST + 1);
     assert_eq!(
         run_decision(
             &c,

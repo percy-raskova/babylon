@@ -1,0 +1,195 @@
+ADR315_homes_rent_and_nation:
+  title: Rent has an author, a home is lost by the law's own steps, home values move, and nations are hyperedges
+  date: '2026-11-21'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-21, when asked how heavy rent should be: "do some deep
+        research into how landlords handle market pricing and how rental markets
+        work and make it an engaging gameplay dynamic that leaves room for
+        political struggle as a gameplay option".
+    - >-
+        Director, 2026-11-21: "the equity building properties of paying a
+        mortgage for homeowners are also somethign that will lead to their class
+        dyanmics and outlook and alignment, it is the level of settler
+        colonialism".
+    - >-
+        Director, 2026-11-21: "the players political organizing and decisions
+        can also lead to crises for example if there is a call for a general
+        strike, a union organizing effort, a tenant rent strike, a mass protest
+        that disrupts commerce and roads, etc".
+    - >-
+        Director, 2026-11-21, after choosing that households carry nation in
+        every place: "nation should be a hypergraph, and in the ~/projects/
+        directory I'm pretty sure we made a hypergraph library in rust that we
+        ported from xgi in python, purely for this purpose".
+    - >-
+        Director, 2026-11-21, in three rounds of answers: a tenant's rent is
+        split into the upkeep of the home and the holder's take, and landlords
+        get books; the value of a home moves; tenants get a claim at the County
+        Review; institutions treat places by their make-up, as named policy;
+        homes exist in every place, finer in Wayne.
+    - >-
+        Director, 2026-11-21, on the design
+        (`docs/superpowers/specs/2026-11-21-homes-rent-and-nation-design.md`):
+        "Approve".
+    - >-
+        Director, 2026-11-21, on the two fixes the hypergraph library needs:
+        "fix it there, make sure it passes dependabot, security scans,
+        dependencies, etc as well get it a well maintained independently useable
+        rust library"; and on the data: "remember that we had the original
+        SQLite database with a lot of this data in it in 3NF".
+  context: |
+    The engine has housing only as one service at one posted price. There is
+    no rent, landlord, tenure, mortgage, home or eviction in the code. The
+    design of households and homes was approved on 20 November 2026 and is not
+    built; it covers Wayne only, carries a home at what was paid, reads no
+    equity and no nation, and has no lender that takes a home.
+
+    The research (`reports/housing-research-2026-11-21/`) found that landlords
+    price from their own empty homes; that a lender sizes a rental loan so that
+    a holding with debt cannot pay its costs and its debt once about one rent
+    in eight is unpaid (the readers' arithmetic); that eviction filings are
+    used to collect; that Michigan law gives each way of losing a home its own
+    pace; and that owners with much equity support redistribution less than
+    renters, while owners who owe more than the home is worth support it more.
+    Neither MIM nor Sakai describes equity as a quantity that grows and moves a
+    household; that step is the Director's.
+
+    The game's graph already has hyperedges whose memberships carry their own
+    fields (ADR189), stored in the project's hypergraph library (ADR193). The
+    national question ruling (ADR171) names the nations and says that overlap
+    is shown, never netted. The country's scenario writes no nation yet.
+  decision: |
+    H1. A NATION IS A HYPEREDGE. A household group is a member, and the
+    membership carries how many of its households belong. No group is split.
+    Overlap is shown. Memberships are written once from the census and move
+    with people.
+
+    H2. NATION WORKS THROUGH WHO HAS WHAT, AND THROUGH HOW PLACES ARE TREATED.
+    The census sorts the opening by nation. In play every rule is the same for
+    every household; an institution's rule may depend on the make-up of a
+    place, as a named policy row with a public record. No rule reads one
+    household's nation.
+
+    H3 to H5. HOMES, HOLDINGS AND RENT. A home is owned and lived in, let,
+    empty, or held by the county. An owner pays no rent and buys upkeep. A
+    holding is one holder's rented homes in a place, with its own books. Rent
+    is the upkeep and the holder's take, and opens at the census figure.
+
+    H6 to H10. HOW A HOLDING ACTS. Asking rent falls after a home stood empty
+    and rises after a seeker was turned away, never below upkeep and tax. A
+    tenancy keeps its rent; the company raises it once a year and a small
+    holder at turnover. A holding short of money skips upkeep, then tax, then
+    debt, and walks away when it owes more than its homes are worth, losing
+    them by the law's clock. The company files as soon as a tenant is behind; a
+    small holder when the arrears exceed what an eviction costs.
+
+    H11, H12. LOSING A HOME. By the law's own stages, never shortened: for a
+    tenant, an owner behind on tax, an owner behind on a mortgage, and a
+    holding behind on its debt. A removal is carried out by the court's
+    officers with the hours they have; people present in greater number stop it
+    for the day.
+
+    H13 to H16. MORTGAGES, VALUES AND EQUITY. Mortgages are real loans from
+    banks. A home's value moves by steps from the census value, with rents and
+    with the going rate. Equity grows by paying and by value, can be borrowed
+    against, and can be lost. A household joins an action when what it offers
+    within a year exceeds what joining puts at risk of its stake; no fixed
+    amount decides.
+
+    H17 to H20. THE COUNTY AND THE PLACES OF STRUGGLE. Tenants get a claim at
+    the County Review. Eight places where organized people act are built, each
+    decided by a race between the holding's accounts and the households'. The
+    holding, its lender, the court and its officers answer by rule. Owners
+    whose stake is threatened act by the same weighing.
+
+    H21, H22. WHAT IS SHOWN AND RECORDED. The holding's books, the law's
+    stages, a forecast from earned figures, the stake, each nation's view; and
+    a record with its cause for every act.
+
+    Homes exist in every place, pooled outside Wayne. The design lists every
+    section of the homes design, of ADR312 and of ADR313 that it changes.
+  calls:
+    - 'An owner buys the upkeep of its own home, so the housing trade keeps its customers.'
+    - 'The asking rent never falls below upkeep and tax; debt is left out of that floor.'
+    - 'Rented homes may open with mortgages, about four properties in ten.'
+    - 'A lender may foreclose on a household''s home, by Michigan''s process.'
+    - 'Upper-band loans open at their real ages; bottom-half loans open new, at the home''s value.'
+    - 'A home''s value moves by steps from the census value, with rents and with the going rate.'
+    - 'Removals are carried out by the court''s officers; their hours belong to the opponent''s capacity.'
+    - 'Whether a holding without a certificate can win in court is policy, open to struggle.'
+    - 'Rent relief is paid to the holding against the arrears.'
+    - 'Tenant bodies open only where public records show them.'
+    - 'The year is the horizon of the weighing and of a holding in a strike.'
+    - >-
+        The lean of owners is shown and counted; what it does to outlook belongs
+        to the game's rules of outlook.
+    - >-
+        Two policies treat places by their make-up at the opening: home loans,
+        and the taxing of cheap homes above their worth. Others are added only
+        with their public record.
+    - 'The player''s organization may come to hold homes, and is then read as a landlord.'
+    - >-
+        Tenure about doubles the household accounts. The live country is small
+        (187 places with a handful of groups in each), so no size limit of the
+        engine is expected to be met; an earlier figure of some 15,000 accounts
+        was from before the counties were folded into places.
+    - >-
+        Tenure, income and rent by nation and county come from the project's
+        reference database (2023 shares on the 2024 totals). The census tables
+        it lacks are fetched only when the rule that needs them is built.
+    - >-
+        A nation's members are the household nodes the graph already has; every
+        group is a member from the opening, with a count that may be zero. The
+        count lives on the membership, which this build serves (issue 653), and
+        the hypergraph library gets the fixes it needs in the library, as the
+        Director ruled on 2026-11-21.
+    - >-
+        A group's nation counts rise and fall in proportion with the group, by
+        largest remainder. Chicano households are counted by the census's
+        Hispanic origin, as ADR214 does, with its disclosure.
+    - 'Within a band, jobs are dealt by pay as between bands: the owner group first.'
+  alternatives_rejected:
+    - 'One price for housing in each place. Landlords could not be fought building by building.'
+    - >-
+        Rent that every household pays, owners to themselves. It contradicts the
+        homes design and gives rent no author.
+    - >-
+        Household groups split by nation. The Director ruled that nation is a
+        hypergraph; a split would also have multiplied the country's accounts
+        and netted the overlap that ADR171 says to show.
+    - 'A home carried at what was paid. The Director chose values that move.'
+    - 'Homes in Wayne only. The Director chose every place, finer in Wayne.'
+  open_questions:
+    - 'The player''s verbs in the places of struggle, with the player''s organization.'
+    - 'Rent control and other changes of law, as politics.'
+    - 'Public and social housing, and land held in common.'
+    - 'Insurance, water bills on the tax roll, and land contracts.'
+    - 'What the lean of owners does to outlook, with the game''s rules of outlook.'
+  verification: |
+    On the small test economy, with two holdings (one with debt, one without),
+    twenty tenant households, owners with loans of different ages, a bank and
+    two places of unlike make-up, for 400 periods, checked by a second reader:
+    still when quiet; empty homes lower the rent; a strike won against the
+    holding with debt and lost against the one without, as forecast from earned
+    figures; Detroit's loop of skipped upkeep and tax arising unprompted;
+    values that swing; owners joining a few at a time as an offer rises, with a
+    planted cut-off failing the test; exchanging the memberships of two equal
+    groups changing nothing when the policies are equal; each nation's counts
+    matching the census; every stage at least the law's minimum; a real choice
+    among paying, falling behind, escrow and striking; a record for every rent
+    change; exact money; and the country's counts pinned and a period timed
+    against today's.
+  related:
+    - ADR314_how_the_economy_adjusts
+    - ADR313_the_national_economy_opens_in_balance
+    - ADR312_the_price_of_a_short_market
+    - ADR306_household_units_in_wayne
+    - ADR305_rule_of_thirds_anchoring_law
+    - ADR301_county_review_session
+    - ADR193_hypergraph_storage_swap
+    - ADR189_amendment_ag_attributed_membership_lattice_instances
+    - ADR171_national_question_rulings

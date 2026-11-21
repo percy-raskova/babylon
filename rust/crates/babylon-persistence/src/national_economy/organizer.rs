@@ -155,6 +155,7 @@ pub(crate) fn assemble(
         input_authority_id: authority(campaign, donor.actor),
         organization_label: d.organization_label.clone(),
         hearing,
+        review: None,
         workplace_id: actor(&site.subject)?,
         workplace_process_id: site.processes[0].process_id.as_bytes(),
         workplace_label: site.label.clone(),

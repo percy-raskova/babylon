@@ -2,6 +2,9 @@
 
 use crate::CompanyBasisMovement;
 use crate::HouseholdLifecycleReceipt;
+use crate::HouseholdTierReceipt;
+use crate::HouseholdWantReceipt;
+use crate::MarketClearingReceipt;
 use crate::ResidentWorkforceAttrition;
 use babylon_kernel::economic_location::EconomicLocation;
 
@@ -31,8 +34,14 @@ pub const MAX_ROUTE_CAPACITY_MEMBERSHIPS: usize = 262_144;
 pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
 /// Designed ceiling for the measured 79,489 cash and capital account owners.
 pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
+/// Two bases and two recipients for each captured account.
+pub const MAX_TAX_POLICIES: usize = 262_144;
+/// Named programs of the public accounts.
+pub const MAX_PUBLIC_PROGRAMS: usize = 256;
 /// Designed ceiling for 87,960 captured household needs and purchase policies.
 pub const MAX_HOUSEHOLD_NEEDS: usize = 131_072;
+/// Two tiers of the bound on household needs.
+pub const MAX_HOUSEHOLD_WANTS: usize = 262_144;
 /// Designed ceiling for 90,794 independently captured ownership/equity claims.
 pub const MAX_OWNERSHIP_CLAIMS: usize = 131_072;
 /// Designed ceiling for the measured 138,337 national procurement policies.
@@ -89,6 +98,8 @@ use crate::PriceReceipt;
 use crate::ProcurementReceipt;
 use crate::ProductionPlanReceipt;
 use crate::PublicBudgetReceipt;
+use crate::PublicProgramReceipt;
+use crate::RecurringEconomy;
 use crate::RollingProcessSupply;
 use crate::ServiceConnection;
 use crate::ServiceMarketReceipt;
@@ -528,6 +539,22 @@ pub struct MaterialCircuitState {
 }
 
 impl MaterialCircuitState {
+    /// The recurring economy of a monetary state that has one.
+    #[must_use]
+    pub(crate) fn recurring_economy(&self) -> Option<&RecurringEconomy> {
+        let CircuitAccounting::Monetary(e) = &self.accounting else {
+            return None;
+        };
+        e.recurring.as_deref()
+    }
+    /// Version 25 or 26: a budget in proportion, a program or a layoff record.
+    #[must_use]
+    pub fn has_public_program_extension(&self) -> bool {
+        let CircuitAccounting::Monetary(e) = &self.accounting else {
+            return false;
+        };
+        e.financial.has_public_program_extension()
+    }
     /// Exact admitted-minus-shipped demand, derived from current orders.
     ///
     /// # Errors
@@ -611,8 +638,10 @@ impl MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    PublicProgramInvariant = 39,
     CompanyPortfolioEvidence = 35,
     CompanyPortfolioSelection = 36,
+    MarketClearingInvariant = 38,
     HouseholdLifecycleInvariant = 37,
     HouseholdTimeInvariant = 31,
     AidInvariant = 32,
@@ -693,6 +722,8 @@ impl TryFrom<u16> for MaterialCircuitError {
             34 => Ok(Self::CollectionInvariant),
             35 => Ok(Self::CompanyPortfolioEvidence),
             37 => Ok(Self::HouseholdLifecycleInvariant),
+            38 => Ok(Self::MarketClearingInvariant),
+            39 => Ok(Self::PublicProgramInvariant),
             36 => Ok(Self::CompanyPortfolioSelection),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
@@ -729,6 +760,8 @@ pub struct MaterialCircuitTransition {
     pub equipment_wear: Vec<EquipmentWearReceipt>,
     pub investment: Vec<InvestmentReceipt>,
     pub public_budgets: Vec<PublicBudgetReceipt>,
+    /// One row for each program and recipient, in (program key, recipient) order.
+    pub public_programs: Vec<PublicProgramReceipt>,
     pub taxes: Vec<TaxReceipt>,
     pub distributions: Vec<DistributionReceipt>,
     pub company_basis: Vec<CompanyBasisMovement>,
@@ -760,4 +793,12 @@ pub struct MaterialCircuitTransition {
     pub local_fulfillments: Vec<LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<LocalTransferReceipt>,
     pub maintenance: Option<MaintenanceReceipt>,
+    /// The short markets of the period, in the order of the moments of sale. Empty without a market
+    /// policy.
+    pub market_clearings: Vec<MarketClearingReceipt>,
+    /// What each account wanted and bought of each want, by account, tier, good and unit. Empty
+    /// unless the catalog has wants.
+    pub household_wants: Vec<HouseholdWantReceipt>,
+    /// What each account wanted and bought in each tier, at posted prices, by account and tier.
+    pub household_tiers: Vec<HouseholdTierReceipt>,
 }

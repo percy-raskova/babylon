@@ -213,6 +213,7 @@ pub(crate) fn paid_state() -> (MaterialCatalog, MaterialCircuitState) {
         };
         (
             MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: [seller, buyer]
                     .into_iter()

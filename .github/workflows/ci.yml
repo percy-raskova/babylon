@@ -70,8 +70,7 @@ jobs:
     # Cold workspace compilation and tests can consume 20 minutes before
     # doctests, documentation, sentinels and the dependency audit finish.
     timeout-minutes: 45
-    # Retain filename/line backtraces in CI; local workspace debugger support
-    # keeps the full debug information configured by Cargo's dev/test defaults.
+    # Include the dev/test debug settings in the hosted cache key.
     env:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       CARGO_PROFILE_TEST_DEBUG: line-tables-only

@@ -36,6 +36,7 @@ use babylon_material_circuit::ProductionCommitment;
 use babylon_material_circuit::ProductionDemandPolicy;
 use babylon_material_circuit::PublicAllocation;
 use babylon_material_circuit::PublicBudget;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::PublicTransferTreatment;
 use babylon_material_circuit::RecurringEconomy;
 use babylon_material_circuit::SellerOffer;
@@ -312,6 +313,7 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
         public_account: crate::treasury(),
         period_cap: crate::money(2),
         cash_floor: crate::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     f.public_allocations.push(PublicAllocation {
         public_account: crate::treasury(),
@@ -444,6 +446,7 @@ fn current_tax_receipts_cannot_fund_opening_agency_appropriation() {
         public_account: crate::treasury(),
         period_cap: crate::money(20),
         cash_floor: crate::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     f.public_allocations.push(PublicAllocation {
         public_account: crate::treasury(),
@@ -480,6 +483,7 @@ fn absent_and_disabled_appropriation_leave_other_activity_unchanged() {
         public_account: crate::treasury(),
         period_cap: crate::money(20),
         cash_floor: crate::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     f.public_allocations.push(PublicAllocation {
         public_account: crate::treasury(),

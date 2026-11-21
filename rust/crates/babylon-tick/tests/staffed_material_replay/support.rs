@@ -167,6 +167,7 @@ pub(crate) struct Materials {
 
 pub(crate) fn opening() -> Materials {
     let catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {

@@ -2,6 +2,8 @@ meta:
   contract: MaterialCircuitV4
   schema_version: 22
   household_lifecycle_schema_version: 24
+  public_programs_schema_version: 25
+  lifecycle_public_programs_schema_version: 26
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -69,7 +71,11 @@ encoding:
   header: [state_domain, terminator, schema_version, catalog_digest, period]
   catalog_digest: raw-32-byte SHA-256 of the canonical catalog bytes
   catalog_bytes: catalog_domain, terminator, catalog_version_u16, capacity_policy, content rows, nested definitions
-  catalog_version: u16; current value 1
+  catalog_version: >-
+    u16; without a market policy 2, 3, 4 or 5 as before; with one 6, followed by the u16 version the same
+    catalog writes without the policy, the body exactly as that version writes it, and the market tail; with
+    household wants 7 where 6 is written, and the wants tail after the market tail;
+    a market policy that plans from spare money writes 8 first, then the bytes the same catalog writes without it
 
 state_field_order:
   - period
@@ -117,6 +123,12 @@ catalog_row_field_order:
   service_inputs: [buyer_site_id, provider_site_id, good_id, unit_id, quantity_per_period, maximum_purchase,
                    cash_floor_i128]
   household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
+  # Written only when the catalog has a market policy, after every other row family.
+  market_clearing: [count_u32, paying_order_rows_of_good_id_and_unit_id]
+  # Written only when the market policy has household wants, after the market tail (catalog version 7).
+  household_wants: [count_u32, rows of principal_id, tier_u8, good_id, unit_id, need_basis_u8, units_per_basis]
+  # A market policy that plans from spare money adds no tail: it writes u16 8 before every other byte of the
+  # catalog (catalog version 8), then the bytes the same catalog writes without it.
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -134,6 +146,100 @@ catalog_canonical_keys:
   household_time_policy: [principal_id]
   service_inputs: [buyer_site_id, good_id, unit_id]
   household_needs: [principal_id, good_id, unit_id]
+  household_wants: [principal_id, tier_u8, good_id, unit_id]
+
+# Market policy (the price of a short market). A catalog carries it only by asking: the order of paying below.
+# Without it every catalog and state byte is the one of before. With it, in a period in which a private seller
+# is short, the price paid rises to the first level at which what its buyers can pay for equals what there is.
+market_clearing:
+  P1_market: >-
+    one seller, one product and one moment of sale in a period; its supply is what the seller has on offer to new
+    buyers; its buyers are the accounts whose policy names that seller for that product
+  P2_bid: >-
+    each buyer brings what it wants, its purse and, for a business, a limit; at price p it can pay for min(wanted,
+    floor(purse / p)) and for nothing above its limit; a household brings a rung for its need and one for each want
+    of the product, each with a reserve (the posted cost of what is ahead of it in its list and still to buy), and
+    at price p a rung can pay for min(wanted, floor((purse - reserve - spent on the rungs before it) / p))
+  P3_price: >-
+    no more demand than supply at the posted price sells at the posted price; otherwise the price is the lowest
+    price above the posted one at which the demand no longer exceeds the supply, found exactly in millionths by
+    bisection, one price for every buyer of the market
+  P4_shares: >-
+    each buyer gets what it can pay for at that price; where demand falls past the supply in one step the price is
+    the last one before the step, the buyers who fall away share what is left in proportion to what each loses,
+    and the last indivisible units go in canonical order; everything on offer is sold; a buyer's share fills its
+    rungs in order, each up to what it can pay for at that price
+  P5_limit: >-
+    a business bids no more than the price at which a batch just covers its cost, never under the posted price; a
+    merchant pays no more than its own posted price less its handling wage
+  P6_offer: >-
+    stock or output at the moment of sale less what the seller owes to orders accepted earlier; for a merchant
+    also no more than its hands and room can pass over
+  P7_order_of_paying: >-
+    the catalog names one order of its products; a buyer's purse reaches the markets in that order, and each
+    purchase is paid before the next market is cleared; a household's list goes by tier first and by the order
+    inside a tier
+  P8_accepted_order: >-
+    money set aside keeps its price and quantity; a good a household buys is handed over at the purchase; a
+    business's goods sold and not yet moved are owed
+  P9_posted_price: keeps its rule of one step a period inside its bounds
+  P10_record: >-
+    a short market leaves one receipt of seller, product, moment, posted price, price paid, on offer, demand at
+    the posted price, sold, and buyers bid and served
+  P11_money: nothing is created or destroyed; the buyers' extra payments are the seller's receipts
+  P12_not_by_price: >-
+    a product left out of the order of paying, a catalog without an order, and a world without money share in
+    proportion as before; a product in the order has no seller with a fixed price
+  P13_asking: >-
+    a catalog gets the rule only by naming an order of paying, and A6 only by setting plans_from_spare_money
+  A6_spare_money: >-
+    a workplace that holds more money than one period of what it pays out plans for what was asked of it and
+    not paid for at its posted price, as far as that spare money carries; what a period pays out is the wages of
+    its planned hours, the inputs of its planned batches and a merchant's restocking; a raise stops at nameplate
+    and takes no stocked input that a paid-for plan needs; a workplace without spare money, and a catalog that
+    does not set plans_from_spare_money, plan as before
+  admission:
+    - the order is not empty, names no product twice, and names only declared commodities
+    - every storable good that a household need names is in the order; a service may be left out
+    - a household want has a positive units per basis, names a product in the order, and no key twice
+    - a market policy has at most 262144 household wants
+    - a refusal is MarketClearingInvariant
+    - a market policy requires no company portfolio
+    - under a market policy every offer of a product in the order is responsive
+
+# Households buy in tiers (O7, O8). A catalog without wants has none of this: no list, no record, today's bytes.
+household_tiers:
+  O7_tiers: >-
+    a household account buys its needs (tier 1), then its comforts (tier 2), then its luxuries (tier 3), in the same
+    markets at the same price as everyone else, with the money its own list does not need
+  O8_reserve: >-
+    a want rung of tier t at place q in the order of paying holds back the posted cost, quantity still to buy times
+    posted price, of the account's items of every other product that are needs, or wants of an earlier tier, or
+    wants of tier t at an earlier place, and, when the account has a wage tax row, the wage tax it owes for the
+    period (the sum, over its wage tax rows, of the wage income booked at the opening of the period times each
+    rate, as the close will assess it); the account's own need and earlier wants of the product are the rungs
+    before it, so reserves never fall along a bid; a need rung holds back nothing, and the money held back for the
+    tax stays in the account until the close collects it
+  still_to_buy: >-
+    a need is still to buy for the rest of the period by the part the household did not get, and that part's
+    posted cost is held back from every want and from no later need; a want is done once its market has cleared
+    for the household, whatever it got
+  want_is_used: >-
+    a want is used at its purchase: it has its own order, made, handed over, paid and retired inside the household
+    moment, and reaches no pantry; its payment is the household's consumption expense
+  records: >-
+    each period, for every want one receipt of wanted, bought, posted and market price; for every account and tier
+    one receipt of wanted and bought value at posted prices; an unreached want is bought 0 at its posted price
+  standard: >-
+    going without when a need row of the account has unmet quantity; else getting by when tier 2 bought less than
+    it wanted; else comfortable when tier 3 did; else affluent
+  unreached: >-
+    a want with nothing on offer, a disabled row or a price it cannot pay buys 0, leaves no order, no unmet need
+    and no division by zero
+  service_wants: >-
+    a want of a service is bought in the service's stage market, as a rung of its account's bid; its performance row
+    requests what its rung could pay for at the posted price with the account's cash at that moment and admits what
+    it bought; the list settles after every stage market of an account, one left out of the order of paying included
 
 catalog_seal:
   - canonicalize every definition family once at admission, in the orders above
@@ -281,10 +387,12 @@ admission:
   - committed shift rows contain only accrued unpaid obligations earned in a positive period before the opening period
   - all monetary row families have strictly increasing canonical keys before book reconstruction
   - recurring households are explicit resident cohorts, never inferred from workplace jobs
-  - each configured household need has a purchase policy; only stored goods have an explicit pantry row including zeros
+  - each household need and want has a purchase policy; only stored needs have a pantry row including zeros; a
+    policy for a want alone has a zero stock target
   - period-service household needs have no pantry, zero stock target and a captured provider connection
   - household service providers need not be Retail merchants
-  - every finite order of a configured household names a captured recipient stock before admission
+  - every finite order of a configured household names a captured recipient stock before admission; a want's
+    order, made and retired within the household moment, names none
   - recurring production has one policy per process and at most one process per site-output-good-unit
   - recurring attendance exactly covers distinct employment and current labor principals at the opening period
   - an attendance principal without employment has an explicit zero available-hours row and zero planned hours
@@ -292,6 +400,8 @@ admission:
   - desired production or handling at an empty workplace cannot create workers, funded hours, wages or output
   - both recurring household phase cursors equal the preceding period at a canonical opening
   - responsive quotes remain inside positive captured bounds; admitted escrows retain their own prices
+  - without a market policy a short seller shares by the posted-price rules;
+    with one it clears by price (market_clearing)
 
 allocation:
   order_request: full remaining already-admitted native quantity for included eligible requests
@@ -327,7 +437,9 @@ allocation:
   funding: retain original purchase and aid admission bounds; no re-admission, credit, new cash or capacity inflation
   passes: preserve existing outbound selections and service stages; no second grant for an excluded existing order,
     no redistribution between production stages and no recursive same-close local buyer credits
-  missing_route: leave unshipped order in backlog
+  missing_route: without a market policy leave unshipped order in backlog; with one, cancel and refund what the
+    second pass of the period did not send of each order that restocking made, and leave no row for an order of
+    which nothing was sent
   failed_close: publish no successor state or receipt
 
 period_close:
@@ -336,21 +448,30 @@ period_close:
   - settle accepted arrived quantities and refund newly lost quantities from their existing purchase reserves
   - retire already settled prior purchase principals before new admissions need their bounded slots
   - execute due captured capital contributions from pre-phase cash, preserving exact equity and issuer capital
-  - fund captured public allocations from finite current cash and appropriation caps in priority order
+  - fund captured public allocations and programs in priority order, without a budget rule from finite current cash
+    and appropriation caps; with a budget in proportion from cash above its floor, paying each rank in full while
+    the cash lasts and cutting the first rank it cannot cover in proportion
   - pay outstanding earned wages from their existing payroll reserves
   - fund planned attendance in canonical site-unit order, bounded by spendable cash and available whole hours
   - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
   - admit recurring household orders after payroll, sharing actual cash in canonical household-good-unit order
-  - admit finite current service requirements from captured production commitments and input coefficients, bounded
-    by cash and policies
+  - without a market policy, admit finite current service requirements from captured production commitments and
+    input coefficients before any stage, bounded by cash and policies; with one, admit them in their own stage,
+    after the stage's batches are fitted and before its output is allocated, at the market's price; without wants a
+    stage market has one bid per buyer; with wants each household bids its need and its wants of the service as
+    the rungs of one bid, in an order of the need's identity (an account that only wants sorts by the identity its need
+    would have), and a want whose rung money cannot reach at the posted price leaves no performance row and no order
   - execute UtilityProvision then LocalServiceProvision then GoodsProduction through shared input, labor and
     process residuals
-  - each service stage produces complete funded-request-bounded batches and grants finite output through the
-    existing outbound allocator
+  - each service stage produces complete funded-request-bounded batches (with a market policy, bounded by what buyers
+    could fund at the posted prices) and grants finite output through the existing outbound allocator
   - settle actual service grants and refund unperformed orders; expire unallocated provider output at exact
     remaining cost
   - complete all service seller debits and provider expiry before crediting that stage buyers
-  - direct household service satisfaction consumes current performance without pantry stock
+  - direct household service satisfaction consumes current performance without pantry stock; without wants all of it
+    is a need's, with them a want's performed quantity is used at the grant and withdrawn first, the need reads only
+    its own quantity, want rows take used equal to performed before need rows share the rest, and a want row whose
+    performed quantity is not its admitted quantity is refused
   - expense unused acquired service grants and remove all transient service quantity and carrying rows before
     publication
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
@@ -366,8 +487,14 @@ period_close:
   - debit merchant handling mass and labor exactly once per actual outbound
   - debit retail stock and credit positive local order fulfillment exactly once without a freight lot
   - record handling receipts including explicit zero feasible and actual work
-  - credit actual household handoffs to stock and settle them; expire unfilled recurring requests with refunds
-  - replenish firm inventory positions, counting undelivered order quantities once including their transit
+  - without a market policy, credit actual household handoffs to stock and settle them and expire unfilled
+    recurring requests with refunds; with one, a household's purchase is made at the market's price before
+    production, handed over, credited to stock, settled and retired at that moment, and nothing is expired; a want
+    is handed over and used at once, never credited to stock
+  - replenish firm inventory positions, counting undelivered order quantities once including their transit;
+    without a market policy each policy orders what its cash affords at the posted price; with one, the products
+    in the order of paying clear market by market at a price at which what the buyers can pay for equals what the
+    seller has on offer, a business bidding no higher than the price at which its own product stops paying
   - allocate only newly admitted deliveries in a second pass through the same remaining resource budgets
   - credit local internal buyers only after both outbound passes fix all grants and debits
   - local credits cannot feed another outbound order until a following close
@@ -395,12 +522,14 @@ period_close:
     actual voluntary payment creates no membership, agreement, recurring withdrawal or new hour supply
   - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
   - admit ordinary equipment orders from post-financial free cash and explicit replacement or expansion policies
-  - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
+  - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers,
+    and with a market policy also from what buyers could pay for at the posted price and did not get
   - forecast already funded freight due before subsequent production without crediting current usable inventory
   - derive subsequent attendance from distinct production, merchant, maintenance and installation work requests
-  - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies
+  - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies; with a market
+    policy, what buyers were priced out of counts as unserved demand
   - update next service quotes from funded unmet requests, native capacity and whole-batch cost including provider
-    expiry
+    expiry; with a market policy, buyers priced out of a short service step its quote up, also with spare capacity
   - retire terminal physical and financial purchase principals together after their evidence is recorded
   - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
   - rebuild unshipped backlog
@@ -430,7 +559,7 @@ conservation:
     closing stock
   - local fulfilled cumulative quantity increments only by positive local fulfillment receipts
   - finite final-demand fulfillment remains distinct from household consumption
-  - household opening stock plus actual handoffs equals consumption plus closing stock
+  - household opening stock plus actual need handoffs equals consumption plus closing stock
   - required household consumption equals consumed plus unmet quantity, independently of employment
   - generated household admitted quantity equals fulfilled plus expired refunded quantity
   - total spendable cash plus purchase reserves plus payroll reserves is unchanged by the close
@@ -456,8 +585,9 @@ limits:
     delivery_orders_and_backlog: 131072
     capital_accounts: 131072
     household_needs_and_purchase_policies: 131072
+    household_wants: 262144
     ownership_and_equity_claims: 131072
-    tax_policies: 131072 # One per captured cash account.
+    tax_policies: 262144 # Two bases and two recipients for each captured cash account.
     replenishment: 262144
   staffing_work_sources_and_requests: 131072
   measured_national_opening:
@@ -498,7 +628,7 @@ limits:
   income_receipts_per_period: 131072 # At most one per cash/capital account.
   collection_receipts_per_period: 1 # Original authenticated ruling, not a recurring withdrawal.
   aid_receipts_per_period: 458752 # Five fresh leg rows plus two due-lot rows times 65536.
-  tax_receipts_per_period: 131072 # At most one per captured payer.
+  tax_receipts_per_period: 262144 # At most one per captured tax policy.
   distribution_receipts_per_period: 131072 # At most one per ownership claim.
   receipt_bounds: Named receipt-family limits cover their corresponding captured row families;
     the independent money-transfer and complete-byte ceilings can still refuse an oversized close
@@ -541,6 +671,8 @@ error_codes:
   company_portfolio_evidence: 35
   company_portfolio_selection: 36
   household_lifecycle_invariant: 37
+  market_clearing_invariant: 38
+  public_program_invariant: 39
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -582,6 +714,9 @@ staffing:
   population_transfer: aggregate hires or separations use largest remainders over member reserves or employed stocks
   opening_hours: graph employment times captured schedule must equal each current derived member-hour budget
   receipt_join: member receipts reconcile aggregate staffing, resident payees, hours, actual use and wage accruals
+  layoff_record: Without an after_layoff program nothing changes; with one, the record of layoffs lives in the circuit
+    state (financial_institutions.layoffs), not in the staffing pools, and is advanced from the member receipts
+    by finish_with_staffing.
   production_request: next-period input and process-capacity feasible work before service and employment constraints
   maintenance_request: prospective requested whole jobs multiplied by hours per job before resource constraints
   merchant_request: recorded current-period nonlabor-feasible outbound handling hours
@@ -705,7 +840,8 @@ historical_cost_book:
     - staged loss expenses the seller's withdrawn carrying amount; its cash refund remains the money book's authority
     - final arrival recognizes seller sales and COGS; buyer inventory receives the fixed settled acquisition amount
     - local seller withdrawal and sale precede delayed buyer stock and carrying-value credits after both outbound passes
-    - household handoff capitalizes pantry purchases; actual household consumption withdraws carrying value as expense
+    - household handoff capitalizes pantry purchases; a want's purchase is consumption expense at the hand-over;
+      actual household consumption withdraws carrying value as expense
     - finite final-demand sinks recognize a distinct outlay at fulfillment without adding a pantry or consumption need
     - wages earned are household income; productive wages capitalized are not a second current expense
     - unused funded attendance, handling, maintenance labor and materials, and freight losses are separate expenses
@@ -741,7 +877,8 @@ period_services:
       geography or class.
     - Service orders have a positive quantity, current-or-future performance period and a matching accepted-price
       monetary reserve.
-    - Service offers use Fixed or ServiceResponsive; service output stock buffers are zero.
+    - Service offers use Fixed or ServiceResponsive; under a market policy a service in the order of paying is
+      ServiceResponsive; service output stock buffers are zero.
   partition:
     - Complete produced native output equals allocated grants plus unallocated provider expiry.
     - Admitted requests equal performed plus refunded unperformed quantity.
@@ -761,17 +898,75 @@ period_services:
     - Matching provider-buyer-good-unit funded orders due now reduce fresh household and B2B requests before admission.
     - Top-up identity hashes its domain, ordinary recurring identity, and sorted matching due order identities,
       quantities and accepted prices.
-    - Due orders retain their accepted price; only residual need can obtain a new reserve at the current quote.
-    - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
-      converts to batches.
+    - Due orders retain their accepted price; without a market policy only residual need can obtain a new reserve at
+      the current quote and shares output with due orders; with one, due orders are served first and residual need is
+      priced at the market of its stage.
+    - Service next planned native output, without a market policy, covers observed requests or explicit
+      next-period claims; with one, for a product in the order of paying, it covers what the stage market's buyers
+      could pay for at the posted price plus the orders funded earlier for the period, or the explicit next-period
+      claims if more, and the receipt still records what was asked. Ceiling division converts to batches.
     - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with
-      bounded steps.
+      bounded steps; with a market policy a service market with priced-out buyers is decided before cost pressure
+      and spare capacity and steps up.
     - Existing reserves keep their accepted price; no price or planning policy guarantees execution or profit.
 
 financial_institutions:
   authority: ADR266
   evidence_class: Designed
-  field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions]
+  field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions,
+                tail_if_extended]
+  tail: Written only under schema versions 25 and 26 (a state with a budget in proportion, a program, or a payer with
+    two tax rows, or a layoff record), after the contributions. A u32 count equal to the count of
+    public_budgets and one budget_rule_u8 for each budget in its order; then the programs (u32 count, rows of
+    public_programs below, in key order); then a u32 count of layoff records (layoff_records below), in member
+    order. A state
+    without the extension is written without the tail, under 22 or 24, byte for byte as before.
+  budget_rule_u8: {capped_in_order: 1, cash_in_proportion: 2}
+  public_programs:
+    row: [key_len_u8, key_bytes, payer_public_account_id, rank_u32, terms_tag_u8, terms, recipient_count_u32,
+          recipient_principal_ids]
+    terms_tag_u8: {per_person: 1, after_layoff: 2}
+    terms: {per_person: [amount_per_person], after_layoff: [wage_share_bps_u16, half_periods_u16]}
+    canonical_keys: {programs: [key], recipients: [principal_id]}
+    key: 1 to 32 bytes of a-z, 0-9 and underscore, a letter first.
+    receipt_fields: [period, public_account, program_key, recipient_principal, rank, covered_persons, due, paid,
+                     unfunded]
+    receipt_order: One for each program and recipient each period in (key, recipient) order, also when the due is 0.
+    rules:
+      - Keys are unique; at most 256 programs; the payer holds a budget cash_in_proportion, so a capped account holds
+        none.
+      - Recipients are not empty, unique, and each the principal of a household account in the book; all programs
+        together name at most MAX_MATERIAL_CIRCUIT_ROWS recipients. Always a household account, never a site, an
+        organization or a public account.
+      - per_person needs amount_per_person above 0 and a household cohort row for each recipient; it owes amount times
+        the cohort's persons at the opening of the period, 0 for 0 persons. after_layoff needs 1 to 10,000 points and 1
+        to 26 half periods; it owes each recipient what the layoff records of the household's members are owed
+        (layoff_records below), without a record nothing. A household is a recipient of at most one after_layoff
+        program. A state that holds one is advanced only by finish_with_staffing, which ages the records from the
+        member receipts; the other finishes refuse it.
+      - A program's dues and the budget's standing rows of one rank are cut together in proportion; a paid amount is a
+        public transfer, not wage income, and is not taxed.
+  layoff_records:
+    row: [member_id, hours_per_person_u64, cohort_count_u8, cohorts_u64]
+    canonical_keys: {layoffs: [member_id]}
+    meaning: >-
+      The people of one staffing member laid off in play and still looking, newest first. cohorts[k] were laid
+      off at the staffing of the period k + 1 before the opening. The last cohort is not 0, 1 to 13 cohorts, the
+      hours of the job lost are set when the record is made and never refreshed.
+    rules:
+      - A member has a record while it has someone covered, is paid a wage and its payee is a recipient of an
+        after_layoff program. A record whose cohorts are all 0, or whose payee is no longer a recipient, is removed by
+        the next finish_with_staffing; a state that holds one is valid and owes nothing for it.
+      - A finish ages the record in order, from the member receipt of the closing period. People who left the reserve
+        unhired leave from the oldest end until the record is at most the opening reserve; each cohort ages one period
+        and the one past the longest term, the greatest ceil(half_periods / 2) of the programs and at most 13,
+        leaves; the separations start a new cohort; the hires take the newest cohort first, then the uncovered.
+      - Across a pool's households hires follow the staffing members' split in proportion to each one's people
+        looking for work; the last laid off go back first inside one household's share only.
+      - Owed in a period, with H the half periods, a cohort at k < H / 2 counts two half periods, the cohort at
+        k = H / 2 when H is odd counts one, older ones nothing. The due is floor(wage x hours_per_person x
+        wage_share_bps x units / 20,000) for each member, units the persons times those counts, and the household's
+        due is the sum over its members. A benefit is not taxed.
   row_fields:
     locations: [account, economic_location]
     ownership: [issuer_site_id, beneficiary_account, shares_u64]
@@ -786,7 +981,7 @@ financial_institutions:
     locations: [account]
     ownership: [issuer_site_id, beneficiary_account]
     distributions: [issuer_site_id]
-    taxes: [payer_account]
+    taxes: [payer_account, tax_basis_u8, public_recipient_id]
     public_budgets: [public_account_id]
     public_allocations: [public_account_id, priority, recipient_account, transfer_treatment]
     contributions: [id]
@@ -800,10 +995,16 @@ financial_institutions:
     - Contributions require a captured claim, due period and positive amount; consume each due instruction once.
     - Acquired equity debits cash and raises contributor carrying basis and issuer contributed capital, never income.
     - Capture all contribution funding before credits; no same-phase circular funding.
-    - Public allocations consume cash above floor and finite current appropriation in priority then canonical order.
+    - Without a budget rule (capped_in_order), public allocations consume cash above floor and finite current
+      appropriation in priority then canonical order; with cash_in_proportion, the budget's period_cap must be 0 and its
+      allocations and programs consume cash above floor, ranks lowest first, the first rank not covered cut in
+      proportion with the floor remainder going one micro-unit each in canonical order.
     - Household income support and provider operating grants produce paired expense and income only when paid.
     - Public capital support uses the separate finite contribution instruction and its equity claim.
-    - One tax policy per eligible payer; bases are earned wages or positive operating income before financial flows.
+    - One tax policy per payer, basis and public recipient. Without the extension, one tax policy per payer; with it,
+      one per payer, basis and public recipient, so a payer may pay one basis to two public accounts. Bases are
+      earned wages or positive operating income before financial flows. A payer's rows collect in key order from one
+      running balance above each row's floor, so no row overdraws the payer.
     - Taxes exclude contributions, distribution income and reporting remittances; uncollected assessments create no
       debt.
     - Capture tax bases and cash before credits; capture distribution earnings and cash after tax but before any payout.

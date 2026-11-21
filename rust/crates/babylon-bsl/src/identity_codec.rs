@@ -950,6 +950,7 @@ pub fn encode_effect_signature(
         EffectSignature::OrganizerProducts => writer.push(0x07)?,
         EffectSignature::OrganizerPractice => writer.push(0x08)?,
         EffectSignature::CityPdObserve => writer.push(0x09)?,
+        EffectSignature::CountyReview => writer.push(0x0a)?,
         EffectSignature::NodeField(qname) => encode_effect_field(0x01, qname, &mut writer)?,
         EffectSignature::EdgeField(qname) => encode_effect_field(0x02, qname, &mut writer)?,
         EffectSignature::HyperedgeField(qname) => encode_effect_field(0x03, qname, &mut writer)?,

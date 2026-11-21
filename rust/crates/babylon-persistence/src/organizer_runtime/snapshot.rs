@@ -8,7 +8,7 @@ use crate::national_economy::NationalGamePolicy;
 use super::{collection_preview, material_preview, OrganizerCollectionPreview};
 
 use babylon_practice_contract::{
-    OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerView,
+    CountyReviewProjection, OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerView,
 };
 
 use postgres::{GenericClient, IsolationLevel};
@@ -109,6 +109,9 @@ pub struct OrganizerSnapshot {
     #[serde(deserialize_with = "collection_preview::required_nullable")]
     pub collection: Option<OrganizerCollectionPreview>,
     pub collection_resolutions: Vec<OrganizerCollectionResolution>,
+    /// The county review as the player sees it. Absent for a campaign with no county review.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub county_review: Option<CountyReviewProjection>,
 }
 
 fn disclose_partner_counties(
@@ -167,7 +170,8 @@ pub(crate) fn aid_snapshot_matches(
             .map(material_preview::pending)
             .collect::<Vec<_>>()
             == snapshot.pending_aid
-        && aid_history(journal, &expected_view) == snapshot.aid_resolutions)
+        && aid_history(journal, &expected_view) == snapshot.aid_resolutions
+        && super::county_review::projection(register, journal)? == snapshot.county_review)
 }
 
 /// Audit a response against an already authenticated register. Live admission
@@ -225,6 +229,7 @@ pub(crate) fn captured_organizer_snapshot(
         aid_resolutions: aid_history(journal, &view),
         collection: collection_preview::projection(register.state(), config, state.period)?,
         collection_resolutions: collection_history(journal, &view),
+        county_review: super::county_review::projection(register, journal)?,
         view,
         pending,
         duration,
@@ -660,8 +665,10 @@ impl DurableMaterialRuntime {
         if !self.session().duration().can_advance(state.period) {
             return Err(RuntimeSessionErrorCode::HorizonComplete);
         }
-        babylon_practice_contract::preview_organizer(config, state, command)
-            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)
+        let mut preview = babylon_practice_contract::preview_organizer(config, state, command)
+            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+        preview.review = super::county_review::review_preview(register, command)?;
+        Ok(preview)
     }
     /// Durably admit one immutable ruling without advancing the campaign.
     /// # Errors

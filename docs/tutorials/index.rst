@@ -17,12 +17,14 @@ Getting Started
 
    installation
    first-simulation
+   first-county-review
 
 These tutorials will help you:
 
 1. Set up your development environment
 2. Run your first simulation
 3. Understand the basic concepts
+4. Play your first county review in Wayne
 
 What You'll Learn
 -----------------
@@ -34,6 +36,10 @@ What You'll Learn
 **First Simulation**
    Create a minimal world state, run the simulation engine, and observe
    the results. Learn the core loop: state → engine → new state.
+
+**Your First County Review**
+   Start a new Wayne campaign, read the county's books, reach one household
+   and watch the county's session pay it one unit of relief.
 
 Next Steps
 ----------

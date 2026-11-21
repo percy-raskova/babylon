@@ -124,6 +124,7 @@ pub(super) enum PossibleBenefit {
     LocalGift,
     RemoteGift,
     Hearing,
+    ReviewContact,
     PauseRoutine,
     NoPractice,
 }
@@ -165,6 +166,8 @@ pub(super) struct PracticeChoice<'a> {
     pub availability: ChoiceAvailability,
     pub collection: Option<&'a OrganizerCollectionPreview>,
     pub aid: Option<&'a OrganizerMaterialAidPreview>,
+    /// The household position a review contact would reach, named from the county's roster.
+    pub contact: Option<String>,
 }
 
 #[derive(Debug)]
@@ -271,6 +274,7 @@ fn captured_parties<'a>(
             None,
             super::hearing::invitee(view).map(|partner| known_partner(view, partner.actor_id)),
         ),
+        OrganizerChoice::ReviewContact(_) => (None, None),
         OrganizerChoice::Collect => (
             client.collection_preview().map(|terms| NamedSubject {
                 subject: OrganizerSubject::Contributor(terms.contributor_id),
@@ -300,7 +304,9 @@ fn practice<'a>(
     let aid = client.aid_preview(choice);
     let hours = match choice {
         OrganizerChoice::Inquiry(_) => Some(view.inquiry_hours),
-        OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => Some(view.contact_hours),
+        OrganizerChoice::Reinforce
+        | OrganizerChoice::ResumeStanding
+        | OrganizerChoice::ReviewContact(_) => Some(view.contact_hours),
         OrganizerChoice::Hold if view.standing.authorized => Some(view.contact_hours),
         OrganizerChoice::Hold | OrganizerChoice::PauseStanding => Some(0),
         OrganizerChoice::InviteToHearing(_) => {
@@ -331,6 +337,7 @@ fn practice<'a>(
         OrganizerChoice::PauseStanding => PossibleBenefit::PauseRoutine,
         OrganizerChoice::Collect => PossibleBenefit::Collection,
         OrganizerChoice::InviteToHearing(_) => PossibleBenefit::Hearing,
+        OrganizerChoice::ReviewContact(_) => PossibleBenefit::ReviewContact,
         OrganizerChoice::LocalAid => PossibleBenefit::LocalGift,
         OrganizerChoice::RemoteAid => PossibleBenefit::RemoteGift,
     };
@@ -363,6 +370,13 @@ fn practice<'a>(
         availability: availability(client, view, session, choice, hours),
         collection,
         aid,
+        contact: match choice {
+            OrganizerChoice::ReviewContact(key) => client
+                .county_review
+                .as_ref()
+                .map(|county| super::county::name_of(county, key)),
+            _ => None,
+        },
     }
 }
 
@@ -438,6 +452,9 @@ fn availability(
     }
     if matches!(choice, OrganizerChoice::InviteToHearing(_)) && !client.choice_available(choice) {
         return ChoiceAvailability::Refused(OrganizerRefusal::HearingUnavailable);
+    }
+    if matches!(choice, OrganizerChoice::ReviewContact(_)) && !client.choice_available(choice) {
+        return ChoiceAvailability::Refused(OrganizerRefusal::ReviewUnavailable);
     }
     if aid_kind(choice).is_some() {
         let Some(terms) = client.aid_preview(choice) else {
@@ -867,6 +884,7 @@ mod tests {
     fn preview_refusals_pending_requests_and_historical_views_cannot_offer_writes() {
         let (mut client, mut session) = super::super::tests::ready();
         client.preview = Some(OrganizerPreview {
+            review: None,
             allocation: OrganizerAllocation::None,
             choice: OrganizerChoice::Reinforce,
             current_period: 3,

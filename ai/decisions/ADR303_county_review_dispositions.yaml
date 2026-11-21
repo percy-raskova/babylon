@@ -1,0 +1,82 @@
+ADR303_county_review_dispositions:
+  title: Fix what the County Review shows of class and nation, and the dispositions of the aid roll and graph payload
+  date: '2026-11-19'
+  status: accepted
+  issue: PER-366
+  evidence_class: Designed
+  authority:
+    - >-
+      Director, 2026-11-19, on the second road, after the re-check: "No roll until
+      the kitchen". Food runs stay as they are and no roll is written in this
+      slice.
+    - >-
+      Director ruling, recorded in the design (section 2): the game's ideology sides with MIM.
+      MIM's line is the game's position. MCU and FRSO are settler organizations
+      opposed to MIM and are never sources for method.
+    - Game Design Standard W.2 (a deferred item carries a disposition)
+    - ADR198 R4 (the membership payload needs the Director's act)
+  context: |
+    Three matters need a disposition before the slice is built. The first is what
+    the screens say about class and nation. The second is the aid road, where the
+    Director's three rulings cannot all hold today because the aid partners have
+    no kitchen, site or stock. The third is writing the roster and rolls onto
+    membership links in the graph.
+  decision: |
+    R1. CLASS AND NATION TEXT. Each position shows a livelihood profile. The
+    amounts are Derived for the period just closed. The wage is the position's own.
+    Ownership income, county support and mutual aid are held only for the whole
+    budget group, so they are shown as the group's and labelled so. MIM's reading
+    sits beside each source of income. It is not a label on a position. The words
+    are Designed and marked so.
+      Beside wages: "MIM reads wage and salary income inside U.S. borders as
+      labor-aristocracy income or higher, unless the earner is undocumented.
+      Legal status and the wage-against-value term are not in this slice."
+      Beside ownership income: MIM's sentence "What is important is not the
+      literal ownership of means of production but access", then the game's note
+      "The accounts hold only income received from ownership. They hold no access
+      to credit and no net worth."
+      Beside county support and mutual aid: no reading.
+      Where a position has neither wages nor ownership income: "No wage in this
+      period. MIM's reading here turns on nation and legal status, which are not
+      in this slice."
+    The reading follows each dollar of income. It sorts no household into a class,
+    and no rule takes it as input. No position is called workers, proletariat or
+    the base. Nation shows as pending on every position. Every view carries one
+    line: "This slice has no nation, no solidarity and no consciousness.
+    Households act on their own money only." Neither road is presented as MIM's
+    road.
+
+    R2. THE AID ROAD'S ROLL. Disposition CHARTER. No roll is written in this
+    slice. Food runs stay as they are. The roll goes to the kitchen slice: a site
+    the organization runs, staffed by members' own hours, where giving hours and
+    receiving food are different acts. A roll of the four households that receive
+    the food would be a roll of who received aid, and receiving aid never puts a
+    household on a roll. The kitchen needs a production rule and the Director's
+    rulings on it.
+
+    R3. THE GRAPH PAYLOAD. Disposition BLOCKED. Writing the roster and rolls onto
+    membership links (a body as one link over positions, a workplace as one link
+    over its households) waits on two things outside this slice. One is the
+    Director's act to fill the membership payload (ADR198 R4, PER-44). The other
+    is an accessor in the upstream graph library (hypergraph-rs issue 2). Until
+    both exist the session records are the first home of the roll and the roster.
+    The Director may instead open the payload ceremony in this lane. That is
+    the Director's choice and is not assumed here.
+  calls:
+    - 'MIM''s reading is shown beside each source of income and not as a label (design 7.10).'
+    - 'A figure held only for a budget group is shown as the group''s (7.10).'
+    - 'The wording of the readings is Designed. Only the MIM sentences are quoted.'
+  alternatives_rejected:
+    - 'Working for one''s own parcel counts as giving hours (design 6, The second road).'
+    - 'The kitchen in this slice (6).'
+    - 'County review only, labelled as the reform road (6).'
+  verification: |
+    Check that no view names a position by a class label, that every figure held
+    only for a group is labelled as the group's, that a food run writes no roll,
+    and that no session record writes a membership link.
+  related:
+    - ADR198_program29_substrate_widening_charter
+    - ADR262_native_organizer_practice
+    - ADR270_household_time_and_material_organizer
+    - ADR299_wayne_relief_hearing
+    - ADR301_county_review_session

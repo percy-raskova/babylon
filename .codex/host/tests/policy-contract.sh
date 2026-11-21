@@ -2,7 +2,7 @@
 # Source-only contract for repository recognition and the bounded host policy.
 set -eu
 
-unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR CARGO_BUILD_BUILD_DIR
+unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR CARGO_BUILD_BUILD_DIR CARGO_BUILD_JOBS
 unset CODEX_RUST_SCOPE_ACTIVE CODEX_RUST_CARGO_DISPATCHER
 unset CODEX_RUST_HOST_DRY_RUN CODEX_RUST_SCCACHE_BOOTSTRAP
 
@@ -10,6 +10,7 @@ test_path="$(readlink -f -- "$0")"
 host_dir="$(dirname -- "$(dirname -- "$test_path")")"
 dispatcher="$host_dir/cargo"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/nnsims-host-policy.XXXXXX")"
+export HOST_CONTRACT_BUDGET_ROOT="$temporary_root/budget"
 trap 'rm -rf -- "$temporary_root"' EXIT HUP INT TERM
 
 fail() {
@@ -49,6 +50,80 @@ assert_line() {
   expected="$2"
   printf '%s\n' "$output" | grep -Fqx "$expected" ||
     fail "missing '$expected' in:\n$output"
+}
+
+# Every route that carries a Cargo job count: the environment, each -j and
+# --jobs spelling, a config or environment alias, and Cargo config build.jobs.
+# The unquoted expansion of a spelling separates an option from its value.
+assert_jobs_admitted() {
+  admitted_repository="$1"
+  admitted_jobs="$2"
+  mkdir -p "$admitted_repository/.cargo"
+  admitted_output="$(CARGO_BUILD_JOBS="$admitted_jobs" dry_run "$admitted_repository" check)" ||
+    fail "CARGO_BUILD_JOBS=$admitted_jobs was refused in $admitted_repository"
+  assert_line "$admitted_output" "jobs=$admitted_jobs"
+  for admitted_spelling in "-j" "-j " "--jobs " "--jobs="; do
+    admitted_arguments="$admitted_spelling$admitted_jobs"
+    # shellcheck disable=SC2086
+    dry_run "$admitted_repository" test $admitted_arguments >/dev/null ||
+      fail "'$admitted_arguments' was refused in $admitted_repository"
+    printf '%s\n' '[alias]' "bounded = \"check $admitted_arguments\"" \
+      >"$admitted_repository/.cargo/config.toml"
+    dry_run "$admitted_repository" bounded >/dev/null ||
+      fail "a Cargo config alias with '$admitted_arguments' was refused in $admitted_repository"
+    rm -f -- "$admitted_repository/.cargo/config.toml"
+    CARGO_ALIAS_BOUNDED="check $admitted_arguments" dry_run "$admitted_repository" bounded >/dev/null ||
+      fail "an environment Cargo alias with '$admitted_arguments' was refused in $admitted_repository"
+  done
+  printf '%s\n' '[build]' "jobs = $admitted_jobs" >"$admitted_repository/.cargo/config.toml"
+  dry_run "$admitted_repository" check >/dev/null ||
+    fail "Cargo config build.jobs = $admitted_jobs was refused in $admitted_repository"
+  rm -f -- "$admitted_repository/.cargo/config.toml"
+}
+
+# A refusal must name the repository's own limit, not merely fail.
+assert_refusal_names_limit() {
+  grep -Fq "the $1-job host limit" "$temporary_root/jobs-refusal" ||
+    fail "$2 was not refused at the $1-job limit: $(cat "$temporary_root/jobs-refusal")"
+}
+
+assert_jobs_refused() {
+  refused_repository="$1"
+  refused_jobs="$2"
+  refused_limit="$3"
+  mkdir -p "$refused_repository/.cargo"
+  if CARGO_BUILD_JOBS="$refused_jobs" dry_run "$refused_repository" check \
+    >/dev/null 2>"$temporary_root/jobs-refusal"; then
+    fail "CARGO_BUILD_JOBS=$refused_jobs escaped the $refused_limit-job ceiling"
+  fi
+  assert_refusal_names_limit "$refused_limit" "CARGO_BUILD_JOBS=$refused_jobs"
+  for refused_spelling in "-j" "-j " "--jobs " "--jobs="; do
+    refused_arguments="$refused_spelling$refused_jobs"
+    # shellcheck disable=SC2086
+    if dry_run "$refused_repository" test $refused_arguments \
+      >/dev/null 2>"$temporary_root/jobs-refusal"; then
+      fail "'$refused_arguments' escaped the $refused_limit-job ceiling"
+    fi
+    assert_refusal_names_limit "$refused_limit" "'$refused_arguments'"
+    printf '%s\n' '[alias]' "over = \"check $refused_arguments\"" \
+      >"$refused_repository/.cargo/config.toml"
+    if dry_run "$refused_repository" over >/dev/null 2>"$temporary_root/jobs-refusal"; then
+      fail "a Cargo config alias with '$refused_arguments' escaped the $refused_limit-job ceiling"
+    fi
+    assert_refusal_names_limit "$refused_limit" "a config alias with '$refused_arguments'"
+    rm -f -- "$refused_repository/.cargo/config.toml"
+    if CARGO_ALIAS_OVER="check $refused_arguments" \
+      dry_run "$refused_repository" over >/dev/null 2>"$temporary_root/jobs-refusal"; then
+      fail "an environment Cargo alias with '$refused_arguments' escaped the $refused_limit-job ceiling"
+    fi
+    assert_refusal_names_limit "$refused_limit" "an environment alias with '$refused_arguments'"
+  done
+  printf '%s\n' '[build]' "jobs = $refused_jobs" >"$refused_repository/.cargo/config.toml"
+  if dry_run "$refused_repository" check >/dev/null 2>"$temporary_root/jobs-refusal"; then
+    fail "Cargo config build.jobs = $refused_jobs escaped the $refused_limit-job ceiling"
+  fi
+  assert_refusal_names_limit "$refused_limit" "build.jobs = $refused_jobs"
+  rm -f -- "$refused_repository/.cargo/config.toml"
 }
 
 nnsims_repository="$temporary_root/nnsims"
@@ -91,6 +166,7 @@ assert_line "$babylon_output" slice=codex-rust-babylon.slice
 assert_line "$babylon_output" "cache=$temporary_root/cache/sccache/babylon/0.17.0-p2"
 assert_line "$babylon_output" "socket=$temporary_root/cache/sccache-server/babylon-0.17.0-p2.sock"
 assert_line "$babylon_output" "target=$babylon_repository/rust/target"
+assert_line "$babylon_output" jobs=8
 
 [ "$(dry_run "$unmanaged_repository" metadata)" = unmanaged ] ||
   fail "an unrelated repository did not fall through"
@@ -189,6 +265,10 @@ if CARGO_BUILD_JOBS=5 dry_run "$nnsims_repository" check >/dev/null 2>&1; then
   fail "CARGO_BUILD_JOBS=5 escaped the four-job ceiling"
 fi
 dry_run "$nnsims_repository" test -j4 >/dev/null
+assert_jobs_admitted "$nnsims_repository" 4
+assert_jobs_refused "$nnsims_repository" 5 4
+assert_jobs_admitted "$babylon_repository" 8
+assert_jobs_refused "$babylon_repository" 9 8
 if dry_run "$nnsims_repository" test --config build.jobs=5 >/dev/null 2>&1; then
   fail "caller-supplied --config escaped the managed Cargo boundary"
 fi
@@ -343,6 +423,29 @@ grep -Fqx '<build.rustc-wrapper="">' "$managed_result" ||
 grep -Fqx '<install>' "$managed_result" ||
   fail "the exact pinned sccache bootstrap did not reach Cargo"
 
+budget_fixture="$managed_tools/cargo-worktree-budget/0.1.0/cargo-worktree-budget"
+mkdir -p "$(dirname -- "$budget_fixture")"
+cat > "$budget_fixture" <<'BUDGET'
+#!/bin/sh
+set -eu
+[ "$1" = --root ] && [ "$2" = "$HOST_CONTRACT_BUDGET_ROOT" ] || exit 64
+[ "$3" = --owner ] && [ "$4" = "$HOST_CONTRACT_BABYLON" ] || exit 64
+[ "$5" = --target-dir ] && [ "$6" = "$HOST_CONTRACT_BABYLON/rust/target" ] || exit 64
+[ "$7" = --mount ] && mountpoint -q "$8" || exit 64
+[ "$9" = --budget-bytes ] && [ "${10}" = 68719476736 ] || exit 64
+[ "${11}" = --reserve-bytes ] && [ "${12}" = 42949672960 ] || exit 64
+[ "${13}" = run ] && [ "${14}" = -- ] || exit 64
+shift 14
+printf 'admitted\n' >> "$HOST_CONTRACT_ADMISSIONS"
+export CARGO_WORKTREE_BUDGET_SESSION=fixture
+export CARGO_BUILD_BUILD_DIR="$HOST_CONTRACT_BUDGET_ROOT/slot/build"
+exec "$@"
+BUDGET
+chmod +x "$budget_fixture"
+fixture_digest="$(sha256sum < "$budget_fixture" | cut -d' ' -f1)"
+sed -i "s/^CODEX_RUST_BUDGET_SHA256=.*/CODEX_RUST_BUDGET_SHA256=$fixture_digest/" "$managed_host/policy.sh"
+export HOST_CONTRACT_BABYLON="$babylon_repository"
+export HOST_CONTRACT_ADMISSIONS="$temporary_root/admissions"
 printf '0::/user.slice/codex-rust.slice/codex-rust-babylon.slice/run-test.scope\n' \
   >"$managed_cgroup"
 if (
@@ -371,6 +474,37 @@ grep -Fqx '<+1.99.1>' "$managed_result" ||
   fail "Babylon's exact pinned bootstrap selector did not reach Cargo"
 grep -Fqx '<build.rustc-wrapper="">' "$managed_result" ||
   fail "Babylon's exact pinned bootstrap did not disable its self-wrapper"
+run_babylon() (
+  cd "$babylon_repository"
+  CODEX_RUST_SCOPE_ACTIVE=1 CODEX_RUST_CACHE_ROOT="$temporary_root/cache" \
+    CODEX_RUST_TOOLS_ROOT="$managed_tools" HOST_CONTRACT_RESULT="$managed_result" \
+    "$managed_dispatcher" "$@"
+)
+[ "$(wc -l < "$HOST_CONTRACT_ADMISSIONS")" -eq 1 ] || fail "bootstrap missed its lease"
+run_babylon metadata --locked --no-deps
+run_babylon --quiet metadata --no-deps
+run_babylon --color never metadata
+[ "$(wc -l < "$HOST_CONTRACT_ADMISSIONS")" -eq 1 ] || fail "metadata switched the warm owner"
+run_babylon test metadata
+run_babylon nextest run --profile ci
+[ "$(wc -l < "$HOST_CONTRACT_ADMISSIONS")" -eq 3 ] || fail "nextest escaped its lease"
+assert_line "$(cat "$managed_result")" "jobs=8"
+assert_line "$(cat "$managed_result")" "target=$babylon_repository/rust/target"
+assert_line "$(cat "$managed_result")" "build_dir=$HOST_CONTRACT_BUDGET_ROOT/slot/build"
+assert_line "$(cat "$managed_result")" "rustc_wrapper=set"
+assert_line "$(cat "$managed_result")" "cache=$temporary_root/cache/sccache/babylon/0.17.0-p2"
+coverage_build="$HOST_CONTRACT_BUDGET_ROOT/slot/build/llvm-cov-target"
+coverage_target="$babylon_repository/rust/target/llvm-cov-target"
+CARGO_WORKTREE_BUDGET_SESSION=fixture CARGO_BUILD_BUILD_DIR="$coverage_build" \
+  run_babylon clean --target-dir "$coverage_target"
+assert_line "$(cat "$managed_result")" "build_dir=$coverage_build"
+if CARGO_WORKTREE_BUDGET_SESSION=fixture CARGO_BUILD_BUILD_DIR="$coverage_build" \
+  run_babylon clean --target-dir "$temporary_root/other" >/dev/null 2>&1; then
+  fail "nested coverage admitted an arbitrary target"
+fi
+if CARGO_BUILD_BUILD_DIR="$coverage_build" run_babylon clean --target-dir "$coverage_target" >/dev/null 2>&1; then
+  fail "caller selected coverage paths outside a session"
+fi
 printf '0::/user.slice/codex-rust.slice/codex-rust-nnsims.slice/run-test.scope\n' \
   >"$managed_cgroup"
 
@@ -570,12 +704,29 @@ assert_line "$cache_stats" "cache=$temporary_root/cache/sccache/nnsims/0.17.0-p2
 assert_line "$cache_stats" "socket=$temporary_root/cache/sccache-server/nnsims-0.17.0-p2.sock"
 assert_line "$cache_stats" 'slice=codex-rust-nnsims.slice'
 
-grep -Fqx 'MemoryMax=24G' "$host_dir/systemd/codex-rust.slice" ||
-  fail "the parent memory ceiling moved"
-grep -Fqx 'MemoryMax=12G' "$host_dir/systemd/codex-rust-nnsims.slice" ||
-  fail "the NNSims memory ceiling moved"
-grep -Fqx 'MemoryMax=12G' "$host_dir/systemd/codex-rust-babylon.slice" ||
-  fail "the Babylon memory ceiling moved"
+# Each unit is exact: its version marker, description, accounting, and limits.
+assert_slice_unit() {
+  slice_unit="$1"
+  shift
+  expected_unit="$(printf '%s\n' \
+    '# Managed by nnsims .codex/host/install.sh (policy v14).' \
+    '[Unit]' "$1" '' '[Slice]' \
+    CPUAccounting=yes MemoryAccounting=yes IOAccounting=yes TasksAccounting=yes)"
+  shift
+  expected_unit="$expected_unit
+$(printf '%s\n' "$@")"
+  [ "$(cat "$host_dir/systemd/$slice_unit")" = "$expected_unit" ] ||
+    fail "$slice_unit differs from its policy v14 limits"
+}
+assert_slice_unit codex-rust.slice \
+  'Description=Aggregate budget for Codex Rust repositories' \
+  CPUQuota=800% MemoryHigh=20G MemoryMax=24G MemorySwapMax=4G IOWeight=500 TasksMax=1024
+assert_slice_unit codex-rust-nnsims.slice \
+  'Description=NNSims Rust build budget' \
+  CPUQuota=400% MemoryHigh=10G MemoryMax=12G MemorySwapMax=2G IOWeight=500 TasksMax=512
+assert_slice_unit codex-rust-babylon.slice \
+  'Description=Babylon Rust build budget' \
+  CPUQuota=800% MemoryHigh=16G MemoryMax=20G MemorySwapMax=2G IOWeight=500 TasksMax=512
 grep -Fq 'CODEX_RUST_SCOPE_ACTIVE' "$dispatcher" ||
   fail "the nested-Cargo recursion guard disappeared"
 grep -Fq 'codex_rust_process_is_in_slice "$slice" "$cgroup_membership_file"' "$dispatcher" ||
@@ -603,6 +754,70 @@ if (
     "$managed_dispatcher" check
 ) >/dev/null 2>&1; then
   fail "a missing slice unit was admitted as an unbounded implicit slice"
+fi
+
+# The dispatcher admits a loaded slice only at its exact governed values. This
+# fake manager reports the installed fragment and a property table.
+slice_host="$temporary_root/slice-host"
+slice_systemctl="$temporary_root/slice-systemctl"
+slice_table="$temporary_root/slice-table"
+mkdir -p "$slice_host/systemd"
+cp -- "$host_dir/systemd/"*.slice "$slice_host/systemd/"
+cat >"$slice_systemctl" <<'SYSTEMCTL'
+#!/bin/sh
+set -eu
+[ "$1" = --user ] && [ "$2" = show ] && [ "$5" = --value ] || exit 2
+property="${4#--property=}"
+if [ "$property" = FragmentPath ]; then
+  printf '%s\n' "$HOST_CONTRACT_SLICE_HOST/systemd/$3"
+  exit 0
+fi
+awk -v key="$3:$property" '$1 == key { print $2; found = 1 } END { exit !found }' \
+  "$HOST_CONTRACT_SLICE_TABLE"
+SYSTEMCTL
+chmod 755 "$slice_systemctl"
+sed "s|/usr/bin/systemctl|$slice_systemctl|g" "$host_dir/policy.sh" >"$slice_host/policy.sh"
+write_slice_table() {
+  printf '%s\n' \
+    'codex-rust.slice:CPUQuotaPerSecUSec 8s' \
+    'codex-rust.slice:MemoryHigh 21474836480' \
+    'codex-rust.slice:MemoryMax 25769803776' \
+    'codex-rust.slice:MemorySwapMax 4294967296' \
+    'codex-rust.slice:IOWeight 500' \
+    'codex-rust.slice:TasksMax 1024' \
+    "codex-rust-nnsims.slice:CPUQuotaPerSecUSec $1" \
+    'codex-rust-nnsims.slice:MemoryHigh 10737418240' \
+    'codex-rust-nnsims.slice:MemoryMax 12884901888' \
+    'codex-rust-nnsims.slice:MemorySwapMax 2147483648' \
+    'codex-rust-nnsims.slice:IOWeight 500' \
+    'codex-rust-nnsims.slice:TasksMax 512' \
+    "codex-rust-babylon.slice:CPUQuotaPerSecUSec $2" \
+    "codex-rust-babylon.slice:MemoryHigh $3" \
+    "codex-rust-babylon.slice:MemoryMax $4" \
+    'codex-rust-babylon.slice:MemorySwapMax 2147483648' \
+    'codex-rust-babylon.slice:IOWeight 500' \
+    'codex-rust-babylon.slice:TasksMax 512' \
+    >"$slice_table"
+}
+slice_policy_admits() (
+  HOST_CONTRACT_SLICE_HOST="$slice_host"
+  HOST_CONTRACT_SLICE_TABLE="$slice_table"
+  export HOST_CONTRACT_SLICE_HOST HOST_CONTRACT_SLICE_TABLE
+  . "$slice_host/policy.sh"
+  codex_rust_slice_matches_policy "$1" "$slice_host"
+)
+write_slice_table 4s 8s 17179869184 21474836480
+for governed_slice in codex-rust.slice codex-rust-nnsims.slice codex-rust-babylon.slice; do
+  slice_policy_admits "$governed_slice" ||
+    fail "the dispatcher refused $governed_slice at its exact policy v14 values"
+done
+write_slice_table 4s 4s 10737418240 12884901888
+if slice_policy_admits codex-rust-babylon.slice; then
+  fail "the dispatcher admitted a Babylon slice still loaded at the v13 limits"
+fi
+write_slice_table 8s 8s 17179869184 21474836480
+if slice_policy_admits codex-rust-nnsims.slice; then
+  fail "the dispatcher admitted an NNSims slice at Babylon's eight-CPU quota"
 fi
 
 echo "host policy contract: PASS"

@@ -29,6 +29,22 @@ encoding:
     activation: When a captured company portfolio closes a positive period, register version 8 appends its decisions.
     domain: "babylon.material-world-register.v8\0"
     field: u64_big_endian_length_then_canonical_company_portfolio_bytes
+  county_review_section:
+    activation: >-
+      When the campaign captures a county review administration, register version 9 appends its frame
+      after the company frame, which is present exactly as in version 8. A register with no county section
+      keeps its version 7 or 8 bytes. The county frame has no presence byte.
+    domain: "babylon.material-world-register.v9\0"
+    frame_domain: "babylon.material-world-register.county-review.v1\0"
+    field: >-
+      u64_big_endian_length_then_frame: frame_domain, u64_big_endian_length_then_canonical_county_review_config_bytes,
+      u64_big_endian_length_then_canonical_county_review_state_bytes
+    config_and_state: Canonical JSON framed by babylon.county-review-config.v1 and babylon.county-review-state.v1.
+    admission: >-
+      Every configured group is a household cohort whose households equal the roster's, every crew is an
+      employment row of its group, the county's public account and budget exist, the roster, last facts and
+      last session stand for the completed tick, and the account's household support lines are the lines the
+      section announces.
   digest: sha256_exact_bytes
   maximum_complete_bytes: 1000000000
   measured_opening_state_bytes: 284889764

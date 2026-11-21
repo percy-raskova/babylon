@@ -394,3 +394,101 @@ fn venue_log_reader_is_required_and_closed() {
     assert!(NationalGamePolicy::parse(&unknown).is_err());
     assert!(NationalGamePolicy::parse(&missing).is_err());
 }
+
+#[test]
+fn city_pd_terms_are_designed_sourced_and_required_from_schema_7() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("the shipped national policy");
+    let terms = policy.city_pd.as_ref().expect("schema 7 carries [city_pd]");
+    assert_eq!(terms.positions, 3_529);
+    assert_eq!(terms.visits_per_period, 1);
+    assert_eq!(terms.visit_hours, 1);
+    assert!(terms.positions_source.starts_with("City of Detroit"));
+    // The wage is still the shipped wage; only its three jobs are separate.
+    assert_eq!(policy.default_wage.micro_units(), 24_000_000);
+
+    let table = SOURCE
+        .find("\n[city_pd]\n")
+        .expect("the shipped policy names the City PD's books");
+    let without = &SOURCE[..table];
+    assert!(NationalGamePolicy::parse(without).is_err());
+    // An earlier schema has no such table and refuses one.
+    assert!(NationalGamePolicy::parse(&SOURCE.replacen(
+        "schema_version = 7",
+        "schema_version = 6",
+        1
+    ))
+    .is_err());
+    for changed in [
+        SOURCE.replace("positions = 3529", "positions = 0"),
+        SOURCE.replace("visits_per_period = 1", "visits_per_period = 0"),
+        SOURCE.replace("visit_hours = 1\n", "visit_hours = 0\n"),
+        SOURCE.replace(
+            "[city_pd]\nevidence_class = \"Designed\"",
+            "[city_pd]\nevidence_class = \"Observed\"",
+        ),
+        SOURCE.replace(
+            "positions_source = \"City of Detroit",
+            "positions_source = \"\"\n# City of Detroit",
+        ),
+    ] {
+        assert_ne!(changed, SOURCE, "the mutation must change the input");
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
+}
+
+#[test]
+fn county_review_terms_are_designed_and_required_from_schema_7() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("the shipped national policy");
+    let terms = policy
+        .county_review
+        .as_ref()
+        .expect("schema 7 carries [county_review]");
+    assert_eq!(terms.county.as_str(), "26163");
+    assert_eq!(terms.first_session_period, 4);
+    assert_eq!(terms.session_hours, 2);
+    assert_eq!(terms.bring_hours, 2);
+    // The two bodies are the hearing's claimants and the organizer's local partner.
+    let hearing = policy
+        .organizer
+        .hearing
+        .as_ref()
+        .expect("the shipped policy holds the relief hearing");
+    assert_eq!(terms.claimants_body_label, hearing.claimant_label);
+    assert_eq!(terms.aid_body_label, policy.organizer.local_partner_label);
+
+    let table = SOURCE
+        .find("\n[county_review]\n")
+        .expect("the shipped policy names the county review's terms");
+    assert!(NationalGamePolicy::parse(&SOURCE[..table]).is_err());
+    // An earlier schema has no such table and refuses one.
+    assert!(NationalGamePolicy::parse(&SOURCE.replacen(
+        "schema_version = 7",
+        "schema_version = 6",
+        1
+    ))
+    .is_err());
+    for changed in [
+        SOURCE.replace(
+            "[county_review]\nevidence_class = \"Designed\"",
+            "[county_review]\nevidence_class = \"Observed\"",
+        ),
+        SOURCE.replace("first_session_period = 4", "first_session_period = 0"),
+        SOURCE.replace("session_hours = 2", "session_hours = 0"),
+        SOURCE.replace("bring_hours = 2", "bring_hours = 0"),
+        SOURCE.replace(
+            "claimants_body_label = \"Wayne Relief Claimants Assembly\"",
+            "claimants_body_label = \"Another assembly\"",
+        ),
+        SOURCE.replace(
+            "aid_body_label = \"Wayne Local Aid Partners\"",
+            "aid_body_label = \"Another partner\"",
+        ),
+        SOURCE.replace(
+            "[county_review]\nevidence_class = \"Designed\"\ncounty = \"26163\"",
+            "[county_review]\nevidence_class = \"Designed\"\ncounty = \"26125\"",
+        ),
+    ] {
+        assert_ne!(changed, SOURCE, "the mutation must change the input");
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
+}

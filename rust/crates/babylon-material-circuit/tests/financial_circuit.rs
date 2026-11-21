@@ -26,6 +26,7 @@ use babylon_material_circuit::OwnershipClaim;
 use babylon_material_circuit::PublicAccountId;
 use babylon_material_circuit::PublicAllocation;
 use babylon_material_circuit::PublicBudget;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::PublicTransferTreatment;
 use babylon_material_circuit::SiteId;
 use babylon_material_circuit::SiteLogisticsNode;
@@ -79,6 +80,8 @@ fn financial() -> FinancialInstitutions {
         public_budgets: vec![],
         public_allocations: vec![],
         contributions: vec![],
+        programs: vec![],
+        layoffs: vec![],
     }
 }
 fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
@@ -116,6 +119,7 @@ fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
     )
     .expect("the fixture opens the authored source");
     let catalog = MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site(),
@@ -329,6 +333,7 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
         public_account: treasury(),
         period_cap: money(5),
         cash_floor: money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     f.public_allocations.push(PublicAllocation {
         public_account: treasury(),
@@ -378,6 +383,7 @@ fn appropriation_state(
         public_account: treasury(),
         period_cap: money(cap),
         cash_floor: money(floor),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     f.public_allocations.extend([
         PublicAllocation {
@@ -398,6 +404,132 @@ fn appropriation_state(
     (catalog, state)
 }
 
+/// The two standing rows of `appropriation_state` at one rank, the budget cut in proportion.
+fn proportional_state(
+    cash: i128,
+    floor: i128,
+    cap: i128,
+) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = appropriation_state(cash, floor, cap, 0);
+    let f = &mut economy_mut(&mut state).financial;
+    f.public_budgets[0].rule = PublicSpendingRule::CashInProportion;
+    for r in &mut f.public_allocations {
+        r.priority = 0;
+    }
+    (catalog, state)
+}
+
+#[test]
+fn standing_rows_of_one_rank_are_cut_in_proportion() {
+    let (catalog, state) = proportional_state(30, 0, 0);
+    let before = economy(&state)
+        .book
+        .total_cash_and_reserves()
+        .expect("the fixture book totals");
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("a budget in proportion advances");
+    assert_eq!(
+        t.public_budgets
+            .iter()
+            .map(|r| (r.paid, r.unfunded))
+            .collect::<Vec<_>>(),
+        [(money(15), money(5)), (money(15), money(5))]
+    );
+    let book = &economy(&t.state).book;
+    assert_eq!(
+        book.cash(AccountId::Public(treasury()))
+            .expect("the treasury is a book account"),
+        money(0)
+    );
+    assert_eq!(
+        book.total_cash_and_reserves()
+            .expect("the closed book totals"),
+        before
+    );
+    assert_eq!(before, money(30));
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("the extended state encodes");
+    assert_eq!(bytes[34..36], 25_u16.to_be_bytes());
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+        .expect("the extended state decodes");
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &restored)
+            .expect("the restored state encodes"),
+        bytes
+    );
+    let closed = babylon_material_circuit::encode_material_circuit_state(&catalog, &t.state)
+        .expect("the successor encodes");
+    assert_eq!(closed[34..36], 25_u16.to_be_bytes());
+}
+
+#[test]
+fn a_budget_in_proportion_keeps_its_floor() {
+    let (catalog, state) = proportional_state(100, 70, 0);
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("a budget in proportion advances");
+    assert_eq!(
+        t.public_budgets.iter().map(|r| r.paid).collect::<Vec<_>>(),
+        [money(15), money(15)]
+    );
+}
+
+#[test]
+fn a_budget_in_proportion_with_a_cap_is_refused() {
+    let (catalog, state) = proportional_state(30, 0, 40);
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &state).err(),
+        Some(babylon_material_circuit::MaterialCircuitError::FinancialInvariant)
+    );
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state).err(),
+        Some(babylon_material_circuit::MaterialCircuitError::FinancialInvariant)
+    );
+}
+
+#[test]
+fn the_tail_is_read_only_under_its_versions() {
+    let (catalog, state) = proportional_state(30, 0, 0);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("the extended state encodes");
+    // A plain version over the extended bytes, and the extension over plain bytes, are both refused.
+    let mut plain_label = bytes.clone();
+    plain_label[34..36].copy_from_slice(&22_u16.to_be_bytes());
+    assert!(
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &plain_label).is_err()
+    );
+    let (_, plain) = appropriation_state(30, 0, 40, 0);
+    let mut extended_label =
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &plain)
+            .expect("the plain state encodes");
+    extended_label[34..36].copy_from_slice(&25_u16.to_be_bytes());
+    assert!(
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &extended_label).is_err()
+    );
+    for end in 0..bytes.len() {
+        assert!(
+            babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes[..end])
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn a_state_without_the_extension_keeps_its_bytes() {
+    let (catalog, state) = appropriation_state(30, 0, 40, 0);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("the appropriation state encodes");
+    assert_eq!(bytes[34..36], 22_u16.to_be_bytes());
+    let digest = babylon_material_circuit::material_circuit_state_digest(&catalog, &state)
+        .expect("the appropriation state has a digest");
+    // Printed at this task's base commit (fa8ccd717), before the rule existed.
+    assert_eq!(
+        digest,
+        [
+            207, 13, 77, 25, 242, 110, 135, 225, 203, 119, 105, 200, 207, 186, 2, 108, 173, 177,
+            99, 155, 222, 243, 28, 19, 88, 156, 14, 70, 182, 53, 221, 202
+        ]
+    );
+}
 #[test]
 fn agency_appropriation_uses_ordered_opening_cash_and_reconciles_income() {
     for agency_priority in [0, 1] {

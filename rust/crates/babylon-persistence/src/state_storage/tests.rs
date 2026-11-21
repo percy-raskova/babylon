@@ -6,6 +6,7 @@ use super::register::{
 };
 use super::schema::{Cursor, Section};
 use super::{offers, register, schema};
+use crate::economic_catalog::NationalOpponent;
 use crate::material_storage::MaterialProvenance;
 use crate::michigan_content::MichiganContentPreset;
 use babylon_practice_contract::OrderedPracticeActionBatch;
@@ -1869,4 +1870,96 @@ fn previous_schema18_register_is_refused_by_current_storage_framing() {
         schema::sections(&previous),
         Err(StorageError::Version)
     ));
+}
+
+/// The position of the last place `needle` stands in `haystack`.
+fn last_at(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).rposition(|w| w == needle)
+}
+
+/// A real version 9 register, whole: the county's frame ends it, the company frame may stand in
+/// front of it, and the section the trailing frames belong to covers all of them.
+#[test]
+fn a_version_nine_register_is_walked_with_and_without_the_company_frame() {
+    const COUNTY_DOMAIN: &[u8] = b"babylon.material-world-register.county-review.v1\0";
+    const V9: &[u8] = b"babylon.material-world-register.v9\0";
+    let session = crate::organizer_runtime::county_review_tests::session(
+        "county-register-sections",
+        NationalOpponent::CityPd,
+    );
+    let bytes = session.material().canonical_bytes().to_vec();
+    assert!(
+        bytes.starts_with(V9),
+        "a campaign with a county is version 9"
+    );
+    let county_start = last_at(&bytes, COUNTY_DOMAIN).expect("the county frame") - 8;
+    let company = babylon_material_circuit::COMPANY_PORTFOLIO_DOMAIN;
+    let company_frame = last_at(&bytes[..county_start], company)
+        .map(|at| at - 8)
+        .filter(|start| {
+            let size = u64::from_be_bytes(bytes[*start..*start + 8].try_into().expect("8 bytes"));
+            usize::try_from(size).is_ok_and(|size| start + 8 + size == county_start)
+        });
+    let frame = |body: &[u8]| {
+        [
+            u64::try_from(body.len())
+                .expect("a short frame")
+                .to_be_bytes()
+                .as_slice(),
+            body,
+        ]
+        .concat()
+    };
+    let (with, without) = match company_frame {
+        Some(start) => (
+            bytes.clone(),
+            [&bytes[..start], &bytes[county_start..]].concat(),
+        ),
+        None => (
+            [
+                &bytes[..county_start],
+                &frame(&[company, b"decisions".as_slice()].concat()),
+                &bytes[county_start..],
+            ]
+            .concat(),
+            bytes.clone(),
+        ),
+    };
+    for register in [&with, &without] {
+        let parsed = schema::sections(register).expect("a version 9 register is accepted");
+        let trailing = parsed.last().expect("the trailing section");
+        assert_eq!(trailing.id, 73);
+        assert_eq!(
+            trailing.end,
+            register.len(),
+            "it runs to the register's end"
+        );
+        let county = last_at(register, COUNTY_DOMAIN).expect("the county frame") - 8;
+        assert!(
+            trailing.start < county,
+            "the county frame lies inside the section"
+        );
+        assert_eq!(
+            &trailing.raw(register)[county - trailing.start + 8..][..COUNTY_DOMAIN.len()],
+            COUNTY_DOMAIN,
+            "the section's last frame is the county's"
+        );
+    }
+    // Neither the domain nor the version number alone makes a register version 9.
+    let version = schema::REGISTER_DOMAIN.len();
+    let mut old_number = with.clone();
+    old_number[version..version + 4].copy_from_slice(&7_u32.to_be_bytes());
+    assert!(matches!(
+        schema::sections(&old_number),
+        Err(StorageError::Version)
+    ));
+    let mut old_domain = with.clone();
+    old_domain[..schema::REGISTER_DOMAIN.len()].copy_from_slice(schema::REGISTER_DOMAIN);
+    assert!(matches!(
+        schema::sections(&old_domain),
+        Err(StorageError::Version)
+    ));
+    // A county register that lost its county frame is not accepted.
+    let cut = &without[..last_at(&without, COUNTY_DOMAIN).expect("the county frame") - 8];
+    assert!(schema::sections(cut).is_err());
 }

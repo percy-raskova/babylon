@@ -14,7 +14,9 @@ use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_material_circuit::{CompanyConditionOrder, CompanyPortfolioPolicy};
 
 use super::GameOrganizerPolicy;
-use super::{GameAidPolicy, GameHouseholdSupportClaimant};
+use super::{
+    GameAidPolicy, GameCityPdPolicy, GameCountyReviewPolicy, GameHouseholdSupportClaimant,
+};
 use crate::national_economy::companies::{
     CompanyCaptureError, CompanyPolicy, ExperimentalPopulation,
 };
@@ -49,6 +51,8 @@ struct RawPolicy {
     household_lifecycle: Option<RawHouseholdLifecycle>,
     aid: GameAidPolicy,
     household_support_claimant: Option<RawHouseholdSupportClaimant>,
+    city_pd: Option<RawCityPd>,
+    county_review: Option<RawCountyReview>,
     organizer: GameOrganizerPolicy,
     markets: RawMarkets,
     equipment: RawEquipment,
@@ -81,6 +85,83 @@ impl RawHouseholdSupportClaimant {
                 .map_err(|_| Error::Location)?,
             households: self.households,
             reserve_persons: self.reserve_persons,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCityPd {
+    evidence_class: String,
+    positions: u64,
+    positions_source: String,
+    visits_per_period: u64,
+    visit_hours: u64,
+}
+
+impl RawCityPd {
+    fn admit(self) -> Result<GameCityPdPolicy, Error> {
+        if self.evidence_class != "Designed" {
+            return Err(Error::Evidence);
+        }
+        if self.positions == 0
+            || self.visits_per_period == 0
+            || self.visit_hours == 0
+            || self.positions_source.trim().is_empty()
+        {
+            return Err(Error::Profile("City PD positions, source or visits".into()));
+        }
+        Ok(GameCityPdPolicy {
+            positions: self.positions,
+            positions_source: self.positions_source,
+            visits_per_period: self.visits_per_period,
+            visit_hours: self.visit_hours,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCountyReview {
+    evidence_class: String,
+    county: String,
+    first_session_period: u64,
+    session_hours: u64,
+    bring_hours: u64,
+    administration_label: String,
+    claimants_body_label: String,
+    aid_body_label: String,
+}
+
+impl RawCountyReview {
+    fn admit(self) -> Result<GameCountyReviewPolicy, Error> {
+        if self.evidence_class != "Designed" {
+            return Err(Error::Evidence);
+        }
+        let invalid_text =
+            |text: &String| text.trim().is_empty() || text.len() > 128 || text.contains('\0');
+        if self.first_session_period == 0
+            || self.session_hours == 0
+            || self.bring_hours == 0
+            || [
+                &self.administration_label,
+                &self.claimants_body_label,
+                &self.aid_body_label,
+            ]
+            .into_iter()
+            .any(invalid_text)
+        {
+            return Err(Error::Profile("county review terms".into()));
+        }
+        Ok(GameCountyReviewPolicy {
+            county: babylon_kernel::geography::CountyGeoid::try_from(self.county.as_str())
+                .map_err(|_| Error::Location)?,
+            first_session_period: self.first_session_period,
+            session_hours: self.session_hours,
+            bring_hours: self.bring_hours,
+            administration_label: self.administration_label,
+            claimants_body_label: self.claimants_body_label,
+            aid_body_label: self.aid_body_label,
         })
     }
 }
@@ -242,6 +323,10 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     validate_globals(&raw)?;
     let grain = grain(&raw.grain)?;
     validate_organizer(&raw.organizer)?;
+    let county_review_terms = raw.county_review.map(RawCountyReview::admit).transpose()?;
+    if let Some(terms) = &county_review_terms {
+        validate_county_review(terms, &raw.organizer)?;
+    }
     validate_aid(&raw.aid)?;
     if !(1..=10_000).contains(&raw.households.private_owner_households_bps) {
         return Err(Error::Profile("private owner household fraction".into()));
@@ -293,6 +378,8 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
             .household_support_claimant
             .map(RawHouseholdSupportClaimant::admit)
             .transpose()?,
+        city_pd: raw.city_pd.map(RawCityPd::admit).transpose()?,
+        county_review: county_review_terms,
         organizer: raw.organizer,
         financial,
         households,
@@ -343,6 +430,27 @@ fn companies(
         })
         .transpose()
         .map_err(|_| Error::Shape)
+}
+
+/// The review's county and its two body labels repeat the hearing's and the local partner's; the
+/// capture reads the names from those, so a table that disagrees with them is refused here.
+fn validate_county_review(
+    terms: &GameCountyReviewPolicy,
+    organizer: &GameOrganizerPolicy,
+) -> Result<(), Error> {
+    let hearing = organizer
+        .hearing
+        .as_ref()
+        .ok_or_else(|| Error::Profile("county review needs the relief hearing".into()))?;
+    if hearing.county_geoid != terms.county.as_str()
+        || hearing.claimant_label != terms.claimants_body_label
+        || organizer.local_partner_label != terms.aid_body_label
+    {
+        return Err(Error::Profile(
+            "county review names differ from the hearing's".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {
@@ -539,12 +647,15 @@ fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
             raw.schema_version,
             raw.companies.is_some(),
             raw.household_lifecycle.is_some(),
-            raw.household_support_claimant.is_some()
+            raw.household_support_claimant.is_some(),
+            raw.city_pd.is_some(),
+            raw.county_review.is_some()
         ),
-        (2, false, false, false)
-            | (3 | 4, true, false, false)
-            | (5, true, true, false)
-            | (6, true, true, true)
+        (2, false, false, false, false, false)
+            | (3 | 4, true, false, false, false, false)
+            | (5, true, true, false, false, false)
+            | (6, true, true, true, false, false)
+            | (7, true, true, true, true, true)
     ) || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0

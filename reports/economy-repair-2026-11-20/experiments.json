@@ -1,0 +1,7338 @@
+{
+  "candidates": [
+    {
+      "candidate": "shipped",
+      "policy_edits": [],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249253,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "domestic BusinessServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 630,
+            "under_service_input_floor": 630,
+            "zero_output_with_a_plan": 5703
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              4,
+              1,
+              3,
+              179,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              141,
+              12,
+              34,
+              0,
+              0
+            ],
+            "utility": [
+              121,
+              18,
+              43,
+              5,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161352247,
+          "domestic_looking_close": 8847273,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 9997,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 760,
+            "utility": 1176
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1398431950,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign BusinessServices"
+            ],
+            "under_replenishment_floor": 651,
+            "under_service_input_floor": 651,
+            "zero_output_with_a_plan": 949
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              4,
+              3,
+              179,
+              0
+            ],
+            "housing": [
+              172,
+              10,
+              5,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              99,
+              72,
+              16,
+              0,
+              0
+            ],
+            "utility": [
+              172,
+              10,
+              5,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 50175981,
+          "domestic_looking_close": 120023539,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 9997,
+            "housing": 69,
+            "materials": 0,
+            "public_provision": 250,
+            "utility": 70
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 1199833123,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign BusinessServices",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 828,
+            "under_service_input_floor": 828,
+            "zero_output_with_a_plan": 969
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              4,
+              182,
+              0
+            ],
+            "housing": [
+              110,
+              21,
+              36,
+              20,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              80,
+              49,
+              37,
+              21,
+              0
+            ],
+            "utility": [
+              130,
+              5,
+              32,
+              20,
+              0
+            ]
+          },
+          "domestic_at_work_close": 45806147,
+          "domestic_looking_close": 124393373,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 9998,
+            "housing": 1899,
+            "materials": 0,
+            "public_provision": 2052,
+            "utility": 1910
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 1277554136,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3631,
+            "housing": 57,
+            "materials": 397,
+            "public_provision": 59,
+            "utility": 57
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "foreign BusinessServices",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 833,
+            "under_service_input_floor": 833,
+            "zero_output_with_a_plan": 1064
+          },
+          "counties_by_band": {
+            "food": [
+              63,
+              27,
+              61,
+              36,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              125,
+              60,
+              0
+            ],
+            "materials": [
+              129,
+              8,
+              34,
+              16,
+              0
+            ],
+            "public_provision": [
+              2,
+              11,
+              113,
+              61,
+              0
+            ],
+            "utility": [
+              1,
+              10,
+              113,
+              63,
+              0
+            ]
+          },
+          "domestic_at_work_close": 46503822,
+          "domestic_looking_close": 123695698,
+          "national_unmet_share_bps": {
+            "food": 2409,
+            "household_services": 9999,
+            "housing": 5091,
+            "materials": 518,
+            "public_provision": 5239,
+            "utility": 5188
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 1362618545,
+          "abroad_unmet_share_bps": {
+            "food": 1890,
+            "household_services": 2959,
+            "housing": 106,
+            "materials": 1590,
+            "public_provision": 109,
+            "utility": 106
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "foreign BusinessServices",
+              "foreign DistributionTransport",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 942,
+            "under_service_input_floor": 940,
+            "zero_output_with_a_plan": 1169
+          },
+          "counties_by_band": {
+            "food": [
+              1,
+              13,
+              42,
+              131,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              92,
+              93,
+              0
+            ],
+            "materials": [
+              64,
+              16,
+              33,
+              74,
+              0
+            ],
+            "public_provision": [
+              0,
+              10,
+              79,
+              98,
+              0
+            ],
+            "utility": [
+              0,
+              8,
+              84,
+              95,
+              0
+            ]
+          },
+          "domestic_at_work_close": 47573621,
+          "domestic_looking_close": 122625899,
+          "national_unmet_share_bps": {
+            "food": 8031,
+            "household_services": 9999,
+            "housing": 6782,
+            "materials": 3139,
+            "public_provision": 7113,
+            "utility": 6831
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 808831317,
+          "abroad_unmet_share_bps": {
+            "food": 9999,
+            "household_services": 9380,
+            "housing": 0,
+            "materials": 9422,
+            "public_provision": 8553,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "household_services: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign BusinessServices",
+              "foreign DistributionTransport",
+              "foreign Extraction",
+              "foreign Manufacturing"
+            ],
+            "under_replenishment_floor": 1145,
+            "under_service_input_floor": 1131,
+            "zero_output_with_a_plan": 1286
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              1,
+              4,
+              182,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "public_provision": [
+              0,
+              4,
+              13,
+              170,
+              0
+            ],
+            "utility": [
+              0,
+              4,
+              51,
+              132,
+              0
+            ]
+          },
+          "domestic_at_work_close": 47848513,
+          "domestic_looking_close": 122351007,
+          "national_unmet_share_bps": {
+            "food": 9879,
+            "household_services": 9999,
+            "housing": 9216,
+            "materials": 9861,
+            "public_provision": 9810,
+            "utility": 7986
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 789356915,
+          "abroad_unmet_share_bps": {
+            "food": 10000,
+            "household_services": 10000,
+            "housing": 3745,
+            "materials": 10000,
+            "public_provision": 10000,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "household_services: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency DistributionTransport",
+              "dependency Extraction",
+              "dependency Food",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign BusinessServices",
+              "foreign ConstructionHousing",
+              "foreign DistributionTransport",
+              "foreign Extraction",
+              "foreign Food",
+              "foreign Manufacturing"
+            ],
+            "under_replenishment_floor": 1682,
+            "under_service_input_floor": 1364,
+            "zero_output_with_a_plan": 1330
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              1,
+              186,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              5,
+              181,
+              0
+            ],
+            "utility": [
+              0,
+              3,
+              14,
+              170,
+              0
+            ]
+          },
+          "domestic_at_work_close": 47992382,
+          "domestic_looking_close": 122207138,
+          "national_unmet_share_bps": {
+            "food": 9955,
+            "household_services": 10000,
+            "housing": 9692,
+            "materials": 9937,
+            "public_provision": 9835,
+            "utility": 9203
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "A",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249256,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              12,
+              94,
+              55,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              138,
+              8,
+              36,
+              5,
+              0
+            ],
+            "utility": [
+              112,
+              11,
+              52,
+              12,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161351676,
+          "domestic_looking_close": 8847844,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3919,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 973,
+            "utility": 1576
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1399191881,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic HouseholdServices",
+              "foreign BusinessServices"
+            ],
+            "under_replenishment_floor": 234,
+            "under_service_input_floor": 234,
+            "zero_output_with_a_plan": 723
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              44,
+              83,
+              59,
+              0
+            ],
+            "housing": [
+              173,
+              9,
+              5,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              99,
+              72,
+              16,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              9,
+              5,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 49438667,
+          "domestic_looking_close": 120760853,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5021,
+            "housing": 66,
+            "materials": 0,
+            "public_provision": 245,
+            "utility": 65
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 1201610305,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign BusinessServices",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 411,
+            "under_service_input_floor": 411,
+            "zero_output_with_a_plan": 754
+          },
+          "counties_by_band": {
+            "food": [
+              166,
+              21,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              97,
+              87,
+              0
+            ],
+            "housing": [
+              0,
+              9,
+              138,
+              40,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              22,
+              18,
+              105,
+              42,
+              0
+            ],
+            "utility": [
+              32,
+              12,
+              98,
+              45,
+              0
+            ]
+          },
+          "domestic_at_work_close": 44004923,
+          "domestic_looking_close": 126194597,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 6036,
+            "housing": 4063,
+            "materials": 0,
+            "public_provision": 3769,
+            "utility": 3722
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 1279745807,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3631,
+            "housing": 57,
+            "materials": 397,
+            "public_provision": 59,
+            "utility": 57
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign BusinessServices",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 434,
+            "under_service_input_floor": 434,
+            "zero_output_with_a_plan": 897
+          },
+          "counties_by_band": {
+            "food": [
+              48,
+              64,
+              69,
+              6,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              48,
+              138,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              91,
+              94,
+              0
+            ],
+            "materials": [
+              117,
+              18,
+              41,
+              11,
+              0
+            ],
+            "public_provision": [
+              0,
+              10,
+              85,
+              92,
+              0
+            ],
+            "utility": [
+              0,
+              7,
+              86,
+              94,
+              0
+            ]
+          },
+          "domestic_at_work_close": 42108562,
+          "domestic_looking_close": 128090958,
+          "national_unmet_share_bps": {
+            "food": 877,
+            "household_services": 8308,
+            "housing": 7300,
+            "materials": 575,
+            "public_provision": 7171,
+            "utility": 7313
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 1363721039,
+          "abroad_unmet_share_bps": {
+            "food": 1676,
+            "household_services": 2958,
+            "housing": 104,
+            "materials": 1590,
+            "public_provision": 107,
+            "utility": 104
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "foreign BusinessServices",
+              "foreign DistributionTransport",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 469,
+            "under_service_input_floor": 467,
+            "zero_output_with_a_plan": 971
+          },
+          "counties_by_band": {
+            "food": [
+              4,
+              9,
+              97,
+              77,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              21,
+              165,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              64,
+              122,
+              0
+            ],
+            "materials": [
+              35,
+              16,
+              71,
+              65,
+              0
+            ],
+            "public_provision": [
+              0,
+              7,
+              66,
+              114,
+              0
+            ],
+            "utility": [
+              0,
+              6,
+              65,
+              116,
+              0
+            ]
+          },
+          "domestic_at_work_close": 41991037,
+          "domestic_looking_close": 128208483,
+          "national_unmet_share_bps": {
+            "food": 5124,
+            "household_services": 9230,
+            "housing": 7892,
+            "materials": 2963,
+            "public_provision": 7839,
+            "utility": 7905
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 817419088,
+          "abroad_unmet_share_bps": {
+            "food": 9999,
+            "household_services": 9377,
+            "housing": 0,
+            "materials": 9422,
+            "public_provision": 8553,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign BusinessServices",
+              "foreign DistributionTransport",
+              "foreign Extraction",
+              "foreign Manufacturing"
+            ],
+            "under_replenishment_floor": 702,
+            "under_service_input_floor": 694,
+            "zero_output_with_a_plan": 1123
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              9,
+              178,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              1,
+              186,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              9,
+              178,
+              0
+            ],
+            "utility": [
+              0,
+              1,
+              32,
+              154,
+              0
+            ]
+          },
+          "domestic_at_work_close": 40849652,
+          "domestic_looking_close": 129349868,
+          "national_unmet_share_bps": {
+            "food": 9823,
+            "household_services": 9998,
+            "housing": 9165,
+            "materials": 9896,
+            "public_provision": 9724,
+            "utility": 8555
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 795674371,
+          "abroad_unmet_share_bps": {
+            "food": 10000,
+            "household_services": 10000,
+            "housing": 3654,
+            "materials": 10000,
+            "public_provision": 10000,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency DistributionTransport",
+              "dependency Extraction",
+              "dependency Food",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign BusinessServices",
+              "foreign ConstructionHousing",
+              "foreign DistributionTransport",
+              "foreign Extraction",
+              "foreign Food",
+              "foreign Manufacturing"
+            ],
+            "under_replenishment_floor": 1303,
+            "under_service_input_floor": 1011,
+            "zero_output_with_a_plan": 1165
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              12,
+              175,
+              0
+            ]
+          },
+          "domestic_at_work_close": 41614185,
+          "domestic_looking_close": 128585335,
+          "national_unmet_share_bps": {
+            "food": 9925,
+            "household_services": 9999,
+            "housing": 9680,
+            "materials": 9965,
+            "public_provision": 9895,
+            "utility": 9159
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "B",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249116,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              12,
+              94,
+              55,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              138,
+              8,
+              36,
+              5,
+              0
+            ],
+            "utility": [
+              112,
+              11,
+              52,
+              12,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161339122,
+          "domestic_looking_close": 8860398,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3919,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 973,
+            "utility": 1576
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1240823127,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 43,
+            "under_service_input_floor": 43,
+            "zero_output_with_a_plan": 51
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              44,
+              83,
+              59,
+              0
+            ],
+            "housing": [
+              173,
+              8,
+              6,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              99,
+              71,
+              17,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              8,
+              6,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 43821414,
+          "domestic_looking_close": 126378106,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5021,
+            "housing": 68,
+            "materials": 0,
+            "public_provision": 248,
+            "utility": 68
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 926252344,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic Extraction",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 50,
+            "under_service_input_floor": 50,
+            "zero_output_with_a_plan": 84
+          },
+          "counties_by_band": {
+            "food": [
+              166,
+              21,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              106,
+              78,
+              0
+            ],
+            "housing": [
+              0,
+              11,
+              140,
+              36,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              29,
+              18,
+              103,
+              37,
+              0
+            ],
+            "utility": [
+              43,
+              11,
+              95,
+              38,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39559260,
+          "domestic_looking_close": 130640260,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5760,
+            "housing": 3815,
+            "materials": 0,
+            "public_provision": 3403,
+            "utility": 3345
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 945039709,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3597,
+            "housing": 0,
+            "materials": 397,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 227,
+            "under_service_input_floor": 227,
+            "zero_output_with_a_plan": 293
+          },
+          "counties_by_band": {
+            "food": [
+              59,
+              71,
+              54,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              69,
+              117,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              102,
+              83,
+              0
+            ],
+            "materials": [
+              135,
+              24,
+              23,
+              5,
+              0
+            ],
+            "public_provision": [
+              0,
+              10,
+              96,
+              81,
+              0
+            ],
+            "utility": [
+              0,
+              7,
+              95,
+              85,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38467759,
+          "domestic_looking_close": 131731761,
+          "national_unmet_share_bps": {
+            "food": 451,
+            "household_services": 7559,
+            "housing": 6800,
+            "materials": 182,
+            "public_provision": 6623,
+            "utility": 6778
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 945209296,
+          "abroad_unmet_share_bps": {
+            "food": 1669,
+            "household_services": 2964,
+            "housing": 108,
+            "materials": 1590,
+            "public_provision": 110,
+            "utility": 108
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign DistributionTransport",
+              "foreign Extraction"
+            ],
+            "under_replenishment_floor": 266,
+            "under_service_input_floor": 264,
+            "zero_output_with_a_plan": 350
+          },
+          "counties_by_band": {
+            "food": [
+              7,
+              17,
+              136,
+              27,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              37,
+              149,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              70,
+              116,
+              0
+            ],
+            "materials": [
+              37,
+              24,
+              98,
+              28,
+              0
+            ],
+            "public_provision": [
+              0,
+              7,
+              70,
+              110,
+              0
+            ],
+            "utility": [
+              0,
+              5,
+              65,
+              117,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38357325,
+          "domestic_looking_close": 131842195,
+          "national_unmet_share_bps": {
+            "food": 2388,
+            "household_services": 8757,
+            "housing": 7905,
+            "materials": 1558,
+            "public_provision": 7844,
+            "utility": 8028
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 480739931,
+          "abroad_unmet_share_bps": {
+            "food": 9998,
+            "household_services": 9996,
+            "housing": 507,
+            "materials": 9384,
+            "public_provision": 7643,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign BusinessServices",
+              "foreign DistributionTransport",
+              "foreign Extraction",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 495,
+            "under_service_input_floor": 487,
+            "zero_output_with_a_plan": 866
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              4,
+              183,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              6,
+              181,
+              0
+            ],
+            "materials": [
+              0,
+              1,
+              7,
+              179,
+              0
+            ],
+            "public_provision": [
+              1,
+              1,
+              13,
+              172,
+              0
+            ],
+            "utility": [
+              1,
+              0,
+              10,
+              176,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38489623,
+          "domestic_looking_close": 131709897,
+          "national_unmet_share_bps": {
+            "food": 9541,
+            "household_services": 9993,
+            "housing": 8775,
+            "materials": 9349,
+            "public_provision": 8737,
+            "utility": 8620
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 504055679,
+          "abroad_unmet_share_bps": {
+            "food": 10000,
+            "household_services": 10000,
+            "housing": 5262,
+            "materials": 10000,
+            "public_provision": 8219,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency DistributionTransport",
+              "dependency Extraction",
+              "dependency Food",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign BusinessServices",
+              "foreign ConstructionHousing",
+              "foreign DistributionTransport",
+              "foreign Extraction",
+              "foreign HouseholdServices",
+              "foreign Manufacturing"
+            ],
+            "under_replenishment_floor": 1057,
+            "under_service_input_floor": 813,
+            "zero_output_with_a_plan": 1011
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              1,
+              186,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              4,
+              183,
+              0
+            ],
+            "materials": [
+              0,
+              1,
+              4,
+              182,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              5,
+              181,
+              0
+            ],
+            "utility": [
+              1,
+              2,
+              21,
+              163,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39292301,
+          "domestic_looking_close": 130907219,
+          "national_unmet_share_bps": {
+            "food": 9805,
+            "household_services": 9999,
+            "housing": 9423,
+            "materials": 9739,
+            "public_provision": 9820,
+            "utility": 8547
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "C",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 16\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 16,"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249110,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              12,
+              94,
+              55,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              138,
+              8,
+              36,
+              5,
+              0
+            ],
+            "utility": [
+              112,
+              11,
+              52,
+              12,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161339041,
+          "domestic_looking_close": 8860479,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3919,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 973,
+            "utility": 1576
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1199661750,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 43,
+            "under_service_input_floor": 43,
+            "zero_output_with_a_plan": 53
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              44,
+              83,
+              59,
+              0
+            ],
+            "housing": [
+              173,
+              8,
+              6,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              99,
+              71,
+              17,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              8,
+              6,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 43807520,
+          "domestic_looking_close": 126392000,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5021,
+            "housing": 68,
+            "materials": 0,
+            "public_provision": 248,
+            "utility": 68
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 842415777,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 45,
+            "under_service_input_floor": 45,
+            "zero_output_with_a_plan": 58
+          },
+          "counties_by_band": {
+            "food": [
+              166,
+              21,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              109,
+              75,
+              0
+            ],
+            "housing": [
+              0,
+              11,
+              145,
+              31,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              28,
+              23,
+              105,
+              31,
+              0
+            ],
+            "utility": [
+              44,
+              13,
+              97,
+              33,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39607814,
+          "domestic_looking_close": 130591706,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5677,
+            "housing": 3555,
+            "materials": 0,
+            "public_provision": 3103,
+            "utility": 3032
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 848817555,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3597,
+            "housing": 1,
+            "materials": 397,
+            "public_provision": 3,
+            "utility": 1
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 50,
+            "under_service_input_floor": 50,
+            "zero_output_with_a_plan": 70
+          },
+          "counties_by_band": {
+            "food": [
+              56,
+              74,
+              54,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              74,
+              112,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              114,
+              71,
+              0
+            ],
+            "materials": [
+              135,
+              24,
+              23,
+              5,
+              0
+            ],
+            "public_provision": [
+              1,
+              10,
+              107,
+              69,
+              0
+            ],
+            "utility": [
+              0,
+              8,
+              106,
+              73,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38594271,
+          "domestic_looking_close": 131605249,
+          "national_unmet_share_bps": {
+            "food": 450,
+            "household_services": 7147,
+            "housing": 6014,
+            "materials": 175,
+            "public_provision": 5807,
+            "utility": 5974
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 864151414,
+          "abroad_unmet_share_bps": {
+            "food": 1669,
+            "household_services": 3007,
+            "housing": 172,
+            "materials": 1590,
+            "public_provision": 174,
+            "utility": 172
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign DistributionTransport"
+            ],
+            "under_replenishment_floor": 89,
+            "under_service_input_floor": 87,
+            "zero_output_with_a_plan": 120
+          },
+          "counties_by_band": {
+            "food": [
+              7,
+              18,
+              141,
+              21,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              43,
+              143,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              76,
+              110,
+              0
+            ],
+            "materials": [
+              35,
+              26,
+              99,
+              27,
+              0
+            ],
+            "public_provision": [
+              0,
+              10,
+              76,
+              101,
+              0
+            ],
+            "utility": [
+              0,
+              6,
+              77,
+              104,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38310531,
+          "domestic_looking_close": 131888989,
+          "national_unmet_share_bps": {
+            "food": 2357,
+            "household_services": 8342,
+            "housing": 7415,
+            "materials": 1499,
+            "public_provision": 7357,
+            "utility": 7567
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 383121371,
+          "abroad_unmet_share_bps": {
+            "food": 9998,
+            "household_services": 9994,
+            "housing": 755,
+            "materials": 9384,
+            "public_provision": 7643,
+            "utility": 1
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign DistributionTransport",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 384,
+            "under_service_input_floor": 376,
+            "zero_output_with_a_plan": 610
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              3,
+              184,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              7,
+              180,
+              0
+            ],
+            "materials": [
+              0,
+              4,
+              22,
+              161,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              18,
+              169,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              17,
+              170,
+              0
+            ]
+          },
+          "domestic_at_work_close": 36720129,
+          "domestic_looking_close": 133479391,
+          "national_unmet_share_bps": {
+            "food": 9395,
+            "household_services": 9971,
+            "housing": 9024,
+            "materials": 9118,
+            "public_provision": 8977,
+            "utility": 8732
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 381327115,
+          "abroad_unmet_share_bps": {
+            "food": 9999,
+            "household_services": 10000,
+            "housing": 7548,
+            "materials": 10000,
+            "public_provision": 7643,
+            "utility": 489
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency DistributionTransport",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign ConstructionHousing",
+              "foreign DistributionTransport",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 822,
+            "under_service_input_floor": 605,
+            "zero_output_with_a_plan": 725
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              5,
+              182,
+              0
+            ],
+            "materials": [
+              0,
+              3,
+              19,
+              165,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              9,
+              177,
+              0
+            ],
+            "utility": [
+              1,
+              1,
+              24,
+              161,
+              0
+            ]
+          },
+          "domestic_at_work_close": 37710684,
+          "domestic_looking_close": 132488836,
+          "national_unmet_share_bps": {
+            "food": 9737,
+            "household_services": 9997,
+            "housing": 9195,
+            "materials": 9508,
+            "public_provision": 9602,
+            "utility": 8210
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "D",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249106,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              12,
+              94,
+              55,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              138,
+              8,
+              36,
+              5,
+              0
+            ],
+            "utility": [
+              112,
+              11,
+              52,
+              12,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161338896,
+          "domestic_looking_close": 8860624,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3919,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 973,
+            "utility": 1576
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1124266722,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 43,
+            "under_service_input_floor": 43,
+            "zero_output_with_a_plan": 54
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              44,
+              83,
+              59,
+              0
+            ],
+            "housing": [
+              173,
+              8,
+              6,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              99,
+              71,
+              17,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              8,
+              6,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 43721284,
+          "domestic_looking_close": 126478236,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5021,
+            "housing": 68,
+            "materials": 0,
+            "public_provision": 248,
+            "utility": 68
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 784335654,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 45,
+            "under_service_input_floor": 45,
+            "zero_output_with_a_plan": 65
+          },
+          "counties_by_band": {
+            "food": [
+              166,
+              21,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              112,
+              72,
+              0
+            ],
+            "housing": [
+              0,
+              16,
+              149,
+              22,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              29,
+              27,
+              108,
+              23,
+              0
+            ],
+            "utility": [
+              47,
+              16,
+              100,
+              24,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39621236,
+          "domestic_looking_close": 130578284,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5611,
+            "housing": 3126,
+            "materials": 0,
+            "public_provision": 2658,
+            "utility": 2571
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 838306064,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3597,
+            "housing": 1,
+            "materials": 397,
+            "public_provision": 3,
+            "utility": 1
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 51,
+            "under_service_input_floor": 51,
+            "zero_output_with_a_plan": 62
+          },
+          "counties_by_band": {
+            "food": [
+              52,
+              78,
+              54,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              87,
+              99,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              128,
+              57,
+              0
+            ],
+            "materials": [
+              135,
+              24,
+              24,
+              4,
+              0
+            ],
+            "public_provision": [
+              1,
+              11,
+              120,
+              55,
+              0
+            ],
+            "utility": [
+              0,
+              9,
+              121,
+              57,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38669180,
+          "domestic_looking_close": 131530340,
+          "national_unmet_share_bps": {
+            "food": 447,
+            "household_services": 6793,
+            "housing": 5339,
+            "materials": 169,
+            "public_provision": 5071,
+            "utility": 5245
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 863514318,
+          "abroad_unmet_share_bps": {
+            "food": 1669,
+            "household_services": 3018,
+            "housing": 188,
+            "materials": 1590,
+            "public_provision": 190,
+            "utility": 188
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign DistributionTransport"
+            ],
+            "under_replenishment_floor": 74,
+            "under_service_input_floor": 72,
+            "zero_output_with_a_plan": 96
+          },
+          "counties_by_band": {
+            "food": [
+              4,
+              16,
+              146,
+              21,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              49,
+              137,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              80,
+              106,
+              0
+            ],
+            "materials": [
+              31,
+              29,
+              102,
+              25,
+              0
+            ],
+            "public_provision": [
+              0,
+              9,
+              85,
+              93,
+              0
+            ],
+            "utility": [
+              0,
+              7,
+              84,
+              96,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38293532,
+          "domestic_looking_close": 131905988,
+          "national_unmet_share_bps": {
+            "food": 2320,
+            "household_services": 7957,
+            "housing": 6895,
+            "materials": 1471,
+            "public_provision": 6838,
+            "utility": 6895
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 391491892,
+          "abroad_unmet_share_bps": {
+            "food": 9998,
+            "household_services": 9993,
+            "housing": 776,
+            "materials": 9384,
+            "public_provision": 7643,
+            "utility": 1
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign DistributionTransport",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 319,
+            "under_service_input_floor": 311,
+            "zero_output_with_a_plan": 486
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              3,
+              184,
+              0
+            ],
+            "materials": [
+              0,
+              4,
+              32,
+              151,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              16,
+              171,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              17,
+              170,
+              0
+            ]
+          },
+          "domestic_at_work_close": 34317601,
+          "domestic_looking_close": 135881919,
+          "national_unmet_share_bps": {
+            "food": 9219,
+            "household_services": 9986,
+            "housing": 9241,
+            "materials": 8737,
+            "public_provision": 9117,
+            "utility": 8732
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 387889303,
+          "abroad_unmet_share_bps": {
+            "food": 9999,
+            "household_services": 10000,
+            "housing": 7710,
+            "materials": 10000,
+            "public_provision": 7643,
+            "utility": 765
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency DistributionTransport",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign ConstructionHousing",
+              "foreign DistributionTransport",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 686,
+            "under_service_input_floor": 493,
+            "zero_output_with_a_plan": 587
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              6,
+              181,
+              0
+            ],
+            "materials": [
+              0,
+              3,
+              26,
+              158,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              15,
+              171,
+              0
+            ],
+            "utility": [
+              1,
+              1,
+              30,
+              155,
+              0
+            ]
+          },
+          "domestic_at_work_close": 35911707,
+          "domestic_looking_close": 134287813,
+          "national_unmet_share_bps": {
+            "food": 9602,
+            "household_services": 9979,
+            "housing": 9078,
+            "materials": 9092,
+            "public_provision": 9270,
+            "utility": 7803
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "E",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ],
+        [
+          "output = \"utility\"\noutput_units_per_batch = 160\n",
+          "output = \"utility\"\noutput_units_per_batch = 320\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249106,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              29,
+              17,
+              119,
+              22,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              159,
+              15,
+              13,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              11,
+              3,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161337754,
+          "domestic_looking_close": 8861766,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2908,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 218,
+            "utility": 46
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1113744128,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 14
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              49,
+              120,
+              17,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              104,
+              72,
+              11,
+              0,
+              0
+            ],
+            "utility": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 43329275,
+          "domestic_looking_close": 126870245,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2869,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 179,
+            "utility": 0
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 780909454,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 21
+          },
+          "counties_by_band": {
+            "food": [
+              161,
+              26,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              4,
+              156,
+              27,
+              0
+            ],
+            "housing": [
+              0,
+              8,
+              179,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              28,
+              33,
+              126,
+              0,
+              0
+            ],
+            "utility": [
+              48,
+              28,
+              111,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39191734,
+          "domestic_looking_close": 131007786,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3178,
+            "housing": 1928,
+            "materials": 0,
+            "public_provision": 1132,
+            "utility": 884
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 835643090,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3598,
+            "housing": 1,
+            "materials": 397,
+            "public_provision": 4,
+            "utility": 1
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction"
+            ],
+            "under_replenishment_floor": 4,
+            "under_service_input_floor": 4,
+            "zero_output_with_a_plan": 11
+          },
+          "counties_by_band": {
+            "food": [
+              26,
+              100,
+              58,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              135,
+              51,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              174,
+              11,
+              0
+            ],
+            "materials": [
+              126,
+              33,
+              24,
+              4,
+              0
+            ],
+            "public_provision": [
+              1,
+              13,
+              165,
+              8,
+              0
+            ],
+            "utility": [
+              0,
+              11,
+              168,
+              8,
+              0
+            ]
+          },
+          "domestic_at_work_close": 37612805,
+          "domestic_looking_close": 132586715,
+          "national_unmet_share_bps": {
+            "food": 510,
+            "household_services": 4243,
+            "housing": 2602,
+            "materials": 189,
+            "public_provision": 2006,
+            "utility": 2015
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 860848182,
+          "abroad_unmet_share_bps": {
+            "food": 1669,
+            "household_services": 3018,
+            "housing": 188,
+            "materials": 1590,
+            "public_provision": 190,
+            "utility": 188
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "foreign DistributionTransport"
+            ],
+            "under_replenishment_floor": 20,
+            "under_service_input_floor": 18,
+            "zero_output_with_a_plan": 25
+          },
+          "counties_by_band": {
+            "food": [
+              1,
+              7,
+              166,
+              13,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              91,
+              95,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              123,
+              63,
+              0
+            ],
+            "materials": [
+              4,
+              28,
+              129,
+              26,
+              0
+            ],
+            "public_provision": [
+              0,
+              7,
+              141,
+              39,
+              0
+            ],
+            "utility": [
+              0,
+              5,
+              143,
+              39,
+              0
+            ]
+          },
+          "domestic_at_work_close": 35799025,
+          "domestic_looking_close": 134400495,
+          "national_unmet_share_bps": {
+            "food": 2012,
+            "household_services": 5483,
+            "housing": 4691,
+            "materials": 1848,
+            "public_provision": 4475,
+            "utility": 4342
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 388902986,
+          "abroad_unmet_share_bps": {
+            "food": 9998,
+            "household_services": 9993,
+            "housing": 739,
+            "materials": 9380,
+            "public_provision": 7642,
+            "utility": 1
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign DistributionTransport",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 184,
+            "under_service_input_floor": 176,
+            "zero_output_with_a_plan": 237
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "materials": [
+              0,
+              4,
+              35,
+              148,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              17,
+              170,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              31,
+              156,
+              0
+            ]
+          },
+          "domestic_at_work_close": 25910283,
+          "domestic_looking_close": 144289237,
+          "national_unmet_share_bps": {
+            "food": 9009,
+            "household_services": 9967,
+            "housing": 9015,
+            "materials": 8417,
+            "public_provision": 9007,
+            "utility": 8052
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 385359091,
+          "abroad_unmet_share_bps": {
+            "food": 9999,
+            "household_services": 9999,
+            "housing": 7617,
+            "materials": 10000,
+            "public_provision": 7643,
+            "utility": 668
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency DistributionTransport",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign ConstructionHousing",
+              "foreign DistributionTransport",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 430,
+            "under_service_input_floor": 284,
+            "zero_output_with_a_plan": 361
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              3,
+              184,
+              0
+            ],
+            "materials": [
+              0,
+              3,
+              32,
+              152,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              21,
+              165,
+              0
+            ],
+            "utility": [
+              1,
+              2,
+              45,
+              139,
+              0
+            ]
+          },
+          "domestic_at_work_close": 27718862,
+          "domestic_looking_close": 142480658,
+          "national_unmet_share_bps": {
+            "food": 9483,
+            "household_services": 9958,
+            "housing": 8762,
+            "materials": 8727,
+            "public_provision": 9110,
+            "utility": 7394
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "F",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ],
+        [
+          "output = \"utility\"\noutput_units_per_batch = 160\n",
+          "output = \"utility\"\noutput_units_per_batch = 320\n"
+        ],
+        [
+          "foreign_procurement_bps = 2500 ",
+          "foreign_procurement_bps = 0 "
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249112,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              29,
+              17,
+              119,
+              22,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              159,
+              15,
+              13,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              11,
+              3,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161338657,
+          "domestic_looking_close": 8860863,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2908,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 218,
+            "utility": 46
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1185535341,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 10
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              49,
+              120,
+              17,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              104,
+              72,
+              11,
+              0,
+              0
+            ],
+            "utility": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 44338757,
+          "domestic_looking_close": 125860763,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2869,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 179,
+            "utility": 0
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 808146427,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 20
+          },
+          "counties_by_band": {
+            "food": [
+              161,
+              26,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              157,
+              27,
+              0
+            ],
+            "housing": [
+              0,
+              8,
+              178,
+              1,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              30,
+              29,
+              127,
+              1,
+              0
+            ],
+            "utility": [
+              48,
+              27,
+              111,
+              1,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39583772,
+          "domestic_looking_close": 130615748,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3213,
+            "housing": 1955,
+            "materials": 0,
+            "public_provision": 1166,
+            "utility": 917
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 858232130,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3616,
+            "housing": 40,
+            "materials": 0,
+            "public_provision": 42,
+            "utility": 40
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 3,
+            "under_service_input_floor": 3,
+            "zero_output_with_a_plan": 8
+          },
+          "counties_by_band": {
+            "food": [
+              26,
+              100,
+              58,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              126,
+              60,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              172,
+              13,
+              0
+            ],
+            "materials": [
+              119,
+              40,
+              24,
+              4,
+              0
+            ],
+            "public_provision": [
+              1,
+              13,
+              164,
+              9,
+              0
+            ],
+            "utility": [
+              0,
+              12,
+              167,
+              8,
+              0
+            ]
+          },
+          "domestic_at_work_close": 36297272,
+          "domestic_looking_close": 133902248,
+          "national_unmet_share_bps": {
+            "food": 512,
+            "household_services": 4514,
+            "housing": 2668,
+            "materials": 222,
+            "public_provision": 2207,
+            "utility": 2097
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 894088579,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3120,
+            "housing": 350,
+            "materials": 0,
+            "public_provision": 352,
+            "utility": 350
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 15,
+            "under_service_input_floor": 15,
+            "zero_output_with_a_plan": 33
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              8,
+              163,
+              16,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              89,
+              97,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              118,
+              68,
+              0
+            ],
+            "materials": [
+              3,
+              25,
+              119,
+              40,
+              0
+            ],
+            "public_provision": [
+              0,
+              7,
+              139,
+              41,
+              0
+            ],
+            "utility": [
+              0,
+              5,
+              143,
+              39,
+              0
+            ]
+          },
+          "domestic_at_work_close": 34557584,
+          "domestic_looking_close": 135641936,
+          "national_unmet_share_bps": {
+            "food": 2060,
+            "household_services": 5622,
+            "housing": 4744,
+            "materials": 2155,
+            "public_provision": 4502,
+            "utility": 4367
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 961456976,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 10000,
+            "housing": 5682,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 231,
+            "under_service_input_floor": 231,
+            "zero_output_with_a_plan": 401
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              5,
+              182,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "materials": [
+              0,
+              3,
+              77,
+              107,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              6,
+              181,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              10,
+              177,
+              0
+            ]
+          },
+          "domestic_at_work_close": 33270631,
+          "domestic_looking_close": 136928889,
+          "national_unmet_share_bps": {
+            "food": 8250,
+            "household_services": 9935,
+            "housing": 9204,
+            "materials": 6317,
+            "public_provision": 8978,
+            "utility": 8839
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 877040874,
+          "abroad_unmet_share_bps": {
+            "food": 5792,
+            "household_services": 10000,
+            "housing": 10000,
+            "materials": 0,
+            "public_provision": 9999,
+            "utility": 9999
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency Food",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 466,
+            "under_service_input_floor": 376,
+            "zero_output_with_a_plan": 555
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              1,
+              186,
+              0
+            ],
+            "materials": [
+              0,
+              6,
+              80,
+              101,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              4,
+              182,
+              0
+            ],
+            "utility": [
+              0,
+              1,
+              6,
+              180,
+              0
+            ]
+          },
+          "domestic_at_work_close": 34831492,
+          "domestic_looking_close": 135368028,
+          "national_unmet_share_bps": {
+            "food": 8837,
+            "household_services": 9980,
+            "housing": 9335,
+            "materials": 6850,
+            "public_provision": 9372,
+            "utility": 9173
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "G",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 16\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 16,"
+        ],
+        [
+          "foreign_procurement_bps = 2500 ",
+          "foreign_procurement_bps = 0 "
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249115,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              12,
+              94,
+              55,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              138,
+              8,
+              36,
+              5,
+              0
+            ],
+            "utility": [
+              112,
+              11,
+              52,
+              12,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161340005,
+          "domestic_looking_close": 8859515,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3919,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 973,
+            "utility": 1576
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1254737305,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 44,
+            "under_service_input_floor": 44,
+            "zero_output_with_a_plan": 52
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              44,
+              82,
+              60,
+              0
+            ],
+            "housing": [
+              168,
+              12,
+              7,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              97,
+              72,
+              18,
+              0,
+              0
+            ],
+            "utility": [
+              168,
+              12,
+              7,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 44700506,
+          "domestic_looking_close": 125499014,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5034,
+            "housing": 93,
+            "materials": 0,
+            "public_provision": 272,
+            "utility": 92
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 892335065,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 45,
+            "under_service_input_floor": 45,
+            "zero_output_with_a_plan": 55
+          },
+          "counties_by_band": {
+            "food": [
+              166,
+              21,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              109,
+              75,
+              0
+            ],
+            "housing": [
+              0,
+              10,
+              140,
+              37,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              27,
+              21,
+              100,
+              39,
+              0
+            ],
+            "utility": [
+              40,
+              14,
+              94,
+              39,
+              0
+            ]
+          },
+          "domestic_at_work_close": 40097502,
+          "domestic_looking_close": 130102018,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 5785,
+            "housing": 3877,
+            "materials": 0,
+            "public_provision": 3460,
+            "utility": 3393
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 887556131,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3601,
+            "housing": 5,
+            "materials": 0,
+            "public_provision": 7,
+            "utility": 5
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 51,
+            "under_service_input_floor": 51,
+            "zero_output_with_a_plan": 71
+          },
+          "counties_by_band": {
+            "food": [
+              57,
+              72,
+              55,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              63,
+              123,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              102,
+              83,
+              0
+            ],
+            "materials": [
+              126,
+              34,
+              22,
+              5,
+              0
+            ],
+            "public_provision": [
+              1,
+              9,
+              98,
+              79,
+              0
+            ],
+            "utility": [
+              0,
+              8,
+              98,
+              81,
+              0
+            ]
+          },
+          "domestic_at_work_close": 37902098,
+          "domestic_looking_close": 132297422,
+          "national_unmet_share_bps": {
+            "food": 457,
+            "household_services": 7549,
+            "housing": 6583,
+            "materials": 200,
+            "public_provision": 6413,
+            "utility": 6620
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 890555255,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3044,
+            "housing": 223,
+            "materials": 0,
+            "public_provision": 226,
+            "utility": 223
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 93,
+            "under_service_input_floor": 93,
+            "zero_output_with_a_plan": 198
+          },
+          "counties_by_band": {
+            "food": [
+              9,
+              18,
+              136,
+              24,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              37,
+              149,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              66,
+              120,
+              0
+            ],
+            "materials": [
+              33,
+              23,
+              90,
+              41,
+              0
+            ],
+            "public_provision": [
+              0,
+              7,
+              70,
+              110,
+              0
+            ],
+            "utility": [
+              0,
+              5,
+              71,
+              111,
+              0
+            ]
+          },
+          "domestic_at_work_close": 37636509,
+          "domestic_looking_close": 132563011,
+          "national_unmet_share_bps": {
+            "food": 2372,
+            "household_services": 8750,
+            "housing": 8245,
+            "materials": 1949,
+            "public_provision": 8162,
+            "utility": 8266
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 986646420,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 10000,
+            "housing": 4846,
+            "materials": 0,
+            "public_provision": 10,
+            "utility": 8
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 408,
+            "under_service_input_floor": 408,
+            "zero_output_with_a_plan": 876
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              5,
+              182,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "materials": [
+              0,
+              4,
+              46,
+              137,
+              0
+            ],
+            "public_provision": [
+              1,
+              0,
+              0,
+              186,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39287544,
+          "domestic_looking_close": 130911976,
+          "national_unmet_share_bps": {
+            "food": 9304,
+            "household_services": 9996,
+            "housing": 9802,
+            "materials": 7924,
+            "public_provision": 9780,
+            "utility": 9743
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 902468707,
+          "abroad_unmet_share_bps": {
+            "food": 5087,
+            "household_services": 10000,
+            "housing": 10000,
+            "materials": 0,
+            "public_provision": 9999,
+            "utility": 9999
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency Food",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 913,
+            "under_service_input_floor": 720,
+            "zero_output_with_a_plan": 960
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              3,
+              184,
+              0
+            ],
+            "materials": [
+              0,
+              6,
+              45,
+              136,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              3,
+              183,
+              0
+            ],
+            "utility": [
+              0,
+              1,
+              3,
+              183,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39975605,
+          "domestic_looking_close": 130223915,
+          "national_unmet_share_bps": {
+            "food": 9634,
+            "household_services": 9998,
+            "housing": 9863,
+            "materials": 8656,
+            "public_provision": 9870,
+            "utility": 9835
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "H",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ],
+        [
+          "output = \"utility\"\noutput_units_per_batch = 160\n",
+          "output = \"utility\"\noutput_units_per_batch = 320\n"
+        ],
+        [
+          "foreign_procurement_bps = 2500 ",
+          "foreign_procurement_bps = 0 "
+        ],
+        [
+          "reserve_food_support_periods = 1\n",
+          "reserve_food_support_periods = 16\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249112,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3968
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              29,
+              17,
+              119,
+              22,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              159,
+              15,
+              13,
+              0,
+              0
+            ],
+            "utility": [
+              173,
+              11,
+              3,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161338657,
+          "domestic_looking_close": 8860863,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2908,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 218,
+            "utility": 46
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1185535341,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 10
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              9,
+              41,
+              120,
+              17,
+              0
+            ],
+            "housing": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              104,
+              72,
+              11,
+              0,
+              0
+            ],
+            "utility": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 44338757,
+          "domestic_looking_close": 125860763,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2868,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 179,
+            "utility": 0
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 808146427,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 20
+          },
+          "counties_by_band": {
+            "food": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              4,
+              156,
+              27,
+              0
+            ],
+            "housing": [
+              22,
+              110,
+              54,
+              1,
+              0
+            ],
+            "materials": [
+              185,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              88,
+              81,
+              17,
+              1,
+              0
+            ],
+            "utility": [
+              164,
+              16,
+              6,
+              1,
+              0
+            ]
+          },
+          "domestic_at_work_close": 39603607,
+          "domestic_looking_close": 130595913,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3220,
+            "housing": 574,
+            "materials": 0,
+            "public_provision": 276,
+            "utility": 96
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 858232130,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3616,
+            "housing": 40,
+            "materials": 0,
+            "public_provision": 42,
+            "utility": 40
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 3,
+            "under_service_input_floor": 3,
+            "zero_output_with_a_plan": 8
+          },
+          "counties_by_band": {
+            "food": [
+              166,
+              16,
+              2,
+              3,
+              0
+            ],
+            "household_services": [
+              0,
+              2,
+              126,
+              59,
+              0
+            ],
+            "housing": [
+              7,
+              4,
+              166,
+              10,
+              0
+            ],
+            "materials": [
+              152,
+              20,
+              11,
+              4,
+              0
+            ],
+            "public_provision": [
+              13,
+              8,
+              157,
+              9,
+              0
+            ],
+            "utility": [
+              12,
+              11,
+              155,
+              9,
+              0
+            ]
+          },
+          "domestic_at_work_close": 36594536,
+          "domestic_looking_close": 133604984,
+          "national_unmet_share_bps": {
+            "food": 64,
+            "household_services": 4332,
+            "housing": 2466,
+            "materials": 115,
+            "public_provision": 2216,
+            "utility": 2083
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 894088579,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3120,
+            "housing": 350,
+            "materials": 0,
+            "public_provision": 352,
+            "utility": 350
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 15,
+            "under_service_input_floor": 15,
+            "zero_output_with_a_plan": 32
+          },
+          "counties_by_band": {
+            "food": [
+              33,
+              114,
+              24,
+              16,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              96,
+              90,
+              0
+            ],
+            "housing": [
+              2,
+              4,
+              131,
+              50,
+              0
+            ],
+            "materials": [
+              131,
+              9,
+              7,
+              40,
+              0
+            ],
+            "public_provision": [
+              8,
+              4,
+              144,
+              31,
+              0
+            ],
+            "utility": [
+              9,
+              3,
+              142,
+              33,
+              0
+            ]
+          },
+          "domestic_at_work_close": 35061991,
+          "domestic_looking_close": 135137529,
+          "national_unmet_share_bps": {
+            "food": 1013,
+            "household_services": 5394,
+            "housing": 4491,
+            "materials": 1107,
+            "public_provision": 4127,
+            "utility": 3986
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 976544477,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2999,
+            "housing": 140,
+            "materials": 0,
+            "public_provision": 142,
+            "utility": 140
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning"
+            ],
+            "under_replenishment_floor": 223,
+            "under_service_input_floor": 223,
+            "zero_output_with_a_plan": 431
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              2,
+              36,
+              149,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              2,
+              185,
+              0
+            ],
+            "materials": [
+              15,
+              9,
+              51,
+              112,
+              0
+            ],
+            "public_provision": [
+              1,
+              2,
+              11,
+              173,
+              0
+            ],
+            "utility": [
+              3,
+              5,
+              19,
+              160,
+              0
+            ]
+          },
+          "domestic_at_work_close": 33827016,
+          "domestic_looking_close": 136372504,
+          "national_unmet_share_bps": {
+            "food": 7683,
+            "household_services": 9936,
+            "housing": 9124,
+            "materials": 6153,
+            "public_provision": 9072,
+            "utility": 8631
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 953814774,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 8992,
+            "housing": 1900,
+            "materials": 0,
+            "public_provision": 1,
+            "utility": 0
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency Food",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 600,
+            "under_service_input_floor": 487,
+            "zero_output_with_a_plan": 661
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              187,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              4,
+              183,
+              0
+            ],
+            "materials": [
+              1,
+              1,
+              76,
+              109,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              4,
+              183,
+              0
+            ],
+            "utility": [
+              0,
+              1,
+              5,
+              181,
+              0
+            ]
+          },
+          "domestic_at_work_close": 34973175,
+          "domestic_looking_close": 135226345,
+          "national_unmet_share_bps": {
+            "food": 9078,
+            "household_services": 9988,
+            "housing": 9372,
+            "materials": 7196,
+            "public_provision": 9643,
+            "utility": 9280
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "I",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ],
+        [
+          "output = \"utility\"\noutput_units_per_batch = 160\n",
+          "output = \"utility\"\noutput_units_per_batch = 320\n"
+        ],
+        [
+          "foreign_procurement_bps = 2500 ",
+          "foreign_procurement_bps = 0 "
+        ],
+        [
+          "output = \"food\"\noutput_units_per_batch = 16\n",
+          "output = \"food\"\noutput_units_per_batch = 32\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249112,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3828
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              17,
+              113,
+              23,
+              0
+            ],
+            "housing": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              152,
+              15,
+              12,
+              0,
+              0
+            ],
+            "utility": [
+              166,
+              11,
+              2,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161337825,
+          "domestic_looking_close": 8861695,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3062,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 192,
+            "utility": 35
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1185535341,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 12
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              45,
+              115,
+              18,
+              0
+            ],
+            "housing": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              102,
+              67,
+              10,
+              0,
+              0
+            ],
+            "utility": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 42888776,
+          "domestic_looking_close": 127310744,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3034,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 154,
+            "utility": 0
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 802978164,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 23
+          },
+          "counties_by_band": {
+            "food": [
+              156,
+              23,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              150,
+              26,
+              0
+            ],
+            "housing": [
+              0,
+              8,
+              171,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              31,
+              29,
+              119,
+              0,
+              0
+            ],
+            "utility": [
+              51,
+              23,
+              105,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38075855,
+          "domestic_looking_close": 132123665,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3305,
+            "housing": 1911,
+            "materials": 0,
+            "public_provision": 1072,
+            "utility": 830
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 839788695,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3596,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 8
+          },
+          "counties_by_band": {
+            "food": [
+              27,
+              98,
+              53,
+              1,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              121,
+              57,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              164,
+              13,
+              0
+            ],
+            "materials": [
+              116,
+              40,
+              20,
+              3,
+              0
+            ],
+            "public_provision": [
+              1,
+              12,
+              158,
+              8,
+              0
+            ],
+            "utility": [
+              0,
+              11,
+              159,
+              9,
+              0
+            ]
+          },
+          "domestic_at_work_close": 35354018,
+          "domestic_looking_close": 134845502,
+          "national_unmet_share_bps": {
+            "food": 435,
+            "household_services": 4611,
+            "housing": 2752,
+            "materials": 150,
+            "public_provision": 2272,
+            "utility": 2223
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 860304741,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3041,
+            "housing": 220,
+            "materials": 0,
+            "public_provision": 222,
+            "utility": 220
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 16,
+            "under_service_input_floor": 16,
+            "zero_output_with_a_plan": 27
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              10,
+              168,
+              1,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              86,
+              92,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              112,
+              66,
+              0
+            ],
+            "materials": [
+              0,
+              21,
+              121,
+              37,
+              0
+            ],
+            "public_provision": [
+              0,
+              7,
+              130,
+              42,
+              0
+            ],
+            "utility": [
+              0,
+              5,
+              133,
+              41,
+              0
+            ]
+          },
+          "domestic_at_work_close": 33225778,
+          "domestic_looking_close": 136973742,
+          "national_unmet_share_bps": {
+            "food": 1645,
+            "household_services": 5722,
+            "housing": 4913,
+            "materials": 2103,
+            "public_provision": 4774,
+            "utility": 4668
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 893274513,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 10000,
+            "housing": 7886,
+            "materials": 0,
+            "public_provision": 846,
+            "utility": 308
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 217,
+            "under_service_input_floor": 217,
+            "zero_output_with_a_plan": 330
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              8,
+              171,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "materials": [
+              0,
+              2,
+              78,
+              99,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              3,
+              176,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              3,
+              176,
+              0
+            ]
+          },
+          "domestic_at_work_close": 31461677,
+          "domestic_looking_close": 138737843,
+          "national_unmet_share_bps": {
+            "food": 7979,
+            "household_services": 9919,
+            "housing": 9188,
+            "materials": 6267,
+            "public_provision": 9071,
+            "utility": 9020
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 846490918,
+          "abroad_unmet_share_bps": {
+            "food": 7689,
+            "household_services": 10000,
+            "housing": 10000,
+            "materials": 0,
+            "public_provision": 9999,
+            "utility": 9999
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 360,
+            "under_service_input_floor": 307,
+            "zero_output_with_a_plan": 436
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              2,
+              177,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              1,
+              178,
+              0
+            ],
+            "materials": [
+              0,
+              1,
+              86,
+              92,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              3,
+              176,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              5,
+              174,
+              0
+            ]
+          },
+          "domestic_at_work_close": 33203497,
+          "domestic_looking_close": 136996023,
+          "national_unmet_share_bps": {
+            "food": 8536,
+            "household_services": 9977,
+            "housing": 9251,
+            "materials": 6606,
+            "public_provision": 9300,
+            "utility": 9120
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "J",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ],
+        [
+          "output = \"utility\"\noutput_units_per_batch = 160\n",
+          "output = \"utility\"\noutput_units_per_batch = 320\n"
+        ],
+        [
+          "foreign_procurement_bps = 2500 ",
+          "foreign_procurement_bps = 0 "
+        ],
+        [
+          "output = \"food\"\noutput_units_per_batch = 16\n",
+          "output = \"food\"\noutput_units_per_batch = 32\n"
+        ],
+        [
+          "wage_tax_bps = 1500\n",
+          "wage_tax_bps = 0\n"
+        ],
+        [
+          "operating_income_tax_bps = 1500\n",
+          "operating_income_tax_bps = 0\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249112,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3828
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              17,
+              113,
+              23,
+              0
+            ],
+            "housing": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              152,
+              15,
+              12,
+              0,
+              0
+            ],
+            "utility": [
+              166,
+              11,
+              2,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161337825,
+          "domestic_looking_close": 8861695,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3062,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 192,
+            "utility": 35
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1185535341,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 12
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              1,
+              45,
+              115,
+              18,
+              0
+            ],
+            "housing": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              102,
+              67,
+              10,
+              0,
+              0
+            ],
+            "utility": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 42888776,
+          "domestic_looking_close": 127310744,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3034,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 154,
+            "utility": 0
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 802978164,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency PublicProvisioning"
+            ],
+            "under_replenishment_floor": 3,
+            "under_service_input_floor": 3,
+            "zero_output_with_a_plan": 24
+          },
+          "counties_by_band": {
+            "food": [
+              155,
+              24,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              3,
+              150,
+              26,
+              0
+            ],
+            "housing": [
+              0,
+              8,
+              171,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              30,
+              28,
+              120,
+              1,
+              0
+            ],
+            "utility": [
+              49,
+              21,
+              109,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38072848,
+          "domestic_looking_close": 132126672,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3302,
+            "housing": 1925,
+            "materials": 0,
+            "public_provision": 1247,
+            "utility": 881
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 839788695,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3596,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency PublicProvisioning",
+              "domestic PublicProvisioning"
+            ],
+            "under_replenishment_floor": 40,
+            "under_service_input_floor": 40,
+            "zero_output_with_a_plan": 46
+          },
+          "counties_by_band": {
+            "food": [
+              27,
+              95,
+              56,
+              1,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              121,
+              57,
+              0
+            ],
+            "housing": [
+              0,
+              2,
+              167,
+              10,
+              0
+            ],
+            "materials": [
+              110,
+              29,
+              37,
+              3,
+              0
+            ],
+            "public_provision": [
+              1,
+              10,
+              128,
+              40,
+              0
+            ],
+            "utility": [
+              0,
+              11,
+              159,
+              9,
+              0
+            ]
+          },
+          "domestic_at_work_close": 35323040,
+          "domestic_looking_close": 134876480,
+          "national_unmet_share_bps": {
+            "food": 453,
+            "household_services": 4370,
+            "housing": 2536,
+            "materials": 285,
+            "public_provision": 4555,
+            "utility": 2205
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 860304741,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3041,
+            "housing": 220,
+            "materials": 0,
+            "public_provision": 222,
+            "utility": 220
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic HouseholdServices",
+              "domestic PublicProvisioning"
+            ],
+            "under_replenishment_floor": 95,
+            "under_service_input_floor": 95,
+            "zero_output_with_a_plan": 106
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              10,
+              168,
+              1,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              93,
+              85,
+              0
+            ],
+            "housing": [
+              0,
+              1,
+              124,
+              54,
+              0
+            ],
+            "materials": [
+              0,
+              1,
+              142,
+              36,
+              0
+            ],
+            "public_provision": [
+              1,
+              6,
+              80,
+              92,
+              0
+            ],
+            "utility": [
+              0,
+              6,
+              141,
+              32,
+              0
+            ]
+          },
+          "domestic_at_work_close": 32799524,
+          "domestic_looking_close": 137399996,
+          "national_unmet_share_bps": {
+            "food": 1642,
+            "household_services": 5515,
+            "housing": 4734,
+            "materials": 2659,
+            "public_provision": 7723,
+            "utility": 4328
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 899477407,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 6207,
+            "housing": 5,
+            "materials": 0,
+            "public_provision": 10000,
+            "utility": 5
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign PublicProvisioning"
+            ],
+            "under_replenishment_floor": 345,
+            "under_service_input_floor": 345,
+            "zero_output_with_a_plan": 454
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              12,
+              167,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              81,
+              98,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              3,
+              176,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              6,
+              173,
+              0
+            ]
+          },
+          "domestic_at_work_close": 30782914,
+          "domestic_looking_close": 139416606,
+          "national_unmet_share_bps": {
+            "food": 8277,
+            "household_services": 9906,
+            "housing": 9176,
+            "materials": 6569,
+            "public_provision": 9849,
+            "utility": 8974
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 878366134,
+          "abroad_unmet_share_bps": {
+            "food": 3786,
+            "household_services": 9858,
+            "housing": 7410,
+            "materials": 0,
+            "public_provision": 10000,
+            "utility": 6569
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "dependency PublicProvisioning",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices",
+              "foreign PublicProvisioning"
+            ],
+            "under_replenishment_floor": 526,
+            "under_service_input_floor": 473,
+            "zero_output_with_a_plan": 582
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              3,
+              176,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              1,
+              178,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              74,
+              105,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              1,
+              178,
+              0
+            ],
+            "utility": [
+              0,
+              0,
+              4,
+              175,
+              0
+            ]
+          },
+          "domestic_at_work_close": 32834354,
+          "domestic_looking_close": 137365166,
+          "national_unmet_share_bps": {
+            "food": 9012,
+            "household_services": 9980,
+            "housing": 9320,
+            "materials": 7063,
+            "public_provision": 9905,
+            "utility": 9194
+          },
+          "period": 34
+        }
+      ]
+    },
+    {
+      "candidate": "K",
+      "policy_edits": [
+        [
+          "opening_treasury_bps = 1000\n",
+          "opening_treasury_bps = 0\n"
+        ],
+        [
+          "output = \"business_services\"\noutput_units_per_batch = 16\n",
+          "output = \"business_services\"\noutput_units_per_batch = 48\n"
+        ],
+        [
+          "output = \"resources\"\noutput_units_per_batch = 8\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 8,",
+          "output = \"resources\"\noutput_units_per_batch = 32\nlabor_hours_per_batch = 16\ninputs = { resource_deposit = 32,"
+        ],
+        [
+          "output = \"utility\"\noutput_units_per_batch = 160\n",
+          "output = \"utility\"\noutput_units_per_batch = 320\n"
+        ],
+        [
+          "foreign_procurement_bps = 2500 ",
+          "foreign_procurement_bps = 0 "
+        ],
+        [
+          "output = \"food\"\noutput_units_per_batch = 16\n",
+          "output = \"food\"\noutput_units_per_batch = 32\n"
+        ],
+        [
+          "reserve_food_support_periods = 1\n",
+          "reserve_food_support_periods = 16\n"
+        ]
+      ],
+      "summary": [
+        {
+          "abroad_at_work_close": 3164249112,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3592,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 0,
+            "utility": 0
+          },
+          "below_cost": [
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [],
+            "under_replenishment_floor": 0,
+            "under_service_input_floor": 0,
+            "zero_output_with_a_plan": 3828
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              26,
+              17,
+              113,
+              23,
+              0
+            ],
+            "housing": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              152,
+              15,
+              12,
+              0,
+              0
+            ],
+            "utility": [
+              166,
+              11,
+              2,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 161337825,
+          "domestic_looking_close": 8861695,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3062,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 192,
+            "utility": 35
+          },
+          "period": 1
+        },
+        {
+          "abroad_at_work_close": 1185535341,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3594,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 12
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              9,
+              37,
+              115,
+              18,
+              0
+            ],
+            "housing": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              102,
+              67,
+              10,
+              0,
+              0
+            ],
+            "utility": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 42888776,
+          "domestic_looking_close": 127310744,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3033,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 154,
+            "utility": 0
+          },
+          "period": 2
+        },
+        {
+          "abroad_at_work_close": 802978164,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3595,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 23
+          },
+          "counties_by_band": {
+            "food": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "household_services": [
+              0,
+              4,
+              149,
+              26,
+              0
+            ],
+            "housing": [
+              24,
+              102,
+              53,
+              0,
+              0
+            ],
+            "materials": [
+              177,
+              2,
+              0,
+              0,
+              0
+            ],
+            "public_provision": [
+              90,
+              75,
+              14,
+              0,
+              0
+            ],
+            "utility": [
+              161,
+              13,
+              5,
+              0,
+              0
+            ]
+          },
+          "domestic_at_work_close": 38099578,
+          "domestic_looking_close": 132099942,
+          "national_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3308,
+            "housing": 508,
+            "materials": 0,
+            "public_provision": 196,
+            "utility": 41
+          },
+          "period": 3
+        },
+        {
+          "abroad_at_work_close": 839788695,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3596,
+            "housing": 0,
+            "materials": 0,
+            "public_provision": 2,
+            "utility": 0
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices"
+            ],
+            "under_replenishment_floor": 2,
+            "under_service_input_floor": 2,
+            "zero_output_with_a_plan": 8
+          },
+          "counties_by_band": {
+            "food": [
+              169,
+              9,
+              0,
+              1,
+              0
+            ],
+            "household_services": [
+              0,
+              2,
+              121,
+              56,
+              0
+            ],
+            "housing": [
+              5,
+              6,
+              157,
+              11,
+              0
+            ],
+            "materials": [
+              149,
+              20,
+              7,
+              3,
+              0
+            ],
+            "public_provision": [
+              12,
+              8,
+              150,
+              9,
+              0
+            ],
+            "utility": [
+              10,
+              11,
+              148,
+              10,
+              0
+            ]
+          },
+          "domestic_at_work_close": 35691178,
+          "domestic_looking_close": 134508342,
+          "national_unmet_share_bps": {
+            "food": 13,
+            "household_services": 4399,
+            "housing": 2570,
+            "materials": 50,
+            "public_provision": 2311,
+            "utility": 2217
+          },
+          "period": 4
+        },
+        {
+          "abroad_at_work_close": 860304741,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 3041,
+            "housing": 220,
+            "materials": 0,
+            "public_provision": 222,
+            "utility": 220
+          },
+          "below_cost": [
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "domestic BusinessServices",
+              "domestic HouseholdServices"
+            ],
+            "under_replenishment_floor": 16,
+            "under_service_input_floor": 16,
+            "zero_output_with_a_plan": 29
+          },
+          "counties_by_band": {
+            "food": [
+              37,
+              127,
+              14,
+              1,
+              0
+            ],
+            "household_services": [
+              0,
+              1,
+              93,
+              85,
+              0
+            ],
+            "housing": [
+              2,
+              4,
+              121,
+              52,
+              0
+            ],
+            "materials": [
+              126,
+              10,
+              6,
+              37,
+              0
+            ],
+            "public_provision": [
+              7,
+              4,
+              137,
+              31,
+              0
+            ],
+            "utility": [
+              8,
+              3,
+              135,
+              33,
+              0
+            ]
+          },
+          "domestic_at_work_close": 33472345,
+          "domestic_looking_close": 136727175,
+          "national_unmet_share_bps": {
+            "food": 356,
+            "household_services": 5546,
+            "housing": 4754,
+            "materials": 1080,
+            "public_provision": 4396,
+            "utility": 4183
+          },
+          "period": 5
+        },
+        {
+          "abroad_at_work_close": 904927120,
+          "abroad_unmet_share_bps": {
+            "food": 0,
+            "household_services": 2926,
+            "housing": 15,
+            "materials": 0,
+            "public_provision": 17,
+            "utility": 15
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic Extraction",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning"
+            ],
+            "under_replenishment_floor": 212,
+            "under_service_input_floor": 212,
+            "zero_output_with_a_plan": 361
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              2,
+              43,
+              134,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              1,
+              178,
+              0
+            ],
+            "materials": [
+              12,
+              12,
+              51,
+              104,
+              0
+            ],
+            "public_provision": [
+              0,
+              1,
+              6,
+              172,
+              0
+            ],
+            "utility": [
+              0,
+              1,
+              8,
+              170,
+              0
+            ]
+          },
+          "domestic_at_work_close": 31965772,
+          "domestic_looking_close": 138233748,
+          "national_unmet_share_bps": {
+            "food": 6808,
+            "household_services": 9925,
+            "housing": 9188,
+            "materials": 6023,
+            "public_provision": 9071,
+            "utility": 8953
+          },
+          "period": 13
+        },
+        {
+          "abroad_at_work_close": 888566107,
+          "abroad_unmet_share_bps": {
+            "food": 2888,
+            "household_services": 9871,
+            "housing": 6473,
+            "materials": 0,
+            "public_provision": 6161,
+            "utility": 6160
+          },
+          "below_cost": [
+            "business_services: below cost at the lowest seller",
+            "household_services: below cost at the lowest seller",
+            "materials: below cost at the lowest seller",
+            "public_provision: below cost",
+            "resources: below cost at the lowest seller"
+          ],
+          "businesses": {
+            "functions_with_sites_under_a_floor": [
+              "dependency BusinessServices",
+              "dependency Extraction",
+              "dependency HouseholdServices",
+              "dependency Manufacturing",
+              "domestic BusinessServices",
+              "domestic ConstructionHousing",
+              "domestic DistributionTransport",
+              "domestic Extraction",
+              "domestic Food",
+              "domestic HouseholdServices",
+              "domestic Manufacturing",
+              "domestic PublicProvisioning",
+              "foreign HouseholdServices"
+            ],
+            "under_replenishment_floor": 466,
+            "under_service_input_floor": 401,
+            "zero_output_with_a_plan": 533
+          },
+          "counties_by_band": {
+            "food": [
+              0,
+              0,
+              2,
+              177,
+              0
+            ],
+            "household_services": [
+              0,
+              0,
+              0,
+              179,
+              0
+            ],
+            "housing": [
+              0,
+              0,
+              2,
+              177,
+              0
+            ],
+            "materials": [
+              0,
+              0,
+              85,
+              94,
+              0
+            ],
+            "public_provision": [
+              0,
+              0,
+              3,
+              176,
+              0
+            ],
+            "utility": [
+              0,
+              1,
+              4,
+              174,
+              0
+            ]
+          },
+          "domestic_at_work_close": 33409189,
+          "domestic_looking_close": 136790331,
+          "national_unmet_share_bps": {
+            "food": 8927,
+            "household_services": 9980,
+            "housing": 9341,
+            "materials": 6896,
+            "public_provision": 9701,
+            "utility": 9258
+          },
+          "period": 34
+        }
+      ]
+    }
+  ]
+}

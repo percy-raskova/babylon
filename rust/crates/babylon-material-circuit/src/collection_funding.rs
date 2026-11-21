@@ -7,7 +7,7 @@ use crate::{
     MoneyTransferReceipt, OrderId, OutboundOrderId, ServicePerformanceReceipt, UnitId,
 };
 use babylon_kernel::currency::Currency;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default)]
 pub(crate) struct ServiceAdmissions {
@@ -58,6 +58,7 @@ impl ServiceAdmissions {
         period: u64,
         performance: &[ServicePerformanceReceipt],
         movements: &[MoneyTransferReceipt],
+        wants: &BTreeSet<OrderId>,
     ) -> Result<BTreeMap<(GoodId, UnitId), HouseholdServiceFunding>> {
         let buyer = AccountId::Household(donor);
         let mut actual = performance.iter().filter(|r| r.buyer == buyer);
@@ -89,6 +90,11 @@ impl ServiceAdmissions {
                 .ok_or(MaterialCircuitError::PurchaseInvariant)?;
             let refund =
                 payment.reconcile(row, self.opening_reserves.get(&row.order_id).copied())?;
+            if wants.contains(&row.order_id) {
+                // A want's money is checked like a need's, but its units are no part of what the
+                // need's household row counts, so it funds nothing.
+                continue;
+            }
             funded
                 .entry((row.good_id, row.unit_id))
                 .or_default()
@@ -330,7 +336,7 @@ mod tests {
         ];
         let valid = std::slice::from_ref(&performance);
         let good = sources
-            .reconcile(principal, 1, valid, &movements)
+            .reconcile(principal, 1, valid, &movements, &BTreeSet::new())
             .expect("verified funding");
         assert_eq!(
             good[&(performance.good_id, performance.unit_id)].refunded,
@@ -340,30 +346,30 @@ mod tests {
             let mut missing = movements.clone();
             missing.remove(i);
             assert!(matches!(
-                sources.reconcile(principal, 1, valid, &missing),
+                sources.reconcile(principal, 1, valid, &missing, &BTreeSet::new()),
                 Err(MaterialCircuitError::PurchaseInvariant)
             ));
             let mut duplicate = movements.clone();
             duplicate.push(movements[i].clone());
             assert!(matches!(
-                sources.reconcile(principal, 1, valid, &duplicate),
+                sources.reconcile(principal, 1, valid, &duplicate, &BTreeSet::new()),
                 Err(MaterialCircuitError::PurchaseInvariant)
             ));
         }
         let mut wrong = movements.clone();
         wrong[2].credit.location = MoneyLocation::Cash(seller);
         assert!(matches!(
-            sources.reconcile(principal, 1, valid, &wrong),
+            sources.reconcile(principal, 1, valid, &wrong, &BTreeSet::new()),
             Err(MaterialCircuitError::PurchaseInvariant)
         ));
         wrong[2] = movements[2].clone();
         wrong[2].debit.delta = Currency::from_micro_units(-10);
         assert!(matches!(
-            sources.reconcile(principal, 1, valid, &wrong),
+            sources.reconcile(principal, 1, valid, &wrong, &BTreeSet::new()),
             Err(MaterialCircuitError::PurchaseInvariant)
         ));
         assert!(matches!(
-            sources.reconcile(principal, 1, &[], &movements),
+            sources.reconcile(principal, 1, &[], &movements, &BTreeSet::new()),
             Err(MaterialCircuitError::ServiceInvariant)
         ));
     }
@@ -444,7 +450,7 @@ mod tests {
             unused_quantity: 0,
         };
         let funded = sources
-            .reconcile(principal, 1, &actual, &movements)
+            .reconcile(principal, 1, &actual, &movements, &BTreeSet::new())
             .expect("both orders reconciled");
         assert_eq!(
             funded[&(need.good_id, need.unit_id)]
@@ -456,7 +462,13 @@ mod tests {
         // opening escrow identifies the missing admission, performance and refund family.
         sources.orders.remove(0);
         assert!(matches!(
-            sources.reconcile(principal, 1, &actual[1..], &movements[1..]),
+            sources.reconcile(
+                principal,
+                1,
+                &actual[1..],
+                &movements[1..],
+                &BTreeSet::new()
+            ),
             Err(MaterialCircuitError::PurchaseInvariant)
         ));
     }

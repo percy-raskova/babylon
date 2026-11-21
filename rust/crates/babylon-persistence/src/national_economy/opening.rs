@@ -10,7 +10,7 @@ mod equipment;
 
 mod external;
 
-mod financial;
+pub(super) mod financial;
 
 mod household_time;
 mod lifecycle;

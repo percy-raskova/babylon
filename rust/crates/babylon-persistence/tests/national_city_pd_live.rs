@@ -4,12 +4,15 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
     AccountId, AgencyAttendanceOutcome, CircuitAccounting, OrganizationAccountId, PublicAccountId,
 };
+use babylon_material_circuit::{PublicTransferTreatment, SiteId};
 use babylon_persistence::economic_catalog::{
-    CapturedEconomicCatalog, EconomicCatalogInput, NationalOpponent,
+    CapturedEconomicCatalog, EconomicCatalogInput, EconomicSiteSource, NationalOpponent,
+    SourceArtifact, SourceArtifactKind,
 };
 use babylon_persistence::identity::CampaignId;
 use babylon_practice_contract::OrganizerAllocation;
@@ -472,4 +475,114 @@ fn national_no_opponent_still_publishes_the_real_contact() {
         .iter()
         .any(|record| record.period == 1
             && matches!(record.kind, PublicVenueRecordKind::ContactCompleted { .. })));
+}
+
+fn campaign_with_policy(
+    edit: impl FnOnce(&str) -> String,
+) -> (CapturedEconomicCatalog, CityPdConfig) {
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
+    let mut input = national_capture::input();
+    let source = input
+        .sources
+        .iter_mut()
+        .find(|row| row.kind() == SourceArtifactKind::NationalGamePolicy)
+        .expect("national policy");
+    let text = edit(std::str::from_utf8(source.bytes()).expect("policy text"));
+    *source = SourceArtifact::capture(source.kind(), text.into_bytes());
+    let capture = CapturedEconomicCatalog::capture_national_campaign(input, campaign)
+        .expect("national campaign");
+    let config = capture.city_pd_config().expect("City PD captured").clone();
+    (capture, config)
+}
+
+#[test]
+fn the_city_pd_payroll_is_named_on_the_public_workplace_that_employs_the_force() {
+    let (capture, config) = campaign_with_policy(str::to_owned);
+    // Three numbers, no longer one: the wage, the price of a visit and the appropriation.
+    assert_eq!(config.hourly_wage_micros, 24_000_000);
+    assert_eq!(config.visit_hours, 1);
+    assert_eq!(config.visit_cost_micros, 24_000_000);
+    assert_eq!(config.visits_per_period, 1);
+    assert_eq!(config.appropriation_micros, 24_000_000);
+    assert_eq!(config.payroll_positions, 3_529);
+    assert_eq!(config.payroll_hours_per_position, 160);
+    assert_eq!(config.payroll_micros, 13_551_360_000_000);
+
+    let opening = capture.opening();
+    let county = "county:26163".parse().expect("Wayne");
+    let site = opening
+        .sites
+        .iter()
+        .find(|row| row.site_id == SiteId::from_bytes(config.payroll_site_account_id))
+        .expect("the payroll site is one of the opening's workplaces");
+    assert_eq!(site.location, county);
+    assert_eq!(site.function, EconomicFunction::PublicProvisioning);
+    assert!(matches!(
+        &site.source,
+        EconomicSiteSource::Qcew(key) if key.ownership == QcewOwnership::LocalGovernment
+    ));
+    let public = PublicAccountId::from_bytes(config.public_account_id);
+    let grants: Vec<_> = opening
+        .institutions
+        .public_allocations
+        .iter()
+        .filter(|row| {
+            row.public_account == public
+                && row.recipient == AccountId::Site(site.site_id)
+                && row.treatment == PublicTransferTreatment::ProviderOperatingGrant
+        })
+        .collect();
+    assert_eq!(
+        grants.len(),
+        1,
+        "the force is paid inside one existing grant"
+    );
+    assert!(grants[0].amount_per_period.micro_units() >= config.payroll_micros);
+    // The engine's line for the City PD is the appropriation and nothing else.
+    let agency =
+        AccountId::Organization(OrganizationAccountId::from_bytes(config.agency_account_id));
+    let lines: Vec<_> = opening
+        .institutions
+        .public_allocations
+        .iter()
+        .filter(|row| row.recipient == agency)
+        .collect();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].amount_per_period.micro_units(), 24_000_000);
+}
+
+#[test]
+fn a_campaign_with_another_wage_is_accepted_and_each_number_follows_it() {
+    let (_, config) = campaign_with_policy(|text| {
+        let changed = text.replace(
+            "default_wage_micros_per_hour = 24000000",
+            "default_wage_micros_per_hour = 30000000",
+        );
+        assert_ne!(changed, text);
+        changed
+    });
+    assert_eq!(config.hourly_wage_micros, 30_000_000);
+    assert_eq!(config.visit_cost_micros, 30_000_000);
+    assert_eq!(config.appropriation_micros, 30_000_000);
+    assert_eq!(config.payroll_micros, 3_529 * 160 * 30_000_000);
+}
+
+#[test]
+fn a_city_pd_with_more_positions_than_the_workplace_employs_is_refused() {
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
+    let mut input = national_capture::input();
+    let source = input
+        .sources
+        .iter_mut()
+        .find(|row| row.kind() == SourceArtifactKind::NationalGamePolicy)
+        .expect("national policy");
+    let text = std::str::from_utf8(source.bytes())
+        .expect("policy text")
+        .replace("positions = 3529", "positions = 900000000");
+    *source = SourceArtifact::capture(source.kind(), text.into_bytes());
+    assert!(matches!(
+        CapturedEconomicCatalog::capture_national_campaign(input, campaign),
+        Err(babylon_persistence::economic_catalog::EconomicCatalogError::Opening(reason))
+            if reason.contains("fewer persons")
+    ));
 }

@@ -2,9 +2,11 @@
 use super::accounting;
 use super::Cursor;
 use crate::{
-    CapitalContributionOrder, ContributionId, DistributionPolicy, FinancialInstitutions,
-    InstitutionLocation, MaterialCircuitError, OwnershipClaim, PublicAccountId, PublicAllocation,
-    PublicBudget, PublicTransferTreatment, SiteId, TaxBasis, TaxPolicy,
+    CapitalContributionOrder, ContributionId, DistributionPolicy, FinalDemandPrincipalId,
+    FinancialInstitutions, InstitutionLocation, LayoffRecord, MaterialCircuitError, OwnershipClaim,
+    PublicAccountId, PublicAllocation, PublicBudget, PublicProgram, PublicProgramKey,
+    PublicProgramTerms, PublicSpendingRule, PublicTransferTreatment, SiteId, StaffingMemberId,
+    TaxBasis, TaxPolicy, MAX_LAYOFF_PERIODS,
 };
 use babylon_kernel::economic_location::EconomicLocation;
 use std::result::Result as StdResult;
@@ -18,10 +20,14 @@ pub(super) fn append(out: &mut Vec<u8>, f: &FinancialInstitutions) -> Result<()>
     append_public_budgets(out, &f.public_budgets)?;
     append_public_allocations(out, &f.public_allocations)?;
     append_contributions(out, &f.contributions)?;
+    if f.has_public_program_extension() {
+        append_tail(out, f)?;
+    }
     Ok(())
 }
-pub(super) fn decode(c: &mut Cursor<'_>) -> Result<FinancialInstitutions> {
-    Ok(FinancialInstitutions {
+/// `extended` is true only under state versions 25 and 26, which carry the tail.
+pub(super) fn decode(c: &mut Cursor<'_>, extended: bool) -> Result<FinancialInstitutions> {
+    let mut f = FinancialInstitutions {
         locations: decode_locations(c)?,
         ownership: decode_ownership(c)?,
         distributions: decode_distributions(c)?,
@@ -29,7 +35,135 @@ pub(super) fn decode(c: &mut Cursor<'_>) -> Result<FinancialInstitutions> {
         public_budgets: decode_public_budgets(c)?,
         public_allocations: decode_public_allocations(c)?,
         contributions: decode_contributions(c)?,
+        programs: vec![],
+        layoffs: vec![],
+    };
+    if extended {
+        decode_tail(c, &mut f)?;
+    }
+    Ok(f)
+}
+/// The tail after the financial rows: one `u32` count equal to the budgets' and one `u8` rule for each
+/// budget in its order; then the programs and the layoff records, each a `u32` count.
+fn append_tail(out: &mut Vec<u8>, f: &FinancialInstitutions) -> Result<()> {
+    super::append_rows(out, &f.public_budgets, |b, r| b.push(r.rule as u8))?;
+    append_programs(out, &f.programs)?;
+    append_layoffs(out, &f.layoffs)
+}
+fn decode_tail(c: &mut Cursor<'_>, f: &mut FinancialInstitutions) -> Result<()> {
+    let rules = super::decode_rows(c, |b| match b.u8()? {
+        1 => Ok(PublicSpendingRule::CappedInOrder),
+        2 => Ok(PublicSpendingRule::CashInProportion),
+        _ => Err(MaterialCircuitError::WireEnum),
+    })?;
+    if rules.len() != f.public_budgets.len() {
+        return Err(MaterialCircuitError::WireNoncanonical);
+    }
+    for (budget, rule) in f.public_budgets.iter_mut().zip(rules) {
+        budget.rule = rule;
+    }
+    f.programs = decode_programs(c)?;
+    f.layoffs = decode_layoffs(c)?;
+    Ok(())
+}
+/// Per record: the member 32 bytes, the hours of the job lost `u64`, a `u8` count of cohorts and each
+/// cohort `u64`, newest first.
+fn append_layoffs(out: &mut Vec<u8>, rows: &[LayoffRecord]) -> Result<()> {
+    super::try_append_bounded_rows(out, rows, crate::MAX_STAFFING_MEMBERS, |b, r| {
+        b.extend_from_slice(&r.member_id.as_bytes());
+        b.extend_from_slice(&r.hours_per_person.to_be_bytes());
+        b.push(u8::try_from(r.cohorts.len()).map_err(|_| MaterialCircuitError::WireLimit)?);
+        for cohort in &r.cohorts {
+            b.extend_from_slice(&cohort.to_be_bytes());
+        }
+        Ok(())
     })
+}
+fn decode_layoffs(c: &mut Cursor<'_>) -> Result<Vec<LayoffRecord>> {
+    let rows = super::decode_bounded_rows(c, crate::MAX_STAFFING_MEMBERS, |b| {
+        let member_id = StaffingMemberId::from_bytes(b.array()?);
+        let hours_per_person = b.u64()?;
+        let count = usize::from(b.u8()?);
+        let mut cohorts = Vec::with_capacity(count.min(MAX_LAYOFF_PERIODS));
+        for _ in 0..count {
+            cohorts.push(b.u64()?);
+        }
+        Ok(LayoffRecord {
+            member_id,
+            hours_per_person,
+            cohorts,
+        })
+    })?;
+    accounting::ordered_rows(&rows, |r| r.member_id)?;
+    Ok(rows)
+}
+/// Per program: key length `u8` and its bytes, payer, rank `u32`, a tag `u8`, the terms, then a `u32`
+/// count of recipients and 32 bytes each. Terms: tag 1 the amount per person, tag 2 the wage share
+/// `u16` and the half periods `u16`.
+fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
+    super::try_append_bounded_rows(out, rows, crate::MAX_PUBLIC_PROGRAMS, |b, r| {
+        let key = r.key.as_str().as_bytes();
+        b.push(u8::try_from(key.len()).map_err(|_| MaterialCircuitError::WireLimit)?);
+        b.extend_from_slice(key);
+        b.extend_from_slice(&r.payer.as_bytes());
+        b.extend_from_slice(&r.rank.to_be_bytes());
+        match r.terms {
+            PublicProgramTerms::PerPerson { amount_per_person } => {
+                b.push(1);
+                b.extend_from_slice(&amount_per_person.micro_units().to_be_bytes());
+            }
+            PublicProgramTerms::AfterLayoff {
+                wage_share_bps,
+                half_periods,
+            } => {
+                b.push(2);
+                b.extend_from_slice(&wage_share_bps.to_be_bytes());
+                b.extend_from_slice(&half_periods.to_be_bytes());
+            }
+        }
+        b.extend_from_slice(
+            &u32::try_from(r.recipients.len())
+                .map_err(|_| MaterialCircuitError::WireLimit)?
+                .to_be_bytes(),
+        );
+        for recipient in &r.recipients {
+            b.extend_from_slice(&recipient.as_bytes());
+        }
+        Ok(())
+    })
+}
+fn decode_programs(c: &mut Cursor<'_>) -> Result<Vec<PublicProgram>> {
+    let rows = super::decode_bounded_rows(c, crate::MAX_PUBLIC_PROGRAMS, |b| {
+        let length = usize::from(b.u8()?);
+        let text = std::str::from_utf8(b.take(length)?)
+            .map_err(|_| MaterialCircuitError::WireNoncanonical)?;
+        let key =
+            PublicProgramKey::new(text).map_err(|_| MaterialCircuitError::WireNoncanonical)?;
+        let payer = PublicAccountId::from_bytes(b.array()?);
+        let rank = b.u32()?;
+        let terms = match b.u8()? {
+            1 => PublicProgramTerms::PerPerson {
+                amount_per_person: accounting::decode_currency(b)?,
+            },
+            2 => PublicProgramTerms::AfterLayoff {
+                wage_share_bps: b.u16()?,
+                half_periods: b.u16()?,
+            },
+            _ => return Err(MaterialCircuitError::WireEnum),
+        };
+        let recipients =
+            super::decode_rows(b, |b| Ok(FinalDemandPrincipalId::from_bytes(b.array()?)))?;
+        accounting::ordered_rows(&recipients, |r| *r)?;
+        Ok(PublicProgram {
+            key,
+            payer,
+            rank,
+            terms,
+            recipients,
+        })
+    })?;
+    accounting::ordered_rows(&rows, |r| r.key.clone())?;
+    Ok(rows)
 }
 fn append_locations(out: &mut Vec<u8>, rows: &[InstitutionLocation]) -> Result<()> {
     super::append_rows(out, rows, |b, r| {
@@ -87,7 +221,7 @@ fn decode_distributions(c: &mut Cursor<'_>) -> Result<Vec<DistributionPolicy>> {
     Ok(rows)
 }
 fn append_taxes(out: &mut Vec<u8>, rows: &[TaxPolicy]) -> Result<()> {
-    super::append_bounded_rows(out, rows, crate::MAX_MONETARY_ACCOUNTS, |b, r| {
+    super::append_bounded_rows(out, rows, crate::MAX_TAX_POLICIES, |b, r| {
         accounting::append_account(b, r.payer);
         b.extend_from_slice(&r.public_recipient.as_bytes());
         b.push(r.basis as u8);
@@ -96,7 +230,7 @@ fn append_taxes(out: &mut Vec<u8>, rows: &[TaxPolicy]) -> Result<()> {
     })
 }
 fn decode_taxes(c: &mut Cursor<'_>) -> Result<Vec<TaxPolicy>> {
-    let rows = super::decode_bounded_rows(c, crate::MAX_MONETARY_ACCOUNTS, |b| {
+    let rows = super::decode_bounded_rows(c, crate::MAX_TAX_POLICIES, |b| {
         Ok(TaxPolicy {
             payer: accounting::decode_account(b)?,
             public_recipient: PublicAccountId::from_bytes(b.array()?),
@@ -109,7 +243,7 @@ fn decode_taxes(c: &mut Cursor<'_>) -> Result<Vec<TaxPolicy>> {
             cash_floor: accounting::decode_currency(b)?,
         })
     })?;
-    accounting::ordered_rows(&rows, |r| r.payer)?;
+    accounting::ordered_rows(&rows, |r| (r.payer, r.basis, r.public_recipient))?;
     Ok(rows)
 }
 fn append_public_budgets(out: &mut Vec<u8>, rows: &[PublicBudget]) -> Result<()> {
@@ -125,6 +259,7 @@ fn decode_public_budgets(c: &mut Cursor<'_>) -> Result<Vec<PublicBudget>> {
             public_account: PublicAccountId::from_bytes(b.array()?),
             period_cap: accounting::decode_currency(b)?,
             cash_floor: accounting::decode_currency(b)?,
+            rule: PublicSpendingRule::CappedInOrder,
         })
     })?;
     accounting::ordered_rows(&rows, |r| r.public_account)?;
@@ -180,4 +315,38 @@ fn decode_contributions(c: &mut Cursor<'_>) -> Result<Vec<CapitalContributionOrd
     })?;
     accounting::ordered_rows(&rows, |r| r.id)?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{append_layoffs, decode_programs};
+    use crate::wire::Cursor;
+    use crate::{LayoffRecord, MaterialCircuitError, StaffingMemberId};
+
+    /// A record of more cohorts than the byte count holds is refused, never clamped to 255.
+    #[test]
+    fn a_record_of_too_many_cohorts_is_a_wire_limit() {
+        let record = LayoffRecord {
+            member_id: StaffingMemberId::from_bytes([1; 32]),
+            hours_per_person: 1,
+            cohorts: vec![1; 256],
+        };
+        let mut out = vec![];
+        assert_eq!(
+            append_layoffs(&mut out, &[record]),
+            Err(MaterialCircuitError::WireLimit)
+        );
+    }
+
+    /// An ill-formed key in the bytes is a fault of the bytes, not of a program.
+    #[test]
+    fn an_ill_formed_key_in_the_bytes_is_noncanonical() {
+        let mut bytes = 1_u32.to_be_bytes().to_vec();
+        bytes.push(9);
+        bytes.extend_from_slice(b"No-earner");
+        assert_eq!(
+            decode_programs(&mut Cursor::new(&bytes)).err(),
+            Some(MaterialCircuitError::WireNoncanonical)
+        );
+    }
 }

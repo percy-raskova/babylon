@@ -156,6 +156,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         last_household_consumption_period: 0,
     };
     let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()

@@ -57,6 +57,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     babylon_practice_contract::validate_organizer_commitment(&commitment)
         .expect("the authored fixture satisfies the rule");
     let preview = OrganizerPreview {
+        review: None,
         allocation: OrganizerAllocation::Aid {
             food_quantity: 1,
             cash_micros: 0,

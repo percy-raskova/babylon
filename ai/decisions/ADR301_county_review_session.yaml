@@ -1,0 +1,168 @@
+ADR301_county_review_session:
+  title: Hold a recurring County Review session in which Wayne households act on their own money
+  date: '2026-11-19'
+  status: accepted
+  issue: PER-366
+  evidence_class: Designed
+  authority:
+    - >-
+      Director, 2026-11-18, on the first slice: "Option A is decided" (the County
+      Review).
+    - >-
+      Director, 2026-11-19, on the county: "Defends its own, weighs by tax". Office
+      and police money is off the table. The review moves relief only inside a fixed
+      total.
+    - 'Director, 2026-11-19, on spread: "Each one brings one".'
+    - >-
+      Director, 2026-11-19, on why a household comes: "Own money, if worth the
+      time". The design records the floor as two hours at the wage, $48 today.
+    - 'Director, 2026-11-19, on the county''s rule, after the re-check: "Rank by wage tax".'
+    - >-
+      Director, 2026-11-19, on the second road: "Both roads", then, after the
+      re-check, "No roll until the kitchen".
+    - >-
+      Director, 2026-11-19, on reading the fourth draft (spelling corrected):
+      "ruling 5 also survives as written about laws, modify the constitution".
+    - >-
+      Director, 2026-11-19: "Check what you have to check one more time, then write
+      the plan out and begin implementing it."
+    - ADR184 (an organization allocates its budget by yield per unit spent)
+    - ADR291 (the City PD is the first state opponent)
+  context: |
+    Wayne has one relief hearing per campaign, and the county's household support
+    lines never change after the opening. No household decides anything. The
+    design (docs/superpowers/specs/2026-11-19-county-review-design.md) makes the
+    county's relief roll the stake of a recurring session.
+  decision: |
+    R1. COUNTY ADMINISTRATION. Add the Wayne County administration as a second
+    state actor, in the form ADR291 gave the City PD. It sets the household
+    support lines of the county-scoped public account inside the money for
+    relief. It cannot change a first-class line, the spending limit or a tax. It
+    sees its own account, its roll, the wage tax each group paid, and who came to
+    ask, by position. This partly supersedes ADR299's sentence "The county's
+    ordinary fiscal accounts continue to determine payments."
+
+    R2. THE COUNTY'S RULE. The county lists every household that holds or asks
+    for a unit by the wage tax that household paid on its own wage, counted at
+    the rate collected from its own household unit where the campaign has
+    household units (ADR306), and pays down the list until its money runs out.
+    This is an ADR184 allocation: every unit costs the same and the yield is the
+    wage tax. A unit moves only to a household that pays strictly more. An exact
+    tie moves nothing. Positions at one place lose in proportion to the units
+    they hold. A household that asks comes only when a place is open. Relief won
+    lasts one period. The wage the City PD pays for an agency shift is in the
+    group's taxed wages and gives no household a place. A ranking by yield with
+    no threshold is not a fixed political-response curve.
+
+    R3. THE HOUSEHOLD'S RULE. A household reads only its own money and hours. A
+    reached household that holds no unit asks only if its household unit, or its
+    budget group in a campaign without units, has two free hours to set aside,
+    and hours are set aside in order of place. A household left without them is
+    recorded "no time" and does not ask. The number that come is the count of
+    reached households whose own stake is at least their own cost of time: two
+    session hours at the wage. A stake is a whole unit or nothing. Unpaid units
+    fall on reached and unreached households in proportion, and an exact tie
+    falls on the unreached. A household ranked last still comes, and is recorded
+    as in the room. An hour is valued at the wage for every household. The step
+    at $280 is the real spread of stakes. Today the floor keeps nobody home. It
+    would if two hours' wages exceeded a unit, which is a wage above $140 an
+    hour.
+
+    R4. WHEN THE COUNTY IS SHORT. The household list is paid from the top.
+    Collective residence is outside the review and is cut only in proportion. The
+    county publishes its cash, its roll and the order of its list at each
+    session. This replaces the engine's identifier order for household support.
+
+    R5. EACH ONE BRINGS ONE. A household that came brings one household of its
+    own position, reached from the next session. It spends two hours on it.
+    Nothing can be called back. The rate is Designed.
+
+    R6. THE SESSION ROLL. A household's own hours in the county's room put it on
+    a body's roll for that period. The roll records who came, not agreement. Any
+    Wayne household may be charged hours on its own recorded choice. This amends,
+    for this one act, ADR262's "Neither operation writes solidarity, membership"
+    and ADR270's rule on what creates membership.
+
+    R7. THE REVIEW CONTACT AND THE TURN. Add an organizer choice, the review
+    contact, that names a position by its answers. It is new content vocabulary
+    and needs the Director's ceremony, schema and conformance updates. It adds no
+    verb and moves none, because ADR177 makes moving a verb a Director ruling.
+    The author reads the contact as a sub-mode of mobilize (Project-power by
+    Population), beside the shipped canvass, following the ratified table in
+    reports/article-v-3x3-draft-2026-08-10.md. That placement is the author's
+    call and the Director has not confirmed the cell (see open_questions). Any
+    organization may make the choice. In this slice none but the player does.
+
+    R8. ARTICLE III READING. Money moves one period later: a session sets lines
+    that the next close pays. Reach moves one period later. A contact is chosen
+    in one period and carried out when the next closes. The roster is updated
+    from the close just finished. The hours a household spends in the room are
+    charged to the period just closed, which is the period the engine's own check
+    on household hours expects. The author reads this as satisfying Article III.
+    The Director has not ruled on it (see open_questions).
+
+    R9. OPENING CONDITIONS. The first session is in period 4 and the review
+    contact can be chosen from period 3. The opening reach is 2 claimant
+    households and 3 of the aid partners' 4, which moves no money. The two
+    claims stand for the whole run. Neither body has an organizer of its own.
+    Geographic and sector variation are BLOCKED, because the slice is one county.
+  calls:
+    - 'The county holds a session at no cost to itself (design 7.3).'
+    - 'A household that asks comes only when a place is open, and is never sent away (7.4).'
+    - 'Positions at one place lose in proportion; an exact tie pays nobody (7.4).'
+    - 'Only wage tax ranks. Ownership income is untaxed and ranks no household (7.4).'
+    - 'A place is a rate worked out from totals, compared as exact fractions (7.4).'
+    - 'Unpaid units fall on reached and unreached households in proportion (7.5).'
+    - 'A household ranked last still comes (7.5).'
+    - 'A household that came spends 2 more hours to bring one (7.6).'
+    - 'Relief won is a level and lasts one period (7.1).'
+    - 'Collective residence is outside the review (7.1).'
+    - 'A household asks only if its household unit, or its budget group in a campaign without units, has two free hours, set aside in order of place; otherwise it is recorded "no time" (7.4 step 5, 7.5).'
+    - 'The City PD agency-shift wage gives no household a place (7.4).'
+    - 'A household that is brought has the same five answers as the one that brought it (7.6).'
+    - 'The two claims stand for the whole run (7.3).'
+    - 'The opening reach is 2 claimant households and 3 of the aid partners'' 4 (7.3).'
+    - 'The review contact sits in mobilize (Project-power by Population), beside canvass; no verb is added or moved (7.6; reports/article-v-3x3-draft-2026-08-10.md).'
+    - 'The first session is in period 4 and the contact opens in period 3 (7.6).'
+    - 'Nothing starts at the county unless the player starts it (7.3).'
+  alternatives_rejected:
+    - 'Counting heads, with or without office grants on the table (design 6, The county).'
+    - 'A tax-weighted count, for less against (6, How "weighs by tax" becomes a ruling).'
+    - 'A refund of wage tax up to one unit (6).'
+    - 'Its own money, either way; not until consciousness is ruled (6, Why a household comes).'
+    - 'Stretching the ADR299 hearing to many seats (6, What kind of proceeding).'
+    - 'Organizer-only spread of one household a period (6, Spread).'
+  open_questions:
+    - >-
+      Does the Director confirm the review contact as a sub-mode of mobilize
+      (Project-power by Population), or name another cell of the ADR177 matrix?
+    - >-
+      Is an exact table of counts a lawful way to carry a group's spread under
+      ADR176 ruling 17, which named moments or a fixed-size sketch? The author
+      treats it as current mathematics (design 12).
+    - >-
+      Do the hours a household spends in the county's room belong to the period
+      just closed, as the engine's check on household hours expects, or to the
+      next period under Article III? The build uses the period just closed
+      (design 12).
+    - >-
+      Acceptance of Amendment AM's wording is a third open matter. It is held by
+      ADR300, which stays proposed. The branch must not merge while it is.
+  verification: |
+    Run the first recorded sessions of design section 9. Check that the money for
+    relief equals the total of the roll less the cut, that the list is paid from
+    the top, that ties move nothing, and that the floor compares only the
+    household's own stake and the session's hours at the wage.
+  related:
+    - ADR172_amendment_ae_refoundation_ratified
+    - ADR173_audit_and_stops_dispositions
+    - ADR176_director_rulings_batch_gds_dispositions
+    - ADR184_capacity_belongs_to_organizations
+    - ADR262_native_organizer_practice
+    - ADR270_household_time_and_material_organizer
+    - ADR291_first_state_opponent_observation
+    - ADR299_wayne_relief_hearing
+    - ADR300_amendment_am_no_imposed_functional_form
+    - ADR302_household_roster_and_counting
+    - ADR303_county_review_dispositions
+    - ADR304_city_pd_payroll

@@ -14,6 +14,7 @@ use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::MoneyTransferPurpose;
 use babylon_material_circuit::ShiftId;
@@ -604,6 +605,114 @@ fn lifecycle_changes_only_next_opening_needs_and_restarts_without_a_new_job() {
     assert!(second_order.fulfilled_quantity <= second_order.admitted_quantity);
 }
 
+/// The book's cash and reserves in micro-units.
+fn book_total(state: &MaterialCircuitState) -> i128 {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        panic!("monetary")
+    };
+    e.book
+        .total_cash_and_reserves()
+        .expect("the book totals")
+        .micro_units()
+}
+
+#[test]
+fn a_benefit_per_person_follows_births() {
+    use babylon_material_circuit::{
+        CashAccount, HouseholdLifecycleBook, HouseholdLifecycleRates, InstitutionLocation,
+        PublicAccountId, PublicBudget, PublicProgram, PublicProgramKey, PublicProgramTerms,
+        PublicSpendingRule, ResidentAges,
+    };
+    let (catalog, mut opening) = time_opening(4);
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary")
+    };
+    // A fund with cash, a place and a budget in proportion, paying $10 for each resident person.
+    let fund = PublicAccountId::from_bytes([77; 32]);
+    let mut accounts = e.book.snapshot().accounts;
+    accounts.push(CashAccount {
+        id: AccountId::Public(fund),
+        cash: crate::money(1_000_000_000),
+    });
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    let costs = e.costs.snapshot();
+    e.costs = HistoricalCostBook::open(&e.book, costs.stocks, costs.freight, vec![], vec![])
+        .expect("the fixture opens the authored source");
+    let location = "county:26163"
+        .parse()
+        .expect("the authored literal parses as a county");
+    e.financial.locations.push(InstitutionLocation {
+        account: AccountId::Public(fund),
+        location,
+    });
+    e.financial.public_budgets.push(PublicBudget {
+        public_account: fund,
+        period_cap: crate::money(0),
+        cash_floor: crate::money(0),
+        rule: PublicSpendingRule::CashInProportion,
+    });
+    e.financial.programs.push(PublicProgram {
+        key: PublicProgramKey::new("per_person").expect("a well-formed key"),
+        payer: fund,
+        rank: 0,
+        terms: PublicProgramTerms::PerPerson {
+            amount_per_person: crate::money(10_000_000),
+        },
+        recipients: vec![crate::household()],
+    });
+    let recurring = e.recurring.as_mut().expect("recurring household economy");
+    let purchase = &mut recurring.household_purchases[0];
+    purchase.enabled = true;
+    purchase.maximum_purchase = 4;
+    purchase.target_closing_stock = 4;
+    let c = &recurring.households[0];
+    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+        panic!("time")
+    };
+    time.lifecycle = Some(
+        HouseholdLifecycleBook::new(
+            HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: 1_000_000,
+                deaths_per_million_per_period: [0; 4],
+            },
+            vec![(
+                c.principal_id,
+                ResidentAges {
+                    under_16: c.persons - 4,
+                    age_18_64: 4,
+                    ..ResidentAges::default()
+                },
+            )],
+        )
+        .expect("valid captured age exposure"),
+    );
+    time.lifecycle
+        .as_mut()
+        .expect("modeled household lifecycle")
+        .purchase_buffer_periods = Some(1);
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("valid recurring economic close");
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+        .expect("valid recurring economic close");
+    assert_eq!(first.household_lifecycle[0].births, 4);
+    assert_eq!(
+        book_total(&first.state),
+        book_total(&opening),
+        "money is conserved"
+    );
+    assert_eq!(
+        book_total(&next.state),
+        book_total(&first.state),
+        "money is conserved"
+    );
+    let due = |t: &MaterialCircuitTransition| t.public_programs[0].due.micro_units();
+    assert_eq!(due(&next) - due(&first), 40_000_000, "four births at $10");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
+        .expect("canonical state encodes");
+    let at = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
+    assert_eq!(u16::from_be_bytes([bytes[at], bytes[at + 1]]), 26);
+}
+
 #[test]
 fn surviving_opening_children_keep_their_dated_birthdays_across_canonical_restart() {
     use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
@@ -658,4 +767,166 @@ fn surviving_opening_children_keep_their_dated_birthdays_across_canonical_restar
         assert_eq!(result.births, 0);
         world = next.state;
     }
+}
+
+/// `time_opening(4)` under a market policy whose order of paying is its one stored need, with a
+/// comfort want of the same product, two units a person. Each seller of the product posts its price
+/// through bounds that both equal it, as a product that clears by price has no fixed-price seller.
+fn want_opening() -> (MaterialCatalog, MaterialCircuitState) {
+    use babylon_material_circuit::{HouseholdWant, MarketClearingPolicy, PricePolicy, WantTier};
+    let (catalog, mut state) = time_opening(4);
+    let mut definition = catalog.into_definition();
+    definition.market_clearing = Some(MarketClearingPolicy {
+        plans_from_spare_money: false,
+        paying_order: vec![(crate::good(2), crate::units())],
+        household_wants: vec![HouseholdWant {
+            principal_id: crate::household(),
+            tier: WantTier::Comfort,
+            good_id: crate::good(2),
+            unit_id: crate::units(),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 2,
+        }],
+    });
+    let recurring = crate::recurring_mut(&mut state);
+    for offer in &mut recurring.offers {
+        if offer.good_id == crate::good(2) {
+            offer.pricing = PricePolicy::Responsive {
+                minimum: offer.unit_price,
+                maximum: offer.unit_price,
+                step: crate::money(1),
+                target_stock: 4,
+            };
+        }
+    }
+    (
+        MaterialCatalog::try_new(definition).expect("a catalog with one want is valid"),
+        state,
+    )
+}
+
+/// The want's quantity for the household's cohort, as the closed state holds it.
+fn closed_want_quantity(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> u64 {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        panic!("monetary")
+    };
+    let recurring = economy.recurring.as_ref().expect("recurring economy");
+    let want = &catalog
+        .market_clearing
+        .as_ref()
+        .expect("a market policy")
+        .wants_of(crate::household())[0];
+    want.quantity(&recurring.households[0])
+        .expect("the want's quantity for the cohort")
+}
+
+#[test]
+fn wants_follow_births_and_deaths() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    for (births, deaths, expected_change) in [(250_000, [0; 4], 2_i64), (0, [0, 0, 250_000, 0], -2)]
+    {
+        let (catalog, mut opening) = want_opening();
+        let before = closed_want_quantity(&catalog, &opening);
+        assert_eq!(before, 8);
+        let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+            panic!("monetary")
+        };
+        let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+            panic!("time")
+        };
+        time.lifecycle = Some(
+            HouseholdLifecycleBook::new(
+                HouseholdLifecycleRates {
+                    births_per_million_working_age_per_period: births,
+                    deaths_per_million_per_period: deaths,
+                },
+                vec![(
+                    crate::household(),
+                    ResidentAges {
+                        age_18_64: 4,
+                        ..ResidentAges::default()
+                    },
+                )],
+            )
+            .expect("valid captured age exposure"),
+        );
+        let closed = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+            .expect("valid recurring economic close");
+        let after = closed_want_quantity(&catalog, &closed.state);
+        assert_eq!(
+            i64::try_from(after).expect("small") - i64::try_from(before).expect("small"),
+            expected_change
+        );
+    }
+}
+
+#[test]
+fn the_next_periods_wants_follow_a_birth() {
+    use babylon_material_circuit::{HouseholdLifecycleBook, HouseholdLifecycleRates, ResidentAges};
+    let (catalog, mut opening) = want_opening();
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary")
+    };
+    // The worked control's purchase rows are disabled, and a disabled row wants nothing.
+    for row in &mut e
+        .recurring
+        .as_mut()
+        .expect("recurring household economy")
+        .household_purchases
+    {
+        row.enabled = true;
+    }
+    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
+        panic!("time")
+    };
+    time.lifecycle = Some(
+        HouseholdLifecycleBook::new(
+            HouseholdLifecycleRates {
+                births_per_million_working_age_per_period: 250_000,
+                deaths_per_million_per_period: [0; 4],
+            },
+            vec![(
+                crate::household(),
+                ResidentAges {
+                    age_18_64: 4,
+                    ..ResidentAges::default()
+                },
+            )],
+        )
+        .expect("valid captured age exposure"),
+    );
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("valid recurring economic close");
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+        .expect("the next period closes");
+    assert_eq!(first.household_wants.len(), 1);
+    assert_eq!(next.household_wants.len(), 1);
+    assert_eq!(first.household_wants[0].wanted_quantity, 8);
+    assert_eq!(
+        next.household_wants[0].wanted_quantity,
+        first.household_wants[0].wanted_quantity + 2
+    );
+}
+
+#[test]
+fn an_unreached_want_leaves_household_time_as_it_was() {
+    let (catalog, opening) = want_opening();
+    let wanting = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("the want's period closes");
+    let mut definition = catalog.into_definition();
+    definition
+        .market_clearing
+        .as_mut()
+        .expect("a market policy")
+        .household_wants
+        .clear();
+    let plain_catalog = MaterialCatalog::try_new(definition).expect("a catalog without wants");
+    let plain = babylon_material_circuit::advance_material_circuit(&plain_catalog, &opening)
+        .expect("the period without the want closes");
+    assert_eq!(wanting.household_wants.len(), 1);
+    assert_eq!(
+        wanting.household_wants[0].bought_quantity, 0,
+        "the household's money does not reach its want"
+    );
+    assert_eq!(wanting.household_time, plain.household_time);
 }

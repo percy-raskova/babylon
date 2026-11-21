@@ -6,9 +6,10 @@ use super::ServiceMarketReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServicePriceDecision;
 use super::UnitId;
+use crate::clearing::{MarketMoment, MarketTable};
 use crate::MaterialCatalog;
 use crate::SiteId;
-use crate::{CircuitAccounting, PricePolicy, ServiceOrder};
+use crate::{CircuitAccounting, CommodityKind, PricePolicy, ServiceOrder, ServiceStage};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
@@ -78,10 +79,15 @@ fn sum(
 pub(super) fn update(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
-    performance: &[ServicePerformanceReceipt],
+    closed: (
+        &[ServicePerformanceReceipt],
+        &MarketTable,
+        &BTreeMap<MarketKey, u64>,
+    ),
     markets: &mut [ServiceMarketReceipt],
     next_period: u64,
 ) -> Result<()> {
+    let (performance, priced, owed) = closed;
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         return Ok(());
     };
@@ -126,7 +132,12 @@ pub(super) fn update(
                 n.checked_add(o.quantity)
                     .ok_or(MaterialCircuitError::Arithmetic)
             })?;
-        market.planned_quantity = market.requested_quantity.max(future);
+        market.planned_quantity = planned_quantity(
+            catalog,
+            (market, key),
+            (priced, owed.get(&key).copied().unwrap_or(0)),
+            future,
+        )?;
         r.production
             .binary_search_by_key(&market.process_id, |p| p.process_id)
             .ok()
@@ -141,16 +152,53 @@ pub(super) fn update(
                 .ok_or(MaterialCircuitError::ProcessInvariant)?
                 .quantity_per_batch,
         );
-        let (price, reason) = quote(market, &offer.pricing)?;
+        let priced_out = priced.priced_out(market.site_id, market.good_id, market.unit_id) > 0;
+        let (price, reason) = quote(market, &offer.pricing, priced_out)?;
         offer.unit_price = price;
         market.next_price = price;
         market.reason = reason;
     }
     Ok(())
 }
+/// The quantity a provider plans for the next period. Without a market policy, and for a product
+/// left out of the order of paying, it is what was asked, or what is funded for the next period if
+/// that is more. With a policy it is what the buyers could pay for at the posted price in this
+/// period's market, with what was funded for the period before the stage, or what is funded for the
+/// next period if that is more (P14).
+fn planned_quantity(
+    catalog: &MaterialCatalog,
+    market: (&ServiceMarketReceipt, MarketKey),
+    books: (&MarketTable, u64),
+    future: u64,
+) -> Result<u64> {
+    let (row, key) = market;
+    let (priced, owed) = books;
+    let asked = row.requested_quantity.max(future);
+    let Some(policy) = &catalog.market_clearing else {
+        return Ok(asked);
+    };
+    if policy.place(key.1, key.2).is_none() {
+        return Ok(asked);
+    }
+    let moment = match super::kind(catalog, key.1, key.2)? {
+        CommodityKind::PeriodService {
+            stage: ServiceStage::UtilityProvision,
+        } => MarketMoment::Utility,
+        CommodityKind::PeriodService { .. } => MarketMoment::LocalService,
+        CommodityKind::Storable { .. } => return Err(MaterialCircuitError::ServiceInvariant),
+    };
+    let funded = priced
+        .demand_at_quote(moment, key.0, key.1, key.2)
+        .unwrap_or(0);
+    let wanted = owed
+        .checked_add(funded)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(wanted.max(future))
+}
 fn quote(
     row: &ServiceMarketReceipt,
     policy: &PricePolicy,
+    priced_out: bool,
 ) -> Result<(Currency, ServicePriceDecision)> {
     let PricePolicy::ServiceResponsive {
         minimum,
@@ -171,6 +219,8 @@ fn quote(
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let reason = if row.admitted_quantity > row.performed_quantity {
         ServicePriceDecision::FundedUnmet
+    } else if priced_out {
+        ServicePriceDecision::PricedOut
     } else if row.performed_quantity > 0 && row.direct_cost.micro_units() > receipts_value {
         ServicePriceDecision::CostPressure
     } else if row.performed_quantity < row.available_capacity
@@ -181,14 +231,14 @@ fn quote(
         ServicePriceDecision::Hold
     };
     let price = match reason {
-        ServicePriceDecision::FundedUnmet | ServicePriceDecision::CostPressure => {
-            Currency::from_micro_units(
-                row.old_price
-                    .micro_units()
-                    .saturating_add(step.micro_units())
-                    .min(maximum.micro_units()),
-            )
-        }
+        ServicePriceDecision::FundedUnmet
+        | ServicePriceDecision::PricedOut
+        | ServicePriceDecision::CostPressure => Currency::from_micro_units(
+            row.old_price
+                .micro_units()
+                .saturating_add(step.micro_units())
+                .min(maximum.micro_units()),
+        ),
         ServicePriceDecision::SpareCapacity => Currency::from_micro_units(
             row.old_price
                 .micro_units()

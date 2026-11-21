@@ -129,13 +129,15 @@ def alias_tokens(name: str, value: object, origin: str) -> list[str]:
     return tokens
 
 
-def validate_job_value(name: str, value: str, origin: str) -> None:
-    """Accept only an alias job count inside the four-job ceiling."""
-    if value not in {"1", "2", "3", "4"}:
-        raise PolicyError(f"Cargo alias {name!r} from {origin} exceeds the four-job host limit")
+def validate_job_value(name: str, value: str, origin: str, max_jobs: int) -> None:
+    """Accept only an alias job count inside the repository's job ceiling."""
+    if value not in {str(jobs) for jobs in range(1, max_jobs + 1)}:
+        raise PolicyError(
+            f"Cargo alias {name!r} from {origin} exceeds the {max_jobs}-job host limit"
+        )
 
 
-def validate_alias(name: str, value: object, origin: str) -> None:
+def validate_alias(name: str, value: object, origin: str, max_jobs: int) -> None:
     """Reject post-dispatch alias tokens that can replace managed resources."""
     tokens = alias_tokens(name, value, origin)
     expect_jobs = False
@@ -147,7 +149,7 @@ def validate_alias(name: str, value: object, origin: str) -> None:
         if not before_child_arguments:
             continue
         if expect_jobs:
-            validate_job_value(name, token, origin)
+            validate_job_value(name, token, origin, max_jobs)
             expect_jobs = False
             continue
         if token == "--":
@@ -155,9 +157,9 @@ def validate_alias(name: str, value: object, origin: str) -> None:
         elif token in {"-j", "--jobs"}:
             expect_jobs = True
         elif token.startswith("-j") and token != "-j":
-            validate_job_value(name, token[2:], origin)
+            validate_job_value(name, token[2:], origin, max_jobs)
         elif token.startswith("--jobs="):
-            validate_job_value(name, token.removeprefix("--jobs="), origin)
+            validate_job_value(name, token.removeprefix("--jobs="), origin, max_jobs)
         elif token in {
             "--config",
             "--target-dir",
@@ -174,7 +176,7 @@ def validate_alias(name: str, value: object, origin: str) -> None:
         raise PolicyError(f"Cargo alias {name!r} from {origin} has --jobs without a value")
 
 
-def validate_config(path: Path, config: dict[str, Any]) -> None:
+def validate_config(path: Path, config: dict[str, Any], max_jobs: int) -> None:
     """Validate the resource-bearing tables and aliases in one config."""
     build = config.get("build", {})
     if not isinstance(build, dict):
@@ -187,8 +189,8 @@ def validate_config(path: Path, config: dict[str, Any]) -> None:
             )
     if "jobs" in build:
         jobs = build["jobs"]
-        if not isinstance(jobs, int) or isinstance(jobs, bool) or jobs not in range(1, 5):
-            raise PolicyError(f"Cargo config {path} exceeds the four-job host limit")
+        if not isinstance(jobs, int) or isinstance(jobs, bool) or not 1 <= jobs <= max_jobs:
+            raise PolicyError(f"Cargo config {path} exceeds the {max_jobs}-job host limit")
 
     configured_environment = config.get("env", {})
     if not isinstance(configured_environment, dict):
@@ -213,10 +215,10 @@ def validate_config(path: Path, config: dict[str, Any]) -> None:
     for index, (name, value) in enumerate(aliases.items()):
         if index >= MAX_ALIASES:
             raise PolicyError(f"Cargo config {path} exceeds the alias bound")
-        validate_alias(name, value, str(path))
+        validate_alias(name, value, str(path), max_jobs)
 
 
-def validate_environment_aliases() -> None:
+def validate_environment_aliases(max_jobs: int) -> None:
     """Apply the same rule to Cargo aliases supplied through the environment."""
     environment = list(os.environ.items())
     if len(environment) > MAX_ENVIRONMENT_ENTRIES:
@@ -226,10 +228,10 @@ def validate_environment_aliases() -> None:
             break
         name, value = environment[index]
         if name.startswith("CARGO_ALIAS_"):
-            validate_alias(name.removeprefix("CARGO_ALIAS_").lower(), value, name)
+            validate_alias(name.removeprefix("CARGO_ALIAS_").lower(), value, name, max_jobs)
 
 
-def validate(working_directory: Path) -> None:
+def validate(working_directory: Path, max_jobs: int) -> None:
     """Validate every active config and bounded include exactly once."""
     configs = initial_configs(working_directory)
     seen: set[Path] = set()
@@ -241,26 +243,33 @@ def validate(working_directory: Path) -> None:
             continue
         seen.add(config_path)
         config = load_config(config_path)
-        validate_config(config_path, config)
+        validate_config(config_path, config, max_jobs)
         add_includes(configs, config_path, config)
     else:
         raise PolicyError("Cargo config include graph exceeds the host-policy bound")
     if len(configs) > MAX_CONFIG_FILES:
         raise PolicyError("Cargo config include graph exceeds the host-policy bound")
-    validate_environment_aliases()
+    validate_environment_aliases(max_jobs)
 
 
 def main() -> int:
-    """Validate the effective Cargo working directory named by the dispatcher."""
-    if len(sys.argv) != 2:
-        print(f"usage: {sys.argv[0]} <effective-cargo-directory>", file=sys.stderr)
+    """Validate the effective Cargo directory against the repository's job limit."""
+    if len(sys.argv) != 3:
+        print(f"usage: {sys.argv[0]} <effective-cargo-directory> <max-jobs>", file=sys.stderr)
         return 64
     working_directory = Path(sys.argv[1])
     if not working_directory.is_absolute() or not working_directory.is_dir():
         print(f"cargo: invalid effective working directory: {working_directory}", file=sys.stderr)
         return 64
+    max_jobs_argument = sys.argv[2]
+    # A canonical positive decimal: no sign, no leading zero, no Unicode digit.
+    if not (max_jobs_argument.isascii() and max_jobs_argument.isdecimal()) or (
+        max_jobs_argument.startswith("0")
+    ):
+        print(f"cargo: invalid host-policy job limit: {max_jobs_argument!r}", file=sys.stderr)
+        return 64
     try:
-        validate(working_directory.resolve())
+        validate(working_directory.resolve(), int(max_jobs_argument))
     except PolicyError as error:
         print(f"cargo: {error}", file=sys.stderr)
         return 64

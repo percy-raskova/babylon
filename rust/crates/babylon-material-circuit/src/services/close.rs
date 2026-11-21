@@ -1,3 +1,4 @@
+use super::admission::Request;
 use super::kind;
 use super::CommodityKind;
 use super::GoodId;
@@ -11,14 +12,17 @@ use super::ServiceOutputReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServiceStage;
 use super::UnitId;
+use crate::clearing::MarketTable;
 use crate::collection_funding::ServiceAdmissions;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
+use crate::tiers::HouseholdLists;
 use crate::valuation::CostClose;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, ProductionCommitment,
 };
-use crate::{FinalDemandPrincipalId, MaterialCatalog};
+use crate::{FinalDemandPrincipalId, MaterialCatalog, OrderId};
+use crate::{HouseholdTierReceipt, HouseholdWantReceipt};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -32,6 +36,13 @@ pub(crate) struct ServiceClose {
     pub(crate) markets: Vec<ServiceMarketReceipt>,
     pub(crate) outputs: Vec<ServiceOutputReceipt>,
     households: BTreeMap<GrantKey, u64>,
+    /// What households were granted of their wants, used at the grant and never a need's supply.
+    wants_used: BTreeMap<GrantKey, u64>,
+    /// The requests of the period, kept for the stages of a market policy to admit.
+    requests: Vec<Request>,
+    donor: Option<FinalDemandPrincipalId>,
+    /// What every household has still to buy this period; kept for the stages that buy wants.
+    lists: HouseholdLists,
 }
 impl ServiceClose {
     pub(crate) fn new(
@@ -39,8 +50,24 @@ impl ServiceClose {
         state: &mut MaterialCircuitState,
         movements: &mut Vec<MoneyTransferReceipt>,
         donor: Option<FinalDemandPrincipalId>,
+        lists: HouseholdLists,
     ) -> Result<Self> {
         let mut collection_admissions = ServiceAdmissions::capture_opening(state, donor)?;
+        if catalog.market_clearing.is_some() {
+            // The orders are admitted in their stages, when the output is known.
+            return Ok(Self {
+                collection_admissions,
+                markets: super::market::capture(catalog, state)?,
+                performance: vec![],
+                outputs: vec![],
+                household: vec![],
+                households: BTreeMap::new(),
+                wants_used: BTreeMap::new(),
+                requests: super::admission::requests(catalog, state)?,
+                donor,
+                lists,
+            });
+        }
         let performance = super::admission::admit(catalog, state, movements)?;
         collection_admissions.capture_requests(&performance, donor);
         Ok(Self {
@@ -50,7 +77,63 @@ impl ServiceClose {
             outputs: vec![],
             household: vec![],
             households: BTreeMap::new(),
+            wants_used: BTreeMap::new(),
+            requests: vec![],
+            donor,
+            lists,
         })
+    }
+    /// The orders of this period that buy wants: the rows of `performance` that are no need's.
+    pub(crate) fn want_orders(&self) -> BTreeSet<OrderId> {
+        self.performance
+            .iter()
+            .map(|row| row.order_id)
+            .filter(|&id| self.lists.is_want_order(id))
+            .collect()
+    }
+    /// What each account wanted and bought of its wants, and in each tier, this period.
+    pub(crate) fn tier_receipts(
+        &self,
+        period: u64,
+    ) -> Result<(Vec<HouseholdWantReceipt>, Vec<HouseholdTierReceipt>)> {
+        self.lists.receipts(period)
+    }
+    /// Bid for, price and fund the service orders of one stage. A no-op without a market policy.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the plan fixes this signature; the stage reads the catalog, the state, the stage's output and the period's books"
+    )]
+    pub(crate) fn admit_stage(
+        &mut self,
+        catalog: &MaterialCatalog,
+        state: &mut MaterialCircuitState,
+        phase: ServiceStage,
+        potential: &InventoryLedger,
+        costs: &CostClose,
+        movements: &mut Vec<MoneyTransferReceipt>,
+        markets: &mut MarketTable,
+    ) -> Result<()> {
+        if catalog.market_clearing.is_none() {
+            return Ok(());
+        }
+        super::admission::admit_stage(
+            catalog,
+            state,
+            &self.requests,
+            (phase, potential),
+            &mut self.performance,
+            movements,
+            (markets, costs, &mut self.lists),
+        )
+    }
+    /// What buyers could fund at the posted prices, by market, for the stage's cap on batches.
+    pub(crate) fn funded_at_quotes(
+        &self,
+        catalog: &MaterialCatalog,
+        state: &MaterialCircuitState,
+        phase: ServiceStage,
+    ) -> Result<InventoryLedger> {
+        super::admission::funded_at_quotes(catalog, state, &self.requests, phase, &self.lists)
     }
     pub(crate) fn allocate(
         &mut self,
@@ -59,20 +142,7 @@ impl ServiceClose {
         commitments: &[ProductionCommitment],
         allocations: &mut [u64],
     ) -> Result<()> {
-        let mut potential = InventoryLedger::new();
-        for (c, q) in commitments.iter().zip(allocations.iter()) {
-            let output = catalog
-                .process_outputs
-                .binary_search_by_key(&c.process_id, |o| o.process_id)
-                .ok()
-                .map(|i| &catalog.process_outputs[i])
-                .ok_or(MaterialCircuitError::ProcessInvariant)?;
-            potential.insert(
-                (output.site_id, output.good_id, output.unit_id),
-                q.checked_mul(output.quantity_per_batch)
-                    .ok_or(MaterialCircuitError::Arithmetic)?,
-            );
-        }
+        let potential = potential_output(catalog, commitments, allocations)?;
         let due: Vec<_> = self
             .performance
             .iter()
@@ -251,6 +321,12 @@ impl ServiceClose {
             {
                 continue;
             }
+            if self.lists.is_want_order(row.order_id)
+                && row.performed_quantity != row.admitted_quantity
+            {
+                // Under a market policy every admitted order is performed in full.
+                return Err(MaterialCircuitError::ServiceInvariant);
+            }
             costs.receive_service(row)?;
             match row.buyer {
                 AccountId::Site(site) => inventory::credit_inventory(
@@ -259,8 +335,12 @@ impl ServiceClose {
                     row.performed_quantity,
                 )?,
                 AccountId::Household(_) => {
-                    let quantity = self
-                        .households
+                    let grants = if self.lists.is_want_order(row.order_id) {
+                        &mut self.wants_used
+                    } else {
+                        &mut self.households
+                    };
+                    let quantity = grants
                         .entry((row.buyer, row.good_id, row.unit_id))
                         .or_default();
                     *quantity = quantity
@@ -278,6 +358,11 @@ impl ServiceClose {
         state: &mut MaterialCircuitState,
         costs: &mut CostClose,
     ) -> Result<()> {
+        if catalog.market_clearing.is_some() {
+            // Every stage has admitted its orders; the donor's requests are now complete.
+            self.collection_admissions
+                .capture_requests(&self.performance, self.donor);
+        }
         let mut remaining: BTreeMap<GrantKey, u64> = state
             .inventory
             .iter()
@@ -316,13 +401,23 @@ impl ServiceClose {
             );
             costs.expire_service(key, unused)?;
         }
-        for r in &mut self.performance {
-            let q = used
-                .get_mut(&(r.buyer, r.good_id, r.unit_id))
-                .ok_or(MaterialCircuitError::ServiceInvariant)?;
-            r.used_quantity = (*q).min(r.performed_quantity);
-            *q -= r.used_quantity;
-            r.unused_quantity = r.performed_quantity - r.used_quantity;
+        // A want is used at its grant: its rows take their performed quantity first, and the need
+        // rows share what is left in order identity.
+        for wants in [true, false] {
+            for r in &mut self.performance {
+                if self.lists.is_want_order(r.order_id) != wants {
+                    continue;
+                }
+                let q = used
+                    .get_mut(&(r.buyer, r.good_id, r.unit_id))
+                    .ok_or(MaterialCircuitError::ServiceInvariant)?;
+                if wants && *q < r.performed_quantity {
+                    return Err(MaterialCircuitError::ServiceInvariant);
+                }
+                r.used_quantity = (*q).min(r.performed_quantity);
+                *q -= r.used_quantity;
+                r.unused_quantity = r.performed_quantity - r.used_quantity;
+            }
         }
         let services: BTreeSet<_> = catalog
             .commodities
@@ -350,6 +445,15 @@ impl ServiceClose {
             return Ok(());
         };
         let mut controlled = BTreeSet::new();
+        // A want is used first: its part leaves the key's pool before the need reads its own.
+        for (&key, &want) in &self.wants_used {
+            let need = self.households.get(&key).copied().unwrap_or(0);
+            let available = need
+                .checked_add(want)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            costs.consume_service(key, available, want, false)?;
+            remaining.insert(key, need);
+        }
         if let Some(r) = &e.recurring {
             for need in &catalog.household_needs {
                 if !super::is_service(catalog, need.good_id, need.unit_id) {
@@ -399,14 +503,71 @@ impl ServiceClose {
         &mut self,
         catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
+        priced: &MarketTable,
         next_period: u64,
     ) -> Result<()> {
+        let owed = super::admission::owed_quantities(&self.performance, &self.requests)?;
         super::market::update(
             catalog,
             state,
-            &self.performance,
+            (&self.performance, priced, &owed),
             &mut self.markets,
             next_period,
         )
+    }
+}
+
+/// What the stage's providers could produce from these batches, by product.
+pub(crate) fn potential_output(
+    catalog: &MaterialCatalog,
+    commitments: &[ProductionCommitment],
+    allocations: &[u64],
+) -> Result<InventoryLedger> {
+    let mut potential = InventoryLedger::new();
+    for (c, q) in commitments.iter().zip(allocations.iter()) {
+        let output = catalog
+            .process_outputs
+            .binary_search_by_key(&c.process_id, |o| o.process_id)
+            .ok()
+            .map(|i| &catalog.process_outputs[i])
+            .ok_or(MaterialCircuitError::ProcessInvariant)?;
+        potential.insert(
+            (output.site_id, output.good_id, output.unit_id),
+            q.checked_mul(output.quantity_per_batch)
+                .ok_or(MaterialCircuitError::Arithmetic)?,
+        );
+    }
+    Ok(potential)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clearing::limit_fixture;
+
+    #[test]
+    fn a_need_and_a_want_past_the_largest_quantity_are_refused() {
+        let (catalog, recurring) = limit_fixture::world();
+        let state = limit_fixture::state_of(recurring);
+        let mut costs = CostClose::new(&state, &catalog);
+        let key = (
+            AccountId::Site(limit_fixture::site(7)),
+            limit_fixture::good(1),
+            limit_fixture::units(),
+        );
+        let mut close = ServiceClose {
+            collection_admissions: ServiceAdmissions::default(),
+            performance: vec![],
+            household: vec![],
+            markets: vec![],
+            outputs: vec![],
+            households: BTreeMap::from([(key, u64::MAX)]),
+            wants_used: BTreeMap::from([(key, 1)]),
+            requests: vec![],
+            donor: None,
+            lists: HouseholdLists::default(),
+        };
+        let result = close.consume_households(&catalog, &state, &mut costs, &mut BTreeMap::new());
+        assert_eq!(result, Err(MaterialCircuitError::Arithmetic));
     }
 }

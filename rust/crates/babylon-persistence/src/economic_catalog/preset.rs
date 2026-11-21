@@ -15,6 +15,7 @@ impl NationalGraph {
                 | "national-world-v9"
                 | "national-world-v10"
                 | "national-world-v11"
+                | "national-world-v12"
                 | "national-company-scale-v1"
                 | "national-company-scale-v2"
                 | "national-company-scale-v3"
@@ -60,6 +61,7 @@ pub fn national_catalog_input() -> EconomicCatalogInput {
         geography: CatalogGeography::NationalCounties,
         organizer: None,
         city_pd: None,
+        county_review: None,
     };
     capture_company_graph(&mut input);
     input
@@ -84,6 +86,16 @@ pub(super) fn national_city_pd_rules(graph: NationalGraph) -> Vec<u8> {
     rules
 }
 
+/// The City PD's rules and the county review's session, which runs after them.
+pub(super) fn national_county_review_rules(graph: NationalGraph) -> Vec<u8> {
+    let mut rules = national_city_pd_rules(graph);
+    rules.push(b'\n');
+    rules.extend_from_slice(include_bytes!(
+        "../../../../../content/scenarios/national/county-review-cycle.bsl"
+    ));
+    rules
+}
+
 pub(super) const COMPANY_STRUCTURE: &[u8] =
     include_bytes!("../../../../../content/scenarios/national/structure-companies.bscn");
 const NATIONAL_STRUCTURE: &[u8] =
@@ -103,7 +115,7 @@ pub(super) fn national_material_rules(graph: NationalGraph) -> Vec<u8> {
 /// When a new national input opts into companies, couple its unchanged base graph
 /// sources to the matching v8 declarations and rules. Reopening verifies canonical bytes.
 pub(super) fn capture_company_graph(input: &mut EconomicCatalogInput) {
-    if input.organizer.is_some() || input.city_pd.is_some() {
+    if input.organizer.is_some() || input.city_pd.is_some() || input.county_review.is_some() {
         return;
     }
     let matches = |kind, expected: &[u8]| {

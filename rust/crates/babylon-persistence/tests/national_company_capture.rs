@@ -28,7 +28,7 @@ fn pre_company_input(mut input: EconomicCatalogInput) -> EconomicCatalogInput {
                     .split_once("\n[companies]")
                     .expect("captured company table");
                 previous
-                    .replacen("schema_version = 6", "schema_version = 2", 1)
+                    .replacen("schema_version = 7", "schema_version = 2", 1)
                     .into_bytes()
             }
             SourceArtifactKind::Rules => {
@@ -61,7 +61,7 @@ fn captured_99_company_roster_preserves_sites_and_employment_and_reopens() {
         )
         .expect("current claimant policy starts after the previous source")
         .0
-        .replacen("schema_version = 6", "schema_version = 5", 1);
+        .replacen("schema_version = 7", "schema_version = 5", 1);
     *source = SourceArtifact::capture(source.kind(), previous.into_bytes());
     let capture =
         CapturedEconomicCatalog::capture(input, None).expect("company-enabled national opening");

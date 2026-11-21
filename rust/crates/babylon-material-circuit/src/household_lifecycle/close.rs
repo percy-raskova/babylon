@@ -52,7 +52,7 @@ pub(crate) fn close(
     Ok(results)
 }
 
-fn rebase_purchases(
+pub(super) fn rebase_purchases(
     catalog: &MaterialCatalog,
     recurring: &mut RecurringEconomy,
     life: &HouseholdLifecycleBook,
@@ -63,10 +63,13 @@ fn rebase_purchases(
             continue;
         }
         let key = (purchase.principal_id, purchase.good_id, purchase.unit_id);
-        let need = catalog
+        let Ok(need) = catalog
             .household_needs
             .binary_search_by_key(&key, |v| (v.principal_id, v.good_id, v.unit_id))
-            .map_err(|_| INVALID)?;
+        else {
+            // A purchase row for a want alone stays as written.
+            continue;
+        };
         let cohort = recurring
             .households
             .binary_search_by_key(&purchase.principal_id, |v| v.principal_id)

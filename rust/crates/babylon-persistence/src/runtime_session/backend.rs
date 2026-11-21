@@ -393,7 +393,7 @@ mod defines_tests {
             .economic_catalog()
             .expect("captured national economy");
         assert_eq!(graph.rng_seed(), ReplaySeed::new(319));
-        assert_eq!(source.compiler_version(), "national-world-v11");
+        assert_eq!(source.compiler_version(), "national-world-v12");
         assert_eq!(
             source
                 .national_companies()

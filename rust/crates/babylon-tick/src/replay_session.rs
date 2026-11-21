@@ -897,6 +897,18 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         Ok(())
     }
 
+    /// Match the county's session rule to the captured county administration: it is absent without
+    /// one, and with one it runs once after the organizer's practice and the City PD's observation.
+    pub(crate) fn validate_county_review_cycle(&self, active: bool) -> Result<(), ReplayTickError> {
+        let order = self
+            .prepared
+            .rules
+            .iter()
+            .map(|(_, rule)| rule.execution)
+            .collect::<Vec<_>>();
+        county_review_placement(&order, active)
+    }
+
     /// Admit graph field ownership and require one governed decision after the material close.
     /// The normal effect scanner includes every possible guarded/loop write.
     pub(crate) fn validate_material_field_ownership(
@@ -1494,6 +1506,51 @@ pub(crate) struct ReplayIdentityArtifacts {
     tick_content_hash: TickContentHash,
 }
 
+/// The county's session rule against the rules' execution order. Without a county section no
+/// session rule may be present. With one there is exactly one, after the organizer's practice and,
+/// when that is present, after the City PD's observation.
+fn county_review_placement(
+    order: &[babylon_bsl::rule_pipeline::RuleExecution],
+    active: bool,
+) -> Result<(), ReplayTickError> {
+    use babylon_bsl::rule_pipeline::RuleExecution;
+    let sessions = order
+        .iter()
+        .enumerate()
+        .filter(|(_, execution)| **execution == RuleExecution::CountyReview)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if !active {
+        return if sessions.is_empty() {
+            Ok(())
+        } else {
+            Err(ReplayTickError::Execution {
+                message: "County review needs a captured county administration".to_owned(),
+            })
+        };
+    }
+    let placed = match sessions.as_slice() {
+        &[session] => {
+            let practice = order
+                .iter()
+                .position(|execution| *execution == RuleExecution::OrganizerPractice);
+            let observation = order
+                .iter()
+                .position(|execution| *execution == RuleExecution::CityPdObserve);
+            practice.is_some_and(|index| index < session)
+                && observation.is_none_or(|index| index < session)
+        }
+        _ => false,
+    };
+    if placed {
+        Ok(())
+    } else {
+        Err(ReplayTickError::Execution {
+            message: "County review must run once after organizer practice".to_owned(),
+        })
+    }
+}
+
 pub(crate) fn validate_replay_actions<C>(
     execution: &ReplayExecutionInputs<'_, C>,
     resolve_tick: i64,
@@ -2034,6 +2091,77 @@ mod tests {
         let session = material_session();
         assert!(session.validate_city_pd_cycle(false).is_ok());
         assert!(session.validate_city_pd_cycle(true).is_err());
+    }
+
+    const PRACTICE_RULE: &str = r#"
+(rule organizer/organizer-practice
+  :role intent :evidence designed
+  :material-basis "Execute the accepted ruling or authorized routine through committed time"
+  :fuel 1000000
+  (anchor :after ooda)
+  (organizer-practice))
+"#;
+    const COUNTY_RULE: &str =
+        include_str!("../../../../content/scenarios/national/county-review-cycle.bsl");
+
+    #[test]
+    fn a_county_rule_without_a_county_section_is_refused_by_name() {
+        let session = session_for_rule(&format!("{PRACTICE_RULE}\n{COUNTY_RULE}"));
+        let error = session
+            .validate_county_review_cycle(false)
+            .expect_err("a county rule needs a county section");
+        assert!(
+            error
+                .to_string()
+                .contains("County review needs a captured county administration"),
+            "{error}"
+        );
+        let bare = session_for_rule(PRACTICE_RULE);
+        assert!(bare.validate_county_review_cycle(false).is_ok());
+    }
+
+    #[test]
+    fn an_active_county_needs_one_rule_after_the_organizers_practice() {
+        let refusal = "County review must run once after organizer practice";
+        let without = session_for_rule(PRACTICE_RULE);
+        let error = without
+            .validate_county_review_cycle(true)
+            .expect_err("an active county needs its session rule");
+        assert!(error.to_string().contains(refusal), "{error}");
+        let with = session_for_rule(&format!("{PRACTICE_RULE}\n{COUNTY_RULE}"));
+        assert!(with.validate_county_review_cycle(true).is_ok());
+        let no_practice = session_for_rule(COUNTY_RULE);
+        let error = no_practice
+            .validate_county_review_cycle(true)
+            .expect_err("the session rule has no practice to follow");
+        assert!(error.to_string().contains(refusal), "{error}");
+    }
+
+    #[test]
+    fn the_county_session_runs_after_the_practice_and_after_the_city_pd() {
+        use babylon_bsl::rule_pipeline::RuleExecution::{
+            CityPdObserve, CountyReview, Graph, OrganizerPractice,
+        };
+        assert!(super::county_review_placement(&[OrganizerPractice, CountyReview], true).is_ok());
+        assert!(super::county_review_placement(
+            &[Graph, OrganizerPractice, CityPdObserve, CountyReview],
+            true
+        )
+        .is_ok());
+        for order in [
+            vec![CountyReview, OrganizerPractice],
+            vec![OrganizerPractice, CountyReview, CityPdObserve],
+            vec![OrganizerPractice, CountyReview, CountyReview],
+            vec![OrganizerPractice],
+            vec![CountyReview],
+        ] {
+            assert!(
+                super::county_review_placement(&order, true).is_err(),
+                "{order:?} must be refused"
+            );
+        }
+        assert!(super::county_review_placement(&[OrganizerPractice], false).is_ok());
+        assert!(super::county_review_placement(&[OrganizerPractice, CountyReview], false).is_err());
     }
 
     fn material_session_for_scenario(scenario: &str) -> ReplayTickSession<MemoryGraph> {

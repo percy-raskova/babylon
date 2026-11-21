@@ -350,7 +350,7 @@ fn household_ownership_bound_preserves_all_claims_and_exact_equity_keys() {
     );
 }
 #[test]
-fn household_tax_bound_is_one_policy_per_account_including_the_last_payer() {
+fn household_tax_bound_is_two_bases_and_two_recipients_for_each_account_including_the_last_payer() {
     // Two captured public recipients can tax each other; no payer taxes itself.
     let (catalog, mut state) = empty_accounts(65_534, 65_536, 2);
     let e = crate::economy_mut(&mut state);
@@ -380,9 +380,30 @@ fn household_tax_bound_is_one_policy_per_account_including_the_last_payer() {
         babylon_material_circuit::encode_material_circuit_state(&catalog, &duplicate),
         Err(MaterialCircuitError::DuplicateRow)
     );
+    // A payer may hold a row for each basis and recipient: the bound is two bases and two
+    // recipients for each captured account.
+    let mut full = restored;
+    let rows = &mut crate::economy_mut(&mut full).financial.taxes;
+    let second: Vec<_> = rows
+        .iter()
+        .map(|r| TaxPolicy {
+            basis: TaxBasis::WageIncome,
+            ..r.clone()
+        })
+        .collect();
+    rows.extend(second);
+    assert_eq!(rows.len(), 2 * POLICY_LIMIT);
+    assert_eq!(rows.len(), babylon_material_circuit::MAX_TAX_POLICIES);
+    let restored = canonical_roundtrip(&catalog, &full);
+    assert_eq!(
+        crate::economy(&restored).financial.taxes.len(),
+        babylon_material_circuit::MAX_TAX_POLICIES
+    );
     let mut excess = restored;
     let rows = &mut crate::economy_mut(&mut excess).financial.taxes;
-    rows.push(rows[0].clone());
+    let mut extra = rows[0].clone();
+    extra.public_recipient = public_id(usize::from(extra.public_recipient == public_id(0)));
+    rows.push(extra);
     assert_eq!(
         babylon_material_circuit::encode_material_circuit_state(&catalog, &excess),
         Err(MaterialCircuitError::RowLimit)

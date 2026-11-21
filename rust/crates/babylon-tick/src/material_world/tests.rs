@@ -357,6 +357,7 @@ fn previous_receipt17_handling_semantics_are_not_admitted_as_current() {
 // wire path on one already-canonical engine state.
 fn admission_control() -> (MaterialCatalog, MaterialCircuitState) {
     let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+        market_clearing: None,
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -852,5 +853,110 @@ fn round2_cancelled_reservation_must_precede_cancellation() {
     assert!(
         material_world::encode_material_receipts(&catalog, 1, &result).is_err(),
         "cancellation before reserve must refuse"
+    );
+}
+
+fn closed_admission_period() -> (MaterialCatalog, MaterialCircuitTransition) {
+    let (catalog, state) = admission_control();
+    let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the control circuit closes one period");
+    (catalog, transition)
+}
+
+#[test]
+fn a_transition_with_household_wants_is_refused() {
+    use babylon_material_circuit::{HouseholdWantReceipt, OrderId, WantTier};
+    let (catalog, mut transition) = closed_admission_period();
+    assert!(material_world::encode_material_receipts(&catalog, 2, &transition).is_ok());
+    let price = babylon_kernel::currency::Currency::from_micro_units(4_000_000);
+    transition.household_wants.push(HouseholdWantReceipt {
+        period: 2,
+        principal_id: FinalDemandPrincipalId::from_bytes([1; 32]),
+        tier: WantTier::Comfort,
+        seller_site_id: SiteId::from_bytes([2; 32]),
+        good_id: GoodId::from_bytes([3; 32]),
+        unit_id: UnitId::from_bytes([4; 32]),
+        order_id: OrderId::from_bytes([5; 32]),
+        wanted_quantity: 1,
+        bought_quantity: 0,
+        posted_price: price,
+        unit_price: price,
+    });
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 2, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}
+
+#[test]
+fn a_transition_with_tier_rows_is_refused() {
+    use babylon_material_circuit::{HouseholdTierReceipt, WantTier};
+    let (catalog, mut transition) = closed_admission_period();
+    assert!(material_world::encode_material_receipts(&catalog, 2, &transition).is_ok());
+    let zero = babylon_kernel::currency::Currency::from_micro_units(0);
+    transition.household_tiers.push(HouseholdTierReceipt {
+        period: 2,
+        principal_id: FinalDemandPrincipalId::from_bytes([1; 32]),
+        tier: WantTier::Luxury,
+        wanted_value: zero,
+        bought_value: zero,
+    });
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 2, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}
+
+#[test]
+fn the_register_refuses_a_state_with_the_extension() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{PublicAccountId, PublicBudget, PublicSpendingRule};
+    let (catalog, mut transition) = round2_agency_transition(true, false);
+    let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting else {
+        panic!("the agency circuit is monetary");
+    };
+    economy.financial.public_budgets.push(PublicBudget {
+        public_account: PublicAccountId::from_bytes([240; 32]),
+        period_cap: Currency::from_micro_units(0),
+        cash_floor: Currency::from_micro_units(0),
+        rule: PublicSpendingRule::CappedInOrder,
+    });
+    assert!(!transition.state.has_public_program_extension());
+    assert!(material_world::encode_material_receipts(&catalog, 1, &transition).is_ok());
+    let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting else {
+        panic!("the agency circuit is monetary");
+    };
+    economy.financial.public_budgets[0].rule = PublicSpendingRule::CashInProportion;
+    assert!(transition.state.has_public_program_extension());
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 1, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}
+
+#[test]
+fn the_register_refuses_program_receipts() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{
+        FinalDemandPrincipalId, PublicAccountId, PublicProgramKey, PublicProgramReceipt,
+    };
+    let (catalog, mut transition) = round2_agency_transition(true, false);
+    assert!(!transition.state.has_public_program_extension());
+    assert!(material_world::encode_material_receipts(&catalog, 1, &transition).is_ok());
+    let zero = Currency::from_micro_units(0);
+    transition.public_programs.push(PublicProgramReceipt {
+        period: 1,
+        public_account: PublicAccountId::from_bytes([240; 32]),
+        program: PublicProgramKey::new("benefit").expect("a well-formed key"),
+        recipient: FinalDemandPrincipalId::from_bytes([241; 32]),
+        rank: 0,
+        covered_persons: 0,
+        due: zero,
+        paid: zero,
+        unfunded: zero,
+    });
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 1, &transition),
+        Err(MaterialWorldError::Wire)
     );
 }

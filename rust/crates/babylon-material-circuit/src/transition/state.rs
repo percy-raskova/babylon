@@ -32,11 +32,15 @@ use crate::{
     UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
+use crate::clearing::MarketTable;
 use crate::financial::FinancialClose;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
 use crate::production;
+use crate::production::ServiceStageBooks;
+use crate::recurring::firms::Wanted;
 use crate::services::ServiceClose;
+use crate::tiers::HouseholdLists;
 use crate::AidFreightLot;
 use crate::AidMandate;
 use crate::AidOutcome;
@@ -67,11 +71,13 @@ use crate::ProductionPlanReceipt;
 use crate::ProductionReceipt;
 use crate::RouteStageCapacity;
 use crate::ServiceStage;
+use crate::StaffingMemberReceipt;
 use crate::StaffingWorkSource;
 use crate::SupplierTransport;
 use crate::WageAccrualReceipt;
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
+use outbound::HandOver;
 use outbound::OutboundReceipts;
 use outbound::OutboundSelection;
 
@@ -752,6 +758,82 @@ impl ClosedMaterialPeriod {
     /// Refuses missing/foreign/duplicate principals, wrong periods, row bounds,
     /// arithmetic and any invalid final circuit. No partial successor escapes.
     pub fn finish_with_labor(
+        self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        self.refuse_without_record_of_layoffs()?;
+        self.finish_labor_unchecked(catalog, next_labor)
+    }
+
+    /// Replace graph-derived aggregate and member hours together before planning.
+    /// # Errors
+    /// Refuses missing, duplicate, foreign or inconsistent hour principals, and a state with an
+    /// after-layoff program: the record of layoffs could not age (use `finish_with_staffing`).
+    pub fn finish_with_workforce(
+        mut self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<MemberLaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        self.refuse_without_record_of_layoffs()?;
+        // With no after-layoff program a record is owed nothing; the staffing finish drops it, so
+        // this one does too and the two finishes agree.
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            economy.financial.layoffs.clear();
+        }
+        self.finish_workforce_unchecked(catalog, next_labor, member_labor)
+    }
+
+    /// `finish_with_workforce`, after advancing the record of layoffs from the member receipts.
+    ///
+    /// The receipts are those of the closing period. Every member that holds a record, and every
+    /// member that can have one at a workplace that has any receipt, needs its own; receipts of
+    /// members that cannot have a record are ignored. With no after-layoff program this equals
+    /// `finish_with_workforce`.
+    /// # Errors
+    /// `PublicProgramInvariant` for a missing, repeated or inconsistent member receipt.
+    pub fn finish_with_staffing(
+        mut self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<MemberLaborCapacityRow>,
+        members: &[StaffingMemberReceipt],
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        let closing = self
+            .next_period
+            .checked_sub(1)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            crate::financial::advance_records(economy, closing, members)?;
+        }
+        self.finish_workforce_unchecked(catalog, next_labor, member_labor)
+    }
+
+    fn refuse_without_record_of_layoffs(&self) -> Result<(), MaterialCircuitError> {
+        match &self.transition.state.accounting {
+            CircuitAccounting::Monetary(economy)
+                if crate::financial::holds_after_layoff_program(economy) =>
+            {
+                Err(MaterialCircuitError::PublicProgramInvariant)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn finish_workforce_unchecked(
+        mut self,
+        catalog: &MaterialCatalog,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<MemberLaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            economy.member_labor = member_labor;
+        }
+        self.finish_labor_unchecked(catalog, next_labor)
+    }
+
+    fn finish_labor_unchecked(
         mut self,
         catalog: &MaterialCatalog,
         mut next_labor: Vec<LaborCapacityRow>,
@@ -761,21 +843,6 @@ impl ClosedMaterialPeriod {
         next_labor.sort_unstable_by_key(|row| (row.period, row.site_id, row.unit_id));
         self.transition.state.labor = next_labor;
         self.finish(catalog)
-    }
-
-    /// Replace graph-derived aggregate and member hours together before planning.
-    /// # Errors
-    /// Refuses missing, duplicate, foreign or inconsistent hour principals.
-    pub fn finish_with_workforce(
-        mut self,
-        catalog: &MaterialCatalog,
-        next_labor: Vec<LaborCapacityRow>,
-        member_labor: Vec<MemberLaborCapacityRow>,
-    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
-            economy.member_labor = member_labor;
-        }
-        self.finish_with_labor(catalog, next_labor)
     }
 
     fn finish(
@@ -936,7 +1003,9 @@ pub fn advance_material_circuit(
     catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-    close_material_period(catalog, opening)?.finish(catalog)
+    let closed = close_material_period(catalog, opening)?;
+    closed.refuse_without_record_of_layoffs()?;
+    closed.finish(catalog)
 }
 
 /// Close a control using the same authenticated aid boundary as the tick adapter.
@@ -947,7 +1016,9 @@ pub fn advance_material_circuit_with_aid(
     opening: &MaterialCircuitState,
     inputs: &[AidResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-    close_material_period_with_aid(catalog, opening, inputs)?.finish(catalog)
+    let closed = close_material_period_with_aid(catalog, opening, inputs)?;
+    closed.refuse_without_record_of_layoffs()?;
+    closed.finish(catalog)
 }
 
 pub(crate) struct AidResolve<'a> {
@@ -963,9 +1034,10 @@ pub(crate) fn dispatch_and_replenish(
     dispatches: &mut Vec<RoutedDispatchReceipt>,
     household_demand: &mut [HouseholdDemandReceipt],
     money_transfers: &mut Vec<MoneyTransferReceipt>,
-    costs: &mut CostClose,
+    books: (&mut CostClose, &mut MarketTable),
     aid: AidResolve<'_>,
 ) -> Result<(OutboundReceipts, Vec<ProcurementReceipt>), MaterialCircuitError> {
+    let (costs, markets) = books;
     let AidResolve {
         inputs: aid_inputs,
         services,
@@ -982,16 +1054,25 @@ pub(crate) fn dispatch_and_replenish(
         costs,
     )?;
     inventory::publish_inventory(state, inventory);
-    crate::recurring::complete_household_orders(
+    // With a market policy households were handed their goods when they bought them.
+    if catalog.market_clearing.is_none() {
+        crate::recurring::complete_household_orders(
+            catalog,
+            state,
+            household_demand,
+            &outbound.local_fulfillments,
+            money_transfers,
+        )?;
+    }
+    crate::payments::settle_deliveries(state, money_transfers)?;
+    let (new_orders, procurement) = crate::recurring::firms::replenish(
         catalog,
         state,
-        household_demand,
-        &outbound.local_fulfillments,
+        &outbound.local_transfers,
         money_transfers,
+        costs,
+        markets,
     )?;
-    crate::payments::settle_deliveries(state, money_transfers)?;
-    let (new_orders, procurement) =
-        crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
     let mut aid = crate::aid::prepare(
         catalog,
         state,
@@ -1038,6 +1119,11 @@ pub(crate) fn dispatch_and_replenish(
         costs.receive_local(state, receipt)?;
     }
     inventory::publish_inventory(state, inventory);
+    // With a market policy, a buyer paid the price of the market for goods the pass could not
+    // carry: those are cancelled and refunded, so that only goods in transit count as arriving.
+    if catalog.market_clearing.is_some() {
+        crate::recurring::firms::cancel_unsent(state, &new_orders, money_transfers)?;
+    }
     crate::payments::settle_deliveries(state, money_transfers)?;
     Ok((outbound, procurement))
 }
@@ -1051,19 +1137,22 @@ pub(crate) fn next_plans(
     context: MaterialContext<'_>,
     dispatches: &[RoutedDispatchReceipt],
     outbound: &OutboundReceipts,
-    household_demand: &[HouseholdDemandReceipt],
     maintenance: Option<&MaintenanceReceipt>,
     next_period: u64,
+    wanted: Wanted<'_>,
     costs: &CostClose,
 ) -> Result<NextPlans, MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
+    let sold = (
+        &outbound.local_transfers[..],
+        &outbound.local_fulfillments[..],
+    );
     let production_plans = crate::recurring::firms::plan_production(
         catalog,
         state,
         dispatches,
-        &outbound.local_transfers,
-        &outbound.local_fulfillments,
-        household_demand,
+        sold,
+        wanted,
         next_period,
     )?;
     crate::recurring::firms::plan_attendance(
@@ -1071,14 +1160,13 @@ pub(crate) fn next_plans(
             catalog,
             state: &mut *state,
         },
-        household_demand,
+        wanted,
         dispatches,
-        &outbound.local_transfers,
-        &outbound.local_fulfillments,
+        sold,
         maintenance,
         next_period,
     )?;
-    let prices = crate::recurring::prices::update_prices(catalog, state, household_demand, costs)?;
+    let prices = crate::recurring::prices::update_prices(catalog, state, wanted, costs)?;
     Ok(NextPlans {
         production: production_plans,
         prices,
@@ -1099,6 +1187,7 @@ pub(crate) fn execute_production_stages(
     costs: &mut CostClose,
     services: &mut ServiceClose,
     movements: &mut Vec<MoneyTransferReceipt>,
+    markets: &mut MarketTable,
 ) -> Result<ProductionStageReceipts, MaterialCircuitError> {
     let mut production = Vec::new();
     for stage in [
@@ -1110,12 +1199,24 @@ pub(crate) fn execute_production_stages(
             state,
             costs,
             Some(stage),
-            services,
+            ServiceStageBooks {
+                services: &mut *services,
+                movements: &mut *movements,
+                markets: &mut *markets,
+            },
         )?);
         services.handoff(catalog, state, stage, costs, movements)?;
     }
     production.extend(production::execute_shared_production(
-        catalog, state, costs, None, services,
+        catalog,
+        state,
+        costs,
+        None,
+        ServiceStageBooks {
+            services: &mut *services,
+            movements: &mut *movements,
+            markets: &mut *markets,
+        },
     )?);
     production.sort_by_key(|r| (r.site_id, r.process_id));
     services.finish(catalog, state, costs)?;
@@ -1303,6 +1404,9 @@ pub(crate) struct FundedProductionReceipts {
     services: ServiceClose,
     production: ProductionStageReceipts,
     agency: Option<PendingAgency>,
+    /// What households bought at the market's price and took home before production.
+    household_sale: Option<HandOver>,
+    markets: MarketTable,
 }
 
 pub(crate) fn close_funded_production(
@@ -1321,9 +1425,31 @@ pub(crate) fn close_funded_production(
     let attendance = crate::payments::fund_attendance(state, money_transfers, wage_accruals)?;
     costs.admit_attendance(attendance);
     let agency = crate::agency_attendance::reserve(opening, state, agency_inputs, money_transfers)?;
-    let household_demand =
-        crate::recurring::admit_household_orders(catalog, state, money_transfers)?;
-    let mut services = ServiceClose::new(catalog, state, money_transfers, collection_donor)?;
+    let mut markets = MarketTable::default();
+    let mut lists = HouseholdLists::open(catalog, state, wage_accruals)?;
+    let (household_demand, household_sale) = if catalog.market_clearing.is_some() {
+        let sale = crate::recurring::sell_household_goods(
+            catalog,
+            state,
+            costs,
+            money_transfers,
+            &mut markets,
+            &mut lists,
+        )?;
+        (
+            sale.demand,
+            Some(HandOver {
+                fulfillments: sale.fulfillments,
+                handling: sale.handling,
+            }),
+        )
+    } else {
+        (
+            crate::recurring::admit_household_orders(catalog, state, money_transfers)?,
+            None,
+        )
+    };
+    let mut services = ServiceClose::new(catalog, state, money_transfers, collection_donor, lists)?;
     let productive = execute_production_stages(
         catalog,
         opening,
@@ -1331,6 +1457,7 @@ pub(crate) fn close_funded_production(
         costs,
         &mut services,
         money_transfers,
+        &mut markets,
     )?;
     Ok(FundedProductionReceipts {
         finance,
@@ -1338,6 +1465,8 @@ pub(crate) fn close_funded_production(
         services,
         production: productive,
         agency,
+        household_sale,
+        markets,
     })
 }
 
@@ -1367,6 +1496,7 @@ pub(crate) fn close_household_finance(
         support.aid,
     )?;
     finance.collect_taxes(state, costs, money_transfers)?;
+    let want_orders = services.want_orders();
     let collections = crate::collection::close(
         catalog,
         support.collections,
@@ -1377,6 +1507,7 @@ pub(crate) fn close_household_finance(
             consumption: &households.consumption,
             services: &services.household,
             admissions: &services.collection_admissions,
+            want_orders: &want_orders,
             performance: &services.performance,
             time: &households.time,
             taxes: &finance.taxes,
@@ -1429,13 +1560,13 @@ fn close_support_parts(
         agency_inputs,
         collection_inputs.first().map(|row| row.donor),
     )?;
-    let (outbound, procurement) = dispatch_and_replenish(
+    let (mut outbound, procurement) = dispatch_and_replenish(
         catalog,
         &mut state,
         &mut dispatches,
         &mut funded.household_demand,
         &mut money_transfers,
-        &mut costs,
+        (&mut costs, &mut funded.markets),
         AidResolve {
             inputs: aid_inputs,
             services: &funded.services.household,
@@ -1443,6 +1574,12 @@ fn close_support_parts(
             agency: funded.agency.as_ref(),
         },
     )?;
+    if let Some(sale) = funded.household_sale.take() {
+        let mut fulfillments = sale.fulfillments;
+        fulfillments.append(&mut outbound.local_fulfillments);
+        outbound.local_fulfillments = fulfillments;
+        outbound.handling.extend(sale.handling);
+    }
     let (households, collections) = close_household_finance(
         MaterialContext {
             catalog,
@@ -1499,6 +1636,10 @@ pub fn close_material_period_with_support(
 /// Close using the prior authenticated company evidence and finite-kernel outcomes.
 /// # Errors
 /// Refuses incomplete, duplicated, stale or ineligible company choices.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one transition record is assembled from every receipt family"
+)]
 pub fn close_material_period_with_portfolios(
     catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
@@ -1525,10 +1666,12 @@ pub fn close_material_period_with_portfolios(
         &mut close.money_transfers,
         &portfolios,
     )?;
-    close
-        .funded
-        .services
-        .plan(catalog, &mut close.state, next_period)?;
+    close.funded.services.plan(
+        catalog,
+        &mut close.state,
+        &close.funded.markets,
+        next_period,
+    )?;
     let plans = next_plans(
         MaterialContext {
             catalog,
@@ -1536,9 +1679,14 @@ pub fn close_material_period_with_portfolios(
         },
         &close.dispatches,
         &close.outbound,
-        &close.funded.household_demand,
         close.funded.production.maintenance.as_ref(),
         next_period,
+        Wanted {
+            demand: &close.funded.household_demand,
+            markets: &close.funded.markets,
+            services: &close.funded.services.markets,
+            procurement: &close.procurement,
+        },
         &close.costs,
     )?;
     let settled = finish_close_accounting(
@@ -1551,6 +1699,7 @@ pub fn close_material_period_with_portfolios(
         &mut close.dispatches,
     )?;
     let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
+    let tiers = close.funded.services.tier_receipts(close.state.period)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
@@ -1567,6 +1716,7 @@ pub fn close_material_period_with_portfolios(
             equipment_wear: settled.equipment_wear,
             investment,
             public_budgets: close.funded.finance.public_budgets,
+            public_programs: close.funded.finance.programs,
             taxes: close.funded.finance.taxes,
             distributions: close.funded.finance.distributions,
             company_distributions: close.funded.finance.company_distributions,
@@ -1597,6 +1747,9 @@ pub fn close_material_period_with_portfolios(
             local_fulfillments: close.outbound.local_fulfillments,
             local_transfers: close.outbound.local_transfers,
             maintenance: close.funded.production.maintenance,
+            market_clearings: close.funded.markets.into_receipts(),
+            household_wants: tiers.0,
+            household_tiers: tiers.1,
         },
     })
 }

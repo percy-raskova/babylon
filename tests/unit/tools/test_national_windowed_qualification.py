@@ -76,7 +76,7 @@ def state(tick: int = 0) -> dict[str, Any]:
 
 
 def admission_fields(
-    choice: str | dict[str, str],
+    choice: str | dict[str, Any],
     period: int,
     nonce: int = 42,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -1472,6 +1472,332 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(
         assert rows[index - 1]["state"]["archive_verified_tick"] == tick - 1
         assert rows[index + 1]["action"] == "reopen"
         assert boundaries[tick].period_proof is not None
+
+
+# A position and a contact preview as the Rust client serializes them (`PositionKey`, `Band` and
+# `ContactPreview` through `serde_json`), taken from the recorded playthrough of the County Review.
+POSITION: dict[str, Any] = {
+    "group": 1,
+    "band": "bottom50",
+    "crew": 3,
+    "at_work": 1,
+    "seeking": 0,
+    "units": 0,
+}
+LOSING_POSITION: dict[str, Any] = {
+    "group": 6,
+    "band": "bottom50",
+    "crew": 17,
+    "at_work": 0,
+    "seeking": 1,
+    "units": 1,
+}
+CONTACT_PREVIEW: dict[str, Any] = {
+    "asks": True,
+    "basis_period": 3,
+    "key": POSITION,
+    "outcome": "reached",
+    "place_open": True,
+    "taken_from": [LOSING_POSITION],
+    "then_at_stake": [LOSING_POSITION],
+}
+COUNTY_ACTIONS = {
+    "inspect_county_ledger": "CountyLedger",
+    "inspect_county_roster": "CountyRoster",
+    "inspect_county_session": "CountySession",
+    "inspect_food_run": "FoodRun",
+}
+
+
+def review_contact_state(tick: int = 3, **changes: Any) -> dict[str, Any]:
+    fields = state(tick)
+    fields["choice"] = {"review_contact": POSITION}
+    fields["aid_allocation"] = "none"
+    fields.update(changes)
+    return fields
+
+
+def test_review_contact_choice_and_preview_parse_what_the_rust_client_emits() -> None:
+    command, preview, _commitment = admission_fields({"review_contact": POSITION}, 3)
+    preview["review"] = CONTACT_PREVIEW
+    parsed = windowed.ControlState.model_validate(
+        review_contact_state(reviewed_command=command, preview=preview)
+    )
+    assert parsed.choice == windowed.ReviewContactChoice(
+        review_contact=windowed.PositionKey.model_validate(POSITION)
+    )
+    assert parsed.selected_allocation == "none"
+    assert parsed.preview is not None and parsed.preview.review is not None
+    review = parsed.preview.review
+    assert (review.outcome, review.asks, review.place_open) == ("reached", True, True)
+    assert review.taken_from == (windowed.PositionKey.model_validate(LOSING_POSITION),)
+    assert parsed.model_dump(mode="json")["preview"]["review"] == CONTACT_PREVIEW
+
+
+def test_a_preview_with_no_review_has_none() -> None:
+    _command, preview, _commitment = admission_fields("hold", 3)
+    parsed = windowed.ControlState.model_validate({**state(3), "preview": preview})
+    assert parsed.preview is not None and parsed.preview.review is None
+    # The Rust client omits `review` when there is none, and a reply must survive the round trip
+    # through these models unchanged, so the dump omits it too.
+    assert "review" not in parsed.model_dump(mode="json")["preview"]
+    assert "review" not in json.loads(parsed.model_dump_json())["preview"]
+
+
+def test_a_position_with_no_crew_parses() -> None:
+    crewless = {**POSITION, "crew": None, "at_work": 0}
+    parsed = windowed.ControlState.model_validate(
+        {**state(3), "choice": {"review_contact": crewless}}
+    )
+    assert isinstance(parsed.choice, windowed.ReviewContactChoice)
+    assert parsed.choice.review_contact.crew is None
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        {**POSITION, "extra": 1},
+        {**POSITION, "band": "top2"},
+        {**POSITION, "band": "Bottom50"},
+        {**POSITION, "crew": -1},
+        {**POSITION, "at_work": 65536},
+        {name: value for name, value in POSITION.items() if name != "units"},
+    ],
+    ids=["extra", "unknown-band", "capitalized-band", "negative-crew", "wide-count", "no-units"],
+)
+def test_a_review_contact_position_refuses_unknown_shapes(key: dict[str, Any]) -> None:
+    fields = state(3)
+    fields["choice"] = {"review_contact": key}
+    with pytest.raises(ValidationError):
+        windowed.ControlState.model_validate(fields)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"outcome": "unknown"},
+        {"extra": True},
+        {"asks": "yes"},
+        {"taken_from": [{**LOSING_POSITION, "extra": 1}]},
+    ],
+)
+def test_a_contact_preview_refuses_unknown_shapes(change: dict[str, Any]) -> None:
+    _command, preview, _commitment = admission_fields({"review_contact": POSITION}, 3)
+    preview["review"] = {**CONTACT_PREVIEW, **change}
+    with pytest.raises(ValidationError):
+        windowed.ControlState.model_validate(review_contact_state(preview=preview))
+
+
+@pytest.mark.parametrize(
+    ("action", "wire"),
+    [
+        *[(name, name) for name in COUNTY_ACTIONS],
+        ("roster_next_page", "roster_next_page"),
+        ("roster_previous_page", "roster_previous_page"),
+        (
+            windowed.ChooseRosterSlot(choose_roster_slot=windowed.RosterSlot(slot=7)),
+            {"choose_roster_slot": {"slot": 7}},
+        ),
+    ],
+)
+def test_county_actions_are_the_wire_the_rust_client_reads(action: Any, wire: Any) -> None:
+    request = windowed.ControlInput(
+        version=5,
+        sequence=1,
+        campaign_id=CAMPAIGN,
+        scope_epoch=7,
+        expected_tick=3,
+        expected_generation=1,
+        action=action,
+    )
+    assert json.loads(request.model_dump_json())["action"] == wire
+    assert windowed.expected_event(action) == "applied"
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        {"choose_roster_slot": {"slot": 256}},
+        {"choose_roster_slot": {"slot": -1}},
+        {"choose_roster_slot": {"slot": 1, "page": 0}},
+        {"choose_roster_slot": 1},
+        "choose_roster_slot",
+        "roster_page",
+    ],
+)
+def test_county_actions_refuse_unknown_shapes(action: Any) -> None:
+    with pytest.raises(ValidationError):
+        windowed.ControlInput.model_validate(
+            {
+                "version": 5,
+                "sequence": 1,
+                "campaign_id": CAMPAIGN,
+                "scope_epoch": 7,
+                "expected_tick": 3,
+                "expected_generation": 1,
+                "action": action,
+            }
+        )
+
+
+def planned_contact(position: dict[str, Any] = POSITION, **changes: Any) -> windowed.PlannedChoice:
+    return windowed.PlannedChoice.model_validate(
+        {
+            "period": 4,
+            "choice": "review_contact",
+            "allocation": "none",
+            "page": 1,
+            "slot": 3,
+            "position": position,
+            **changes,
+        }
+    )
+
+
+def test_a_planned_review_contact_names_its_roster_page_slot_and_position() -> None:
+    planned = planned_contact()
+    assert (planned.page, planned.slot) == (1, 3)
+    assert planned.position == windowed.PositionKey.model_validate(POSITION)
+    assert planned.at_period(5) == windowed.PlannedChoice(
+        period=5,
+        choice="review_contact",
+        allocation="none",
+        page=1,
+        slot=3,
+        position=windowed.PositionKey.model_validate(POSITION),
+    )
+
+
+@pytest.mark.parametrize(
+    "plan",
+    [
+        {"choice": "review_contact", "allocation": "none"},
+        {"choice": "review_contact", "allocation": "none", "page": 0},
+        {"choice": "review_contact", "allocation": "none", "slot": 0},
+        {"choice": "review_contact", "allocation": "none", "page": 0, "slot": 0},
+        {"choice": "review_contact", "allocation": "none", "position": POSITION},
+        {"choice": "review_contact", "allocation": "none", "slot": 0, "position": POSITION},
+        {"choice": "review_contact", "allocation": "none", "page": 0, "slot": 8},
+        {"choice": "review_contact", "allocation": "none", "page": -1, "slot": 0},
+        {
+            "choice": "review_contact",
+            "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
+            "page": 0,
+            "slot": 0,
+            "position": POSITION,
+        },
+        {"choice": "hold", "allocation": "none", "page": 0, "slot": 0},
+        {"choice": "hold", "allocation": "none", "position": POSITION},
+        {"choice": "hold", "allocation": "none", "page": 0, "slot": 0, "position": POSITION},
+    ],
+)
+def test_a_planned_review_contact_refuses_a_missing_or_stray_slot(plan: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        windowed.PlannedChoice.model_validate({"period": 4, **plan})
+
+
+def serve_roster(
+    peer: socket.socket,
+    requested: list[Any],
+    *,
+    slot_drafts: bool = True,
+    opens: bool = True,
+    drafts: dict[str, Any] = POSITION,
+) -> None:
+    """A native client that answers the county roster, page, slot, review and confirm."""
+    fields = review_contact_state(inspector="Closed", choice="hold")
+    command, preview, commitment = admission_fields({"review_contact": POSITION}, 3)
+    preview["review"] = CONTACT_PREVIEW
+    with peer, peer.makefile("rb") as source:
+        for line in source:
+            request = json.loads(line)
+            action = request["action"]
+            requested.append(action)
+            event, reason = "applied", None
+            if action == "status":
+                event = "observed"
+            elif action == "inspect_county_roster":
+                fields["inspector"] = "CountyRoster" if opens else "Closed"
+            elif action == "roster_next_page":
+                pass
+            elif action == {"choose_roster_slot": {"slot": 2}}:
+                fields["inspector"] = "Closed"
+                if slot_drafts:
+                    fields["choice"] = {"review_contact": drafts}
+            elif action == "review":
+                fields["reviewed_command"] = command
+                fields["preview"] = preview
+                event = "preview_admitted"
+            elif action == "confirm":
+                fields["commitment"] = commitment
+                fields["reviewed_command"] = fields["preview"] = None
+                event = "acceptance_admitted"
+            else:
+                event, reason = "refused", "control_stale_or_unavailable"
+            peer.sendall(
+                json.dumps(
+                    {
+                        "version": 5,
+                        "sequence": request["sequence"],
+                        "event": event,
+                        "reason": reason,
+                        "state": fields,
+                    }
+                ).encode()
+                + b"\n"
+            )
+
+
+def drive_roster_contact(**server: Any) -> list[Any]:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 3)
+    requested: list[Any] = []
+    worker = threading.Thread(target=serve_roster, args=(peer, requested), kwargs=server)
+    worker.start()
+    try:
+        channel.observe(1)
+        windowed.submit_choice(
+            channel,
+            planned_contact(slot=2),
+            1,
+        )
+        assert channel.state is not None
+        assert channel.state.commitment is not None
+        assert channel.state.commitment.resolves_period == 4
+    finally:
+        channel.close()
+        worker.join(2)
+    assert not worker.is_alive()
+    return requested
+
+
+def test_a_review_contact_is_chosen_from_the_roster_then_reviewed_and_confirmed() -> None:
+    assert drive_roster_contact() == [
+        "status",
+        "inspect_county_roster",
+        "roster_next_page",
+        {"choose_roster_slot": {"slot": 2}},
+        "review",
+        "confirm",
+        "status",
+    ]
+
+
+def test_a_roster_slot_that_drafts_no_review_contact_is_refused() -> None:
+    with pytest.raises(windowed.ControlRefusal, match="did not draft a review contact"):
+        drive_roster_contact(slot_drafts=False)
+
+
+def test_a_roster_slot_that_drafts_another_position_is_refused() -> None:
+    """The client keeps its roster page between openings, so a page count that assumed page 0 can
+    land on another page: the position that slot drafts must be the one the plan expects."""
+    with pytest.raises(windowed.ControlRefusal, match="review contact in another position"):
+        drive_roster_contact(drafts=LOSING_POSITION)
+
+
+def test_a_county_roster_that_does_not_open_is_refused() -> None:
+    with pytest.raises(windowed.ControlRefusal, match="county view did not open"):
+        drive_roster_contact(opens=False)
 
 
 @pytest.mark.parametrize("choice", ["pause_standing", "resume_standing"])

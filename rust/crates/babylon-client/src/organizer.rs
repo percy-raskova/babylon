@@ -9,6 +9,7 @@ use babylon_persistence::ArchiveEvidenceClass;
 mod amount_editor;
 mod draft;
 
+mod county;
 mod developments;
 mod editor;
 
@@ -248,6 +249,7 @@ pub(crate) mod tests {
             .previewed(
                 request,
                 OrganizerPreview {
+                    review: None,
                     choice: OrganizerChoice::Collect,
                     allocation,
                     current_period: 3,
@@ -315,6 +317,7 @@ pub(crate) mod tests {
             .previewed(
                 request,
                 OrganizerPreview {
+                    review: None,
                     choice: OrganizerChoice::LocalAid,
                     allocation,
                     current_period: 3,
@@ -342,6 +345,7 @@ pub(crate) mod tests {
         client.queue(&mut session, RequestKind::Preview, Some(selected_command));
         let request = client.pending.as_ref().expect("preview request").id;
         let stale = OrganizerPreview {
+            review: None,
             choice: OrganizerChoice::LocalAid,
             allocation,
             current_period: 3,
@@ -441,6 +445,7 @@ pub(crate) mod tests {
         client.queue(&mut session, RequestKind::Preview, Some(command));
         let id = client.pending.as_ref().expect("pending preview").id;
         let changed = OrganizerPreview {
+            review: None,
             choice: OrganizerChoice::Collect,
             allocation: OrganizerAllocation::Collection {
                 target_cash_micros: 1,
@@ -470,6 +475,7 @@ pub(crate) mod tests {
         let mut view = client.view.clone().expect("fixture view");
         view.organization_label = "Updated collective".into();
         let snapshot = OrganizerSnapshot {
+            county_review: None,
             body: OrganizerBodyDisclosure::Unavailable,
             body_scope: body_scope(),
             collection: None,
@@ -989,6 +995,7 @@ pub(crate) mod tests {
             .status(
                 request_id,
                 OrganizerSnapshot {
+                    county_review: None,
                     body: OrganizerBodyDisclosure::Unavailable,
                     body_scope: body_scope(),
                     collection: None,
@@ -1034,6 +1041,7 @@ pub(crate) mod tests {
         client.review_context = Some(session.context());
         client.reviewed_command = Some(command.clone());
         client.preview = Some(OrganizerPreview {
+            review: None,
             allocation: babylon_practice_contract::OrganizerAllocation::None,
             choice: command.choice,
             current_period: command.expected_period,
@@ -1114,6 +1122,7 @@ pub(crate) mod tests {
                 .status(
                     request_id,
                     OrganizerSnapshot {
+                        county_review: None,
                         body: OrganizerBodyDisclosure::Unavailable,
                         body_scope: body_scope(),
                         collection: None,

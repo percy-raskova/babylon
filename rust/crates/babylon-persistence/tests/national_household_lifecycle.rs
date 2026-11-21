@@ -144,7 +144,7 @@ fn dated_national_world_wayne_residents_change_the_next_food_requirement() {
         campaign,
     )
     .expect("playable national world, organizer and City PD");
-    assert_eq!(capture.compiler_version(), "national-world-v11");
+    assert_eq!(capture.compiler_version(), "national-world-v12");
     check_opening(&capture);
     let policy_claim = claimant_allocation(&capture);
     let wayne =

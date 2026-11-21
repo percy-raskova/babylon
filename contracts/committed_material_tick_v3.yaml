@@ -33,7 +33,7 @@ envelope:
       name: complete_material_register
       count: 1
       key: empty
-      payload: captured_material_world_register_v7_or_v8_bytes
+      payload: captured_material_world_register_v7_v8_or_v9_bytes
     - {tag: 8, name: material_receipts, count: 1, key: empty,
        payload: captured_material_tick_receipts_v20_v21_or_v22_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
@@ -533,7 +533,7 @@ receipts:
     - Zero output has zero direct cost; zero expiry has zero expired cost; full expiry takes all direct cost.
     - Service market performance cannot exceed admission or captured native capacity; decisions follow their
       declared direction.
-  service_price_decision_tag: {fixed: 1, hold: 2, funded_unmet: 3, cost_pressure: 4, spare_capacity: 5}
+  service_price_decision_tag: {fixed: 1, hold: 2, funded_unmet: 3, cost_pressure: 4, spare_capacity: 5, priced_out: 6}
   interpretation:
     native_quantity: Identified good-unit quantity; gram reservations use the captured mass coefficient.
     handling_need: Resource-feasible work before opening labor limits actual outbound movement.

@@ -140,6 +140,7 @@ fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuit
         };
         (
             MaterialCatalog::try_new(MaterialCatalogDefinition {
+                market_clearing: None,
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: (1..=3)
                     .map(|id| SiteLogisticsNode {

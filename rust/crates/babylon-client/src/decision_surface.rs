@@ -316,12 +316,12 @@ pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
     gameplay_surface(
         SurfaceId::OrganizerWorkspace,
         "How should our organization use its time, and whose demands can our partners take to the relief hearing?",
-        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "dated notice, signatory households and authorized delegates", "accepted ruling and actual practice receipts"],
-        &["partner cooperation is independent", "speaking authority can be narrower than settlement authority", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero"],
+        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "dated notice, signatory households and authorized delegates", "accepted ruling and actual practice receipts", "the county's lines, money for relief, roll and list order", "who works in each band", "the units paid and unpaid at each session", "a position's own figures once a household there is reached"],
+        &["partner cooperation is independent", "speaking authority can be narrower than settlement authority", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero", "a position's amounts are hidden until a household there is reached", "the preview is the last close seen, not the period the session will use", "nation, legal status, homes and wealth are not in this slice"],
         &["only the player's actor-scoped organizer projection", "historical views cannot submit", "local drafts never execute"],
-        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work"), SurfaceAction::available("invite-to-relief-hearing")],
-        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work", "committed testimony and the next review agenda"],
-        &["earned workplace report", "practice receipt", "county/<geoid>"],
+        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work"), SurfaceAction::available("invite-to-relief-hearing"), SurfaceAction::available("review-contact")],
+        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work", "committed testimony and the next review agenda", "the county session record and its list", "the contact's receipt and the session that follows it", "the food run's receipt"],
+        &["earned workplace report", "practice receipt", "county/<geoid>", "county review session"],
     ),
     DecisionSurfaceContract {
         id: SurfaceId::ObserverProduction,

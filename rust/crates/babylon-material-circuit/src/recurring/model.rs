@@ -94,6 +94,42 @@ impl HouseholdNeed {
     }
 }
 
+/// The tier of a want. Needs are tier 1 and are not a want.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum WantTier {
+    Comfort = 2,
+    Luxury = 3,
+}
+
+/// What a household account buys, after its needs, when its money reaches it. A flow: what is bought
+/// in a period is used in that period. So many units per person or per household, as a need.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HouseholdWant {
+    pub principal_id: FinalDemandPrincipalId,
+    pub tier: WantTier,
+    pub good_id: GoodId,
+    pub unit_id: UnitId,
+    pub basis: HouseholdNeedBasis,
+    pub units_per_basis: u64,
+}
+
+impl HouseholdWant {
+    /// This period's quantity from the cohort's counts; the rules of `HouseholdNeed::required_quantity`.
+    /// # Errors
+    /// Refuses the wrong principal, household-based collective wants, zero coefficients and overflow.
+    pub fn quantity(&self, cohort: &HouseholdCohort) -> Result<u64, MaterialCircuitError> {
+        HouseholdNeed {
+            principal_id: self.principal_id,
+            good_id: self.good_id,
+            unit_id: self.unit_id,
+            basis: self.basis,
+            units_per_basis: self.units_per_basis,
+        }
+        .required_quantity(cohort)
+    }
+}
+
 /// One preferred local retailer per resident good/unit requirement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HouseholdPurchasePolicy {

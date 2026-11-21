@@ -1,4 +1,5 @@
 use super::FinancialInstitutions;
+use super::PublicSpendingRule;
 use super::PublicTransferTreatment;
 use super::Result;
 use crate::MonetaryBook;
@@ -133,7 +134,11 @@ fn validate_public(f: &FinancialInstitutions, book: &MonetaryBook) -> Result<()>
     let mut budgets = BTreeSet::new();
     for r in &f.public_budgets {
         book.cash(AccountId::Public(r.public_account))?;
-        if r.period_cap.micro_units() < 0 || r.cash_floor.micro_units() < 0 {
+        // A budget in proportion does not read its cap, so a cap is refused, never ignored.
+        if r.period_cap.micro_units() < 0
+            || r.cash_floor.micro_units() < 0
+            || (r.rule == PublicSpendingRule::CashInProportion && r.period_cap.micro_units() != 0)
+        {
             return Err(MaterialCircuitError::FinancialInvariant);
         }
         budgets.insert(r.public_account);

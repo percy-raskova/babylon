@@ -1,6 +1,7 @@
 //! The county review's section of the register: its bytes, its checks against the world, the
 //! facts of a close and the write-back, on the hand-built paid world `agency_control`.
 
+use babylon_material_circuit::PublicSpendingRule;
 use std::collections::HashMap;
 
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -124,6 +125,7 @@ fn world() -> (MaterialCatalog, MaterialCircuitState) {
         public_account: public_account(),
         period_cap: money(5_000_000_000),
         cash_floor: money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     }];
     economy.financial.public_allocations = vec![
         PublicAllocation {

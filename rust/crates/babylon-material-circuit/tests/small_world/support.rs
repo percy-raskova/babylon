@@ -8,6 +8,7 @@
 
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::{
     AccountId, AidBook, AttendancePlan, CapacityReservations, CapacityRow, CapacitySupply,
     CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, CorridorCapacity,
@@ -587,6 +588,7 @@ impl World {
                 public_account: treasury(),
                 period_cap: support,
                 cash_floor: dollars(0),
+                rule: PublicSpendingRule::CappedInOrder,
             });
             f.public_allocations.push(PublicAllocation {
                 public_account: treasury(),

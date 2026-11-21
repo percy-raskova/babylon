@@ -19,6 +19,7 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, FinalDemandPrincipalId, HistoricalCostBook,
     InstitutionLocation, LaborCompensation, MaterialCatalog, MonetaryBook, MonetaryCircuit,
@@ -272,6 +273,7 @@ fn add_county_money(economy: &mut MonetaryCircuit, location: EconomicLocation, o
         public_account: public_account(),
         period_cap: organizer_aid_fixture::money(options.period_cap),
         cash_floor: organizer_aid_fixture::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     }];
     economy.financial.public_allocations = vec![
         PublicAllocation {

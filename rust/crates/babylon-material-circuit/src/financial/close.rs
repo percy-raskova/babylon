@@ -1,11 +1,15 @@
+use super::cut;
 use super::CapitalContributionReceipt;
 use super::DistributionReceipt;
+use super::PublicAllocation;
 use super::PublicBudgetReceipt;
+use super::PublicSpendingRule;
 use super::Result;
 use super::TaxReceipt;
 use crate::valuation::CostClose;
 use crate::{
-    AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MoneyTransferReceipt,
+    AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MonetaryBook,
+    MoneyTransferReceipt,
 };
 
 use crate::{CompanyDistributionReceipt, MaterialCatalog, MaterialCircuitError};
@@ -95,41 +99,84 @@ impl FinancialClose {
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             return Ok(());
         };
-        let mut budgets = BTreeMap::new();
+        let mut capped = BTreeMap::new();
+        let mut proportional = BTreeMap::new();
         for r in &e.financial.public_budgets {
             let cash = e.book.cash(AccountId::Public(r.public_account))?;
-            budgets.insert(
-                r.public_account,
-                r.period_cap.min(super::available(cash, r.cash_floor)?),
-            );
-        }
-        for r in &e.financial.public_allocations {
-            let remaining = budgets
-                .get_mut(&r.public_account)
-                .ok_or(MaterialCircuitError::FinancialInvariant)?;
-            let paid = r.amount_per_period.min(*remaining);
-            *remaining = super::sub(*remaining, paid)?;
-            if paid > super::zero() {
-                let sender = AccountId::Public(r.public_account);
-                movements.push(e.book.transfer_cash(
-                    sender,
-                    r.recipient,
-                    paid,
-                    CashTransferPurpose::PublicTransfer,
-                )?);
-                costs.public_transfer(sender, r.recipient, paid)?;
+            let free = super::available(cash, r.cash_floor)?;
+            match r.rule {
+                PublicSpendingRule::CappedInOrder => {
+                    capped.insert(r.public_account, r.period_cap.min(free));
+                }
+                PublicSpendingRule::CashInProportion => {
+                    proportional.insert(r.public_account, free);
+                }
             }
-            self.public_budgets.push(PublicBudgetReceipt {
-                period: state.period,
-                public_account: r.public_account,
-                recipient: r.recipient,
-                treatment: r.treatment,
-                priority: r.priority,
-                requested: r.amount_per_period,
-                paid,
-                unfunded: super::sub(r.amount_per_period, paid)?,
-            });
         }
+        // Allocations are sorted by account, so each account's rows are contiguous and keep that order.
+        let allocations = &e.financial.public_allocations;
+        let mut start = 0;
+        while start < allocations.len() {
+            let account = allocations[start].public_account;
+            let len = allocations[start..]
+                .iter()
+                .take_while(|r| r.public_account == account)
+                .count();
+            let rows = &allocations[start..start + len];
+            start += len;
+            let paid = if let Some(free) = proportional.get(&account) {
+                let claims: Vec<_> = rows
+                    .iter()
+                    .map(|r| (r.priority, r.amount_per_period))
+                    .collect();
+                cut::cut_in_proportion(*free, &claims)?
+            } else {
+                let remaining = capped
+                    .get_mut(&account)
+                    .ok_or(MaterialCircuitError::FinancialInvariant)?;
+                let mut paid = Vec::with_capacity(rows.len());
+                for r in rows {
+                    let amount = r.amount_per_period.min(*remaining);
+                    *remaining = super::sub(*remaining, amount)?;
+                    paid.push(amount);
+                }
+                paid
+            };
+            for (r, amount) in rows.iter().zip(paid) {
+                self.pay_public(state.period, &mut e.book, costs, movements, r, amount)?;
+            }
+        }
+        Ok(())
+    }
+    fn pay_public(
+        &mut self,
+        period: u64,
+        book: &mut MonetaryBook,
+        costs: &mut CostClose,
+        movements: &mut Vec<MoneyTransferReceipt>,
+        r: &PublicAllocation,
+        paid: Currency,
+    ) -> Result<()> {
+        if paid > super::zero() {
+            let sender = AccountId::Public(r.public_account);
+            movements.push(book.transfer_cash(
+                sender,
+                r.recipient,
+                paid,
+                CashTransferPurpose::PublicTransfer,
+            )?);
+            costs.public_transfer(sender, r.recipient, paid)?;
+        }
+        self.public_budgets.push(PublicBudgetReceipt {
+            period,
+            public_account: r.public_account,
+            recipient: r.recipient,
+            treatment: r.treatment,
+            priority: r.priority,
+            requested: r.amount_per_period,
+            paid,
+            unfunded: super::sub(r.amount_per_period, paid)?,
+        });
         Ok(())
     }
     pub(crate) fn collect_taxes(

@@ -61,11 +61,21 @@ pub struct TaxPolicy {
     pub rate_bps: u16,
     pub cash_floor: Currency,
 }
+/// How one public account's budget is spent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum PublicSpendingRule {
+    /// Today: `min(period_cap, cash less floor)`; in a rank, the first by identifier first.
+    CappedInOrder = 1,
+    /// Cash less floor, no cap; ranks lowest first; the first rank not covered is cut in proportion.
+    CashInProportion = 2,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicBudget {
     pub public_account: PublicAccountId,
     pub period_cap: Currency,
     pub cash_floor: Currency,
+    pub rule: PublicSpendingRule,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
@@ -105,6 +115,13 @@ pub struct FinancialInstitutions {
     pub contributions: Vec<CapitalContributionOrder>,
 }
 impl FinancialInstitutions {
+    /// Whether the state needs the tail of the financial rows (version 25 or 26).
+    #[must_use]
+    pub(crate) fn has_public_program_extension(&self) -> bool {
+        self.public_budgets
+            .iter()
+            .any(|b| b.rule != PublicSpendingRule::CappedInOrder)
+    }
     #[must_use]
     pub const fn empty() -> Self {
         Self {

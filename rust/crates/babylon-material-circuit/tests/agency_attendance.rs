@@ -6,6 +6,7 @@
 #[path = "support/organizer_funding_control.rs"]
 mod control;
 
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::{
     AccountId, AgencyAttendanceInput, AgencyAttendanceOutcome, AidOutcome, FinalDemandPrincipalId,
     MaterialCatalog, MaterialCircuitState, MaterialCircuitTransition,
@@ -486,6 +487,7 @@ fn only_prior_committed_public_appropriation_can_fund_the_agency_shift() {
         public_account: public_id,
         period_cap: control::money(100_000),
         cash_floor: control::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     economy.financial.public_allocations.push(PublicAllocation {
         public_account: public_id,
@@ -596,6 +598,7 @@ fn same_period_grant_cannot_replace_prior_cash_spent_on_an_earlier_contribution(
         public_account: public_id,
         period_cap: control::money(20),
         cash_floor: control::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     economy.financial.public_allocations.push(PublicAllocation {
         public_account: public_id,

@@ -20,6 +20,7 @@ use babylon_material_circuit::OwnershipClaim;
 use babylon_material_circuit::PublicAccountId;
 use babylon_material_circuit::PublicAllocation;
 use babylon_material_circuit::PublicBudget;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::PublicTransferTreatment;
 use babylon_material_circuit::TaxBasis;
 use babylon_material_circuit::TaxPolicy;
@@ -80,6 +81,7 @@ fn financial_session() -> Session {
             public_account: treasury,
             period_cap: money(10),
             cash_floor: money(0),
+            rule: PublicSpendingRule::CappedInOrder,
         }],
         public_allocations: vec![PublicAllocation {
             public_account: treasury,

@@ -8,6 +8,7 @@ use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::PublicSpendingRule;
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, GoodId,
     HistoricalCostBook, InstitutionLocation, MaterialCatalog, MaterialCircuitError, MonetaryBook,
@@ -134,6 +135,7 @@ fn admitted_opening(grant: i128) -> (MaterialCatalog, MaterialWorldRegister) {
         public_account: public,
         period_cap: organizer_aid_fixture::money(10 + grant),
         cash_floor: organizer_aid_fixture::money(0),
+        rule: PublicSpendingRule::CappedInOrder,
     });
     // The workplace that employs the force carries its payroll inside its operating grant.
     economy.financial.public_allocations.push(PublicAllocation {

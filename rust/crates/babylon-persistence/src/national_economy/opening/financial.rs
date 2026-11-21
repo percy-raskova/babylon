@@ -6,6 +6,7 @@ use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+use babylon_material_circuit::PublicSpendingRule;
 
 use crate::national_economy::grain::FinancialDomainId;
 use babylon_material_circuit::FinalDemandPrincipalId;
@@ -90,6 +91,14 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
             }
         }
     }
+    public_accounts(builder, budgets)?;
+    Ok(())
+}
+
+fn public_accounts(
+    builder: &mut Builder<'_>,
+    budgets: BTreeMap<FinancialDomainId, Currency>,
+) -> Result<()> {
     for (domain, period_cap) in budgets {
         let account = domain.public_account();
         let location = domain.location;
@@ -113,6 +122,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
                 public_account: account,
                 period_cap,
                 cash_floor: Currency::from_micro_units(0),
+                rule: PublicSpendingRule::CappedInOrder,
             });
     }
     Ok(())

@@ -4,7 +4,7 @@ use super::Cursor;
 use crate::{
     CapitalContributionOrder, ContributionId, DistributionPolicy, FinancialInstitutions,
     InstitutionLocation, MaterialCircuitError, OwnershipClaim, PublicAccountId, PublicAllocation,
-    PublicBudget, PublicTransferTreatment, SiteId, TaxBasis, TaxPolicy,
+    PublicBudget, PublicSpendingRule, PublicTransferTreatment, SiteId, TaxBasis, TaxPolicy,
 };
 use babylon_kernel::economic_location::EconomicLocation;
 use std::result::Result as StdResult;
@@ -18,10 +18,14 @@ pub(super) fn append(out: &mut Vec<u8>, f: &FinancialInstitutions) -> Result<()>
     append_public_budgets(out, &f.public_budgets)?;
     append_public_allocations(out, &f.public_allocations)?;
     append_contributions(out, &f.contributions)?;
+    if f.has_public_program_extension() {
+        append_tail(out, f)?;
+    }
     Ok(())
 }
-pub(super) fn decode(c: &mut Cursor<'_>) -> Result<FinancialInstitutions> {
-    Ok(FinancialInstitutions {
+/// `extended` is true only under state versions 25 and 26, which carry the tail.
+pub(super) fn decode(c: &mut Cursor<'_>, extended: bool) -> Result<FinancialInstitutions> {
+    let mut f = FinancialInstitutions {
         locations: decode_locations(c)?,
         ownership: decode_ownership(c)?,
         distributions: decode_distributions(c)?,
@@ -29,7 +33,39 @@ pub(super) fn decode(c: &mut Cursor<'_>) -> Result<FinancialInstitutions> {
         public_budgets: decode_public_budgets(c)?,
         public_allocations: decode_public_allocations(c)?,
         contributions: decode_contributions(c)?,
-    })
+    };
+    if extended {
+        decode_tail(c, &mut f)?;
+    }
+    Ok(f)
+}
+/// The tail after the financial rows: one `u32` count equal to the budgets' and one `u8` rule for each
+/// budget in its order; then (later tasks) the programs and the layoff records, each a `u32` count.
+fn append_tail(out: &mut Vec<u8>, f: &FinancialInstitutions) -> Result<()> {
+    super::append_rows(out, &f.public_budgets, |b, r| b.push(r.rule as u8))?;
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    Ok(())
+}
+fn decode_tail(c: &mut Cursor<'_>, f: &mut FinancialInstitutions) -> Result<()> {
+    let rules = super::decode_rows(c, |b| match b.u8()? {
+        1 => Ok(PublicSpendingRule::CappedInOrder),
+        2 => Ok(PublicSpendingRule::CashInProportion),
+        _ => Err(MaterialCircuitError::WireEnum),
+    })?;
+    if rules.len() != f.public_budgets.len() {
+        return Err(MaterialCircuitError::WireNoncanonical);
+    }
+    for (budget, rule) in f.public_budgets.iter_mut().zip(rules) {
+        budget.rule = rule;
+    }
+    // No programs and no records yet: a nonzero count is not canonical.
+    for _ in 0..2 {
+        if c.u32()? != 0 {
+            return Err(MaterialCircuitError::WireNoncanonical);
+        }
+    }
+    Ok(())
 }
 fn append_locations(out: &mut Vec<u8>, rows: &[InstitutionLocation]) -> Result<()> {
     super::append_rows(out, rows, |b, r| {
@@ -125,6 +161,7 @@ fn decode_public_budgets(c: &mut Cursor<'_>) -> Result<Vec<PublicBudget>> {
             public_account: PublicAccountId::from_bytes(b.array()?),
             period_cap: accounting::decode_currency(b)?,
             cash_floor: accounting::decode_currency(b)?,
+            rule: PublicSpendingRule::CappedInOrder,
         })
     })?;
     accounting::ordered_rows(&rows, |r| r.public_account)?;

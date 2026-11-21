@@ -906,3 +906,30 @@ fn a_transition_with_tier_rows_is_refused() {
         Err(MaterialWorldError::Wire)
     );
 }
+
+#[test]
+fn the_register_refuses_a_state_with_the_extension() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{PublicAccountId, PublicBudget, PublicSpendingRule};
+    let (catalog, mut transition) = round2_agency_transition(true, false);
+    let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting else {
+        panic!("the agency circuit is monetary");
+    };
+    economy.financial.public_budgets.push(PublicBudget {
+        public_account: PublicAccountId::from_bytes([240; 32]),
+        period_cap: Currency::from_micro_units(0),
+        cash_floor: Currency::from_micro_units(0),
+        rule: PublicSpendingRule::CappedInOrder,
+    });
+    assert!(!transition.state.has_public_program_extension());
+    assert!(material_world::encode_material_receipts(&catalog, 1, &transition).is_ok());
+    let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting else {
+        panic!("the agency circuit is monetary");
+    };
+    economy.financial.public_budgets[0].rule = PublicSpendingRule::CashInProportion;
+    assert!(transition.state.has_public_program_extension());
+    assert_eq!(
+        material_world::encode_material_receipts(&catalog, 1, &transition),
+        Err(MaterialWorldError::Wire)
+    );
+}

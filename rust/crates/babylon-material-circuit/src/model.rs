@@ -533,6 +533,14 @@ pub struct MaterialCircuitState {
 }
 
 impl MaterialCircuitState {
+    /// Version 25 or 26: a budget in proportion, a program or a layoff record.
+    #[must_use]
+    pub fn has_public_program_extension(&self) -> bool {
+        let CircuitAccounting::Monetary(e) = &self.accounting else {
+            return false;
+        };
+        e.financial.has_public_program_extension()
+    }
     /// Exact admitted-minus-shipped demand, derived from current orders.
     ///
     /// # Errors
@@ -616,6 +624,7 @@ impl MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    PublicProgramInvariant = 39,
     CompanyPortfolioEvidence = 35,
     CompanyPortfolioSelection = 36,
     MarketClearingInvariant = 38,
@@ -700,6 +709,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             35 => Ok(Self::CompanyPortfolioEvidence),
             37 => Ok(Self::HouseholdLifecycleInvariant),
             38 => Ok(Self::MarketClearingInvariant),
+            39 => Ok(Self::PublicProgramInvariant),
             36 => Ok(Self::CompanyPortfolioSelection),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }

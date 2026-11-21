@@ -65,8 +65,8 @@ pub use financial::{
     validate_company_distributions, validate_distribution_receipts, CapitalContributionOrder,
     CapitalContributionReceipt, CompanyDistributionReceipt, CompanyPayoutPolicy, ContributionId,
     DistributionPolicy, DistributionReceipt, FinancialInstitutions, InstitutionLocation,
-    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicTransferTreatment,
-    TaxBasis, TaxPolicy, TaxReceipt,
+    OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt, PublicSpendingRule,
+    PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt,
 };
 pub use household_time::{
     consume_household_contributions, HouseholdContributionReceipt, HouseholdContributionUse,
@@ -116,6 +116,8 @@ pub use transition::{
 pub use wire::{
     decode_material_circuit_state, decode_material_circuit_state_for_encoding,
     encode_material_circuit_state, material_circuit_state_digest, DecodedMaterialCircuitState,
-    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
+    MATERIAL_CIRCUIT_LIFECYCLE_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_LIFECYCLE_STATE_SCHEMA_VERSION,
+    MATERIAL_CIRCUIT_PUBLIC_PROGRAMS_STATE_SCHEMA_VERSION, MATERIAL_CIRCUIT_SOURCE_SHA256,
     MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION,
 };

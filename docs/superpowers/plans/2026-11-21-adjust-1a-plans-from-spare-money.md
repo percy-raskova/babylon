@@ -107,6 +107,7 @@ figures are its own, and Task 4 measures them.
 | `rust/crates/babylon-material-circuit/src/recurring/firms.rs` | `Wanted` widened; `plan_attendance` calls the rule | 3 |
 | `rust/crates/babylon-material-circuit/src/transition/state.rs` | Builds the widened `Wanted` | 3 |
 | `rust/crates/babylon-material-circuit/tests/small_world/spare_money.rs` | The small world asking for the rule | 3, 4 |
+| `rust/crates/babylon-material-circuit/tests/small_world/support.rs` | The switch (Task 3); a run of any length (Task 4) | 3, 4 |
 | `reports/economy-repair-2026-11-20/small-world.md` | The record of the runs | 4 |
 
 ---
@@ -405,43 +406,124 @@ pub(crate) fn with_spare_money(mut self) -> Self;
   the small world's `quiet.rs`, `pushed.rs`, `tiers.rs` and `benefits.rs` included, passes unchanged.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a workplace with spare money plans for what was asked`.
 
-### Task 4: What the rule does to the pay rise and to the tax cut
+### Task 4: What the rule does alone, at 34 periods and at 400
 
 **Files:**
-- Modify: `tests/small_world/spare_money.rs`; `tests/small_world/dump.rs` (four rows);
-  `reports/economy-repair-2026-11-20/small-world.md` (a section after "Form (b) after").
+- Modify: `tests/small_world/support.rs` (`World.periods`, `for_periods`, the horizon in `build`, the loop of
+  `run_staffed`, the row count in `assert_still_rows`); `tests/small_world/spare_money.rs`;
+  `tests/small_world/dump.rs`; `reports/economy-repair-2026-11-20/small-world.md` (a section after "Form (b)
+  after").
+
+**Interfaces:**
+
+```rust
+// tests/small_world/support.rs, World gains:
+/// How many periods a run lasts: `PERIODS` unless a test asks for a longer look.
+pub periods: u64,
+/// The same world, run for `periods` periods. The catalog's horizon follows it.
+pub(crate) fn for_periods(mut self, periods: u64) -> Self;
+```
+
+**What is known before the task.** Tasks 1 to 3 are built. The first attempt at this task stopped by its own
+rule: the tax cut with the rule on was below the same run without it in three periods of its window. The lead
+then ran every push once, with and without the rule, for 34 and for 400 periods, on a scratch copy of the
+harness. The figures below are that reading. This task's tests are its check: a figure that differs is a
+finding to report in your return, and nothing is bent to match the table.
+
+Hours attended, out of 240. "Plain" is `World::plain().with_tiers()` and its pushes; "fund" is
+`World::benefits().with_tiers()` and its pushes. Quiet, P1 and P3 stay at 240 in every period of every run.
+
+| Run | Rule | Period 34 | 100 | 200 | 300 | 400 | Unmet at 400 (food, power, care) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| plain P4, the pay rise | no | 179 | 129 | 15 | 15 | 15 | 40, 25, 40 |
+| plain P4, the pay rise | yes | 240 | 240 | 240 | 240 | 240 | 0, 0, 3 |
+| plain P2, the poor harvest | no | 156 | 116 | 15 | 15 | 15 | 40, 25, 40 |
+| plain P2, the poor harvest | yes | 237 | 230 | 237 | 239 | 240 | 6, 10, 10 |
+| fund P2, the poor harvest | no | 197 | 177 | 113 | 100 | 80 | 40, 8, 21 |
+| fund P2, the poor harvest | yes | 190 | 128 | 120 | 66 | 66 | 40, 16, 22 |
+| fund P4, the pay rise | no | 237 | 238 | 122 | 101 | 63 | 40, 6, 29 |
+| fund P4, the pay rise | yes | 191 | 174 | 120 | 112 | 70 | 40, 16, 21 |
+| fund P5, the tax cut | no | 225 | 183 | 116 | 70 | 58 | 40, 8, 30 |
+| fund P5, the tax cut | yes | 234 | 156 | 129 | 19 | 16 | 40, 26, 40 |
+
+In words: without taxes the rule alone turns ruin into a steady economy, for 400 periods, under both lasting
+pushes. With taxes and the benefits fund it saves no pushed run: each ends in ruin with the rule and without
+it. In the plain pay rise the rule holds 240 hours in every period from 1 to 400. In the tax cut at 34 periods
+the rule's hours are below the same run's without it in periods 17, 24, 25 and 26, and above in 23 periods.
 
 **Decisions:**
 1. **Full work** is 240 hours attended (the sum of `Snapshot.hours_attended`) in every period from 25 to 34,
-   with no site's output 0 in any period. Today both runs fall short: `higher_pay_with_tiers_...` ends with
-   unmet `[4, 7, 37]`, `p5_with_a_fund_and_tiers_...` with output `[112, 40, 31, 40]`.
-2. **Nobody has measured this rule alone.** The rounds measured f alone at a half share (round 1: plain P4
-   holds 240 hours at periods 34 and 100; fund P5 slides, 237 and 226) and the whole share only with owners'
-   top-ups. The built rule also departs from the prototype in three places (see the head of this plan). So
-   either outcome is a finding, and the tests tell the truth about whichever it is.
-3. **The name says the result.** For each of the two runs, by decision 1:
-   - it comes back: the test is named `..._returns_to_full_work`, asserts decision 1, and pins the first
-     period from which hours stay at 240;
-   - it does not: the test is named `..._does_not_return_alone`, and asserts that hours attended in every
-     period from 25 to 34 are at least those of the same world not asking, and more in at least one.
+   with no site's output 0 in any period.
+2. **A run of any length.** `World.periods` defaults to `PERIODS`. `build` uses `self.periods + 2` where it
+   uses `PERIODS + 2` today (the catalog's horizon; a run past it stops every maker). `run_staffed` loops to
+   `world.periods`. `assert_still_rows` compares the number of rows with `world.periods`. With the default,
+   every existing test keeps every figure.
+3. **The name says the result.** At 34 periods:
+   - `p4_with_tiers_and_spare_money_returns_to_full_work`
+     (`World::higher_pay().with_tiers().with_spare_money()`): decision 1 holds, and more: 240 hours in every
+     period from 1 to 34. Pins at period 34: `unmet`, `output` and the cash of the four sites and the owner.
+     The same world not asking attends fewer than 240 hours at period 34; pin its figure.
+   - `p5_on_the_fund_with_tiers_and_spare_money_does_not_return_alone`
+     (`World::benefits().with_tiers().pushed(Push::LowerFundTaxes).with_spare_money()`): decision 1 does not
+     hold. Pins: the hours at period 34 with the rule and without it; the exact periods in which the rule's
+     hours are below the same world's not asking, and the number in which they are above; and at period 34
+     `unmet`, `output` and the cash of the four sites, the owner, the fund and the public account.
+4. **The long look, at 400 periods** (a run is never judged by 34 periods alone):
+   - `asking_changes_nothing_in_a_quiet_world_for_400_periods`: `World::plain().with_tiers()` and
+     `World::benefits().with_tiers()`, each `.for_periods(400).with_spare_money()`, pass `assert_still_rows`.
+   - `the_pay_rise_holds_full_work_for_400_periods`: the plain pay rise with the rule attends 240 hours in
+     every period from 1 to 400; at period 400 `unmet` is pinned and is the owner's alone. Without the rule the
+     same world's hours at period 400 are pinned.
+   - `the_poor_harvest_holds_most_work_for_400_periods`: the plain poor harvest with the rule never attends
+     fewer than 230 hours; at period 400 `unmet` is pinned and is the owner's alone. Without the rule the same
+     world's hours at period 400 are pinned.
+   - `spare_money_alone_does_not_save_the_fund_world`: for the fund's P2, P4 and P5, with the rule and without
+     it, the hours at period 400 are pinned, six figures, and each is below 120.
+5. **The record** says all of this plainly, the failure in the fund world first among the findings. No figure
+   in it that a dump did not print.
 
-   Either way the test pins, at period 34, `unmet`, `output` and the cash of the four sites and the owner (P5:
-   and the fund). If the rule makes a run worse than not asking in any period from 25 to 34, stop and report
-   the rows to the lead: that is not pinned.
-4. Report both runs' rows for periods 1 to 34 in your return, whatever they show. The lead takes them to the
-   project's owner.
+- [ ] **Step 1: The run of any length.** Add `World.periods` and `for_periods` as decision 2 says. Run
+  `mise run rust:test:q -- -p babylon-material-circuit -E 'binary(small_world)'`. Expected: every existing
+  test passes with its figures unchanged.
+- [ ] **Step 2: Run once for the figures.** Add `("spare tiers quiet", ..)`, `("spare tiers P4", ..)`,
+  `("spare fund quiet", ..)` and `("spare fund P5", ..)` to `dump_every_run`. Add a second ignored printer,
+  `dump_spare_money_long_runs`, that prints, for the plain P2 and P4 and the fund's P2, P4 and P5, with the
+  rule and without it, the hours attended and `unmet` at periods 34, 100, 200, 300 and 400, and at period 400
+  every account's cash and `unmet_by_account`. Run both: `mise run rust:test:q -- -p babylon-material-circuit
+  -E 'test(dump_)' --run-ignored only --no-capture`. Compare with the table above and note every difference.
+- [ ] **Step 3: Write the six tests** of decisions 3 and 4 with the figures of Step 2. Run them and see them
+  pass.
+- [ ] **Step 4: Record** in `small-world.md` a section "Spare money (rule A6)": the four 34-period runs' tables
+  from `dump_every_run`, in the columns and periods of "Form (b) after"; the long-run table from
+  `dump_spare_money_long_runs`; one line for each pushed run saying whether it meets decision 1 and whether it
+  holds to period 400; where the money sits at period 400 in the fund's three runs, with the rule and without
+  it; and three lines on what carries the plain runs and what the fund's runs lack, traced to the code as the
+  record's other sections are.
+- [ ] **Run the gate. Commit** `test(material-circuit): what spare money does alone, at 34 periods and at 400`.
 
-- [ ] **Step 1: Run once** for the figures: add `("spare tiers quiet", ..)`, `("spare tiers P4", ..)`,
-  `("spare fund quiet", ..)` and `("spare fund P5", ..)` to `dump_every_run`, then `mise run rust:test:q -- -p
-  babylon-material-circuit -E 'test(dump_every_run)' --run-ignored only --no-capture`. Read each run against
-  decision 1.
-- [ ] **Step 2: Write the two tests** as decision 3 names them:
-  `p4_with_tiers_and_spare_money_<result>` (`World::higher_pay().with_tiers().with_spare_money()`) and
-  `p5_on_the_fund_with_tiers_and_spare_money_<result>`
-  (`World::benefits().with_tiers().pushed(Push::LowerFundTaxes).with_spare_money()`), with the figures of
-  Step 1. Run them and see them pass.
-- [ ] **Step 3: Record** in `small-world.md` a section "Spare money (rule A6)": the four runs' tables from the
-  dump, in the columns and periods of "Form (b) after"; one line for each run saying whether it meets decision
-  1; and three lines on what carries each run, traced to the code as the record's other sections are. No
-  figure that is not in the dump.
-- [ ] **Run the gate. Commit** `test(material-circuit): what spare money does to the pay rise and the tax cut`.
+### Task 5: The loose ends of the reviews
+
+**Files:**
+- Modify: `contracts/material_circuit_v4.yaml` and its digest in `src/wire/state.rs`; `src/catalog.rs` (one
+  test); `src/recurring/prices.rs`; `src/recurring/spare_money.rs`.
+
+**Decisions** (each is a reviewer's note on Tasks 1 to 3 that was left open):
+1. In the contract, the sentence Task 1 added to `catalog_version` sits inside a folded scalar and reads as a
+   run-on with the sentence before it ("...the wants tail after the market tail A market policy that
+   plans..."). End the earlier sentence with a full stop, or join the two with a semicolon and a lower-case
+   "a". The file's bytes change, so the pinned digest changes with it in the same commit.
+2. `spare_money_writes_version_eight_before_the_bytes_without_it` finds the head of the bytes with a literal
+   copy of the catalog's domain string. Use the constant the encoder uses, so the test follows the domain.
+3. `recurring/prices.rs` keeps a private alias `StockKey` equal to the one `recurring/firms.rs` now shares.
+   Import the shared one and delete the copy.
+4. In `spare_money.rs`, `paid_for` and `raise_maker` read a process's nameplate with `unwrap_or(0)`. Every
+   process of a site is in that map, so the default cannot be reached, but if it ever were, a missing row
+   would silently mean "no room". Return the crate's typed invariant error for a process that is missing from
+   its map, the variant the neighbouring planning code uses for the same fault. No test can reach it; the
+   reviewer checks it by reading.
+
+- [ ] **Step 1:** Make the four changes. There is no new test: decisions 1 to 3 change no behaviour, and
+  decision 4 cannot be reached.
+- [ ] **Step 2:** `mise run rust:test:q -- -p babylon-material-circuit`. Expected: all pass; the digest test in
+  `tests/weighted_freight.rs` passes with the new digest; no other pinned value moved.
+- [ ] **Run the gate. Commit** `chore(material-circuit): close the reviews' loose ends on spare money`.

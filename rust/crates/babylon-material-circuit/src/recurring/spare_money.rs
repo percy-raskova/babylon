@@ -260,7 +260,11 @@ fn paid_for(
 ) -> Result<BTreeMap<(GoodId, UnitId), u128>> {
     let mut asked = BTreeMap::new();
     for row in recurring.production.iter().filter(|r| r.site_id == site) {
-        let nameplate = reads.nameplate.get(&row.process_id).copied().unwrap_or(0);
+        let nameplate = reads
+            .nameplate
+            .get(&row.process_id)
+            .copied()
+            .ok_or(MaterialCircuitError::ProcessInvariant)?;
         let batches = row.planned_batches.min(nameplate);
         for input in reads.catalog.input_coefficients.iter().filter(|c| {
             c.process_id == row.process_id
@@ -325,7 +329,7 @@ fn raise_maker(
         .nameplate
         .get(&output.process_id)
         .copied()
-        .unwrap_or(0);
+        .ok_or(MaterialCircuitError::ProcessInvariant)?;
     let mut batches = affordable(gap.div_ceil(output.quantity_per_batch), per, purse.spare)?
         .min(nameplate.saturating_sub(policy.planned_batches));
     let needs: Vec<_> = catalog

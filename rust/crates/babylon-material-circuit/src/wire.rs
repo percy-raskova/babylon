@@ -27,6 +27,8 @@ mod valuation;
 #[path = "wire/state.rs"]
 mod state;
 
+#[cfg(test)]
+pub(crate) use catalog::MATERIAL_CATALOG_DOMAIN_BYTES;
 pub(crate) use state::catalog_bytes;
 pub(crate) use state::Cursor;
 use state::{

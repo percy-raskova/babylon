@@ -74,8 +74,8 @@ encoding:
   catalog_version: >-
     u16; without a market policy 2, 3, 4 or 5 as before; with one 6, followed by the u16 version the same
     catalog writes without the policy, the body exactly as that version writes it, and the market tail; with
-    household wants 7 where 6 is written, and the wants tail after the market tail
-    A market policy that plans from spare money writes 8 first, then the bytes the same catalog writes without it
+    household wants 7 where 6 is written, and the wants tail after the market tail;
+    a market policy that plans from spare money writes 8 first, then the bytes the same catalog writes without it
 
 state_field_order:
   - period

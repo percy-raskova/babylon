@@ -698,7 +698,7 @@ mod tests {
         let asking = MaterialCatalog::try_new(asking).expect("valid");
         let plain_bytes = crate::wire::catalog_bytes(&plain).expect("bytes");
         let bytes = crate::wire::catalog_bytes(&asking).expect("bytes");
-        let head = b"babylon.material-catalog.v2".len() + 1;
+        let head = crate::wire::MATERIAL_CATALOG_DOMAIN_BYTES.len() + 1;
         assert_eq!(bytes[head..head + 2], 8_u16.to_be_bytes());
         assert_eq!(&bytes[head + 2..], &plain_bytes[head..]);
     }

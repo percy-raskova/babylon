@@ -1,7 +1,7 @@
 //! Current-period direct costs inform bounded quotes without valuing old stock anew.
 use std::collections::BTreeMap;
 
-use super::firms::Wanted;
+use super::firms::{StockKey, Wanted};
 use crate::valuation::CostClose;
 use crate::MaterialCatalog;
 use crate::SellerOffer;
@@ -13,7 +13,6 @@ use babylon_kernel::currency::Currency;
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
-type StockKey = (SiteId, GoodId, UnitId);
 
 /// Mutually exclusive actual native-quantity basis for one quote decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -4,9 +4,9 @@
 use super::support::{self, Fixture, Shelf};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CircuitAccounting, HouseholdStandard, HouseholdTierReceipt, HouseholdWantReceipt,
-    MaterialCircuitState, MaterialCircuitTransition, MoneyTransferPurpose, OutboundOrderId,
-    TaxReceipt, WantTier,
+    AccountId, CircuitAccounting, FinalDemandPrincipalId, HouseholdStandard, HouseholdTierReceipt,
+    HouseholdWantReceipt, MaterialCircuitState, MaterialCircuitTransition, MoneyTransferPurpose,
+    OutboundOrderId, TaxReceipt, WantTier,
 };
 
 fn three_accounts(stock: u64) -> Fixture {
@@ -436,4 +436,51 @@ fn the_amount_held_back_is_what_the_close_assesses() {
             "account {index}"
         );
     }
+}
+
+/// Guards the squares: the lists of a period and the table of its markets are read by account and by
+/// market, so a country's accounts close in one pass. A return of a scan of every want for every tier
+/// row (or of every need for every want) makes this one slow enough to be seen; it times nothing.
+#[test]
+fn a_large_world_of_wants_closes() {
+    const ACCOUNTS: usize = 20_000;
+    let mut fixture = Fixture::new(10_000_000, &vec![support::dollars(1_000); ACCOUNTS]);
+    fixture.shelves.push(Shelf {
+        good: 3,
+        price: support::dollars(10),
+        stock: 10_000_000,
+        needed: false,
+    });
+    fixture.paying_order = Some(vec![2, 3]);
+    fixture.hours = 1_000_000_000;
+    for index in 0..ACCOUNTS {
+        // One want of the good the account needs, and two of a good it only wants.
+        fixture
+            .household_wants
+            .push((index, WantTier::Comfort, 2, 1));
+        fixture
+            .household_wants
+            .push((index, WantTier::Comfort, 3, 1));
+        fixture
+            .household_wants
+            .push((index, WantTier::Luxury, 3, 1));
+    }
+    let (opening, closed) = close(&fixture);
+    assert_eq!(closed.household_wants.len(), 3 * ACCOUNTS);
+    assert_eq!(closed.household_tiers.len(), 2 * ACCOUNTS);
+    let total = |state: &MaterialCircuitState| -> i128 {
+        let mut sum = cash(state, AccountId::Site(support::site(support::RETAILER))).micro_units();
+        sum += cash(
+            state,
+            AccountId::Household(FinalDemandPrincipalId::from_bytes(
+                [support::EARLIER_BUYER; 32],
+            )),
+        )
+        .micro_units();
+        for index in 0..ACCOUNTS {
+            sum += cash(state, AccountId::Household(support::account_at(index))).micro_units();
+        }
+        sum
+    };
+    assert_eq!(total(&opening), total(&closed.state), "money is conserved");
 }

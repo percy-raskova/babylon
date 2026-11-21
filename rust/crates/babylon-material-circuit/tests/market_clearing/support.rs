@@ -17,6 +17,7 @@ use babylon_material_circuit::{
     RecurringEconomy, SellerOffer, SiteId, SiteLogisticsNode, StaffingMemberId, StockCarryingValue,
     TaxBasis, TaxPolicy, UnitId, WantTier,
 };
+use std::collections::BTreeSet;
 
 pub(crate) fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
@@ -115,6 +116,19 @@ pub(crate) fn account(index: u8) -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([10 + index; 32])
 }
 
+/// The account of the `index`th household of a fixture: `account` for the first 50, and one of its
+/// own beyond them, for the fixtures of a country's size.
+pub(crate) fn account_at(index: usize) -> FinalDemandPrincipalId {
+    match u8::try_from(index) {
+        Ok(small) if small < 50 => account(small),
+        _ => {
+            let mut bytes = [0xee_u8; 32];
+            bytes[..8].copy_from_slice(&u64::try_from(index).expect("an index").to_le_bytes());
+            FinalDemandPrincipalId::from_bytes(bytes)
+        }
+    }
+}
+
 /// One good on the shelf.
 #[derive(Clone)]
 pub(crate) struct Shelf {
@@ -155,7 +169,7 @@ pub(crate) struct Fixture {
     pub keep_fixed: bool,
     /// What the accounts want: account, tier, shelf good and quantity, written as a `Households`
     /// want of that many units (each account is one household).
-    pub household_wants: Vec<(u8, WantTier, u8, u64)>,
+    pub household_wants: Vec<(usize, WantTier, u8, u64)>,
     /// The account the retailer's hours are paid to, and the wage for an hour. `None` pays the
     /// earlier buyer one millionth of a dollar an hour.
     pub wage: Option<(u8, Currency)>,
@@ -207,9 +221,7 @@ impl Fixture {
             });
             for index in 0..self.purses.len() {
                 financial.taxes.push(TaxPolicy {
-                    payer: AccountId::Household(account(
-                        u8::try_from(index).expect("the fixture has few accounts"),
-                    )),
+                    payer: AccountId::Household(account_at(index)),
                     public_recipient: public(row),
                     basis: TaxBasis::WageIncome,
                     rate_bps,
@@ -221,12 +233,8 @@ impl Fixture {
     }
 
     /// Whether the account buys the shelf's good: it needs it or wants it.
-    fn bought(&self, holder: u8, row: &Shelf) -> bool {
-        row.needed
-            || self
-                .household_wants
-                .iter()
-                .any(|&(account, _, good, _)| account == holder && good == row.good)
+    fn bought(wanted: &BTreeSet<(usize, u8)>, holder: usize, row: &Shelf) -> bool {
+        row.needed || wanted.contains(&(holder, row.good))
     }
 
     pub(crate) fn build(&self) -> (MaterialCatalog, MaterialCircuitState) {
@@ -283,10 +291,9 @@ impl Fixture {
         }
         let mut household_needs = vec![];
         for index in 0..self.purses.len() {
-            let index = u8::try_from(index).expect("the fixture has few accounts");
             for shelf in self.shelves.iter().filter(|shelf| shelf.needed) {
                 household_needs.push(HouseholdNeed {
-                    principal_id: account(index),
+                    principal_id: account_at(index),
                     good_id: good(shelf.good),
                     unit_id: units(),
                     basis: HouseholdNeedBasis::Persons,
@@ -304,7 +311,7 @@ impl Fixture {
                         .household_wants
                         .iter()
                         .map(|&(index, tier, shelf, quantity)| HouseholdWant {
-                            principal_id: account(index),
+                            principal_id: account_at(index),
                             tier,
                             good_id: good(shelf),
                             unit_id: units(),
@@ -358,28 +365,32 @@ impl Fixture {
         let mut households = vec![];
         let mut stocks = vec![];
         let mut purchases = vec![];
+        let wanted: BTreeSet<(usize, u8)> = self
+            .household_wants
+            .iter()
+            .map(|&(holder, _, good, _)| (holder, good))
+            .collect();
         for index in 0..self.purses.len() {
-            let index = u8::try_from(index).expect("the fixture has few accounts");
             households.push(HouseholdCohort {
                 kind: HouseholdKind::Ordinary,
-                principal_id: account(index),
+                principal_id: account_at(index),
                 households: 1,
                 persons: self.wanted,
             });
             for shelf in &self.shelves {
                 if shelf.needed {
                     stocks.push(HouseholdStock {
-                        principal_id: account(index),
+                        principal_id: account_at(index),
                         good_id: good(shelf.good),
                         unit_id: units(),
                         quantity: 0,
                     });
                 }
-                if !self.bought(index, shelf) {
+                if !Self::bought(&wanted, index, shelf) {
                     continue;
                 }
                 purchases.push(HouseholdPurchasePolicy {
-                    principal_id: account(index),
+                    principal_id: account_at(index),
                     retailer_site_id: retailer,
                     good_id: good(shelf.good),
                     unit_id: units(),
@@ -442,9 +453,7 @@ impl Fixture {
         }];
         for (index, purse) in self.purses.iter().enumerate() {
             accounts.push(CashAccount {
-                id: AccountId::Household(account(
-                    u8::try_from(index).expect("the fixture has few accounts"),
-                )),
+                id: AccountId::Household(account_at(index)),
                 cash: *purse,
             });
         }
@@ -499,9 +508,7 @@ impl Fixture {
         for index in 0..self.purses.len() {
             for shelf in self.shelves.iter().filter(|shelf| shelf.needed) {
                 carrying.push(StockCarryingValue {
-                    owner: AccountId::Household(account(
-                        u8::try_from(index).expect("the fixture has few accounts"),
-                    )),
+                    owner: AccountId::Household(account_at(index)),
                     good_id: good(shelf.good),
                     unit_id: units(),
                     amount: money(0),
@@ -511,9 +518,7 @@ impl Fixture {
         let costs = HistoricalCostBook::open(&book, carrying, vec![], vec![], vec![])
             .expect("the fixture opens the authored source");
         let member = StaffingMemberId::from_bytes(retailer.as_bytes());
-        let mut principals: Vec<_> = (0..self.purses.len())
-            .map(|index| account(u8::try_from(index).expect("the fixture has few accounts")))
-            .collect();
+        let mut principals: Vec<_> = (0..self.purses.len()).map(account_at).collect();
         principals.push(earlier);
         let location: EconomicLocation = "county:26163"
             .parse()

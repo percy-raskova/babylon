@@ -62,12 +62,7 @@ impl CostClose {
     pub(crate) fn funded_wage(&self, site: SiteId, unit: UnitId) -> Result<(Currency, u64)> {
         let mut wages = Currency::from_micro_units(0);
         let mut hours = 0_u64;
-        for row in self
-            .attendance
-            .members()
-            .iter()
-            .filter(|row| row.site_id == site && row.unit_id == unit)
-        {
+        for row in self.attendance.of_site_unit(site, unit) {
             wages = super::add(wages, row.accrued_wages)?;
             hours = hours
                 .checked_add(row.attended_hours)

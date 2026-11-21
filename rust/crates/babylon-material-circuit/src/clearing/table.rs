@@ -3,6 +3,7 @@
 use super::rule::MarketOutcome;
 use crate::{GoodId, MaterialCircuitError, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
+use std::collections::BTreeMap;
 
 /// The moments of a period at which a market is priced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -70,6 +71,10 @@ struct MarketRow {
 #[derive(Debug, Default)]
 pub(crate) struct MarketTable {
     rows: Vec<MarketRow>,
+    /// The place in `rows` of each market, by its key.
+    by_key: BTreeMap<MarketKey, usize>,
+    /// What buyers were priced out of at each seller's product, over every moment.
+    priced_out_by_product: BTreeMap<(SiteId, GoodId, UnitId), u64>,
 }
 
 impl MarketTable {
@@ -119,6 +124,12 @@ impl MarketTable {
             priced_out = outcome.demand_at_quote.saturating_sub(sold);
             receipt = Some(row);
         }
+        let total = self
+            .priced_out_by_product
+            .entry((seller.0, seller.1, seller.2))
+            .or_insert(0);
+        *total = total.saturating_add(priced_out);
+        self.by_key.insert(key, self.rows.len());
         self.rows.push(MarketRow {
             key,
             price: outcome.price,
@@ -131,11 +142,10 @@ impl MarketTable {
 
     /// What buyers could pay for at the posted price and did not get, at this seller's product.
     pub(crate) fn priced_out(&self, site: SiteId, good: GoodId, unit: UnitId) -> u64 {
-        self.rows
-            .iter()
-            .filter(|row| (row.key.1, row.key.2, row.key.3) == (site, good, unit))
-            .map(|row| row.priced_out)
-            .sum()
+        self.priced_out_by_product
+            .get(&(site, good, unit))
+            .copied()
+            .unwrap_or(0)
     }
 
     /// What this market's buyers could pay for at the posted price this period, short or not.
@@ -147,9 +157,7 @@ impl MarketTable {
         good: GoodId,
         unit: UnitId,
     ) -> Option<u64> {
-        self.rows
-            .iter()
-            .find(|row| row.key == (moment, site, good, unit))
+        self.row(moment, site, good, unit)
             .and_then(|row| row.demand)
     }
 
@@ -170,6 +178,18 @@ impl MarketTable {
             .map(|row| ((row.key.1, row.key.2, row.key.3), row.priced_out))
     }
 
+    fn row(
+        &self,
+        moment: MarketMoment,
+        site: SiteId,
+        good: GoodId,
+        unit: UnitId,
+    ) -> Option<&MarketRow> {
+        self.by_key
+            .get(&(moment, site, good, unit))
+            .map(|&at| &self.rows[at])
+    }
+
     pub(crate) fn has_row(
         &self,
         moment: MarketMoment,
@@ -177,9 +197,7 @@ impl MarketTable {
         good: GoodId,
         unit: UnitId,
     ) -> bool {
-        self.rows
-            .iter()
-            .any(|row| row.key == (moment, site, good, unit))
+        self.by_key.contains_key(&(moment, site, good, unit))
     }
 
     /// The price paid at one market of this close, if it cleared.
@@ -191,10 +209,7 @@ impl MarketTable {
         good: GoodId,
         unit: UnitId,
     ) -> Option<Currency> {
-        self.rows
-            .iter()
-            .find(|row| row.key == (moment, site, good, unit))
-            .map(|row| row.price)
+        self.row(moment, site, good, unit).map(|row| row.price)
     }
 
     /// Sorted by (moment, site, good, unit).

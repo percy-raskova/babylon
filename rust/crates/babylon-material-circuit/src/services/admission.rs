@@ -156,15 +156,20 @@ fn want_requests(
     let Some(policy) = &catalog.market_clearing else {
         return Ok(());
     };
+    // Each purchase row by its key, the first of a key as a scan would find it.
+    let mut purchases = BTreeMap::new();
+    for p in &rows.household_purchases {
+        purchases
+            .entry((p.principal_id, p.good_id, p.unit_id))
+            .or_insert(p);
+    }
     for want in &policy.household_wants {
         if !super::is_service(catalog, want.good_id, want.unit_id) {
             continue;
         }
         let key = (want.principal_id, want.good_id, want.unit_id);
-        let purchase = rows
-            .household_purchases
-            .iter()
-            .find(|p| (p.principal_id, p.good_id, p.unit_id) == key)
+        let purchase = purchases
+            .get(&key)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let cohort = rows
             .households

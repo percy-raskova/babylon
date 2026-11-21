@@ -9,10 +9,10 @@ use crate::recurring::households;
 use crate::recurring::households::Intent;
 use crate::services::Request;
 use crate::{
-    AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdNeed, HouseholdWant,
-    MarketClearingPolicy, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
-    MonetaryCircuit, OrderId, RecurringEconomy, SiteId, TaxBasis, UnitId, WageAccrualReceipt,
-    WantTier,
+    AccountId, CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdNeed,
+    HouseholdPurchasePolicy, HouseholdWant, MarketClearingPolicy, MaterialCatalog,
+    MaterialCircuitError, MaterialCircuitState, MonetaryCircuit, OrderId, RecurringEconomy, SiteId,
+    TaxBasis, UnitId, WageAccrualReceipt, WantTier,
 };
 use babylon_kernel::currency::Currency;
 use std::collections::{BTreeMap, BTreeSet};
@@ -134,30 +134,29 @@ impl HouseholdLists {
         // The period's own validation first, so a malformed state gets its own refusal, not one of the
         // intents or the requests.
         crate::recurring::validate(catalog, state)?;
-        let opening = Opening {
+        let opening = Opening::new(
             catalog,
             state,
             policy,
             rows,
-            intents: households::household_intents(catalog, state, rows)?,
-            requests: crate::services::requests(catalog, state)?,
-        };
+            households::household_intents(catalog, state, rows)?,
+            crate::services::requests(catalog, state)?,
+        );
         let mut lists = Self {
             principals: rows.households.iter().map(|r| r.principal_id).collect(),
             tax_ahead: wage_tax_ahead(economy, state.period, wage_accruals)?,
             ..Self::default()
         };
+        let mut needed: BTreeSet<Product> = BTreeSet::new();
         for need in &catalog.household_needs {
-            lists.items.push(opening.need_item(need)?);
+            let item = opening.need_item(need)?;
+            needed.insert(item.product());
+            lists.items.push(item);
         }
         for want in &policy.household_wants {
             let key = (want.principal_id, want.good_id, want.unit_id);
             let (item, bare) = opening.want_item(want)?;
-            if !lists
-                .items
-                .iter()
-                .any(|i| i.tier == 1 && i.product() == key)
-            {
+            if !needed.contains(&key) {
                 lists.bare_needs.insert(key, bare);
             }
             lists.items.push(item);
@@ -376,20 +375,10 @@ impl HouseholdLists {
         }
         let mut tiers = vec![];
         if !self.items.is_empty() {
+            let grouped = records::group_by_tier(&wants);
             for &principal in &self.principals {
                 for tier in [WantTier::Comfort, WantTier::Luxury] {
-                    let (mut wanted, mut bought) = (0_i128, 0_i128);
-                    for want in wants
-                        .iter()
-                        .filter(|w| w.principal_id == principal && w.tier == tier)
-                    {
-                        wanted = wanted
-                            .checked_add(records::value(want.wanted_quantity, want.posted_price)?)
-                            .ok_or(MaterialCircuitError::Arithmetic)?;
-                        bought = bought
-                            .checked_add(records::value(want.bought_quantity, want.posted_price)?)
-                            .ok_or(MaterialCircuitError::Arithmetic)?;
-                    }
+                    let (wanted, bought) = records::tier_sums(grouped.get(&(principal, tier)))?;
                     tiers.push(HouseholdTierReceipt {
                         period,
                         principal_id: principal,
@@ -442,28 +431,89 @@ fn wage_tax_ahead(
         .collect())
 }
 
-/// What the list of a period is read from.
+/// What the list of a period is read from, with each family of rows indexed by the key a need or a
+/// want looks it up by (the first row of a key, as a scan for it would find): the national world has
+/// tens of thousands of accounts, and a scan for every one of them is a square.
 struct Opening<'a> {
     catalog: &'a MaterialCatalog,
     state: &'a MaterialCircuitState,
     policy: &'a MarketClearingPolicy,
-    rows: &'a RecurringEconomy,
     intents: Vec<Intent>,
     requests: Vec<Request>,
+    /// The posted price of each seller's product.
+    offers: BTreeMap<(SiteId, GoodId, UnitId), Currency>,
+    /// The purchase row of each account's product.
+    purchases: BTreeMap<Product, &'a HouseholdPurchasePolicy>,
+    /// The cohort of each account.
+    cohorts: BTreeMap<FinalDemandPrincipalId, &'a HouseholdCohort>,
+    /// The place in `intents` of each account's product.
+    intent_places: BTreeMap<Product, usize>,
+    /// The place in `requests` of each household's request of a service as a need (one without a
+    /// tier).
+    need_requests: BTreeMap<Product, usize>,
 }
 
-impl Opening<'_> {
+/// The first value of each key, in the order given.
+fn first_by_key<K: Ord, V>(rows: impl Iterator<Item = (K, V)>) -> BTreeMap<K, V> {
+    let mut map = BTreeMap::new();
+    for (key, value) in rows {
+        map.entry(key).or_insert(value);
+    }
+    map
+}
+
+impl<'a> Opening<'a> {
+    fn new(
+        catalog: &'a MaterialCatalog,
+        state: &'a MaterialCircuitState,
+        policy: &'a MarketClearingPolicy,
+        rows: &'a RecurringEconomy,
+        intents: Vec<Intent>,
+        requests: Vec<Request>,
+    ) -> Self {
+        Self {
+            offers: first_by_key(
+                rows.offers
+                    .iter()
+                    .map(|r| ((r.site_id, r.good_id, r.unit_id), r.unit_price)),
+            ),
+            purchases: first_by_key(
+                rows.household_purchases
+                    .iter()
+                    .map(|p| ((p.principal_id, p.good_id, p.unit_id), p)),
+            ),
+            cohorts: first_by_key(rows.households.iter().map(|c| (c.principal_id, c))),
+            intent_places: first_by_key(
+                intents
+                    .iter()
+                    .enumerate()
+                    .map(|(at, i)| ((i.principal_id, i.good_id, i.unit_id), at)),
+            ),
+            need_requests: first_by_key(requests.iter().enumerate().filter_map(|(at, r)| {
+                match (r.tier, r.buyer) {
+                    (None, AccountId::Household(principal)) => {
+                        Some(((principal, r.good, r.unit), at))
+                    }
+                    _ => None,
+                }
+            })),
+            catalog,
+            state,
+            policy,
+            intents,
+            requests,
+        }
+    }
+
     fn posted(
         &self,
         seller: SiteId,
         good: GoodId,
         unit: UnitId,
     ) -> Result<Currency, MaterialCircuitError> {
-        self.rows
-            .offers
-            .iter()
-            .find(|r| (r.site_id, r.good_id, r.unit_id) == (seller, good, unit))
-            .map(|r| r.unit_price)
+        self.offers
+            .get(&(seller, good, unit))
+            .copied()
             .ok_or(MaterialCircuitError::PurchaseInvariant)
     }
 
@@ -472,23 +522,19 @@ impl Opening<'_> {
         let key = (need.principal_id, need.good_id, need.unit_id);
         let (seller, order_id, wanted) = if crate::services::is_service(self.catalog, key.1, key.2)
         {
+            // The requests also hold the want requests of the same key: a need's is the one without
+            // a tier, whatever the order of the requests.
             let request = self
-                .requests
-                .iter()
-                .find(|r| {
-                    // The requests also hold the want requests of the same key: a need's is the one
-                    // without a tier, whatever the order of the requests.
-                    r.tier.is_none()
-                        && r.buyer == AccountId::Household(key.0)
-                        && (r.good, r.unit) == (key.1, key.2)
-                })
+                .need_requests
+                .get(&key)
+                .map(|&at| &self.requests[at])
                 .ok_or(MaterialCircuitError::ServiceInvariant)?;
             (request.provider, request.order_id, request.requested)
         } else {
             let intent = self
-                .intents
-                .iter()
-                .find(|i| (i.principal_id, i.good_id, i.unit_id) == key)
+                .intent_places
+                .get(&key)
+                .map(|&at| &self.intents[at])
                 .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
             (
                 intent.retailer_site_id,
@@ -508,16 +554,14 @@ impl Opening<'_> {
         let period = self.state.period;
         let key = (want.principal_id, want.good_id, want.unit_id);
         let purchase = self
-            .rows
-            .household_purchases
-            .iter()
-            .find(|p| (p.principal_id, p.good_id, p.unit_id) == key)
+            .purchases
+            .get(&key)
+            .copied()
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let cohort = self
-            .rows
-            .households
-            .iter()
-            .find(|c| c.principal_id == key.0)
+            .cohorts
+            .get(&key.0)
+            .copied()
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let wanted = if purchase.enabled {
             want.quantity(cohort)?
@@ -637,17 +681,17 @@ mod opening_tests {
         let rows = state
             .recurring_economy()
             .expect("the fixture state is monetary");
-        let opening = Opening {
-            catalog: &catalog,
-            state: &state,
-            policy: &policy,
+        let opening = Opening::new(
+            &catalog,
+            &state,
+            &policy,
             rows,
-            intents: vec![],
-            requests: vec![
+            vec![],
+            vec![
                 request(20, Some(WantTier::Comfort), 5),
                 request(10, None, 3),
             ],
-        };
+        );
         let item = opening.need_item(&need).expect("the need has its request");
         assert_eq!((item.order_id, item.wanted), (order(10), 3));
     }

@@ -450,31 +450,38 @@ fn bare_want_intents(
     let Some(policy) = &catalog.market_clearing else {
         return Ok(vec![]);
     };
+    // Each family is read once into a map by key, not scanned for every want.
+    let planned: BTreeSet<HouseholdKey> = intents
+        .iter()
+        .map(|i| (i.principal_id, i.good_id, i.unit_id))
+        .collect();
     let keys: BTreeSet<HouseholdKey> = policy
         .household_wants
         .iter()
         .map(|want| (want.principal_id, want.good_id, want.unit_id))
         .filter(|&(_, good, unit)| !crate::services::is_service(catalog, good, unit))
-        .filter(|key| {
-            !intents
-                .iter()
-                .any(|i| (i.principal_id, i.good_id, i.unit_id) == *key)
-        })
+        .filter(|key| !planned.contains(key))
         .collect();
+    let mut purchases = BTreeMap::new();
+    for p in &rows.household_purchases {
+        purchases
+            .entry((p.principal_id, p.good_id, p.unit_id))
+            .or_insert(p);
+    }
+    let mut quotes = BTreeMap::new();
+    for o in &rows.offers {
+        quotes
+            .entry((o.site_id, o.good_id, o.unit_id))
+            .or_insert(o.unit_price);
+    }
     let mut bare = vec![];
     for key in keys {
-        let purchase = rows
-            .household_purchases
-            .iter()
-            .find(|p| (p.principal_id, p.good_id, p.unit_id) == key)
+        let purchase = purchases
+            .get(&key)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        let quote = rows
-            .offers
-            .iter()
-            .find(|o| {
-                (o.site_id, o.good_id, o.unit_id) == (purchase.retailer_site_id, key.1, key.2)
-            })
-            .map(|o| o.unit_price)
+        let quote = quotes
+            .get(&(purchase.retailer_site_id, key.1, key.2))
+            .copied()
             .ok_or(MaterialCircuitError::PurchaseInvariant)?;
         bare.push(Intent {
             principal_id: key.0,
@@ -730,6 +737,21 @@ fn complete_purchases(
     );
     crate::inventory::publish_inventory(state, inventory);
     let handed = handed?;
+    // Each stock row by its key, found once: the sales and the stock rows are both a row for every
+    // account, so a scan of the stocks for every sale is a square.
+    let mut stock_at = BTreeMap::new();
+    for (at, row) in economy_mut(state)?
+        .recurring
+        .as_ref()
+        .ok_or(MaterialCircuitError::FinalDemandInvariant)?
+        .household_stocks
+        .iter()
+        .enumerate()
+    {
+        stock_at
+            .entry((row.principal_id, row.good_id, row.unit_id))
+            .or_insert(at);
+    }
     for sale in sales {
         let id = OutboundOrderId::LocalFinalDemand(sale.order_id);
         let economy = economy_mut(state)?;
@@ -738,14 +760,10 @@ fn complete_purchases(
                 .recurring
                 .as_mut()
                 .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-            let stock = rows
-                .household_stocks
-                .iter_mut()
-                .find(|row| {
-                    (row.principal_id, row.good_id, row.unit_id)
-                        == (sale.principal_id, sale.good_id, sale.unit_id)
-                })
+            let at = stock_at
+                .get(&(sale.principal_id, sale.good_id, sale.unit_id))
                 .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+            let stock = &mut rows.household_stocks[*at];
             stock.quantity = stock
                 .quantity
                 .checked_add(sale.quantity)

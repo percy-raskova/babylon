@@ -6,6 +6,7 @@ use crate::{
 };
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
+use std::collections::BTreeMap;
 
 /// Exact identity of a household's want of one product in one tier in one period.
 #[must_use]
@@ -108,6 +109,40 @@ pub(super) fn value(quantity: u64, price: Currency) -> Result<i128, MaterialCirc
         .ok_or(MaterialCircuitError::Arithmetic)
 }
 
+/// The want rows of each account and tier, in the order given: one pass over the rows, so that a
+/// tier row finds its wants by key instead of scanning them all.
+pub(super) fn group_by_tier(
+    wants: &[HouseholdWantReceipt],
+) -> BTreeMap<(FinalDemandPrincipalId, WantTier), Vec<&HouseholdWantReceipt>> {
+    let mut grouped: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    for want in wants {
+        grouped
+            .entry((want.principal_id, want.tier))
+            .or_default()
+            .push(want);
+    }
+    grouped
+}
+
+/// The wanted and the bought value, at posted prices, of one account's wants of one tier.
+///
+/// # Errors
+/// `Arithmetic` for a sum outside `i128`.
+pub(super) fn tier_sums(
+    wants: Option<&Vec<&HouseholdWantReceipt>>,
+) -> Result<(i128, i128), MaterialCircuitError> {
+    let (mut wanted, mut bought) = (0_i128, 0_i128);
+    for want in wants.into_iter().flatten() {
+        wanted = wanted
+            .checked_add(value(want.wanted_quantity, want.posted_price)?)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        bought = bought
+            .checked_add(value(want.bought_quantity, want.posted_price)?)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+    }
+    Ok((wanted, bought))
+}
+
 /// Each row is valid, and each tier row equals the sums of its account's want rows at posted prices.
 ///
 /// # Errors
@@ -119,20 +154,10 @@ pub(super) fn validate_records(
     for row in wants {
         row.validate()?;
     }
+    let grouped = group_by_tier(wants);
     for row in tiers {
         row.validate()?;
-        let (mut wanted, mut bought) = (0_i128, 0_i128);
-        for want in wants
-            .iter()
-            .filter(|w| w.principal_id == row.principal_id && w.tier == row.tier)
-        {
-            wanted = wanted
-                .checked_add(value(want.wanted_quantity, want.posted_price)?)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-            bought = bought
-                .checked_add(value(want.bought_quantity, want.posted_price)?)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-        }
+        let (wanted, bought) = tier_sums(grouped.get(&(row.principal_id, row.tier)))?;
         if wanted != row.wanted_value.micro_units() || bought != row.bought_value.micro_units() {
             return Err(MaterialCircuitError::MarketClearingInvariant);
         }

@@ -1209,3 +1209,26 @@ fn fully_satisfied_need_releases_the_expired_surplus_unit_refund() {
     assert_full_collection(&closed, &closed.collections[0]);
     assert_eq!(control::cash(&closed.state, donor), floor);
 }
+
+#[test]
+fn a_donors_service_orders_reconcile_under_a_market_policy() {
+    let (catalog, state) = control::opening();
+    let mut definition = catalog.into_definition();
+    definition.market_clearing = Some(babylon_material_circuit::MarketClearingPolicy {
+        paying_order: (1..=7)
+            .map(|g| (control::good(g), control::unit(g)))
+            .collect(),
+    });
+    let catalog = MaterialCatalog::try_new(definition).expect("the policy catalog is valid");
+    let closed = control::close(&catalog, &state, &[], &[control::collection(1)])
+        .expect("the donor's funding reconciles when requests are captured after the stages");
+    assert_eq!(closed.collections.len(), 1);
+    assert_eq!(closed.collections[0].outcome, CollectionOutcome::Collected);
+    assert!(
+        closed
+            .service_performance
+            .iter()
+            .any(|row| row.buyer == AccountId::Household(control::donor())),
+        "the donor's service orders are in the close"
+    );
+}

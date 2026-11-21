@@ -816,8 +816,9 @@ period_services:
     - Matching provider-buyer-good-unit funded orders due now reduce fresh household and B2B requests before admission.
     - Top-up identity hashes its domain, ordinary recurring identity, and sorted matching due order identities,
       quantities and accepted prices.
-    - Due orders retain their accepted price and are served first; without a market policy only residual need can
-      obtain a new reserve at the current quote, and with one at the price of the market of its stage.
+    - Due orders retain their accepted price; without a market policy only residual need can obtain a new reserve at
+      the current quote and shares output with due orders; with one, due orders are served first and residual need is
+      priced at the market of its stage.
     - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
       converts to batches.
     - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with

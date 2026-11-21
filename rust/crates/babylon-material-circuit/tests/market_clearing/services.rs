@@ -118,7 +118,7 @@ fn utility_is_paid_before_the_local_service() {
 }
 
 #[test]
-fn an_order_funded_by_a_donor_is_served_first() {
+fn an_order_funded_earlier_is_served_first() {
     let mut fixture = ServiceFixture::new(
         &[support::dollars(1_000), support::dollars(1_000)],
         &[vec![(UTILITY, 100)], vec![(UTILITY, 50)]],

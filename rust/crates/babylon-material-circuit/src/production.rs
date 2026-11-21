@@ -447,7 +447,8 @@ fn execute_production(
         ProductionResources::InputsAndLabor,
         funded.as_ref(),
     )?;
-    if let Some(stage) = phase {
+    // Only a market policy admits orders in their stage; without one `allocate` shares the output.
+    if let Some(stage) = phase.filter(|_| catalog.market_clearing.is_some()) {
         let potential = crate::services::potential_output(catalog, &commitments, &allocations)?;
         services.admit_stage(catalog, state, stage, &potential, costs, movements, markets)?;
     }

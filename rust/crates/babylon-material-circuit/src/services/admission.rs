@@ -438,7 +438,9 @@ fn price_stage_market(
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Err(MaterialCircuitError::MonetaryInvariant);
     };
-    let first = members[0];
+    let first = members
+        .first()
+        .ok_or(MaterialCircuitError::MarketClearingInvariant)?;
     let posted = quote(state, first.provider, first.good, first.unit)?;
     let purse = |request: &Request| -> Result<Currency> {
         Ok(Currency::from_micro_units(

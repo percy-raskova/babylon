@@ -120,11 +120,14 @@ order, and so does every household of the campaign, not only Wayne's.
 **P8. An accepted order is a sale.** Money set aside keeps its price and its quantity. A good that
 a household buys is handed over when it is bought: it leaves the shelf, the hours that hand it over
 are spent, and the money is paid, all at that moment. Nothing the seller does later in the period
-can take it back. A business's goods sold and not yet moved are owed: they are taken out of what
-the seller offers afterwards. A business no
-longer places a held order with a seller that has nothing; it bids again next period. What the
-buyers wanted at the posted price and did not get is recorded (P10) and is what the seller plans
-its next production from, as the held orders are today.
+can take it back. A business's goods are sent in the shipping pass that follows the sale. What
+that pass does not send is no sale: the goods stay with the seller, the money returns to the
+buyer, and the buyer bids again next period (section 7). So a business holds no order that is not
+on its way, and counts as arriving only what is. Goods that a seller still owes, such as equipment
+ordered under today's rule, are taken out of what it offers. A business no longer places a held
+order with a seller that has nothing. What the buyers wanted at the posted price and did not get
+is recorded (P10) and is what the seller plans its next production from, as the held orders are
+today.
 
 **P9. The posted price.** It keeps its rule: one step a period, inside its bounds. It is the price
 below which the seller does not sell and around which the paid price moves. It steps up after a
@@ -181,10 +184,13 @@ raises the price.
 
 ## 7. What it does not price
 
-- **A route.** Carrying is not sold in this engine, so a short route has no price to raise. Orders
-  that a route cannot move are shared in proportion, as today, and the unmoved part of a business's
-  order waits as an accepted order. A short route shows as a short shelf at its far end, and that
-  shelf is priced. A merchant's hands are different: they are part of what it has on offer (P6).
+- **A route.** Carrying is not sold in this engine, so a short route has no price to raise. A full
+  route shares its room among the orders in proportion, as today. Under a market policy, the part
+  of a business's new order that the pass after the sale does not send is cancelled and its money
+  returned (P8). Measured on 20 November 2026 under today's rule: a buyer counted orders stuck
+  behind a full route as arriving, stopped ordering at home, and its home supplier laid off. A
+  short route now shows as a short shelf at its far end, and that shelf is priced. A merchant's
+  hands are different: they are part of what it has on offer (P6).
 - **Equipment bought as investment.** A company's equipment order keeps today's rule: the posted
   price, and a held order when the maker has none. It has its own budget rule and is the next piece
   of price work.
@@ -223,6 +229,11 @@ units, when they come, are `national-world-v14`.
    opening price of food, and the organizer's preview of a purchase shows the posted price
    (`national_economy/county_review.rs:206`, `organizer_runtime/material_preview.rs:363`). Neither
    refuses anything. Both are shown to the Director with the measured result, to rule on.
+7. **A full route cancels what it cannot carry.** The price at the far seller was found with
+   buyers whose goods then could not move, so it can stand above what the carried goods alone
+   would have fetched, and the cancelled goods go back on that seller's shelf until the next
+   period. The buyer stays short by that seller's share of its stock, because its other seller's
+   share is capped by its policy. The records show it: what was accepted less what was sent.
 
 ## 10. Approaches
 

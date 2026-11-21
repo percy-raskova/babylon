@@ -34,8 +34,8 @@ were measured (`reports/economy-repair-2026-11-20/`). None keeps households supp
 and the Director has ruled that the scenario's recipes and prices are rebuilt from the national
 accounts (PER-371). So Tasks 1 to 7 are built now. Task 8's change to the shipped file and Task 9 land
 with that rebuilt opening. One finding bears on Task 5: a buyer counts every order it holds as
-arriving, also an order stuck behind a full route, and then stops ordering. The lead settles that rule
-before Task 5 starts.
+arriving, also an order stuck behind a full route, and then stops ordering. Task 5's decision 6
+settles it: what the pass after a sale does not send is cancelled.
 
 ## Global Constraints
 
@@ -526,7 +526,12 @@ pub(crate) fn limit_price(catalog: &MaterialCatalog, state: &MaterialCircuitStat
    `Offer::supply` for the supplier after the first shipping pass. An order row and its reserve are
    made for what was sold, at the market's price. Nothing is ordered from a seller with nothing on
    offer. A product not in the order of paying is ordered by today's rule.
-6. The second shipping pass is unchanged. What a route cannot carry waits as an accepted order.
+6. The second shipping pass shares a full route in proportion, as today. Then, under a market
+   policy, each order accepted in this period's restocking keeps only what the pass sent: the
+   unsent quantity is refunded (`refund_purchase`) and taken off `ordered`, in
+   `dispatch_and_replenish` before its last `settle_deliveries`. An order nothing of which was sent
+   leaves no row, and its purchase is retired. So a buyer's `outstanding_inbound` is only what is
+   in transit. Without a market policy the pass is unchanged and an unsent order waits, as today.
 7. Equipment bought as investment (`equipment::invest`) is unchanged.
 
 - [ ] **Step 1: Write the failing tests** in `tests/market_clearing/restocking.rs`:
@@ -539,8 +544,15 @@ pub(crate) fn limit_price(catalog: &MaterialCatalog, state: &MaterialCircuitStat
   - `a_merchant_stops_at_its_own_price_less_handling`.
   - `nothing_is_ordered_from_an_empty_supplier`: assert no order row, no reserve, and one market row
     with `sold_quantity` 0.
-  - `goods_sold_and_not_yet_shipped_are_not_sold_twice`: a supplier with 100 in stock owes 70 to an
-    accepted order that its route could not carry. Assert `supply` is 30.
+  - `goods_owed_to_an_earlier_order_are_not_sold_twice`: a supplier with 100 in stock owes 70 to an
+    order row that this period's restocking did not make (`shipped` 0). Assert `supply` is 30.
+  - `what_the_route_cannot_carry_is_cancelled_and_refunded`: a buyer whose route carries 40 units a
+    period buys 100 from a supplier that holds them. Assert the order row ends the period with
+    `ordered` 40 and `shipped` 40, the buyer's cash fell by exactly 40 times the price paid, the
+    supplier still holds 60, `payments::conserved` holds, and in the next period the buyer's
+    `outstanding_inbound` is at most 40.
+  - `an_order_nothing_of_which_moved_leaves_no_row`: the route carries nothing. Assert no order
+    row, no money set aside, and the buyer's cash as before the sale.
   - `a_second_supplier_sees_what_the_first_sold`: one buyer with two suppliers of one product.
     Assert its bid at the second is its target less what it holds, has inbound and has just bought.
   - `the_limit_reads_the_sites_own_funded_wage`: pin one `limit_price` by hand from a fixture's

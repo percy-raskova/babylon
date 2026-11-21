@@ -103,9 +103,11 @@ ADR312_the_price_of_a_short_market:
     quantity. A good that a household buys is handed over when it is bought: it
     leaves the shelf, the hours that hand it over are spent and the money is
     paid at that moment, so nothing the seller does later in the period can
-    take it back. A business's goods sold and not yet moved are owed, and are
-    taken out of what the seller offers afterwards. A business no longer places a held order with
-    a seller that has nothing; it bids again next period. What the buyers
+    take it back. A business's goods are sent in the shipping pass that follows
+    the sale. What that pass does not send is no sale: the goods stay with the
+    seller and the money returns to the buyer. Goods that a seller still owes
+    are taken out of what it offers. A business no longer places a held order
+    with a seller that has nothing; it bids again next period. What the buyers
     wanted at the posted price and did not get is recorded, and the seller
     plans its next production from it.
 
@@ -124,8 +126,9 @@ ADR312_the_price_of_a_short_market:
     P12. WHAT DOES NOT CLEAR BY PRICE. A product left out of the order of
     paying, which in the national world is public provision; a seller with a
     fixed price; a campaign with no order of paying; a world without money. A
-    route or a merchant's hands that cannot move what was sold. Equipment bought
-    as investment. Wages. There the engine shares in proportion, as before.
+    route that cannot move what was sold: its room is shared in proportion, as
+    before, and what is not sent is cancelled (P8). Equipment bought as
+    investment. Wages. There the engine shares in proportion, as before.
 
     P13. ON ASKING. A campaign asks with `paying_order` in its policy's
     `[markets]` section. The catalog then carries the order, and the campaign
@@ -153,6 +156,12 @@ ADR312_the_price_of_a_short_market:
         retailer keeps its shelf at its largest employer, whose production
         draws on the same stock and hours (design 3, 9).
     - 'A campaign that clears by price prices every good its households buy; a service may be left out (plan Task 2).'
+    - >-
+        What the pass after a sale does not send is cancelled and refunded, so
+        that a business never counts as arriving what is not on its way.
+        Measured on 2026-11-20 under today's rule: orders stuck behind a full
+        route filled a buyer's position, it stopped ordering at home, and its
+        home supplier laid off (design 7, 9; plan Task 5).
   alternatives_rejected:
     - >-
         Raising the price of money already set aside at the hand-over. It breaks
@@ -175,6 +184,14 @@ ADR312_the_price_of_a_short_market:
         maintenance and installation from goods and hours that are owed. Four
         guards for one result, and one missed guard brings back refunds at a
         price that did not clear.
+    - >-
+        Leaving the unsent part of a business's order as an accepted order.
+        Behind a route that stays full, the orders and the money set aside for
+        them grow every period, and the buyer stops ordering anywhere.
+    - >-
+        Limiting each bid beforehand to what its route can carry. A corridor is
+        shared by the flows of many sellers and products at once, so the limit
+        of one market would depend on every other market of the period.
   open_questions:
     - >-
         A deep shortage empties purses: buyers bid what they can pay, so a

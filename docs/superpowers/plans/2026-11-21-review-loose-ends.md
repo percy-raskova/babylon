@@ -108,6 +108,21 @@ A world without a market policy, wants or programs keeps every byte.
 - [ ] **Item 9.** Comment and record lines past their width: the `# Errors` paragraph of `settle` in
   `src/tiers/lists.rs`; `tests/small_world/tiers.rs` near 191; `reports/economy-repair-2026-11-20/small-world.md`
   near 373 and 408. Rewrap; change no figure.
+- [ ] **Item 10.** From the review of the tiers plan's Task 6. `tests/market_clearing/wants.rs`,
+  `the_amount_held_back_is_what_the_close_assesses` proves the amount only to the $4 step of the shelf's price.
+  Add a unit test in the crate that reads `tax_ahead` through `HouseholdLists::open` for each household account
+  of a taxed fixture with two wage tax rows and compares it, to the millionth, with the sum of `assessed` over
+  that account's wage tax receipts of the same close.
+- [ ] **Item 11.** `tax_ahead` leaves out a wage booked after the lists open (the agency attendance shift,
+  settled at the household close). Show with a test in the crate that such a wage is paid after the period's
+  buying and is taxed at that same close, so that no want can be bought with its tax. If the test shows that a
+  want can be bought with it, stop and report: that is a fault of Task 6 and not a loose end.
+- [ ] **Item 12.** `tests/small_world/benefits.rs`, the doc of
+  `p1_with_a_fund_and_tiers_returns_to_its_opening_state` says the owner has no comforts to buy with; the
+  record shows it buying $120 of comforts and $200 of luxuries in every period. Correct the comment.
+- [ ] **Item 13.** The record's section "Form (b) after" has no table for the quiet run, where "Form (b)
+  before" has one: add it from the dump, in the same columns and periods. One blank line, not two, after the
+  notice under "Form (b) before". Change no figure.
 - [ ] **Run the gate. Commit** `test(material-circuit): cover what the reviews found uncovered`.
 
 ### Task 3: Public programs: scans, clamps, names and the record
@@ -156,3 +171,35 @@ A world without a market policy, wants or programs keeps every byte.
   the dump.
 - [ ] **Run the gate** (with `mise run rust:test:q -- -p babylon-persistence` if any persistence file
   changed). **Commit** `fix(material-circuit): public programs scale, refuse by class and read true`.
+
+### Task 4: Tiers and the market table at the size of the country
+
+Found by the check of the records plan on 21 November 2026. Each of these scans one long list for every row
+of another. The national world has about 14,660 household accounts and may have three wants for each; the
+bounds are 131,072 needs, 262,144 wants and 131,072 market rows. No figure changes: every existing test of
+the functions named passes unchanged.
+
+**Files:** `src/tiers/lists.rs`; `src/tiers/records.rs`; `src/clearing/table.rs`; `src/recurring/households.rs`;
+the callers of each. **Test:** `src/tiers/tests.rs`; `src/clearing/` tests; one integration test in
+`tests/market_clearing/wants.rs`.
+
+- [ ] **Item 1.** `src/tiers/lists.rs`, `HouseholdLists::open`: for every want it asks `items.iter().any(..)`
+  whether the account needs the product. Build the set of (principal, good, unit) of the needs once.
+- [ ] **Item 2.** `src/tiers/lists.rs`, `Opening::posted` (the posted price of an item): it scans the offers
+  for every item. The offers are sorted by (site, good, unit): search them, or build one map.
+- [ ] **Item 3.** `bare_want_intents` (find it with `rg`): it scans for every want. One pass or one map.
+- [ ] **Item 4.** `src/tiers/records.rs`, the tier sums in `receipts()` and in `validate_records`: for every
+  tier row they filter every want row. Both families are sorted by (principal, tier): one merge pass.
+- [ ] **Item 5.** `src/clearing/table.rs`, `MarketTable::has_row`, `price`, `priced_out` and
+  `demand_at_quote` scan the rows on every call, and `record` calls `has_row`. Keep an index by the market's
+  key beside the rows (the rows keep their order, which the receipts need).
+- [ ] **Item 6.** Search the engine code added since `d53f6caa7` (`git diff d53f6caa7..HEAD` over the crate's
+  `src`) for any other scan of one bounded family inside a loop over another (`.iter().find(`, `.iter().any(`,
+  `.iter().filter(` inside `for`), and for each say in the report whether both sides can be long in the
+  national world; fix those that can. Tasks 1 and 3 of this plan already hold `refuse_open_want_orders`,
+  `program_dues`, `validate_programs`, `public_funding` and `validate_layoffs`.
+- [ ] **A test of size.** `tests/market_clearing/wants.rs`, `a_large_world_of_wants_closes`: the goods fixture
+  with 20,000 household accounts, each with one need and three wants (one of a good it also needs, two of a
+  good it only wants), closes one period; the tier rows number 40,000 and the money is conserved. It is
+  there to catch a return of the square, not to time anything: say in its doc what it guards.
+- [ ] **Run the gate. Commit** `perf(material-circuit): tiers and the market table without squares`.

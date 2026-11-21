@@ -18,6 +18,10 @@ const MARKET_CATALOG_SCHEMA_VERSION: u16 = 6;
 /// A market policy with household wants writes this version where 6 is written.
 const MARKET_TIERS_CATALOG_SCHEMA_VERSION: u16 = 7;
 
+/// A market policy that plans from spare money writes this version first, then every byte the same
+/// catalog writes without it.
+const SPARE_MONEY_CATALOG_SCHEMA_VERSION: u16 = 8;
+
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
     out.extend_from_slice(&row.hours_per_basis.to_be_bytes());
@@ -176,6 +180,13 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);
+    if catalog
+        .market_clearing
+        .as_ref()
+        .is_some_and(|policy| policy.plans_from_spare_money)
+    {
+        out.extend_from_slice(&SPARE_MONEY_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
     let version = match catalog
         .company_portfolios
         .map(|policy| policy.condition_order)

@@ -306,6 +306,7 @@ impl Fixture {
                 .paying_order
                 .as_ref()
                 .map(|order| MarketClearingPolicy {
+                    plans_from_spare_money: false,
                     paying_order: order.iter().map(|&g| (good(g), units())).collect(),
                     household_wants: self
                         .household_wants

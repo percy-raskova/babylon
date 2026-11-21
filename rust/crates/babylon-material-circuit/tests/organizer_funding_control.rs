@@ -1220,6 +1220,7 @@ fn market_policy_opening(
     let (catalog, mut state) = control::opening();
     let mut definition = catalog.into_definition();
     definition.market_clearing = Some(babylon_material_circuit::MarketClearingPolicy {
+        plans_from_spare_money: false,
         paying_order: (1..=7)
             .map(|g| (control::good(g), control::unit(g)))
             .collect(),

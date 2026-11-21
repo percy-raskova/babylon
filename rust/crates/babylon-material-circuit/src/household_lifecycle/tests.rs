@@ -326,6 +326,7 @@ fn a_purchase_row_for_a_want_alone_survives_the_rebase() {
             units_per_basis: 2,
         }],
         market_clearing: Some(MarketClearingPolicy {
+            plans_from_spare_money: false,
             paying_order: (1..=2)
                 .map(|n| (GoodId::from_bytes([n; 32]), UnitId::from_bytes([n; 32])))
                 .collect(),

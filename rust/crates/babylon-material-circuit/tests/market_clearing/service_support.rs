@@ -259,6 +259,7 @@ impl ServiceFixture {
                 .paying_order
                 .as_ref()
                 .map(|order| MarketClearingPolicy {
+                    plans_from_spare_money: false,
                     paying_order: order
                         .iter()
                         .map(|&g| (support::good(g), support::units()))

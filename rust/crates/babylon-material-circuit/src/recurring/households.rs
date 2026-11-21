@@ -1223,6 +1223,7 @@ mod open_want_order_tests {
                 units_per_basis: 1,
             }],
             market_clearing: Some(MarketClearingPolicy {
+                plans_from_spare_money: false,
                 paying_order: vec![(good(1), unit(1)), (good(2), unit(2)), (good(3), unit(3))],
                 household_wants: vec![want(2, WantTier::Comfort), want(3, WantTier::Luxury)],
             }),

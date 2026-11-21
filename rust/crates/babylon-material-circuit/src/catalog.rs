@@ -547,6 +547,7 @@ mod tests {
         MarketClearingPolicy {
             paying_order: order.iter().map(|&n| (good(n), unit(n))).collect(),
             household_wants: vec![],
+            plans_from_spare_money: false,
         }
     }
 
@@ -677,6 +678,48 @@ mod tests {
         }
         assert_eq!(tail.len(), 4 + 2 * 106);
         assert_eq!(&bytes[plain_bytes.len()..], tail.as_slice());
+    }
+
+    fn asking_spare_money(mut definition: MaterialCatalogDefinition) -> MaterialCatalogDefinition {
+        definition
+            .market_clearing
+            .as_mut()
+            .expect("a market policy")
+            .plans_from_spare_money = true;
+        definition
+    }
+
+    #[test]
+    fn spare_money_writes_version_eight_before_the_bytes_without_it() {
+        let mut quiet = base();
+        quiet.market_clearing = Some(policy(&[1, 2]));
+        let asking = asking_spare_money(quiet.clone());
+        let plain = MaterialCatalog::try_new(quiet).expect("valid");
+        let asking = MaterialCatalog::try_new(asking).expect("valid");
+        let plain_bytes = crate::wire::catalog_bytes(&plain).expect("bytes");
+        let bytes = crate::wire::catalog_bytes(&asking).expect("bytes");
+        let head = b"babylon.material-catalog.v2".len() + 1;
+        assert_eq!(bytes[head..head + 2], 8_u16.to_be_bytes());
+        assert_eq!(&bytes[head + 2..], &plain_bytes[head..]);
+    }
+
+    #[test]
+    fn spare_money_changes_the_digest() {
+        let mut quiet = base();
+        quiet.market_clearing = Some(policy(&[1, 2]));
+        let plain = MaterialCatalog::try_new(quiet.clone()).expect("valid");
+        let asking = MaterialCatalog::try_new(asking_spare_money(quiet)).expect("valid");
+        assert_ne!(plain.catalog_digest(), asking.catalog_digest());
+        let rows = vec![want(9, WantTier::Comfort, 2, 3)];
+        let plain = MaterialCatalog::try_new(with_wants(rows)).expect("valid");
+        let asking = MaterialCatalog::try_new(asking_spare_money(with_wants(vec![want(
+            9,
+            WantTier::Comfort,
+            2,
+            3,
+        )])))
+        .expect("valid");
+        assert_ne!(plain.catalog_digest(), asking.catalog_digest());
     }
 
     #[test]

@@ -13,6 +13,9 @@ pub struct MarketClearingPolicy {
     pub paying_order: Vec<(GoodId, UnitId)>,
     /// What household accounts buy after their needs, in canonical order (empty without wants).
     pub household_wants: Vec<HouseholdWant>,
+    /// Rule A6 (ADR314): a workplace with more money than one period of what it pays out plans for
+    /// what was asked of it, as far as that money carries. `false` keeps today's plans and bytes.
+    pub plans_from_spare_money: bool,
 }
 
 impl MarketClearingPolicy {

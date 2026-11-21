@@ -75,6 +75,7 @@ encoding:
     u16; without a market policy 2, 3, 4 or 5 as before; with one 6, followed by the u16 version the same
     catalog writes without the policy, the body exactly as that version writes it, and the market tail; with
     household wants 7 where 6 is written, and the wants tail after the market tail
+    A market policy that plans from spare money writes 8 first, then the bytes the same catalog writes without it
 
 state_field_order:
   - period
@@ -126,6 +127,8 @@ catalog_row_field_order:
   market_clearing: [count_u32, paying_order_rows_of_good_id_and_unit_id]
   # Written only when the market policy has household wants, after the market tail (catalog version 7).
   household_wants: [count_u32, rows of principal_id, tier_u8, good_id, unit_id, need_basis_u8, units_per_basis]
+  # A market policy that plans from spare money adds no tail: it writes u16 8 before every other byte of the
+  # catalog (catalog version 8), then the bytes the same catalog writes without it.
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -187,7 +190,14 @@ market_clearing:
   P12_not_by_price: >-
     a product left out of the order of paying, a catalog without an order, and a world without money share in
     proportion as before; a product in the order has no seller with a fixed price
-  P13_asking: a catalog gets the rule only by naming an order of paying
+  P13_asking: >-
+    a catalog gets the rule only by naming an order of paying, and A6 only by setting plans_from_spare_money
+  A6_spare_money: >-
+    a workplace that holds more money than one period of what it pays out plans for what was asked of it and
+    not paid for at its posted price, as far as that spare money carries; what a period pays out is the wages of
+    its planned hours, the inputs of its planned batches and a merchant's restocking; a raise stops at nameplate
+    and takes no stocked input that a paid-for plan needs; a workplace without spare money, and a catalog that
+    does not set plans_from_spare_money, plan as before
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out

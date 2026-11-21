@@ -11,7 +11,7 @@ use super::TaxReceipt;
 use crate::valuation::CostClose;
 use crate::{
     AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MonetaryBook,
-    MoneyTransferReceipt,
+    MoneyTransferReceipt, PublicAccountId,
 };
 
 use crate::{CompanyDistributionReceipt, MaterialCatalog, MaterialCircuitError};
@@ -37,6 +37,17 @@ struct Claim<'a> {
     order: (u8, u8, &'a str),
     amount: Currency,
     source: Source<'a>,
+}
+
+/// Each public account's dues, in the dues' own order, grouped once so that no budget scans them all.
+fn group_by_payer(
+    dues: Vec<(PublicProgramReceipt, Currency)>,
+) -> BTreeMap<PublicAccountId, Vec<(PublicProgramReceipt, Currency)>> {
+    let mut grouped: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    for due in dues {
+        grouped.entry(due.0.public_account).or_default().push(due);
+    }
+    grouped
 }
 
 pub(crate) struct FinancialClose {
@@ -127,6 +138,7 @@ impl FinancialClose {
             CircuitAccounting::PhysicalControl => return Ok(()),
         };
         let period = state.period;
+        let dues_of = group_by_payer(dues);
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             return Ok(());
         };
@@ -150,12 +162,8 @@ impl FinancialClose {
                     self.fund_capped(&mut run, rows, budget.period_cap.min(free))?;
                 }
                 PublicSpendingRule::CashInProportion => {
-                    let owed: Vec<_> = dues
-                        .iter()
-                        .filter(|(r, _)| r.public_account == account)
-                        .cloned()
-                        .collect();
-                    self.fund_in_proportion(&mut run, rows, &owed, free)?;
+                    let owed = dues_of.get(&account).map_or(&[][..], Vec::as_slice);
+                    self.fund_in_proportion(&mut run, rows, owed, free)?;
                 }
             }
         }
@@ -392,5 +400,54 @@ impl FinancialClose {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::group_by_payer;
+    use crate::{FinalDemandPrincipalId, PublicAccountId, PublicProgramKey, PublicProgramReceipt};
+    use babylon_kernel::currency::Currency;
+
+    fn due(account: u16, recipient: u16) -> (PublicProgramReceipt, Currency) {
+        let id = |n: u16| {
+            let mut bytes = [0_u8; 32];
+            bytes[..2].copy_from_slice(&n.to_be_bytes());
+            bytes
+        };
+        let amount = Currency::from_micro_units(5);
+        (
+            PublicProgramReceipt {
+                period: 1,
+                public_account: PublicAccountId::from_bytes(id(account)),
+                program: PublicProgramKey::new("p").expect("a key"),
+                recipient: FinalDemandPrincipalId::from_bytes(id(recipient)),
+                rank: 0,
+                covered_persons: 1,
+                due: amount,
+                paid: Currency::from_micro_units(0),
+                unfunded: amount,
+            },
+            amount,
+        )
+    }
+
+    /// Two thousand budgets with two thousand dues: grouped in one pass, each keeping its order. It
+    /// is there to catch a return of a scan of every due for each budget, not to time it.
+    #[test]
+    fn two_thousand_budgets_group_their_dues_in_order() {
+        let dues: Vec<_> = (0..2_000_u16)
+            .flat_map(|n| [due(n, n), due(n, n.wrapping_add(1))])
+            .collect();
+        let grouped = group_by_payer(dues.clone());
+        assert_eq!(grouped.len(), 2_000);
+        for (account, rows) in &grouped {
+            let expected: Vec<_> = dues
+                .iter()
+                .filter(|d| d.0.public_account == *account)
+                .cloned()
+                .collect();
+            assert_eq!(rows, &expected);
+        }
     }
 }

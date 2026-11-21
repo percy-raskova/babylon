@@ -711,6 +711,18 @@ fn the_county_review_counts_only_its_own_account() {
         )
     };
     assert_eq!(county(&split), county(&plain));
+    // The session that reads the facts pays the same: the fund's tax and support do not reach it.
+    let config = config(1);
+    let session_state = state_for(&config);
+    let at_work = at_work_key(&session_state);
+    let held = |facts: &CountyPeriodFacts| {
+        county_review_execution::hold_period(&config, &session_state, facts, Some(at_work))
+            .expect("the session holds")
+            .session
+            .expect("the first session period holds a session")
+            .record
+    };
+    assert_eq!(held(&split_facts), held(&plain_facts));
 }
 
 /// An organizer with one participant, the county review it may reach a household for, and a

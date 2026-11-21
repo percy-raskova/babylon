@@ -605,6 +605,17 @@ fn lifecycle_changes_only_next_opening_needs_and_restarts_without_a_new_job() {
     assert!(second_order.fulfilled_quantity <= second_order.admitted_quantity);
 }
 
+/// The book's cash and reserves in micro-units.
+fn book_total(state: &MaterialCircuitState) -> i128 {
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        panic!("monetary")
+    };
+    e.book
+        .total_cash_and_reserves()
+        .expect("the book totals")
+        .micro_units()
+}
+
 #[test]
 fn a_benefit_per_person_follows_births() {
     use babylon_material_circuit::{
@@ -684,6 +695,16 @@ fn a_benefit_per_person_follows_births() {
     let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("valid recurring economic close");
     assert_eq!(first.household_lifecycle[0].births, 4);
+    assert_eq!(
+        book_total(&first.state),
+        book_total(&opening),
+        "money is conserved"
+    );
+    assert_eq!(
+        book_total(&next.state),
+        book_total(&first.state),
+        "money is conserved"
+    );
     let due = |t: &MaterialCircuitTransition| t.public_programs[0].due.micro_units();
     assert_eq!(due(&next) - due(&first), 40_000_000, "four births at $10");
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)

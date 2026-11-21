@@ -771,12 +771,17 @@ impl ClosedMaterialPeriod {
     /// Refuses missing, duplicate, foreign or inconsistent hour principals, and a state with an
     /// after-layoff program: the record of layoffs could not age (use `finish_with_staffing`).
     pub fn finish_with_workforce(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         next_labor: Vec<LaborCapacityRow>,
         member_labor: Vec<MemberLaborCapacityRow>,
     ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
         self.refuse_without_record_of_layoffs()?;
+        // With no after-layoff program a record is owed nothing; the staffing finish drops it, so
+        // this one does too and the two finishes agree.
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            economy.financial.layoffs.clear();
+        }
         self.finish_workforce_unchecked(catalog, next_labor, member_labor)
     }
 

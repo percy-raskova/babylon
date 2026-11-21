@@ -29,8 +29,8 @@ pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circui
 
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    122, 35, 24, 218, 91, 187, 219, 4, 53, 105, 117, 30, 173, 229, 25, 144, 72, 242, 189, 50, 156,
-    151, 22, 20, 138, 227, 135, 108, 26, 12, 8, 166,
+    81, 114, 102, 6, 64, 36, 162, 96, 235, 45, 100, 182, 246, 138, 236, 230, 73, 236, 188, 175,
+    242, 246, 181, 26, 121, 123, 79, 189, 191, 30, 110, 91,
 ];
 
 /// Published schema version of one canonical material-circuit state frame.
@@ -89,13 +89,27 @@ pub(crate) fn append_bounded_rows<T>(
     limit: usize,
     mut append: impl FnMut(&mut Vec<u8>, &T),
 ) -> Result<(), MaterialCircuitError> {
+    try_append_bounded_rows(output, rows, limit, |b, r| {
+        append(b, r);
+        Ok(())
+    })
+}
+
+/// `append_bounded_rows` for a row whose own fields can exceed their wire width: the row's error
+/// stops the encoding.
+pub(crate) fn try_append_bounded_rows<T>(
+    output: &mut Vec<u8>,
+    rows: &[T],
+    limit: usize,
+    mut append: impl FnMut(&mut Vec<u8>, &T) -> Result<(), MaterialCircuitError>,
+) -> Result<(), MaterialCircuitError> {
     if rows.len() > limit {
         return Err(MaterialCircuitError::WireLimit);
     }
     let count = u32::try_from(rows.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
     output.extend_from_slice(&count.to_be_bytes());
     for row in rows {
-        append(output, row);
+        append(output, row)?;
     }
     Ok(())
 }

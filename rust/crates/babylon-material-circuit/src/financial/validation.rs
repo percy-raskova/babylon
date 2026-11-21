@@ -195,6 +195,11 @@ fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) ->
     if f.programs.len() > MAX_PUBLIC_PROGRAMS {
         return Err(invalid);
     }
+    let cohort_ids: BTreeSet<_> = e
+        .recurring
+        .iter()
+        .flat_map(|r| r.households.iter().map(|h| h.principal_id))
+        .collect();
     let mut keys = BTreeSet::new();
     let mut after_layoff = BTreeSet::new();
     let mut recipients = 0_usize;
@@ -217,12 +222,8 @@ fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) ->
         }
         match program.terms {
             PublicProgramTerms::PerPerson { amount_per_person } => {
-                let cohorts = e.recurring.as_ref().map(|r| &r.households);
                 if amount_per_person.micro_units() <= 0
-                    || program
-                        .recipients
-                        .iter()
-                        .any(|r| !cohorts.is_some_and(|c| c.iter().any(|h| h.principal_id == *r)))
+                    || program.recipients.iter().any(|r| !cohort_ids.contains(r))
                 {
                     return Err(invalid);
                 }
@@ -254,12 +255,15 @@ fn validate_layoffs(e: &MonetaryCircuit, f: &FinancialInstitutions) -> Result<()
     if f.layoffs.len() > MAX_STAFFING_MEMBERS {
         return Err(invalid);
     }
+    let wage_members: BTreeSet<_> = e
+        .employment
+        .iter()
+        .filter(|t| matches!(t.compensation, LaborCompensation::Wage(_)))
+        .map(|t| t.member_id)
+        .collect();
     let mut members = BTreeSet::new();
     for record in &f.layoffs {
-        let paid = e.employment.iter().any(|t| {
-            t.member_id == record.member_id && matches!(t.compensation, LaborCompensation::Wage(_))
-        });
-        if !paid
+        if !wage_members.contains(&record.member_id)
             || record.hours_per_person == 0
             || !(1..=MAX_LAYOFF_PERIODS).contains(&record.cohorts.len())
             || record.cohorts.last() == Some(&0)
@@ -272,7 +276,157 @@ fn validate_layoffs(e: &MonetaryCircuit, f: &FinancialInstitutions) -> Result<()
         .windows(2)
         .any(|w| w[0].member_id > w[1].member_id)
     {
-        return Err(MaterialCircuitError::FinancialInvariant);
+        return Err(invalid);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_layoffs, validate_programs};
+    use crate::AccountId;
+    use crate::{
+        AidBook, CapacityReservations, CashAccount, CircuitAccounting, EmploymentTerms,
+        FinalDemandPrincipalId, FinancialInstitutions, HistoricalCostBook, HouseholdCohort,
+        HouseholdKind, HouseholdTimeAccounting, LaborCompensation, LayoffRecord,
+        MaterialCircuitState, MonetaryBook, MonetaryCircuit, PublicAccountId, PublicBudget,
+        PublicProgram, PublicProgramKey, PublicProgramTerms, PublicSpendingRule, RecurringEconomy,
+        SiteId, StaffingMemberId, UnitId,
+    };
+    use babylon_kernel::currency::Currency;
+
+    const N: u16 = 2_000;
+
+    fn bytes(tag: u8, n: u16) -> [u8; 32] {
+        let mut b = [tag; 32];
+        b[..2].copy_from_slice(&n.to_be_bytes());
+        b
+    }
+
+    fn state(
+        households: &[FinalDemandPrincipalId],
+        employment: Vec<EmploymentTerms>,
+    ) -> MaterialCircuitState {
+        let book = MonetaryBook::open(
+            households
+                .iter()
+                .map(|&h| CashAccount {
+                    id: AccountId::Household(h),
+                    cash: Currency::from_micro_units(0),
+                })
+                .collect(),
+        )
+        .expect("the book opens");
+        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
+            .expect("empty costs open");
+        let recurring = RecurringEconomy {
+            households: households
+                .iter()
+                .map(|&principal_id| HouseholdCohort {
+                    kind: HouseholdKind::Ordinary,
+                    principal_id,
+                    households: 1,
+                    persons: 1,
+                })
+                .collect(),
+            household_stocks: vec![],
+            household_purchases: vec![],
+            offers: vec![],
+            replenishment: vec![],
+            production: vec![],
+            attendance: vec![],
+            last_household_admission_period: 0,
+            last_household_consumption_period: 0,
+        };
+        MaterialCircuitState {
+            period: 3,
+            accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+                aid: AidBook::default(),
+                household_time: HouseholdTimeAccounting::NotModeled,
+                financial: FinancialInstitutions::empty(),
+                member_labor: vec![],
+                costs,
+                book,
+                recurring: Some(Box::new(recurring)),
+                employment,
+            })),
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            inventory: vec![],
+            orders: vec![],
+            freight: vec![],
+            corridor_capacities: vec![],
+            capacities: vec![],
+            labor: vec![],
+            production_commitments: vec![],
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            maintenance_service: None,
+            capacity_reservations: CapacityReservations::default(),
+        }
+    }
+
+    /// Two thousand recipients are checked against the cohorts and the book: it finishes. A return of a
+    /// scan of every cohort for each recipient is what it is there to catch, not to time.
+    #[test]
+    fn two_thousand_recipients_validate() {
+        let households: Vec<_> = (0..N)
+            .map(|n| FinalDemandPrincipalId::from_bytes(bytes(1, n)))
+            .collect();
+        let state = state(&households, vec![]);
+        let payer = PublicAccountId::from_bytes([9; 32]);
+        let mut f = FinancialInstitutions::empty();
+        f.public_budgets = vec![PublicBudget {
+            public_account: payer,
+            period_cap: Currency::from_micro_units(0),
+            cash_floor: Currency::from_micro_units(0),
+            rule: PublicSpendingRule::CashInProportion,
+        }];
+        f.programs = vec![PublicProgram {
+            key: PublicProgramKey::new("p").expect("a key"),
+            payer,
+            rank: 0,
+            terms: PublicProgramTerms::PerPerson {
+                amount_per_person: Currency::from_micro_units(1),
+            },
+            recipients: households,
+        }];
+        validate_programs(&state, &f).expect("the program validates");
+    }
+
+    /// Two thousand records are checked against the employment rows: it finishes.
+    #[test]
+    fn two_thousand_records_validate() {
+        let employment: Vec<_> = (0..N)
+            .map(|n| EmploymentTerms {
+                member_id: StaffingMemberId::from_bytes(bytes(2, n)),
+                site_id: SiteId::from_bytes([3; 32]),
+                unit_id: UnitId::from_bytes([4; 32]),
+                payee: FinalDemandPrincipalId::from_bytes(bytes(1, n)),
+                compensation: LaborCompensation::Wage(Currency::from_micro_units(10)),
+            })
+            .collect();
+        let mut records: Vec<_> = (0..N)
+            .map(|n| LayoffRecord {
+                member_id: StaffingMemberId::from_bytes(bytes(2, n)),
+                hours_per_person: 1,
+                cohorts: vec![1],
+            })
+            .collect();
+        records.sort_by_key(|r| r.member_id);
+        let state = state(&[], employment);
+        let CircuitAccounting::Monetary(e) = &state.accounting else {
+            panic!("monetary")
+        };
+        let mut f = FinancialInstitutions::empty();
+        f.layoffs = records;
+        validate_layoffs(e, &f).expect("the records validate");
+        f.layoffs.swap(0, 1);
+        assert_eq!(
+            validate_layoffs(e, &f).err(),
+            Some(crate::MaterialCircuitError::PublicProgramInvariant),
+            "unsorted records are refused with the one class of refusal"
+        );
+    }
 }

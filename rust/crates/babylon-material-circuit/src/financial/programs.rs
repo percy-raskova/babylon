@@ -23,6 +23,15 @@ pub(crate) fn program_dues(
     programs: &[PublicProgram],
 ) -> Result<Vec<(PublicProgramReceipt, Currency)>> {
     let mut dues = Vec::new();
+    let persons_of: BTreeMap<FinalDemandPrincipalId, u64> = state
+        .recurring_economy()
+        .map(|r| {
+            r.households
+                .iter()
+                .map(|h| (h.principal_id, h.persons))
+                .collect()
+        })
+        .unwrap_or_default();
     for program in programs {
         let layoffs = match program.terms {
             PublicProgramTerms::AfterLayoff {
@@ -34,11 +43,9 @@ pub(crate) fn program_dues(
         for &recipient in &program.recipients {
             let (covered_persons, due) = match program.terms {
                 PublicProgramTerms::PerPerson { amount_per_person } => {
-                    let persons = state
-                        .recurring_economy()
-                        .and_then(|r| r.households.iter().find(|h| h.principal_id == recipient))
-                        .ok_or(MaterialCircuitError::PublicProgramInvariant)?
-                        .persons;
+                    let persons = *persons_of
+                        .get(&recipient)
+                        .ok_or(MaterialCircuitError::PublicProgramInvariant)?;
                     let owed = amount_per_person
                         .micro_units()
                         .checked_mul(i128::from(persons))
@@ -214,6 +221,41 @@ mod tests {
                 ("b".to_owned(), principal(2), 50),
             ]
         );
+    }
+
+    /// Two thousand recipients of one program finish: a return of a scan of every cohort for each
+    /// recipient would make this slow, which is all it is there to catch.
+    #[test]
+    fn two_thousand_recipients_are_owed_their_persons() {
+        let cohorts: Vec<(u8, u64)> = vec![];
+        let mut state = state(&cohorts);
+        let ids: Vec<_> = (0..2_000_u16)
+            .map(|n| {
+                let mut bytes = [7_u8; 32];
+                bytes[..2].copy_from_slice(&n.to_be_bytes());
+                FinalDemandPrincipalId::from_bytes(bytes)
+            })
+            .collect();
+        let crate::CircuitAccounting::Monetary(e) = &mut state.accounting else {
+            panic!("the helper builds a monetary state")
+        };
+        let recurring = e.recurring.as_mut().expect("the helper builds cohorts");
+        recurring.households = ids
+            .iter()
+            .map(|&principal_id| HouseholdCohort {
+                kind: HouseholdKind::Ordinary,
+                principal_id,
+                households: 1,
+                persons: 2,
+            })
+            .collect();
+        let mut one = program("p", 3, &[]);
+        one.recipients = ids;
+        let dues = program_dues(&state, &[one]).expect("dues");
+        assert_eq!(dues.len(), 2_000);
+        assert!(dues
+            .iter()
+            .all(|(r, d)| r.covered_persons == 2 && d.micro_units() == 6));
     }
 
     #[test]

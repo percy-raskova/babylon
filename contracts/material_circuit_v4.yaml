@@ -705,7 +705,7 @@ staffing:
   opening_hours: graph employment times captured schedule must equal each current derived member-hour budget
   receipt_join: member receipts reconcile aggregate staffing, resident payees, hours, actual use and wage accruals
   layoff_record: Without an after_layoff program nothing changes; with one, the record of layoffs lives in the circuit
-    state (financial_institutions.layoff_records), not in the staffing pools, and is advanced from the member receipts
+    state (financial_institutions.layoffs), not in the staffing pools, and is advanced from the member receipts
     by finish_with_staffing.
   production_request: next-period input and process-capacity feasible work before service and employment constraints
   maintenance_request: prospective requested whole jobs multiplied by hours per job before resource constraints
@@ -903,7 +903,8 @@ period_services:
 financial_institutions:
   authority: ADR266
   evidence_class: Designed
-  field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions]
+  field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions,
+                tail_if_extended]
   tail: Written only under schema versions 25 and 26 (a state with a budget in proportion, a program, or a payer with
     two tax rows, or a layoff record), after the contributions. A u32 count equal to the count of
     public_budgets and one budget_rule_u8 for each budget in its order; then the programs (u32 count, rows of
@@ -986,13 +987,14 @@ financial_institutions:
     - Capture all contribution funding before credits; no same-phase circular funding.
     - Without a budget rule (capped_in_order), public allocations consume cash above floor and finite current
       appropriation in priority then canonical order; with cash_in_proportion, the budget's period_cap must be 0 and its
-      allocations consume cash above floor, ranks lowest first, the first rank not covered cut in proportion with the
-      floor remainder going one micro-unit each in canonical order.
+      allocations and programs consume cash above floor, ranks lowest first, the first rank not covered cut in
+      proportion with the floor remainder going one micro-unit each in canonical order.
     - Household income support and provider operating grants produce paired expense and income only when paid.
     - Public capital support uses the separate finite contribution instruction and its equity claim.
-    - One tax policy per payer, basis and public recipient, without one per payer; with it a payer may pay one basis to
-      two public accounts. Bases are earned wages or positive operating income before financial flows. A payer's rows
-      collect in key order from one running balance above each row's floor, so no row overdraws the payer.
+    - One tax policy per payer, basis and public recipient. Without the extension, one tax policy per payer; with it,
+      one per payer, basis and public recipient, so a payer may pay one basis to two public accounts. Bases are
+      earned wages or positive operating income before financial flows. A payer's rows collect in key order from one
+      running balance above each row's floor, so no row overdraws the payer.
     - Taxes exclude contributions, distribution income and reporting remittances; uncollected assessments create no
       debt.
     - Capture tax bases and cash before credits; capture distribution earnings and cash after tax but before any payout.

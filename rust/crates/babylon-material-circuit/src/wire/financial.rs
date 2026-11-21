@@ -69,13 +69,14 @@ fn decode_tail(c: &mut Cursor<'_>, f: &mut FinancialInstitutions) -> Result<()> 
 /// Per record: the member 32 bytes, the hours of the job lost `u64`, a `u8` count of cohorts and each
 /// cohort `u64`, newest first.
 fn append_layoffs(out: &mut Vec<u8>, rows: &[LayoffRecord]) -> Result<()> {
-    super::append_bounded_rows(out, rows, crate::MAX_STAFFING_MEMBERS, |b, r| {
+    super::try_append_bounded_rows(out, rows, crate::MAX_STAFFING_MEMBERS, |b, r| {
         b.extend_from_slice(&r.member_id.as_bytes());
         b.extend_from_slice(&r.hours_per_person.to_be_bytes());
-        b.push(u8::try_from(r.cohorts.len()).unwrap_or(u8::MAX));
+        b.push(u8::try_from(r.cohorts.len()).map_err(|_| MaterialCircuitError::WireLimit)?);
         for cohort in &r.cohorts {
             b.extend_from_slice(&cohort.to_be_bytes());
         }
+        Ok(())
     })
 }
 fn decode_layoffs(c: &mut Cursor<'_>) -> Result<Vec<LayoffRecord>> {
@@ -100,9 +101,9 @@ fn decode_layoffs(c: &mut Cursor<'_>) -> Result<Vec<LayoffRecord>> {
 /// count of recipients and 32 bytes each. Terms: tag 1 the amount per person, tag 2 the wage share
 /// `u16` and the half periods `u16`.
 fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
-    super::append_bounded_rows(out, rows, crate::MAX_PUBLIC_PROGRAMS, |b, r| {
+    super::try_append_bounded_rows(out, rows, crate::MAX_PUBLIC_PROGRAMS, |b, r| {
         let key = r.key.as_str().as_bytes();
-        b.push(u8::try_from(key.len()).unwrap_or(u8::MAX));
+        b.push(u8::try_from(key.len()).map_err(|_| MaterialCircuitError::WireLimit)?);
         b.extend_from_slice(key);
         b.extend_from_slice(&r.payer.as_bytes());
         b.extend_from_slice(&r.rank.to_be_bytes());
@@ -122,12 +123,13 @@ fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
         }
         b.extend_from_slice(
             &u32::try_from(r.recipients.len())
-                .unwrap_or(u32::MAX)
+                .map_err(|_| MaterialCircuitError::WireLimit)?
                 .to_be_bytes(),
         );
         for recipient in &r.recipients {
             b.extend_from_slice(&recipient.as_bytes());
         }
+        Ok(())
     })
 }
 fn decode_programs(c: &mut Cursor<'_>) -> Result<Vec<PublicProgram>> {
@@ -135,7 +137,8 @@ fn decode_programs(c: &mut Cursor<'_>) -> Result<Vec<PublicProgram>> {
         let length = usize::from(b.u8()?);
         let text = std::str::from_utf8(b.take(length)?)
             .map_err(|_| MaterialCircuitError::WireNoncanonical)?;
-        let key = PublicProgramKey::new(text)?;
+        let key =
+            PublicProgramKey::new(text).map_err(|_| MaterialCircuitError::WireNoncanonical)?;
         let payer = PublicAccountId::from_bytes(b.array()?);
         let rank = b.u32()?;
         let terms = match b.u8()? {
@@ -312,4 +315,38 @@ fn decode_contributions(c: &mut Cursor<'_>) -> Result<Vec<CapitalContributionOrd
     })?;
     accounting::ordered_rows(&rows, |r| r.id)?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{append_layoffs, decode_programs};
+    use crate::wire::Cursor;
+    use crate::{LayoffRecord, MaterialCircuitError, StaffingMemberId};
+
+    /// A record of more cohorts than the byte count holds is refused, never clamped to 255.
+    #[test]
+    fn a_record_of_too_many_cohorts_is_a_wire_limit() {
+        let record = LayoffRecord {
+            member_id: StaffingMemberId::from_bytes([1; 32]),
+            hours_per_person: 1,
+            cohorts: vec![1; 256],
+        };
+        let mut out = vec![];
+        assert_eq!(
+            append_layoffs(&mut out, &[record]),
+            Err(MaterialCircuitError::WireLimit)
+        );
+    }
+
+    /// An ill-formed key in the bytes is a fault of the bytes, not of a program.
+    #[test]
+    fn an_ill_formed_key_in_the_bytes_is_noncanonical() {
+        let mut bytes = 1_u32.to_be_bytes().to_vec();
+        bytes.push(9);
+        bytes.extend_from_slice(b"No-earner");
+        assert_eq!(
+            decode_programs(&mut Cursor::new(&bytes)).err(),
+            Some(MaterialCircuitError::WireNoncanonical)
+        );
+    }
 }

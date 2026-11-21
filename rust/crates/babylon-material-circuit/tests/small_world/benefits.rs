@@ -183,8 +183,8 @@ fn the_fund_pays_each_person_and_the_world_is_still() {
     assert_eq!(first.employed, [12, 4, 4, 4]);
     assert_eq!(first.public_receipts, 640);
     assert_eq!(first.public_payments, 640);
-    assert_eq!(first.cash["fund"], 960);
-    assert_eq!(first.cash["public"], 160);
+    assert_eq!(first.micro_cash["fund"], usd(960));
+    assert_eq!(first.micro_cash["public"], usd(160));
     let key = (NO_EARNER.to_owned(), "supported");
     assert_eq!(first.program_due[&key], usd(480));
     assert_eq!(first.program_paid[&key], usd(480));
@@ -208,8 +208,10 @@ fn set_supported_persons(state: &mut MaterialCircuitState, persons: u64) {
 fn per_person_reads_the_persons_of_the_cohort() {
     let (catalog, mut state) = per_person_fund().build();
     set_supported_persons(&mut state, 6);
+    let before = total(&state);
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("period 1 closes");
+    assert_eq!(total(&closed.state), before, "money is conserved");
     let [row] = closed.public_programs.as_slice() else {
         panic!("one program and one recipient give one receipt")
     };
@@ -597,6 +599,78 @@ fn without_an_after_layoff_program_both_finishes_agree() {
     assert_eq!(by_staffing, by_workforce);
 }
 
+/// A program's recipients given out of order are put in order by the period's canonical state, and
+/// the state is accepted: the close is the one of the ordered recipients.
+#[test]
+fn recipients_out_of_order_are_put_in_order_and_accepted() {
+    let (catalog, ordered) = World::benefits().build();
+    let mut shuffled = ordered.clone();
+    let program = economy_mut(&mut shuffled)
+        .financial
+        .programs
+        .iter_mut()
+        .find(|p| p.key.as_str() == LAID_OFF)
+        .expect("the layoff program");
+    assert!(
+        program.recipients.len() >= 2,
+        "the fixture has two recipients"
+    );
+    program.recipients.reverse();
+    assert_ne!(
+        program.recipients,
+        economy_ref(&ordered)
+            .financial
+            .programs
+            .iter()
+            .find(|p| p.key.as_str() == LAID_OFF)
+            .expect("the layoff program")
+            .recipients,
+        "the recipients are out of order"
+    );
+    let world = World::benefits();
+    let finish = |state: &MaterialCircuitState| {
+        let staffed = support::staff_by_hand(&world, 1, world.workers, world.workers);
+        let members = staffed.member_labor();
+        babylon_material_circuit::close_material_period(&catalog, state)
+            .expect("period 1 closes")
+            .finish_with_staffing(&catalog, staffed.labor, members, &staffed.receipts)
+            .expect("period 1 finishes")
+    };
+    let by_ordered = finish(&ordered);
+    let by_shuffled = finish(&shuffled);
+    assert_eq!(by_shuffled, by_ordered);
+}
+
+/// A state that still holds a record after its last program was removed: the record is owed nothing,
+/// so both finishes drop it and agree.
+#[test]
+fn a_record_without_a_program_is_dropped_by_both_finishes() {
+    let (catalog, mut state) = after_a_layoff();
+    economy_mut(&mut state)
+        .financial
+        .programs
+        .retain(|p| p.key.as_str() != LAID_OFF);
+    assert_eq!(economy_ref(&state).financial.layoffs.len(), 1);
+    let world = rich_fund();
+    let staffed = support::staff_by_hand(&world, 2, utility_at(10), utility_at(10));
+    let by_workforce = babylon_material_circuit::close_material_period(&catalog, &state)
+        .expect("period 2 closes")
+        .finish_with_workforce(&catalog, staffed.labor.clone(), staffed.member_labor())
+        .expect("it finishes");
+    let by_staffing = babylon_material_circuit::close_material_period(&catalog, &state)
+        .expect("period 2 closes")
+        .finish_with_staffing(
+            &catalog,
+            staffed.labor.clone(),
+            staffed.member_labor(),
+            &staffed.receipts,
+        )
+        .expect("it finishes");
+    assert_eq!(economy_ref(&by_staffing.state).financial.layoffs.len(), 0);
+    assert_eq!(by_workforce, by_staffing);
+    assert_eq!(economy_ref(&by_workforce.state).financial.layoffs.len(), 0);
+}
+
 #[test]
 fn a_record_of_layoffs_round_trips_and_a_bad_one_is_refused() {
     let (catalog, state) = after_a_layoff();
@@ -676,6 +750,10 @@ fn assert_pin(rows: &[Snapshot], pin: &Pin) {
         );
     }
     if let Some(cohort) = &pin.cohort {
+        assert!(
+            cohort.from >= 2,
+            "a cohort starts after period 1, so a period precedes it"
+        );
         for (k, (due, persons)) in cohort.rows.iter().enumerate() {
             let row = &rows[usize::try_from(cohort.from - 1).expect("a small period") + k];
             assert_eq!(
@@ -687,9 +765,7 @@ fn assert_pin(rows: &[Snapshot], pin: &Pin) {
             );
         }
         let first = usize::try_from(cohort.from - 1).expect("a small period");
-        let before = first
-            .checked_sub(1)
-            .expect("a cohort starts after period 1, so a period precedes it");
+        let before = first - 1;
         assert_eq!(
             due_of(&rows[before], cohort.account),
             0,
@@ -847,7 +923,7 @@ fn p3_with_a_fund_settles_at_once_with_the_shop_at_half_its_cash() {
     let world = pushed(Push::LessMoney);
     let rows = support::run(&world);
     let first = support::assert_still_rows(&world, &rows);
-    assert_eq!(first.cash["shop"], 700);
+    assert_eq!(first.micro_cash["shop"], usd(700));
     assert_pin(
         &rows,
         &Pin {
@@ -874,8 +950,8 @@ fn the_fund_with_tiers_is_still_the_wage_tax_is_ahead_of_the_wants() {
     let first = support::assert_still(&World::benefits().with_tiers());
     assert_eq!(first.public_receipts, 640);
     assert_eq!(first.public_payments, 640);
-    assert_eq!(first.cash["fund"], 960);
-    assert_eq!(first.cash["public"], 160);
+    assert_eq!(first.micro_cash["fund"], usd(960));
+    assert_eq!(first.micro_cash["public"], usd(160));
     let key = (NO_EARNER.to_owned(), "supported");
     assert_eq!(first.program_due[&key], usd(480));
     assert_eq!(first.program_paid[&key], usd(480));
@@ -954,7 +1030,7 @@ fn p3_with_a_fund_and_tiers_is_still_with_the_shop_at_half_its_cash() {
     let world = pushed_with_tiers(Push::LessMoney);
     let rows = support::run(&world);
     assert_returns_to_opening_cash(&world, &rows);
-    assert_eq!(rows[0].cash["shop"], 700);
+    assert_eq!(rows[0].micro_cash["shop"], usd(700));
     assert_pin(
         &rows,
         &Pin {

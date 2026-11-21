@@ -29,7 +29,9 @@ mod state;
 
 pub(crate) use state::catalog_bytes;
 pub(crate) use state::Cursor;
-use state::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows};
+use state::{
+    append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, try_append_bounded_rows,
+};
 #[cfg(test)]
 use state::{
     append_inventory, decode_input_coefficients, decode_inventory, decode_stage_capacities,

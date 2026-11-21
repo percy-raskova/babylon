@@ -1,6 +1,7 @@
 # Field and particles: how the economy, homes and nations are drawn
 
-**Status:** draft for the Director's approval. Nothing is built until it is approved.
+**Status:** approved by the Director on 2026-11-21, by dialog, with rulings 17 to 21 written in.
+The decision record is ADR317. The build plans follow this document.
 **Date:** 2026-11-21.
 **Sketch:** a moving page with invented numbers, shown to the Director on 2026-11-21. It is not the
 client and is kept outside the repository.
@@ -35,7 +36,7 @@ as a rule.
 
 | # | Ruling |
 | --- | --- |
-| 1 | Hours and money are two streams. There is no rate between them, ever. "It should be place by place, and how these things aggregate is how we want to group-by." |
+| 1 | Hours and money are two streams. There is no rate between them, ever. The Director's note: "it should be place by place, and how these things aggregate is how we want to group-by or visualize them so to speak". |
 | 2 | Living labor time is bone white. Work stored in goods is crimson. Money is gold and runs against both. |
 | 3 | The wells are a reading of real numbers, worked out for display. The engine is not touched. |
 | 4 | A particle is a household group. Employers and holders of claims are bodies. Classes and nations are drawn around particles, never as particles. |
@@ -48,9 +49,17 @@ as a rule.
 | 11 | Nothing is hidden in the first build. The player's view is the next step. |
 | 12 | National liberation is a fourth well. (Open again: see 6.8.) |
 | 13 | Three beats a period: work goes in, goods move through, money comes back. Nothing else moves except what the player touches. |
-| 14 | What the four wells are is open for brainstorming. |
+| 14 | What the four wells are was open for brainstorming. Settled by ruling 19. |
 | 15 | The new reading is the map's default. The other lenses stay and can raise and colour the same ground. Flows can show over any of them. |
 | 16 | The integration for Bevy is a crate in the public library's repository: general parts only, nothing of the game. Same Bevy version as the game. |
+| 17 | Work given is only the hours that went into goods and services. Idle hours on the clock are drawn apart and have their own column. |
+| 18 | Hours never measured: the height is drawn from the first period and the scene says so. Goods with unmeasured hours are drawn hollow, never as zero, and a standing line counts them. The engine is not changed. |
+| 19 | The wells have four corners, as a reading: REVOLUTIONARY and NATIONAL LIBERATION at the top, LIBERAL and FASCIST at the base. The engine keeps its three shares and August stands. Both top corners are the revolutionary side. |
+| 20 | Asked again with the true count of household groups (15,696, not "about 3,000"): the whole country still comes first. |
+| 21 | A place's height is measured against the whole world, not against the country alone. |
+
+Rulings 17 to 21 were given by dialog on the evening of 2026-11-21, with the approval of this
+design. In the same dialog the Director kept every call listed in section 13.
 
 ### 2.2 The August rulings that bind the wells
 
@@ -206,7 +215,7 @@ same across all three.
 
 | Mark | Stands for | From, to | Source in the records |
 | --- | --- | --- | --- |
-| Bone dot | A fixed number of hours of work. Which hours count is open (below). | A household group to the place where it worked. | The household's hours, and attendance. Needs gaps 1 and 2 closed. |
+| Bone dot | A fixed number of hours of work that went into goods and services (ruling 17). An idle hour is a hollow dot. | A household group to the place where it worked. | The household's hours, and attendance. Needs gaps 1 and 2 closed. |
 | Crimson square | A fixed number of recorded hours, stored in goods or in a service. | Workplace to workplace along the goods' own path, then to the household that takes them. What stays in production does not leave it. | Movements of hours between positions. Built, 13 periods deep. |
 | Gold streak | A fixed amount of money. | Payer to payee, by kind of payment. It runs against the goods and against the work. | Payments. Built. |
 
@@ -215,24 +224,19 @@ same across all three.
 - Marks are summed along a path before they are drawn. On the whole country a path joins two
   counties. Paths are drawn in order of size until 95 of every 100 units of each stream are
   shown. The rest is printed as one figure, "not drawn", never dropped in silence.
-- **Which hours are "work given" (open, the Director's).** The record of attendance splits a
-  worker's hours: production, upkeep, handling, fitting equipment, and idle. Only the first four
-  enter goods and services. Two readings:
-  - *Hours on the clock:* everything attended, idle time included. It is the time a household
-    gave up.
-  - *Hours that entered goods and services:* attended hours less idle hours. It is the work that
-    can come back.
-
-  I recommend the second for the height and for the dots that enter a workplace, with idle hours
-  shown as their own dots, which reach the workplace and stop at its edge, and as their own
-  column in the table. Then what is given and what comes back are the same kind of hour, and
-  time bought and not used is seen, not hidden. Work a household does outside a workplace that
-  the record counts as direct (collecting for an organization, work for an agency) counts as
-  given, to that body.
-- **Unknown hours.** Goods from opening stock carry recorded hours of zero and the flag
-  "unknown". A crimson square is drawn only for recorded hours. Movements that carry the flag are
-  counted, and the count is shown beside the stream ("of these goods, N movements carry hours
-  never measured"). Nothing unknown is drawn as zero and nothing is guessed.
+- **Which hours are "work given" (ruling 17).** The record of attendance splits a worker's
+  hours: production, upkeep, handling, fitting equipment, and idle. Only the first four enter
+  goods and services, and only they count as given. They set the height and they are the dots
+  that enter a workplace. Idle hours are their own dots, hollow, which reach the workplace and
+  stop at its edge, and they have their own column in the table. So what is given and what comes
+  back are the same kind of hour, and time bought and not used is seen, not hidden. Work a
+  household does outside a workplace that the record counts as direct (collecting for an
+  organization, work for an agency) counts as given, to that body.
+- **Unknown hours (ruling 18).** Goods from opening stock carry recorded hours of zero and the
+  flag "unknown". A full crimson square is drawn only for recorded hours. A path whose goods
+  carry the flag gets a hollow square, which stands for goods and for no number of hours, and the
+  count is shown beside the stream ("of these goods, N movements carry hours never measured").
+  Nothing unknown is drawn as zero and nothing is guessed.
 
 ### 6.3 On the land
 
@@ -246,37 +250,39 @@ well as rise.
 - *back*: recorded hours in the goods and services that reached its households (each hour
   counted once, when it reaches a household).
 
-The country as a whole always gets back less than it gives, because production keeps part of
-every hour. So the plain difference would make almost every place a hill. The height is therefore
-measured against the country's own share:
+The world as a whole always gets back less than it gives, because production keeps part of
+every hour in stock and equipment. So the plain difference would make almost every place a hill.
+The height is therefore measured against the whole world (ruling 21):
 
-> short or ahead = back − (country's back ÷ country's given) × given
+> short or ahead = back − (world's back ÷ world's given) × given
 
-A place that is short stands high. A place that is ahead lies low. Summed over the country it is
-zero. It is a number of hours, so it is a mass, which the map rules send to shape. It uses the
-country's ratio of sums the way the tension lens does. **This formula is my proposal** (the
-sketch shows it on a toy region as a ratio). The Director rules it.
+- The world is every place the record holds, at home and abroad.
+- A place that is short stands high. A place that is ahead lies low.
+- Summed over the world it is zero. Summed over the United States it is whatever the record
+  shows, and that figure is printed: the country as a whole can be seen drawing hours from
+  abroad, or giving them. No rate between hours and money is used anywhere.
+- It is a number of hours, so it is a mass, which the map rules send to shape.
+- Places abroad stand on the rail (below) and carry their own figure there.
+- The reading against the country alone, which the tension lens uses, was offered and not
+  chosen. The tension lens keeps its own ratio and its own legend.
 
-**Unknown hours and the height (open, the Director's).** Hours in opening stock and opening
-equipment were never measured. Wear passes that gap into everything made with old equipment, for
-up to 100 periods. Measuring against the country's own share removes the gap from the country
-as a whole, but not between regions: a place fed from older plant will look short for a reason
-that is not about whose work went where. Two ways:
-
-- *Show it and say so.* The height uses recorded hours from the first period. A standing line
-  gives, for the country and for the place in hand, how many of every hundred movements of goods
-  still carry hours never measured.
-- *Hold it back.* A place's height is not drawn until a stated share of what reaches it carries
-  no such flag. For years most places would be flat and gray.
-
-I recommend the first. The picture grows truer as old stock and plant are used up, and it never
-claims more than the record holds.
+**Unknown hours and the height (ruling 18).** Hours in opening stock and opening equipment were
+never measured. Wear passes that gap into everything made with old equipment, for up to 100
+periods. Goods from abroad may carry the same gap. Measuring against the world's share removes
+the gap from the world as a whole, but not between places: a place fed from older plant will look
+short for a reason that is not about whose work went where. So the scene shows it and says so.
+The height uses recorded hours from the first period. A standing line gives, for the world, the
+country and the place in hand, how many of every hundred movements of goods still carry hours
+never measured. The picture grows truer as old stock and plant are used up, and it never claims
+more than the record holds. Two other ways were offered and not chosen: holding a place's height
+back until most of what reaches it is measured, and giving opening stock the hours its recipe
+takes today.
 
 **Parties with no place.** A company's treasury, a national account and anything abroad have no
 county. They stand as named bodies on a rail along the map's edge. Marks run to and from the
 rail. A place's colour counts money to and from them as money that left or arrived. How the
 world's parts are drawn (core, rivals, periphery) gets its own design when the build of borders
-lands. This is my call.
+lands. This is my call, and the Director kept it.
 
 **Colour is money.** For each place: money that reached it from outside, against money that left
 it, as a share of both together. It runs from crimson (pays out) to gold (takes in), the same
@@ -378,9 +384,19 @@ the paths between their workplaces and households.
 
 ### 6.8 In the wells
 
-**The wells read the August share.** No second formula exists at display time. The corners are
-REVOLUTIONARY, LIBERAL and FASCIST, the ruled names.
+**The wells read the August share.** No second formula exists at display time. The engine keeps
+its three shares: revolutionary, liberal, fascist.
 
+**Four corners, as a reading (ruling 19).** REVOLUTIONARY and NATIONAL LIBERATION stand at the
+top, LIBERAL and FASCIST at the base.
+
+- A group's height is its revolutionary share, as in August.
+- The top is one side drawn in two parts. How far a group stands toward NATIONAL LIBERATION is
+  the part of its height that its nations carry, against the part its class carries. The scene
+  reads two carriers the law already has: the class, and the community.
+- The ridge between the two top corners is the united front.
+- Both top corners are the revolutionary side. The picture must not read as two separate ends,
+  and the legend says so.
 - A particle stands at its own mix: all liberal stands on the liberal corner, half and half
   stands halfway. It is placed, not pulled.
 - The base is drawn as one line from liberal to fascist. Moving along it changes which face
@@ -392,16 +408,9 @@ REVOLUTIONARY, LIBERAL and FASCIST, the ruled names.
 - A nation is a hatched body around its people, wherever they stand.
 - An organization is not a particle. It has a line, shown in the inspector.
 
-**National liberation (open, the Director's).** Ruling 12 asks for a fourth well. August says the
-triangle is the one representation. Three ways to hold both:
-
-| Way | On screen | In the game |
-| --- | --- | --- |
-| a. Three corners | A nation is a hatched body and a floor its people cannot fall below. | Nothing changes. |
-| b. Four corners, as a reading | The height a group's nations carry is drawn apart from the height its class carries. The ridge between the two top corners is the united front. | Nothing changes. The scene reads two carriers the law already has: the class, and the community. |
-| c. Four corners, as a fourth world view | As b. | Amends August: new content, new vocabulary, a fourth share everywhere. |
-
-I recommend b. The sketch shows a and b on the same households.
+Two other ways were offered and not chosen: three corners only, with a nation as a hatched body
+and a floor; and a fourth world view in the engine, which would amend August. Nothing in the
+engine changes.
 
 **Until the share exists for the country,** this arrangement shows the triangle, empty, with the
 line the client already carries: the country has "no nation, no solidarity and no consciousness"
@@ -452,6 +461,11 @@ Rules for this part.
   sums are a few thousand rows a period. Their size is measured and stated before they land.
 - The reads are for the unhidden observer only, like every economic read today.
 
+**The world's totals (ruling 21).** Hours given and hours back are summed over every location
+the record holds, the foreign and dependency ones included, and each place abroad gets its own
+figure. Where work abroad is not in the record of attendance, the goods it made are flagged as
+never measured, and the standing line counts them (ruling 18).
+
 ## 8. Where the code lives
 
 | Part | Home | Why |
@@ -479,16 +493,22 @@ recorded in one decision record, and the old text is marked as superseded, not e
 | Rule today | Where | Proposed |
 | --- | --- | --- |
 | "Curvature is terrain, not decoration. Geometry deforms only when someone ACTS ... do not fake terrain from anything else." | Design Bible 11, law 4 | Height is a reading, never terrain. The ground may rise and sink by the measured quantity of the reading in force. Curvature stays held until it is live. |
-| "Geometry never animates; claims do." "Camera, projection, geometry identical pre/post switch." | Design Bible 2.2 | County outlines never move in plan. Height may change between periods and between readings, and is eased. |
+| "Geometry never animates; claims do." "camera, projection, geometry identical pre/post switch" | Design Bible 2.2 | Camera and projection stay identical before and after a switch of lens. County outlines never move in plan. Height may change between periods and between readings, and is eased. |
 | "One motion budget per tick. Only the principal contradiction pulses." | Design Bible 11, law 3 | One motion budget per period: three beats. Work goes in, goods move through, money comes back. Nothing else moves except what the player touches. With reduced motion, three still frames. |
 | "One lens = one dominant variable = one legend. No blended heatmaps." | Design Bible 3.2 | A reading may pair two variables on two channels, height and colour, each with its own legend. Two variables are never blended in one channel. |
 | "Extensive renders as stuff, intensive renders as color." | Design Bible 11, law 1 | Stands. Height carries a mass of hours; colour carries a share of money. Stated so the new reading is seen to obey it. |
 | "no fake-3D" | Design Bible 6 | Stands for charts. The field is a real scene with a camera, not a chart drawn to look deep. |
 | "no texture fills in data surfaces" | Design Bible 6 | Stands. Hatching marks sets, never the ground. |
-| "2D county-map game with selective 3D moments (Patches; the topology view)" | ADR186, Amendment AF (i) | Not amended. Read as: the land is the county map, which the client already raises in 3D; ties and wells are forms of the topology view. Recorded so. |
+| "v1.0 visual scope is the 2D county-map game with selective 3D moments (Patches the tutorial guide; the topology view)" | ADR186, Amendment AF (i) | Not amended. Read as: the land is the county map, which the client already raises in 3D; ties and wells are forms of the topology view. Recorded so. |
 | "No universal faction, ideological gravity or large-scale renderer expansion before #831's result." | Issue 825 only | Lifted for this scene by the ruling of 2026-11-21. Issue 831 still judges the Wayne organizer scene. Recorded in the repository for the first time. |
 | "stable positions across scalar-only ticks" | Issue 824 | For this scene a position is a measurement. It moves once a period, eased, and never between. |
 | "every force on screen must map 1:1 to a named engine quantity"; absence is shown, not decorated | Issue 618 only | Stands, and is written into the repository as a rule of this scene. |
+
+The same amendments reach four other places in the Design Bible that restate these rules: the
+default lens named in sections 3.1, 8 and 9 (ruling 15); the marker colours of section 9b (ruling
+2); the lens-switch gate of section 10 (the row on section 2.2); and the corollary on reduced
+motion in section 11 (the row on law 3). ADR317 lists them. They were found when the record was
+written, after the approval, and they follow from it.
 
 One thing the readers found that this design does not settle: the client's map uses a blue and
 yellow ramp and three typefaces that the palette and type rulings do not name. The new scene uses
@@ -499,9 +519,9 @@ the ruled palette. The older mismatch is listed here so that it is known, not fi
 Each step ends with something that can be looked at or measured. A step starts when the one
 build machine is free.
 
-1. **The record of the rulings.** One decision record with section 2.1, section 9 and the
-   answer to 6.8. The Design Bible edited in place with pointers. Notes on issues 618, 637, 824,
-   825 and 831.
+1. **The record of the rulings.** One decision record (ADR317) with section 2.1, section 9
+   and the reading of 6.8. The Design Bible edited in place with pointers. Notes on issues 618,
+   637, 824, 825 and 831.
 2. **Geometry in the library's core.** Outlines, the two placements, spreading. Tested without a
    screen, against small hypergraphs with numbers on their memberships.
 3. **The Bevy crate in the library.** Meshes, hatching, moving marks, the plugin, the example.
@@ -547,6 +567,9 @@ stage 4b and is planned with them.
 - **In the library.** The example runs. The core's tests pass with and without each feature and
   on the lowest Rust version each crate names.
 
+**The world sums to zero.** In every period the heights of all places, at home and abroad, sum to
+zero to the hour, and the sum over the United States is printed with its sign. A test holds both.
+
 ## 12. Left to the builder
 
 - How the surface is meshed (one mesh, or one per state), as long as outlines never move in plan
@@ -560,24 +583,25 @@ stage 4b and is planned with them.
 - The names of crates, modules and types.
 - How labels avoid one another.
 
-## 13. Open for the Director
+## 13. Settled with the Director on 2026-11-21
 
-Three questions, most important first.
+Asked by dialog, answered the same evening.
 
-1. **Which hours are "work given":** hours on the clock, or hours that entered goods and
-   services with idle hours shown apart (6.2). I recommend the second.
-2. **Unknown hours and the height:** show it and say so, or hold it back (6.3). I recommend the
-   first.
-3. **National liberation in the wells:** a, b or c (6.8). I recommend b.
+1. **Which hours are "work given":** hours that went into goods and services, with idle hours
+   shown apart (ruling 17, section 6.2).
+2. **Unknown hours and the height:** show it and say so (ruling 18, section 6.3).
+3. **National liberation in the wells:** four corners, as a reading (ruling 19, section 6.8).
+4. **What the height is measured against:** the whole world (ruling 21, section 6.3).
+5. **The whole country still comes first** (ruling 20).
 
 One correction to a figure I gave. I said "about 3,000" household groups when asking about the
 whole country. The country has 15,696 today (five kinds of household in every county), and more
 after the economy build. The design holds 25,000. Ruling 8 stands unless the Director says
 otherwise.
 
-My calls to check.
+My calls. The Director kept them all (the first one is now ruling 21, against the world).
 
-- The height is measured against the country's own share (6.3), as a mass of hours.
+- The height is a mass of hours measured against a share (6.3). Ruled: the world's share.
 - At the size of the whole country the place is the body (6.6).
 - Parties with no place stand on a rail at the map's edge (6.3).
 - A body of participants is drawn as a particle of its own kind until household groups join

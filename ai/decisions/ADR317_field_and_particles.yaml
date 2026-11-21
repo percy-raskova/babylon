@@ -1,0 +1,358 @@
+ADR317_field_and_particles:
+  title: The economy is drawn as a field of household groups, with hours and money as two streams and no rate
+  date: '2026-11-21'
+  status: accepted
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-21, on the first sketch: "yes, this is exactly what i
+        envision you're just missing one thing: the flow of value in accumulated
+        labor hours through the production process, money, labor-time, and
+        they're relation in all three of those ways".
+    - >-
+        Director, 2026-11-21, on money against hours: "No rate, two streams",
+        with the note "it should be place by place, and how these things
+        aggregate is how we want to group-by or visualize them so to speak".
+    - >-
+        Director, 2026-11-21, in one round of answers: the colours of the three
+        streams; the wells as a reading; a particle is a household group; four
+        groupings; the July map rules amended; the September fence lifted; the
+        whole country first; height from hours and colour from money; both
+        surfaces with a switch; nothing hidden in the first build; three beats a
+        period; the new reading as the default; a Bevy crate in the public
+        library. These are rulings 2 to 13, 15 and 16 below.
+    - >-
+        Director, 2026-11-21, on what the wells are: "we shoudl give some
+        thought as to what the four wells should be, im open to brainstorming".
+        Settled the same evening by ruling 19.
+    - >-
+        Director, 2026-11-21, in the evening dialog, choosing among offered
+        options: "Hours into goods" (which hours count as work given), "Show it,
+        say so" (hours never measured), "Four corners, a reading" (national
+        liberation in the wells), "Still the whole country" (asked again with
+        the true count of household groups), "The whole world" (what the height
+        is measured against), "Keep them all" (the lead's calls), and, on the
+        design (`docs/superpowers/specs/2026-11-21-field-and-particles-design.md`),
+        "Approve: write the plan".
+  context: |
+    The client shows the country as a map of counties raised by one number at
+    a time. It cannot show whose work goes where, who is fed by it, and who
+    stands together. Each of the 3,144 counties is its own entity, mesh and
+    material; nothing is eased; overlays are rebuilt whole on every change.
+
+    The engine records every attended hour, exact. Hours follow goods through
+    stock, freight and equipment to their last use, under one law: opening
+    hours plus direct work equal closing hours plus what left. It records
+    every payment, by kind, with both ends. A movement of hours has no price
+    and a payment has no hours. The country has 15,696 household groups, five
+    kinds in every county. Four gaps matter: the record of attendance drops
+    the worker's household; a household's hours are not published; detail
+    lasts 13 periods; opening stock carries hours never measured.
+
+    The three-way share of world views ruled in August (ADR204, spec 034) is
+    built as rules but loaded only by test worlds. The country carries none of
+    it, and the guard that must ship first (ADR171, OQ9) is not built.
+
+    The map rules this design touches are in the Design Bible
+    (`project/research/16-living-map/DESIGN_BIBLE.md`), sections 2.2, 3.2, 6
+    and 11. Section 11 has no decision record of its own. The September fence
+    and the rule that every force on screen maps to a named engine quantity
+    were written only in issues 825 and 618 until this record.
+  decision: |
+    THE RULINGS (Director, 2026-11-21; the design's section 2.1).
+
+    R1. Hours and money are two streams. There is no rate between them, ever.
+    Any figure is place by place, and how figures aggregate is the grouping
+    the player chooses.
+
+    R2. Living labor time is bone white. Work stored in goods is crimson.
+    Money is gold and runs against both.
+
+    R3. The wells are a reading of real numbers, worked out for display. The
+    engine is not touched.
+
+    R4. A particle is a household group. Employers and holders of claims are
+    bodies. Classes and nations are drawn around particles, never as
+    particles.
+
+    R5. Groupings: by place, by class and home, by nation, by workplace and
+    company. Each shows hours and money side by side.
+
+    R6. The July map rules are amended, so the county map itself may bend and
+    flow.
+
+    R7. The September fence is lifted. Build as soon as the economy build
+    frees the machine.
+
+    R8. The first scene with real numbers is the whole country.
+
+    R9. Height is hours. Colour is money.
+
+    R10. Both surfaces, with a switch: one bending surface, and blocks that
+    rise and sink.
+
+    R11. Nothing is hidden in the first build. The player's view is the next
+    step.
+
+    R12. National liberation is a fourth well. Opened again, and answered by
+    R19.
+
+    R13. Three beats a period: work goes in, goods move through, money comes
+    back. Nothing else moves except what the player touches.
+
+    R14. What the four wells are was open for brainstorming. Settled by R19.
+
+    R15. The new reading is the map's default. The other lenses stay and can
+    raise and colour the same ground. Flows can show over any of them.
+
+    R16. The integration for Bevy is a crate in the public library's
+    repository: general parts only, nothing of the game. Same Bevy version as
+    the game.
+
+    R17. Work given is only the hours that went into goods and services. Idle
+    hours on the clock are drawn apart and have their own column.
+
+    R18. Hours never measured: the height is drawn from the first period and
+    the scene says so. Goods with unmeasured hours are drawn hollow, never as
+    zero, and a standing line counts them. The engine is not changed.
+
+    R19. The wells have four corners, as a reading: REVOLUTIONARY and
+    NATIONAL LIBERATION at the top, LIBERAL and FASCIST at the base. The
+    engine keeps its three shares and August stands. Both top corners are the
+    revolutionary side.
+
+    R20. Asked again with the true count of household groups (15,696, not the
+    "about 3,000" first given in the question): the whole country still comes
+    first.
+
+    R21. A place's height is measured against the whole world, not against
+    the country alone.
+
+    THE READING OF THE WELLS (design 6.8). The wells read the August share;
+    no second formula exists at display time. A group's height is its
+    revolutionary share, as in August. The top is one side drawn in two
+    parts: how far a group stands toward NATIONAL LIBERATION is the part of
+    its height that its nations carry, against the part its class carries,
+    read from the two carriers the law already has, the class and the
+    community. The ridge between the two top corners is the united front, and
+    the legend says that both top corners are the revolutionary side. A
+    particle stands at its own mix; it is placed, not pulled. The base is one
+    line from liberal to fascist; moving up is the only real change, and a
+    period's move is drawn as a short tail. A corner weighs the hours of work
+    and the money of the groups it holds, as two figures, and the ground sinks
+    at a corner by the hours it holds. A nation is a hatched body around its
+    people. An organization is not a particle; its line is shown in the
+    inspector. Until the share exists for the country, the arrangement shows
+    the triangle empty, with the line the client already carries, and no
+    particle is placed by a guess.
+
+    THE HEIGHT (design 6.3, R21). For each place and period, given is the
+    hours of work its households gave (R17) and back is the recorded hours in
+    the goods and services that reached its households. The height is
+    back − (world's back ÷ world's given) × given. The world is every place
+    the record holds, at home and abroad. A place that is short stands high; a
+    place that is ahead lies low. Summed over the world it is zero; summed
+    over the United States it is what the record shows, and that figure is
+    printed. It is a number of hours, a mass. No rate between hours and money
+    is used. Places abroad stand on the rail at the map's edge with their own
+    figure. The tension lens keeps its own ratio and its own legend.
+
+    THE FIRST BUILD IS UNHIDDEN (R11). It says so on screen in ADR217's words,
+    "ADMIN · MATERIAL TRUTH · UNFOGGED", and cannot count toward a gameplay
+    milestone. When the player's view comes, hiding is done before the numbers
+    reach the client, as ADR182 rules.
+
+    The design holds the full scene: the three arrangements, the marks, the
+    three beats, the side-by-side table, the records it needs, where the code
+    lives, the tests and the build order.
+  consequences:
+    - >-
+        AMENDED. Design Bible section 11, law 4. Old: "Curvature is terrain, not
+        decoration. Geometry deforms only when someone ACTS (topology change),
+        never ambiently. HELD until κ actually exists in live runs ... do not
+        fake terrain from anything else." New: height is a reading, never
+        terrain. The ground may rise and sink by the measured quantity of the
+        reading in force. Curvature stays held until it is live.
+    - >-
+        AMENDED. Design Bible section 2.2, the first rule and the rule of one
+        cartographic frame. Old: "Geometry never animates; claims do." and
+        "camera, projection, geometry identical pre/post switch". New: camera
+        and projection stay identical before and after a switch of lens;
+        county outlines never move in plan; height may change between periods
+        and between readings, and is eased.
+    - >-
+        AMENDED. Design Bible section 11, law 3. Old: "One motion budget per
+        tick. Only the principal contradiction pulses." New: one motion budget
+        per period, in three beats. Work goes in, goods move through, money
+        comes back. Nothing else moves except what the player touches. With
+        reduced motion, three still frames.
+    - >-
+        AMENDED. Design Bible section 3.2, the first rule. Old: "One lens = one
+        dominant variable = one legend (HOI4/SimCity). No blended heatmaps."
+        New: a reading may pair two variables on two channels, height and
+        colour, each with its own legend. Two variables are never blended in
+        one channel.
+    - >-
+        STANDS, RESTATED. Design Bible section 11, law 1: "Extensive renders as
+        stuff, intensive renders as color." Height carries a mass of hours;
+        colour carries a share of money. Restated so the new reading is seen
+        to obey it.
+    - >-
+        STANDS, RESTATED. Design Bible section 6: "no fake-3D". It stands for
+        charts. The field is a real scene with a camera, not a chart drawn to
+        look deep.
+    - >-
+        STANDS, RESTATED. Design Bible section 6: "no texture fills in data
+        surfaces". Hatching marks sets, never the ground.
+    - >-
+        NOT AMENDED. ADR186, Amendment AF clause (i): "v1.0 visual scope is the
+        2D county-map game with selective 3D moments (Patches the tutorial
+        guide; the topology view)". Read as: the land is the county map, which
+        the client already raises in 3D; ties and wells are forms of the
+        topology view.
+    - >-
+        LIFTED FOR THIS SCENE. Issue 825, as the design quotes it: "No universal
+        faction, ideological gravity or large-scale renderer expansion before
+        #831's result." Lifted for the field scene by the ruling of 2026-11-21
+        (R7). Issue 831 still judges the Wayne organizer scene. This is the
+        first record of the fence in the repository.
+    - >-
+        AMENDED FOR THIS SCENE. Issue 824, as the design quotes it: "stable
+        positions across scalar-only ticks". New, for this scene: a position is
+        a measurement. It moves once a period, eased, and never between.
+    - >-
+        STANDS, WRITTEN IN. Issue 618, as the design quotes it: "every force on
+        screen must map 1:1 to a named engine quantity", and absence is shown,
+        not decorated. It is now a rule of this scene in the repository.
+    - >-
+        AMENDED, AS A CONSEQUENCE OF R15. Design Bible sections 3.1, 8 and 9
+        (item 1) name Imperial Rent Φ as the default lens. The map's default is
+        now the reading of hours and money. Φ stays as one of the other lenses.
+    - >-
+        AMENDED, AS A CONSEQUENCE OF R2. Design Bible section 9b names crimson
+        and gold as the map canvas's marker duo. In the field there are three
+        marker colours: bone for living labor time, crimson for work stored in
+        goods, gold for money.
+    - >-
+        AMENDED, AS A CONSEQUENCE OF THE RULE OF SECTION 2.2. Design Bible
+        section 10, the gate "Lens-switch frame invariance (camera/geometry
+        byte-identical pre/post)". New: camera and projection identical before
+        and after a switch of lens; county outlines identical in plan; height
+        may differ.
+    - >-
+        AMENDED, AS A CONSEQUENCE OF LAW 3. Design Bible section 11, the
+        corollary on reduced motion ("law 3's static frame with the principal
+        contradiction marked, not animated"). New: three still frames, one for
+        each beat.
+    - >-
+        The four consequences above were found when this record was written,
+        after the approval. They restate the approved amendments at the other
+        places where the Design Bible repeats the same rules.
+    - >-
+        The old text of each amended rule stays in the Design Bible, marked as
+        superseded with a pointer to this record; each rule that stands gets
+        one line saying this record restates it.
+  calls:
+    - 'The height is a mass of hours measured against a share; ruled: the world''s share (R21).'
+    - 'At the size of the whole country the place is the body.'
+    - 'Parties with no place (treasuries, national accounts, anything abroad) stand on a rail at the map''s edge.'
+    - >-
+        A body of participants is drawn as a particle of its own kind, a ring,
+        until household groups join organizations through memberships that
+        carry a value (issue 653).
+    - >-
+        Only real hyperedges get a membrane; groupings read from pairwise ties
+        get a plain outline. A membership of zero is outside, and the outline
+        holds nine tenths of the set's people, a share stated on screen.
+    - >-
+        The wells show absence until the share exists for the country, and
+        carrying it there is separate work.
+    - 'Amendment AF is read, not amended.'
+    - 'The old map of separate blocks is retired once every lens is on the new ground and measured.'
+    - 'A grouping by world view, one row for each corner of the wells.'
+  alternatives_rejected:
+    - >-
+        Wells with three corners only, a nation drawn as a hatched body with a
+        floor. Offered and not chosen (R19).
+    - >-
+        A fourth world view in the engine. It would amend the August rulings.
+        Offered and not chosen (R19).
+    - >-
+        Height measured against the country alone, the reading the tension
+        lens uses. Offered and not chosen (R21).
+    - >-
+        Holding a place's height back until most of what reaches it is
+        measured. Offered and not chosen (R18).
+    - >-
+        Giving opening stock the hours its recipe takes today. Offered and not
+        chosen (R18).
+    - >-
+        Counting every attended hour, idle time included, as work given.
+        Offered and not chosen (R17).
+    - >-
+        Growing the old map in place as a sixth lens. Its structure (an entity
+        and material for each county, lenses matched in eight files, overlays
+        rebuilt whole) fights two readings at once, easing and moving marks,
+        and little of it would be general enough for the library.
+    - >-
+        Everything in shaders. The part of Bevy that changes most between
+        versions, hard to test without a screen, and not needed at the
+        country's size. One small shader for moving marks stays allowed if a
+        measured trial shows plain marks miss the frame time.
+  open_questions:
+    - >-
+        The player's fogged view. Its own design, on the rule of design 6.9:
+        every position, size, thickness, depth and hit area is worked out only
+        from what the player has been shown. The proposed question for the
+        Director is "Where does this place's work go, who is fed by it, and
+        where would organizing bite?".
+    - >-
+        Carrying the three-way share onto the country's household groups. It is
+        separate work on the theory line, with its guard first (ADR171, OQ9),
+        and is not decided here.
+    - 'The content of the build plans that follow the design. Each is its own plan.'
+    - >-
+        How the world's parts (core, rivals, periphery) are drawn on the rail.
+        Its own design when the build of borders lands.
+    - >-
+        The old map's blue and yellow ramp and its three typefaces, which the
+        palette and type rulings do not name. Listed, not fixed here.
+    - >-
+        Two captures of the country disagree on the number of workplaces (7,463
+        in November, 60,634 in October). The design uses November's.
+    - >-
+        Puerto Rico. ADR171 (OQ4) keeps it as a separate declared surface, with
+        nothing rendered until the small-count damping and a deflator exist.
+        That default was written for the national-question overlay. Whether it
+        also keeps Puerto Rico off this scene's rail is not decided here.
+    - >-
+        The on-screen name of the settler nation still awaits the Director
+        (ADR171, OQ8). It matters once nations are drawn, and in the grouping
+        by nation.
+  verification: |
+    For every period shown: hours attended equal hours worked plus idle hours;
+    hours worked at workplaces plus work done outside them equal the period's
+    direct work; and hours given, held and released satisfy the period's own
+    law. A check over the scene's code and the sums' code finds no expression
+    where an amount of money and an amount of hours meet. For each stream,
+    marks drawn plus the printed remainder equal the stream's total. The same
+    records give the same positions, outlines and marks, bit for bit, on two
+    runs. In every period the heights of all places, at home and abroad, sum
+    to zero to the hour, and the sum over the United States is printed with
+    its sign. With the whole country on screen and the beats playing, the
+    slowest 300-frame window's 95th percentile is no worse than today's money
+    map (15.4 ms at 1366x768, 18.4 ms at 1920x1080). The scripted play check
+    drives the real client through three periods and keeps the frames. With
+    reduced motion, no frame differs from the one before except at a beat. In
+    the library, the example runs and the core's tests pass with and without
+    each feature and on the lowest Rust version each crate names.
+  related:
+    - ADR315_homes_rent_and_nation
+    - ADR314_how_the_economy_adjusts
+    - ADR204_worldview_ternary_unification
+    - ADR186_bevy_cutover_amendment_af
+    - ADR182_derivation_inspector_rulings
+    - ADR217_b3_wave1_null_hypothesis_viewer_handoff
+    - ADR171_national_question_rulings
+    - ADR189_amendment_ag_attributed_membership_lattice_instances
+    - ADR193_hypergraph_storage_swap

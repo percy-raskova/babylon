@@ -1,5 +1,5 @@
 meta:
-  version: 1.104.0
+  version: 1.105.0
   updated: '2026-11-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR317_field_and_particles:
+    title: The economy is drawn as a field of household groups, with hours and money as two streams and no rate
+    status: accepted
+    date: '2026-11-21'
+    file: ADR317_field_and_particles.yaml
   ADR315_homes_rent_and_nation:
     title: Rent has an author, a home is lost by the law's own steps, home values move, and nations are hyperedges
     status: accepted

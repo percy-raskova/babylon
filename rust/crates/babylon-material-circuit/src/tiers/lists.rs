@@ -14,7 +14,7 @@ use crate::{
     RecurringEconomy, SiteId, UnitId, WantTier,
 };
 use babylon_kernel::currency::Currency;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 type Product = (FinalDemandPrincipalId, GoodId, UnitId);
 
@@ -98,6 +98,8 @@ pub(crate) struct HouseholdLists {
     principals: Vec<FinalDemandPrincipalId>,
     /// The order a need rung would carry for a product the account wants and does not need.
     bare_needs: BTreeMap<Product, OrderId>,
+    /// The order id of every want, so a household moment asks once per order, not once per item.
+    want_orders: BTreeSet<OrderId>,
 }
 
 impl HouseholdLists {
@@ -123,6 +125,9 @@ impl HouseholdLists {
         let Some(rows) = &economy.recurring else {
             return Ok(Self::default());
         };
+        // The period's own validation first, so a malformed state gets its own refusal, not one of the
+        // intents or the requests.
+        crate::recurring::validate(catalog, state)?;
         let opening = Opening {
             catalog,
             state,
@@ -153,6 +158,12 @@ impl HouseholdLists {
         lists
             .items
             .sort_by_key(|i| (i.principal, i.tier, i.good, i.unit));
+        lists.want_orders = lists
+            .items
+            .iter()
+            .filter(|i| i.tier > 1)
+            .map(|i| i.order_id)
+            .collect();
         Ok(lists)
     }
 
@@ -162,11 +173,24 @@ impl HouseholdLists {
         items.sort_by_key(|i| (i.principal, i.tier, i.good, i.unit));
         let mut principals: Vec<_> = items.iter().map(|i| i.principal).collect();
         principals.dedup();
+        let want_orders = items
+            .iter()
+            .filter(|i| i.tier > 1)
+            .map(|i| i.order_id)
+            .collect();
         Self {
             items,
             principals,
             bare_needs: BTreeMap::new(),
+            want_orders,
         }
+    }
+
+    /// Tests only: seed the need rung of a product the account only wants.
+    #[cfg(test)]
+    pub(crate) fn with_bare_need(mut self, product: Product, order: OrderId) -> Self {
+        self.bare_needs.insert(product, order);
+        self
     }
 
     #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
@@ -240,8 +264,8 @@ impl HouseholdLists {
     /// A need is still to buy by the part it did not get; a want is done whatever it got.
     ///
     /// # Errors
-    /// `MarketClearingInvariant` for an order that is not an item of the product, more bought than
-    /// wanted, a price below the posted one, or a product settled twice.
+    /// `MarketClearingInvariant` for an order that is not an item of the product (the bare need rung
+    /// of a product only wanted is one, but may buy only 0), more bought than wanted, a price below the posted one, or a product settled twice.
     #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
     pub(crate) fn settle(
         &mut self,
@@ -254,9 +278,15 @@ impl HouseholdLists {
         let start = self.items.partition_point(|i| i.principal < principal);
         let end = self.items.partition_point(|i| i.principal <= principal);
         let key = (principal, good, unit);
+        let bare = self.bare_needs.get(&key).copied();
         let account = &mut self.items[start..end];
-        for (order, _) in bought {
-            if !account
+        for (order, quantity) in bought {
+            if Some(*order) == bare {
+                // The need rung of a product the account only wants: it wants 0, so it buys 0.
+                if *quantity != 0 {
+                    return Err(MaterialCircuitError::MarketClearingInvariant);
+                }
+            } else if !account
                 .iter()
                 .any(|i| i.product() == key && i.order_id == *order)
             {
@@ -281,7 +311,7 @@ impl HouseholdLists {
 
     #[allow(dead_code, reason = "the household moment of Task 3b reads it")]
     pub(crate) fn is_want_order(&self, order: OrderId) -> bool {
-        self.items.iter().any(|i| i.tier > 1 && i.order_id == order)
+        self.want_orders.contains(&order)
     }
 
     /// One row per want and two per account, at posted prices; empty when no account wants anything.

@@ -276,3 +276,26 @@ fn want_order_ids_differ_by_tier_and_from_the_need() {
     assert_ne!(a, b);
     assert_ne!(a, comfort);
 }
+
+#[test]
+fn the_bare_need_rung_of_a_want_only_product_settles() {
+    let key = (account(), good(FOOD), unit());
+    let lists =
+        HouseholdLists::from_items(vec![item(FOOD, 2, 13, 4, 5, 0)]).with_bare_need(key, order(14));
+    let rungs = lists
+        .rungs(account(), good(FOOD), unit(), 0)
+        .expect("the account wants the product");
+    assert_eq!(rungs.len(), 2);
+    assert_eq!(rungs[0].order_id, order(14));
+    let mut lists = lists;
+    let bought: Vec<_> = rungs.iter().map(|r| (r.order_id, 0)).collect();
+    lists
+        .settle(account(), good(FOOD), unit(), &bought, money(4))
+        .expect("the bare need rung is a known order");
+    assert!(
+        lists
+            .settle(account(), good(FOOD), unit(), &[(order(14), 1)], money(4))
+            .is_err(),
+        "a bare need rung wants 0 and may not buy more"
+    );
+}

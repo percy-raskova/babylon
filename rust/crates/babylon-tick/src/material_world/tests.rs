@@ -892,6 +892,7 @@ fn a_transition_with_household_wants_is_refused() {
 fn a_transition_with_tier_rows_is_refused() {
     use babylon_material_circuit::{HouseholdTierReceipt, WantTier};
     let (catalog, mut transition) = closed_admission_period();
+    assert!(material_world::encode_material_receipts(&catalog, 2, &transition).is_ok());
     let zero = babylon_kernel::currency::Currency::from_micro_units(0);
     transition.household_tiers.push(HouseholdTierReceipt {
         period: 2,

@@ -106,15 +106,17 @@ fn higher_pay_runs_away_until_the_clinic_farm_and_shop_stop() {
 /// P2 under the market policy: runs away, faster for food. Households buy at the market's price,
 /// so what the shop can hand over in its hours is all it sells, admitted and sold are the same,
 /// and its next hours follow what it sold (`recurring/firms.rs` `handling_quantities`): its plan
-/// stays at 33 hours. The dead clinic's quote falls to its minimum, because under the policy no
+/// stays at 33 hours until period 23; at period 24 the farm's stock is gone and the shop sells 31,
+/// so its plan falls with its sales. The dead clinic's quote falls to its minimum, because under the policy no
 /// order is admitted beyond output, so funded unmet demand never appears (`services/market.rs`
 /// `quote`).
 #[test]
 fn less_supply_under_a_market_policy_runs_away_with_the_shop_held_at_its_last_sales() {
     let rows = support::run(&World::less_supply().with_market());
-    for period in 7..=24 {
+    for period in 7..=23 {
         assert_eq!(at(&rows, period).planned[SHOP], 33, "period {period}");
     }
+    assert_eq!(at(&rows, 24).planned[SHOP], 31);
     for period in 11..=34 {
         assert_eq!(at(&rows, period).output[CLINIC], 0, "period {period}");
     }
@@ -128,5 +130,5 @@ fn less_supply_under_a_market_policy_runs_away_with_the_shop_held_at_its_last_sa
     assert!(at(&rows, 10).cleared_cents[SHOP] > at(&rows, 10).price_cents[SHOP]);
     let last = at(&rows, 34);
     assert_eq!(last.unmet[FOOD], 40);
-    assert_eq!(last.output[UTILITY], 30);
+    assert_eq!(last.output[UTILITY], 25);
 }

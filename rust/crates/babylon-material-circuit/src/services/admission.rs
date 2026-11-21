@@ -8,6 +8,7 @@ use super::UnitId;
 use super::MAX_SERVICE_RECEIPTS_PER_PERIOD;
 use crate::clearing::{self, MarketMoment, MarketTable};
 use crate::inventory::InventoryLedger;
+use crate::valuation::CostClose;
 use crate::MaterialCatalog;
 use crate::OrderId;
 use crate::{
@@ -429,12 +430,13 @@ pub(super) fn funded_at_quotes(
 
 /// What a market's buyers get, and the price they pay.
 fn price_stage_market(
-    state: &MaterialCircuitState,
+    books: (&MaterialCatalog, &MaterialCircuitState, &CostClose),
     moment: MarketMoment,
     members: &[&Request],
     supply: Option<u64>,
     markets: &mut MarketTable,
 ) -> Result<(Currency, Vec<u64>)> {
+    let (catalog, state, costs) = books;
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Err(MaterialCircuitError::MonetaryInvariant);
     };
@@ -468,10 +470,23 @@ fn price_stage_market(
     for (index, request) in members.iter().enumerate() {
         let money = purse(request)?;
         if request.requested > 0 && money.micro_units() > 0 {
+            // A business stops at its limit (P5); a household pays up to its purse.
+            let limit = match request.buyer {
+                AccountId::Site(site) => Some(clearing::limit_price(
+                    catalog,
+                    state,
+                    costs,
+                    site,
+                    request.good,
+                    request.unit,
+                    posted,
+                )?),
+                _ => None,
+            };
             bids.push(MarketBid {
                 wanted: request.requested,
                 purse: money,
-                limit: None,
+                limit,
             });
             bidders.push(index);
         }
@@ -576,9 +591,10 @@ pub(super) fn admit_stage(
     phase: (ServiceStage, &InventoryLedger),
     performance: &mut Vec<ServicePerformanceReceipt>,
     movements: &mut Vec<MoneyTransferReceipt>,
-    markets: &mut MarketTable,
+    books: (&mut MarketTable, &CostClose),
 ) -> Result<()> {
     let (phase, potential) = phase;
+    let (markets, costs) = books;
     let owed = funded_receipts(catalog, state, phase, performance)?;
     let moment = match phase {
         ServiceStage::UtilityProvision => MarketMoment::Utility,
@@ -594,7 +610,8 @@ pub(super) fn admit_stage(
                 .unwrap_or(0)
                 .saturating_sub(owed.get(&key).copied().unwrap_or(0))
         });
-        let (price, quantities) = price_stage_market(state, moment, &members, supply, markets)?;
+        let (price, quantities) =
+            price_stage_market((catalog, state, costs), moment, &members, supply, markets)?;
         for (request, quantity) in members.into_iter().zip(quantities) {
             performance.push(book_order(
                 state,

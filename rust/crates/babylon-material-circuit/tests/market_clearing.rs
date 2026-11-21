@@ -11,3 +11,9 @@ mod service_support;
 
 #[path = "market_clearing/services.rs"]
 mod services;
+
+#[path = "market_clearing/restock_support.rs"]
+mod restock_support;
+
+#[path = "market_clearing/restocking.rs"]
+mod restocking;

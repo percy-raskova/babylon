@@ -5,14 +5,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use babylon_kernel::currency::Currency;
 
 use super::AttendancePlan;
+use crate::clearing::{MarketBid, MarketMoment, MarketTable, Offer};
 use crate::transition::MaterialContext;
+use crate::valuation::CostClose;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::MaintenanceReceipt;
 use crate::MaterialCatalog;
 use crate::{
     AccountId, CircuitAccounting, GoodId, HouseholdDemandReceipt, LocalTransferReceipt,
-    MaterialCircuitError, MaterialCircuitState, MoneyTransferReceipt, OrderAccessMode, OrderId,
-    OrderRow, OutboundOrderId, ProcessId, PurchaseEscrow, RoutedDispatchReceipt, SiteId, UnitId,
+    MaterialCircuitError, MaterialCircuitState, MonetaryCircuit, MoneyTransferReceipt,
+    OrderAccessMode, OrderId, OrderRow, OutboundOrderId, ProcessId, PurchaseEscrow,
+    RecurringEconomy, ReplenishmentPolicy, RoutedDispatchReceipt, SiteId, UnitId,
 };
 use babylon_kernel::content_digest;
 
@@ -118,106 +121,369 @@ pub fn recurring_procurement_order_id(
     OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
-pub(crate) fn replenish(
+/// The stock a buyer holds, what is on its way, and what its policy asks it to buy now.
+struct Position {
+    stock: u64,
+    inbound: u64,
+    desired: u64,
+}
+
+fn position(
+    policy: &ReplenishmentPolicy,
+    on_hand: &StockLedger,
+    pending: &StockLedger,
+) -> Result<Position, MaterialCircuitError> {
+    let key = (policy.buyer_site_id, policy.good_id, policy.unit_id);
+    let stock = on_hand.get(&key).copied().unwrap_or(0);
+    let inbound = pending.get(&key).copied().unwrap_or(0);
+    let held = stock
+        .checked_add(inbound)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    let desired = policy
+        .target_stock
+        .saturating_sub(held)
+        .min(policy.maximum_purchase);
+    Ok(Position {
+        stock,
+        inbound,
+        desired,
+    })
+}
+
+fn economy_of(
+    state: &MaterialCircuitState,
+) -> Result<(&MonetaryCircuit, &RecurringEconomy), MaterialCircuitError> {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return Err(MaterialCircuitError::MonetaryInvariant);
+    };
+    let recurring = economy
+        .recurring
+        .as_deref()
+        .ok_or(MaterialCircuitError::MonetaryInvariant)?;
+    Ok((economy, recurring))
+}
+
+fn posted_price(
+    state: &MaterialCircuitState,
+    policy: &ReplenishmentPolicy,
+) -> Result<Currency, MaterialCircuitError> {
+    let (_, recurring) = economy_of(state)?;
+    let offer_key = (policy.supplier_site_id, policy.good_id, policy.unit_id);
+    let index = recurring
+        .offers
+        .binary_search_by_key(&offer_key, |row| (row.site_id, row.good_id, row.unit_id))
+        .map_err(|_| MaterialCircuitError::PurchaseInvariant)?;
+    Ok(recurring.offers[index].unit_price)
+}
+
+/// The buyer's cash above the policy's floor.
+fn spendable(
+    state: &MaterialCircuitState,
+    policy: &ReplenishmentPolicy,
+) -> Result<i128, MaterialCircuitError> {
+    let (economy, _) = economy_of(state)?;
+    let cash = economy
+        .book
+        .cash(AccountId::Site(policy.buyer_site_id))?
+        .micro_units();
+    Ok(cash.saturating_sub(policy.cash_floor.micro_units()).max(0))
+}
+
+/// What one restocking pass has accepted so far.
+struct Accepted<'a> {
+    ids: BTreeSet<OrderId>,
+    receipts: Vec<(usize, ProcurementReceipt)>,
+    pending: StockLedger,
+    transfers: &'a mut Vec<MoneyTransferReceipt>,
+}
+
+/// Fund and record one accepted order of a policy.
+fn accept(
     state: &mut MaterialCircuitState,
-    deferred_local: &[LocalTransferReceipt],
-    transfers: &mut Vec<MoneyTransferReceipt>,
-) -> Result<(BTreeSet<OrderId>, Vec<ProcurementReceipt>), MaterialCircuitError> {
-    if !active(state) {
-        return Ok((BTreeSet::new(), Vec::new()));
-    }
-    let (on_hand, mut pending) = stock_position(state, deferred_local)?;
+    accepted: &mut Accepted<'_>,
+    policy: &ReplenishmentPolicy,
+    id: OrderId,
+    sale: (u64, Currency),
+) -> Result<(), MaterialCircuitError> {
+    let (quantity, price) = sale;
+    crate::transition::check_order_principal_limits(
+        state
+            .orders
+            .len()
+            .checked_add(1)
+            .ok_or(MaterialCircuitError::Arithmetic)?,
+        state.final_demand_orders.len(),
+        state.service_orders.len(),
+    )?;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        return Ok((BTreeSet::new(), Vec::new()));
+        return Err(MaterialCircuitError::MonetaryInvariant);
     };
-    let Some(recurring) = &economy.recurring else {
-        return Ok((BTreeSet::new(), Vec::new()));
-    };
-    let mut ids = BTreeSet::new();
-    let mut receipts = Vec::new();
-    for policy in &recurring.replenishment {
-        let key = (policy.buyer_site_id, policy.good_id, policy.unit_id);
-        let stock = on_hand.get(&key).copied().unwrap_or(0);
-        let inbound = pending.get(&key).copied().unwrap_or(0);
-        let position = stock
-            .checked_add(inbound)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
-        let desired = policy
-            .target_stock
-            .saturating_sub(position)
-            .min(policy.maximum_purchase);
-        let offer_key = (policy.supplier_site_id, policy.good_id, policy.unit_id);
-        let offer_index = recurring
-            .offers
-            .binary_search_by_key(&offer_key, |row| (row.site_id, row.good_id, row.unit_id))
-            .map_err(|_| MaterialCircuitError::PurchaseInvariant)?;
-        let price = recurring.offers[offer_index].unit_price;
-        let cash = economy
-            .book
-            .cash(AccountId::Site(policy.buyer_site_id))?
-            .micro_units();
-        let spendable = cash.saturating_sub(policy.cash_floor.micro_units()).max(0);
-        let affordable = spendable / price.micro_units();
-        let quantity = u64::try_from(affordable.min(i128::from(desired)))
-            .map_err(|_| MaterialCircuitError::Arithmetic)?;
-        let id = recurring_procurement_order_id(
-            state.period,
-            policy.buyer_site_id,
-            policy.supplier_site_id,
-            policy.good_id,
-            policy.unit_id,
-        );
-        receipts.push(ProcurementReceipt {
-            period: state.period,
-            order_id: id,
-            buyer_site_id: policy.buyer_site_id,
-            supplier_site_id: policy.supplier_site_id,
-            good_id: policy.good_id,
-            unit_id: policy.unit_id,
-            on_hand: stock,
-            outstanding_inbound: inbound,
-            target_stock: policy.target_stock,
-            desired_quantity: desired,
-            admitted_quantity: quantity,
-            unit_price: price,
-        });
-        if quantity == 0 {
-            continue;
-        }
-        crate::transition::check_order_principal_limits(
-            state
-                .orders
-                .len()
-                .checked_add(1)
-                .ok_or(MaterialCircuitError::Arithmetic)?,
-            state.final_demand_orders.len(),
-            state.service_orders.len(),
-        )?;
-        transfers.push(economy.book.reserve_purchase(PurchaseEscrow::new(
+    accepted
+        .transfers
+        .push(economy.book.reserve_purchase(PurchaseEscrow::new(
             OutboundOrderId::Delivery(id),
             AccountId::Site(policy.buyer_site_id),
             AccountId::Site(policy.supplier_site_id),
             quantity,
             price,
         )?)?);
-        state.orders.push(OrderRow {
-            order_id: id,
-            access_mode: OrderAccessMode::CommoditySale,
-            buyer_site_id: policy.buyer_site_id,
-            supplier_site_id: policy.supplier_site_id,
-            good_id: policy.good_id,
-            unit_id: policy.unit_id,
-            ordered: quantity,
-            shipped: 0,
-            lost: 0,
-            delivered: 0,
-            realized: 0,
-        });
-        ids.insert(id);
-        add(&mut pending, key, quantity)?;
+    state.orders.push(OrderRow {
+        order_id: id,
+        access_mode: OrderAccessMode::CommoditySale,
+        buyer_site_id: policy.buyer_site_id,
+        supplier_site_id: policy.supplier_site_id,
+        good_id: policy.good_id,
+        unit_id: policy.unit_id,
+        ordered: quantity,
+        shipped: 0,
+        lost: 0,
+        delivered: 0,
+        realized: 0,
+    });
+    accepted.ids.insert(id);
+    add(
+        &mut accepted.pending,
+        (policy.buyer_site_id, policy.good_id, policy.unit_id),
+        quantity,
+    )
+}
+
+fn procurement_receipt(
+    period: u64,
+    policy: &ReplenishmentPolicy,
+    held: &Position,
+    sale: (u64, Currency),
+) -> ProcurementReceipt {
+    ProcurementReceipt {
+        period,
+        order_id: recurring_procurement_order_id(
+            period,
+            policy.buyer_site_id,
+            policy.supplier_site_id,
+            policy.good_id,
+            policy.unit_id,
+        ),
+        buyer_site_id: policy.buyer_site_id,
+        supplier_site_id: policy.supplier_site_id,
+        good_id: policy.good_id,
+        unit_id: policy.unit_id,
+        on_hand: held.stock,
+        outstanding_inbound: held.inbound,
+        target_stock: policy.target_stock,
+        desired_quantity: held.desired,
+        admitted_quantity: sale.0,
+        unit_price: sale.1,
+    }
+}
+
+/// Order one policy by today's rule: what its cash affords at the posted price.
+fn restock_at_posted_price(
+    state: &mut MaterialCircuitState,
+    on_hand: &StockLedger,
+    accepted: &mut Accepted<'_>,
+    index: usize,
+    policy: &ReplenishmentPolicy,
+) -> Result<(), MaterialCircuitError> {
+    let held = position(policy, on_hand, &accepted.pending)?;
+    let price = posted_price(state, policy)?;
+    let affordable = spendable(state, policy)? / price.micro_units();
+    let quantity = u64::try_from(affordable.min(i128::from(held.desired)))
+        .map_err(|_| MaterialCircuitError::Arithmetic)?;
+    let receipt = procurement_receipt(state.period, policy, &held, (quantity, price));
+    let id = receipt.order_id;
+    accepted.receipts.push((index, receipt));
+    if quantity == 0 {
+        return Ok(());
+    }
+    accept(state, accepted, policy, id, (quantity, price))
+}
+
+/// What a restocking pass reads besides the state it changes.
+struct Market<'a> {
+    catalog: &'a MaterialCatalog,
+    costs: &'a CostClose,
+    offer: Offer<'a>,
+    table: &'a mut MarketTable,
+}
+
+/// Clear one market of restocking: every business that buys this seller's product bids for it, the
+/// price rises while the seller is short, and each buyer's order is made at that price.
+fn restock_at_market_price(
+    state: &mut MaterialCircuitState,
+    on_hand: &StockLedger,
+    accepted: &mut Accepted<'_>,
+    market: &mut Market<'_>,
+    members: &[(usize, &ReplenishmentPolicy)],
+) -> Result<(), MaterialCircuitError> {
+    let first = members
+        .first()
+        .ok_or(MaterialCircuitError::MarketClearingInvariant)?
+        .1;
+    let seller = (first.supplier_site_id, first.good_id, first.unit_id);
+    let quote = posted_price(state, first)?;
+    let supply = market.offer.supply(seller.0, seller.1, seller.2)?;
+    let mut bids = vec![];
+    let mut bidders = vec![];
+    let mut held = vec![];
+    for (slot, &(_, policy)) in members.iter().enumerate() {
+        let position = position(policy, on_hand, &accepted.pending)?;
+        let purse = spendable(state, policy)?;
+        if position.desired > 0 && purse > 0 {
+            bids.push(MarketBid {
+                wanted: position.desired,
+                purse: Currency::from_micro_units(purse),
+                limit: Some(crate::clearing::limit_price(
+                    market.catalog,
+                    state,
+                    market.costs,
+                    policy.buyer_site_id,
+                    policy.good_id,
+                    policy.unit_id,
+                    quote,
+                )?),
+            });
+            bidders.push(slot);
+        }
+        held.push(position);
+    }
+    let outcome = crate::clearing::clear_market(supply, quote, &bids)?;
+    market.table.record(
+        state.period,
+        MarketMoment::Restocking,
+        seller,
+        quote,
+        supply,
+        bids.len(),
+        &outcome,
+    )?;
+    let mut sold = vec![0_u64; members.len()];
+    for (&slot, &quantity) in bidders.iter().zip(&outcome.quantities) {
+        sold[slot] = quantity;
+    }
+    let total = sold
+        .iter()
+        .try_fold(0_u64, |sum, &quantity| sum.checked_add(quantity))
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    market.offer.take(seller.0, seller.1, seller.2, total)?;
+    for (slot, &(index, policy)) in members.iter().enumerate() {
+        let price = if sold[slot] > 0 { outcome.price } else { quote };
+        let receipt = procurement_receipt(state.period, policy, &held[slot], (sold[slot], price));
+        let id = receipt.order_id;
+        accepted.receipts.push((index, receipt));
+        if sold[slot] > 0 {
+            accept(state, accepted, policy, id, (sold[slot], price))?;
+        }
+    }
+    Ok(())
+}
+
+/// Restock every business from its policies.
+///
+/// Without a market policy each policy orders what its cash affords at the posted price. With one,
+/// the products in the order of paying clear market by market, sorted by place and seller, and
+/// the others are ordered as before.
+pub(crate) fn replenish(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    deferred_local: &[LocalTransferReceipt],
+    transfers: &mut Vec<MoneyTransferReceipt>,
+    costs: &CostClose,
+    markets: &mut MarketTable,
+) -> Result<(BTreeSet<OrderId>, Vec<ProcurementReceipt>), MaterialCircuitError> {
+    if !active(state) {
+        return Ok((BTreeSet::new(), Vec::new()));
+    }
+    let (on_hand, pending) = stock_position(state, deferred_local)?;
+    let policies: Vec<ReplenishmentPolicy> = economy_of(state)?.1.replenishment.clone();
+    let mut accepted = Accepted {
+        ids: BTreeSet::new(),
+        receipts: Vec::new(),
+        pending,
+        transfers,
+    };
+    let mut at_posted_price = vec![];
+    let mut by_market: BTreeMap<_, Vec<usize>> = BTreeMap::new();
+    for (index, policy) in policies.iter().enumerate() {
+        let place = catalog
+            .market_clearing
+            .as_ref()
+            .and_then(|rule| rule.place(policy.good_id, policy.unit_id));
+        match place {
+            Some(place) => by_market
+                .entry((
+                    place,
+                    policy.supplier_site_id,
+                    policy.good_id,
+                    policy.unit_id,
+                ))
+                .or_default()
+                .push(index),
+            None => at_posted_price.push(index),
+        }
+    }
+    if !by_market.is_empty() {
+        let mut market = Market {
+            catalog,
+            costs,
+            offer: Offer::new(catalog, state)?,
+            table: markets,
+        };
+        for indices in by_market.into_values() {
+            let mut members: Vec<_> = indices.iter().map(|&i| (i, &policies[i])).collect();
+            members.sort_by_key(|&(_, p)| {
+                recurring_procurement_order_id(
+                    state.period,
+                    p.buyer_site_id,
+                    p.supplier_site_id,
+                    p.good_id,
+                    p.unit_id,
+                )
+            });
+            restock_at_market_price(state, &on_hand, &mut accepted, &mut market, &members)?;
+        }
+    }
+    for index in at_posted_price {
+        restock_at_posted_price(state, &on_hand, &mut accepted, index, &policies[index])?;
     }
     state.orders.sort_by_key(|row| row.order_id);
-    Ok((ids, receipts))
+    let mut receipts = accepted.receipts;
+    receipts.sort_by_key(|&(index, _)| index);
+    Ok((
+        accepted.ids,
+        receipts.into_iter().map(|(_, receipt)| receipt).collect(),
+    ))
+}
+
+/// What the pass after a sale did not send is cancelled: its money returns to the buyer and the
+/// order shrinks to what moved, so that a buyer counts only goods in transit as arriving. An order
+/// of which nothing moved leaves no row.
+pub(crate) fn cancel_unsent(
+    state: &mut MaterialCircuitState,
+    accepted: &BTreeSet<OrderId>,
+    transfers: &mut Vec<MoneyTransferReceipt>,
+) -> Result<(), MaterialCircuitError> {
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        return Ok(());
+    };
+    for order in &mut state.orders {
+        if !accepted.contains(&order.order_id) {
+            continue;
+        }
+        let unsent = order
+            .ordered
+            .checked_sub(order.shipped)
+            .ok_or(MaterialCircuitError::OrderInvariant)?;
+        if unsent == 0 {
+            continue;
+        }
+        let movement = economy
+            .book
+            .cancel_purchase_units(OutboundOrderId::Delivery(order.order_id), unsent)?;
+        transfers.push(movement.transfer);
+        order.ordered = order.shipped;
+    }
+    state.orders.retain(|order| order.ordered > 0);
+    Ok(())
 }
 
 pub(crate) fn plan_production(

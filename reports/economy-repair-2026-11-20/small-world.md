@@ -51,8 +51,8 @@ requirement, purchase and consumption (40 each, unmet 0), public receipts and pa
 640 in the taxed run) and total money. No transient: the opening is a fixed point of every rule.
 One piece of history is needed and supplied: each staffing pool opens with its last request at
 its opening hours (R5). Under the market policy no market is short, so households pay the
-posted price and no clearing is recorded; restocking between businesses still follows the old
-rule (`recurring/firms.rs` `replenish`) there.
+posted price and no clearing is recorded; restocking between businesses clears by the same rule
+(`recurring/firms.rs` `replenish`) and is not short either.
 
 | p | sites U/F/C/S | workers, owner | price U/F/C/S | out U/F/C | stock F/S | hours | unmet |
 |--:|---|---|---|---|---|---|---|
@@ -168,15 +168,19 @@ accounts.
 Identical to P2 through period 8. At period 9 the shop's hours (33, set by what it sold, R10)
 make its food market short; it clears at $47.10, then $82.61 at period 10, drawing the workers'
 idle cash to the shop and on to the owner ($1,862 at period 13). The shop's plan stays 33 hours
-from period 7 to 24, because admitted is sold (R10). The clinic stops at period 11; under the
+from period 7 to 23, because admitted is sold (R10); at period 24 the farm's stock is gone, the shop
+sells 31 and plans 31. The clinic stops at period 11; under the
 policy no order is admitted beyond output, so funded unmet demand never appears and its quote
 falls to the $1 minimum by period 30 while it makes nothing (R2, `services/admission.rs:572`).
+From period 17 a business bids for the utility and for stock no higher than what a batch of its
+product earns after wages and its other inputs (`clearing/limit.rs`), so the utility clears at
+$10.70 and not $14.27 at period 17, the first period that moves; the later rows follow.
 
 |p|cash U/F/C/S|cash wU/wF/wC/wS, O|price U/F/C/S|out U/F/C|stock F/S|hours|unmet F/U/C|
 |--:|---|---|---|---|---|---|---|
 | 13 | 649/870/9/1400 | 6/248/3/110, 1862 | 10/25/18/38 | 64/36/0 | 40/40 | 65/40/0/33 | 5/16/40 |
-| 21 | 641/794/9/1440 | 6/1079/3/481, 705 | 10/24/10/38 | 64/36/0 | 19/40 | 64/40/0/33 | 7/16/40 |
-| 34 | 305/1/9/1270 | 1217/470/3/9, 833 | 10/34/1/38 | 30/0/0 | 0/0 | 30/0/0/0 | 40/10/40 |
+| 21 | 630/763/9/1479 | 6/1144/3/545, 577 | 10/23/10/38 | 63/27/0 | 19/40 | 63/40/0/33 | 7/16/40 |
+| 34 | 257/6/9/2280 | 520/1636/3/437, 9 | 10/23/1/38 | 25/0/0 | 0/0 | 25/0/0/0 | 40/15/40 |
 
 ## What this means for an opening that is in balance
 

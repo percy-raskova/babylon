@@ -378,7 +378,9 @@ allocation:
   funding: retain original purchase and aid admission bounds; no re-admission, credit, new cash or capacity inflation
   passes: preserve existing outbound selections and service stages; no second grant for an excluded existing order,
     no redistribution between production stages and no recursive same-close local buyer credits
-  missing_route: leave unshipped order in backlog
+  missing_route: without a market policy leave unshipped order in backlog; with one, cancel and refund what the
+    second pass of the period did not send of each order that restocking made, and leave no row for an order of
+    which nothing was sent
   failed_close: publish no successor state or receipt
 
 period_close:
@@ -421,7 +423,10 @@ period_close:
   - without a market policy, credit actual household handoffs to stock and settle them and expire unfilled
     recurring requests with refunds; with one, a household's purchase is made at the market's price before
     production, handed over, credited to stock, settled and retired at that moment, and nothing is expired
-  - replenish firm inventory positions, counting undelivered order quantities once including their transit
+  - replenish firm inventory positions, counting undelivered order quantities once including their transit;
+    without a market policy each policy orders what its cash affords at the posted price; with one, the products
+    in the order of paying clear market by market at a price at which what the buyers can pay for equals what the
+    seller has on offer, a business bidding no higher than the price at which its own product stops paying
   - allocate only newly admitted deliveries in a second pass through the same remaining resource budgets
   - credit local internal buyers only after both outbound passes fix all grants and debits
   - local credits cannot feed another outbound order until a following close

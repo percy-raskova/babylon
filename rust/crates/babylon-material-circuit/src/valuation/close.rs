@@ -50,6 +50,29 @@ impl CostClose {
     pub(crate) fn attendance_members(&self) -> &[MemberLaborUseReceipt] {
         self.attendance.members()
     }
+    /// The wages and the hours this site has funded for the period, for one kind of labor.
+    ///
+    /// Every member row of the site and labor unit counts, working owners included: their hours
+    /// are funded and their wage is 0.
+    ///
+    /// # Errors
+    /// `Arithmetic` on overflow.
+    pub(crate) fn funded_wage(&self, site: SiteId, unit: UnitId) -> Result<(Currency, u64)> {
+        let mut wages = Currency::from_micro_units(0);
+        let mut hours = 0_u64;
+        for row in self
+            .attendance
+            .members()
+            .iter()
+            .filter(|row| row.site_id == site && row.unit_id == unit)
+        {
+            wages = super::add(wages, row.accrued_wages)?;
+            hours = hours
+                .checked_add(row.attended_hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+        Ok((wages, hours))
+    }
     pub(crate) fn new(state: &MaterialCircuitState, catalog: &MaterialCatalog) -> Self {
         let active = match &state.accounting {
             CircuitAccounting::PhysicalControl => None,
@@ -829,4 +852,76 @@ fn purchase_amount(
         return Ok(super::zero());
     };
     super::amount(quantity, economy.book.purchase(order)?.unit_price)
+}
+
+#[cfg(test)]
+mod funded_wage_tests {
+    use super::*;
+    use crate::{FinalDemandPrincipalId, LaborCompensation, StaffingMemberId};
+
+    fn row(
+        member: u8,
+        site: u8,
+        compensation: LaborCompensation,
+        hours: u64,
+    ) -> MemberLaborUseReceipt {
+        let wages =
+            Currency::from_micro_units(compensation.wage_rate().micro_units() * i128::from(hours));
+        MemberLaborUseReceipt {
+            member_id: StaffingMemberId::from_bytes([member; 32]),
+            site_id: SiteId::from_bytes([site; 32]),
+            unit_id: UnitId::from_bytes([2; 32]),
+            payee: FinalDemandPrincipalId::from_bytes([member; 32]),
+            compensation,
+            period: 1,
+            available_hours: hours,
+            planned_hours: hours,
+            unplanned_hours: 0,
+            attended_hours: hours,
+            unattended_hours: 0,
+            production_hours: hours,
+            handling_hours: 0,
+            maintenance_hours: 0,
+            installation_hours: 0,
+            idle_hours: 0,
+            accrued_wages: wages,
+            production_wages: wages,
+            handling_wages: Currency::from_micro_units(0),
+            maintenance_wages: Currency::from_micro_units(0),
+            installation_wages: Currency::from_micro_units(0),
+            idle_wages: Currency::from_micro_units(0),
+        }
+    }
+
+    #[test]
+    fn a_working_owners_hours_count_and_their_wage_is_nothing() {
+        let costs = CostClose {
+            active: None,
+            attendance: AttendanceLedger::from_members(vec![
+                row(
+                    1,
+                    7,
+                    LaborCompensation::Wage(Currency::from_micro_units(20_000_000)),
+                    10,
+                ),
+                row(2, 7, LaborCompensation::WorkingOwner, 10),
+                row(
+                    3,
+                    8,
+                    LaborCompensation::Wage(Currency::from_micro_units(99_000_000)),
+                    5,
+                ),
+            ]),
+            wear_receipts: Vec::new(),
+            goods: GoodsCostLedger::default(),
+        };
+        let (wages, hours) = costs
+            .funded_wage(SiteId::from_bytes([7; 32]), UnitId::from_bytes([2; 32]))
+            .expect("the rows add");
+        assert_eq!((wages.micro_units(), hours), (200_000_000, 20));
+        let none = costs
+            .funded_wage(SiteId::from_bytes([9; 32]), UnitId::from_bytes([2; 32]))
+            .expect("no rows add to nothing");
+        assert_eq!((none.0.micro_units(), none.1), (0, 0));
+    }
 }

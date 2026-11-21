@@ -83,7 +83,7 @@ impl ServiceClose {
         state: &mut MaterialCircuitState,
         phase: ServiceStage,
         potential: &InventoryLedger,
-        _costs: &CostClose,
+        costs: &CostClose,
         movements: &mut Vec<MoneyTransferReceipt>,
         markets: &mut MarketTable,
     ) -> Result<()> {
@@ -97,7 +97,7 @@ impl ServiceClose {
             (phase, potential),
             &mut self.performance,
             movements,
-            markets,
+            (markets, costs),
         )
     }
     /// What buyers could fund at the posted prices, by market, for the stage's cap on batches.

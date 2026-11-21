@@ -413,3 +413,14 @@ fn fund_member_attendance(
         idle_wages: wages,
     })
 }
+
+#[cfg(test)]
+impl AttendanceLedger {
+    /// A ledger of the given member rows, for tests of what reads them.
+    pub(crate) fn from_members(members: Vec<MemberLaborUseReceipt>) -> Self {
+        Self {
+            members,
+            groups: BTreeMap::new(),
+        }
+    }
+}

@@ -966,9 +966,10 @@ pub(crate) fn dispatch_and_replenish(
     dispatches: &mut Vec<RoutedDispatchReceipt>,
     household_demand: &mut [HouseholdDemandReceipt],
     money_transfers: &mut Vec<MoneyTransferReceipt>,
-    costs: &mut CostClose,
+    books: (&mut CostClose, &mut MarketTable),
     aid: AidResolve<'_>,
 ) -> Result<(OutboundReceipts, Vec<ProcurementReceipt>), MaterialCircuitError> {
+    let (costs, markets) = books;
     let AidResolve {
         inputs: aid_inputs,
         services,
@@ -996,8 +997,14 @@ pub(crate) fn dispatch_and_replenish(
         )?;
     }
     crate::payments::settle_deliveries(state, money_transfers)?;
-    let (new_orders, procurement) =
-        crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
+    let (new_orders, procurement) = crate::recurring::firms::replenish(
+        catalog,
+        state,
+        &outbound.local_transfers,
+        money_transfers,
+        costs,
+        markets,
+    )?;
     let mut aid = crate::aid::prepare(
         catalog,
         state,
@@ -1044,6 +1051,11 @@ pub(crate) fn dispatch_and_replenish(
         costs.receive_local(state, receipt)?;
     }
     inventory::publish_inventory(state, inventory);
+    // With a market policy, a buyer paid the price of the market for goods the pass could not
+    // carry: those are cancelled and refunded, so that only goods in transit count as arriving.
+    if catalog.market_clearing.is_some() {
+        crate::recurring::firms::cancel_unsent(state, &new_orders, money_transfers)?;
+    }
     crate::payments::settle_deliveries(state, money_transfers)?;
     Ok((outbound, procurement))
 }
@@ -1480,7 +1492,7 @@ fn close_support_parts(
         &mut dispatches,
         &mut funded.household_demand,
         &mut money_transfers,
-        &mut costs,
+        (&mut costs, &mut funded.markets),
         AidResolve {
             inputs: aid_inputs,
             services: &funded.services.household,

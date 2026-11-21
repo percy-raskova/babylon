@@ -274,20 +274,33 @@ impl ServiceFixture {
                 });
             }
         }
+        let mut offers: Vec<_> = [UTILITY, LOCAL, PUBLIC]
+            .into_iter()
+            .map(|service| SellerOffer {
+                site_id: support::site(provider(service)),
+                good_id: support::good(service),
+                unit_id: support::units(),
+                unit_price: posted(service),
+                pricing: PricePolicy::Fixed,
+            })
+            .collect();
+        if self.business.is_some() {
+            // The business sells what it makes at a price that covers the utility many times over,
+            // so its limit (P5) never binds in these tests.
+            offers.push(SellerOffer {
+                site_id: support::site(BUSINESS),
+                good_id: support::good(PRODUCT),
+                unit_id: support::units(),
+                unit_price: support::dollars(100),
+                pricing: PricePolicy::Fixed,
+            });
+            offers.sort_by_key(|o| (o.site_id, o.good_id, o.unit_id));
+        }
         RecurringEconomy {
             households,
             household_stocks: vec![],
             household_purchases: purchases,
-            offers: [UTILITY, LOCAL, PUBLIC]
-                .into_iter()
-                .map(|service| SellerOffer {
-                    site_id: support::site(provider(service)),
-                    good_id: support::good(service),
-                    unit_id: support::units(),
-                    unit_price: posted(service),
-                    pricing: PricePolicy::Fixed,
-                })
-                .collect(),
+            offers,
             replenishment: vec![],
             production: self
                 .producers()

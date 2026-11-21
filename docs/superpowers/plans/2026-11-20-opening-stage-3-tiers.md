@@ -696,6 +696,72 @@ pub standards: BTreeMap<&'static str, HouseholdStandard>,
 - [ ] **Step 5: Run** `binary(small_world)` and the gate. **Step 6: Commit** `test(material-circuit):
   the small world buys in tiers` with the record.
 
+### Task 6: The wage tax is ahead of comforts and luxuries
+
+Added on 21 November 2026 (design O8 as amended that day). The stage 4 plan's small world with a
+fund showed it: the wage tax is collected at the close, after the buying, so a household with tiers
+bids for comforts with the tax's money. In the taxed world 280 of the 640 assessed was collected,
+the fund was short from period 3, and the quiet run with tiers was not still. Tasks 1 to 5 and the
+stage 4 plan (its Tasks 1 to 5) are built.
+
+**Files:**
+- Modify: `src/tiers/lists.rs` (`HouseholdLists::open` and the reserve of a want);
+  `src/transition/state.rs` (what `open` is given); `contracts/material_circuit_v4.yaml` (the line on
+  what a want may use) and the digest; `tests/small_world/benefits.rs` and
+  `reports/economy-repair-2026-11-20/small-world.md` (the fund's runs under tiers, form (b))
+- Test: `src/tiers/tests.rs`; `tests/market_clearing/wants.rs`; `tests/small_world/benefits.rs`
+
+**Interfaces:**
+- Consumes: `HouseholdLists::open`, `ListRung`, the tax rows of `FinancialInstitutions` (after the
+  stage 4 plan a payer may hold several rows of one basis), `CostClose::tax_base`, `fraction`.
+- Produces: `HouseholdLists::tax_ahead(&self, principal: FinalDemandPrincipalId) -> Currency`, the
+  wage tax the account owes for the period as the lists opened; 0 for an account with no wage tax
+  row. Every want rung's reserve is the reserve of Task 3a plus this amount.
+
+**Decisions:**
+1. The amount is what the close will assess: for each tax row of the account with the wage basis,
+   `fraction(wage income of the period, rate_bps, 10_000)`, summed, with the wage income the
+   statement holds when the lists open. Wages are paid at the opening of the period, before any
+   buying (rule R6). If the statement does not yet hold them when `open` runs, read the same figure
+   from where the period's wages were booked, and say in the report where. A test proves the amount
+   equals the `assessed` of the close's tax receipts for the same account and period.
+2. Only wants are held back. A need rung keeps reserve 0 and bids with the whole purse, as today; a
+   household short of its needs may still leave tax uncollected, as today.
+3. A catalog without wants takes today's path. A catalog with wants and a state with no wage tax row
+   gives every figure it gives today: `tax_ahead` is 0, and every pinned value of Tasks 1 to 5 and
+   of `tests/small_world/tiers.rs` (an untaxed world) holds.
+4. The reserves along a bid still never fall: the same amount is added to every want rung.
+5. The money held back stays in the account until the close collects it. No new record.
+6. The small world: the fund's world under tiers (the stage 4 plan's form (b)) is run again. Its
+   quiet run is expected to be exactly still now; assert it with `assert_still` if it is, and if
+   it is not, say why with the figures and do not force it. P1 to P5 of form (b) and their
+   controls are pinned again as the engine now does. In the record keep form (b)'s tables as they
+   are under a heading that says they show the engine before this task, and add the tables after
+   it beside them, with one or two plain sentences for each run on what changed and why. Form
+   (a), the runs without a market policy, and every run of `quiet.rs`, `pushed.rs` and `tiers.rs`
+   keep every figure.
+
+- [ ] **Step 1: Write the failing tests.** In `src/tiers/tests.rs`:
+  `a_want_leaves_the_wage_tax_untouched` (an account with $100 of cash, a need that costs $60 still
+  to buy in another product, a want of 10 units posted at $4, and `tax_ahead` $20: the want rung's
+  reserve is $80, so at $4 it can pay for 5; with `tax_ahead` 0 the reserve is $60 and it can pay
+  for 10); `the_tax_is_added_to_every_want_rung_and_to_no_need` (two wants of one product in tiers 2
+  and 3: both reserves rise by $20, the need rung stays at 0, and the reserves do not fall). In
+  `tests/market_clearing/wants.rs`: `a_taxed_household_pays_its_tax_after_its_comforts` (the goods
+  fixture with one account paid a wage of $100 at the opening, a wage tax of 2,000 points to a
+  public account, a need that costs $60 and a comfort wanted for more than the rest: it buys $20 of
+  comforts, the close's tax receipt shows assessed $20 and collected $20, uncollected 0; the same
+  fixture built without the wage tax row buys $40 of comforts);
+  `the_amount_held_back_is_what_the_close_assesses` (for every household account of that fixture,
+  `tax_ahead` equals the sum of `assessed` over its wage tax receipts of the period).
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** `binary(market_clearing)`, the crate's unit tests of `tiers`, then
+  `binary(small_world)`. Run the dump for the fund's world under tiers, pin form (b) again and
+  update the record (decision 6).
+- [ ] **Step 5: Run** the gate. **Step 6: Commit** `fix(material-circuit): the wage tax is ahead of
+  comforts and luxuries`.
+
 ## What the later plan carries
 
 The engine's transition now holds the records; the tick register refuses them (Task 3a, decision 7).

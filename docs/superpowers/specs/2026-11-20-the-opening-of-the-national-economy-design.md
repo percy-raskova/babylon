@@ -168,9 +168,10 @@ survey. A need that is not met is going without. A comfort or a luxury that is n
 
 **O8. Comforts and luxuries bid in the same markets as needs.** A household bids for a thing with
 the money it does not need, at posted prices, for the things ahead of it in its list that it has
-still to buy this period. So its own needs come before its own comforts. Between households, money
-decides: in a short market a better-off household's comfort can outbid a poorer household's need,
-at one price for all (ADR312).
+still to buy this period. So its own needs come before its own comforts. So does the tax it owes on
+the period's wages: that tax is collected after the buying, and a comfort bought with its money
+would leave it unpaid. Between households, money decides: in a short market a better-off
+household's comfort can outbid a poorer household's need, at one price for all (ADR312).
 
 This amends ADR312 in two places. Its P2 gave a buyer one bid in a market; a household's bid now has
 a rung for each tier, each with the money that tier may use. Its P7 named seven products in the
@@ -330,6 +331,10 @@ is deeper than two periods.
 18. **The County Review's floor follows the wage** (O2): two hours at Wayne's average pay, about
     $74, where the earlier ruling named $48 (two hours at $24).
 19. **The City PD pays the wage of its one payroll workplace** (O2).
+20. **The wage tax is ahead of comforts and luxuries** (O8). Measured on the small world with a
+    fund: with the tax collected after the buying, households spent its money on comforts, 280 of
+    640 was collected, and the fund was short from the third period. A need still bids with the
+    whole purse, as today.
 
 ## 10. Build order
 

@@ -1473,6 +1473,9 @@ mod tests {
         fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
             Vec::new()
         }
+        fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+            Vec::new()
+        }
     }
 
     #[test]

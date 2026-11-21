@@ -917,6 +917,31 @@ impl CanonicalState for HypergraphStore {
             .collect()
     }
 
+    /// Walks the library's `edge_ids()` and, once per hyperedge, its
+    /// `members_with_data`, skipping memberships whose map is empty. No id
+    /// scan: the cost is the incidence count times each member's own
+    /// membership count.
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+        let mut rows = Vec::new();
+        for key in self.inner.edge_ids() {
+            let Some(id) = self.hyperedge_keys.get(&key).copied() else {
+                continue;
+            };
+            for (member_key, payload) in self.inner.members_with_data(&key).unwrap_or_default() {
+                if payload.fields.is_empty() {
+                    continue;
+                }
+                let Some(member) = self.node_keys.get(&member_key).copied() else {
+                    continue;
+                };
+                for (name, value) in &payload.fields {
+                    rows.push((id, member, name.clone(), *value));
+                }
+            }
+        }
+        rows
+    }
+
     /// Walks the library's `edge_ids()`, maps each through the identity
     /// map, reads members, maps those back, and reads the type off `attrs`
     /// — no sorting here (the provided `encode_state` sorts; a store that

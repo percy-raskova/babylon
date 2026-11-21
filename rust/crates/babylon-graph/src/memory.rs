@@ -191,6 +191,13 @@ impl CanonicalState for MemoryGraph {
             .map(|((id, name), value)| (*id, name.clone(), *value))
             .collect()
     }
+
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+        self.membership_attributes
+            .iter()
+            .map(|((id, member, name), value)| (*id, *member, name.clone(), *value))
+            .collect()
+    }
 }
 
 impl GraphSubstrate for MemoryGraph {

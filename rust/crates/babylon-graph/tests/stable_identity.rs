@@ -490,6 +490,7 @@ struct StateFacts {
     edge_f64: Vec<(String, NodeId, NodeId, String, f64)>,
     node_currency: Vec<(NodeId, String, Currency)>,
     hyperedge_f64: Vec<(HyperedgeId, String, f64)>,
+    membership_f64: Vec<(HyperedgeId, NodeId, String, f64)>,
 }
 
 impl StateFacts {
@@ -502,6 +503,7 @@ impl StateFacts {
             edge_f64: graph.all_edge_attributes(),
             node_currency: graph.all_currency_attributes(),
             hyperedge_f64: graph.all_hyperedge_attributes(),
+            membership_f64: graph.all_membership_attributes(),
         }
     }
 }
@@ -527,6 +529,9 @@ impl CanonicalState for StateFacts {
     }
     fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
         self.hyperedge_f64.clone()
+    }
+    fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
+        self.membership_f64.clone()
     }
 }
 

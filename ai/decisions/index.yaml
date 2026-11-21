@@ -1,6 +1,6 @@
 meta:
-  version: 1.102.0
-  updated: '2026-11-20'
+  version: 1.103.0
+  updated: '2026-11-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR314_how_the_economy_adjusts:
+    title: The economy adjusts by prices, plans, credit, pay and capital that move, and comes back from a slump changed
+    status: accepted
+    date: '2026-11-21'
+    file: ADR314_how_the_economy_adjusts.yaml
   ADR313_the_national_economy_opens_in_balance:
     title: The national economy opens in balance, with twelve trades, observed pay, tiers and benefits
     status: accepted

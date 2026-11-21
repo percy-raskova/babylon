@@ -1,0 +1,237 @@
+ADR314_how_the_economy_adjusts:
+  title: The economy adjusts by prices, plans, credit, pay and capital that move, and comes back from a slump changed
+  date: '2026-11-21'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-21, after three rounds of measurement showed that the
+        engine never recovers from a shock: "ask me all the questions you need
+        answers from me on and lets keep in mind that we're making a game so we
+        want to orient all this design towards dynamic, emergent, engaging, and
+        invigorating gameplay".
+    - >-
+        Director, 2026-11-21, in five rounds of answers: design how the economy
+        adjusts now, as one thing, proven on the small test economy first;
+        cycles that leave scars; pay moves both ways and is fought over; raw
+        goods and energy swing in price while factories and services cut jobs;
+        people change jobs and move slowly, and the benefit moves with them;
+        companies shift work across borders from the start; a closed workplace
+        comes back through a buyer, a public body or its workers, and new
+        workplaces are founded; banks create money; businesses to keep running,
+        businesses to grow, households and public bodies can borrow; the lender
+        takes a business that cannot pay; the kind of work holds the core, and
+        machine-making stays; companies and big owners, middle households,
+        public bodies, and workers and organizations can found a workplace;
+        today's unions, from data, resist a pay cut at the opening; a failed
+        bank is handled as in today's law.
+    - >-
+        Director, 2026-11-21, on rent: "do some deep research into how landlords
+        handle market pricing and how rental markets work and make it an
+        engaging gameplay dynamic that leaves room for political struggle as a
+        gameplay option".
+    - >-
+        Director, 2026-11-21, on the state in a crash: "The government should
+        default to rescuing the big companies but this itself is another
+        opportunity for interesting gameplay and political struggle"; and on its
+        terms at the start: "i say by default 1, but through political struggle
+        if the player goes the DSA/electoral/new deal route they could get
+        number 2" (1: as in 2008; 2: the state takes a stake).
+    - >-
+        Director, 2026-11-21, on what sets the economy moving: its own
+        tendencies, events from the world's state, a calendar of world events,
+        shocks drawn from the campaign's seed, and "the players political
+        organizing and decisions can also lead to crises for example if there is
+        a call for a general strike, a union organizing effort, a tenant rent
+        strike, a mass protest that disrupts commerce and roads, etc".
+    - >-
+        Director, 2026-11-21, on which regions are core: core, rivals and
+        periphery, "but also australia, new zealand are imperialist core. and
+        then there are comprador states like kingdom of saudi arabia, bahrain,
+        taiwan is interesting dynamic with china, ukraine and its war deserves
+        ongoing consideration, also comprador states like el salvador".
+    - >-
+        Director, 2026-11-21: "the equity building properties of paying a
+        mortgage for homeowners are also somethign that will lead to their class
+        dyanmics and outlook and alignment, it is the level of settler
+        colonialism".
+    - >-
+        Director, 2026-11-21, on the design
+        (`docs/superpowers/specs/2026-11-21-how-the-economy-adjusts-design.md`):
+        "Approve: plan and build".
+  context: |
+    Measured on the small test economy on 21 November 2026
+    (`reports/economy-repair-2026-11-20/restoring-forces/`): left alone it is
+    exactly still; pushed once, every run ends in ruin within 200 periods, at
+    the small world's figures and at the country's. Twelve rules were tried
+    alone and seventeen sets together. A push on the side of demand can be
+    cured. A push that takes something real away cannot.
+
+    The causes are in the engine's rules. A goods price is judged after the
+    seller has restocked and stays silent while its stock drains. A service's
+    price is cut whenever it works under its full capacity. Every plan is made
+    from the period that closed. A buyer is bound to one named seller. A
+    workplace's workforce can only shrink, and none is created or retired. A
+    person is tied for life to one workplace. Nothing can be owed and money is
+    a fixed total. Pay never changes.
+
+    This record takes the place of step 3 of the order agreed on 20 November
+    (capital for expansion, with debt and bank credit) and brings forward the
+    heart of step 4 (trade by kind of product, with different techniques in
+    core and periphery). Rent, homes, mortgages and equity get their own
+    design, after the research the Director asked for.
+  decision: |
+    A1. ONE TEST FOR EVERY PRICE. A price steps up when buyers were turned away
+    or priced out, when the seller's stock stands under its buffer, or when its
+    cost has risen above the price. It steps down when what it offered beyond
+    its buffer went unsold and nobody was turned away.
+
+    A2. RAW GOODS AND ENERGY SWING. They move in large steps and open the next
+    period where a short market closed, never below the seller's direct cost.
+
+    A3. MADE GOODS AND SERVICES hold their price, one small step at a time, and
+    cut work first.
+
+    A4. A BUYER TAKES FROM THE CHEAPEST SELLER IT CAN REACH. A market is one
+    product in one place, with all its sellers.
+
+    A5. PLANS ARE MADE THROUGH THE WHOLE CHAIN OF SUPPLY, by orders placed at
+    the close for the next period, repeated until the plans rest.
+
+    A6. A WORKPLACE WITH SPARE MONEY plans for what was asked of it, not only
+    for what was paid for, as far as that money carries.
+
+    A7. BANKS are few, with their own capital, reserves, owners, costs and
+    profit. Every account keeps its money at one bank.
+
+    A8. A LOAN IS NEW MONEY. The money in all accounts, the banks' capital
+    included, equals base money plus the principal outstanding, to the cent.
+    Unpaid interest is a claim, not money. A write-off comes out of the bank's
+    capital. Base money changes only by a recorded act of the federal level.
+
+    A9. FOUR KINDS OF BORROWER, ONE KIND OF DEBT: a business to keep running, a
+    business to grow, a household, a public body. Existing mortgages are held
+    by banks once banks exist.
+
+    A10. LENDING AND THE RATE. A bank lends up to the law's multiple of its
+    capital, and each loan is bounded by the borrower's own books. The rate is
+    a price under the price rules; a borrower deep in debt pays more, by steps;
+    there is a legal highest rate. The rate stays under the rate of profit.
+
+    A11. NOT PAYING. What is not paid stays owed. A business unpaid for three
+    periods is taken by its lender, written down and sold. A public body that
+    cannot borrow cuts.
+
+    A12. A FAILING BANK is handled as in today's law: small deposits insured by
+    a federal fund, larger ones lose, owners lose everything, and depositors
+    above the insured sum run.
+
+    A13. THE RESCUE IS A POLICY, AND A FIGHT. At the opening its terms are
+    those of 2008: new base money lent to failing banks and to the largest
+    companies, owners keep everything, nothing is asked. Politics can change
+    who is rescued and on what terms.
+
+    A14. PEOPLE LOOKING FOR WORK BELONG TO THEIR PLACE and are hired by any
+    workplace there, the best-paying first.
+
+    A15. PAY MOVES BY STEPS. The rate for new hands follows the change in the
+    number looking for work. A workplace that cannot fill its hours raises pay
+    and draws hands. A cut for those at work is an act, taken by a workplace
+    that loses money and can replace them. The benefit and the minimum wage are
+    the floor.
+
+    A16. ORGANIZED WORKERS FIGHT IT. Unions open at their observed shares. A
+    stoppage starts when the fund would outlast the employer's money and ends
+    on the accounts as they change.
+
+    A17. A SHUT WORKPLACE STAYS ON THE MAP and comes back through a buyer, a
+    public body or its workers.
+
+    A18. NEW WORKPLACES ARE FOUNDED WHERE BUYERS ARE, by companies and big
+    owners, middle households, public bodies, and workers and organizations.
+
+    A19. CAPITAL GOES WHERE PROFIT IS, in rank order under a budget, at home or
+    abroad.
+
+    A20. THE KIND OF WORK HOLDS THE CORE. Regions are core, rivals or
+    periphery. Machines are made only in the core and by the rivals. Services
+    cannot leave. Every other goods trade may leave under core ownership.
+
+    A21. PEOPLE MOVE TOWARD WORK, SLOWLY, the longest-looking first, as far as
+    there is work and, later, homes. Their benefit moves with them.
+
+    A22. WHAT SETS IT MOVING: its own tendencies; outside events from the
+    world's state, a calendar or the campaign's seed; and what organized people
+    do to it.
+
+    A23. EVERY ACT LEAVES A RECORD, shown as news with its cause, and the
+    stored format changes once.
+
+    The design holds the full rules, what the player sees, what is left out,
+    the tests and the build order.
+  calls:
+    - >-
+        Raw goods and energy move in large steps and are not sold by an auction
+        downward, because buyers of raw goods do not buy more when the price
+        falls.
+    - 'Banks are few: national ones and one local bank for each place.'
+    - 'A business is in default after three periods without payment.'
+    - 'The insured sum counts for each household of a pooled group.'
+    - 'Only a rescue creates base money. The deposit fund draws on the federal budget.'
+    - 'Existing mortgages are held by banks, not by the stand-in lender of the homes design.'
+    - 'Pay for new hands follows the change in the number looking for work, not the number itself.'
+    - >-
+        A union stops work when its fund would outlast the employer's money; the
+        employer's horizon is one year.
+    - 'The small businesses of one trade in one place are counted together.'
+    - 'Founding and adding go only as far as buyers unserved or buyers to be won.'
+    - 'The companies'' weighted draw is replaced by a ranking by rate of profit, kept in the script.'
+    - 'Anyone may buy machines; only the core and the rivals make them.'
+    - 'Australia with New Zealand becomes a region of its own. A finer map of states is later work.'
+    - 'People stay in their income group when they change jobs.'
+    - 'One money for the world, and the same rules in every region.'
+    - >-
+        The opening carries observed bank debts, banks, unions and core-owned
+        workplaces abroad, coarse, from public figures. How much money the
+        opening holds is set with its builder and brought with numbers.
+    - 'No bound on a price spike; it is watched on the test economy and brought with numbers.'
+  alternatives_rejected:
+    - >-
+        Stabilizers added until the collapse stops. Measured: the best pair
+        cured only pushes on the side of demand and failed at the country's
+        figures, and the Director asked for an economy that swings.
+    - >-
+        Building everything and then measuring the country. The country takes
+        hours to run and hides causes that the small world shows in minutes.
+    - >-
+        An auction downward for raw goods. With buyers who do not buy more at a
+        lower price it has no resting point above the seller's cost.
+    - >-
+        Banks that only pass on savings, and lending by owners without banks.
+        The Director chose banks that create money, the most dramatic form.
+  open_questions:
+    - 'Rent, homes, mortgages and equity as play: the housing design, after the research.'
+    - >-
+        Comprador states, Taiwan beside China, and Ukraine's war, on a finer map
+        of states.
+    - 'The content of outside events, and tariffs and other politics of trade.'
+    - 'A bound on a price spike, if the test economy shows one is needed.'
+    - 'Shares, bonds and land titles that are bought and sold.'
+    - 'The player''s own verbs, with the player''s organization.'
+  verification: |
+    Each piece is first a throwaway prototype behind a switch on the small test
+    economy, measured for 400 periods at the small world's figures and at the
+    country's, and checked by a second reader against the rows. It must show:
+    the balanced world still with every source of motion off; work, output and
+    needs met in each band back to nineteen twentieths within five years of a
+    shock that ends; a settled state after a lasting loss; marks left by a
+    slump; a cycle with no outside push that ends by itself and is deeper with
+    the rescue off; pay moving both ways; sellers competing; every event read
+    from the records with its cause; money exact in every period; the rate
+    under the rate of profit.
+  related:
+    - ADR313_the_national_economy_opens_in_balance
+    - ADR312_the_price_of_a_short_market
+    - ADR306_household_units_in_wayne
+    - ADR089_vol3_money_scissors

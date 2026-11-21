@@ -185,6 +185,13 @@ ADR312_the_price_of_a_short_market:
         Measured on 2026-11-20 under today's rule: orders stuck behind a full
         route filled a buyer's position, it stopped ordering at home, and its
         home supplier laid off (design 7, 9; plan Task 5).
+    - >-
+        Amended on 2026-11-21 by ADR314. A market is one product in one place,
+        with all its sellers, and a buyer takes from the cheapest it can reach
+        (P1). A supplier plans from the orders its business buyers place at the
+        close (P14). Every posted price follows one test, the seller's buffer
+        and what was sold, and raw goods and energy move in large steps and open
+        where a short market closed (the one-step rule).
   alternatives_rejected:
     - >-
         Raising the price of money already set aside at the hand-over. It breaks
@@ -243,6 +250,7 @@ ADR312_the_price_of_a_short_market:
     by a second reader before the build; its findings are in both.
   related:
     - ADR313_the_national_economy_opens_in_balance
+    - ADR314_how_the_economy_adjusts
     - ADR306_household_units_in_wayne
     - ADR302_household_roster_and_counting
     - ADR184_capacity_belongs_to_organizations

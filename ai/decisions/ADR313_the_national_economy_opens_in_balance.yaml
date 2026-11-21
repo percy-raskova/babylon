@@ -182,6 +182,11 @@ ADR313_the_national_economy_opens_in_balance:
         world with a fund on 2026-11-21: with the tax collected after the
         buying, households spent its money on comforts and 280 of 640 was
         collected. A need still bids with the whole purse.
+    - >-
+        Amended on 2026-11-21 by ADR314. The opening is rebuilt on the rules of
+        adjustment: it carries banks, observed bank debts, unions and core-owned
+        workplaces abroad, and the top no longer has to spend nearly all it
+        earns. Stages 5 and 6 follow that design.
   alternatives_rejected:
     - 'Changing the numbers of today''s table. Measured: twelve candidates, none holds.'
     - >-
@@ -210,6 +215,7 @@ ADR313_the_national_economy_opens_in_balance:
     pushed runs that must show, spread and not collapse. Wayne played for
     twelve periods in the real client.
   related:
+    - ADR314_how_the_economy_adjusts
     - ADR312_the_price_of_a_short_market
     - ADR306_household_units_in_wayne
     - ADR301_county_review_session

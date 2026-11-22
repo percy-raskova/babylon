@@ -236,7 +236,16 @@ impl HypergraphStore {
             hyperedge_attributes.insert((hyperedge, qname.clone()), f64::from_bits(*bits));
         }
 
+        // Everything that can fail is checked before anything is changed: the
+        // listing below names only live memberships, and each is proved to
+        // exist now, so the swap that follows cannot stop partway.
         let membership_writes = self.restored_membership_payloads(resolver, source)?;
+        if membership_writes
+            .iter()
+            .any(|(edge_key, node, _)| self.inner.member_data(edge_key, node).is_none())
+        {
+            return Err(StableIdentityError::TopologyChanged);
+        }
 
         self.attributes = attributes;
         self.currency_attributes = currency_attributes;
@@ -273,7 +282,11 @@ impl HypergraphStore {
         }
         let mut writes = Vec::new();
         for edge_key in self.hyperedge_keys.keys() {
-            for (node, payload) in self.inner.members_with_data(edge_key).unwrap_or_default() {
+            let listed = self
+                .inner
+                .members_with_data(edge_key)
+                .ok_or(StableIdentityError::TopologyChanged)?;
+            for (node, payload) in listed {
                 match carried.remove(&(edge_key.clone(), node.clone())) {
                     Some(replacement) => writes.push((edge_key.clone(), node, replacement)),
                     None if !payload.fields.is_empty() => {
@@ -303,10 +316,11 @@ impl HypergraphStore {
     }
 
     /// The frozen pre-check (delta §8 covenant 6, CD4) at the head of every
-    /// one of the 8 mutating [`GraphSubstrate`] methods — `add_node`,
+    /// one of the 11 mutating [`GraphSubstrate`] methods — `add_node`,
     /// `remove_node`, `add_edge`, `remove_edge`, `update_node`,
-    /// `update_edge` (T3, ADR198 R1/R3), `add_hyperedge`,
-    /// `remove_hyperedge` — via the library's public
+    /// `update_node_currency`, `update_edge` (T3, ADR198 R1/R3),
+    /// `add_hyperedge`, `remove_hyperedge`, `update_hyperedge_attribute`,
+    /// `update_membership_attribute` — via the library's public
     /// `is_frozen()`. Nothing in this crate ever freezes `self.inner` (no
     /// `GraphSubstrate` method exposes a freeze verb — that would be
     /// amendment territory, delta §4 CD4), so this is defense against a
@@ -970,16 +984,22 @@ impl CanonicalState for HypergraphStore {
     fn all_membership_attributes(&self) -> Vec<(HyperedgeId, NodeId, String, f64)> {
         let mut rows = Vec::new();
         for key in self.inner.edge_ids() {
-            let Some(id) = self.hyperedge_keys.get(&key).copied() else {
-                continue;
-            };
+            let id = *self.hyperedge_keys.get(&key).unwrap_or_else(|| {
+                panic!(
+                    "internal invariant violated: library edge {key} \
+                     has no HyperedgeId mapping"
+                )
+            });
             for (member_key, payload) in self.inner.members_with_data(&key).unwrap_or_default() {
                 if payload.fields.is_empty() {
                     continue;
                 }
-                let Some(member) = self.node_keys.get(&member_key).copied() else {
-                    continue;
-                };
+                let member = *self.node_keys.get(&member_key).unwrap_or_else(|| {
+                    panic!(
+                        "internal invariant violated: library member {member_key} \
+                         has no NodeId mapping"
+                    )
+                });
                 for (name, value) in &payload.fields {
                     rows.push((id, member, name.clone(), *value));
                 }

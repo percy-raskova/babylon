@@ -1693,11 +1693,13 @@ where
     graph
         .remove_node(a)
         .expect("the fixture node exists before removal");
+    let gone = graph
+        .membership_attribute(h, a, "nation/households")
+        .expect_err("a removed node has no membership to read");
     assert!(
-        graph
-            .membership_attribute(h, a, "nation/households")
-            .is_err(),
-        "a removed node has no membership to read"
+        gone.message.contains("no such node"),
+        "a removed node is refused as a missing node, got: {}",
+        gone.message
     );
 
     let h2 = graph

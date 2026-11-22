@@ -246,13 +246,15 @@ fn canonical_bytes_agree_after_every_operation_in_a_mixed_script() {
         &[nodes[12], nodes[9], nodes[5], nodes[1]],
     );
     twin.add_hyperedge("economic_sector", &[nodes[2], nodes[0]]);
-    // D2: a hyperedge over members NONE of which the removals below touch,
-    // so its own explicit removal (not a remove_node cascade) is what
-    // exercises the direct path.
-    // Amendment AG (i): membership values, then the removals below sweep them.
+    // Amendment AG (i): membership values on a hyperedge whose members none of
+    // the removals below touch, so both stores must keep them through the
+    // cascades and the direct removal (they are compared in section 0x08).
     let sector = twin.add_hyperedge("economic_sector", &[nodes[8], nodes[10]]);
     twin.update_membership_attribute(sector, nodes[8], "sector/weight", 0.5);
     twin.update_membership_attribute(sector, nodes[10], "sector/weight", 0.25);
+    // D2: a hyperedge over members NONE of which the removals below touch,
+    // so its own explicit removal (not a remove_node cascade) is what
+    // exercises the direct path.
     let directly_removed = twin.add_hyperedge("economic_sector", &[nodes[3], nodes[4], nodes[6]]);
 
     // Removals exercising the CASCADE (a multi-member hyperedge shrinks,

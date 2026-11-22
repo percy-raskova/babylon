@@ -291,7 +291,7 @@ What the approved design says to each link:
 | --- | --- |
 | 2, the farm cannot hire | People laid off look for work at every workplace of their place (A14), and a workplace that cannot fill its hours raises its pay and draws hands (A15). The third part. Its stand-in on the bench, lent hands, fails here |
 | 3, capital is never paid out | Silent. The design has no top-ups: credit takes their place |
-| 4, service prices fall and stay down | A1 takes away the price cut for running under full capacity. Its stand-in on the bench is R, which no round ran alone on the best set |
+| 4, service prices fall and stay down | A1 takes away the price cut for running under full capacity, and A3 has a workplace lay off before it cuts its price. The bench's stand-in for A1 here is R; run alone on the best set after the round, it changes nothing (section 12) |
 | 6, a loss covered for good | A loan to keep running is given only when what it pays for will sell above its cost, and it is repaid from sales before any profit is paid (A9). A business that is refused lays off (A3). The second and third parts |
 | 5, 7 and 8 | Silent on the order in which a household spends and on the level of the fund |
 
@@ -367,16 +367,41 @@ The design's rules of the first part, as measured on the bench in rounds four to
 | A5, plans through the chain (D) | In every best set. Helps at the small figures, mixed at the national |
 | A6, spare money (F2) | In every best set. Equal to its prototype but for one line, where it follows the design |
 
-## 12. What follows
+## 12. After the round: the rule for service prices, alone on the best set
+
+Section 7 names the fall of the two service prices as one link, and the first part has a rule for service prices (R:
+a service cuts its price only when it performed under its plan). No round had run it alone on the best set. This run
+did, with buyers bound, at both sets of figures, for 200 and for 400 periods. A control first reproduced round six's
+best set byte for byte, in all 25 files.
+
+- **The rule changes nothing in the returning harvest.** Where the harvest fails on both copies, the runs with the
+  rule are the same in every realized column as the runs without it, at both sets of figures and both lengths. Power
+  still falls from $12 to about $10 and care from $30 to $24, and they stay there.
+- **Why.** In the shock both services do perform under their plans, so the rule's condition holds and the price is
+  cut as before. In the taxed world at the small figures the utility plans 120 hours in every period and uses 112 to
+  115 of them from period 3. The clinic plans 40 and uses 31 to 33 in periods 2 to 4.
+- **Over all pushed runs the rule is no better.** Runs of 17 that are better with it, then worse, at 200 periods: 0
+  and 5 at the small figures, 2 and 8 at the national. At 400 periods: 2 and 4, and 3 and 4. No workplace stops for
+  good with it or without it.
+- Of the 25 runs of a set, 19 at the small figures and 14 at the national are the same in every realized column with
+  the rule and without it. The quiet runs are among them.
+- The counts were made twice, from each set's summary and from the raw rows, and agree.
+
+What it means. Rule A1's own words cut a price when hours that were offered go unsold. What the design sets against
+a price that falls step after step is rule A3: a workplace lays off before it cuts its price again. Nothing on the
+bench lays off. The utility goes on planning 120 hours at a loss because its owner's top-up pays for whatever it
+plans, where the design's loan would be refused (A9). So this link waits for the second and third parts, like the
+others.
+
+## 13. What follows
 
 - The design says of itself that no piece works alone (its section 7). These rows agree. What the best set lacks to
   come back after a shock is traced in section 7, and its links belong to later parts: a business that is lent money
   only when that pays, and repays it (the second part); a workplace that lays off before it pays idle hours, and one
   that can draw hands (the third); a way back for one that has shut (the fourth).
 - The new price steps of the first part, as built, made the bench worse than the engine's own price rules in three
-  rounds. They are not built now. One of them, the rule for service prices (R), stands for the part of rule A1 that
-  takes away the price cut for running under capacity, which is link 4 of section 7. No round ran it alone on the
-  best set. That run comes first, before rule A1 is judged as a whole.
+  rounds, together and one by one, and the rule for service prices alone changes nothing where it was hoped to help
+  (section 12). They are not built now. They are measured again once a workplace can lay off.
 - A buyer who takes from the cheapest seller is not built now. It cannot be judged before a loser can shrink and
   come back.
 - What stands is built: plans through the chain (A5), beside the spare-money rule that is built (A6). Its plan is
@@ -385,5 +410,6 @@ The design's rules of the first part, as measured on the bench in rounds four to
 - That plan keeps one thing from the prototype that link 2 of section 7 shows at work: a buyer orders for the plan
   it made, even past what its people can work. It is kept so that the built rule is the measured one, and a capped
   form is to be measured with a switch.
-- Next on the bench after that: the second and third parts together, with a bank as the design states it and people
-  who look for work in their place.
+- Next on the bench: the second and third parts together. A bank as the design states it, in place of the owners'
+  top-ups: it lends only when what the loan pays for sells above its cost, and is repaid before any profit. People
+  who look for work in their place, and a workplace that raises its pay to draw hands, in place of lent hands.

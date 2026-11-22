@@ -25,7 +25,7 @@ pub(crate) const MEMBERSHIP_QNAME: &str = "economic-sector/weight";
 /// members carry values (7 and -3), authored as a replacement graph
 /// declarations artifact: the way content reaches a campaign, nothing else.
 pub(crate) fn catalog_with_membership_values() -> MichiganMaterialCatalog {
-    use crate::economic_catalog::{SourceArtifact, SourceArtifactKind};
+    use crate::economic_catalog::SourceArtifactKind;
     let mut catalog = catalog();
     let shipped = catalog
         .captured_sources()
@@ -42,14 +42,7 @@ pub(crate) fn catalog_with_membership_values() -> MichiganMaterialCatalog {
         a = MEMBERSHIP_COUNTIES[0],
         b = MEMBERSHIP_COUNTIES[1],
     );
-    catalog
-        .source_inputs
-        .retain(|source| source.kind() != SourceArtifactKind::GraphDeclarations);
-    catalog.source_inputs.push(SourceArtifact::capture(
-        SourceArtifactKind::GraphDeclarations,
-        authored.into_bytes(),
-    ));
-    catalog.source_inputs.sort_by_key(SourceArtifact::kind);
+    catalog.replace_source(SourceArtifactKind::GraphDeclarations, authored.into_bytes());
     catalog
 }
 

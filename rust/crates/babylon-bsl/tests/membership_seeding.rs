@@ -32,7 +32,8 @@ fn annotated_members_seed_their_values() {
            (member NodeType/SOCIAL_CLASS g1 (nation/households 120) (nation/share 0.5p))
            (member NodeType/SOCIAL_CLASS g2 (nation/share 0.25p) (nation/households 7))))
          (hyperedge n2 HyperedgeType/NATION (members
-           (member NodeType/SOCIAL_CLASS g1 (nation/households 30) (nation/share 1))))",
+           (member NodeType/SOCIAL_CLASS g1 (nation/households 30) (nation/share 1))
+           (member NodeType/SOCIAL_CLASS g2 (nation/households 9) (nation/share 0.75p))))",
     )
     .expect("an annotated hydration loads");
     let nations = graph.hyperedges("NATION");
@@ -48,10 +49,13 @@ fn annotated_members_seed_their_values() {
     assert!((read(0, g1, "nation/share") - 0.5).abs() < 1e-12);
     assert!((read(0, g2, "nation/households") - 7.0).abs() < 1e-12);
     assert!((read(0, g2, "nation/share") - 0.25).abs() < 1e-12);
-    // The same group in the other nation keeps its own value.
+    // The same two groups in the other nation keep their own values.
     assert!((read(1, g1, "nation/households") - 30.0).abs() < 1e-12);
+    assert!((read(1, g1, "nation/share") - 1.0).abs() < 1e-12);
+    assert!((read(1, g2, "nation/households") - 9.0).abs() < 1e-12);
+    assert!((read(1, g2, "nation/share") - 0.75).abs() < 1e-12);
     assert!(graph.is_member(nations[1], g1).expect("known pair"));
-    assert!(!graph.is_member(nations[1], g2).expect("known pair"));
+    assert!(graph.is_member(nations[1], g2).expect("known pair"));
 }
 
 #[test]
@@ -125,4 +129,32 @@ fn an_int_payload_past_2_pow_53_is_refused() {
            (member NodeType/SOCIAL_CLASS g1 (nation/households 1) (nation/share 6))))",
     );
     assert!(e.message.contains("nation/share"), "{}", e.message);
+}
+
+#[test]
+fn hyperedge_attr_refuses_a_membership_field_with_e_load_046() {
+    // The scenario twin of the wrong-form law: a membership field is seeded in a member item,
+    // never as the hyperedge's own attribute.
+    let e = refusal(
+        "(hyperedge n1 HyperedgeType/NATION (members
+           (member NodeType/SOCIAL_CLASS g1 (nation/households 120) (nation/share 0.5p))))
+         (hyperedge-attr n1 nation/households 5)",
+    );
+    assert_eq!(e.code, Some("E-LOAD-046"), "{}", e.message);
+    // The hyperedge's own field still seeds as before.
+    let graph = load(
+        "(hyperedge n1 HyperedgeType/NATION (members
+           (member NodeType/SOCIAL_CLASS g1 (nation/households 120) (nation/share 0.5p))))
+         (hyperedge-attr n1 nation/label 5)",
+    )
+    .expect("a hyperedge's own field seeds through hyperedge-attr");
+    let nation = graph.hyperedges("NATION")[0];
+    assert!(
+        (graph
+            .hyperedge_attribute(nation, "nation/label")
+            .expect("seeded")
+            - 5.0)
+            .abs()
+            < 1e-12
+    );
 }

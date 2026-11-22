@@ -2,8 +2,12 @@
 //! lands in `LoadedScenario::membership_fields`, and the refusals carry their codes. The rule
 //! dialect's twins live in `declarations.rs`; the wrong-form law (`E-LOAD-046`) in `grammar.rs`.
 
+use babylon_bsl::declarations::FieldRegistry;
+use babylon_bsl::reader;
 use babylon_bsl::scenario;
+use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::types::{BslType, FieldKind};
+use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
 
 #[test]
@@ -116,4 +120,41 @@ fn a_currency_membership_field_is_refused() {
         "{}",
         err.message
     );
+}
+
+#[test]
+fn a_declaration_wrong_in_owner_and_operand_gets_the_same_code_in_both_dialects() {
+    // §2.9 checks the owner first: a node owner (E-LOAD-048) wins over an edge-type operand
+    // (E-TYPE-011), in the scenario dialect as in the rule dialect.
+    let mut graph = MemoryGraph::new();
+    let err = scenario::load_scenario(
+        "(scenario ft/m (defvocabulary NodeType (SOCIAL_CLASS)) \
+         (defvocabulary EdgeType (SOLIDARITY)) \
+         (defvocabulary HyperedgeType (NATION)) \
+         (deffield social-class/households int extensive :member EdgeType/SOLIDARITY))",
+        &mut graph,
+    )
+    .expect_err("the declaration is wrong in both ways");
+    assert_eq!(err.code, Some("E-LOAD-048"), "{}", err.message);
+
+    let vocabulary = ClosedVocabulary::new([
+        (EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()]),
+        (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
+        (EnumKind::HyperedgeType, vec!["NATION".to_owned()]),
+    ])
+    .expect("the fixture vocabulary is disjoint");
+    let mut registry = FieldRegistry::default();
+    let rule_err = registry
+        .declare(
+            &reader::read(
+                "(deffield social-class/households :type int :kind extensive \
+                 :member EdgeType/SOLIDARITY)",
+            )
+            .expect("parses")
+            .0,
+            &vocabulary,
+            &EnumRegistry::default(),
+        )
+        .expect_err("the declaration is wrong in both ways");
+    assert_eq!(rule_err.spec_code(), err.code);
 }

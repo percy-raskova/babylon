@@ -191,6 +191,12 @@ fn classify_form(items: &[SExpr], env: &ClassEnv<'_>) -> ScoreClass {
             Some(SExpr::Atom(Atom::QName(qname))) => field_class(env, qname),
             _ => ScoreClass::Unknown,
         },
+        // §2.10: the membership accessor reads a declared field like `field-of`; its
+        // qname sits one place later (after the hyperedge and the member).
+        "membership-field-of" => match items.get(3) {
+            Some(SExpr::Atom(Atom::QName(qname))) => field_class(env, qname),
+            _ => ScoreClass::Unknown,
+        },
         "edge-between" => ScoreClass::EdgeReference,
         "the" => ScoreClass::NodeReference,
         // `metric-of`'s declared `:type` is a §3.1 scalar (§2.11's grammar

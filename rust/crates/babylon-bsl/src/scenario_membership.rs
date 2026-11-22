@@ -199,6 +199,32 @@ fn read_pair<'a>(pair: &'a SExpr, form: &str) -> Result<(&'a String, &'a Atom), 
     )))
 }
 
+/// The wrong-form law's scenario twin (§2.9, D79): `(hyperedge-attr ...)` seeds a hyperedge's OWN
+/// field, so a qname declared as a membership field is `E-LOAD-046`, the code's one home being
+/// [`GrammarError::MembershipFormMismatch`]. A membership field is seeded in a member item.
+pub(crate) fn refuse_membership_field(
+    local: &str,
+    field: &str,
+    membership_fields: &BTreeMap<String, String>,
+) -> Result<(), ScenarioError> {
+    if !membership_fields.contains_key(field) {
+        return Ok(());
+    }
+    let error = GrammarError::MembershipFormMismatch {
+        form: "hyperedge-attr".to_owned(),
+        field: field.to_owned(),
+        field_is_membership: true,
+    };
+    Err(scenario::coded_err(
+        error.spec_code(),
+        format!(
+            "hyperedge-attr `{local}`: field `{field}` is a membership field, not the hyperedge's \
+             own — seed it in a (member <NodeType/MEMBER> <local-name> ({field} <value>)) item \
+             of the hyperedge's members form (§2.9)"
+        ),
+    ))
+}
+
 /// One `update_membership_attribute` per seeded value, after the hyperedge is minted.
 pub(crate) fn write_member_values(
     graph: &mut dyn GraphSubstrate,

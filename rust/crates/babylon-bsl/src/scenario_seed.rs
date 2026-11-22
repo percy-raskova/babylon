@@ -498,7 +498,7 @@ impl Hydration {
                     graph,
                     &self.hyperedges,
                     &mut attrs,
-                    &loaded.fields,
+                    (&loaded.fields, &loaded.membership_fields),
                     &loaded.enums,
                 )?;
             }

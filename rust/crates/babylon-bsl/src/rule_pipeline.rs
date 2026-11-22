@@ -432,6 +432,7 @@ pub fn load_rule_form(
         .map_err(LoadError::Type)?;
     crate::typecheck::check_reference_comparisons(&rule, ctx.types, &bindings)
         .map_err(LoadError::Type)?;
+    crate::typecheck::check_membership_form_fields(&rule, ctx.types).map_err(LoadError::Type)?;
     // §2.13 (D101/D102): the D102 field-of-on-enum-field DEFERRAL gate that
     // used to run here is DISCHARGED (Task 1, P27 territory-port train) —
     // `field-of` over an enum-declared field now typechecks (the §2.7

@@ -662,8 +662,7 @@ impl<'a> EffectExecutor<'a> {
             id,
             field,
             "update-hyperedge",
-            env.graph
-                .expect("collect needs the pre-state graph (the driver always passes one)"),
+            crate::evaluator::require_graph(env, "update-hyperedge")?,
         )?;
         let SExpr::List(op_items) = op_form else {
             return Err(plain(
@@ -722,8 +721,7 @@ impl<'a> EffectExecutor<'a> {
         let hyperedge_id = Self::resolve_hyperedge(hyperedge, env, host, fuel)?;
         let member_id = Self::resolve_node(member, env, host, fuel)?;
         crate::evaluator::check_membership_referents(
-            env.graph
-                .expect("collect needs the pre-state graph (the driver always passes one)"),
+            crate::evaluator::require_graph(env, "update-membership")?,
             self.types,
             hyperedge_id,
             member_id,
@@ -4009,10 +4007,55 @@ mod tests {
             .run("(effects (update-membership n1 g1 nation/share (set 2)))")
             .expect_err("a probability above 1 is refused, never clamped");
         assert_eq!(err.code, Some(EvalCode::StoreRangeViolation), "{err}");
+        // The refused write did not land: the stored value is what it was.
+        let share = |world: &MembershipWorld| {
+            let (Value::HyperedgeRef(h), Value::NodeRef(m)) =
+                (&world.bindings["n1"], &world.bindings["g1"])
+            else {
+                unreachable!("the fixture binds references")
+            };
+            world
+                .graph
+                .membership_attribute(*h, *m, "nation/share")
+                .expect("the fixture membership carries the field")
+        };
+        assert_eq!(share(&world).to_bits(), 0.5_f64.to_bits());
         // The boundary itself is admitted.
         world
             .run("(effects (update-membership n1 g1 nation/share (set 1)))")
             .expect("1 is inside [0, 1]");
+        assert_eq!(share(&world).to_bits(), 1.0_f64.to_bits());
+    }
+
+    #[test]
+    fn update_membership_of_a_field_the_membership_never_carried_is_e_eval_031() {
+        let mut world = membership_world();
+        // A membership minted through the store's own interface, with no value for any field.
+        let Value::NodeRef(g1) = world.bindings["g1"] else {
+            unreachable!("the fixture binds references")
+        };
+        let bare = world
+            .graph
+            .add_hyperedge("NATION", &[g1])
+            .expect("a bare hyperedge mints");
+        world
+            .bindings
+            .insert("n3".to_owned(), Value::HyperedgeRef(bare));
+        for op in ["(set 1)", "(add 1)"] {
+            let err = world
+                .run(&format!(
+                    "(effects (update-membership n3 g1 nation/mass {op}))"
+                ))
+                .expect_err("the membership never carried the field");
+            assert_eq!(err.code, Some(EvalCode::ExistenceDiscipline), "{op}: {err}");
+        }
+        assert!(
+            world
+                .graph
+                .membership_attribute(bare, g1, "nation/mass")
+                .is_err(),
+            "the refused write did not land"
+        );
     }
 
     #[test]

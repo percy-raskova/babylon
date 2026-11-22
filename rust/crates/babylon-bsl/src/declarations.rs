@@ -432,7 +432,9 @@ impl FieldRegistry {
     /// Check every declared field against the kernel's model registration
     /// (`E-LOAD-022`, D9: the two must agree and the kernel is checked
     /// against content, not the reverse). Implicit rows are exempt: they
-    /// have no authored declaration to disagree with.
+    /// have no authored declaration to disagree with. Only type and kind are
+    /// compared: a `:member` half is not yet, because the kernel's map cannot carry one (and no
+    /// production path calls this method), so Task 6's decision 3 stays owed to Task 11.
     ///
     /// # Errors
     ///

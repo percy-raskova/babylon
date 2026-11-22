@@ -354,6 +354,30 @@ pub fn check_reference_comparisons(
     walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
 }
 
+/// Both membership forms (`membership-field-of`, `update-membership`; §2.10) name their field at
+/// operand 3: a qname declared nowhere is refused here, at load, with the typechecker's own
+/// unknown-field refusal (`code: None`, as the read inside a fold already gets from
+/// [`typecheck_aggregation`]'s field resolution) rather than left to die mid-tick as `E-EVAL-033`.
+///
+/// # Errors
+///
+/// A structural [`TypeError`] naming the unknown field.
+pub fn check_membership_form_fields(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if let [SExpr::Atom(Atom::Symbol(head)), _, _, SExpr::Atom(Atom::QName(qname)), ..] =
+        items.as_slice()
+    {
+        if matches!(head.as_str(), "membership-field-of" | "update-membership") {
+            resolve_field(env, qname)?;
+        }
+    }
+    items
+        .iter()
+        .try_for_each(|child| check_membership_form_fields(child, env))
+}
+
 /// **§2.13's no-arithmetic law (D101), the static half (D118, #528 fix
 /// round Item C).** `Enum<T>` supports no arithmetic (§2.13, §3.1) — an
 /// `add`/`sub`/`scale` `update-op` targeting an `:enum-type`-declared
@@ -718,6 +742,14 @@ fn list_kind(
         Some(SExpr::Atom(Atom::Symbol(head))) if head == "if" => if_kind(items, env, bindings),
         Some(SExpr::Atom(Atom::Symbol(head))) if head == "field-of" => {
             Ok(field_of_kind(items, env))
+        }
+        // §3.4: the membership accessor carries its field's kind the same way; its qname
+        // is the fourth item (after the hyperedge and the member).
+        Some(SExpr::Atom(Atom::Symbol(head))) if head == "membership-field-of" => {
+            Ok(match items.get(3) {
+                Some(SExpr::Atom(Atom::QName(qname))) => field_kind(env, qname),
+                _ => None,
+            })
         }
         Some(SExpr::Atom(Atom::Symbol(head))) if head == "fold" => fold_kind(items, env, bindings),
         _ => Ok(None),

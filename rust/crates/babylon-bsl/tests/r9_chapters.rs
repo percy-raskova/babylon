@@ -2848,8 +2848,9 @@ mod c14_rng_draw_retirement {
 // membership `deffield` and bare member items, whose state hash was pinned on
 // the tree before any membership value existed. Every later task of the plan
 // runs it, so a byte that moves for a field-free world is caught in the task
-// that moved it. The tests that read and write a membership's value join this
-// module with the tasks that serve them.
+// that moved it. The tests that read and write a membership's value are not
+// in this module: they are in its sibling, `ag_attributed_membership_nations`,
+// below.
 mod ag_attributed_membership {
     use babylon_bsl::scenario;
     use babylon_graph::memory::MemoryGraph;
@@ -2899,10 +2900,13 @@ mod ag_attributed_membership {
 //
 // §6.2 family 23 over the nation case (§2.12; the housing design's rule H1 is
 // its second consumer). The fixture is NOT the field-free twin above plus a
-// `:member` line: it declares one membership field and gives each group a
-// field of its own, so that a rule (which has a node for its subject and
-// cannot name `n1` or `g1`) can bind the group, reach its nations with
-// `hyperedges-of`, and tell them apart by `nation/code`.
+// `:member` line: besides `nation/households` it declares `group/id`, the two
+// fields `group/read-1` and `group/read-2` that a rule writes its reads into,
+// and the intensive `nation/visibility`. It gives each group a field of its
+// own so that a rule (which has a node for its subject and cannot name `n1` or
+// `g1`) can bind the group, reach its nations with `hyperedges-of`, and tell
+// them apart by `nation/code`; the field-free twin needs none of that, its only
+// job being to hold the bytes of a world without the field.
 //
 // Owed to the shape-verb lane, and not served here: the vectors of family 23
 // that need a RULE's `add-hyperedge` (the mint-time `(member ...)` items and
@@ -3066,10 +3070,28 @@ mod ag_attributed_membership_nations {
         .expect("the tick runs");
     }
 
+    /// The fixture's nations and groups by the names the scenario gave them (its content
+    /// ids), never by their position in id order.
     fn ids(world: &World) -> (HyperedgeId, HyperedgeId, NodeId, NodeId) {
-        let nations = world.graph.hyperedges("NATION");
-        let groups = world.graph.nodes("GROUP");
-        (nations[0], nations[1], groups[0], groups[1])
+        let nation = |name: &str| {
+            *world
+                .scenario
+                .hyperedge_content_ids
+                .iter()
+                .find(|(_, local)| local.as_str() == name)
+                .map(|(id, _)| id)
+                .expect("the scenario names this nation")
+        };
+        let group = |name: &str| {
+            *world
+                .scenario
+                .node_content_ids
+                .iter()
+                .find(|(_, local)| local.as_str() == name)
+                .map(|(id, _)| id)
+                .expect("the scenario names this group")
+        };
+        (nation("n1"), nation("n2"), group("g1"), group("g2"))
     }
 
     fn households(world: &World, nation: HyperedgeId, group: NodeId) -> f64 {
@@ -3165,6 +3187,37 @@ mod ag_attributed_membership_nations {
         let (one, two, three) = (cost(1), cost(2), cost(3));
         assert!(two > one, "the bound grows with :max-members");
         assert_eq!(two - one, three - two, "and grows linearly with it");
+
+        // §6.2 family 23, §3.7: the bound equals that of the same fold whose body reads
+        // nothing, plus the accessor's constant for each member the fold may visit (the
+        // nation ceiling's hyperedges, each at most `:max-members` members).
+        let silent = reader::read(
+            "(fold sum (hyperedges HyperedgeType/NATION) :as h \
+               (fold sum (members-of h HyperedgeType/NATION) 1))",
+        )
+        .expect("parses")
+        .0;
+        let body = |text: &str| {
+            let (expr, _) = reader::read(text).expect("parses");
+            bound_checker::expr_cost(&expr, &ceilings(1), &IntrinsicCosts::default())
+                .expect("a lone body is bounded")
+        };
+        let accessor_extra = body("(membership-field-of h it nation/households)") - body("1");
+        assert!(accessor_extra > 0, "the accessor costs more than a literal");
+        let nations = 10; // `ceilings`' HyperedgeType/NATION population
+        for max_members in [1_u64, 2, 3] {
+            let silent_cost = bound_checker::expr_cost(
+                &silent,
+                &ceilings(max_members),
+                &IntrinsicCosts::default(),
+            )
+            .expect("the silent fold is bounded");
+            assert_eq!(
+                cost(max_members),
+                silent_cost + nations * max_members * accessor_extra,
+                "at :max-members {max_members}"
+            );
+        }
     }
 }
 

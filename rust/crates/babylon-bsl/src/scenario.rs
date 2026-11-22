@@ -65,14 +65,14 @@
 //!   module) for the conversion contract and its determinism argument.
 //! - **Hyperedges: minting only, no attributes yet** (2026-08-18, hyperedge-lane
 //!   Task 1, `docs/superpowers/plans/2026-08-18-community-port.md`). A
-//!   `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))`
+//!   `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <member-item>+))`
 //!   form mints one hyperedge through [`GraphSubstrate::add_hyperedge`],
 //!   resolving each member through the same local-name table `node`/`edge`
 //!   share — see [`LoadedScenario::hyperedge_types`]/
 //!   [`LoadedScenario::max_members_seen`] for the population maps it feeds.
 //!   A member item may be annotated, `(member <NodeType/X> <name> (<qname> <value>)*)`,
-//!   which seeds the membership's declared fields (Amendment AG clause i; the `membership`
-//!   child module). Initial hyperedge fields are `hyperedge-attr`. **The doctrine sentence this paragraph
+//!   which seeds the membership's declared fields (Amendment AG clause i; the flat module
+//!   `scenario_membership`). Initial hyperedge fields are `hyperedge-attr`. **The doctrine sentence this paragraph
 //!   replaces survives**: an unused form is an untested form — it is why
 //!   `metric-of` still does not land either.
 //! - **No defaults.** A node with no attributes gets no attributes. An
@@ -1339,7 +1339,7 @@ fn load_scenario_forms(
                     graph,
                     &seeded_hyperedge_names,
                     &mut seeded_hyperedge_attrs,
-                    &fields,
+                    (&fields, &membership_fields),
                     &enums,
                 )?;
             }
@@ -1993,12 +1993,14 @@ fn check_membership_declaration(
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, ScenarioError> {
     let form = format!("deffield `{qname}`");
-    demand_enum_kind(enum_type, member_name, EnumKind::NodeType, enums)
-        .map_err(|e| vocab_err(&form, &e))?;
     if let Some(vocabulary) = vocabulary {
         vocabulary
             .hyperedge_owner_of_field(qname)
             .map_err(|e| vocab_err(&form, &e))?;
+    }
+    demand_enum_kind(enum_type, member_name, EnumKind::NodeType, enums)
+        .map_err(|e| vocab_err(&form, &e))?;
+    if let Some(vocabulary) = vocabulary {
         vocabulary
             .check_enum_ref(enum_type, member_name)
             .map_err(|e| vocab_err(&form, &e))?;
@@ -2730,7 +2732,7 @@ fn load_edge_attr(
     Ok(())
 }
 
-/// `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))` —
+/// `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <member-item>+))` —
 /// hyperedge-lane Task 1 (`docs/superpowers/plans/2026-08-18-community-port.md`).
 /// Mirrors `load_node`: the enum-ref position demands `HyperedgeType`
 /// unconditionally (`demand_enum_kind`, same as `node`/`edge`), the declared
@@ -2795,7 +2797,7 @@ fn load_hyperedge(
     else {
         return Err(err(
             "expected (hyperedge <local-name> <HyperedgeType/MEMBER> \
-             (members <local-name>+))",
+             (members <member-item>+))",
         ));
     };
     // load_node:1249-1254's identical check, one element kind over — a
@@ -2822,17 +2824,17 @@ fn load_hyperedge(
     }
     let SExpr::List(member_parts) = members_form else {
         return Err(err(format!(
-            "hyperedge `{local}`: expected a (members <local-name>+) form"
+            "hyperedge `{local}`: expected a (members <member-item>+) form"
         )));
     };
     let [SExpr::Atom(Atom::Symbol(head)), member_names @ ..] = member_parts.as_slice() else {
         return Err(err(format!(
-            "hyperedge `{local}`: expected a (members <local-name>+) form"
+            "hyperedge `{local}`: expected a (members <member-item>+) form"
         )));
     };
     if head != "members" {
         return Err(err(format!(
-            "hyperedge `{local}`: expected a (members <local-name>+) form, found ({head} ...)"
+            "hyperedge `{local}`: expected a (members <member-item>+) form, found ({head} ...)"
         )));
     }
     if member_names.is_empty() {
@@ -2897,7 +2899,7 @@ fn load_hyperedge_attr(
     graph: &mut dyn GraphSubstrate,
     seeded: &HashMap<String, HyperedgeId>,
     seeded_attrs: &mut HashSet<(HyperedgeId, String)>,
-    declared: &HashMap<String, FieldDecl>,
+    (declared, membership_fields): (&HashMap<String, FieldDecl>, &BTreeMap<String, String>),
     enums: &EnumRegistry,
 ) -> Result<(), ScenarioError> {
     let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::QName(field)), SExpr::Atom(value)] =
@@ -2929,6 +2931,7 @@ fn load_hyperedge_attr(
              `check_hyperedge_referent_type` checks it at evaluation)"
         )));
     }
+    crate::scenario_membership::refuse_membership_field(local, field, membership_fields)?;
     // The registry contract, ENFORCED — load_node's undeclared-field refusal
     // verbatim, one element kind over.
     let Some(decl) = declared.get(field) else {

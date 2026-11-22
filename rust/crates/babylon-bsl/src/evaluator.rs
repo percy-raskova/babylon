@@ -841,7 +841,11 @@ fn static_additive_identity(body: &SExpr) -> Option<Value> {
         SExpr::Atom(Atom::Currency(_)) => Some(Value::Currency(Currency::from_micro_units(0))),
         SExpr::Atom(Atom::Scaled(s)) if s.kind != ScaledKind::Ratio => Some(Value::Real(0.0)),
         SExpr::List(items) => match items.as_slice() {
-            [SExpr::Atom(Atom::Symbol(head)), ..] if head == "field-of" => Some(Value::Real(0.0)),
+            [SExpr::Atom(Atom::Symbol(head)), ..]
+                if head == "field-of" || head == "membership-field-of" =>
+            {
+                Some(Value::Real(0.0))
+            }
             [SExpr::Atom(Atom::Operator(op)), lhs, rhs]
                 if matches!(op.as_str(), "+" | "-" | "*") =>
             {
@@ -4839,6 +4843,21 @@ mod tests {
     fn read_membership(source: &str) -> Result<Value, EvalError> {
         let mut fuel = 1_000;
         eval_membership(TWO_NATIONS, source, &mut fuel)
+    }
+
+    #[test]
+    fn an_empty_sum_over_a_membership_read_is_zero() {
+        // A9/A3: the additive identity of a membership read is the field's `Real` zero, as
+        // for `field-of`; the query names no hyperedge, so the body never runs.
+        let mut fuel = 1_000;
+        let got = eval_membership(
+            "",
+            "(fold sum (hyperedges HyperedgeType/NATION) :as h \
+               (membership-field-of h g1 nation/mass))",
+            &mut fuel,
+        )
+        .expect("an empty sum over a membership read serves its identity");
+        assert_eq!(got, Value::Real(0.0));
     }
 
     #[test]

@@ -337,7 +337,9 @@ on which the results rest:
 
 - Most sets ran 200 periods. The design asks for 400.
 - Nothing slows a buyer's move: no freight, no second place, no new seller, no work abroad.
-- The design's "lays off before it cuts its price" is not on the bench. A loser pays idle hours until it is broke.
+- The design's order, "lays off before it cuts its price", is not on the bench. The engine does the reverse (section
+  12). With free buyers and the best set, 12 workplaces stop for good at the small figures. Every one paid idle
+  hours on the way, from 133 to 3,582 hours, and all 11 that ever cut a price cut it before they let anyone go.
 - Nothing reopens or founds a workplace, and credit is not on the bench.
 - A workplace under one period of what it pays out was not counted.
 - The back test read hours and needs. It did not read output, or bands of households.
@@ -362,7 +364,7 @@ The design's rules of the first part, as measured on the bench in rounds four to
 | A1, a price steps down on unsold stock (e-kept) | Harms at the small figures, helps at the national |
 | A1, a service's price (R) | Not needed at the small figures, mixed at the national |
 | A2, raw goods and power swing (W) | Harms |
-| A3, lay off before cutting the price | Not on the bench: it needs people looking for work (the third part) |
+| A3, lay off before cutting the price | Not on the bench. The engine does the reverse: the price is cut first, people are let go later (section 12) |
 | A4, a buyer takes from the cheapest seller | Does what it says. With nothing to slow buyers and no way back for a loser, it shuts workplaces |
 | A5, plans through the chain (D) | In every best set. Helps at the small figures, mixed at the national |
 | A6, spare money (F2) | In every best set. Equal to its prototype but for one line, where it follows the design |
@@ -387,21 +389,29 @@ best set byte for byte, in all 25 files.
   the rule and without it. The quiet runs are among them.
 - The counts were made twice, from each set's summary and from the raw rows, and agree.
 
-What it means. Rule A1's own words cut a price when hours that were offered go unsold. What the design sets against
-a price that falls step after step is rule A3: a workplace lays off before it cuts its price again. Nothing on the
-bench lays off. The utility goes on planning 120 hours at a loss because its owner's top-up pays for whatever it
-plans, where the design's loan would be refused (A9). So this link waits for the second and third parts, like the
-others.
+What it means. In the taxed run at the small figures nobody is let go, and the utility goes on planning for all 120
+of its hours. Its plan does not fall because the farm's order is carried into it, and the farm orders for more than
+its people can work (link 2 of section 7). And its owner's top-up pays for whatever it plans, where the design's
+loan would be refused (A9).
+
+The engine does let people go, but late. A workplace keeps the people for the larger of its last two requests, so it
+sheds hands only when its plan has been lower for two periods running. A service's price steps down in every period
+it runs under its capacity and still covers its direct cost. So the price goes first. The best set's 17 pushed runs
+hold 68 cases of a service. At the small figures 20 of them both cut their price and let people go, and 19 of those
+cut the price first; 32 more cut their price and never let anyone go. At the national figures the counts are 28, 28
+and 29. The design asks for the reverse order (A3: a workplace lays off before it cuts its price). So this link
+waits for the later parts, like the others.
 
 ## 13. What follows
 
 - The design says of itself that no piece works alone (its section 7). These rows agree. What the best set lacks to
   come back after a shock is traced in section 7, and its links belong to later parts: a business that is lent money
-  only when that pays, and repays it (the second part); a workplace that lays off before it pays idle hours, and one
-  that can draw hands (the third); a way back for one that has shut (the fourth).
+  only when that pays, and repays it (the second part); a workplace that lets people go before it cuts its price,
+  and one that can draw hands (the third); a way back for one that has shut (the fourth).
 - The new price steps of the first part, as built, made the bench worse than the engine's own price rules in three
   rounds, together and one by one, and the rule for service prices alone changes nothing where it was hoped to help
-  (section 12). They are not built now. They are measured again once a workplace can lay off.
+  (section 12). They are not built now. They are measured again once a workplace lets people go before it cuts its
+  price.
 - A buyer who takes from the cheapest seller is not built now. It cannot be judged before a loser can shrink and
   come back.
 - What stands is built: plans through the chain (A5), beside the spare-money rule that is built (A6). Its plan is
@@ -410,6 +420,8 @@ others.
 - That plan keeps one thing from the prototype that link 2 of section 7 shows at work: a buyer orders for the plan
   it made, even past what its people can work. It is kept so that the built rule is the measured one, and a capped
   form is to be measured with a switch.
-- Next on the bench: the second and third parts together. A bank as the design states it, in place of the owners'
-  top-ups: it lends only when what the loan pays for sells above its cost, and is repaid before any profit. People
-  who look for work in their place, and a workplace that raises its pay to draw hands, in place of lent hands.
+- Next on the bench, round seven: the second part. A bank as the design states it, in place of the owners' top-ups:
+  it lends only when what the loan pays for sells above its cost, and is repaid before any profit. With it a cap on
+  orders, so that a buyer orders only for what its people can work.
+- After it the third part: people who look for work in their place, a workplace that raises its pay to draw hands,
+  and the design's order of letting people go before a price is cut.

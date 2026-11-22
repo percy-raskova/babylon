@@ -251,8 +251,49 @@ left out. Total money is the same in both.
 | Taxes and fund: the public account | 320 | 288 | 320 | 287 |
 | Taxes and fund: the fund | 1920 | 864 | 1920 | 860 |
 
-This round did not establish why the money stays there. A trace of these rows, and of the code that made them, is
-recorded after this file.
+Why the money stays there was traced after the round by a separate reader, from these rows and from the code that
+made them. The lead checked its figures against the rows and its citations against the branch. What follows is the
+taxed world at the small figures, which is exactly at rest from period 76: every workplace, both owners, the public
+account and the fund hold the same money in each of the last 20 periods.
+
+- **1. The shock moved the owners' money and the farm's stock into the farm's cash.** Each owner put $322 into its
+  farm in periods 2 and 3 as top-ups. The farm sold its stock down from 40 units to 14 and has rebuilt it only to
+  21. Its cash went from $880 to $1,662.
+- **2. The farm cannot spend it.** It plans 60 hours and has four people and 40. Plans down the chain carry the
+  farm's plan to the utility, which then plans for 134 units of power with 120 hours of its own, asks for all 120,
+  sells 114 and pays 6 hours idle. Hands are lent only out of hours that nobody asked for, so those 6 hours never
+  reach the farm, which is short of 20 in every period. A workforce can only shrink.
+- **3. The farm never pays it out.** The engine pays an owner out of earnings. Money an owner put in is capital, and
+  stock sold at what it cost is not profit, so neither is ever earnings. Nothing in the code returns capital.
+- **4. The prices of power and care fell during the shock and did not come back.** Power went from $12 to $10 by
+  period 5, care from $30 to $24 by period 10. The engine's own rule cuts a service's price while it runs under its
+  capacity and earns more than its direct cost. Power stopped at $10, where the utility's sales equal the wages of
+  the hours it uses. Care stopped at $24, where the clinic again sells all it can perform. Nothing raises either
+  price, because nobody who still has money is turned away. The reason for each price move is not in the rows: this
+  link is read from the code.
+- **5. So each owner's income fell from $640 to $384 a period.** Wages did not change. The workers' pay now buys
+  more: in each copy they buy as comforts the 8 units of care that the owner goes without.
+- **6. The utility loses $60 a period** on those six idle hours. Its owner tops it up by $60 in every period, for
+  good. A top-up is capital: nothing is owed and nothing comes back.
+- **7. The owner's money runs out before care.** It pays the top-up, then food, then power, and has $8.66 left when
+  care costs $24. It goes short of 6 units of power and 8 of care in every period.
+- **8. The fund takes in less.** Taxes fall from $1,280 to $1,152 a period, and the fund pays $864 of the $960 it
+  owes.
+
+Nothing is still draining: the world has settled at these levels. At the national figures the same accounts hold
+within a few dollars of fixed levels. With no taxes they move around fixed levels without settling. Two things are
+not in the rows and were worked out from prices, quantities and the tax rates: what each workplace pays its owner,
+and the value at which stock stands in the books.
+
+What the approved design says to each link:
+
+| Link | The design |
+| --- | --- |
+| 2, the farm cannot hire | People laid off look for work at every workplace of their place (A14), and a workplace that cannot fill its hours raises its pay and draws hands (A15). The third part. Its stand-in on the bench, lent hands, fails here |
+| 3, capital is never paid out | Silent. The design has no top-ups: credit takes their place |
+| 4, service prices fall and stay down | A1 takes away the price cut for running under full capacity. Its stand-in on the bench is R, which no round ran alone on the best set |
+| 6, a loss covered for good | A loan to keep running is given only when what it pays for will sell above its cost, and it is repaid from sales before any profit is paid (A9). A business that is refused lays off (A3). The second and third parts |
+| 5, 7 and 8 | Silent on the order in which a household spends and on the level of the fund |
 
 ## 8. What the checks corrected
 
@@ -328,14 +369,21 @@ The design's rules of the first part, as measured on the bench in rounds four to
 
 ## 12. What follows
 
-- The design says of itself that no piece works alone (its section 7). These rows agree. What the bench lacks to
-  pass the first part's tests belongs to later parts: money that comes back to those who spend it (the second part,
-  banks and credit), a workplace that lays off before it goes broke (the third), and a way back for one that has
-  shut (the fourth).
-- Three rounds now say that the new price steps of the first part, as built, make the bench worse than the engine's
-  own price rules. Whether they are set aside or designed again is the Director's to rule.
-- A buyer who takes from the cheapest seller cannot be judged before a loser can shrink and come back. When it is
-  built is the Director's to rule.
-- What stands and can be built now is plans through the chain (A5), beside the spare-money rule that is built (A6).
-- Next on the bench is the second part, with a bank as the design states it, and the question section 7 leaves open:
-  what brings money back from a workplace to its owner.
+- The design says of itself that no piece works alone (its section 7). These rows agree. What the best set lacks to
+  come back after a shock is traced in section 7, and its links belong to later parts: a business that is lent money
+  only when that pays, and repays it (the second part); a workplace that lays off before it pays idle hours, and one
+  that can draw hands (the third); a way back for one that has shut (the fourth).
+- The new price steps of the first part, as built, made the bench worse than the engine's own price rules in three
+  rounds. They are not built now. One of them, the rule for service prices (R), stands for the part of rule A1 that
+  takes away the price cut for running under capacity, which is link 4 of section 7. No round ran it alone on the
+  best set. That run comes first, before rule A1 is judged as a whole.
+- A buyer who takes from the cheapest seller is not built now. It cannot be judged before a loser can shrink and
+  come back.
+- What stands is built: plans through the chain (A5), beside the spare-money rule that is built (A6). Its plan is
+  `docs/superpowers/plans/2026-11-21-adjust-1b-plans-through-the-chain.md`. Its fifth task proves the built rule
+  against the prototype's rows before the rule is called done.
+- That plan keeps one thing from the prototype that link 2 of section 7 shows at work: a buyer orders for the plan
+  it made, even past what its people can work. It is kept so that the built rule is the measured one, and a capped
+  form is to be measured with a switch.
+- Next on the bench after that: the second and third parts together, with a bank as the design states it and people
+  who look for work in their place.

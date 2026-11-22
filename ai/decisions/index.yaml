@@ -1,5 +1,5 @@
 meta:
-  version: 1.107.0
+  version: 1.108.0
   updated: '2026-11-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR319_a_shock_is_not_a_failure:
+    title: The test economy is judged by play; slumps end, scars stay, and a swing is not a failure
+    status: accepted
+    date: '2026-11-22'
+    file: ADR319_a_shock_is_not_a_failure.yaml
   ADR318_who_carries_a_losing_workplace:
     title: An owner covers a loss only while it is their best use; a bank carries a workplace by its capital, for a term
     status: accepted

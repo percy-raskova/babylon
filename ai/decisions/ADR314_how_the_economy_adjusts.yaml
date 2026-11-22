@@ -216,6 +216,9 @@ ADR314_how_the_economy_adjusts:
         Who carries a workplace through a loss: answered on 2026-11-22 by
         ADR318, which amends A10, A11 and A19.
     - >-
+        How the tests of the verification are judged: answered on 2026-11-22
+        by ADR319. Slumps end, scars stay, and a swing is not a failure.
+    - >-
         Comprador states, Taiwan beside China, and Ukraine's war, on a finer map
         of states.
     - 'The content of outside events, and tariffs and other politics of trade.'
@@ -234,6 +237,7 @@ ADR314_how_the_economy_adjusts:
     from the records with its cause; money exact in every period; the rate
     under the rate of profit.
   related:
+    - ADR319_a_shock_is_not_a_failure
     - ADR318_who_carries_a_losing_workplace
     - ADR315_homes_rent_and_nation
     - ADR313_the_national_economy_opens_in_balance

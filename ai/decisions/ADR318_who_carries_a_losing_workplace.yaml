@@ -107,3 +107,4 @@ ADR318_who_carries_a_losing_workplace:
   related:
     - ADR314_how_the_economy_adjusts
     - ADR315_homes_rent_and_nation
+    - ADR319_a_shock_is_not_a_failure

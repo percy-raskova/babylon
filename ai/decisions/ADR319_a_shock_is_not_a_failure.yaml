@@ -1,0 +1,124 @@
+ADR319_a_shock_is_not_a_failure:
+  title: The test economy is judged by play; slumps end, scars stay, and a swing is not a failure
+  date: '2026-11-22'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-22, in a message sent while round nine of the
+        measurement ran: "not every shock is a failure. capitalism is
+        inherently unstable. what we want is to ensure the gameplay is
+        interesting and well paced".
+    - >-
+        Director, 2026-11-22, in the question dialog, asked by which test the
+        rounds of measurement stop: "Slumps end, scars stay".
+    - >-
+        Director, 2026-11-22, in the question dialog, asked what pace a slump
+        should have for play: "Keep the design's pace".
+  context: |
+    The Director had asked for a stopping point for the rounds of measurement
+    on the small test economy. The lead set one from four lines of section 8
+    of the design (still when quiet; back after a shock that ends; settled
+    after a lasting loss; exact money) and read two of them more strictly than
+    the design words them: after a harvest that fails and returns, the hours
+    and every account's needs at nineteen twentieths of the opening in every
+    period from 76 to the end; after a lasting loss, hours within 5 of one
+    another over the last 20 periods and no rate of pay moving.
+
+    Counted on round eight's rows of the engine without the rules of rounds
+    eight and nine, at 400 periods, under no credit and under the bank, at the
+    small figures and the country's: that reading failed in 3, 3, 4 and 4 of
+    the 4 runs of a harvest that returns, and in 6 to 8 of the 8 runs of a
+    lasting loss. Yet in those same rows work and output are back by period 76
+    and still back at the end in 3 of the 4 runs in every one of the four
+    sets. In the plain world at the country's figures the hours stand at 480
+    of 480 from period 76 to the end; what failed the reading there is the
+    owners' household, which ends with $477 where the calm run leaves it $800
+    and buys no care to the end. The same reading failed a lasting loss in
+    runs whose hours swing by 9 to 92 hours around a level that holds.
+
+    Section 6 of the design already names these as failures of the design:
+    "A stabilizer that hides the economy. It has to swing." and "An economy
+    that comes back exactly as it was. A slump has to leave marks." The lead's
+    reading scored a swing and a mark as faults.
+  decision: |
+    J1. A SWING IS NOT A FAILURE. A swing, a cycle, a workplace that shuts and
+    is mended, a change of owner and a household that ends poorer are what the
+    player sees. They are reported. They are not scored as faults of the
+    economy.
+
+    J2. THE TEST BY WHICH A ROUND OF MEASUREMENT PASSES, at the small world's
+    figures and at the country's, over 400 periods, in the Director's pick:
+    (1) A calm world stays still. Money and people are exact.
+    (2) The harvest fails for ten periods, then returns: work and output are
+    back within five years.
+    (3) A loss that lasts (a poor harvest, scarce power): no place is left
+    without a product for good, and no price climbs without end.
+
+    J3. REPORTED, NOT SCORED: swings and cycles, how wide and how long; what
+    shut, what reopened, what changed hands; who ends up poorer, owners and
+    workers; the pace, years down and years back.
+
+    J4. THE PACE STAYS THE DESIGN'S. A slump takes one to two years to its low
+    and up to five back. One period is four weeks, thirteen periods a year.
+    The pace is a result: if it is far off, policy rows are changed once and
+    the numbers are brought to the Director, as section 8 has it.
+  amends:
+    - >-
+        The design's section 8, "Back after a shock that ends": the scored
+        part is work and output. Needs met in each band are reported under
+        "who ends up poorer". "And stay; prices settle" is read as still back
+        at the end; a price that moves is not a fault.
+    - >-
+        The design's section 8, "Settled after a lasting loss": read as line
+        (3) of J2. An economy that swings near what the loss allows is
+        settled.
+  lead_readings_for_the_director_to_check:
+    - >-
+        Back within five years: there is a period up to 76 in which the hours
+        attended are at nineteen twentieths of the opening's or more and every
+        workplace's output is at nineteen twentieths of the calm run's or
+        more; and both still hold on the mean of the last 20 periods.
+    - >-
+        Left without a product for good: at the end of 400 periods a workplace
+        has made or sold nothing in each of the last ten. On the test economy
+        each place has one seller of each product and buys only from it.
+    - >-
+        Climbs without end: a posted price that ended each of the last five
+        spans of 20 periods higher than the span before.
+    - >-
+        The other pushes (a workplace that pays a tenth more, a tax cut) are
+        held to line (3) and reported beside it, not scored.
+    - >-
+        A form of the rules passes when its runs pass at the small figures and
+        at the country's under one and the same credit.
+  alternatives_rejected:
+    - >-
+        "Only: nothing ends in ruin": work need not come back even after a
+        harvest that returns. Offered in the dialog, not picked.
+    - >-
+        "No pass test": the two rounds are described and the Director judges.
+        Offered in the dialog, not picked.
+    - >-
+        A faster pace, about half the design's; a sharp fall with a slow
+        return; no target until it is seen on screen. Offered in the dialog,
+        not picked.
+    - >-
+        The lead's first reading: every period at nineteen twentieths, and
+        hours and pay at rest. It scores as faults what section 6 of the
+        design asks for.
+  open_questions:
+    - >-
+        How fast a period passes on the player's screen. That is the client's
+        matter and is not set here.
+    - >-
+        Section 8's test of a cycle with no outside push needs banks and
+        capital that moves. The test economy has no capital that moves yet.
+  verification: |
+    Each round's record states the three scored lines for every form of the
+    rules at both sets of figures, and reports the rest beside them. The lead
+    counts them from the rows and a second reader recounts.
+  related:
+    - ADR314_how_the_economy_adjusts
+    - ADR318_who_carries_a_losing_workplace

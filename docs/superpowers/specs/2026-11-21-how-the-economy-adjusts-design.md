@@ -403,6 +403,16 @@ What each piece must show, on the rows of the last 20 periods and never on a sho
 - **Exact money.** In every period, the money in all accounts equals base money plus principal.
 - **The rate under the rate of profit.** Checked in every run.
 
+**How these are judged (ruled on 22 November 2026, ADR319).** The Director: "not every shock is a
+failure. capitalism is inherently unstable. what we want is to ensure the gameplay is interesting
+and well paced". A round of measurement passes when three things hold at the small figures and at
+the country's. A calm world stays still, with money and people exact. After the harvest that fails
+for ten periods and returns, work and output are back within five years. After a loss that lasts, no
+place is left without a product for good and no price climbs without end. Swings and cycles, what
+shut, reopened or changed hands, who ends up poorer, and the pace are reported and not scored:
+section 6 asks for an economy that swings and for slumps that leave marks. The pace named above
+stays.
+
 ## 9. Calls made here, for the Director to check
 
 1. Raw goods and energy move in large steps and open where the market closed; they are not sold by
@@ -433,7 +443,7 @@ What each piece must show, on the rows of the last 20 periods and never on a sho
     from public figures. Business and public debts roll over at the opening. How much money the
     opening holds is set with its builder and brought with numbers.
 20. No bound on a price spike; it is watched on the test economy and brought with numbers.
-21. The pace named in section 8.
+21. The pace named in section 8. Kept by the Director on 22 November 2026 (ADR319).
 
 ## 10. Build order
 

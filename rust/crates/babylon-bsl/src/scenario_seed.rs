@@ -476,6 +476,7 @@ impl Hydration {
                 graph,
                 &self.nodes,
                 &mut self.hyperedges,
+                (&loaded.fields, &loaded.membership_fields),
                 &loaded.enums,
                 loaded.vocabulary.as_ref(),
             )?;

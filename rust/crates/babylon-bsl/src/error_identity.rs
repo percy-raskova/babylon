@@ -193,6 +193,7 @@ fn grammar_identity(err: &GrammarError) -> ErrorIdentity {
             ErrorIdentity::Name(literal.clone())
         }
         GrammarError::StrengthFieldInit { field }
+        | GrammarError::MemberFieldTwice { field }
         | GrammarError::FieldInitOwnerMismatch { field, .. }
         | GrammarError::MembershipFormMismatch { field, .. } => ErrorIdentity::Field(field.clone()),
         // No struct fields at all — the identity is the fixed keyword this

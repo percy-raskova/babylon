@@ -88,6 +88,13 @@ pub enum GrammarError {
         /// The type the field owns off, as `EnumType/MEMBER`.
         owner: String,
     },
+    /// `E-PARSE-041` — a membership payload field written twice in one scenario
+    /// `(member ...)` item (§2.8: the existing code for two writers of one field in
+    /// one form; Amendment AG clause i, hydration).
+    MemberFieldTwice {
+        /// The qname written twice.
+        field: String,
+    },
     /// `E-LOAD-046` (§2.9, D79) — a membership field read or written through
     /// the hyperedge's own forms (`field-of`, `update-hyperedge`), or a
     /// hyperedge's own field read or written through the membership forms
@@ -132,7 +139,7 @@ impl GrammarError {
             Self::NotInClosedSet { .. } => "E-PARSE-015",
             Self::StringInExpressionPosition { .. } => "E-PARSE-010",
             Self::GraphFlagOutsideDomain => "E-PARSE-013",
-            Self::StrengthFieldInit { .. } => "E-PARSE-041",
+            Self::StrengthFieldInit { .. } | Self::MemberFieldTwice { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
             Self::MembershipFormMismatch { .. } => "E-LOAD-046",
             Self::Vocabulary { error, .. } => error.spec_code(),
@@ -191,6 +198,11 @@ impl std::fmt::Display for GrammarError {
                 "E-PARSE-041: the :strength operand is {field}'s only writer at \
                  mint time — two writers for one field in one form is an \
                  authoring bug (§2.8)"
+            ),
+            Self::MemberFieldTwice { field } => write!(
+                f,
+                "E-PARSE-041: the membership field {field} is written twice in one \
+                 member item — one writer per field per form (§2.8)"
             ),
             Self::FieldInitOwnerMismatch {
                 field,

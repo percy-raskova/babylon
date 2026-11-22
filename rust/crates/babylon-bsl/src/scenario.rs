@@ -70,10 +70,9 @@
 //!   resolving each member through the same local-name table `node`/`edge`
 //!   share — see [`LoadedScenario::hyperedge_types`]/
 //!   [`LoadedScenario::max_members_seen`] for the population maps it feeds.
-//!   Two gaps remain, each a later task's: initial hyperedge fields
-//!   (`hyperedge-attr`, Task 6) and per-membership payload (Amendment AG,
-//!   issue #653's own ceremony) — both still refuse loudly rather than
-//!   silently dropping a write. **The doctrine sentence this paragraph
+//!   A member item may be annotated, `(member <NodeType/X> <name> (<qname> <value>)*)`,
+//!   which seeds the membership's declared fields (Amendment AG clause i; the `membership`
+//!   child module). Initial hyperedge fields are `hyperedge-attr`. **The doctrine sentence this paragraph
 //!   replaces survives**: an unused form is an untested form — it is why
 //!   `metric-of` still does not land either.
 //! - **No defaults.** A node with no attributes gets no attributes. An
@@ -216,7 +215,7 @@ impl From<VocabularyError> for ScenarioError {
     }
 }
 
-fn err(message: impl Into<String>) -> ScenarioError {
+pub(crate) fn err(message: impl Into<String>) -> ScenarioError {
     // A bare structural/prose message, no typed error behind it — nothing
     // to derive `position`/`identity` from. Callers with local typed
     // context (e.g. `load_defconst`'s duplicate check) attach identity
@@ -278,7 +277,7 @@ fn err(message: impl Into<String>) -> ScenarioError {
 /// [`VocabularyError::WrongEnumKind`] (`E-TYPE-011`) for a real type at
 /// the wrong position; [`VocabularyError::UnknownEnumType`] (`E-LOAD-030`)
 /// for a type name that is not registered anywhere at all.
-fn demand_enum_kind(
+pub(crate) fn demand_enum_kind(
     enum_type: &str,
     member: &str,
     demanded: EnumKind,
@@ -308,7 +307,7 @@ fn demand_enum_kind(
 /// `VocabularyError` names the type/member but not WHICH node or edge
 /// form wrote it; this prefixes that, at the two scenario-hydration
 /// producers (`load_node`/`load_edge`).
-fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
+pub(crate) fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
     ScenarioError {
         code: Some(error.spec_code()),
         identity: Some(crate::error_identity::vocabulary_identity(error)),
@@ -320,7 +319,7 @@ fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioE
 /// A hydration failure the reference gives a code (§3.9). Takes a bare
 /// code + message, not a typed error — nothing structured behind either
 /// argument to populate `identity` from (same footing as `err()`).
-fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
+pub(crate) fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
     ScenarioError {
         message: message.into(),
         code: Some(code),
@@ -1324,6 +1323,7 @@ fn load_scenario_forms(
                     graph,
                     &named,
                     &mut seeded_hyperedge_names,
+                    (&fields, &membership_fields),
                     &enums,
                     vocabulary_so_far.as_ref(),
                 )?;
@@ -2145,7 +2145,7 @@ fn load_node(
 /// rendering and no refusal calls an edge a "node" (Train B item 3, #591;
 /// the same form-parameter convention `vocab_err` and `evaluator.rs`'s
 /// `check_*_referent_type` already model).
-fn attribute_value(
+pub(crate) fn attribute_value(
     atom: &Atom,
     local: &str,
     field: &str,
@@ -2786,6 +2786,7 @@ fn load_hyperedge(
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
     seeded_hyperedge_names: &mut HashMap<String, HyperedgeId>,
+    declared: (&HashMap<String, FieldDecl>, &BTreeMap<String, String>),
     enums: &EnumRegistry,
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<(String, u64), ScenarioError> {
@@ -2840,22 +2841,17 @@ fn load_hyperedge(
              GraphSubstrate::add_hyperedge's own refusal (babylon-graph/src/memory.rs:357-361)"
         )));
     }
-    let mut members = Vec::with_capacity(member_names.len());
-    for name_expr in member_names {
-        let SExpr::Atom(Atom::Symbol(name)) = name_expr else {
-            return Err(err(format!(
-                "hyperedge `{local}`: a member is a bare local node name"
-            )));
-        };
-        let id = named.get(name).copied().ok_or_else(|| {
-            err(format!(
-                "hyperedge `{local}` names unknown node `{name}` — a node must be \
-                 declared before a hyperedge referring to it, so a scenario reads \
-                 top to bottom"
-            ))
-        })?;
-        members.push(id);
-    }
+    let cx = crate::scenario_membership::MemberContext {
+        hyperedge: local,
+        hyperedge_type: member,
+        named,
+        fields: declared.0,
+        membership_fields: declared.1,
+        enums,
+        vocabulary,
+    };
+    let seeded = crate::scenario_membership::parse_member_items(member_names, &*graph, &cx)?;
+    let mut members: Vec<NodeId> = seeded.iter().map(|(id, _)| *id).collect();
     #[allow(
         clippy::cast_possible_truncation,
         reason = "the bounded fixture index is range-checked before narrowing"
@@ -2865,6 +2861,7 @@ fn load_hyperedge(
     // this function's doc comment.
     members.sort_unstable();
     let id = graph.add_hyperedge(member, &members)?;
+    crate::scenario_membership::write_member_values(graph, id, &seeded)?;
     seeded_hyperedge_names.insert(local.clone(), id);
     Ok((member.clone(), member_count))
 }

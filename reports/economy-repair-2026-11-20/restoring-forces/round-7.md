@@ -1,5 +1,10 @@
 # Restoring forces, round seven: a bank in the top-ups' place, and a cap on orders
 
+**Corrected by round 7b.** This record says that credit and the spare-money rule carry the test economy together
+(sections 1 and 8). Round 7b put the bank on the bench as the design words it and found otherwise: what carried it was
+the owners' own money, which is never repaid. A bank that is repaid does not do the same. See `round-7b.md`, sections 1
+and 11.
+
 Measured 2026-11-22 on the small test economy with two of everything, in both worlds (no taxes; taxes and a national
 benefits fund), at both sets of figures, for 200 and for 400 periods. Every rule is a throwaway prototype behind a
 switch, on the branch `spike/r7-all`. Two readers checked the round, one from the rows and one from the code. Every

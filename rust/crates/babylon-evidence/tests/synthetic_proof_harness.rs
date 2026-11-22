@@ -345,7 +345,7 @@ fn proof_header_pins_forbidden_audit_source_and_semantics_independently() {
     );
     assert_eq!(
         audit_source.to_hex(),
-        "7a0d0eb6bbdd26f6a874ba7b6792d9950d80386ec37bf5fa5977bd8279b1f12f"
+        "54fc809a4f23fbbf954df016b6b68c576b678f4d32db743c16dfecd489ea90f6"
     );
     let envelope = babylon_evidence::canonical_envelope(&proof_profile())
         .expect("the record exposes its canonical envelope");

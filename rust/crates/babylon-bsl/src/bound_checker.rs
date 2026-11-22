@@ -28,12 +28,14 @@ use crate::rule_pipeline::RuleExecution;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-/// The nine typed structural verbs plus `emit` (§2.8) — `update-edge` and
-/// `update-hyperedge` are R9 chapters C2 and C12's additions (D35, D65).
-const STRUCTURAL_VERBS: [&str; 10] = [
+/// The ten typed structural verbs plus `emit` (§2.8) — `update-edge` and
+/// `update-hyperedge` are R9 chapters C2 and C12's additions (D35, D65), and `update-membership`
+/// is Amendment AG (i)'s (#653).
+const STRUCTURAL_VERBS: [&str; 11] = [
     "update-node",
     "update-edge",
     "update-hyperedge",
+    "update-membership",
     "add-node",
     "remove-node",
     "add-edge",

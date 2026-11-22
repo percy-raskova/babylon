@@ -102,3 +102,28 @@ fn a_mean_over_members_reading_a_payload_needs_a_weight() {
         None
     );
 }
+
+#[test]
+fn a_rule_using_update_membership_loads() {
+    // The verb is served (#653): it no longer stops at the load layer, and a nested one is
+    // bounded like the other update verbs.
+    assert_eq!(
+        load_code(
+            "(domain :graph) (bindings) \
+             (effects (for-each (hyperedges HyperedgeType/NATION) :as h \
+                (for-each (members-of h HyperedgeType/NATION) :as m \
+                  (update-membership h m nation/share (set 0.5p)))))"
+        ),
+        None
+    );
+    // A fifth update-op head is still E-PARSE-015, read at the verb's own fourth operand.
+    assert_eq!(
+        load_code(
+            "(domain :graph) (bindings) \
+             (effects (for-each (hyperedges HyperedgeType/NATION) :as h \
+                (for-each (members-of h HyperedgeType/NATION) :as m \
+                  (update-membership h m nation/share (unset 0.5p)))))"
+        ),
+        Some("E-PARSE-015")
+    );
+}

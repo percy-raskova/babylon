@@ -1004,6 +1004,7 @@ fn effect_row(effect: EffectSignature) -> String {
         EffectSignature::NodeField(field) => format!("node:{field}"),
         EffectSignature::EdgeField(field) => format!("edge:{field}"),
         EffectSignature::HyperedgeField(field) => format!("hyperedge:{field}"),
+        EffectSignature::MembershipField(field) => format!("membership:{field}"),
         EffectSignature::Event(event) => format!("event:{event}"),
         EffectSignature::Shape(verb) => match verb {
             ShapeVerb::AddNode => "shape:add-node".to_owned(),

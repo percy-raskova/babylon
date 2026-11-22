@@ -481,6 +481,8 @@ pub enum EffectSignature {
     EdgeField(String),
     /// A hyperedge attribute qualified name.
     HyperedgeField(String),
+    /// A membership payload field qualified name (`update-membership`).
+    MembershipField(String),
     /// A full `EventType/MEMBER` event reference.
     Event(String),
     /// A graph-shape operation. Element identities are deliberately absent.
@@ -519,6 +521,8 @@ pub enum AllowedEffect {
     EdgeField(&'static str),
     /// A hyperedge field.
     HyperedgeField(&'static str),
+    /// A membership payload field.
+    MembershipField(&'static str),
     /// A full event reference.
     Event(&'static str),
 }
@@ -532,6 +536,7 @@ impl AllowedEffect {
             (Self::NodeField(expected), EffectSignature::NodeField(actual))
             | (Self::EdgeField(expected), EffectSignature::EdgeField(actual))
             | (Self::HyperedgeField(expected), EffectSignature::HyperedgeField(actual))
+            | (Self::MembershipField(expected), EffectSignature::MembershipField(actual))
             | (Self::Event(expected), EffectSignature::Event(actual)) => expected == actual,
             _ => false,
         }
@@ -914,6 +919,8 @@ pub fn validate_governed_attribution(contract: &RuleContract) -> Result<(), Cont
 fn field_effect(items: &[SExpr], kind: &str) -> Option<EffectSignature> {
     let field = match kind {
         "update-node" | "update-edge" | "update-hyperedge" => items.get(2),
+        // The membership form names the pair first, so its qname sits one place later (#653).
+        "update-membership" => items.get(3),
         _ => None,
     };
     let Some(SExpr::Atom(Atom::QName(field))) = field else {
@@ -923,6 +930,7 @@ fn field_effect(items: &[SExpr], kind: &str) -> Option<EffectSignature> {
         "update-node" => Some(EffectSignature::NodeField(field.clone())),
         "update-edge" => Some(EffectSignature::EdgeField(field.clone())),
         "update-hyperedge" => Some(EffectSignature::HyperedgeField(field.clone())),
+        "update-membership" => Some(EffectSignature::MembershipField(field.clone())),
         _ => None,
     }
 }
@@ -1170,6 +1178,7 @@ fn write_effect(write: &Write) -> EffectSignature {
         }
         Write::EdgeAttribute { field, .. } => EffectSignature::EdgeField(field.clone()),
         Write::HyperedgeAttribute { field, .. } => EffectSignature::HyperedgeField(field.clone()),
+        Write::MembershipAttribute { field, .. } => EffectSignature::MembershipField(field.clone()),
     }
 }
 

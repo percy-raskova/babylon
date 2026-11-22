@@ -113,6 +113,22 @@ pub enum Write {
         /// The value now stored.
         value: f64,
     },
+
+    /// A field write on one membership — from `update-membership` (#653, Amendment AG (i)). The
+    /// pair `(hyperedge, member)` is the membership's identity. A membership is written whole at
+    /// mint, so the field always held a value and `previous` is that value, never an absence.
+    MembershipAttribute {
+        /// The hyperedge the membership belongs to.
+        hyperedge: HyperedgeId,
+        /// The member node.
+        member: NodeId,
+        /// The fully-qualified field name.
+        field: String,
+        /// The value the membership's field held before this write.
+        previous: f64,
+        /// The value now stored.
+        value: f64,
+    },
 }
 
 /// A [`Write`] with its attribution: which rule performed it, and where in

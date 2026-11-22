@@ -124,6 +124,13 @@ pub enum WriteTarget {
     /// A hyperedge's own field (`update-hyperedge`) — the Community port
     /// train's Task 6 (E2b); the id alone is the identity (VIII.9).
     Hyperedge(HyperedgeId),
+    /// One membership's declared field (`update-membership`, #653): the pair is the identity.
+    Membership {
+        /// The hyperedge the membership belongs to.
+        hyperedge: HyperedgeId,
+        /// The member node.
+        member: NodeId,
+    },
 }
 
 fn plain(message: impl Into<String>) -> EvalError {
@@ -473,6 +480,11 @@ impl<'a> EffectExecutor<'a> {
                 pending.push(write);
                 Ok(())
             }
+            "update-membership" => {
+                let write = self.collect_update_membership(items, env, host, fuel)?;
+                pending.push(write);
+                Ok(())
+            }
             other => Err(plain(format!(
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
@@ -688,6 +700,74 @@ impl<'a> EffectExecutor<'a> {
         })
     }
 
+    /// `(update-membership <expr> <expr> <qname> <update-op>)`, the collect half (§2.8,
+    /// Amendment AG (i)). It mirrors [`Self::collect_update_hyperedge`], except that the element
+    /// position takes two operands, the hyperedge then the member (§2.12), and the referent
+    /// checks read across both: the hyperedge's type is the qname's owner and the member's node
+    /// type the field's `:member` type (`E-EVAL-033`), and the pair is a membership
+    /// (`E-EVAL-038`). The write applies against `WriteTarget::Membership` in the APPLY phase.
+    fn collect_update_membership(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<PendingWrite, EvalError> {
+        crate::evaluator::charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, hyperedge, member, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-membership <expr> <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let hyperedge_id = Self::resolve_hyperedge(hyperedge, env, host, fuel)?;
+        let member_id = Self::resolve_node(member, env, host, fuel)?;
+        crate::evaluator::check_membership_referents(
+            env.graph
+                .expect("collect needs the pre-state graph (the driver always passes one)"),
+            self.types,
+            hyperedge_id,
+            member_id,
+            field,
+            "update-membership",
+        )?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        crate::evaluator::charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-membership")?;
+        let update_op = match op.as_str() {
+            "set" => UpdateOp::Set,
+            "add" | "sub" | "scale" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-membership")?;
+                match op.as_str() {
+                    "add" => UpdateOp::Add,
+                    "sub" => UpdateOp::Sub,
+                    _ => UpdateOp::Scale,
+                }
+            }
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )));
+            }
+        };
+        Ok(PendingWrite {
+            target: WriteTarget::Membership {
+                hyperedge: hyperedge_id,
+                member: member_id,
+            },
+            field: field.clone(),
+            op: update_op,
+            operand: WriteOperand::Real(operand_value),
+        })
+    }
+
     /// The Currency-lane half of [`Self::apply_pending_write`]'s Node arm
     /// (T3 #491, OQ-J), extracted so that function stays under the
     /// ≤100-line bound (Power-of-10 rule 3). Only `UpdateOp::Set` is
@@ -850,6 +930,7 @@ impl<'a> EffectExecutor<'a> {
                 Ok(())
             }
             WriteTarget::Hyperedge(id) => self.apply_pending_hyperedge_write(*id, write, graph),
+            WriteTarget::Membership { .. } => self.apply_pending_membership_write(write, graph),
         }
     }
 
@@ -902,6 +983,72 @@ impl<'a> EffectExecutor<'a> {
             .map_err(from_graph)?;
         self.record(Write::HyperedgeAttribute {
             id,
+            field: write.field.clone(),
+            previous,
+            value: new_value,
+        })?;
+        Ok(())
+    }
+
+    /// The membership half of [`Self::apply_pending_write`] (#653). The pair is tested again
+    /// here (`E-EVAL-038`), as `update-hyperedge`'s apply refuses a missing hyperedge: collect
+    /// ran against the pre-state, and nothing in a rule removes a member today, but the apply
+    /// step does not lean on that. A membership is written whole at mint, so the field's current
+    /// value is read for every op, and a field the membership never carried is refused as the
+    /// existence discipline refuses any absence. No Currency lane exists off nodes.
+    fn apply_pending_membership_write(
+        &mut self,
+        write: &PendingWrite,
+        graph: &mut dyn GraphSubstrate,
+    ) -> Result<(), EvalError> {
+        let WriteTarget::Membership { hyperedge, member } = write.target else {
+            return Err(plain(
+                "apply_pending_membership_write reached a non-membership target (wiring bug)",
+            ));
+        };
+        let WriteOperand::Real(operand) = write.operand else {
+            return Err(plain(format!(
+                "update-membership {}: a Currency operand reached apply — there is no \
+                 membership-scoped Currency lane; collect_update_membership should never \
+                 have produced this (wiring bug, not content)",
+                write.field
+            )));
+        };
+        if !graph.is_member(hyperedge, member).map_err(from_graph)? {
+            return Err(EvalError::coded(
+                EvalCode::NotAMembership,
+                format!(
+                    "update-membership {}: the node is not a member of the hyperedge at apply \
+                     (§2.8)",
+                    write.field
+                ),
+            ));
+        }
+        let previous = graph
+            .membership_attribute(hyperedge, member, &write.field)
+            .map_err(from_graph)?;
+        let new_value = match write.op {
+            UpdateOp::Set => operand,
+            UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                self.refuse_arithmetic_on_enum_field(&write.field, "update-membership")?;
+                combine_and_check_finite(
+                    write.op,
+                    previous,
+                    operand,
+                    &write.field,
+                    "update-membership",
+                )?
+            }
+        };
+        let new_value = canonical_zero(new_value);
+        self.store_range_check(&write.field, new_value)?;
+        self.ensure_record_capacity()?;
+        graph
+            .update_membership_attribute(hyperedge, member, &write.field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::MembershipAttribute {
+            hyperedge,
+            member,
             field: write.field.clone(),
             previous,
             value: new_value,
@@ -3750,5 +3897,195 @@ mod tests {
             .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
             .expect("the fixture edge carries the authored attribute");
         assert!((stored - 0.5).abs() < 1e-12, "0.7 - 0.2, stored: {stored}");
+    }
+
+    // ---- #653: update-membership ----
+
+    const MEMBERSHIP_SCENARIO: &str = "(scenario ft/update-membership
+      (defvocabulary NodeType (SOCIAL_CLASS PERIPHERY))
+      (defvocabulary HyperedgeType (NATION CELL))
+      (deffield nation/share probability intensive :member NodeType/SOCIAL_CLASS)
+      (deffield nation/mass int extensive :member NodeType/SOCIAL_CLASS)
+      (deffield cell/size int extensive)
+      (node g1 NodeType/SOCIAL_CLASS) (node g2 NodeType/SOCIAL_CLASS)
+      (node g3 NodeType/SOCIAL_CLASS) (node p1 NodeType/PERIPHERY)
+      (hyperedge n1 HyperedgeType/NATION (members
+        (member NodeType/SOCIAL_CLASS g1 (nation/share 0.5p) (nation/mass 4))
+        (member NodeType/SOCIAL_CLASS g2 (nation/share 0.25p) (nation/mass 8))))
+      (hyperedge n2 HyperedgeType/NATION (members
+        (member NodeType/SOCIAL_CLASS g1 (nation/share 1p) (nation/mass 100))))
+      (hyperedge c1 HyperedgeType/CELL (members g3)))";
+
+    struct MembershipWorld {
+        graph: MemoryGraph,
+        types: TypeEnv,
+        enums: EnumRegistry,
+        bindings: HashMap<String, Value>,
+    }
+
+    fn membership_world() -> MembershipWorld {
+        let mut graph = MemoryGraph::new();
+        let loaded = crate::scenario::load_scenario(MEMBERSHIP_SCENARIO, &mut graph)
+            .expect("the membership fixture loads");
+        let types = TypeEnv {
+            membership_fields: loaded.membership_fields.clone(),
+            fields: loaded.fields.clone(),
+            exemptions: &[],
+        };
+        let mut bindings = HashMap::new();
+        for (name, kind, index) in [("n1", "NATION", 0), ("n2", "NATION", 1), ("c1", "CELL", 0)] {
+            bindings.insert(
+                name.to_owned(),
+                Value::HyperedgeRef(graph.hyperedges(kind)[index]),
+            );
+        }
+        for (i, id) in graph.nodes("SOCIAL_CLASS").iter().enumerate() {
+            bindings.insert(format!("g{}", i + 1), Value::NodeRef(*id));
+        }
+        bindings.insert("p1".to_owned(), Value::NodeRef(graph.nodes("PERIPHERY")[0]));
+        MembershipWorld {
+            graph,
+            types,
+            enums: loaded.enums.clone(),
+            bindings,
+        }
+    }
+
+    impl MembershipWorld {
+        fn run(&mut self, effects: &str) -> Result<(), EvalError> {
+            let mut fuel = 1_000;
+            collect_then_apply(
+                &mut self.graph,
+                &self.types,
+                &self.enums,
+                self.bindings.clone(),
+                effects,
+                &mut fuel,
+            )
+            .map(|_| ())
+        }
+
+        fn mass(&self, hyperedge: &str, member: &str) -> f64 {
+            let (Value::HyperedgeRef(h), Value::NodeRef(m)) =
+                (&self.bindings[hyperedge], &self.bindings[member])
+            else {
+                unreachable!("the fixture binds references")
+            };
+            self.graph
+                .membership_attribute(*h, *m, "nation/mass")
+                .expect("the fixture membership carries the field")
+        }
+    }
+
+    #[test]
+    fn update_membership_under_each_update_op() {
+        let mut world = membership_world();
+        for (op, expected) in [
+            ("(set 10)", 10.0),
+            ("(add 2)", 12.0),
+            ("(sub 4)", 8.0),
+            ("(scale 2)", 16.0),
+        ] {
+            world
+                .run(&format!(
+                    "(effects (update-membership n1 g1 nation/mass {op}))"
+                ))
+                .expect("the update serves");
+            assert_eq!(
+                world.mass("n1", "g1").to_bits(),
+                f64::to_bits(expected),
+                "{op}"
+            );
+        }
+        // The same member in the other nation, and the other member of this one, are unmoved.
+        assert_eq!(world.mass("n2", "g1").to_bits(), 100.0_f64.to_bits());
+        assert_eq!(world.mass("n1", "g2").to_bits(), 8.0_f64.to_bits());
+    }
+
+    #[test]
+    fn update_membership_at_the_range_boundary_is_e_eval_020() {
+        let mut world = membership_world();
+        let err = world
+            .run("(effects (update-membership n1 g1 nation/share (set 2)))")
+            .expect_err("a probability above 1 is refused, never clamped");
+        assert_eq!(err.code, Some(EvalCode::StoreRangeViolation), "{err}");
+        // The boundary itself is admitted.
+        world
+            .run("(effects (update-membership n1 g1 nation/share (set 1)))")
+            .expect("1 is inside [0, 1]");
+    }
+
+    #[test]
+    fn update_membership_of_a_non_member_is_e_eval_038() {
+        let mut world = membership_world();
+        // g3 is a SOCIAL_CLASS node but belongs to the cell, not to n1.
+        let err = world
+            .run("(effects (update-membership n1 g3 nation/mass (set 1)))")
+            .expect_err("g3 is no member of n1");
+        assert_eq!(err.code, Some(EvalCode::NotAMembership), "{err}");
+        // Wrong hyperedge type and wrong member type are E-EVAL-033.
+        for source in [
+            "(effects (update-membership c1 g3 nation/mass (set 1)))",
+            "(effects (update-membership n1 p1 nation/mass (set 1)))",
+        ] {
+            let err = world.run(source).expect_err(source);
+            assert_eq!(
+                err.code,
+                Some(EvalCode::AccessorTypeOrValueMismatch),
+                "{source}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn update_membership_records_one_write() {
+        let mut world = membership_world();
+        let mut log = CollectingWriteLog::new();
+        let (form, _) =
+            crate::reader::read("(effects (update-membership n1 g1 nation/mass (add 2)))")
+                .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let env = EvalEnv {
+            bindings: world.bindings.clone(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+            draw_context: None,
+        };
+        let mut sink = CollectingSink::default();
+        let mut fuel = 1_000;
+        {
+            let mut executor =
+                EffectExecutor::observed(&world.types, &world.enums, "nation/probe", &mut log);
+            executor
+                .collect_and_apply_fixture(
+                    &items[1..],
+                    &env,
+                    &EmptyIntrinsicHost,
+                    &mut world.graph,
+                    &mut sink,
+                    &mut fuel,
+                )
+                .expect("the observed membership update applies");
+        }
+        let (Value::HyperedgeRef(h), Value::NodeRef(m)) =
+            (world.bindings["n1"].clone(), world.bindings["g1"].clone())
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            log.writes(),
+            vec![Write::MembershipAttribute {
+                hyperedge: h,
+                member: m,
+                field: "nation/mass".to_owned(),
+                previous: 4.0,
+                value: 6.0,
+            }]
+        );
     }
 }

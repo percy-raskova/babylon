@@ -520,10 +520,8 @@ pub(crate) fn require_graph<'a>(
 /// grouping form. Meeting one in EXPRESSION position (this module) is a
 /// grammar error, not an unimplemented seam — §2.7's `<expr>` production has
 /// no production for any of them. (Whether the head is SERVED in effect
-/// position varies: most dispatch in [`crate::structural_verbs`]; `for-each`
-/// and `update-membership` refuses there too, pending the AG(i) lane (#653)
-/// — `for-each`, `update-edge` and (since Community port train Task 6)
-/// `update-hyperedge` all serve there today; the message below claims only the
+/// position varies: most dispatch in [`crate::structural_verbs`], `for-each`, `update-edge`,
+/// `update-hyperedge` and (#653) `update-membership` among them; the message below claims only the
 /// grammar, never service.) §2.8's `<verb>` production has ELEVEN
 /// alternatives: the ten structural verbs (`update-node`, `update-edge`,
 /// `update-hyperedge`, `update-membership`, `add-node`, `remove-node`,
@@ -531,9 +529,8 @@ pub(crate) fn require_graph<'a>(
 /// `emit`. Those eleven, plus the probability kernel's `choose`, `guard` and
 /// `for-each`, the four update-ops
 /// (`add`/`sub`/`set`/`scale`), and the two list forms (`members`,
-/// `member`) — 20 in all. (`update-membership`/`member` are Amendment-AG-era
-/// heads absent from `RESERVED_FORM_TAGS`; that reservation gap is a filed
-/// follow-up, not this table's concern.)
+/// `member`) — 20 in all. (`update-membership`, `member` and `membership-field-of` joined
+/// `RESERVED_FORM_TAGS` with #653, closing the reservation gap this paragraph once filed.)
 const EFFECT_POSITION_ONLY: [&str; 20] = [
     "choose",
     "guard",
@@ -1409,6 +1406,59 @@ fn eval_field_of(
     }
 }
 
+/// The checks `membership-field-of` and `update-membership` share (§2.10 discipline 1 across
+/// two operands, D81, D82): the hyperedge's type must be the qname's owner and the member's node
+/// type the type the field was declared `:member` for (`E-EVAL-033`), then the pair must be a
+/// membership (`E-EVAL-038`). The test is `is_member`, a keyed lookup, never a scan of the
+/// hyperedge's members. `form` names the caller for the message only.
+pub(crate) fn check_membership_referents(
+    graph: &dyn GraphSubstrate,
+    types: &TypeEnv,
+    hyperedge: babylon_graph::substrate::HyperedgeId,
+    member: babylon_graph::substrate::NodeId,
+    qname: &str,
+    form: &str,
+) -> Result<(), EvalError> {
+    check_hyperedge_referent_type(hyperedge, qname, form, graph)?;
+    let Some(member_type) = types.membership_fields.get(qname) else {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: no `deffield … :member` declares this field (§2.9)"),
+        ));
+    };
+    let actual = graph.node_type_of(member).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: {} (§2.10 discipline 1)", e.message),
+        )
+    })?;
+    if actual != member_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "{form} {qname}: the member is a {actual} node, but the field is declared for \
+                 {member_type} members (§2.10 discipline 1)"
+            ),
+        ));
+    }
+    let is_member = graph.is_member(hyperedge, member).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: {}", e.message),
+        )
+    })?;
+    if !is_member {
+        return Err(EvalError::coded(
+            EvalCode::NotAMembership,
+            format!(
+                "{form} {qname}: the node is not a member of the hyperedge — a membership \
+                 carries the fields of a pair that exists (§2.10, D81)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// `(membership-field-of <hyperedge> <member> <qname>)` (§2.10, D81): one declared field of one
 /// membership, a keyed lookup (never a scan of the hyperedge's members). Order: charge the
 /// accessor base; evaluate both operands (a `HyperedgeRef`, then a `NodeRef`; anything else is
@@ -1447,49 +1497,14 @@ fn eval_membership_field_of(
              require_graph's"
         )));
     };
-    check_hyperedge_referent_type(hyperedge, qname, "membership-field-of", graph)?;
-    let Some(member_type) = types.membership_fields.get(qname) else {
-        return Err(EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!(
-                "membership-field-of {qname}: no `deffield … :member` declares this field \
-                 (§2.9)"
-            ),
-        ));
-    };
-    let actual = graph.node_type_of(member).map_err(|e| {
-        EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!(
-                "membership-field-of {qname}: {} (§2.10 discipline 1)",
-                e.message
-            ),
-        )
-    })?;
-    if actual != member_type {
-        return Err(EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!(
-                "membership-field-of {qname}: the member is a {actual} node, but the field is \
-                 declared for {member_type} members (§2.10 discipline 1)"
-            ),
-        ));
-    }
-    let is_member = graph.is_member(hyperedge, member).map_err(|e| {
-        EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!("membership-field-of {qname}: {}", e.message),
-        )
-    })?;
-    if !is_member {
-        return Err(EvalError::coded(
-            EvalCode::NotAMembership,
-            format!(
-                "membership-field-of {qname}: the node is not a member of the hyperedge — a \
-                 membership carries the fields of a pair that exists (§2.10, D81)"
-            ),
-        ));
-    }
+    check_membership_referents(
+        graph,
+        types,
+        hyperedge,
+        member,
+        qname,
+        "membership-field-of",
+    )?;
     let value = graph
         .membership_attribute(hyperedge, member, qname)
         .map_err(|e| {
@@ -3087,9 +3102,8 @@ mod tests {
     /// original 27-head copy could not catch an unclassified grammar head):
     /// every entry of `declarations::RESERVED_FORM_TAGS` partitions into
     /// exactly one of {evaluator-served, effect-position-only, unserved-
-    /// expression, declaration-level}, with no remainder — plus the three
-    /// Amendment-AG-era heads that predate their own `RESERVED_FORM_TAGS`
-    /// rows (a filed reservation-gap follow-up).
+    /// expression, declaration-level}, with no remainder — and the three
+    /// Amendment-AG-era heads, reserved since #653, are classified the same way.
     #[test]
     fn every_seam_head_is_classified() {
         const EVALUATOR_SERVED: [&str; 13] = [
@@ -3146,9 +3160,8 @@ mod tests {
             "unclassified RESERVED_FORM_TAGS (each would misdiagnose as \
              E-LOAD-021): {unclassified:?}"
         );
-        // The AG-era heads are absent from RESERVED_FORM_TAGS (filed gap)
-        // but MUST still be classified here so they refuse with the right
-        // diagnosis today.
+        // The AG-era heads are reserved now (#653); this loop keeps pinning that each is
+        // classified in exactly one table, whichever way `RESERVED_FORM_TAGS` is read.
         for head in ["update-membership", "member", "membership-field-of"] {
             let buckets = [
                 EVALUATOR_SERVED.contains(&head),

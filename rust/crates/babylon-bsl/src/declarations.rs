@@ -31,7 +31,7 @@ use std::fmt::Result as FmtResult;
 /// are excluded because an `intrinsic` name is a `symbol` (§1.4) and cannot
 /// spell them, so no collision is expressible there. `opt` — the synthetic
 /// keyword-option tag — is included: it is a §5.2 tag like any other.
-pub const RESERVED_FORM_TAGS: [&str; 53] = [
+pub const RESERVED_FORM_TAGS: [&str; 56] = [
     "add",
     "add-edge",
     "add-hyperedge",
@@ -61,8 +61,10 @@ pub const RESERVED_FORM_TAGS: [&str; 53] = [
     "intrinsic",
     "manifest",
     "material-cycle",
+    "member",
     "members",
     "members-of",
+    "membership-field-of",
     "metric",
     "metric-of",
     "neighbors",
@@ -83,6 +85,7 @@ pub const RESERVED_FORM_TAGS: [&str; 53] = [
     "the",
     "update-edge",
     "update-hyperedge",
+    "update-membership",
     "update-node",
     "when",
 ];

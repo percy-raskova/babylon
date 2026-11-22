@@ -303,7 +303,8 @@ fn causal_identity(err: &ContractError) -> Option<ErrorIdentity> {
         } => match effect {
             EffectSignature::NodeField(field)
             | EffectSignature::EdgeField(field)
-            | EffectSignature::HyperedgeField(field) => Some(ErrorIdentity::Field(field.clone())),
+            | EffectSignature::HyperedgeField(field)
+            | EffectSignature::MembershipField(field) => Some(ErrorIdentity::Field(field.clone())),
             EffectSignature::Event(event) => {
                 let (enum_type, member) = event.split_once('/')?;
                 Some(ErrorIdentity::Enum {

@@ -740,7 +740,7 @@ fn check_one_verbs_field_inits(
 /// The closed terminal sets §2 fixes, and the arities its productions do.
 /// `min`/`max` are operand counts **after** an optional `:as <symbol>` is
 /// stripped; `usize::MAX` means "no upper bound" (a variadic body).
-const ARITIES: [(&str, usize, usize, &str); 25] = [
+const ARITIES: [(&str, usize, usize, &str); 26] = [
     ("material-cycle", 0, 0, "exactly 0"),
     ("organizer-products", 0, 0, "exactly 0"),
     ("organizer-practice", 0, 0, "exactly 0"),
@@ -768,6 +768,7 @@ const ARITIES: [(&str, usize, usize, &str); 25] = [
     ("update-node", 3, 3, "exactly 3"),
     ("update-edge", 3, 3, "exactly 3"),
     ("update-hyperedge", 3, 3, "exactly 3"),
+    ("update-membership", 4, 4, "exactly 4"),
 ];
 
 /// The closed five-member `<fold-op>` set (§2.7), minted as a real sum type
@@ -945,11 +946,15 @@ fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
             }
         }
     }
-    // An `<update-op>` sits in the third operand of the three update verbs;
-    // a fifth head there — the `(unset …)` the frozen estate reaches for —
-    // is E-PARSE-015 (§2.8: the set is closed).
-    if matches!(head, "update-node" | "update-edge" | "update-hyperedge") {
-        if let Some(SExpr::List(op_items)) = items.get(3) {
+    // An `<update-op>` sits in the third operand of the three update verbs, and in the fourth of
+    // `update-membership`, which names its pair first (#653); a fifth head there — the
+    // `(unset …)` the frozen estate reaches for — is E-PARSE-015 (§2.8: the set is closed).
+    if matches!(
+        head,
+        "update-node" | "update-edge" | "update-hyperedge" | "update-membership"
+    ) {
+        let op_index = if head == "update-membership" { 4 } else { 3 };
+        if let Some(SExpr::List(op_items)) = items.get(op_index) {
             if let Some(SExpr::Atom(Atom::Symbol(op))) = op_items.first() {
                 if !UPDATE_OPS.contains(&op.as_str()) {
                     return Err(GrammarError::NotInClosedSet {

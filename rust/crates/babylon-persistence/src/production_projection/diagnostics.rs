@@ -14,6 +14,7 @@ pub(crate) enum Stage {
     FoundationLoad,
     FoundationComponentHash,
     FoundationRegisterDecode,
+    FoundationCatalog,
     FoundationGraphSession,
     FoundationAdmission,
     JournalPublication,

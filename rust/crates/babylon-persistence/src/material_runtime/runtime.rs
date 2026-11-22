@@ -1611,7 +1611,7 @@ pub(crate) fn reconstruct_material_foundation(
     drop(component_timing);
     // The catalog is regenerated from the captured sources before any stored
     // register frame is decoded: state bytes never carry their definitions.
-    let catalog_timing = Timing::start(Stage::FoundationAdmission, 0);
+    let catalog_timing = Timing::start(Stage::FoundationCatalog, 0);
     let admitted = admitted_material(&graph_foundation, &stored.spec)?;
     drop(catalog_timing);
     // The private register's dossier resolves into handles owned by this graph,

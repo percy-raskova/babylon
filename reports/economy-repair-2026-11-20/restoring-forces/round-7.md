@@ -279,8 +279,8 @@ The columns are small figures at 200 and 400 periods, then national figures at 2
   231, 357, 301 hours. The spare-money rule alone gives 370, 316, 443, 396. Together they give 465, 465, 444, 446, and
   no workplace stops in any run.
 - **With both present, plans down the chain add +4, +3, +4, +1 hours,** less than one hundredth of the whole. Lent hands
-  add +7, +3, +21, +16: little at the small figures, about a twentieth at the national. Both together add +8, +7, +21,
-  +16. The cap on orders changes plans down the chain by -4, -3, -6, -3.
+  add +7, +3, +21, +16: little at the small figures, three to five hundredths at the national. Both together add +8, +7,
+  +21, +16. The cap on orders changes plans down the chain by -4, -3, -6, -3.
 
 So rounds four to six were right that this set of four is the best, and wrong about why. The top-ups and the spare-money
 rule do nearly all of the work, and lent hands add the rest at the national figures. Round four took plans down the

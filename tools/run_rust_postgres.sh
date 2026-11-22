@@ -709,7 +709,7 @@ if [ "$status" -eq 0 ]; then
         held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority \
         persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arrival \
         live_material_observer_preserves_history_and_denies_preview_blob_authority \
-        graph_reads_resolve_exact_ids_with_prior_campaign_statistics || status=$?
+        graph_reads_resolve_exact_ids_at_a_period_its_statistics_have_not_seen || status=$?
       ;;
     reader)
       for reader_suite in reader_role_live observer_material_live; do

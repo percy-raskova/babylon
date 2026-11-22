@@ -33,6 +33,7 @@ const PERIODS: &[&str] = &[
     "babylon_state.graph_hyperedge_v1",
     "babylon_state.graph_hyperedge_member_v1",
     "babylon_state.graph_hyperedge_f64_v1",
+    "babylon_state.graph_hyperedge_member_f64_v1",
     "babylon_state.graph_node_manifest_v1",
     "babylon_state.graph_node_chunk_v1",
     "babylon_state.graph_node_f64_chunk_v1",

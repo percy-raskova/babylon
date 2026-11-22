@@ -59,6 +59,27 @@ pub(crate) struct CapturedGraphState {
     edge_f64: Vec<Row>,
     node_currency: Vec<Row>,
     hyperedge_f64: Vec<Row>,
+    membership_f64: Vec<Row>,
+}
+
+fn capture_membership_f64(
+    client: &mut impl GenericClient,
+    source: StoredTickReadSource,
+    campaign_id: CampaignId,
+    resolve_tick: i64,
+) -> Result<Vec<Row>, RustPersistenceRuntimeError> {
+    client
+        .query(
+            &format!(
+                "SELECT local_name, member, qname, value_bits \
+                 FROM {graph_membership_f64} \
+                 WHERE campaign_id = $1::uuid AND resolve_tick = $2 \
+                 ORDER BY local_name, member, qname",
+                graph_membership_f64 = source.relation(StoredTickRelation::GraphHyperedgeMemberF64)
+            ),
+            &[campaign_id.as_uuid(), &resolve_tick],
+        )
+        .map_err(|error| database("read stored graph membership f64", &error))
 }
 
 impl CapturedGraphState {
@@ -158,6 +179,7 @@ impl CapturedGraphState {
                     &[campaign_id.as_uuid(), &resolve_tick],
                 )
                 .map_err(|error| database("read stored graph hyperedge f64", &error))?,
+            membership_f64: capture_membership_f64(client, source, campaign_id, resolve_tick)?,
         })
     }
     pub(crate) fn admit(
@@ -174,7 +196,7 @@ impl CapturedGraphState {
                 edge_f64: decode_graph_edge_f64(self.edge_f64)?,
                 node_currency: decode_graph_node_currency(self.node_currency)?,
                 hyperedge_f64: decode_graph_hyperedge_f64(self.hyperedge_f64)?,
-                membership_f64: Vec::new(),
+                membership_f64: decode_graph_membership_f64(self.membership_f64)?,
             },
         )
         .map_err(|_| RustPersistenceRuntimeError::ReplaySource)
@@ -726,6 +748,8 @@ pub(crate) type GraphNodeCurrencyRows = Vec<(String, String, i128)>;
 
 pub(crate) type GraphHyperedgeF64Rows = Vec<(String, String, u64)>;
 
+pub(crate) type GraphMembershipF64Rows = Vec<(String, String, String, u64)>;
+
 pub(crate) fn decode_graph_nodes(
     rows: Vec<Row>,
 ) -> Result<GraphNodeRows, RustPersistenceRuntimeError> {
@@ -828,6 +852,22 @@ pub(crate) fn decode_graph_hyperedge_f64(
             Ok((
                 decode_column(&row, 0)?,
                 decode_column(&row, 1)?,
+                unsigned_bits(bits),
+            ))
+        })
+        .collect()
+}
+
+pub(crate) fn decode_graph_membership_f64(
+    rows: Vec<Row>,
+) -> Result<GraphMembershipF64Rows, RustPersistenceRuntimeError> {
+    rows.into_iter()
+        .map(|row| {
+            let bits: i64 = decode_column(&row, 3)?;
+            Ok((
+                decode_column(&row, 0)?,
+                decode_column(&row, 1)?,
+                decode_column(&row, 2)?,
                 unsigned_bits(bits),
             ))
         })
@@ -1011,6 +1051,7 @@ pub(crate) fn graph_row_count(
         rows.edge_f64().len(),
         rows.node_currency().len(),
         rows.hyperedge_f64().len(),
+        rows.membership_f64().len(),
     ]
     .into_iter()
     .try_fold(0_usize, usize::checked_add)

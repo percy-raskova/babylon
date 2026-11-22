@@ -1,6 +1,6 @@
 //! Exact current full-observer component views.
 
-pub(crate) const OBSERVER_TICK_COMPONENT_VIEWS: [&str; 24] = [
+pub(crate) const OBSERVER_TICK_COMPONENT_VIEWS: [&str; 25] = [
     "public.v_observer_graph_node_v1",
     "public.v_observer_graph_node_f64_v1",
     "public.v_observer_graph_edge_v1",
@@ -9,6 +9,7 @@ pub(crate) const OBSERVER_TICK_COMPONENT_VIEWS: [&str; 24] = [
     "public.v_observer_graph_edge_f64_v1",
     "public.v_observer_graph_node_currency_v1",
     "public.v_observer_graph_hyperedge_f64_v1",
+    "public.v_observer_graph_hyperedge_member_f64_v1",
     "public.v_observer_world_register_v1",
     "public.v_observer_hex_state_delta_v1",
     "public.v_observer_territory_state_v1",

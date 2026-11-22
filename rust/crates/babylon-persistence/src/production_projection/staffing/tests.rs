@@ -196,7 +196,7 @@ fn graph_rows(graph: &StableGraphState) -> StableGraphStateRowsInput {
         edge_f64: rows.edge_f64().to_vec(),
         node_currency: rows.node_currency().to_vec(),
         hyperedge_f64: rows.hyperedge_f64().to_vec(),
-        membership_f64: Vec::new(),
+        membership_f64: rows.membership_f64().to_vec(),
     }
 }
 

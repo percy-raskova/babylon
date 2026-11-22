@@ -28,7 +28,7 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
     let report = babylon_persistence::verify_persistence_semantic_vectors(VECTORS)
         .expect("governed vector corpus");
 
-    assert_eq!(report.row_count(), 54);
+    assert_eq!(report.row_count(), 55);
     for kind in [
         "valid_scalar",
         "valid_row",
@@ -50,6 +50,7 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
         "stable_graph_edge_f64_v1",
         "stable_graph_node_currency_v1",
         "stable_graph_hyperedge_f64_v1",
+        "stable_graph_hyperedge_member_f64_v1",
         "world_register_v1",
         "territory_state_v1",
         "dynamic_hex_state_v1",
@@ -65,7 +66,7 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
         .split(|byte| *byte == b'\n')
         .filter(|row| !row.is_empty())
         .collect::<Vec<_>>();
-    assert_eq!(rows.len(), 54);
+    assert_eq!(rows.len(), 55);
     for row in rows {
         let outcome = babylon_persistence::verify_persistence_semantic_vector_row(row)
             .expect("every row executes independently of corpus identity");

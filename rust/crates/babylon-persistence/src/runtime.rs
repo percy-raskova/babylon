@@ -37,6 +37,8 @@ mod live_tests {
     use postgres::Error as PostgresError;
     #[path = "city_pd_atomic.rs"]
     mod city_pd_atomic;
+    #[path = "live_membership_values.rs"]
+    mod live_membership_values;
     #[path = "material_open.rs"]
     mod material_open;
     #[path = "organizer_allocation_atomic.rs"]

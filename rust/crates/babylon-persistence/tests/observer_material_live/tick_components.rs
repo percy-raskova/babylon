@@ -21,7 +21,7 @@ use std::fmt::Write as _;
 use std::time::Instant;
 use uuid::Uuid;
 
-const RELATIONS: [(&str, &str); 24] = [
+const RELATIONS: [(&str, &str); 25] = [
     ("graph_node_v1", "public.v_observer_graph_node_v1"),
     ("graph_node_f64_v1", "public.v_observer_graph_node_f64_v1"),
     ("graph_edge_v1", "public.v_observer_graph_edge_v1"),
@@ -38,6 +38,10 @@ const RELATIONS: [(&str, &str); 24] = [
     (
         "graph_hyperedge_f64_v1",
         "public.v_observer_graph_hyperedge_f64_v1",
+    ),
+    (
+        "graph_hyperedge_member_f64_v1",
+        "public.v_observer_graph_hyperedge_member_f64_v1",
     ),
     ("world_register_v1", "public.v_observer_world_register_v1"),
     ("hex_state_delta_v1", "public.v_observer_hex_state_delta_v1"),

@@ -194,6 +194,14 @@ JOIN babylon_state.tick_commit AS marker
  AND marker.resolve_tick = component.resolve_tick
 WHERE marker.envelope_layout_version = 3;
 
+CREATE VIEW public.v_observer_graph_hyperedge_member_f64_v1 AS
+SELECT component.*
+FROM babylon_state.graph_hyperedge_member_f64_v1 AS component
+JOIN babylon_state.tick_commit AS marker
+  ON marker.campaign_id = component.campaign_id
+ AND marker.resolve_tick = component.resolve_tick
+WHERE marker.envelope_layout_version = 3;
+
 CREATE VIEW public.v_observer_world_register_v1 AS
 SELECT component.*
 FROM babylon_state.world_register_v1 AS component
@@ -332,6 +340,7 @@ REVOKE ALL ON
     public.v_observer_graph_edge_f64_v1,
     public.v_observer_graph_node_currency_v1,
     public.v_observer_graph_hyperedge_f64_v1,
+    public.v_observer_graph_hyperedge_member_f64_v1,
     public.v_observer_world_register_v1,
     public.v_observer_hex_state_delta_v1,
     public.v_observer_territory_state_v1,

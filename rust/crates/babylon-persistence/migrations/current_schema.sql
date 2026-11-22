@@ -513,6 +513,16 @@ CREATE TABLE babylon_state.graph_hyperedge_f64_v1 (
     CONSTRAINT graph_hyperedge_f64_v1_resolve_tick_check CHECK ((resolve_tick >= 1))
 );
 
+CREATE TABLE babylon_state.graph_hyperedge_member_f64_v1 (
+    campaign_id uuid NOT NULL,
+    resolve_tick bigint NOT NULL,
+    local_name text NOT NULL COLLATE pg_catalog."C",
+    member text NOT NULL COLLATE pg_catalog."C",
+    qname text NOT NULL COLLATE pg_catalog."C",
+    value_bits bigint NOT NULL,
+    CONSTRAINT graph_hyperedge_member_f64_v1_resolve_tick_check CHECK ((resolve_tick >= 1))
+);
+
 CREATE TABLE babylon_state.graph_hyperedge_member_v1 (
     campaign_id uuid NOT NULL,
     resolve_tick bigint NOT NULL,
@@ -842,6 +852,9 @@ ALTER TABLE ONLY babylon_state.graph_edge_v1
 ALTER TABLE ONLY babylon_state.graph_hyperedge_f64_v1
     ADD CONSTRAINT graph_hyperedge_f64_v1_pkey PRIMARY KEY (campaign_id, resolve_tick, local_name, qname);
 
+ALTER TABLE ONLY babylon_state.graph_hyperedge_member_f64_v1
+    ADD CONSTRAINT graph_hyperedge_member_f64_v1_pkey PRIMARY KEY (campaign_id, resolve_tick, local_name, member, qname);
+
 ALTER TABLE ONLY babylon_state.graph_hyperedge_member_v1
     ADD CONSTRAINT graph_hyperedge_member_v1_campaign_id_resolve_tick_local_na_key UNIQUE (campaign_id, resolve_tick, local_name, member);
 
@@ -997,6 +1010,9 @@ ALTER TABLE ONLY babylon_state.campaign_foundation
 
 ALTER TABLE ONLY babylon_state.campaign
     ADD CONSTRAINT campaign_local_h3_reference_fkey FOREIGN KEY (local_h3_ref_digest) REFERENCES babylon_ref.h3_reference_cohort(ref_digest) DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE ONLY babylon_state.graph_hyperedge_member_f64_v1
+    ADD CONSTRAINT graph_hyperedge_member_f64_v1_member_fkey FOREIGN KEY (campaign_id, resolve_tick, local_name, member) REFERENCES babylon_state.graph_hyperedge_member_v1(campaign_id, resolve_tick, local_name, member) ON DELETE CASCADE;
 
 ALTER TABLE ONLY babylon_state.graph_hyperedge_member_v1
     ADD CONSTRAINT graph_hyperedge_member_v1_campaign_id_resolve_tick_local_n_fkey FOREIGN KEY (campaign_id, resolve_tick, local_name) REFERENCES babylon_state.graph_hyperedge_v1(campaign_id, resolve_tick, local_name) ON DELETE CASCADE;

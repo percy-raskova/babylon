@@ -707,6 +707,7 @@ fn assert_no_maintenance_tick_rows(owner: &mut Client, campaign: CampaignId) {
         "graph_hyperedge_v1",
         "graph_hyperedge_member_v1",
         "graph_hyperedge_f64_v1",
+        "graph_hyperedge_member_f64_v1",
         "hex_state_delta_v1",
         "territory_state_v1",
         "territory_state_field_v1",

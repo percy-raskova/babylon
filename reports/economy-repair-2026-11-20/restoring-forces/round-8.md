@@ -325,12 +325,12 @@ the design worded it before.
   90 sets with one, the gap between the money and what the bank's books explain is $0 in every period.
 - **People exact.** In the 149 sets whose rows carry the count of people, each copy's count never changes. Sets without
   the seekers rule carry no such columns.
-- **A shock that ends.** By the test of rounds six and seven (hours, output and every account's needs back to nineteen
-  twentieths of the opening by period 76 and staying, and prices settled), 12 of the 128 sets have a returning-harvest
-  run that passes. It is the same run each time, the taxed harvest that fails in one copy, and the same sets at 200 and
-  at 400 periods: without the rules, with lent hands and with seekers alone, under no credit and under the bank, at the
-  small figures. No set passes at the national figures or under the top-ups, and no set with pay, the order of layoff,
-  the stop rule or two people looking at the opening passes in any form.
+- **A shock that ends.** By the test of rounds six and seven (in every period from 76 to the end, the hours attended and
+  every account's needs met are at nineteen twentieths of the opening or more), 12 of the 128 sets have a
+  returning-harvest run that passes. It is the same run each time, the taxed harvest that fails in one copy, and the
+  same sets at 200 and at 400 periods: without the rules, with lent hands and with seekers alone, under no credit and
+  under the bank, at the small figures. No set passes at the national figures or under the top-ups, and no set with pay,
+  the order of layoff, the stop rule or two people looking at the opening passes in any form.
 - **Settled after a lasting loss.** Not reached. With the whole third part and the bank a posted price still moves in
   the last 20 periods in 17, 17, 14, 14 of the 17 runs. A stopped shop's posted price climbs a step every period without
   end, in the sets without the rules too (the measuring agent's finding), so this count alone does not show unrest; the

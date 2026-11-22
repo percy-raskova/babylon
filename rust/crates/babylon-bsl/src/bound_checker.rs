@@ -43,10 +43,16 @@ const STRUCTURAL_VERBS: [&str; 10] = [
     "emit",
 ];
 
-/// The four §2.10 element accessors (R9 chapters C1/C2/C3/C9). Each is a
+/// The five §2.10 element accessors (R9 chapters C1/C2/C3/C9). Each is a
 /// **keyed lookup**, charged `1 + Σ cost(operands)` and never multiplied by
 /// a ceiling (D38).
-const ACCESSORS: [&str; 4] = ["field-of", "edge-between", "the", "metric-of"];
+const ACCESSORS: [&str; 5] = [
+    "field-of",
+    "membership-field-of",
+    "edge-between",
+    "the",
+    "metric-of",
+];
 
 /// The six query heads (§2.6).
 const QUERY_HEADS: [&str; 6] = [

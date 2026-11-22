@@ -915,6 +915,13 @@ fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl], depth: u8) -> Option<SE
             {
                 Some(SExpr::Atom(Atom::QName(qname.clone())))
             }
+            // `(membership-field-of <expr> <expr> <qname>)` — the same carriage for a
+            // membership's payload (§2.10, D81): the declaration's kind, so §3.4 sees it.
+            [SExpr::Atom(Atom::Symbol(head)), _, _, SExpr::Atom(Atom::QName(qname))]
+                if head == "membership-field-of" =>
+            {
+                Some(SExpr::Atom(Atom::QName(qname.clone())))
+            }
             // A NESTED fold: §3.4's table says `sum`/`mean`/`min`/`max`
             // carry the body kind, so the outer fold's body kind is the
             // inner fold's body kind. This is what lets §2.6's own two-hop

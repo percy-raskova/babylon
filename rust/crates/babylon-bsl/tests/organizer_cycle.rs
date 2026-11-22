@@ -14,7 +14,7 @@ use babylon_bsl::vocabulary::ClosedVocabulary;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 fn source(operation: &str, role: &str, position: &str) -> String {
     let id = match operation {
@@ -35,6 +35,7 @@ fn load(source: &str) -> Result<LoadedRule, LoadError> {
         &LoadContext {
             vocabulary: &BindingVocabulary::default(),
             types: &TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             },
@@ -86,6 +87,7 @@ fn native_graph_refusal_identifies_the_operation_even_without_subjects() {
         let error = tick::run_tick(
             &loaded,
             &TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             },

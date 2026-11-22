@@ -18,7 +18,7 @@
 //! — and again with its rule sources supplied in reverse order — produces
 //! byte-identical serialized diagnostic arrays.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use babylon_bsl::rule_pipeline;
 use babylon_bsl::rule_pipeline::{LoadContext, LoadError};
@@ -99,6 +99,7 @@ impl Minimal {
         Self {
             vocabulary: BindingVocabulary::default(),
             types: TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             },

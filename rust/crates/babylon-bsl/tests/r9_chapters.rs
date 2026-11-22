@@ -42,7 +42,7 @@ use babylon_bsl::typecheck;
 use babylon_bsl::typecheck::{TypeCode, TypeEnv};
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 // ------------------------------------------------------------- fixtures
 
@@ -131,6 +131,7 @@ fn type_env() -> TypeEnv {
         registry.declare(&e(source), &v, &enums()).expect(source);
     }
     TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: registry.type_env_fields(),
         exemptions: &[],
     }
@@ -1928,7 +1929,7 @@ mod c8_typed_neighbours_and_naming {
     use babylon_bsl::types::EnumRegistry;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::substrate::GraphSubstrate;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     /// D51: the operand is **mandatory**, so the pre-C8 three-operand form
     /// is an arity error rather than a silently edge-type-only bound.
@@ -2078,6 +2079,7 @@ mod c8_typed_neighbours_and_naming {
         // degrading, so `None` here would turn this family's `field-of`
         // vectors into driver-error tests instead of field-read tests.
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -2230,7 +2232,7 @@ mod c9_metric_registration {
     use babylon_bsl::evaluator::EvalCode;
     use babylon_bsl::metrics::{MetricDomain, MetricRegistry};
     use babylon_bsl::typecheck::{TypeCode, TypeEnv};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     const GRAPH: &str = "(metric solidarity-density :type coefficient :kind intensive \
         (domain :graph) :provider topology-scores)";
@@ -2347,6 +2349,7 @@ mod c9_metric_registration {
         let mut fields = HashMap::new();
         registry().merge_into_kind_env(&mut fields);
         let env = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         };

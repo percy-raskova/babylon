@@ -150,6 +150,16 @@ pub enum VocabularyError {
         /// The offending first segment.
         segment: String,
     },
+    /// `E-LOAD-048` — a `deffield ... :member` whose first segment renders
+    /// a registered type that is not a `HyperedgeType` member (§2.9, D79).
+    /// A membership field belongs to a hyperedge type and one of its member
+    /// node types; a node or edge owner has no membership to carry it.
+    MemberOnNonHyperedgeOwner {
+        /// The field qname.
+        field: String,
+        /// The kind the owner segment actually renders.
+        owner_kind: EnumKind,
+    },
 }
 
 impl VocabularyError {
@@ -163,6 +173,7 @@ impl VocabularyError {
             Self::RenderingCollision { .. } => "E-LOAD-032",
             Self::InvalidRendering { .. } => "E-LOAD-033",
             Self::UnknownFieldOwner { .. } => "E-LOAD-023",
+            Self::MemberOnNonHyperedgeOwner { .. } => "E-LOAD-048",
         }
     }
 }
@@ -214,6 +225,12 @@ impl std::fmt::Display for VocabularyError {
                 f,
                 "E-LOAD-023: '{segment}' names no registered NodeType, EdgeType \
                  or HyperedgeType member (§2.9)"
+            ),
+            Self::MemberOnNonHyperedgeOwner { field, owner_kind } => write!(
+                f,
+                "E-LOAD-048: deffield {field} carries :member but its owner is a {} \
+                 member — a membership field belongs to a HyperedgeType (§2.9)",
+                owner_kind.type_name()
             ),
         }
     }
@@ -400,6 +417,28 @@ impl ClosedVocabulary {
     pub fn owner_of_field(&self, qname: &str) -> Result<(EnumKind, &str), VocabularyError> {
         let segment = qname.split('/').next().unwrap_or(qname);
         self.owner_of(segment)
+    }
+
+    /// The owning hyperedge type of a membership field's qname
+    /// (`nation/households` → `"NATION"`), the first half of a
+    /// `deffield ... :member` pair (§2.9).
+    ///
+    /// # Errors
+    ///
+    /// [`VocabularyError::UnknownFieldOwner`] (`E-LOAD-023`) when the first
+    /// segment renders nothing registered;
+    /// [`VocabularyError::MemberOnNonHyperedgeOwner`] (`E-LOAD-048`) when it
+    /// renders a `NodeType` or `EdgeType` member.
+    pub fn hyperedge_owner_of_field(&self, qname: &str) -> Result<&str, VocabularyError> {
+        let (kind, member) = self.owner_of_field(qname)?;
+        if kind == EnumKind::HyperedgeType {
+            Ok(member)
+        } else {
+            Err(VocabularyError::MemberOnNonHyperedgeOwner {
+                field: qname.to_owned(),
+                owner_kind: kind,
+            })
+        }
     }
 
     /// Every registered member of one kind, in ascending byte order.

@@ -2572,8 +2572,8 @@ mod tests {
 
     use super::*;
     use crate::causal_contract::EvidenceClass;
-    use std::collections::HashMap;
     use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashMap};
 
     #[test]
     #[allow(
@@ -2677,6 +2677,7 @@ mod tests {
             &contract,
             &enums,
             &crate::typecheck::TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             },

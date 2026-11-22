@@ -1422,7 +1422,7 @@ mod tests {
 
     use super::*;
     use babylon_bsl::rule_pipeline::RuleExecution;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
 
     fn span(start: usize, end: usize) -> ByteSpan {
         ByteSpan { start, end }
@@ -1602,6 +1602,7 @@ mod tests {
             .expect("enum");
         let bindings = babylon_bsl::bindings::parse_bindings(&rule).expect("bindings");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };

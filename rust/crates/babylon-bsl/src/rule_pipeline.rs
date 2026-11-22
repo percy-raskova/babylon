@@ -382,6 +382,8 @@ pub fn load_rule_form(
     crate::grammar::check_type_operands_are_enum_refs(&rule)
         .map_err(LoadError::MintingTypeOperand)?;
     crate::grammar::check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
+    // §2.9's wrong-form law (E-LOAD-046): one namespace, two reading forms.
+    crate::grammar::check_membership_form_owners(&rule, ctx.types).map_err(LoadError::Grammar)?;
     let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
         // Task 8 (Organization foundation plan): the closed-vocabulary
@@ -1182,7 +1184,7 @@ mod deferred_shape_verb_tests {
     use crate::causal_contract::{ContractError, EffectSignature, RuleRole, ShapeVerb};
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::TypeEnv;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     fn load_ctx() -> LoadContext<'static> {
         // Leaked so the borrows in `LoadContext<'static>` are trivially
@@ -1199,6 +1201,7 @@ mod deferred_shape_verb_tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
@@ -1216,6 +1219,26 @@ mod deferred_shape_verb_tests {
             vocabulary_registry: None,
             rule_file: "x.bsl",
         }
+    }
+
+    #[test]
+    fn a_membership_field_through_a_hyperedge_form_refuses_at_load() {
+        let mut ctx = load_ctx();
+        ctx.types = Box::leak(Box::new(TypeEnv {
+            membership_fields: [("geography/share".to_owned(), "TERRITORY".to_owned())]
+                .into_iter()
+                .collect(),
+            fields: HashMap::new(),
+            exemptions: &[],
+        }));
+        let err = super::load_rule(
+            r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
+  (bindings)
+  (effects (update-hyperedge group geography/share (set 1))))"#,
+            &ctx,
+        )
+        .expect_err("the wrong form is refused");
+        assert_eq!(err.spec_code(), Some("E-LOAD-046"), "{err}");
     }
 
     #[test]
@@ -1411,7 +1434,7 @@ mod governed_field_write_prohibition_tests {
     use crate::causal_contract::{ContractError, GOVERNED_WRITE_PROHIBITED_NODE_FIELDS};
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::TypeEnv;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     fn load_ctx() -> LoadContext<'static> {
         // Same leaked-fixture convention as `deferred_shape_verb_tests::
@@ -1426,6 +1449,7 @@ mod governed_field_write_prohibition_tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
@@ -1550,7 +1574,7 @@ mod enum_fold_body_tests {
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::{TypeCode, TypeEnv};
     use crate::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     /// `OrgKind` in declaration order: `STATE_APPARATUS`=0, `BUSINESS`=1 —
     /// the same fixture shape `tick.rs::org_kind_fixture`/
@@ -1585,6 +1609,7 @@ mod enum_fold_body_tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields,
                 exemptions: &[],
             })),
@@ -1697,7 +1722,7 @@ mod vocabulary_membership_tests {
     use crate::grammar::GrammarError;
     use crate::typecheck::TypeEnv;
     use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     fn vocabulary() -> ClosedVocabulary {
         ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])])
@@ -1715,6 +1740,7 @@ mod vocabulary_membership_tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
@@ -1801,7 +1827,7 @@ mod kind_mixing_wiring_tests {
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::{TypeCode, TypeEnv};
     use crate::types::{BslType, FieldDecl, FieldKind};
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     fn load_ctx() -> LoadContext<'static> {
         let fields = HashMap::from([
@@ -1831,6 +1857,7 @@ mod kind_mixing_wiring_tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields,
                 exemptions: &[],
             })),

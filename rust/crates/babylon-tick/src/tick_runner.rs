@@ -599,6 +599,7 @@ pub(crate) fn build_shared_load_inputs(
 ) -> Result<SharedLoadInputs, PrepareError> {
     let fields = seed_implicit_edge_strength_fields(scenario)?;
     let types = TypeEnv {
+        membership_fields: scenario.membership_fields.clone(),
         fields,
         exemptions: &[],
     };

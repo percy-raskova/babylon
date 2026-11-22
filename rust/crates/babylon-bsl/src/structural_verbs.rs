@@ -1451,10 +1451,11 @@ mod tests {
     use crate::types::{FieldDecl, FieldKind};
     use crate::write_log::CollectingWriteLog;
     use babylon_graph::memory::MemoryGraph;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     fn types() -> TypeEnv {
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "social-class/agitation".to_owned(),
@@ -1651,6 +1652,7 @@ mod tests {
             .add_node("SOCIAL_CLASS")
             .expect("the fixture adds a node with a registered kind");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "social-class/balance".to_owned(),
                 FieldDecl {
@@ -2483,6 +2485,7 @@ mod tests {
     /// `SOCIAL_CLASS`-only registry.
     fn organization_types() -> TypeEnv {
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "organization/claim-strength".to_owned(),
                 FieldDecl {
@@ -2552,6 +2555,7 @@ mod tests {
             .add_node("SOCIAL_CLASS")
             .expect("the fixture adds a node with a registered kind");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "territory/population".to_owned(),
                 FieldDecl {
@@ -2633,6 +2637,7 @@ mod tests {
             )
             .expect("the scenario declares the authored entity");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
                 FieldDecl {
@@ -3206,6 +3211,7 @@ mod tests {
     /// edge field — the two field kinds the §6.2 chapter-C2 family names.
     fn edge_types() -> TypeEnv {
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "solidarity/strength".to_owned(),
@@ -3455,6 +3461,7 @@ mod tests {
     fn update_edge_against_a_currency_declared_field_names_the_scope_gap_not_a_kind_mismatch() {
         let (mut graph, a, b) = edge_fixture();
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "solidarity/subsidy".to_owned(),
                 FieldDecl {
@@ -3505,6 +3512,7 @@ mod tests {
             )
             .expect("the scenario declares the authored entity");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "solidarity/strength".to_owned(),
@@ -3556,6 +3564,7 @@ mod tests {
             .declare("EdgeMode", &["DORMANT".to_owned(), "ACTIVE".to_owned()])
             .expect("the scenario declares the authored entity");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "solidarity/mode".to_owned(),
                 FieldDecl {
@@ -3621,6 +3630,7 @@ mod tests {
 
     fn hyperedge_types() -> TypeEnv {
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "community/heat".to_owned(),
                 FieldDecl {

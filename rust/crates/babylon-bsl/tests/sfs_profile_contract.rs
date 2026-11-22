@@ -26,7 +26,7 @@ use babylon_graph::memory::MemoryGraph;
 use babylon_kernel::content_digest;
 
 use babylon_bsl::types::EnumRegistry;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Read;
@@ -218,6 +218,7 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
     let mut type_fields = declared.fields;
     type_fields.insert("synthetic-link/strength".to_owned(), strength.decl.clone());
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: type_fields,
         exemptions: &[],
     };

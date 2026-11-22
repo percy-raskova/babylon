@@ -88,6 +88,20 @@ pub enum GrammarError {
         /// The type the field owns off, as `EnumType/MEMBER`.
         owner: String,
     },
+    /// `E-LOAD-046` (§2.9, D79) — a membership field read or written through
+    /// the hyperedge's own forms (`field-of`, `update-hyperedge`), or a
+    /// hyperedge's own field read or written through the membership forms
+    /// (`membership-field-of`, `update-membership`). Static: the declaration
+    /// and the form are both content.
+    MembershipFormMismatch {
+        /// The form head.
+        form: String,
+        /// The qname written.
+        field: String,
+        /// Whether the qname IS a membership field (so the form is the
+        /// wrong, hyperedge one) or is not (so the membership form is wrong).
+        field_is_membership: bool,
+    },
     /// `E-LOAD-023` / `E-LOAD-030` / `E-LOAD-031` (Task 8, Organization
     /// foundation plan) — a closed-vocabulary failure surfacing through
     /// this module's own checks: `check_field_init_owners`'s `owner_of`
@@ -120,6 +134,7 @@ impl GrammarError {
             Self::GraphFlagOutsideDomain => "E-PARSE-013",
             Self::StrengthFieldInit { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
+            Self::MembershipFormMismatch { .. } => "E-LOAD-046",
             Self::Vocabulary { error, .. } => error.spec_code(),
         }
     }
@@ -186,12 +201,90 @@ impl std::fmt::Display for GrammarError {
                 "E-TYPE-014: field-init {field} owns off {owner}, but the verb \
                  mints a {verb_type} (§2.8)"
             ),
+            Self::MembershipFormMismatch {
+                form,
+                field,
+                field_is_membership,
+            } => {
+                if *field_is_membership {
+                    write!(
+                        f,
+                        "E-LOAD-046: ({form} …) names {field}, a membership field — read it \
+                         with membership-field-of and write it with update-membership (§2.9)"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "E-LOAD-046: ({form} …) names {field}, which is not a membership \
+                         field — a hyperedge's own field is read with field-of and written \
+                         with update-hyperedge (§2.9)"
+                    )
+                }
+            }
             Self::Vocabulary { form, error } => write!(f, "({form} …): {error}"),
         }
     }
 }
 
 impl std::error::Error for GrammarError {}
+
+/// The forms that name a membership field's qname, with the operand index
+/// the qname sits at and whether the form is the MEMBERSHIP one (§2.9).
+/// `field-of`/`update-hyperedge` carry it at operand 2; the two membership
+/// forms carry a hyperedge and a member first, so it sits at operand 3.
+const QNAME_FORMS: [(&str, usize, bool); 4] = [
+    ("field-of", 2, false),
+    ("update-hyperedge", 2, false),
+    ("membership-field-of", 3, true),
+    ("update-membership", 3, true),
+];
+
+/// `E-LOAD-046` (§2.9, D79): walk a form tree and refuse a membership
+/// field named through a hyperedge form (`field-of`, `update-hyperedge`) or
+/// a declared non-membership field named through a membership form
+/// (`membership-field-of`, `update-membership`). Static — the declaration
+/// and the reading form are both content. A qname that is declared nowhere
+/// is not this check's business: the typechecker's unknown-field refusal
+/// owns it.
+///
+/// # Errors
+///
+/// [`GrammarError::MembershipFormMismatch`].
+pub fn check_membership_form_owners(
+    expr: &SExpr,
+    types: &crate::typecheck::TypeEnv,
+) -> Result<(), GrammarError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+        for (form, index, membership_form) in QNAME_FORMS {
+            if head != form {
+                continue;
+            }
+            let Some(SExpr::Atom(Atom::QName(field))) = items.get(index) else {
+                continue;
+            };
+            let is_membership = types.membership_fields.contains_key(field);
+            let wrong = if membership_form {
+                !is_membership && types.fields.contains_key(field)
+            } else {
+                is_membership
+            };
+            if wrong {
+                return Err(GrammarError::MembershipFormMismatch {
+                    form: head.clone(),
+                    field: field.clone(),
+                    field_is_membership: is_membership,
+                });
+            }
+        }
+    }
+    for child in items {
+        check_membership_form_owners(child, types)?;
+    }
+    Ok(())
+}
 
 /// Every `<enum-ref>` operand position the language has, as
 /// `(form head, 1-based operand index, demanded kind)` — D74's list plus
@@ -948,6 +1041,53 @@ pub fn check_graph_flag_placement(expr: &SExpr) -> Result<(), GrammarError> {
 mod tests {
     use super::GrammarError;
     use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
+
+    #[test]
+    fn wrong_form_reads_and_writes_are_e_load_046() {
+        use crate::typecheck::TypeEnv;
+        use crate::types::{BslType, FieldDecl, FieldKind};
+        let decl = FieldDecl {
+            ty: BslType::Coefficient,
+            kind: FieldKind::Extensive,
+        };
+        let types = TypeEnv {
+            fields: [
+                ("community/strength".to_owned(), decl.clone()),
+                ("community/output".to_owned(), decl),
+            ]
+            .into_iter()
+            .collect(),
+            exemptions: &[],
+            membership_fields: [("community/strength".to_owned(), "SOCIAL_CLASS".to_owned())]
+                .into_iter()
+                .collect(),
+        };
+        let check = |source: &str| {
+            let (expr, _) = crate::reader::read(source).expect("test source must parse");
+            super::check_membership_form_owners(&expr, &types)
+        };
+        // The four wrong directions, each static, each E-LOAD-046.
+        for source in [
+            "(field-of h community/strength)",
+            "(update-hyperedge h community/strength (set 1))",
+            "(membership-field-of h m community/output)",
+            "(update-membership h m community/output (set 1))",
+        ] {
+            let err = check(source).expect_err(source);
+            assert_eq!(err.spec_code(), "E-LOAD-046", "{source}: {err}");
+        }
+        // The right forms pass, including nested inside another form.
+        for source in [
+            "(field-of h community/output)",
+            "(update-hyperedge h community/output (set 1))",
+            "(membership-field-of h m community/strength)",
+            "(if #t (update-membership h m community/strength (set 1)) 0)",
+        ] {
+            check(source).expect(source);
+        }
+        // A wrong form nested in a right one still refuses.
+        assert!(check("(if #t (field-of h community/strength) 0)").is_err());
+    }
 
     fn vocabulary() -> ClosedVocabulary {
         ClosedVocabulary::new([

@@ -15,7 +15,7 @@ use babylon_bsl::rule_pipeline;
 use babylon_bsl::rule_pipeline::LoadContext;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 /// Parse one `.bsl` rule and run the load-time pipeline, typechecking included.
@@ -32,6 +32,7 @@ use std::path::Path;
 pub fn parse_and_typecheck_bsl(source: &str) -> Result<SExpr, String> {
     let vocabulary = BindingVocabulary::default();
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     };

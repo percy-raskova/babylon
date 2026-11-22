@@ -22,7 +22,7 @@
 use crate::reader::{Atom, SExpr};
 use crate::types::{BslType, EnumRegistry, EnumRegistryError, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
@@ -313,6 +313,11 @@ pub struct OwnedFieldDecl {
     /// Whether this row is the implicit `<edge-type>/strength` (D32) rather
     /// than an authored `deffield`.
     pub implicit: bool,
+    /// `Some(member_node_type_member)` for a membership field
+    /// (`deffield ... :member NodeType/X`, Amendment AG clause i, §2.9):
+    /// the node type of the members whose membership carries it. `owner_*`
+    /// then names the hyperedge type.
+    pub member: Option<String>,
 }
 
 /// Every declared field of a content set, keyed by qname.
@@ -364,6 +369,7 @@ impl FieldRegistry {
                     owner_kind: EnumKind::EdgeType,
                     owner_member: member.clone(),
                     implicit: true,
+                    member: None,
                 },
             );
         }
@@ -387,8 +393,18 @@ impl FieldRegistry {
         vocabulary: &ClosedVocabulary,
         enums: &EnumRegistry,
     ) -> Result<(), DeclError> {
-        let (qname, ty, kind) = parse_deffield(form, enums)?;
+        let (qname, ty, kind, member) = parse_deffield(form, enums)?;
         let (owner_kind, owner_member) = vocabulary.owner_of_field(&qname)?;
+        let member = match member {
+            Some((enum_type, member_name)) => Some(check_member_half(
+                &qname,
+                &ty,
+                &enum_type,
+                &member_name,
+                vocabulary,
+            )?),
+            None => None,
+        };
         if let Some(existing) = self.fields.get(&qname) {
             let what = if existing.implicit {
                 "field (the implicit <edge-type>/strength, D32)"
@@ -404,6 +420,7 @@ impl FieldRegistry {
                 owner_kind,
                 owner_member: owner_member.to_owned(),
                 implicit: false,
+                member,
             },
         );
         Ok(())
@@ -459,6 +476,16 @@ impl FieldRegistry {
             .collect()
     }
 
+    /// The membership fields among the declared ones, as the typechecker's
+    /// `membership_fields` map: qname -> member `NodeType` member name.
+    #[must_use]
+    pub fn type_env_membership_fields(&self) -> BTreeMap<String, String> {
+        self.fields
+            .iter()
+            .filter_map(|(name, owned)| owned.member.clone().map(|m| (name.clone(), m)))
+            .collect()
+    }
+
     /// Every declared qname, ascending.
     #[must_use]
     pub fn qnames(&self) -> Vec<&str> {
@@ -475,10 +502,7 @@ impl FieldRegistry {
 /// `:type` (`E-LOAD-053` either way): every `:type` but `enum` requires
 /// `:kind` and forbids `:enum-type`; `:type enum` requires `:enum-type`
 /// (naming a type `enums` carries) and forbids `:kind`.
-fn parse_deffield(
-    form: &SExpr,
-    enums: &EnumRegistry,
-) -> Result<(String, BslType, FieldKind), DeclError> {
+fn parse_deffield(form: &SExpr, enums: &EnumRegistry) -> Result<ParsedDeffield, DeclError> {
     let SExpr::List(items) = form else {
         return Err(malformed("a deffield must be a form"));
     };
@@ -497,6 +521,7 @@ fn parse_deffield(
     let mut ty_name: Option<&str> = None;
     let mut kind: Option<FieldKind> = None;
     let mut enum_type_name: Option<&str> = None;
+    let mut member_ref: Option<(String, String)> = None;
     let mut cursor = options;
     while let [SExpr::Atom(Atom::Keyword(kw)), tail @ ..] = cursor {
         match (kw.as_str(), tail) {
@@ -520,9 +545,21 @@ fn parse_deffield(
                 enum_type_name = Some(name.as_str());
                 cursor = rest;
             }
+            ("member", [SExpr::Atom(Atom::EnumRef { enum_type, member }), rest @ ..]) => {
+                if member_ref.is_some() {
+                    return Err(malformed("a deffield takes :member once (§2.9)"));
+                }
+                member_ref = Some((enum_type.clone(), member.clone()));
+                cursor = rest;
+            }
+            ("member", _) => {
+                return Err(malformed(
+                    ":member takes one NodeType/<MEMBER> enum-ref (§2.9)",
+                ))
+            }
             (other, _) => {
                 return Err(malformed(format!(
-                    "a deffield takes :type, :kind and :enum-type, found :{other}"
+                    "a deffield takes :type, :kind, :enum-type and :member, found :{other}"
                 )))
             }
         }
@@ -536,7 +573,8 @@ fn parse_deffield(
         return Err(malformed("a deffield declares :type (§2.9)"));
     };
     if ty_name == "enum" {
-        return parse_enum_deffield(qname, kind, enum_type_name, enums);
+        let (qname, ty, kind) = parse_enum_deffield(qname, kind, enum_type_name, enums)?;
+        return Ok((qname, ty, kind, member_ref));
     }
     if enum_type_name.is_some() {
         return Err(DeclError::EnumKindShapeViolation {
@@ -546,9 +584,44 @@ fn parse_deffield(
     }
     let ty = parse_type_name(ty_name)?;
     match kind {
-        Some(kind) => Ok((qname.clone(), ty, kind)),
+        Some(kind) => Ok((qname.clone(), ty, kind, member_ref)),
         None => Err(malformed("a deffield declares both :type and :kind (§2.9)")),
     }
+}
+
+/// What [`parse_deffield`] reads: qname, type, kind and the optional
+/// `:member <enum-type>/<member>` operand as written.
+type ParsedDeffield = (String, BslType, FieldKind, Option<(String, String)>);
+
+/// The `:member` half of a declaration, checked as §2.9 orders it: the
+/// owner segment must render a `HyperedgeType` member (`E-LOAD-023` for
+/// nothing registered, `E-LOAD-048` for a node or edge type); the operand
+/// must be a registered `NodeType` member (`E-TYPE-011` for another kind,
+/// `E-LOAD-030`/`E-LOAD-031` for an unregistered one); and the type may not
+/// be `currency` (there is no Currency lane off nodes). Returns the member
+/// node type's member name.
+fn check_member_half(
+    qname: &str,
+    ty: &BslType,
+    enum_type: &str,
+    member: &str,
+    vocabulary: &ClosedVocabulary,
+) -> Result<String, DeclError> {
+    vocabulary.hyperedge_owner_of_field(qname)?;
+    if EnumKind::from_type_name(enum_type) != Some(EnumKind::NodeType) {
+        return Err(DeclError::Vocabulary(VocabularyError::WrongEnumKind {
+            enum_type: enum_type.to_owned(),
+            member: member.to_owned(),
+            expected: EnumKind::NodeType,
+        }));
+    }
+    vocabulary.check_enum_ref(enum_type, member)?;
+    if matches!(ty, BslType::Currency) {
+        return Err(malformed(
+            crate::scenario::currency_edge_unsupported_message("membership", qname),
+        ));
+    }
+    Ok(member.to_owned())
 }
 
 /// The `:type enum` half of [`parse_deffield`] — split out because its own
@@ -1173,6 +1246,112 @@ mod tests {
     }
 
     #[test]
+    fn deffield_member_declares_a_membership_field() {
+        let v = vocabulary();
+        let mut registry = FieldRegistry::default();
+        registry
+            .declare(
+                &form(
+                    "(deffield economic-sector/strength :type coefficient :kind extensive \
+                     :member NodeType/SOCIAL_CLASS)",
+                ),
+                &v,
+                &enums(),
+            )
+            .expect("a membership field declares");
+        let owned = registry
+            .get("economic-sector/strength")
+            .expect("the field is registered under one qname");
+        assert_eq!(owned.member.as_deref(), Some("SOCIAL_CLASS"));
+        assert_eq!(owned.owner_kind, EnumKind::HyperedgeType);
+        assert_eq!(owned.decl.ty, BslType::Coefficient);
+        assert_eq!(owned.decl.kind, FieldKind::Extensive);
+        assert!(registry
+            .type_env_fields()
+            .contains_key("economic-sector/strength"));
+        assert_eq!(
+            registry
+                .type_env_membership_fields()
+                .get("economic-sector/strength"),
+            Some(&"SOCIAL_CLASS".to_owned())
+        );
+        // A plain field of the same owner is not a membership field.
+        registry
+            .declare(
+                &form("(deffield economic-sector/output :type currency :kind extensive)"),
+                &v,
+                &enums(),
+            )
+            .expect("a plain hyperedge field declares");
+        assert_eq!(registry.type_env_membership_fields().len(), 1);
+        // One namespace: a second declaration of the qname is a duplicate.
+        let err = registry
+            .declare(
+                &form(
+                    "(deffield economic-sector/strength :type coefficient :kind extensive \
+                     :member NodeType/POLITY)",
+                ),
+                &v,
+                &enums(),
+            )
+            .expect_err("one qname is one declaration");
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
+    }
+
+    #[test]
+    fn member_on_a_node_owner_is_e_load_048() {
+        let mut registry = FieldRegistry::default();
+        for owner in ["social-class/strength", "solidarity/strength"] {
+            let err = registry
+                .declare(
+                    &form(&format!(
+                        "(deffield {owner} :type coefficient :kind extensive \
+                         :member NodeType/SOCIAL_CLASS)"
+                    )),
+                    &vocabulary(),
+                    &enums(),
+                )
+                .expect_err("a node or edge owner carries no membership");
+            assert_eq!(err.spec_code(), Some("E-LOAD-048"), "{owner}: {err}");
+        }
+    }
+
+    #[test]
+    fn member_naming_an_edge_type_is_e_type_011() {
+        let mut registry = FieldRegistry::default();
+        let err = registry
+            .declare(
+                &form(
+                    "(deffield economic-sector/strength :type coefficient :kind extensive \
+                     :member EdgeType/SOLIDARITY)",
+                ),
+                &vocabulary(),
+                &enums(),
+            )
+            .expect_err("the member half is a NodeType");
+        assert_eq!(err.spec_code(), Some("E-TYPE-011"), "{err}");
+    }
+
+    #[test]
+    fn a_currency_membership_field_is_refused() {
+        let mut registry = FieldRegistry::default();
+        let err = registry
+            .declare(
+                &form(
+                    "(deffield economic-sector/stake :type currency :kind extensive \
+                     :member NodeType/SOCIAL_CLASS)",
+                ),
+                &vocabulary(),
+                &enums(),
+            )
+            .expect_err("there is no Currency lane off nodes");
+        assert!(
+            err.to_string().contains("no edge-scoped Currency lane"),
+            "{err}"
+        );
+    }
+
+    #[test]
     fn a_deffield_owning_off_no_registered_type_is_e_load_023() {
         let mut registry = FieldRegistry::default();
         let err = registry
@@ -1603,7 +1782,7 @@ mod tests {
     #[test]
     fn deffield_type_enum_requires_enum_type_and_resolves_it() {
         let registry = org_kind();
-        let (qname, ty, kind) = super::parse_deffield(
+        let (qname, ty, kind, _member) = super::parse_deffield(
             &form("(deffield organization/kind :type enum :enum-type OrgKind)"),
             &registry,
         )

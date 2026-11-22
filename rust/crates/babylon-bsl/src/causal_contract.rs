@@ -1266,7 +1266,7 @@ mod tests {
     use crate::types::EnumRegistry;
     use crate::write_log::{Write, WriteRecord};
     use babylon_graph::substrate::NodeId;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     fn rule(source: &str) -> SExpr {
         crate::reader::read(source)
@@ -1290,6 +1290,7 @@ mod tests {
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields: HashMap::new(),
                 exemptions: &[],
             })),

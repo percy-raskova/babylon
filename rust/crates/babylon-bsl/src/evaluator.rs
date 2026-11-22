@@ -2095,7 +2095,7 @@ fn apply_equality(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError
 mod tests {
     use super::*;
     use crate::intrinsic_host::EmptyIntrinsicHost;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     fn costs() -> IntrinsicCosts {
         IntrinsicCosts::new(HashMap::from([("double".to_owned(), 4)]))
@@ -2885,6 +2885,7 @@ mod tests {
             .add_hyperedge("COMMUNITY", &[self_id, other_id])
             .expect("the fixture graph admits the authored hyperedge");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "solidarity/strength".to_owned(),
@@ -3095,6 +3096,7 @@ mod tests {
         fuel: &mut u64,
     ) -> Result<Value, EvalError> {
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -3142,6 +3144,7 @@ mod tests {
             )
             .expect("the scenario declares the authored entity");
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
                 FieldDecl {
@@ -3437,6 +3440,7 @@ mod tests {
     ) -> Result<Value, EvalError> {
         let costs = costs();
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };
@@ -3685,6 +3689,7 @@ mod tests {
             None => HashMap::new(),
         };
         let types = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::new(),
             exemptions: &[],
         };

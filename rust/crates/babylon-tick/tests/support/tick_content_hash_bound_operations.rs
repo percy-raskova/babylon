@@ -1,6 +1,6 @@
 //! Production-operation execution for the semantic maximum/+1 recipes.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use babylon_bsl::evaluator::Value as BslValue;
 use babylon_bsl::exemptions::IntensiveAggregationExemption;
@@ -190,6 +190,7 @@ fn execute_governance(governance: String) -> Result<(), IdentityCodecError> {
         .into_boxed_slice(),
     );
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions,
     };
@@ -755,6 +756,7 @@ fn execute_prepared(recipe: &Value) -> Result<(), IdentityCodecError> {
 
 fn empty_types() -> TypeEnv {
     TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     }
@@ -918,6 +920,7 @@ fn prepared_exemption_bytes(recipe: &Value) -> Result<(), IdentityCodecError> {
     });
     let exemptions = Box::leak(rows.into_boxed_slice());
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions,
     };

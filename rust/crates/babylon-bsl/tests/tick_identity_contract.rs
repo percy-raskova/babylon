@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use babylon_bsl::causal_contract::{
     AuditReceipt, EffectSignature, EvidenceClass, RuleRole, ShapeVerb,
@@ -394,6 +394,7 @@ fn prepared_sections() -> (PreparedBslSections, PreparedBslSections) {
         .declare("Alpha", &["BETA".to_owned(), "ALPHA".to_owned()])
         .expect("the scenario declares the authored entity");
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::from([
             (
                 "class/wage".to_owned(),
@@ -464,6 +465,7 @@ fn prepared_intrinsic_identity_accepts_96_bytes_and_refuses_97() {
     let maximum = IntrinsicCosts::new(HashMap::from([("x".repeat(96), 1)]));
     let oversized = IntrinsicCosts::new(HashMap::from([("x".repeat(97), 1)]));
     let types = TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::new(),
         exemptions: &[],
     };

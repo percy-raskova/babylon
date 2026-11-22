@@ -116,6 +116,10 @@ pub(crate) fn vocabulary_identity(err: &VocabularyError) -> ErrorIdentity {
         VocabularyError::InvalidRendering { member, .. } => enum_ref_identity(member),
         // `segment` is the qname's unresolved owner segment.
         VocabularyError::UnknownFieldOwner { segment } => ErrorIdentity::Name(segment.clone()),
+        // The field qname whose `:member` has no hyperedge owner.
+        VocabularyError::MemberOnNonHyperedgeOwner { field, .. } => {
+            ErrorIdentity::Field(field.clone())
+        }
     }
 }
 
@@ -189,7 +193,8 @@ fn grammar_identity(err: &GrammarError) -> ErrorIdentity {
             ErrorIdentity::Name(literal.clone())
         }
         GrammarError::StrengthFieldInit { field }
-        | GrammarError::FieldInitOwnerMismatch { field, .. } => ErrorIdentity::Field(field.clone()),
+        | GrammarError::FieldInitOwnerMismatch { field, .. }
+        | GrammarError::MembershipFormMismatch { field, .. } => ErrorIdentity::Field(field.clone()),
         // No struct fields at all — the identity is the fixed keyword this
         // variant is always about.
         GrammarError::GraphFlagOutsideDomain => ErrorIdentity::Keyword(":graph".to_owned()),

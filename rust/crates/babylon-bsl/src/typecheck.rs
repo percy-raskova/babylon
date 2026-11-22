@@ -83,7 +83,7 @@ use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
 use crate::score_class::{ClassEnv, ScoreClass};
 use crate::types::{BslType, FieldDecl, FieldKind};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// The §3.4 aggregation-law error codes, plus the two the R9 chapters add
 /// to this module's remit (`E-TYPE-016` on a selection score, `E-TYPE-017`
@@ -152,6 +152,10 @@ pub struct TypeEnv {
     /// The `EXTENSIVE_INTENSIVE_EXEMPTIONS` ledger in force — an exemption
     /// suppresses `E-TYPE-041/042/043` for its named field only (§3.4).
     pub exemptions: &'static [IntensiveAggregationExemption],
+    /// Membership fields: qname -> member `NodeType` member name (e.g. `"SOCIAL_CLASS"`). The qname's
+    /// type and kind stay in `fields`; this map only marks which qnames are membership fields
+    /// (Amendment AG clause i, §2.9: one namespace, one declaration).
+    pub membership_fields: BTreeMap<String, String>,
 }
 
 /// Typecheck one aggregation form: `(op field)` or
@@ -962,7 +966,7 @@ mod tests {
     use crate::exemptions::IntensiveAggregationExemption;
     use crate::types::EnumRegistry;
     use crate::types::{BslType, FieldDecl, FieldKind};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     fn env() -> TypeEnv {
         let mut fields = HashMap::new();
@@ -1007,6 +1011,7 @@ mod tests {
             },
         );
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         }
@@ -1105,6 +1110,7 @@ mod tests {
             },
         );
         let env = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         };
@@ -1267,6 +1273,7 @@ mod tests {
             )
             .expect("the scenario declares the authored entity");
         TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([
                 (
                     "organization/kind".to_owned(),

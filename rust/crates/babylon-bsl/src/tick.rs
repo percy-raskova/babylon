@@ -1440,8 +1440,8 @@ mod tests {
     use babylon_kernel::replay::ReplaySeed;
     use babylon_kernel::replay::ReplaySessionId;
     use babylon_kernel::replay::RngSeedContext;
-    use std::collections::HashMap;
     use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashMap};
 
     /// Explicit deterministic identity for these sealed fixtures.
     fn test_session() -> ReplaySessionId {
@@ -1664,6 +1664,7 @@ mod tests {
             edge_ceilings: std::collections::HashMap<String, u64>,
         ) -> Self {
             let types = crate::typecheck::TypeEnv {
+                membership_fields: BTreeMap::new(),
                 fields,
                 exemptions: &[],
             };
@@ -2234,6 +2235,7 @@ mod tests {
         let stranger = EnumRegistry::default();
 
         let types = crate::typecheck::TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
                 FieldDecl {

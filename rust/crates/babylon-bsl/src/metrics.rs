@@ -415,7 +415,7 @@ fn from_decl(e: &DeclError) -> MetricError {
 mod tests {
     use super::{MetricDomain, MetricRegistry};
     use crate::types::FieldKind;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     fn e(source: &str) -> crate::reader::SExpr {
         crate::reader::read(source)
@@ -550,6 +550,7 @@ mod tests {
         let mut fields = HashMap::new();
         registry().merge_into_kind_env(&mut fields);
         let env = TypeEnv {
+            membership_fields: BTreeMap::new(),
             fields,
             exemptions: &[],
         };

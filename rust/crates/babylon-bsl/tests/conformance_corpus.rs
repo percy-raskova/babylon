@@ -34,7 +34,7 @@ use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::currency::Currency;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 // ---------------------------------------------------------------- context
 
@@ -44,6 +44,7 @@ fn field(ty: BslType, kind: FieldKind) -> FieldDecl {
 
 fn types() -> TypeEnv {
     TypeEnv {
+        membership_fields: BTreeMap::new(),
         fields: HashMap::from([
             // Doctrine tag totals: accumulated counts, extensive.
             (

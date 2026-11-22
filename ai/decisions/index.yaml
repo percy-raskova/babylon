@@ -1,5 +1,5 @@
 meta:
-  version: 1.106.0
+  version: 1.107.0
   updated: '2026-11-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR318_who_carries_a_losing_workplace:
+    title: An owner covers a loss only while it is their best use; a bank carries a workplace by its capital, for a term
+    status: accepted
+    date: '2026-11-22'
+    file: ADR318_who_carries_a_losing_workplace.yaml
   ADR317_field_and_particles:
     title: The economy is drawn as a field of household groups, with hours and money as two streams and no rate
     status: accepted
@@ -32,7 +37,7 @@ decisions:
     file: ADR317_field_and_particles.yaml
   ADR316_attributed_membership_is_served:
     title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
-    status: proposed
+    status: accepted
     date: '2026-11-22'
     file: ADR316_attributed_membership_is_served.yaml
   ADR315_homes_rent_and_nation:

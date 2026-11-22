@@ -150,7 +150,9 @@ none. This changes rule P14 of ADR312 for buyers that are businesses.
 **A6. A workplace with spare money does not cut at once.** A workplace that holds more money than
 one period of what it pays out plans for what was asked of it, not only for what was paid for, as
 far as its spare money carries. One without spare money plans for what was paid for. Measured as
-the one rule that helped in every round; credit (A9) is what gives a sound workplace that money.
+the one rule that helped in every round. What gives a sound workplace that money is a loan that
+stands for its term (A10) or its owner's own money (A19). A loan repaid at the close of the period
+it was drawn in leaves none, as round 7b measured.
 
 ### Part two: money, banks and debt
 
@@ -182,16 +184,21 @@ Existing mortgages are held by banks once banks exist, in place of the stand-in 
 design. New mortgages come with the housing design.
 
 **A10. How much a bank lends, and at what rate.** A bank lends up to a multiple of its own capital,
-the law's figure. Each loan is also bounded by the borrower's own books: a loan to keep running by
-its last sales, a loan to grow by the price of the thing bought, a household's by its income, a
-public body's by its taxes. These bounds, and a legal highest rate, are policy rows. The rate is a
-price and follows the price rules: the bank posts it; when more is asked than the bank can lend, it
-rises within the period until what borrowers will pay for fits; when room to lend stands unused, it
-steps down, never below the bank's own cost. A borrower already deep in debt pays a step more for
-each further share of its bound that it uses. A business borrows to grow only below its own rate of
-profit, so the rate stays under the rate of profit, as ruled in July 2026.
+the law's figure. Each loan is also bounded by the borrower's own books: a loan to grow by the price
+of the thing bought, a household's by its income, a public body's by its taxes. A loan to keep
+running is not bounded by the borrower's last sales (ruled on 22 November 2026, ADR318): the bank's
+test (A9) and the bank's own bound hold it. Every such loan has a term and falls due at its end; the
+length of the term is a policy row, set by measurement. These bounds, and a legal highest rate, are
+policy rows. The rate is a price and follows the price rules: the bank posts it; when more is asked
+than the bank can lend, it rises within the period until what borrowers will pay for fits; when room
+to lend stands unused, it steps down, never below the bank's own cost. A borrower already deep in
+debt pays a step more for each further share of its bound that it uses. A business borrows to grow
+only below its own rate of profit, so the rate stays under the rate of profit, as ruled in July
+2026.
 
-**A11. Not paying.** What is not paid stays owed, in both books, and interest runs.
+**A11. Not paying.** What is not paid stays owed, in both books, and interest runs. What is unpaid
+of a loan at its due date counts as not paying from that date, whatever smaller sums the borrower
+pays (ADR318).
 
 - A business that has paid nothing for three periods (about 90 days, the banks' own standard) is
   taken by its lender. The old owners' claims end, the debt is written down, and the business is
@@ -273,6 +280,14 @@ founding a new one, in any place, at home or abroad. The order and the budget de
 put where it would earn less than money costs. A workplace that earns less than its owner's other
 uses gets no new machines and runs down. This ranking takes the place of the weighted draw in the
 companies' script; the choice stays in the script.
+
+An owner's own money follows the same order (ruled on 22 November 2026, ADR318). An owner puts
+money into a workplace that is losing only while that workplace is the best use the owner has for
+that money. A company has other uses, so it puts in nothing and cuts its losses: it sheds hands,
+cuts pay, shuts the workplace or sells it. A household whose one small business is the only use it
+has for its savings covers the loss from them until they are gone; then the business fails and the
+household goes back to wage work (A18). No rule names the two kinds of owner: the difference
+follows from what each has.
 
 **A20. The kind of work holds the core.**
 
@@ -397,7 +412,8 @@ What each piece must show, on the rows of the last 20 periods and never on a sho
 3. A workplace with spare money plans for what was asked, as measured (A6).
 4. Banks are few: national ones and one local bank for each place.
 5. A loan's size is bounded by the borrower's own books, by policy rows; a borrower deep in debt
-   pays more, by steps; there is a legal highest rate.
+   pays more, by steps; there is a legal highest rate. Changed on 22 November 2026 for a loan to
+   keep running: the bank's capital and its test bound it, and it has a term (ADR318).
 6. A business is in default after three periods without payment.
 7. The insured sum counts for each household of a pooled group.
 8. Only a rescue creates base money. The deposit fund draws on the federal budget.

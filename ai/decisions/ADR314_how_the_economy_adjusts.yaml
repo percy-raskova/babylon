@@ -213,6 +213,9 @@ ADR314_how_the_economy_adjusts:
   open_questions:
     - 'Rent, homes, mortgages and equity as play: answered on 2026-11-21 by ADR315.'
     - >-
+        Who carries a workplace through a loss: answered on 2026-11-22 by
+        ADR318, which amends A10, A11 and A19.
+    - >-
         Comprador states, Taiwan beside China, and Ukraine's war, on a finer map
         of states.
     - 'The content of outside events, and tariffs and other politics of trade.'
@@ -231,6 +234,7 @@ ADR314_how_the_economy_adjusts:
     from the records with its cause; money exact in every period; the rate
     under the rate of profit.
   related:
+    - ADR318_who_carries_a_losing_workplace
     - ADR315_homes_rent_and_nation
     - ADR313_the_national_economy_opens_in_balance
     - ADR312_the_price_of_a_short_market

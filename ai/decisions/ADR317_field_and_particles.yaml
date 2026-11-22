@@ -321,14 +321,16 @@ ADR317_field_and_particles:
         Two captures of the country disagree on the number of workplaces (7,463
         in November, 60,634 in October). The design uses November's.
     - >-
-        Puerto Rico. ADR171 (OQ4) keeps it as a separate declared surface, with
-        nothing rendered until the small-count damping and a deflator exist.
-        That default was written for the national-question overlay. Whether it
-        also keeps Puerto Rico off this scene's rail is not decided here.
+        Puerto Rico: answered by the Director on 2026-11-22 ("Drawn with
+        today's figures"). This scene draws Puerto Rico like any other place,
+        with its small counts as they are. ADR171's default (OQ4: nothing
+        rendered until the small-count damping and a deflator exist) was
+        written for the national-question overlay and does not carry over to
+        this scene.
     - >-
-        The on-screen name of the settler nation still awaits the Director
-        (ADR171, OQ8). It matters once nations are drawn, and in the grouping
-        by nation.
+        The on-screen name of the settler nation: answered by the Director on
+        2026-11-22 ("Settler"; ADR171, OQ8). It is used wherever the player
+        groups by nation or sees a nation's outline.
   verification: |
     For every period shown: hours attended equal hours worked plus idle hours;
     hours worked at workplaces plus work done outside them equal the period's

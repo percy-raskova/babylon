@@ -10077,8 +10077,8 @@ consequences are the ordinary kind of review item.
    * - D229
      - §2.8, §2.9, §2.10, §2.12, §3.9
      - **Attributed membership is served (issue #653, Amendment AG (i);
-       decision record ADR316).** Four points are decided here, as a draft
-       ruling open to the owner's review. (1) **The scenario's form** for
+       decision record ADR316).** Four points are decided here; the Director
+       accepted all four on 2026-11-22. (1) **The scenario's form** for
        seeding a membership's values is
        ``(member <NodeType/MEMBER> <local-name> (<qname> <value>)*)`` inside
        ``(members ...)``, written out in §3.9 clause 6. A bare item, or a

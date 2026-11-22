@@ -1,7 +1,7 @@
 ADR316_attributed_membership_is_served:
   title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
   date: '2026-11-22'
-  status: proposed
+  status: accepted
   issue: PER-371
   evidence_class: Implemented
   authority:
@@ -55,8 +55,9 @@ ADR316_attributed_membership_is_served:
     wrong form for a qname is E-LOAD-046, a :member on a node or edge owner is
     E-LOAD-048.
 
-    FOUR POINTS DECIDED HERE, open to the owner's review. They are register row
-    D229 in the language reference.
+    FOUR POINTS DECIDED HERE. The Director accepted all four on 2026-11-22, in
+    the question dialog ("Accept all four"). They are register row D229 in the
+    language reference.
     1. The scenario's form for seeding a membership's values:
        (member <NodeType/X> <name> (<qname> <value>)*).
     2. A hydrated member not of the annotated type is E-EVAL-033, the verb's

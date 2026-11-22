@@ -16,6 +16,43 @@ pub(crate) fn catalog() -> MichiganMaterialCatalog {
     .expect("shipped numeric material fixture")
 }
 
+/// Local names of the two counties the membership fixture's hyperedge joins.
+pub(crate) const MEMBERSHIP_COUNTIES: [&str; 2] = ["county-26163", "county-26125"];
+/// Qualified name of the membership field the fixture declares.
+pub(crate) const MEMBERSHIP_QNAME: &str = "economic-sector/weight";
+
+/// The shipped catalog with one membership field and one hyperedge whose two
+/// members carry values (7 and -3), authored as a replacement graph
+/// declarations artifact: the way content reaches a campaign, nothing else.
+pub(crate) fn catalog_with_membership_values() -> MichiganMaterialCatalog {
+    use crate::economic_catalog::{SourceArtifact, SourceArtifactKind};
+    let mut catalog = catalog();
+    let shipped = catalog
+        .captured_sources()
+        .iter()
+        .find(|source| source.kind() == SourceArtifactKind::GraphDeclarations)
+        .map(|source| String::from_utf8(source.bytes().to_vec()))
+        .expect("the shipped catalog captures its graph declarations")
+        .expect("the shipped declarations are text");
+    let authored = format!(
+        "{shipped}\n  (deffield {MEMBERSHIP_QNAME} int extensive :member NodeType/TERRITORY)\n  \
+         (hyperedge membership-proof HyperedgeType/ECONOMIC_SECTOR (members\n    \
+         (member NodeType/TERRITORY {a} ({MEMBERSHIP_QNAME} 7))\n    \
+         (member NodeType/TERRITORY {b} ({MEMBERSHIP_QNAME} -3))))\n",
+        a = MEMBERSHIP_COUNTIES[0],
+        b = MEMBERSHIP_COUNTIES[1],
+    );
+    catalog
+        .source_inputs
+        .retain(|source| source.kind() != SourceArtifactKind::GraphDeclarations);
+    catalog.source_inputs.push(SourceArtifact::capture(
+        SourceArtifactKind::GraphDeclarations,
+        authored.into_bytes(),
+    ));
+    catalog.source_inputs.sort_by_key(SourceArtifact::kind);
+    catalog
+}
+
 pub(crate) fn material_receipts(period: u64) -> MaterialTickReceipts {
     MaterialTickReceipts {
         agency_paid: vec![],

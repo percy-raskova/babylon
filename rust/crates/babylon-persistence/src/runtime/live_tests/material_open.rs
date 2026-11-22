@@ -3,7 +3,7 @@ use super::{CampaignId, CollectingSink, NoTls, OrderedPracticeActionBatch, TestD
 use crate::material_runtime;
 use crate::material_runtime::{DurableMaterialRuntime, FoundationReadSource, MaterialRuntimeError};
 use crate::michigan_content::MichiganContentPreset;
-use postgres::Row;
+use postgres::{Config, Row};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -222,4 +222,172 @@ fn live_capture_fingerprint_distinguishes_raw_values_types_nulls_and_order() {
         digest(&[&first]).expect("the fixture value has a canonical digest"),
         digest(&[&first, &equal]).expect("the fixture value has a canonical digest")
     );
+}
+
+/// One stored value row: hyperedge, member, qname, value bits.
+type MemberRow = (String, String, String, i64);
+
+/// A campaign whose opening graph carries membership values, with one period
+/// committed through the product's own call. Returns the runtime and the
+/// expected `(hyperedge, member, qname, value_bits)` rows, sorted.
+fn campaign_with_membership_values_committed(
+    config: &Config,
+    campaign: CampaignId,
+) -> (
+    material_runtime::DurableMaterialRuntime,
+    Vec<MemberRow>,
+    [u8; 32],
+) {
+    use crate::test_support::{MEMBERSHIP_COUNTIES, MEMBERSHIP_QNAME};
+    let foundation = MichiganContentPreset::FourWeekStandard
+        .create_foundation_for_campaign(
+            &crate::test_support::catalog_with_membership_values(),
+            campaign,
+        )
+        .expect("the catalog admits an authored membership field and its values");
+    let digest = foundation.digest();
+    let mut runtime = DurableMaterialRuntime::create(config, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
+    let actions = OrderedPracticeActionBatch::empty(
+        runtime.session().graph_session().session_identity().clone(),
+        1,
+    )
+    .expect("the empty authored batch constructs");
+    runtime
+        .advance_and_commit(&mut CollectingSink::default(), &actions)
+        .expect("the prepared tick advances and commits");
+    assert_eq!(runtime.session().completed_tick(), 1);
+    let mut expected: Vec<MemberRow> = [
+        (MEMBERSHIP_COUNTIES[0], 7.0_f64),
+        (MEMBERSHIP_COUNTIES[1], -3.0),
+    ]
+    .into_iter()
+    .map(|(member, value)| {
+        (
+            "membership-proof".to_owned(),
+            member.to_owned(),
+            MEMBERSHIP_QNAME.to_owned(),
+            i64::from_ne_bytes(value.to_bits().to_ne_bytes()),
+        )
+    })
+    .collect();
+    expected.sort();
+    (runtime, expected, digest)
+}
+
+fn stored_membership_rows(config: &Config, campaign: CampaignId, tick: i64) -> Vec<MemberRow> {
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    let mut rows: Vec<_> = client
+        .query(
+            "SELECT local_name, member, qname, value_bits \
+             FROM babylon_state.graph_hyperedge_member_f64_v1 \
+             WHERE campaign_id=$1::uuid AND resolve_tick=$2",
+            &[campaign.as_uuid(), &tick],
+        )
+        .expect("the stored value rows are readable")
+        .iter()
+        .map(|row| (row.get(0), row.get(1), row.get(2), row.get(3)))
+        .collect();
+    rows.sort();
+    rows
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+fn a_campaign_with_membership_values_restores_them() {
+    let base = super::validated_base_config();
+    let database = TestDatabase::create_from_template(
+        &base,
+        &super::validated_template_name(),
+        "membervalrestore",
+    );
+    let config = database.config(&base);
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x653_0a02));
+    let (runtime, expected, digest) = campaign_with_membership_values_committed(&config, campaign);
+    let stored = runtime
+        .session()
+        .graph_session()
+        .stable_graph_state()
+        .expect("the committed session has a stable graph state");
+    assert_eq!(stored.rows().membership_f64().len(), 2);
+    let bytes = stored.canonical_bytes().to_vec();
+    let world_hash = runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
+    let tail = runtime.tail().copied();
+    drop(runtime);
+
+    // An empty table cannot pass: the rows are exactly the seeded values.
+    assert_eq!(stored_membership_rows(&config, campaign, 1), expected);
+
+    let reopened = DurableMaterialRuntime::open(&config, campaign, digest)
+        .expect("the committed campaign reopens");
+    let restored = reopened
+        .session()
+        .graph_session()
+        .stable_graph_state()
+        .expect("the reopened session has a stable graph state");
+    assert_eq!(restored.canonical_bytes(), bytes.as_slice());
+    assert_eq!(
+        restored.rows().membership_f64(),
+        stored.rows().membership_f64()
+    );
+    assert_eq!(
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the reopened session publishes a world hash"),
+        world_hash
+    );
+    assert_eq!(reopened.tail().copied(), tail);
+    drop(reopened);
+    database.cleanup();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+fn a_lost_membership_value_row_refuses_the_reopen() {
+    let base = super::validated_base_config();
+    let database = TestDatabase::create_from_template(
+        &base,
+        &super::validated_template_name(),
+        "membervallost",
+    );
+    let config = database.config(&base);
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x653_0a03));
+    let (runtime, expected, digest) = campaign_with_membership_values_committed(&config, campaign);
+    drop(runtime);
+    assert_eq!(stored_membership_rows(&config, campaign, 1), expected);
+
+    let mut writer = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    writer
+        .execute(
+            "DELETE FROM babylon_state.graph_hyperedge_member_f64_v1 \
+             WHERE campaign_id=$1::uuid AND resolve_tick=1 AND member=$2",
+            &[campaign.as_uuid(), &expected[0].1],
+        )
+        .expect("the test database applies the setup statement");
+    drop(writer);
+    assert_eq!(stored_membership_rows(&config, campaign, 1).len(), 1);
+
+    // The database accepts the deletion of the committed row; the reopen then
+    // refuses the campaign (the stored rows no longer match what was committed)
+    // instead of reading the lost value as zero.
+    let result = DurableMaterialRuntime::open(&config, campaign, digest);
+    assert!(
+        matches!(
+            &result,
+            Err(MaterialRuntimeError::Graph(
+                crate::runtime::RustPersistenceRuntimeError::CampaignConflict
+            ))
+        ),
+        "a lost value row must refuse the reopen, got {:?}",
+        result.as_ref().err()
+    );
+    database.cleanup();
 }

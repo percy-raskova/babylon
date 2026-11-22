@@ -1,4 +1,6 @@
-//! A saved world keeps the values its memberships carry (AG clause i, #653).
+//! Stored membership value rows write and read back (AG clause i, #653).
+//! This test commits no period: the product's commit and reopen are in
+//! `material_open.rs`.
 use super::{CampaignId, NoTls, TestDatabase};
 use crate::material_runtime::DurableMaterialRuntime;
 use crate::michigan_content::MichiganContentPreset;
@@ -51,7 +53,7 @@ fn nations_with_values() -> StableGraphState {
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
-fn a_campaign_with_membership_values_restores_them() {
+fn stored_membership_rows_read_back_inside_one_transaction() {
     let base = super::validated_base_config();
     let database = TestDatabase::create_from_template(
         &base,
@@ -109,8 +111,8 @@ fn a_campaign_with_membership_values_restores_them() {
     );
     attempt.rollback().expect("the savepoint rolls back");
 
-    // A lost value row changes the reloaded state, so the checkpoint's section
-    // hash would refuse the load rather than quietly read zero.
+    // A lost value row changes the reloaded state: the rows read back differ
+    // from the rows written. (No checkpoint or section hash runs here.)
     tx.execute(
         "DELETE FROM babylon_state.graph_hyperedge_member_f64_v1 \
          WHERE campaign_id = $1::uuid AND resolve_tick = $2 AND local_name = 'nation-2'",

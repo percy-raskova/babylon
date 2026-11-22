@@ -377,7 +377,9 @@ fn a_lost_membership_value_row_refuses_the_reopen() {
 
     // The database accepts the deletion of the committed row; the reopen then
     // refuses the campaign (the stored rows no longer match what was committed)
-    // instead of reading the lost value as zero.
+    // instead of reading the lost value as zero. The refusal is the stored
+    // checkpoint's admission (`StoredCheckpointSections::admit`): its graph section
+    // is bound to the graph's canonical bytes by length and digest.
     let result = DurableMaterialRuntime::open(&config, campaign, digest);
     assert!(
         matches!(

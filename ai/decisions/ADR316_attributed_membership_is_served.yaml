@@ -1,7 +1,7 @@
 ADR316_attributed_membership_is_served:
   title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
   date: '2026-11-22'
-  status: accepted
+  status: proposed
   issue: PER-371
   evidence_class: Implemented
   authority:

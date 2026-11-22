@@ -10112,7 +10112,9 @@ consequences are the ordinary kind of review item.
        ``membership-field-of`` and a refusal without a code from
        ``update-membership``, as from ``update-hyperedge``. (d) The kernel
        agreement (``E-LOAD-022``) does not compare the member half yet.
-       (e) Task 9 of the plan moved four pinned digests of the source file
+       (e) Task 9 of the building plan,
+       ``docs/superpowers/plans/2026-11-21-memberships-that-carry-a-value.md``,
+       moved four pinned digests of the source file
        ``sfs_profile.rs``, because the plan told it to edit that file; no
        state hash, vector or baseline moved. **Stored form:** the table
        ``graph_hyperedge_member_f64_v1`` with an observer view, and tag 8 in

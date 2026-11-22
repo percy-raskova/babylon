@@ -1877,6 +1877,8 @@ fn the_membership_accessor_is_decided_like_field_of_in_probability_analysis() {
         Err(ProbabilityError::InvalidForm { message, .. }) => message,
         other => panic!("expected a located refusal, got {other:?}"),
     };
+    // The operands `self self` below are placeholders. These are static checks, which read only
+    // the field's name at item index 3; no served rule binds a hyperedge and its member this way.
     // (1) quantize-mass takes an ordinary numeric operand: a numeric payload loads, an
     // enum-typed one is refused with the message its `field-of` twin gets.
     quantize("(membership-field-of self self demo/share)").expect("a numeric payload loads");

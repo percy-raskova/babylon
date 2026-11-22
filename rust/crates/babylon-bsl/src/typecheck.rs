@@ -355,7 +355,7 @@ pub fn check_reference_comparisons(
 }
 
 /// Both membership forms (`membership-field-of`, `update-membership`; §2.10) name their field at
-/// operand 3: a qname declared nowhere is refused here, at load, with the typechecker's own
+/// item index 3 of the form, after the hyperedge and the member: a qname declared nowhere is refused here, at load, with the typechecker's own
 /// unknown-field refusal (`code: None`, as the read inside a fold already gets from
 /// [`typecheck_aggregation`]'s field resolution) rather than left to die mid-tick as `E-EVAL-033`.
 ///

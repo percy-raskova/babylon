@@ -32,7 +32,7 @@ decisions:
     file: ADR317_field_and_particles.yaml
   ADR316_attributed_membership_is_served:
     title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
-    status: accepted
+    status: proposed
     date: '2026-11-22'
     file: ADR316_attributed_membership_is_served.yaml
   ADR315_homes_rent_and_nation:

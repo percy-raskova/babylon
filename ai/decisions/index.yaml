@@ -1,6 +1,6 @@
 meta:
-  version: 1.105.0
-  updated: '2026-11-21'
+  version: 1.106.0
+  updated: '2026-11-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -30,6 +30,11 @@ decisions:
     status: accepted
     date: '2026-11-21'
     file: ADR317_field_and_particles.yaml
+  ADR316_attributed_membership_is_served:
+    title: A node's membership of a hyperedge carries declared, typed values, and BSL reads and writes them
+    status: accepted
+    date: '2026-11-22'
+    file: ADR316_attributed_membership_is_served.yaml
   ADR315_homes_rent_and_nation:
     title: Rent has an author, a home is lost by the law's own steps, home values move, and nations are hyperedges
     status: accepted

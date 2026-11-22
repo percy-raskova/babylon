@@ -2453,15 +2453,20 @@ This section states what the kind **is**. Its three language surfaces live in
 the sections that own them: the declaration in §2.9, the read in §2.10, the
 write in §2.8.
 
-**Implementation status (Community port train, Task 12):** the kind is
-ratified language, **unserved in the engine** — ``membership-field-of``,
-``update-membership``, ``deffield``'s ``:member`` operand and §6.2 family 23
-all refuse with the AG(i) lane's citation, blocked on the attributed-
-membership ceremony, **issue #653** (the evaluator's
-``UNSERVED_EXPRESSION_HEADS`` row and the refusal texts name it by number;
-the Community port's own un-need is D220 — its worlds carry no payload by
-design). The Community train's requirements against the ceremony are
-``reports/community-membership-shape-note-2026-08-18.md``.
+**Implementation status (issue #653, 2026-11-22):** the kind is **served**.
+``deffield``'s ``:member`` operand, ``membership-field-of`` and
+``update-membership`` load and run, and a scenario seeds memberships with
+values through §3.9 clause 6's form (D229). The value lives in the
+hypergraph library's membership slot, one ``f64`` per declared field. The
+state hash covers it, and a save and a load keep it. What stays refused is the
+mint-time ``(member ...)`` item of a rule's ``add-hyperedge``, because all six
+shape verbs are refused at load until their own step
+(``DEFERRED_SHAPE_VERBS``); the annotated item in this section's grammar is
+specified, and a scenario is its only writer today. The Community port's own
+un-need is D220: its worlds carry no payload by design. The Community train's
+requirements against the ceremony are
+``reports/community-membership-shape-note-2026-08-18.md``. Decision record:
+``ai/decisions/ADR316_attributed_membership_is_served.yaml``.
 
 **[draft ruling — Phase 1 review, Amendment AG (i)]** *A membership is denoted
 by its key, and the language mints no fourth reference kind.* A membership is
@@ -3560,6 +3565,22 @@ What hydration may do, stated once because three chapters now depend on it:
    attributed membership has to be unrepresentable from both or from neither;
    this clause is the second half of that, and it is what lets §2.10 say that
    an existing membership never reads absent.
+
+   **[draft ruling — issue #653 — D229]** The scenario dialect seeds a
+   membership's values through the annotated member item:
+
+   .. code-block:: text
+
+      (hyperedge <local-name> <HyperedgeType/MEMBER> (members <member-item>+))
+      <member-item> ::= <local-name>
+                      | "(" "member" <NodeType/MEMBER> <local-name> ( "(" <qname> <value> ")" )* ")"
+
+   Where the hyperedge type declares membership fields for the member's node
+   type, every item for such a member is annotated and writes exactly those
+   fields. A bare item or a missing field is ``E-LOAD-047``; a field written
+   twice is ``E-PARSE-041``; a qname of another owner is ``E-TYPE-014``; a
+   member that is not of the annotated type is ``E-EVAL-033``. A bare item
+   under a type that declares no payload keeps its meaning and its bytes.
 7. **[draft ruling — Train B item 3, issue #591 — D156]** It seeds an edge
    attribute only through the scenario dialect's
    ``(edge-attr <EdgeType/MEMBER> <from-name> <to-name> <field-qname> <value>)``
@@ -5284,6 +5305,11 @@ At minimum, an implementation claiming conformance passes:
     replacement proving a dropped member's payload does not survive it; and a
     fold over ``members-of`` reading payload whose static bound equals the
     declared ``:max-members`` — the ceiling axis unchanged by the payload.
+    **Served status (issue #653):** every case above runs except the
+    ``add-hyperedge`` ones, which wait on the shape verbs; the hydration cases
+    run in the scenario dialect (D229). The family also pins a nation fixture:
+    two hyperedges over the same two groups keep two separate values, and a
+    write to one leaves the other.
 
 24. **Lattice instances** (Amendment AG (ii)) — a ``manifest`` declaring a
     substrate rung with an extensive and an intensive adjunction along it,
@@ -10048,6 +10074,59 @@ consequences are the ordinary kind of review item.
        ``abs`` canonicalizes ``-0.0`` to ``+0.0``. Non-finite arguments
        are ``E-EVAL-044`` everywhere in the sextet — refused at the
        input, never propagated.
+   * - D229
+     - §2.8, §2.9, §2.10, §2.12, §3.9
+     - **Attributed membership is served (issue #653, Amendment AG (i);
+       decision record ADR316).** Four points are decided here, as a draft
+       ruling open to the owner's review. (1) **The scenario's form** for
+       seeding a membership's values is
+       ``(member <NodeType/MEMBER> <local-name> (<qname> <value>)*)`` inside
+       ``(members ...)``, written out in §3.9 clause 6. A bare item, or a
+       missing field, under a type that declares payload is ``E-LOAD-047``; a
+       field twice is ``E-PARSE-041``; a foreign qname is ``E-TYPE-014``.
+       Values convert through ``attribute_value``, the one per-type literal
+       law: ``int`` is exact below 2\ :sup:`53`, an enum is its ordinal, and
+       Currency is refused with the edge and hyperedge lanes' own message.
+       (2) **A hydrated member not of the annotated type is** ``E-EVAL-033``,
+       the code the verb uses, so one fact has one code. (3) **The stable
+       graph's new section** (tag 9) **is written only when it has rows**,
+       under the unchanged layout version 1, as the state hash's section
+       ``0x08`` is under layout version 5: a world with no membership field
+       keeps every byte, hash, vector and save. A version bump would have
+       moved every checkpoint digest. (4) **A write to a membership is a
+       recorded motion** with its own record, ``Write::MembershipAttribute``,
+       and its own effect signature, ``EffectSignature::MembershipField``,
+       as the other three update verbs have. Settled with them: a membership
+       has no default and is written whole at its mint or hydration; a member
+       that leaves and returns starts from nothing; the apply step of
+       ``update-membership`` tests the pair again and refuses
+       ``E-EVAL-038``; the accessor costs 1 plus its operands and the verb
+       ``STRUCTURAL_VERB_BASE`` plus its operands plus ``UPDATE_OP_BASE``, with
+       no new ceiling axis; a fold over members may read a payload field.
+       **What the code does at its edges, recorded so it is not mistaken for
+       a gap.** (a) In the scenario dialect, the owner and registration checks
+       of a ``:member`` declaration run only when a ``defvocabulary`` precedes
+       it, as for every vocabulary check of that loader. (b) A qname declared
+       nowhere, written in an annotated member item, is refused without a
+       code. (c) A non-reference operand is ``E-EVAL-033`` from
+       ``membership-field-of`` and a refusal without a code from
+       ``update-membership``, as from ``update-hyperedge``. (d) The kernel
+       agreement (``E-LOAD-022``) does not compare the member half yet.
+       (e) Task 9 of the plan moved four pinned digests of the source file
+       ``sfs_profile.rs``, because the plan told it to edit that file; no
+       state hash, vector or baseline moved. **Stored form:** the table
+       ``graph_hyperedge_member_f64_v1`` with an observer view, and tag 8 in
+       the committed-tick rows; a database made before the table is refused and
+       made again, which is the save-compatibility step ADR198 R4 names.
+       **Owed:** the shape verbs inside rules, so the mint-time item of a
+       rule's ``add-hyperedge`` stays refused; the Allegiance and Electoral
+       systems; the nation hyperedges and their census table. **The saved-world
+       test:** ``a_campaign_with_membership_values_restores_them`` shows that a
+       campaign whose content declares a membership field commits a period,
+       reopens and compares equal (stable bytes, world hash, tail and stored
+       rows), and a lost value row refuses the reopen. No shipped content
+       declares a membership field yet, so a test over shipped content stays
+       owed with the first content that carries such a value.
 
 Authoring idioms (non-normative)
 -----------------------------------

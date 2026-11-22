@@ -28,6 +28,14 @@
 > measurement section for the full table and the production-scale reading (3.8s/tick of
 > pure hashing at n=20,000, since `state_hash()` runs twice per tick).** This body stays as
 > written — it records what its author knew when she made the choice.
+>
+> **The membership slot is used (2026-11-22, #653, ADR316).** The membership-payload
+> accessor gap that `percy-raskova/hypergraph-rs#2` enumerated is closed in the library
+> (`member_data`, `set_member_data`, `members_with_data`, `add_node_to_edge_with_data`), and
+> `HypergraphStore` keeps one sorted map from qname to `f64` in each membership's slot.
+> `GraphSubstrate` gained `update_membership_attribute`, `membership_attribute` and
+> `is_member`, and `CanonicalState` one listing. The text of CD1 below that says the slot
+> is unreachable describes the library as it was.
 
 **Authority:** ADR179 ruling T3, open field: *"The capability delta is unwritten. It gates
 Phase 2 storage work."* (`ai/decisions/ADR179_topology_spine_director_rulings.yaml:98`).

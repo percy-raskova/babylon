@@ -1189,6 +1189,41 @@ the commit after Task 7's:
 
 The Director saw the captures the same afternoon and answered "Yes, go on" (ADR321, K4): the look stands.
 
+### The third look, at the complete window (after Tasks 8 and 9)
+
+The lead ran the real client again with the table, the buttons and the scripted run in it. Four things did not
+read at 1366 x 768, and one commit after Task 9's changed them (the numbers are the lead's, by eye):
+
+- **The key lay over the scene.** The standing lines stood at the viewport's bottom left, across an owner's outline
+  and the workplaces' names. They now stand at its top left (left 16, top `HEADER_HEIGHT + 12`, 340 wide, Body
+  12), with the inspector's hint as their last line.
+- **The shock controls did not fit the bar.** Row 2 was wider than the window and taller than the bar. The controls
+  now stand in the rail under "Shocks", above the list of what was struck: a shock's name, its figure, its buttons
+  in a row that wraps, and for the power cut its standing line. The refusal's notice stands under them. The bar is
+  one row and 48 high (`BAR_HEIGHT`). This replaces Task 8's decision 1 on where they stand; their words and what
+  a press does are as built. The six rules of the closest form get the bar's second row when they are built.
+- **The inspector is a panel over the viewport's top right** (top `HEADER_HEIGHT + 12`, right `RAIL_WIDTH + 12`, 340
+  wide), shown only while something is picked. A click on it keeps the pick. It left the rail, which has no room
+  for it beside the table and the shocks. This replaces Task 8's decision 7 on where it stands.
+- **The table's cells were cut off.** "Stored work got back" is no longer a column, since every row said the same:
+  one line under the table says "Stored work got back: not measured yet." The label is 140 wide and the four
+  figure columns 40, 48, 74 and 74. Money in the table and in the "Not drawn" line is rounded to the cent
+  (`human_numbers::currency_to_cent`, half away from zero), and a line under the table says so; the inspector
+  keeps exact figures. This replaces the columns and widths of Task 8's decision 6.
+
+**The run on the display (Task 9, Step 5), the lead's.** The proof script passes in the real client: with the
+harvest failed in Place A for ten periods, farm A makes 36 in periods 2 to 11 and farm B 40. The first period in
+which a workplace of A attended fewer hours than its twin in B is period 10 (utility A 113, utility B 120).
+Frame time in the debug build at 1366 x 768, household groups, period 11: median 16.1 to 16.3 ms, 95th centile
+25.9 to 26.5 ms over windows of 300 frames. It is not measured in a release build yet. `mise run play:small-world`
+opens the window.
+
+**Departures the reviewers asked to have recorded.** `SmallWorldPlugin` is a unit struct, not the struct with a
+`script` field that Task 7's Interfaces give: `install_scene` reads and parses the script itself, so that a bad
+file is refused before the window opens. A refusal of any kind ends a script, not only the engine's. A reply's
+`line` counts commands, and `ScriptError::Line` counts the file's lines; they agree when a script has no blank
+line.
+
 The Director saw the mock's pictures that morning and answered three questions (ADR320, S2, S8 and S9): the look
 is the one to build; the scene opens on household groups; and after this plan the six rules of the closest form
 are built, each with its own switch in this scene, before the bridge.

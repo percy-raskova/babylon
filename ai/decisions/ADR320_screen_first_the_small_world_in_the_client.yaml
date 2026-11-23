@@ -102,10 +102,11 @@ ADR320_screen_first_the_small_world_in_the_client:
   lead_readings_for_the_director_to_check:
     - >-
         What a particle is in this scene. ADR317 R4 rules that a particle is a
-        household group, and this world has twelve. Drawn one dot a person,
-        eighty stand in their membranes; but the record counts people and does
-        not follow one. Asked in the dialog of 2026-11-23. The frame builder
-        carries both readings as one setting until it is answered.
+        household group, and the scene opens on that; this world has twelve.
+        A switch gives a closer look, one dot a person: eighty stand in their
+        membranes, and a standing line says that the record counts people and
+        does not follow one. Both are built. Which one the scene opens on is
+        the Director's to change.
     - >-
         Goods are drawn hollow in this build. The hours stored in goods are
         worked out from the tick's register, and the tick refuses this economy
@@ -178,12 +179,9 @@ ADR320_screen_first_the_small_world_in_the_client:
         design of organized workers, which is not ruled yet.
   open_questions:
     - >-
-        Whether a particle of this scene is a household group or a person
-        (asked 2026-11-23).
-    - >-
         Whether the rules of the closest form should land in this scene before
         the bridge. The scene runs the engine itself, so a rule can be seen in
-        it without the bridge (asked 2026-11-23).
+        it without the bridge. Put to the Director on 2026-11-23.
     - >-
         How a shock enters a saved campaign, when the small world becomes one.
   verification: |

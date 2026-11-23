@@ -167,8 +167,8 @@ position is worked out from the period's figures, once a period.
 - **Particles.** By the scene design's rule a particle stands between its employers and whoever
   holds a claim on it, nearer the larger share of its income. So a worker stands near their
   workplace, a person on benefits toward the fund, and an owner's household among the workplaces
-  that pay it. Whether a particle is one household group or one person is asked of the Director
-  (section 9, call 1). The frame builder takes it as one setting.
+  that pay it. A particle is a household group, as ADR317 rules. A switch shows a closer look, one
+  dot a person (section 9, call 1).
 - **Sets,** as ruled. Each is a real hyperedge whose memberships carry a number, and each gets a
   hatched membrane, thicker where the number is larger.
   - A workforce: the people of one workplace, with the hours each gave it this period.
@@ -260,13 +260,14 @@ look, within the client's own theme. How the history table pages. The names of t
 
 ## 9. Calls of the lead's, for the Director to check
 
-1. **What a particle is here.** ADR317 rules that a particle is a household group. This world has
-   twelve household groups: one for each workplace's workers, one of owners and one of supported
-   people in each place. Drawn so, each workforce is a ring around one particle, and the picture
-   is thin until people can change workplace. Drawn as one dot a person, eighty dots stand in
-   their membranes and a layoff is seen as people leaving one. But the record counts people; it
-   does not follow a person, and the people of one group share one purse. Asked in the dialog of
-   23 November; the frame builder carries both readings as one setting until it is answered.
+1. **What a particle is here.** ADR317 rules that a particle is a household group, and that is
+   what the scene opens on. This world has twelve household groups: one for each workplace's
+   workers, one of owners and one of supported people in each place. Drawn so, each workforce is a
+   ring around one particle, and the picture is thin until people can change workplace. So the
+   scene also has a closer look, by a switch: one dot a person. Eighty dots then stand in their
+   membranes, and a layoff is seen as people leaving one. A standing line says what that look is:
+   the record counts people; it does not follow a person, and the people of one group share one
+   purse. Both are built. Which one the scene opens on is the Director's to change.
 2. **An owner's set** holds the owner's household and its workplaces, the workplaces with the
    capital the owner has in them.
 3. **Goods are drawn hollow** until the tick's records carry this economy.

@@ -483,6 +483,7 @@ name = "babylon-client"
 version = "0.1.0"
 dependencies = [
  "babylon-bsl",
+ "babylon-circuit-worlds",
  "babylon-graph",
  "babylon-kernel",
  "babylon-material-circuit",

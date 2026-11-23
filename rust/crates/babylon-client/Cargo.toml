@@ -50,6 +50,7 @@ bevy = { version = "0.20.0", default-features = false, features = [
     "ui",
     "webp",
 ] }
+babylon-circuit-worlds = { path = "../babylon-circuit-worlds" }
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-material-circuit = { path = "../babylon-material-circuit" }
 # Archive commands use the confined fog-safe reader. The explicit economy

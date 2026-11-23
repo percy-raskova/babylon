@@ -31,6 +31,7 @@ pub mod organizer;
 pub mod palette;
 pub mod session_log;
 mod site_financial_statements;
+pub mod small_world;
 pub mod tessellate;
 #[cfg(test)]
 mod test_support;

@@ -979,8 +979,10 @@ pub fn not_drawn_line(report: &FlowReport) -> String;                      // pu
    person. The record counts people; it does not follow a person, and the people of one group share one purse."
 4. **Marks** (row 1, last): "Moving" and "Still", setting `FieldConfig.motion` to `Motion::Full` or
    `Motion::Reduced`.
-5. **Standing lines** (with Task 7's): "One dot: 10 hours of work. One square: 4 units of a good. One streak: $40.
-   Hours and money are two scales."; "A hollow dot: hours paid and not used."; "Goods are drawn hollow: the hours
+5. **Standing lines** (with Task 7's): "One dot: 2 hours of work. One square: 4 units of a good. One streak: $80.
+   Hours and money are two scales." (its three figures are built from `HOURS_PER_MARK`, `UNITS_PER_MARK` and
+   `MONEY_PER_MARK`, not written out; the look of 23 November changed them from 10, 4 and $40, and this sentence
+   had kept the old ones); "A hollow dot: hours paid and not used."; "Goods are drawn hollow: the hours
    stored in goods are not measured here until this world runs on the tick's records."; "An outline holds nine
    tenths of its set's number."; and `not_drawn_line`: "Not drawn: {h} hours; food {f}, power {p}, care {c} units;
    wages ${w}, purchases ${u}, taxes ${t}, benefits ${b}, profit ${r}", every figure from `FlowReport`, hours and

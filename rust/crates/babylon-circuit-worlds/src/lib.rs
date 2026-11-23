@@ -7,9 +7,13 @@
 pub mod doubled;
 pub mod error;
 pub mod ids;
+pub mod runner;
 
 pub use error::WorldError;
 pub use ids::{
     corridor, fund, goods_unit, hours_unit, location, route, treasury, Good, Household, Kind,
     Place, Workplace,
+};
+pub use runner::{
+    Closing, PeriodReceipts, PeriodResult, PeriodSummary, Runner, RunnerError, Stage,
 };

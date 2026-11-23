@@ -2,6 +2,7 @@
 //! payments, and the table that sums those readings.
 
 pub mod frame;
+pub mod layout;
 pub mod reading;
 pub mod table;
 

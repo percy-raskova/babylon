@@ -36,7 +36,7 @@ dynamic_linking = ["bevy/dynamic_linking"]
 # Camera3d spawns declare `Tonemapping` explicitly), so those features stay off
 # and bevy_image resolves no zstd/ruzstd crate at all. Bevy 0.20's `2d`
 # aggregate no longer carries `ui` or `audio`; both are named here.
-bevy = { version = "0.20.0", default-features = false, features = [
+bevy = { version = "0.20.1", default-features = false, features = [
     "2d",
     "audio",
     "bevy_anti_alias",
@@ -69,6 +69,11 @@ uuid = "1.24"
 # `log` stays: LogPlugin installs LogTracer, bridging this crate's
 # log:: call sites into tracing.
 log = "0.4"
+# The scene is drawn by the hypergraph library's Bevy crate. Both packages name the
+# same URL and revision as babylon-graph, or the lock would hold two copies of the core
+# whose types do not match. `geometry` brings the core's Positions and outlines.
+hypergraph-rs = { git = "https://github.com/percy-raskova/hypergraph-rs.git", rev = "018d2e97edbc09897d90605c1e0eb73822f31b31", default-features = false, features = ["geometry"] }
+hypergraph-rs-bevy = { git = "https://github.com/percy-raskova/hypergraph-rs.git", rev = "018d2e97edbc09897d90605c1e0eb73822f31b31" }
 
 [dev-dependencies]
 # Construct decoder-completion sinks without a native audio device. rodio

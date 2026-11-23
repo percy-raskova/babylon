@@ -331,7 +331,7 @@ pub(crate) enum ObserverFontRole {
     Exact,
 }
 
-fn apply_fonts(
+pub(crate) fn apply_fonts(
     fonts: Res<ObserverFonts>,
     mut labels: Query<(&ObserverFontRole, &mut TextFont), Added<ObserverFontRole>>,
 ) {

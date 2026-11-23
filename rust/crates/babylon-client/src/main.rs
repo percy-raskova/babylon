@@ -22,6 +22,7 @@ fn main() {
             initial_target,
             qualification_control,
         },
+        CliRequest::SmallWorld { script } => AppMode::SmallWorld { script },
         CliRequest::Headless {
             command,
             campaign_id,

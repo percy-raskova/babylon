@@ -33,6 +33,10 @@ pub const QUALIFICATION_CONTROL_FLAG: &str = "--qualification-control";
 pub const CAMPAIGN_ENV: &str = "BABYLON_CAMPAIGN_ID";
 /// Retired demo option, recognized only to return an explicit refusal.
 pub const STORY_FLAG: &str = "--story";
+/// Open the small test economy in this window; no campaign, no runtime, nothing saved.
+pub const SMALL_WORLD_FLAG: &str = "--small-world";
+/// A file of commands the small world's scene runs by itself; needs [`SMALL_WORLD_FLAG`].
+pub const SMALL_WORLD_SCRIPT_FLAG: &str = "--small-world-script";
 
 /// The closed set of command words the parser recognizes. Anything else
 /// earns a Levenshtein did-you-mean over exactly this list — never a
@@ -79,6 +83,7 @@ commands:
 
 options:
   --headless    run one command against its explicit read capability and exit.
+  --small-world  open a test economy in this window; not Wayne, not saved.
   --campaign    open an existing canonical campaign UUID; falls back to BABYLON_CAMPAIGN_ID.
   --new-campaign create an absent campaign with this canonical UUID.
   --preset      new campaign scenario: standard (default), delayed,
@@ -257,6 +262,11 @@ pub enum CliRequest {
         /// The canonical campaign identity.
         campaign_id: CampaignId,
     },
+    /// Open the small test economy: no campaign, no runtime, no database.
+    SmallWorld {
+        /// A file of commands the scene runs by itself, an absolute normalized path.
+        script: Option<PathBuf>,
+    },
     /// A help topic; `main` renders it with [`render_help`].
     Help(HelpTopic),
 }
@@ -304,11 +314,17 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
     let mut new_campaign: Option<String> = None;
     let mut preset: Option<String> = None;
     let mut qualification_control: Option<String> = None;
+    let mut small_world = false;
+    let mut small_world_script: Option<String> = None;
     let mut rest: Vec<String> = Vec::new();
     let mut iter = words.into_iter();
     while let Some(word) = iter.next() {
         match word.as_str() {
             HEADLESS_FLAG => headless = true,
+            SMALL_WORLD_FLAG => small_world = true,
+            SMALL_WORLD_SCRIPT_FLAG => {
+                read_flag_value(&mut small_world_script, &word, &mut iter)?;
+            }
             CAMPAIGN_FLAG => read_flag_value(&mut campaign, &word, &mut iter)?,
             NEW_CAMPAIGN_FLAG => read_flag_value(&mut new_campaign, &word, &mut iter)?,
             PRESET_FLAG => read_flag_value(&mut preset, &word, &mut iter)?,
@@ -322,6 +338,15 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
             _ => rest.push(word),
         }
     }
+    if small_world || small_world_script.is_some() {
+        return small_world_request(
+            small_world,
+            small_world_script,
+            headless,
+            [&campaign, &new_campaign, &preset, &qualification_control],
+            &rest,
+        );
+    }
     if !headless {
         if !rest.is_empty() {
             return Err(CliError::at(
@@ -333,7 +358,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
         }
         return Ok(CliRequest::Windowed {
             initial_target: windowed_target(campaign, new_campaign, preset)?,
-            qualification_control: qualification_control.map(control_path).transpose()?,
+            qualification_control: qualification_control
+                .map(|raw| control_path(raw, "qualification control socket"))
+                .transpose()?,
         });
     }
     if qualification_control.is_some() {
@@ -365,7 +392,36 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
     })
 }
 
-fn control_path(raw: String) -> Result<PathBuf, CliError> {
+/// The small world's request, refused with every flag that belongs to a campaign or a command.
+fn small_world_request(
+    small_world: bool,
+    script: Option<String>,
+    headless: bool,
+    campaign_flags: [&Option<String>; 4],
+    rest: &[String],
+) -> Result<CliRequest, CliError> {
+    if !small_world {
+        return Err(CliError::at(
+            concat!(file!(), ":", line!()),
+            format!("{SMALL_WORLD_SCRIPT_FLAG} needs {SMALL_WORLD_FLAG}"),
+        ));
+    }
+    if headless || campaign_flags.iter().any(|flag| flag.is_some()) || !rest.is_empty() {
+        return Err(CliError::at(
+            concat!(file!(), ":", line!()),
+            format!(
+                "{SMALL_WORLD_FLAG} opens a test economy with no campaign; it takes no {HEADLESS_FLAG}, {CAMPAIGN_FLAG}, {NEW_CAMPAIGN_FLAG}, {PRESET_FLAG}, {QUALIFICATION_CONTROL_FLAG} or command word"
+            ),
+        ));
+    }
+    Ok(CliRequest::SmallWorld {
+        script: script
+            .map(|raw| control_path(raw, "small world script"))
+            .transpose()?,
+    })
+}
+
+fn control_path(raw: String, what: &str) -> Result<PathBuf, CliError> {
     let path = PathBuf::from(raw);
     if !path.is_absolute()
         || path
@@ -374,10 +430,59 @@ fn control_path(raw: String) -> Result<PathBuf, CliError> {
     {
         return Err(CliError::at(
             concat!(file!(), ":", line!()),
-            "qualification control socket must be an absolute normalized path".into(),
+            format!("{what} must be an absolute normalized path"),
         ));
     }
     Ok(path)
+}
+
+#[cfg(test)]
+mod small_world_flag {
+    use super::*;
+    use std::path::Path;
+
+    fn run(args: &[&str]) -> Result<CliRequest, CliError> {
+        parse(args.iter().map(OsString::from))
+    }
+
+    #[test]
+    fn the_small_world_flag_opens_a_test_economy() {
+        assert!(matches!(
+            run(&["--small-world"]),
+            Ok(CliRequest::SmallWorld { script: None })
+        ));
+        let with_script = run(&["--small-world", "--small-world-script", "/abs/run.jsonl"]);
+        assert!(matches!(
+            with_script,
+            Ok(CliRequest::SmallWorld { script: Some(path) }) if path.as_path() == Path::new("/abs/run.jsonl")
+        ));
+    }
+
+    #[test]
+    fn the_small_world_refuses_a_campaign() {
+        let uuid = "00000000-0000-0000-0000-000000000342";
+        for args in [
+            vec!["--small-world", "--campaign", uuid],
+            vec!["--small-world", "--new-campaign", uuid],
+            vec!["--small-world", "--preset", "standard"],
+            vec!["--small-world", "--headless"],
+            vec!["--small-world", "--qualification-control", "/tmp/c.sock"],
+            vec!["--small-world", "tick"],
+        ] {
+            assert!(run(&args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn a_script_needs_the_small_world() {
+        assert!(run(&["--small-world-script", "/abs/run.jsonl"]).is_err());
+    }
+
+    #[test]
+    fn a_relative_script_is_refused() {
+        assert!(run(&["--small-world", "--small-world-script", "run.jsonl"]).is_err());
+        assert!(run(&["--small-world", "--small-world-script", "/a/../run.jsonl"]).is_err());
+    }
 }
 
 #[cfg(test)]

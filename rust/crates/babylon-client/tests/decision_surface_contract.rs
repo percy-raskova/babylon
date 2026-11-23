@@ -122,6 +122,35 @@ fn observer_app() -> App {
     app
 }
 
+/// The scene's composition: the headless base, `install_scene`, one step and three updates.
+fn small_world_app() -> App {
+    use babylon_client::small_world;
+    use babylon_client::small_world::SceneCommand;
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        ImagePlugin::default(),
+        bevy::text::TextPlugin,
+        TexturePlugin,
+        bevy::picking::PickingPlugin,
+    ))
+    .init_asset::<Mesh>()
+    .init_asset::<StandardMaterial>()
+    .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+        10,
+    )));
+    small_world::install_scene(&mut app, None).expect("the scene installs on the headless base");
+    app.finish();
+    app.cleanup();
+    app.world_mut().write_message(SceneCommand::Step);
+    for _ in 0..3 {
+        app.update();
+    }
+    app
+}
+
 fn surface_site(id: &str) -> babylon_persistence::production_observation::ProductionSite {
     use babylon_persistence::production_observation::ProductionSite;
     ProductionSite {
@@ -439,7 +468,19 @@ fn every_shipped_visual_entity_declares_a_manifest_surface() {
         SurfaceId::OrganizerWorkspace,
     ]);
     assert_eq!(observer_ids, observer_surfaces);
-    assert_eq!(observer_ids, SurfaceId::ALL.into_iter().collect());
+
+    // The scene of the small test economy is the sixth surface: its composition has no
+    // observer in it, so it is built beside the observer's and judged by the same rule.
+    let mut scene = small_world_app();
+    let scene_ids = visual_surface_ids(scene.world_mut());
+    assert_eq!(scene_ids, HashSet::from([SurfaceId::SmallWorld]));
+    assert_eq!(
+        observer_ids
+            .union(&scene_ids)
+            .copied()
+            .collect::<HashSet<_>>(),
+        SurfaceId::ALL.into_iter().collect()
+    );
 
     let world = observer.world_mut();
     let mesh_surfaces: HashSet<_> = world

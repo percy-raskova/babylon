@@ -18,16 +18,19 @@ pub enum SurfaceId {
     ObserverShell,
     ObserverProduction,
     OrganizerWorkspace,
+    /// The small test economy's own scene, opened by `--small-world`.
+    SmallWorld,
 }
 
 impl SurfaceId {
     /// Complete closed set used by the manifest-exhaustiveness sentinel.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::TitleLockup,
         Self::CountyDossier,
         Self::ObserverShell,
         Self::ObserverProduction,
         Self::OrganizerWorkspace,
+        Self::SmallWorld,
     ];
 }
 
@@ -39,6 +42,7 @@ impl fmt::Display for SurfaceId {
             Self::ObserverShell => "observer-shell",
             Self::ObserverProduction => "observer-production",
             Self::OrganizerWorkspace => "organizer-workspace",
+            Self::SmallWorld => "small-world",
         })
     }
 }
@@ -273,6 +277,13 @@ const fn admin_surface(
     }
 }
 
+const SMALL_WORLD_SIGNALS: &[&str] = &[
+    "the test economy's workplaces, household groups and sets",
+    "the work, goods and payments of the period shown",
+    "the shocks struck and when",
+];
+const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not measured here"];
+
 /// The Investigate action's honest unavailability reason. Spelled identically
 /// in `ui::dossier_compose::INVESTIGATE_UNAVAILABLE_REASON` (the R6
 /// placeholder seal); the contract test pins both spellings to each other so
@@ -376,6 +387,11 @@ pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
         &["county/<geoid>", "place/<geoid>"],
     ),
     admin_surface(SurfaceId::TitleLockup, &["application identity"], NONE),
+    admin_surface(
+        SurfaceId::SmallWorld,
+        SMALL_WORLD_SIGNALS,
+        SMALL_WORLD_UNCERTAINTY,
+    ),
 ];
 
 /// Resolves one surface id to its sole manifest declaration.
@@ -452,6 +468,16 @@ mod tests {
             SurfaceAction::available("survey"),
         ];
         assert!(gameplay_contract(MIXED).satisfies_gameplay_gate());
+    }
+
+    #[test]
+    fn the_small_world_row_is_an_unfogged_admin_surface_outside_every_gate() {
+        let row = contract_for(SurfaceId::SmallWorld);
+        assert!(row.validate().is_ok());
+        assert_eq!(row.role, DecisionSurfaceRole::AdminDebug);
+        assert!(!row.satisfies_gameplay_gate());
+        assert_eq!(row.fog_requirements, UNFOGGED_ADMIN);
+        assert_eq!(SurfaceId::SmallWorld.to_string(), "small-world");
     }
 
     #[test]

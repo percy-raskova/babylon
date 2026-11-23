@@ -610,6 +610,11 @@ if [ "$status" -eq 0 ]; then
       run_phase runtime 600 cargo test -p babylon-persistence --lib \
         runtime::live_tests::live_ --locked -- --nocapture --ignored --test-threads=1 || status=$?
       if [ "$status" -eq 0 ]; then
+        # The event storage controls clone their own database from the runtime template.
+        run_phase event_storage 600 cargo test -p babylon-persistence --lib \
+          event_storage::store:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
         run_phase territory_storage 600 cargo test -p babylon-persistence --lib \
           runtime::live_tests::territory_controls:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
       fi

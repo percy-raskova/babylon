@@ -92,3 +92,102 @@ pub(crate) fn material_receipts(period: u64) -> MaterialTickReceipts {
         maintenance: None,
     }
 }
+
+/// A disposable database for the live event continuity tests.
+///
+/// These tests run destructive `COPY` controls and raw inserts, so the fixture
+/// refuses to exist outside the runner's disposable PostgreSQL: it checks the
+/// runner's acknowledgement, its canary on the server, and its loopback `test`
+/// role, then clones the runner's validated template under a name that starts
+/// with `per337_event_continuity_`. The clone is dropped with the fixture.
+#[cfg(test)]
+pub(crate) struct EventContinuityDatabase {
+    name: String,
+    admin: postgres::Config,
+    config: postgres::Config,
+}
+
+#[cfg(test)]
+impl EventContinuityDatabase {
+    const NAME_PREFIX: &'static str = "per337_event_continuity_";
+
+    pub(crate) fn create(label: &str) -> Self {
+        use postgres::{Config, NoTls};
+        use std::str::FromStr;
+
+        assert!(!label.is_empty() && label.bytes().all(|byte| byte.is_ascii_lowercase()));
+        assert_eq!(
+            std::env::var("BABYLON_POSTGRES_DISPOSABLE_ACK").as_deref(),
+            Ok("I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES")
+        );
+        let canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY")
+            .expect("runner supplies the disposable canary");
+        assert_eq!(canary.len(), 32);
+        let dsn =
+            std::env::var("BABYLON_POSTGRES_TEST_DSN").expect("runner supplies the disposable DSN");
+        let mut admin = Config::from_str(&dsn).expect("runner DSN parses");
+        crate::postgres_catalog::validate_connection_target(&admin).expect("loopback target");
+        assert_eq!(admin.get_user(), Some("test"));
+        assert_eq!(admin.get_dbname(), Some("postgres"));
+        let mut admin_client = admin.connect(NoTls).expect("canary connection");
+        let actual: Option<String> = admin_client
+            .query_one(
+                "SELECT pg_catalog.current_setting('babylon.disposable_runtime', true)",
+                &[],
+            )
+            .expect("canary query")
+            .try_get(0)
+            .expect("canary decode");
+        assert_eq!(actual.as_deref(), Some(canary.as_str()));
+        let template = std::env::var("BABYLON_RUNTIME_TEMPLATE_DB")
+            .expect("runner supplies the validated Rust-active template database");
+        assert!(template.starts_with("per281_runtime_template_"));
+        assert!(template
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'));
+        let name = format!("{}{label}_{}", Self::NAME_PREFIX, std::process::id());
+        assert!(name.starts_with(Self::NAME_PREFIX));
+        admin_client
+            .batch_execute(&format!(
+                "CREATE DATABASE \"{name}\" OWNER test TEMPLATE \"{template}\""
+            ))
+            .expect("event continuity clone creation");
+        admin.dbname("postgres");
+        let mut config = admin.clone();
+        config.dbname(&name);
+        let database = Self {
+            name,
+            admin,
+            config,
+        };
+        crate::preflight_current_schema(&database.config)
+            .expect("event continuity clone has the exact current catalog and role grants");
+        database
+    }
+
+    pub(crate) fn config(&self) -> &postgres::Config {
+        &self.config
+    }
+}
+
+#[cfg(test)]
+impl Drop for EventContinuityDatabase {
+    fn drop(&mut self) {
+        use postgres::NoTls;
+
+        if !self.name.starts_with(Self::NAME_PREFIX) {
+            return;
+        }
+        let sql = format!("DROP DATABASE IF EXISTS \"{}\" WITH (FORCE)", self.name);
+        let dropped = self
+            .admin
+            .connect(NoTls)
+            .and_then(|mut client| client.batch_execute(&sql));
+        if let Err(error) = dropped {
+            assert!(
+                std::thread::panicking(),
+                "event continuity database cleanup failed: {error}"
+            );
+        }
+    }
+}

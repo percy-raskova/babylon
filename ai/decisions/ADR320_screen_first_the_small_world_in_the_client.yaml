@@ -128,6 +128,14 @@ ADR320_screen_first_the_small_world_in_the_client:
         administrative one, and the test that pins the manifest's closed set
         gains it on purpose.
     - >-
+        The scene's layout, view and sizes were set by eye on 2026-11-23 from
+        a mock in the real renderer, after the Director saw the hypergraph
+        library's timing example, which nobody had looked at, and called it
+        bizarre. Workers stand above their workplace and an owner below the
+        four it holds; the view looks straight down; a body is a gold disc
+        with its rings. The plan's first task with a window ends with a look
+        at the real scene before more is built on it.
+    - >-
         The button on the title screen opens the scene in a window of its own.
         The observer's window cannot open without a campaign and cannot shed
         its own parts while it runs.

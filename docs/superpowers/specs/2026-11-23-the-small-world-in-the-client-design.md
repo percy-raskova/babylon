@@ -163,15 +163,19 @@ The arrangement is "by their ties" (the scene design's section 6.7). No force ac
 position is worked out from the period's figures, once a period.
 
 - **Bodies.** The eight workplaces stand along the bottom, Place A's four on the left and Place
-  B's on the right. The treasury and the fund stand along the top. A workplace carries two rings
-  that are never merged: a dashed bone ring for the hours that reached it, a gold ring for its
-  money. An owner here is a household, so it is a particle and not a body; its set shows what it
-  holds.
+  B's on the right, the two places apart. The treasury and the fund stand together at the top. A
+  workplace carries two rings that are never merged: a dashed bone ring for the hours that
+  reached it, a gold ring for its money. An owner here is a household, so it is a particle and not
+  a body; its set shows what it holds.
+- **The view** looks straight down with no perspective, fitted to the plane, so the picture fills
+  its part of the window and a dot stays round.
 - **Particles.** By the scene design's rule a particle stands between its employers and whoever
   holds a claim on it, nearer the larger share of its income. So a worker stands near their
   workplace, a person on benefits toward the fund, and an owner's household among the workplaces
-  that pay it. A particle is a household group, as ADR317 rules. A switch shows a closer look, one
-  dot a person (section 9, call 1).
+  that pay it. Wages and profit lean to different sides: workers stand above their workplace and
+  an owner below the four it holds. A particle is a household group, as ADR317 rules, and its dot
+  grows with the people it holds. A switch shows a closer look, one dot a person (section 9,
+  call 1).
 - **Sets,** as ruled. Each is a real hyperedge whose memberships carry a number, and each gets a
   hatched membrane, thicker where the number is larger.
   - A workforce: the people of one workplace, with the hours each gave it this period.

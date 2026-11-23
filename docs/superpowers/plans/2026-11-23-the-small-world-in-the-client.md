@@ -89,6 +89,9 @@ Readers' notes, in the folder `NOTES` (the lead gives its path in each task's br
 - Money is `i128` millionths of a dollar (`Currency::micro_units`); quantities and hours are `u64`. Arithmetic is
   checked (`checked_add`, `checked_mul`, `try_from`), and a failure is a typed error, never a panic or a wrap.
 - Hours and money never meet in one expression: no sum, ratio, scale or position mixes the two.
+- **Looked at before it is built on.** No number of the scene's look (a position, a size, a width, a colour, the
+  view) is final until the lead has seen it in a capture of the real window. Task 7 ends with that look and Task 8
+  starts after it. A builder changes none of these numbers by taste: where one cannot be reached, report it.
 - Functions under 100 lines and cognitive complexity at most 25 (`rust/clippy.toml`). No `unwrap`; every `#[allow]`
   or `#[expect]` carries `reason = "..."`. Import a type and use its bare name (bsl-lint `google-rust-style`); one
   module per `use`; no glob import but `use bevy::prelude::*` in the client and `use super::*` in a test module.
@@ -594,7 +597,9 @@ pub fn table(reading: &PeriodReading, grouping: Grouping) -> Result<Table, Readi
 once its own plan has closed (its tasks 12 and 13 and its loose ends). On 2026-11-23 the library's frame-time
 trial showed that plain marks, one entity a mark, are far over budget, so its Task 12 is built: with full motion the
 marks of one stream are one mesh moved by a shader, and no entity carries `MarkOf` a mark. Tasks 6 to 9 read the
-library's code at `LIBRARY_REV`, not this plan's memory of it.
+library's code at `LIBRARY_REV`, not this plan's memory of it. `LIBRARY_REV` also holds the library's mend of 23
+November: a scene's first frame stands from its first beat (before it, the particles and sets of the first period
+shown appeared only in its last beat, so the first marks flew to places where nothing stood).
 
 **Decisions:**
 1. **One revision for both packages,** or the lock holds two `hypergraph-rs` and their types do not match
@@ -640,15 +645,19 @@ library's code at `LIBRARY_REV`, not this plan's memory of it.
 
 ```rust
 // src/small_world/layout.rs: every number of the scene's plane. Plan units; the scene is plan_to_scene(p, h).
-pub const WORKPLACE_X: [f64; 8] = [-10.5, -7.5, -4.5, -1.5, 1.5, 4.5, 7.5, 10.5];   // by Workplace::index, y 0
-pub const TREASURY_AT: Point = (-3.0, 12.0);  pub const FUND_AT: Point = (3.0, 12.0);
-pub const WORKPLACE_ANCHOR_Y: f64 = 3.0;      // a particle paid by a workplace leans to (x, 3)
-pub const TREASURY_ANCHOR: Point = (-3.0, 9.0); pub const FUND_ANCHOR: Point = (3.0, 9.0);
-pub const HOME: [Point; 2] = [(-6.0, 6.0), (6.0, 6.0)];   // where a group paid by nobody this period stands
-pub const GROUP_SPREAD: (f64, u32) = (1.0, 8);  pub const PERSON_SPREAD: (f64, u32) = (0.4, 8); // min distance, steps
-pub const SPREAD_BOUNDS: Rect = (-13.0, -2.0, 13.0, 13.0);
+pub const WORKPLACE_X: [f64; 8] = [-11.5, -8.5, -5.5, -2.5, 2.5, 5.5, 8.5, 11.5];   // by Workplace::index, y 0
+pub const TREASURY_AT: Point = (-2.2, 11.2);  pub const FUND_AT: Point = (2.2, 11.2);
+pub const WAGE_ANCHOR_Y: f64 = 3.3;      // a particle paid wages by a workplace leans to (x, 3.3): above it
+pub const PROFIT_ANCHOR_Y: f64 = -2.6;   // a particle paid profit by a workplace leans to (x, -2.6): below it
+pub const TREASURY_ANCHOR: Point = (-2.2, 8.3); pub const FUND_ANCHOR: Point = (2.2, 8.3);
+pub const HOME: [Point; 2] = [(-7.0, 6.0), (7.0, 6.0)];   // where a group paid by nobody this period stands
+pub const GROUP_SPREAD: (f64, u32) = (1.6, 8);  pub const PERSON_SPREAD: (f64, u32) = (0.4, 8); // min distance, steps
+pub const SPREAD_BOUNDS: Rect = (-12.8, -4.2, 12.8, 12.6);
+pub const PLANE: Rect = (-13.2, -4.6, 13.2, 13.1);   // what the view is fitted to: 26.4 wide, 17.7 deep
 pub const PERSON_COLUMNS: usize = 4;  pub const PERSON_STEP: f64 = 0.45;   // a cluster of persons, rows going +y
-pub const OUTLINE: (f64, f64, f64) = (1.0, 0.25, 0.9);   // OutlineParams::new(reach, cell, share)
+// OutlineParams::new(reach, cell, share) of a workforce, an owner, the fund. An owner's members stand 3 apart:
+// at a reach of 1.0 its set drew as five separate loops; at 2.2 it is one outline round its four workplaces.
+pub const OUTLINE: [(f64, f64, f64); 3] = [(1.0, 0.2, 0.92), (2.2, 0.2, 0.92), (1.6, 0.2, 0.92)];
 pub const PARTICLE_Y: f32 = 0.10; pub const MARK_Y: f32 = 0.15; pub const HOURS_RING_Y: f32 = 0.03;
 pub const MONEY_RING_Y: f32 = 0.035; pub const SET_Y: [f32; 3] = [0.02, 0.04, 0.06]; // workforces, owners, fund
 // src/small_world/frame.rs
@@ -668,24 +677,27 @@ pub fn build_picture(result: &PeriodResult, mode: ParticleMode) -> Result<Pictur
 pub fn field_config() -> FieldConfig; pub fn field_styles() -> FieldStyles; pub fn field_palette() -> Palette;
 pub const STREAM_WORK: u16 = 0; pub const STREAM_GOODS: [u16; 3] = [1, 2, 3];   // food, power, care
 pub const STREAM_MONEY: [u16; 5] = [4, 5, 6, 7, 8];  // wages, purchases, taxes, benefits, profit
-pub const HOURS_PER_MARK: u64 = 10; pub const UNITS_PER_MARK: u64 = 4; pub const MONEY_PER_MARK: u64 = 40_000_000;
+pub const HOURS_PER_MARK: u64 = 2; pub const UNITS_PER_MARK: u64 = 4; pub const MONEY_PER_MARK: u64 = 80_000_000;
 ```
 
 **Decisions:**
 1. **Ids.** Nodes: `"household:{byte}"`, `"person:{byte}:{k}"` (k from 0), `"workplace:{a|b}:{kind}"`,
    `"treasury"`, `"fund"`. Edges: `"workforce:{a|b}:{kind}"`, `"owner:{a|b}"`, `"fund"`. Particles carry node ids.
 2. **Where a particle stands** (field design 6.7). A household group stands at `barycentre` of the anchors of the
-   bodies that paid it this period (wages and profit from workplaces at `(WORKPLACE_X, 3.0)`, benefits from the
-   treasury and fund anchors), weighted by the money each paid it; a group paid by nobody stands at its place's
-   `HOME`. Then `spread` once over all groups with `GROUP_SPREAD` and `SPREAD_BOUNDS`, in `Household::ALL` order.
+   bodies that paid it this period (wages from a workplace at `(WORKPLACE_X, WAGE_ANCHOR_Y)`, profit from a
+   workplace at `(WORKPLACE_X, PROFIT_ANCHOR_Y)`, benefits from the treasury and fund anchors), weighted by the
+   money each paid it; a group paid by nobody stands at its place's `HOME`. So workers stand above their workplace
+   and an owner below the four it holds. Then `spread` once over all groups with `GROUP_SPREAD` and
+   `SPREAD_BOUNDS`, in `Household::ALL` order.
    People mode: a worker household's first `opening_employed` persons (its member receipt) cluster at its
-   workplace's anchor; its other persons cluster at the group's point computed from its benefits alone, or `HOME`;
+   workplace's wage anchor; its other persons cluster at the group's point computed from its benefits alone, or
+   `HOME`;
    owner and supported persons cluster at their group's point. A cluster of `n` puts person `k` at
    `(cx + (k % 4 - (min(n, 4) - 1) / 2) * 0.45, cy + (k / 4) * 0.45)`; then `spread` over all persons with
    `PERSON_SPREAD`. Money weights are dollars as `f64` (`micro_units as f64 / 1e6`, an allowed `cast_precision_loss`
    with a reason); no hour enters a position.
 3. **Sets** (D7 of the brief), each by `add_node_to_edge_with_data`, then `set_frames` once per kind with its height
-   and its own weight closure (`h as f64`; dollars as above):
+   and its own weight closure (`h as f64`; dollars as above), with that kind's `OUTLINE`:
    - A workforce: its workers' node (Groups) with the hours given to it this period, or (People) its persons in
      order, each at work given `HOURS_PER_PERSON` until the given hours run out, the next the rest, every other 0 (on
      the bench a clinic gave 2 hours with 4 employed: `fund-P2a.tsv` period 14, so the first person gets 2).
@@ -702,22 +714,31 @@ pub const HOURS_PER_MARK: u64 = 10; pub const UNITS_PER_MARK: u64 = 4; pub const
    body's edge (0.7 short of its centre, toward the household). Goods: hollow (ruling 18), one stream a good, from
    the seller's point to the buyer's. Money: one stream a kind, payer to payee. A household's point in People mode is
    the mean of its persons' points. Ends are `plan_to_scene(p, 0.15)`. Amounts are `u64` (money by `u64::try_from`).
-5. **Rings** of a workplace: hours `0.8 + 0.4 * min(hours reached / 120, 2)` (reached: given and idle); money
-   `0.92 + 0.4 * min(money in / $1,500, 2)`; `None` when the figure is 0. Two expressions, two constants, never one.
-6. **Styles and palette.** Swatches: 0 `BONE`, 1 `CRIMSON`, 2 `GOLD`, 3 `DIM` (the client's `palette.rs`). Particles:
-   0 groups (`Disc`, 0.35, swatch 0), 1 people (`Disc`, 0.12, swatch 0). Sets: 0 workforce (swatch 0, line 0.04,
-   hatch `Deg45` spacing 0.25 width 0.02), 1 owner (swatch 2, line 0.05, hatch `Deg135` 0.30 / 0.02), 2 fund (swatch
-   2, line 0.05 dashed (0.2, 0.1), hatch `Deg0` 0.30 / 0.02). Streams: work (beat 0, unit 10, `Disc` / `Ring`, size
-   0.08, swatch 0); food, power, care (beat 1, unit 4, `Square` / `SquareFrame`, 0.08, swatch 1); five money streams
-   (beat 2, unit 40,000,000, `Streak` / `Streak`, 0.10, swatch 2); every stream `share_drawn` 0.95 (field design
-   6.2) and `max_marks` 300. Config: `FieldConfig::three_beats(Duration::from_millis(1_000))`. Ramp and no-reading
-   colours are `DIM` (the scene has no ground).
+5. **Rings** of a workplace: hours `0.42 + 0.22 * min(hours reached / 120, 2)` (reached: given and idle); money
+   `0.52 + 0.22 * min(money in / $1,500, 2)`; `None` when the figure is 0. Two expressions, two constants, never
+   one. Both stay inside an owner's outline, which passes about 1.5 from a workplace.
+6. **Styles and palette.** Swatches: 0 `BONE`, 1 `CRIMSON`, 2 `GOLD`, 3 `DIM` (the client's `palette.rs`). A glyph's
+   size is its radius in plan units. Particles: 0 a group of up to 4 persons (`Disc`, 0.30, swatch 0), 1 a person
+   (`Disc`, 0.13, swatch 0), 2 a group of 5 to 8 (`Disc`, 0.42, swatch 0), 3 a group of 9 or more (`Disc`, 0.52,
+   swatch 0): a dot's area tells its people. Sets: 0 workforce (swatch 0, line 0.05, hatch `Deg45` spacing 0.30
+   width 0.025), 1 owner (swatch 2, line 0.056, hatch `Deg135` 0.42 / 0.025), 2 fund (swatch 2, line 0.056 dashed
+   (0.28, 0.14), hatch `Deg0` 0.34 / 0.025). Streams: work (beat 0, unit `HOURS_PER_MARK`, `Disc` / `Ring`, size
+   0.11, swatch 0); food, power, care (beat 1, unit `UNITS_PER_MARK`, `Square` / `SquareFrame`, 0.13, swatch 1);
+   five money streams (beat 2, unit `MONEY_PER_MARK`, `Streak` / `Streak`, 0.34, swatch 2: a streak is a thin line
+   and needs three times a disc's size to be seen); every stream `share_drawn` 0.95 (field design 6.2) and
+   `max_marks` 300. Config: `FieldConfig::three_beats(Duration::from_millis(1_000))`. Ramp and no-reading colours
+   are `DIM` (the scene has no ground). Every number of decisions 5 and 6 and of `layout.rs` was set by eye from a
+   mock in the real renderer ("What the lead's look changed", below) and is tuned again from the real scene after
+   Task 7.
 
 - [ ] **Step 1: Write the failing tests** (quiet period 1, Groups, unless named):
-  - `the_quiet_period_stands_by_its_ties`: 12 particles; each worker group at `(WORKPLACE_X[i], 3.0)`; owner A at
-    (-6.3, 3.0) and owner B at (5.7, 3.0) (profit 192 / 96 / 256 / 96 a place); the two supported
-    groups, who share their ties, stand apart (the distance pinned from the first run) with their midpoint at
-    (1.5, 9.0) within 1e-9; `at` is `plan_to_scene(p, 0.10)`.
+  - `the_quiet_period_stands_by_its_ties`: 12 particles; each worker group at `(WORKPLACE_X[i], 3.3)`, style 3 for
+    the two groups of 12 and style 0 for the six of 4; owner A at (-7.3, -2.6) and owner B at (6.7, -2.6) (profit
+    192 / 96 / 256 / 96 a place), style 2; the two supported groups (style 2), who share their ties, stand apart
+    (the distance pinned from the first run) with their midpoint at (1.1, 8.3) within 1e-9; `at` is
+    `plan_to_scene(p, 0.10)`.
+  - `an_owner_s_set_is_one_outline`: each owner's `SetFrame` has an outline of exactly one closed path that holds
+    the plan points of its household and of its four workplaces (the fault the first numbers had: five loops).
   - `the_three_kinds_of_sets_are_real_hyperedges`: 11 sets: 8 workforces, each one member at 120 / 40 / 40 / 40
     hours with a `Ring` outline; 2 owners of 5 members (the household and its four workplaces), the workplaces'
     numbers their book capital at the close (expected $1,200 / $1,760 / $880 / $2,400 and the household $944, the
@@ -726,7 +747,7 @@ pub const HOURS_PER_MARK: u64 = 10; pub const UNITS_PER_MARK: u64 = 4; pub const
   - `each_stream_draws_and_counts_exactly_its_own_total`: `select_flows(&frame.flows, &field_styles().streams)`:
     for every stream and variant, `drawn + not_drawn == total`, and the totals equal the reading's (work full 480,
     hollow 0; food, power, care hollow 160, 240, 80; money by kind 4,800 / 10,320 / 1,280 / 1,280 / 1,280 dollars in
-    millionths). Work: drawn 480, 48 marks. Food: drawn 152, not drawn 8. Power: drawn 228, not drawn 12. Care: drawn
+    millionths). Work: drawn 480, 240 marks. Food: drawn 152, not drawn 8. Power: drawn 228, not drawn 12. Care: drawn
     76, not drawn 4. Every goods flow hollow; no full goods flow.
   - `people_stand_in_their_membranes`: People: 80 particles; workforce of utility A has 12 members at 10 hours; the
     fund set's members above zero are the 16 supported persons at $60 each.
@@ -828,16 +849,23 @@ const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not me
    shows no period until the next step. A frame the library refuses (`FrameRefused`) is shown as the refusal too, in
    its own words, and stops play. `Particles` and `Marks` (Task 8) rebuild the shown period's picture.
 6. **Camera and bodies.** One `Camera3d`, order 0, no `RenderLayers` (layer 0, where the library's entities are),
-   `Transform::from_xyz(0.0, 26.0, 9.0).looking_at(Vec3::new(0.0, 0.0, -5.0), Vec3::Y)`, perspective 40 degrees,
-   `Tonemapping::AcesFitted` (the client ships no tonemapping LUTs), `Msaa::Sample4`, viewport x 0 to width - 400,
+   looking straight down with no perspective: `Transform::from_translation(m + Vec3::Y * 40.0).looking_at(m,
+   Vec3::NEG_Z)`, `m` the middle of `PLANE` in the scene, and `Projection::Orthographic` with
+   `ScalingMode::AutoMin { min_width: 26.4, min_height: 17.7 }` (`PLANE`'s size), so the whole plane shows at any
+   window shape and a disc stays round; `Tonemapping::None` (the palette's colours reach the screen as they are, and
+   it needs no LUT), `Msaa::Sample4`, viewport x 0 to width - 400,
    y 48 to height - 72 (logical px times the window's scale factor), set by a system from the primary window
    whenever its size or scale changes; with no primary window (the headless tests) that system does nothing and the
    viewport stays `None`. One `Camera2d`, order 10,
-   `ClearColorConfig::None`, `IsDefaultUiCamera`, `RenderLayers::layer(31)`. Workplaces are unlit `Cuboid` 1.2 x 0.6
-   x 1.2 of `LAND` (`observer_theme.rs`) at `plan_to_scene(at, 0.3)`; treasury and fund `Cuboid` 1.6 x 0.6 x 1.0 of
-   `COPPER`. Rings: `outline_paths` of `Outline::Ring` (48 segments), the hours ring `dashed(.., Some((0.18, 0.12)))`
-   `ribbon_mesh` width 0.05 of `BONE`, the money ring solid width 0.05 of `GOLD`, at their heights; redrawn when a
-   picture is shown. Marks, path lines and rings get `Pickable::IGNORE` (an observer on `Add` of `MarkOf`, of
+   `ClearColorConfig::None`, `IsDefaultUiCamera`, `RenderLayers::layer(31)`. A body is flat, unlit and in the
+   palette: a workplace is a centre disc (`Circle` of radius 0.2, `GOLD`, at `plan_to_scene(at, 0.05)`) with its two
+   rings; the treasury and the fund are the library's `glyph_mesh(Glyph::SquareFrame, 16)` scaled 0.6, `GOLD`, with
+   the same centre disc. Under each body lies its pick plate, a `Circle` of radius 0.95 in `FIELD` at height 0.01:
+   that is what a click on a body hits. The plate carries `SceneBody(pub Party)` (a `Component`); the centre disc,
+   the frame and the rings are its children. Rings: `outline_paths` of `Outline::Ring` (48 segments), the hours ring
+   `dashed(.., Some((0.18, 0.12)))` `ribbon_mesh` width 0.055 of `BONE`, the money ring solid width 0.055 of `GOLD`,
+   at their heights; redrawn when a picture is shown.
+   Marks, path lines and rings get `Pickable::IGNORE` (an observer on `Add` of `MarkOf`, of
    `PathLines` and of whatever component the library's one-mesh marks of a stream carry at `LIBRARY_REV`: read its
    `src/plugin/marks.rs` there); bodies, particles and set meshes stay pickable.
 8. **The surface** (Departure 5). Every entity of the scene with a `Text`, an `ImageNode`, a `Mesh2d` or a `Mesh3d`
@@ -858,9 +886,12 @@ const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not me
    32 with a gap of 8; buttons height 28, min width 96, border 1 `PAPER`, Body 14, gap 8: row 1 "Step", "Play" /
    "Pause", "Again", "Start over" (row 2 and the right rail are Task 8's). A refusal is a banner at the top of the
    viewport (x 16, y 56, width viewport - 32, `PANEL`, border 2 `RED`, Body 14 `PAPER`) with the error's words; while
-   it shows, Step and Play are disabled. Body labels: Body 12 `PAPER`, centred 18 px under the body's projected point
-   (`Camera::world_to_viewport`), text `Party::label`. Standing line at the viewport's bottom left (x 16, 8 above
-   the control bar, Body 13 `PAPER`): "Place A and Place B are copies of one test economy, not real places."
+   it shows, Step and Play are disabled. Body labels: Body 12 `PAPER` on a plate of `FIELD` at 0.82 (so a
+   label reads over a hatch), centred under the body, 10 px below the projected lowest point of its outer ring or of
+   its frame (`Camera::world_to_viewport`), text `Party::label`. Standing line at the viewport's bottom left (x 16,
+   8 above the control bar, Body 13 `PAPER`): "Place A and Place B are copies of one test economy, not real places."
+   While no period has been shown, a second line in the middle of the viewport (Body 14 `PAPER`): "Nothing has run
+   yet. Press Step."
 
 - [ ] **Step 1: Write the failing tests:**
   - In `cli.rs`'s tests: `the_small_world_flag_opens_a_test_economy` (`--small-world` gives `SmallWorld { script:
@@ -882,6 +913,8 @@ const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not me
     `a_refusal_is_shown_in_the_engine_s_words` (`status_after(&Err(RunnerError::PastHorizon { period: 999 }))` has
     `refusal` "Period 999: this test economy is built for 998 periods" and `playing` false);
     `the_unfogged_words_are_on_screen` (the header's two `Text`s read exactly as decision 7 has them);
+    `an_empty_scene_says_so` (before any step the line "Nothing has run yet. Press Step." is on screen; after one
+    `Step` it is gone; after `StartOver` it is back);
     `every_visual_entity_of_the_scene_declares_the_small_world` (one `Step`, 3 updates: every entity with a `Text`,
     an `ImageNode`, a `Mesh2d` or a `Mesh3d` has `DeclaredSurface { id: SurfaceId::SmallWorld }`, the library's
     particles, sets and marks among them).
@@ -895,6 +928,10 @@ const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not me
 - [ ] **Step 3: Implement.** **Step 4: Run** `mise run rust:test:q -- -p babylon-client`: every existing test passes
   unchanged but the one edit of decision 8 in `decision_surface_contract`.
 - [ ] **Run the gate. Commit** `feat(client): a scene of the small world, opened by a flag or from the title`.
+- [ ] **Step 6 (the lead's, not the builder's): look.** The lead runs the real client with `--small-world`, steps
+  three periods, captures the client's own window in each beat and in People mode, and puts the captures beside the
+  mock's. The lead then tunes `layout.rs` and decisions 5 and 6 of Task 6 by eye, decides whether the scene should
+  play its first period by itself when it opens, and shows the Director the pictures. Task 8 starts after this.
 
 ### Task 8: Shocks, the particle switch, the table and what a pick shows
 
@@ -948,8 +985,8 @@ pub fn not_drawn_line(report: &FlowReport) -> String;                      // pu
    label Body 13, figures Exact 13 (`grouped` for hours, `currency` for money); "Stored work got back" reads
    `NOT_MEASURED` in every row. Under the hours figures a bar of height 6 in `BONE`, width `value / hours_scale` of
    the column; under the money figures a bar in `GOLD`, width `value / money_scale`. The two scales never meet.
-7. **Picking.** A click (`PointerClick`, primary button) on a body, a particle (`ParticleId`) or a set (`SetId` on the
-   entity or its `ChildOf` parent) sets `ScenePick`; a click on empty space clears it. The inspector (right rail,
+7. **Picking.** A click (`PointerClick`, primary button) on a body (`SceneBody`), a particle (`ParticleId`) or a set
+   (`SetId` on the entity or its `ChildOf` parent) sets `ScenePick`; a click on empty space clears it. The inspector (right rail,
    middle, title the pick's label) shows `inspect`'s rows for the shown period:
    - a workplace: hours given to it, paid not used, workers employed and in reserve (its member receipt), made,
      money in and out by kind, cash at the close, posted price; the treasury or fund: money in and out by kind,
@@ -1083,6 +1120,40 @@ pub fn frame_time(stats: &WindowStats) -> FrameTime;   // milliseconds, window 3
 - **First to fail, because only read:** the doubled treasury under `CashInProportion` (Task 1); stillness on the
   game's engine (Task 2); the mid-run power cut (Task 3); the owner sets' capital figures (Task 6); the library on
   Rust 1.99.1 and the Bevy lock move (Task 5).
+
+## What the lead's look changed (23 November 2026)
+
+On 23 November the Director watched the hypergraph library's timing example open and called it bizarre. It was:
+ten tasks had been built and reviewed and nobody had looked at the window. So before Task 6 fixed this scene's
+numbers in code, the lead drew its layout, view and sizes with the real renderer (a throwaway example beside the
+library's own, never committed) and looked.
+
+With the numbers this plan first had:
+
+- The picture was a thin band in the middle of the window, under a slanted view that skewed every box.
+- The bodies were dark blue-grey boxes on the red-black field, inside rings that overlapped their neighbours.
+- The marks of all three beats were too small to see. A streak of size 0.10 is under one pixel wide.
+- An owner's set drew as five separate loops, one a member, because its members stand 3 apart and a member's
+  reach was 1. It tied nothing together.
+
+What changed, in Tasks 5, 6 and 7 above:
+
+1. The view looks straight down with no perspective and is fitted to the plane. The picture fills the viewport.
+2. The two places stand apart: 5 between them, 3 between workplaces. The treasury and the fund stand together at
+   the top.
+3. Workers stand above their workplace and an owner below the four it holds. Wages and profit lean to different
+   anchors. An owner's outline has a reach of 2.2 and is one outline round its four workplaces.
+4. A body is a gold centre disc with its rings, not a box. The rings are smaller and stay inside the owner's
+   outline. The treasury and the fund are gold frames.
+5. A group's dot grows with its people.
+6. Marks are larger, and a streak is three times a disc. One mark is 2 hours or 80 dollars, so the three beats of
+   a quiet period carry about the same number of marks.
+7. A body's label sits on a plate of the field's colour.
+8. The library showed the first period's dots only in its last beat. That is mended there before this scene pins
+   it.
+
+Left to the look after Task 7: whether the scene plays its first period by itself when it opens, and the final
+numbers. The mock's source and its captures are kept in the lead's session folder, not in the repository.
 
 ## The lead's answers to the plan's questions (23 November 2026)
 

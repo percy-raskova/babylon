@@ -333,7 +333,7 @@ fn kind_name(kind: Kind) -> &'static str {
     kind.label()
 }
 
-fn workplace_id(w: Workplace) -> String {
+pub(super) fn workplace_id(w: Workplace) -> String {
     format!("workplace:{}:{}", place_letter(w.place), kind_name(w.kind))
 }
 
@@ -341,15 +341,15 @@ fn household_byte(h: Household) -> u8 {
     h.principal().as_bytes()[0]
 }
 
-fn household_id(h: Household) -> String {
+pub(super) fn household_id(h: Household) -> String {
     format!("household:{}", household_byte(h))
 }
 
-fn person_id(h: Household, k: usize) -> String {
+pub(super) fn person_id(h: Household, k: usize) -> String {
     format!("person:{}:{k}", household_byte(h))
 }
 
-fn party_id(party: Party) -> String {
+pub(super) fn party_id(party: Party) -> String {
     match party {
         Party::Workplace(w) => workplace_id(w),
         Party::Household(h) => household_id(h),
@@ -358,15 +358,15 @@ fn party_id(party: Party) -> String {
     }
 }
 
-fn workforce_edge(w: Workplace) -> String {
+pub(super) fn workforce_edge(w: Workplace) -> String {
     format!("workforce:{}:{}", place_letter(w.place), kind_name(w.kind))
 }
 
-fn owner_edge(place: Place) -> String {
+pub(super) fn owner_edge(place: Place) -> String {
     format!("owner:{}", place_letter(place))
 }
 
-const FUND_EDGE: &str = "fund";
+pub(super) const FUND_EDGE: &str = "fund";
 
 fn missing(what: &str) -> FrameError {
     FrameError::Edge(what.to_string())

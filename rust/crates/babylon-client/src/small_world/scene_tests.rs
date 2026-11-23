@@ -4,9 +4,19 @@ use super::{
     ShowPeriod, SurfaceId, VisualAssetsPlugin,
 };
 use crate::small_world::controls::{
-    BodyLabel, EmptyLine, SceneButton, COPIES_LINE, EMPTY_LINE, NOT_WAYNE_LINE, UNFOGGED_LINE,
+    BodyLabel, EmptyLine, PeopleLine, SceneButton, COPIES_LINE, EMPTY_LINE, NOT_WAYNE_LINE,
+    UNFOGGED_LINE,
 };
-use crate::small_world::scene;
+use crate::small_world::frame::ParticleMode;
+use crate::small_world::inspect::ScenePick;
+use crate::small_world::panel;
+use crate::small_world::panel::{
+    InspectorBody, PagerLabel, PanelButton, PanelView, ShockButton, ShockNotice,
+};
+use crate::small_world::scene::SceneShown;
+use crate::small_world::table::Grouping;
+use crate::small_world::{controls, scene};
+use babylon_circuit_worlds::{Kind, Place, Workplace};
 use bevy::asset::AssetPlugin;
 use bevy::camera::NormalizedRenderTarget;
 use bevy::image::ImagePlugin;
@@ -16,6 +26,7 @@ use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
 use bevy::text::TextPlugin;
 use bevy::time::TimeUpdateStrategy;
+use hypergraph_rs_bevy::Motion;
 use hypergraph_rs_bevy::{FieldFrame, FlowReport, MarkBatch, ParticleId, SetId};
 use std::error::Error;
 
@@ -462,4 +473,307 @@ fn every_visual_entity_of_the_scene_declares_the_small_world() -> TestResult {
         assert_eq!(*pickable, Pickable::IGNORE);
     }
     Ok(())
+}
+
+fn shock_button(app: &mut App, kind: ShockButton) -> Result<Entity, Box<dyn Error>> {
+    let world = app.world_mut();
+    world
+        .query::<(Entity, &ShockButton)>()
+        .iter(world)
+        .find_map(|(entity, candidate)| (*candidate == kind).then_some(entity))
+        .ok_or_else(|| format!("no shock button {kind:?}").into())
+}
+
+fn panel_button(app: &mut App, kind: PanelButton) -> Result<Entity, Box<dyn Error>> {
+    let world = app.world_mut();
+    world
+        .query::<(Entity, &PanelButton)>()
+        .iter(world)
+        .find_map(|(entity, candidate)| (*candidate == kind).then_some(entity))
+        .ok_or_else(|| format!("no panel button {kind:?}").into())
+}
+
+/// The inspector's rows: each row holds its label and its figure, in that order.
+fn inspector_rows(app: &mut App) -> Vec<(String, String)> {
+    let world = app.world_mut();
+    let Some(body) = world
+        .query_filtered::<Entity, With<InspectorBody>>()
+        .iter(world)
+        .next()
+    else {
+        return Vec::new();
+    };
+    let rows: Vec<Entity> = world
+        .get::<Children>(body)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+    rows.into_iter()
+        .filter_map(|row| {
+            let words: Vec<String> = world
+                .get::<Children>(row)?
+                .iter()
+                .filter_map(|e| world.get::<Text>(e).map(|t| t.0.clone()))
+                .collect();
+            Some((
+                words.first()?.clone(),
+                words.get(1).cloned().unwrap_or_default(),
+            ))
+        })
+        .collect()
+}
+
+fn row_value(rows: &[(String, String)], label: &str) -> Option<String> {
+    rows.iter()
+        .find(|(l, _)| l == label)
+        .map(|(_, value)| value.clone())
+}
+
+#[test]
+fn a_strike_from_the_controls_holds_from_the_next_period() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    for kind in [
+        ShockButton::Place(Shock::HarvestFails, Places::A),
+        ShockButton::Lasts(Shock::HarvestFails, Lasts::UntilLifted),
+        ShockButton::Strike(Shock::HarvestFails),
+    ] {
+        let entity = shock_button(&mut app, kind)?;
+        click(&mut app, entity);
+        updates(&mut app, 2);
+    }
+    {
+        let scene = app.world().resource::<SceneRunner>();
+        let strikes = scene.runner.shocks().strikes();
+        assert_eq!(strikes.len(), 1);
+        assert_eq!(strikes[0].from, 2);
+        assert_eq!(strikes[0].shock, Shock::HarvestFails);
+    }
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let scene = app.world().resource::<SceneRunner>();
+    assert_eq!(scene.runner.history()[1].figures.farm_yield, [9, 10]);
+    let words = texts(&mut app);
+    assert!(words.iter().any(|w| w.starts_with(
+        "SHOCK · The harvest fails in Place A · a farm makes 9 food a batch, not 10 · from period 2 · holds"
+    )));
+    // Striking it again is refused in the scene's words, and they stay for four seconds.
+    let strike = shock_button(&mut app, ShockButton::Strike(Shock::HarvestFails))?;
+    click(&mut app, strike);
+    updates(&mut app, 2);
+    assert!(texts(&mut app).contains(&"Already holds in Place A".to_owned()));
+    updates(&mut app, 450);
+    assert_eq!(app.world().resource::<ShockNotice>().text, None);
+    assert!(!texts(&mut app).contains(&"Already holds in Place A".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn the_particle_switch_shows_people() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let particles = |app: &App| {
+        app.world()
+            .resource::<SceneShown>()
+            .0
+            .as_ref()
+            .map(|picture| picture.frame.particles.len())
+    };
+    let people_line = |app: &mut App| {
+        let world = app.world_mut();
+        world.query::<&PeopleLine>().iter(world).count()
+    };
+    assert_eq!(particles(&app), Some(12));
+    assert_eq!(people_line(&mut app), 0);
+    send(&mut app, SceneCommand::Particles(ParticleMode::People));
+    updates(&mut app, 3);
+    assert_eq!(particles(&app), Some(80));
+    assert_eq!(people_line(&mut app), 1);
+    assert!(texts(&mut app).contains(&controls::PEOPLE_LINE.to_owned()));
+    assert_eq!(history(&app), 1, "switching shows the same period again");
+    send(&mut app, SceneCommand::Particles(ParticleMode::Groups));
+    updates(&mut app, 3);
+    assert_eq!(particles(&app), Some(12));
+    assert_eq!(people_line(&mut app), 0);
+    Ok(())
+}
+
+#[test]
+fn the_marks_switch_sets_the_motion() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    send(&mut app, SceneCommand::Marks(Motion::Reduced));
+    updates(&mut app, 3);
+    assert_eq!(
+        app.world()
+            .resource::<hypergraph_rs_bevy::FieldConfig>()
+            .motion,
+        Motion::Reduced
+    );
+    send(&mut app, SceneCommand::Marks(Motion::Full));
+    updates(&mut app, 3);
+    assert_eq!(
+        app.world()
+            .resource::<hypergraph_rs_bevy::FieldConfig>()
+            .motion,
+        Motion::Full
+    );
+    Ok(())
+}
+
+#[test]
+fn the_table_switches_its_grouping_and_period() -> TestResult {
+    let mut app = scene_app(None)?;
+    for _ in 0..2 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+    }
+    assert!(texts(&mut app).contains(&"Period 2".to_owned()));
+    let class = panel_button(&mut app, PanelButton::Tab(Grouping::Class))?;
+    click(&mut app, class);
+    updates(&mut app, 2);
+    let earners = "Earners who do not own".to_owned();
+    assert!(texts(&mut app).contains(&earners));
+    let back = panel_button(&mut app, PanelButton::Previous)?;
+    click(&mut app, back);
+    updates(&mut app, 2);
+    let view = app.world().resource::<PanelView>().clone();
+    assert_eq!(view.grouping, Grouping::Class);
+    assert_eq!(view.period, Some(1));
+    let label = {
+        let world = app.world_mut();
+        world
+            .query_filtered::<&Text, With<PagerLabel>>()
+            .iter(world)
+            .map(|t| t.0.clone())
+            .next()
+    };
+    assert_eq!(label.as_deref(), Some("Period 1"));
+    assert!(texts(&mut app).contains(&earners));
+    // The scene still shows the latest period.
+    assert_eq!(app.world().resource::<SceneRunner>().shown, Some(2));
+    let latest = panel_button(&mut app, PanelButton::Latest)?;
+    click(&mut app, latest);
+    updates(&mut app, 2);
+    assert_eq!(app.world().resource::<PanelView>().period, None);
+    Ok(())
+}
+
+#[test]
+fn a_pick_shows_its_own_figures() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let farm_a = {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &SceneBody)>()
+            .iter(world)
+            .find_map(|(entity, body)| {
+                (body.0
+                    == Party::Workplace(Workplace {
+                        place: Place::A,
+                        kind: Kind::Farm,
+                    }))
+                .then_some(entity)
+            })
+            .ok_or("no plate of farm A")?
+    };
+    click(&mut app, farm_a);
+    updates(&mut app, 2);
+    let rows = inspector_rows(&mut app);
+    assert_eq!(row_value(&rows, "Hours given").as_deref(), Some("40"));
+    assert_eq!(row_value(&rows, "Made").as_deref(), Some("40"));
+    assert!(texts(&mut app).contains(&"Place A farm".to_owned()));
+
+    let group = {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &ParticleId)>()
+            .iter(world)
+            .find_map(|(entity, id)| (id.0 == "household:13").then_some(entity))
+            .ok_or("no particle household:13")?
+    };
+    click(&mut app, group);
+    updates(&mut app, 2);
+    let rows = inspector_rows(&mut app);
+    assert_eq!(row_value(&rows, "Persons").as_deref(), Some("4"));
+
+    let set = {
+        let world = app.world_mut();
+        let set = world
+            .query::<(Entity, &SetId)>()
+            .iter(world)
+            .find_map(|(entity, id)| (id.0 == "workforce:a:farm").then_some(entity))
+            .ok_or("no set workforce:a:farm")?;
+        world
+            .get::<Children>(set)
+            .and_then(|children| {
+                children
+                    .iter()
+                    .find(|child| world.get::<Mesh3d>(*child).is_some())
+            })
+            .unwrap_or(set)
+    };
+    click(&mut app, set);
+    updates(&mut app, 2);
+    let rows = inspector_rows(&mut app);
+    assert_eq!(
+        row_value(&rows, "Place A farm workers").as_deref(),
+        Some("40 hours")
+    );
+    assert_eq!(row_value(&rows, "Outline holds").as_deref(), Some("100 %"));
+    assert_eq!(
+        rows.iter().filter(|(l, _)| l.ends_with("workers")).count(),
+        1
+    );
+    Ok(())
+}
+
+#[test]
+fn a_click_on_empty_space_clears_the_pick() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let plate = {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &SceneBody)>()
+            .iter(world)
+            .map(|(entity, _)| entity)
+            .next()
+            .ok_or("no plate")?
+    };
+    click(&mut app, plate);
+    updates(&mut app, 2);
+    assert!(app.world().resource::<ScenePick>().0.is_some());
+    let nothing = app.world_mut().spawn_empty().id();
+    click(&mut app, nothing);
+    updates(&mut app, 2);
+    assert_eq!(app.world().resource::<ScenePick>().0, None);
+    Ok(())
+}
+
+#[test]
+fn not_drawn_line_prints_the_report() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let line = panel::not_drawn_line(app.world().resource::<FlowReport>());
+    assert_eq!(
+        line,
+        "Not drawn: 0 hours; food 8, power 12, care 4 units; wages $0.00, purchases $1,680.00, taxes $960.00, benefits $0.00, profit $160.00"
+    );
+    assert!(texts(&mut app).contains(&line));
+    Ok(())
+}
+
+#[test]
+fn the_units_line_is_built_from_the_marks_constants() {
+    assert_eq!(
+        controls::units_line(),
+        "One dot: 2 hours of work. One square: 4 units of a good. One streak: $80. Hours and money are two scales."
+    );
 }

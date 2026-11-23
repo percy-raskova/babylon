@@ -8,7 +8,11 @@
 use super::controls;
 use super::frame;
 use super::frame::{BodyPicture, ParticleMode, Picture};
+use super::inspect;
+use super::inspect::ScenePick;
 use super::layout::{FUND_AT, HOURS_RING_Y, MONEY_RING_Y, PLANE, TREASURY_AT, WORKPLACE_X};
+use super::panel;
+use super::panel::{PanelView, ShockChoices, ShockNotice};
 use super::reading::Party;
 use super::table::Grouping;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
@@ -27,8 +31,8 @@ use bevy::ui::UiSystems;
 use bevy::window::PrimaryWindow;
 use hypergraph_rs::geometry::{Outline, Point};
 use hypergraph_rs_bevy::{
-    FieldError, FieldPlugin, FieldSystems, FrameRefused, Glyph, MarkBatch, MarkOf, Motion,
-    PathLines, ReplayPeriod, ShowPeriod,
+    FieldConfig, FieldError, FieldPlugin, FieldSystems, FrameRefused, Glyph, MarkBatch, MarkOf,
+    Motion, PathLines, ReplayPeriod, ShowPeriod,
 };
 use std::f32::consts::FRAC_PI_2;
 use std::path::PathBuf;
@@ -245,6 +249,10 @@ impl Plugin for SmallWorldPlugin {
             .init_resource::<SceneStatus>()
             .init_resource::<SceneShown>()
             .init_resource::<PlayClock>()
+            .init_resource::<ScenePick>()
+            .init_resource::<PanelView>()
+            .init_resource::<ShockChoices>()
+            .init_resource::<ShockNotice>()
             .insert_resource(SceneScript(self.script.clone()))
             .configure_sets(
                 Update,
@@ -254,6 +262,8 @@ impl Plugin for SmallWorldPlugin {
             )
             .configure_sets(Update, SceneSet::Paint.after(FieldSystems::Animate))
             .add_observer(ignore_picking)
+            .add_observer(inspect::picked)
+            .add_observer(panel::pressed)
             .add_observer(declare_surface)
             .add_systems(Startup, setup_scene)
             .add_systems(Update, fit_viewport.in_set(SceneSet::Input))
@@ -268,6 +278,13 @@ impl Plugin for SmallWorldPlugin {
                     controls::paint_banner,
                     controls::paint_empty_line,
                     controls::place_labels,
+                    controls::paint_people_line,
+                    panel::paint_table,
+                    panel::paint_inspector,
+                    panel::paint_shocks,
+                    panel::paint_choices,
+                    panel::paint_notice,
+                    panel::paint_not_drawn,
                 )
                     .chain()
                     .in_set(SceneSet::Paint),
@@ -430,6 +447,10 @@ struct Stage<'w> {
     clock: ResMut<'w, PlayClock>,
     shows: MessageWriter<'w, ShowPeriod>,
     replays: MessageWriter<'w, ReplayPeriod>,
+    config: ResMut<'w, FieldConfig>,
+    pick: ResMut<'w, ScenePick>,
+    view: ResMut<'w, PanelView>,
+    notice: ResMut<'w, ShockNotice>,
 }
 
 impl Stage<'_> {
@@ -468,8 +489,72 @@ impl Stage<'_> {
                 self.shown.0 = None;
                 *self.status = SceneStatus::default();
                 self.clock.0 = Duration::ZERO;
+                self.pick.0 = None;
+                self.view.period = None;
             }
             Err(error) => self.refuse(error.to_string()),
+        }
+    }
+
+    /// Show the period on the screen again, built in the mode and motion now chosen. Nothing
+    /// shown, or a refusal standing, shows nothing.
+    fn reshow(&mut self) {
+        if self.status.refusal.is_some() || self.scene.shown.is_none() {
+            return;
+        }
+        let mode = self.scene.mode;
+        let built = self
+            .scene
+            .runner
+            .history()
+            .last()
+            .map(|result| frame::build_picture(result, mode));
+        match built {
+            Some(Ok(picture)) => {
+                self.shows
+                    .write(ShowPeriod(Box::new(picture.frame.clone())));
+                self.shown.0 = Some(picture);
+            }
+            Some(Err(error)) => self.refuse(error.to_string()),
+            None => {}
+        }
+    }
+
+    fn set_particles(&mut self, mode: ParticleMode) {
+        if self.scene.mode != mode {
+            self.scene.mode = mode;
+            self.pick.0 = None;
+            self.reshow();
+        }
+    }
+
+    fn set_marks(&mut self, motion: Motion) {
+        if self.config.motion != motion {
+            self.config.motion = motion;
+            self.reshow();
+        }
+    }
+
+    /// The table reads a period of the history; the latest is `None`.
+    fn set_table_period(&mut self, period: Option<u64>) {
+        let closed = u64::try_from(self.scene.runner.history().len()).unwrap_or(0);
+        match period {
+            None => self.view.period = None,
+            Some(n) if n >= closed => self.view.period = None,
+            Some(n) if n >= 1 => self.view.period = Some(n),
+            Some(_) => {}
+        }
+    }
+
+    fn strike(&mut self, shock: Shock, places: Places, lasts: Lasts) {
+        if let Err(error) = self.scene.runner.strike(shock, places, lasts) {
+            self.notice.refuse(error);
+        }
+    }
+
+    fn lift(&mut self, shock: Shock, place: Place) {
+        if let Err(error) = self.scene.runner.lift(shock, place) {
+            self.notice.refuse(error);
         }
     }
 
@@ -491,14 +576,12 @@ impl Stage<'_> {
                 }
             }
             SceneCommand::StartOver => self.start_over(),
-            // The particle switch, the marks' motion, the shocks and the table are the next
-            // task's: no control of this scene writes them yet.
-            SceneCommand::Particles(_)
-            | SceneCommand::Marks(_)
-            | SceneCommand::Strike(..)
-            | SceneCommand::Lift(..)
-            | SceneCommand::Grouping(_)
-            | SceneCommand::TablePeriod(_) => {}
+            SceneCommand::Particles(mode) => self.set_particles(mode),
+            SceneCommand::Marks(motion) => self.set_marks(motion),
+            SceneCommand::Strike(shock, places, lasts) => self.strike(shock, places, lasts),
+            SceneCommand::Lift(shock, place) => self.lift(shock, place),
+            SceneCommand::Grouping(grouping) => self.view.grouping = grouping,
+            SceneCommand::TablePeriod(period) => self.set_table_period(period),
         }
     }
 }

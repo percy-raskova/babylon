@@ -3,7 +3,9 @@
 
 pub mod controls;
 pub mod frame;
+pub mod inspect;
 pub mod layout;
+pub mod panel;
 pub mod reading;
 pub mod scene;
 pub mod table;

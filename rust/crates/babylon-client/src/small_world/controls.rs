@@ -2,7 +2,8 @@
 //! under the bodies and the standing lines. Everything here is `unfogged material truth`: the
 //! scene belongs to the `SmallWorld` surface and nothing else.
 
-use super::frame::BodyPicture;
+use super::frame::{BodyPicture, ParticleMode, HOURS_PER_MARK, MONEY_PER_MARK, UNITS_PER_MARK};
+use super::panel;
 use super::reading::Party;
 use super::scene;
 use super::scene::{
@@ -10,12 +11,14 @@ use super::scene::{
     HEADER_HEIGHT, RAIL_WIDTH,
 };
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
+use crate::human_numbers;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
 use crate::palette::FIELD;
 use crate::ui;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
+use hypergraph_rs_bevy::Motion;
 
 /// The header's first line.
 pub const UNFOGGED_LINE: &str = "ADMIN · MATERIAL TRUTH · UNFOGGED";
@@ -26,6 +29,26 @@ pub const COPIES_LINE: &str =
     "Place A and Place B are copies of one test economy, not real places.";
 /// The line in the middle of the viewport until a period has been shown.
 pub const EMPTY_LINE: &str = "Nothing has run yet. Press Step.";
+
+/// The standing lines of the scene.
+pub const HOLLOW_DOT_LINE: &str = "A hollow dot: hours paid and not used.";
+pub const GOODS_HOLLOW_LINE: &str = "Goods are drawn hollow: the hours stored in goods are not measured here until this world runs on the tick's records.";
+pub const OUTLINE_LINE: &str = "An outline holds nine tenths of its set's number.";
+pub const PEOPLE_LINE: &str = "One dot is one person. The record counts people; it does not follow a person, and the people of one group share one purse.";
+
+/// "One dot: 2 hours of work. One square: 4 units of a good. One streak: $80. Hours and money
+/// are two scales." Its three figures are the constants the marks are drawn with.
+#[must_use]
+pub fn units_line() -> String {
+    let dollars = if MONEY_PER_MARK.is_multiple_of(1_000_000) {
+        format!("${}", MONEY_PER_MARK / 1_000_000)
+    } else {
+        human_numbers::currency(i128::from(MONEY_PER_MARK))
+    };
+    format!(
+        "One dot: {HOURS_PER_MARK} hours of work. One square: {UNITS_PER_MARK} units of a good. One streak: {dollars}. Hours and money are two scales."
+    )
+}
 
 /// How far under a body's lowest outer point its label stands, in logical pixels.
 const LABEL_GAP: f32 = 10.0;
@@ -45,9 +68,14 @@ pub enum SceneButton {
     PlayPause,
     Again,
     StartOver,
+    /// The particle switch: household groups or people.
+    Particles(ParticleMode),
+    /// The marks' motion: moving or still.
+    Marks(Motion),
 }
 
-/// The row of the control bar a button sits in: row 1 is Task 7's, row 2 and the rail are Task 8's.
+/// The row of the control bar a button sits in: row 1 holds the run's buttons, the particle
+/// switch and the marks' motion; row 2 holds the shock controls.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ControlRow(pub u8);
 
@@ -65,8 +93,19 @@ pub struct HeaderState;
 pub struct RefusalBanner;
 #[derive(Component)]
 pub struct EmptyLine;
+/// The column of standing lines at the viewport's bottom left.
+#[derive(Component)]
+pub struct StandingColumn;
+/// The line that stands while people are shown.
+#[derive(Component)]
+pub struct PeopleLine;
 
-fn text(value: impl Into<String>, size: f32, color: Color, role: ObserverFontRole) -> impl Bundle {
+pub(super) fn text(
+    value: impl Into<String>,
+    size: f32,
+    color: Color,
+    role: ObserverFontRole,
+) -> impl Bundle {
     (
         Text::new(value),
         TextFont {
@@ -84,6 +123,8 @@ fn text(value: impl Into<String>, size: f32, color: Color, role: ObserverFontRol
 pub fn spawn_chrome(commands: &mut Commands) {
     spawn_header(commands);
     spawn_bar(commands);
+    panel::spawn_rail(commands);
+    spawn_standing_lines(commands);
     commands.spawn((
         text(COPIES_LINE, 13.0, theme::PAPER, ObserverFontRole::Body),
         Node {
@@ -106,6 +147,60 @@ pub fn spawn_chrome(commands: &mut Commands) {
             BackgroundColor(FIELD.with_alpha(LABEL_PLATE_ALPHA)),
             Visibility::Hidden,
         ));
+    }
+}
+
+fn spawn_standing_lines(commands: &mut Commands) {
+    commands
+        .spawn((
+            StandingColumn,
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(16),
+                right: px(RAIL_WIDTH + 16.0),
+                bottom: px(BAR_HEIGHT + 8.0 + 18.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2),
+                ..default()
+            },
+        ))
+        .with_children(|column| {
+            for line in [
+                units_line().as_str(),
+                HOLLOW_DOT_LINE,
+                GOODS_HOLLOW_LINE,
+                OUTLINE_LINE,
+            ] {
+                column.spawn(text(line, 13.0, theme::PAPER, ObserverFontRole::Body));
+            }
+            column.spawn((
+                text("", 13.0, theme::PAPER, ObserverFontRole::Body),
+                panel::NotDrawnLine,
+            ));
+        });
+}
+
+/// The people line stands while people are shown, and not otherwise.
+pub fn paint_people_line(
+    mut commands: Commands,
+    runner: Res<SceneRunner>,
+    column: Query<Entity, With<StandingColumn>>,
+    line: Query<Entity, With<PeopleLine>>,
+) {
+    let existing = line.iter().next();
+    match (
+        runner.mode == ParticleMode::People,
+        existing,
+        column.single(),
+    ) {
+        (true, None, Ok(column)) => {
+            commands.entity(column).with_child((
+                text(PEOPLE_LINE, 13.0, theme::YELLOW, ObserverFontRole::Body),
+                PeopleLine,
+            ));
+        }
+        (false, Some(entity), _) => commands.entity(entity).despawn(),
+        _ => {}
     }
 }
 
@@ -200,12 +295,22 @@ fn spawn_bar(commands: &mut Commands) {
                             (SceneButton::PlayPause, "Play"),
                             (SceneButton::Again, "Again"),
                             (SceneButton::StartOver, "Start over"),
+                            (
+                                SceneButton::Particles(ParticleMode::Groups),
+                                "Household groups",
+                            ),
+                            (SceneButton::Particles(ParticleMode::People), "People"),
+                            (SceneButton::Marks(Motion::Full), "Moving"),
+                            (SceneButton::Marks(Motion::Reduced), "Still"),
                         ] {
                             spawn_button(row, kind, caption);
                         }
+                    } else {
+                        panel::spawn_shock_controls(row);
                     }
                 });
             }
+            panel::spawn_notice(bar);
         });
 }
 
@@ -251,6 +356,8 @@ fn pressed(
         SceneButton::PlayPause if !refused => SceneCommand::Play,
         SceneButton::Again => SceneCommand::Again,
         SceneButton::StartOver => SceneCommand::StartOver,
+        SceneButton::Particles(mode) => SceneCommand::Particles(*mode),
+        SceneButton::Marks(motion) => SceneCommand::Marks(*motion),
         SceneButton::Step | SceneButton::PlayPause => return,
     };
     commands.write(command);
@@ -288,6 +395,10 @@ pub fn paint_buttons(
     mut captions: Query<(&mut Text, &mut TextColor), With<ButtonCaption>>,
 ) {
     for (button, children, mut border) in &mut buttons {
+        // The two switches' borders are marked by the rail's own paint of the chosen ones.
+        if matches!(button, SceneButton::Particles(_) | SceneButton::Marks(_)) {
+            continue;
+        }
         let dim = status.refusal.is_some()
             && (*button == SceneButton::Step
                 || (*button == SceneButton::PlayPause && !status.playing));

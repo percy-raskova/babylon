@@ -12,15 +12,24 @@ front of the player, with one new receipt format and one new storage domain.
 the catalog has a market policy or the state has the public-program extension. One storage domain,
 `BabylonReceiptStorageV6\0`, stores it inside today's byte budget. The tick finishes a period with staffing, so the
 record of layoffs ages. The stored records learn three facts: a short market's price, a want order, a program payment.
-The engine's small test worlds move into one test-support crate, so the tick and persistence test against the same
-worlds the engine pins. Two client tasks show a price paid in a short market, a household's standard, its benefits,
-and its layoff's two steps.
+The engine's small test worlds move into the crate of small worlds, behind a feature that only tests turn on, so the
+tick and persistence test against the same worlds the engine pins. Two client tasks show a price paid in a short
+market, a household's standard, its benefits, and its layoff's two steps.
 
-Checked once against the built engine by a second reader on 21 November 2026; its findings are in the tasks.
+Checked once against the built engine by a second reader on 21 November 2026; its findings are in the tasks. Checked
+again against the branch on 23 November 2026: four gaps would have stopped a builder. They are entered in Tasks 0 and
+8, each marked "check of 23 November". What else that check found is in the last section.
+
+**When it is built (ADR320, 23 November 2026).** Third. First the small world's scene is built in the client
+(`docs/superpowers/plans/2026-11-23-the-small-world-in-the-client.md`). Then the six rules of the closest form are
+built and seen in that scene (`docs/superpowers/plans/2026-11-23-adjust-2-the-closest-form.md`). Then this plan.
+Before it is built it is revised once, for what those rules added to the engine: a catalog version, the adjustment
+receipts of a transition, and what a caller remembers between periods. Format 23 can then carry them from its first
+day, instead of a second format following it.
 
 **Tech Stack:** Rust (`babylon-tick`, `babylon-persistence`, `babylon-client`; one constant in
-`babylon-material-circuit`; a new unpublished crate `babylon-circuit-worlds`), Python devtools (`tools/devtools/`),
-contracts under `contracts/`.
+`babylon-material-circuit`; the unpublished crate `babylon-circuit-worlds`, which exists since 23 November), Python
+devtools (`tools/devtools/`), contracts under `contracts/`.
 
 **Spec:** `docs/superpowers/specs/2026-11-20-the-opening-of-the-national-economy-design.md` (section 2, "What the
 player sees"); `docs/superpowers/specs/2026-11-20-price-of-a-short-market-design.md`. What must be carried is
@@ -105,7 +114,7 @@ another small plan before this one is built; this plan does not edit the engine'
 
 | File | Responsibility | Task |
 |---|---|---|
-| `rust/crates/babylon-circuit-worlds/` (new, unpublished) | The engine's small test worlds, shared by three crates' tests | 0 |
+| `rust/crates/babylon-circuit-worlds/src/fixtures/` (new, behind the crate's feature `fixtures`) | The engine's small test worlds, shared by three crates' tests | 0 |
 | `rust/crates/babylon-tick/src/material_world/receipt_format.rs` | Format 23: domain, version, widths, limits, maximum | 1 |
 | `rust/crates/babylon-tick/src/material_world/opening_receipt.rs` (new) | The four families' row codecs and their own checks | 1 |
 | `rust/crates/babylon-tick/src/material_world/register.rs` | The choice of format, the family table, encode, decode, the refusals | 1, 3, 4, 6 |
@@ -133,55 +142,80 @@ Ruling C of the lead. The worlds the later tests need are built only inside the 
 tick and persistence cannot import. The tick's tests build their own small states (`material_world/tests.rs`'s
 `admission_control()`, `tests/support/county_review_fixture.rs`, `tests/staffed_material_replay/`), and persistence has
 `src/test_support.rs`; none has a market policy, wants or a fund. The needed builders are not small: the goods fixture
-is 586 lines, the service fixture 570, the restocking fixture 579, the small world 1,519. Writing them again would build
-them twice, so they move, unchanged, into one crate (the plan's call).
+is 617 lines, the service fixture 577, the restocking fixture 580, the one-place world 1,548 (counted on 23 November).
+Writing them again would build them twice, so they move, unchanged, into one crate (the plan's call).
+
+**The crate exists (check of 23 November).** `babylon-circuit-worlds` was made on 23 November by the small world's
+scene (`docs/superpowers/plans/2026-11-23-the-small-world-in-the-client.md`, Task 1): `Cargo.toml`, `src/lib.rs`,
+`error.rs`, `ids.rs`, `doubled/`, `runner/`, `shocks.rs` and three test files. It is a member of the workspace (14
+members, under bsl-lint's `MAX_MANIFESTS` of 32) and has its entry in `rust/Cargo.lock`. It is already in the two
+lists a gate reads: `PEDANTIC_RUST_PACKAGES` in `tests/unit/test_mise_tasks.py`, and both lists of
+`national_source_paths` in `tools/postgres_national_lifecycle.sh`. As first written, this task made the crate
+without those two edits, and would have turned the Python unit tests and the national runner red. The client depends
+on the crate as an ordinary library. So this task creates no crate. It adds the engine's test worlds to it, behind a
+feature that only tests turn on.
 
 **Files:**
-- Create: `rust/crates/babylon-circuit-worlds/Cargo.toml` (`publish = false`, `[lints] workspace = true`,
-  dependencies `babylon-kernel` and `babylon-material-circuit` by path, nothing else); `src/lib.rs` (modules and one
-  crate-level `#![allow(..., reason = "test worlds: ...")]` for each pedantic lint that a library's `pub` items raise
-  and test code did not, such as `clippy::missing_panics_doc` and `clippy::must_use_candidate`: only those clippy
-  names)
+- Modify: `rust/crates/babylon-circuit-worlds/Cargo.toml` (`[features]` gains `fixtures = []`; it is not a default
+  feature); `src/lib.rs` (gains `#[cfg(feature = "fixtures")] pub mod fixtures;`)
+- Create: `rust/crates/babylon-circuit-worlds/src/fixtures.rs` (the four modules, and on this module alone one
+  `#![allow(..., reason = "test worlds: ...")]` for each pedantic lint that a library's `pub` items raise and test
+  code did not, such as `clippy::missing_panics_doc` and `clippy::must_use_candidate`: only those clippy names. No
+  such allow goes on the crate: the rest of the crate ships in the client)
 - Move with `git mv`, `pub(crate)` becoming `pub`: `babylon-material-circuit/tests/market_clearing/support.rs` to
-  `src/goods.rs`; `market_clearing/service_support.rs` to `src/services.rs`; `market_clearing/restock_support.rs` to
-  `src/restock.rs` (their `use super::support;` becomes `use crate::goods as support;`); `tests/small_world/support.rs`
-  to `src/small_world.rs`
-- Modify: `rust/Cargo.toml` (`members` gains the crate: 14 members, under bsl-lint's `MAX_MANIFESTS` of 32);
-  `babylon-material-circuit/Cargo.toml`, `babylon-tick/Cargo.toml`, `babylon-persistence/Cargo.toml`
-  (`[dev-dependencies]` gains `babylon-circuit-worlds = { path = "../babylon-circuit-worlds" }`);
-  `babylon-material-circuit/tests/market_clearing.rs` and `tests/small_world.rs` (each `#[path] mod support;` becomes
-  `use babylon_circuit_worlds::goods as support;` and likewise for the other three; no glob import, which
-  `wildcard_imports = "deny"` refuses); `rust/Cargo.lock`
+  `src/fixtures/goods.rs`; `market_clearing/service_support.rs` to `src/fixtures/services.rs`;
+  `market_clearing/restock_support.rs` to `src/fixtures/restock.rs` (their `use super::support::{self, Product};`
+  and `use super::support::{self, FixedPrice, Product};` become `use super::goods::{self as support, ...};` with the
+  same names); `tests/small_world/support.rs` to `src/fixtures/one_place.rs` (not `small_world`: in this crate that
+  name would be read as the doubled world)
+- Modify: `babylon-material-circuit/Cargo.toml`, `babylon-tick/Cargo.toml`, `babylon-persistence/Cargo.toml`
+  (`[dev-dependencies]` has `babylon-circuit-worlds = { path = "../babylon-circuit-worlds", features =
+  ["fixtures"] }`; if the engine's manifest already names the crate for the closest form's bench, that line gains
+  the feature); `babylon-material-circuit/tests/market_clearing.rs` and `tests/small_world.rs` (each `#[path] mod
+  support;` becomes `use babylon_circuit_worlds::fixtures::goods as support;` and likewise for the other three; no
+  glob import, which `wildcard_imports = "deny"` refuses); `rust/Cargo.lock`
 
 **Decisions:**
 1. **The cycle.** The engine dev-depends on a crate that depends on the engine; cargo allows it for dev-dependencies.
    Only the engine's integration tests (`tests/`) may use the crate: its unit tests (`src/`, `#[cfg(test)]`) would see a
    second copy of every engine type. The tick and persistence may use it from unit and integration tests.
-2. **`Cargo.lock`** gains one `[[package]]` entry (`babylon-circuit-worlds`, depending on `babylon-kernel` and
-   `babylon-material-circuit`) and the dev-dependency in three packages' lists; no external crate is added, so the lock
-   is written offline (`mise exec -- cargo metadata --offline --format-version 1 > /dev/null` from `rust/`) and the
-   `--locked` legs then pass. `deny.toml` allows path dependencies without a version (`allow-wildcard-paths`).
-   bsl-lint's dependency check (`sfs_non_authorability.rs`) only refuses an engine crate that reaches
-   `babylon-evidence`, which this crate does not. `tools/rust_test_report.py`'s `DEV_INTEGRATION_TARGETS` does not
-   change: the crate has no tests.
-3. **The worlds and their pinned figures** that later tasks use, each already pinned by an engine test:
+2. **The feature.** The workspace uses resolver 2 (`rust/Cargo.toml`), so a feature that a dev-dependency asks for
+   is on only in a build that takes dev-dependencies. The client's own build does not turn it on, and the moved
+   worlds with their `expect` panics are not in what the client links. The moved worlds take nothing from the crate's
+   `doubled`, `runner` or `shocks`, and those take nothing from them.
+3. **`Cargo.lock`** gains no package. Only the dependency lists of the packages with a new dev-dependency change (the
+   tick, persistence, and the engine if the closest form's plan did not add it); a feature is not written in the
+   lock. No external crate is added, so the lock is written offline (`mise exec -- cargo metadata --offline
+   --format-version 1 > /dev/null` from `rust/`) and the `--locked` legs then pass. `deny.toml` allows path
+   dependencies without a version (`allow-wildcard-paths`). bsl-lint's dependency check (`sfs_non_authorability.rs`)
+   only refuses an engine crate that reaches `babylon-evidence`, which this crate does not.
+   `tools/rust_test_report.py`'s `DEV_INTEGRATION_TARGETS` does not change: the tool keeps every integration target
+   of a crate it does not list.
+4. **The worlds and their pinned figures** that later tasks use, each already pinned by an engine test:
 
 | World | Builder | Figures the later tests rely on | Engine test that pins them |
 |---|---|---|---|
-| Short shelf | `goods::Fixture::new(240, &[$400, $600, $40,000])` | price 7_058_824; admitted 56, 84, 100; supply 240, demand at quote 300, bidders 3, served 3 | `market_clearing/households.rs` `a_short_shelf_raises_the_price_for_everyone` |
-| Short utility | `services::ServiceFixture` | price 7_058_824 on rows admitting 56, 84, 100 | `services.rs` `a_short_utility_is_priced_in_its_stage` |
-| Route cut back | `restock::Restock` | sold 100 at $100; closing `ordered` 40, `shipped` 40; reserved $10,000, refunded $6,000; supplier holds 60 | `restocking.rs` `what_the_route_cannot_carry_is_cancelled_and_refunded` |
-| Goods wants | `goods::Fixture` with `household_wants` | want rows (50, 0), (50, 50), (50, 50); standards `GettingBy`, `Affluent`, `Affluent`; the outbid case's price 24_000_001 | `wants.rs` `a_comfort_buys_with_the_money_needs_do_not_use`, `a_comfort_outbids_a_poorer_need` |
-| Service wants | `services::ServiceFixture` with `household_wants` | the $500 account's want row: requested 50, admitted 50 | `service_wants.rs` `a_utility_comfort_keeps_the_money_for_a_local_need` |
-| The fund | `small_world::World::benefits()`, `run_driven` | `no_earner` 480_000_000 a period; a layoff of 2 owes 100, 100, 100, 100, 100, 100, 50, 0 dollars in periods 2 to 9 | `small_world/benefits.rs` |
+| Short shelf | `fixtures::goods::Fixture::new(240, &[$400, $600, $40,000])` | price 7_058_824; admitted 56, 84, 100; supply 240, demand at quote 300, bidders 3, served 3 | `market_clearing/households.rs` `a_short_shelf_raises_the_price_for_everyone` |
+| Short utility | `fixtures::services::ServiceFixture` | price 7_058_824 on rows admitting 56, 84, 100 | `services.rs` `a_short_utility_is_priced_in_its_stage` |
+| Route cut back | `fixtures::restock::Restock` | sold 100 at $100; closing `ordered` 40, `shipped` 40; reserved $10,000, refunded $6,000; supplier holds 60 | `restocking.rs` `what_the_route_cannot_carry_is_cancelled_and_refunded` |
+| Goods wants | `fixtures::goods::Fixture` with `household_wants` | want rows (50, 0), (50, 50), (50, 50); standards `GettingBy`, `Affluent`, `Affluent`; the outbid case's price 24_000_001 | `wants.rs` `a_comfort_buys_with_the_money_needs_do_not_use`, `a_comfort_outbids_a_poorer_need` |
+| Service wants | `fixtures::services::ServiceFixture` with `household_wants` | the $500 account's want row: requested 50, admitted 50 | `service_wants.rs` `a_utility_comfort_keeps_the_money_for_a_local_need` |
+| The fund | `fixtures::one_place::World::benefits()`, `run_driven` | `no_earner` 480_000_000 a period; a layoff of 2 owes 100, 100, 100, 100, 100, 100, 50, 0 dollars in periods 2 to 9 | `small_world/benefits.rs` |
 
-- [ ] **Step 1: Record the engine's test list.** `mise run rust:test:q -- -p babylon-material-circuit -E
-  'binary(market_clearing) | binary(small_world)' --list` (or the crate's documented listing form), saved beside the
-  task's notes.
-- [ ] **Step 2: Move the files, add the crate, write the lock.**
+- [ ] **Step 1: Record the engine's test list.** From `rust/`: `mise exec -- cargo nextest list -p
+  babylon-material-circuit -E 'binary(market_clearing) | binary(small_world)'`, saved beside the task's notes.
+- [ ] **Step 2: Move the files, add the feature, write the lock.**
 - [ ] **Step 3: Run** both binaries and the whole engine crate: the same tests pass with the same names and no pinned
-  value moves; then the scoped gate (clippy on the new crate included).
-- [ ] **Step 4: Commit** `test(material-circuit): share the small worlds with the tick and persistence`.
+  value moves. Then the crate's own tests (`-p babylon-circuit-worlds`), which must not change. Then the scoped gate;
+  its clippy takes dev-dependencies, so it reads the moved worlds. Then two legs more. First `mise exec -- cargo
+  clippy -p babylon-circuit-worlds --locked -- -D warnings`: the crate as the client builds it. Then the Python tests
+  that read the changed manifests (check of 23 November): `env -u PYTHONPATH mise exec -- uv run --inexact --no-sync
+  pytest tests/unit/tools tests/unit/test_mise_tasks.py -o addopts="" -q`. `national_source_paths` reads every `path
+  = "../X"` line of the three manifests, dev-dependencies too, and stops on a name it does not know.
+- [ ] **Step 4: See that the client does not link the moved worlds.** From `rust/`: `mise exec -- cargo tree -p
+  babylon-client -e normal -f '{p} {f}'` names `babylon-circuit-worlds` with no feature beside it (the command is
+  from memory, not run).
+- [ ] **Step 5: Commit** `test(material-circuit): share the small worlds with the tick and persistence`.
 
 ### Task 1: The frame of format 23
 
@@ -455,7 +489,11 @@ impl ClearedPrices {
   `what_the_route_cannot_carry_is_cancelled_and_refunded`: projected; closing `ordered` 40; the site procurement reading
   shows 100 sold, 60 cancelled; the trade audit of the period passes);
   `an_order_wholly_cancelled_leaves_no_row_and_is_accepted`;
-  `a_refund_that_is_not_whole_units_is_refused`.
+  `a_refund_that_is_not_whole_units_is_refused`;
+  `a_plan_raised_from_spare_money_is_projected` (check of 23 November: rule A6 raises the plan in the state and
+  writes no receipt, so a period's plan receipt shows the plan that was paid for and the next opening state holds
+  the larger one; no test carried such a world through the register and the stored records. Task 0's one-place
+  world built `with_spare_money()`, three periods encoded, stored, restored and projected: accepted).
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement,** and remove the refusal.
 - [ ] **Step 4: Run** `-p babylon-tick`, `-p babylon-persistence`.
@@ -662,6 +700,11 @@ impl WantOrders {
 **Files:**
 - Modify: `rust/crates/babylon-persistence/src/observer_reader/household.rs` (`HouseholdPeriodReport` and its reader at
   179 and 201); `src/production_projection/prices/{model.rs, projection.rs}` (`CompletedGoodsPrice`)
+- Modify, because both pin the report from outside (check of 23 November):
+  `rust/crates/babylon-client/src/money_map/household.rs` (its unit test builds a `HouseholdPeriodReport` from a JSON
+  literal, and the report has no `serde(default)`: the literal gains every new field that is not an `Option`);
+  `rust/crates/babylon-persistence/tests/observer_material_live/payment_flows.rs` (`assert_eq!(report["version"],
+  3);` becomes 4)
 - Test: beside each
 
 **Interfaces:**
@@ -669,7 +712,7 @@ impl WantOrders {
 
 ```rust
 // HouseholdPeriodReport: `version` rises by one; new fields
-pub standard: Option<HouseholdStandard>,          // None when the period has no tier rows
+pub standard: Option<ReportedStandard>,           // None when the period has no tier rows
 pub tiers: Vec<HouseholdTierUse>,                 // tiers 2 and 3, empty without wants
 pub benefits: Vec<HouseholdBenefit>,              // one per program that names the household
 // HouseholdGoodUse and HouseholdServiceUse gain
@@ -686,15 +729,22 @@ pub struct HouseholdBenefit {
 /// One cohort of the household's laid-off people, read from the closing state's record and the program's terms.
 pub struct LayoffStep { pub persons: u64, pub full_through_period: Option<u64>, pub half_in_period: Option<u64>,
     pub ends_after_period: u64 }
-// CompletedGoodsPrice gains
+/// The engine's `HouseholdStandard` in the report's own type (check of 23 November: the engine has no serde
+/// dependency and its enum derives none). Mapped one to one in `observer_reader/household.rs`.
+pub enum ReportedStandard { GoingWithout, GettingBy, Comfortable, Affluent }
+// CompletedGoodsPrice gains (it derives `Ord` and denies unknown fields, so `CompletedMarket` derives `Ord`,
+// `Serialize` and `Deserialize`)
 pub market: Option<CompletedMarket>,
 pub struct CompletedMarket { pub moment: u8, pub quote_micro: i128, pub clearing_micro: i128, pub supply: u64,
     pub demand_at_quote: u64, pub sold: u64, pub bidders: u32, pub served_bidders: u32 }
 ```
 
 **Decisions (the plan's calls):**
-1. **The standard** is `household_standard` (tiers Task 3a) of the account's rows; `None` without tier rows, because
-   the four standards are read from tiers; the existing unmet lines still show going without.
+1. **The standard** is `household_standard` (tiers Task 3a), mapped to `ReportedStandard`. The function takes the
+   period's consumption receipts, its service receipts and its tier rows, all three, and refuses an account whose
+   tier row is missing (check of 23 November). So `None` is decided before the call: an account without tier rows
+   has no standard, because the four standards are read from tiers; the existing unmet lines still show going
+   without.
 2. **A short market** (ruling A). A household's line is marked `short_market` when its market has a row and it bought
    less than it asked; the receipts carry no household's demand at the posted price, so no household is called priced
    out. "Priced out" is the site's count: `demand_at_quote - sold` (Task 9).
@@ -714,8 +764,10 @@ pub struct CompletedMarket { pub moment: u8, pub quote_micro: i128, pub clearing
   8, ends after 8; after period 7: full `None`, half in 8; `wage_share_bps` 5,000);
   `an_even_term_has_no_half_period` (H = 12, after period 1: full through 7, half `None`, ends after 7);
   `a_completed_price_carries_its_market` (Task 0's short shelf: clearing 7_058_824, demand 300, sold 240).
-- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run** `-p babylon-persistence`.
-- [ ] **Step 5: Commit** `feat(persistence): report standards, prices paid and benefits`.
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run** `-p babylon-persistence`, then
+  `-p babylon-client` (its literal).
+- [ ] **Step 5: Commit** `feat(persistence): report standards, prices paid and benefits`. After it the lead runs the
+  `money_journal` live phase once: it is not in CI's matrix, and only it reads `payment_flows.rs`.
 
 ### Task 9: The client shows a price paid in a short market
 
@@ -799,3 +851,24 @@ Run by the lead.
 `docs/superpowers/plans/<date>-the-public-body-in-the-client.md` (ruling B): the design's "Public money that is
 spent", each public body's receipts by tax, standing rows and programs with due, paid and cut. The client has no such
 panel today (`money_map/grouping.rs:54` only groups the account), so it is a third client task.
+
+## What the check of 23 November left for the revision
+
+The check's four blocking findings are in Tasks 0 and 8. The rest waits for the one revision this plan gets before
+it is built (see "When it is built"):
+
+- **The rules of the closest form.** They add adjustment receipts to a transition, a catalog version, and memory a
+  caller keeps between periods. Carry them in format 23, not in a format 24.
+- **Room for a later family.** Format 23's raw stored maximum is 947,588,237 bytes against
+  `MAX_RECEIPT_STORAGE_BYTES` 947,588,276: 39 bytes of room. Each further family adds 59 header bytes and frees 9 of
+  the shared body, so the first family after format 23 passes the bound by 11 bytes, and that forces a migration of
+  the SQL column's bound. Give format 23 its own `maximum_bytes()` a few kilobytes below the cap. No value of format
+  23 is pinned yet, so this costs nothing now.
+- **The state's walker.** Section 75 is walked field by field. Write the walker as one small function a part (rules,
+  programs, records), so that a later part is one more call.
+- **A new tag in an old family.** Say in the contract's `opening_receipts` section whether a new enum tag in an
+  existing family needs a new format number. The closest form's plan adds no `PriceDecision` tag, because the tick
+  and persistence match on that enum exhaustively.
+- **The cost of the gates.** As written the plan runs the whole of `-p babylon-persistence` in eight tasks, `-p
+  babylon-tick` in four and the workspace's clippy in thirteen, on a machine with one build slot. Tasks 3, 4 and 6
+  each remove one refusal from the same function and cannot run side by side.

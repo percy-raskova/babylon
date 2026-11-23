@@ -265,7 +265,7 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
         call
         for call in calls
         if call["name"] == "cargo"
-        and "material_runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction"
+        and "material_runtime::runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction"
         in call["args"]
     ]
     assert len(writer_probes) == (1 if focus == "runtime" else 0)
@@ -294,9 +294,15 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
             for call in calls
             if call["name"] == "cargo" and "observer_material_live" in call["args"]
         ]
-        assert len(material) == 3
-        ordinary, history, statewide = material
+        assert len(material) == 4
+        ordinary, county_cards, history, statewide = material
         history_filter = "staffing_history::production_history"
+        cards_test = (
+            "support::live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness"
+        )
+        assert ordinary[ordinary.index(cards_test) - 1] == "--skip"
+        assert cards_test in county_cards and "--exact" in county_cards
+        assert "--skip" not in county_cards and "--test-threads=1" in county_cards
         assert ordinary[ordinary.index(history_filter) - 1] == "--skip"
         assert ordinary[ordinary.index("organizer::") - 1] == "--skip"
         for excluded in ("state_opponent_history::", "state_opponent_nonwitness::"):

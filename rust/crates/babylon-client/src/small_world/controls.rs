@@ -371,6 +371,8 @@ pub fn paint_empty_line(
                     left: px(0),
                     right: px(RAIL_WIDTH),
                     top: percent(50),
+                    // The viewport's middle, not the window's: it runs from the header to the bar.
+                    margin: UiRect::top(px((HEADER_HEIGHT - BAR_HEIGHT) / 2.0)),
                     ..default()
                 },
             ));
@@ -398,6 +400,12 @@ fn body_extent(party: Party, bodies: &[BodyPicture]) -> f32 {
 }
 
 /// Stand each body's label 10 px under the projected lowest point of its outer ring or frame.
+/// The label's top edge in window pixels. `world_to_viewport` already adds the
+/// viewport origin (which sits under the header), so the header is not added again.
+fn label_top(viewport_y: f32) -> f32 {
+    viewport_y + LABEL_GAP
+}
+
 pub fn place_labels(
     cameras: Query<(&Camera, &GlobalTransform), With<SceneCamera>>,
     shown: Res<SceneShown>,
@@ -419,12 +427,22 @@ pub fn place_labels(
         match camera.world_to_viewport(transform, lowest) {
             Ok(point) => {
                 node.left = px(point.x);
-                node.top = px(point.y + HEADER_HEIGHT + LABEL_GAP);
+                node.top = px(label_top(point.y));
                 visibility.set_if_neq(Visibility::Inherited);
             }
             Err(_) => {
                 visibility.set_if_neq(Visibility::Hidden);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+
+    #[test]
+    fn label_sits_ten_pixels_under_the_projected_point_without_the_header_added_twice() {
+        assert_eq!(label_top(100.0), 110.0);
     }
 }

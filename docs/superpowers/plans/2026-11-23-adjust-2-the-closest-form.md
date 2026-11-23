@@ -49,8 +49,10 @@ The scene and the bench run one world and one loop: the doubled world and the `R
 behaves in the middle of a run was ruled by the Director on 23 November ("On anytime, off by restart", ADR321,
 K3): a switch turns its rule on from the next period, and the rule holds until the run is started over, as the
 power cut does; a rule that needs another can be turned on only once the other is on. The bench proves each set
-of rules from period 1; a rule turned on later is seen on screen and is not measured. What stands in the way
-today is listed under "What the built crate changed"; the companion tasks settle each before Task 3 is built.
+of rules from period 1; a rule turned on later is seen on screen and is not measured. One road serves both:
+`Runner::turn_on` (Task 2) turns a rule on from `next_period()`, the `from` a strike gets, and
+`Runner::open_world` turns on the world's rules with it before the first step. The seekers' rows are in every
+world from Task 1a, read by no rule until the seekers are on. The client's switches are the companion tasks.
 
 **The bench's drive.** `BENCH` below is `/media/user/dev-ssd/babylon-bench/restoring-forces`: the rows of
 every measured set (`out/`), the scripts that ran them (`scripts/`) and the lead's counters (`k-scripts/`).
@@ -66,7 +68,7 @@ this plan may not do. What changes:
 | `MarketClearingPolicy.adjustments` | catalog field | catalog version 9 and the rule list, written first, only when the list is not empty; contract lines and `MATERIAL_CIRCUIT_SOURCE_SHA256` (Task 2) |
 | `MaterialCircuitTransition.adjustments` | receipts | a new `Vec<AdjustmentReceipt>`, empty unless the catalog asks; not encoded by this crate (Task 3) |
 | `WorkplaceStanding` | caller-owned memory | a value the caller keeps between periods, like `StaffingState`; never in the state frame (Task 5, Task 7) |
-| member rows of other workplaces | opening state, existing row kinds | the world authors one `EmploymentTerms` and one member row for each household at each workplace of its place (Task 3); no new kind |
+| member rows of other workplaces | opening state, existing row kinds | every world authors one `EmploymentTerms` and one member row for each household at each workplace of its place (Task 1a), at 0 hours, read by no rule until the seekers are on; no new kind |
 | the restart's money | an existing kind of movement | `CashTransferPurpose::CapitalContribution`, with its `MoneyTransferReceipt` (Task 7) |
 
 What that means for a campaign. `babylon-persistence` compiles every campaign catalog with `market_clearing: None`
@@ -160,10 +162,11 @@ Nothing is bent to match.
   `mise exec -- cargo fmt --all -- --check`; `mise exec -- cargo clippy --workspace --all-targets --locked --
   -D warnings -D clippy::cognitive_complexity`; `mise run rust:test:q -- -p babylon-material-circuit`;
   `mise run rust:test:q -- -p babylon-tick`; `mise run rust:test:q -- -p babylon-circuit-worlds`;
-  `mise run check:bsl-sentinels`. A task that changes `babylon-circuit-worlds` (Tasks 1a, 2, 3 and 5) also runs the
-  client's tests of the scene, which steps that crate's runner: `mise run rust:test:q -- -p babylon-client -E
-  'test(small_world)'`. The rest of the client is compiled by the clippy leg. If a task changes anything under
-  `tools/`, `.mise.toml` or `.github/`, also the Python unit tests that read it (no task here does).
+  `mise run check:bsl-sentinels`. A task that changes the `src/` of `babylon-circuit-worlds` (Tasks 1a, 2, 3 and
+  5) also runs the client's tests of the scene, which steps that crate's runner: `mise run rust:test:q -- -p
+  babylon-client -E 'test(small_world)'`. A task that only adds tests to the crate (Tasks 4, 6, 7 and 8) does not.
+  The rest of the client is compiled by the clippy leg. If a task changes anything under `tools/`, `.mise.toml` or
+  `.github/`, also the Python unit tests that read it (no task here does).
 - **The long tests.** Ignored by default. Run once at the end of the task, in the background, in one cargo
   process: `mise run rust:test:q -- -p babylon-material-circuit --test adjustment_bench -E
   'test(/^reproduces_/)' --run-ignored only`. This runs every set built so far: a later task must not change an
@@ -192,6 +195,11 @@ Nothing is bent to match.
 6. **An accident of order.** Bound order (departure 6), host order (highest wage, then most lacking, then site),
    seeker order (uncovered first, then covered by cohort age), restart order (earn over plan, then site). Each is
    pinned by the bench's rows; each is stated in its task.
+7. **A rule turned on in the middle of a run.** It is on from `next_period()` and its first close is that
+   period's; opening with a form is the same as turning its rules on before the first step; a late turn-on is
+   deterministic and keeps money and people; each refusal changes nothing. Pinned by Task 2's
+   `opening_with_a_form_is_turning_its_rules_on_first` and the runner's tests named in Tasks 2 to 8. No reference
+   set covers a late turn-on, and nothing says one does.
 
 ## File Structure
 
@@ -202,8 +210,12 @@ Nothing is bent to match.
 | `rust/crates/babylon-material-circuit/Cargo.toml`, `rust/Cargo.lock` | The engine's dev-dependency on the small worlds | 1 |
 | `rust/crates/babylon-circuit-worlds/src/doubled/world.rs` | Which world opens: plain or fund, its scale, its push, its rules | 1, 2 |
 | `rust/crates/babylon-circuit-worlds/src/doubled/{catalog,opening,staffing,figures}.rs` | The world's catalog, opening and staffing, per world | 1, 2, 3 |
-| `rust/crates/babylon-circuit-worlds/src/runner/{run,result}.rs` | The period loop, its checks and its read access | 1, 3, 5 |
+| `rust/crates/babylon-circuit-worlds/src/runner/{run,result}.rs` | The period loop, its checks and its read access | 1, 2, 3, 5 |
+| `rust/crates/babylon-circuit-worlds/src/runner/rules.rs` | The rules of a run: `RuleOn`, `Switch`, `RuleError` | 2 |
 | `rust/crates/babylon-circuit-worlds/tests/worlds.rs` | The plain world, the national figures and each opening push pinned | 1, 3 |
+| `rust/crates/babylon-circuit-worlds/tests/{doubled,runner}.rs` | The pair rows' counts; a late turn-on and its refusals | 1, 2-8 |
+| `rust/crates/babylon-client/src/small_world/frame.rs` | People at work summed by household, not by site | 1 |
+| `rust/crates/babylon-client/src/small_world/reading.rs` | `read_work` skips a pair receipt of 0 hours | 1 |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/rows.rs` | The row writer | 1, 3-8 |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/compare.rs` | Projection, digests, the report of a mismatch | 1 |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/digests/pc-*.txt` | sha256 of each reference run file | 1, 3-8 |
@@ -357,8 +369,12 @@ keep their lines, every explained difference, every count and both verdicts. Not
 - Create: `rust/crates/babylon-circuit-worlds/src/doubled/world.rs`;
   `rust/crates/babylon-circuit-worlds/tests/worlds.rs`.
 - Modify: `src/doubled.rs` (`mod world;` and its `pub use`); `src/doubled/figures.rs`; `src/doubled/catalog.rs`;
-  `src/doubled/opening.rs`; `src/doubled/staffing.rs`; `src/runner/run.rs`; `src/runner/result.rs`; `src/error.rs`;
-  `src/lib.rs` (exports), all under `rust/crates/babylon-circuit-worlds/`.
+  `src/doubled/opening.rs` (the pair rows); `src/doubled/staffing.rs` (`members_of`); `src/ids.rs`
+  (`Workplace::pair_member_id`); `src/runner/run.rs`; `src/runner/result.rs`; `src/error.rs`; `src/lib.rs`
+  (exports); `tests/doubled.rs` and `tests/runner.rs` (three pinned counts and one loop, decision 7), all under
+  `rust/crates/babylon-circuit-worlds/`.
+- Modify (the client): `rust/crates/babylon-client/src/small_world/frame.rs` (`at_work` summed by household);
+  `rust/crates/babylon-client/src/small_world/reading.rs` (`read_work` skips a pair receipt of 0 hours).
 
 **Interfaces:**
 
@@ -425,13 +441,27 @@ pub fn staffing_of(world: &World) -> Result<(Vec<StaffingPoolBinding>, StaffingS
 /// # Errors
 /// As `member`.
 pub fn member_of(world: &World, workplace: Workplace, employed: u64) -> Result<StaffingMemberState, WorldError>;
+/// Every pool's members at the opening, by `Workplace::index`: the workplace's own member with all its people,
+/// and one member for each other workplace of its place (`pair_member_id`), with nobody.
+/// # Errors
+/// As `member_of`.
+pub fn members_of(world: &World) -> Result<Vec<Vec<StaffingMemberState>>, WorldError>;
+// babylon-circuit-worlds src/ids.rs (moved here from Task 3)
+impl Workplace {
+    /// The member of `home`'s household at this workplace: the workplace's own member when `home` is it, else
+    /// byte `0x40 + 8 x home.index() + self.index()` (the prototype's `lend_member`).
+    #[must_use] pub const fn pair_member_id(self, home: Workplace) -> StaffingMemberId;
+}
 // babylon-circuit-worlds src/runner/run.rs
 impl Runner {
     /// The world at its opening. A pushed power cut is struck in the book from period 1, until started over.
     /// The opening's money, persons and each place's people are measured here and checked after every period.
+    /// The runner keeps the world (each period's catalog is built from it) and every pool's members.
     /// # Errors
     /// `RunnerError::World` when the world or the engine refuses the opening.
     pub fn open_world(world: &World) -> Result<Self, RunnerError>;
+    /// The world the runner opened.
+    #[must_use] pub const fn world(&self) -> &World;
     /// The state after the last step: the opening of the next period.
     #[must_use] pub const fn state(&self) -> &MaterialCircuitState;
     /// The catalog the last step closed under; `None` before the first step.
@@ -476,12 +506,13 @@ PushOnOnePlace,
    commitments and nameplate rows of every period), as the prototype's `batches()` does, and `open_world` strikes
    `Shock::PowerCut` there from period 1, so the catalog of period 1 is the cut's and the book says so.
    The scene offers none of the opening pushes: they are worlds a caller opens, not controls of a run.
-5. **The loop** is `Runner::step` as built: close, staffing requests, staffing, one member a pool, the finish with
-   staffing. It changes in three ways only: the members are built from the world's persons (`member_of`); the
-   runner measures the opening's money, cohort persons and each place's people when it opens and refuses a period
-   that does not keep them (`MoneyNotConserved`, `PersonsNotConserved`); it keeps the hours asked. `Runner::open()`
-   is `open_world(&World::scene())`, so the scene runs as before. The capacity rows stay written to period 1,000
-   (the prototype wrote `periods + 2`); no compared column reads a period beyond the next.
+5. **The loop** is `Runner::step` as built: close, staffing requests, staffing, each pool's receipt shared over its
+   kept members (decision 7), the finish with staffing. It changes in four ways only: the members are opened from
+   the world's persons (`members_of`); they are kept between periods; the runner measures the opening's money,
+   cohort persons and each place's people when it opens and refuses a period that does not keep them
+   (`MoneyNotConserved`, `PersonsNotConserved`); it keeps the hours asked. `Runner::open()` is
+   `open_world(&World::scene())`, so the scene runs as before. The capacity rows stay written to period 1,000 (the
+   prototype wrote `periods + 2`); no compared column reads a period beyond the next.
    That last point is read from the engine, not proven: Task 1b's long tests prove it. If their first difference
    comes from the horizon, the world gains a `horizon` and the bench opens with `periods + 2`; say so in the report.
    The runner goes on computing the state's digest every period (about 0.8 s in a run of 400); its own tests
@@ -489,6 +520,28 @@ PushOnOnePlace,
    `Runner::state()` is a read-only borrow: nothing but the engine's own period changes the state.
 6. **Style.** Types are imported and used bare; free functions are called through their module
    (`doubled::catalog_of`); no `bool` parameter; each function under 100 lines and a cognitive complexity of 25.
+7. **The seekers' rows in every world** (ADR321, K3: the seekers can be turned on in the middle of a run, and the
+   scene never edits the state from outside). `opening_state_of` authors, after the workplaces' own rows, one
+   `EmploymentTerms` (the host's site and the rate of the host's own row, the home's household as payee) and one
+   member row of 0 hours for every ordered pair of workplaces of a place: 24 in all, ids `pair_member_id`
+   (`spike/closest-ref` `support.rs:2800-2825`). The runner keeps every pool's members (`members_of` at the
+   opening), distributes each pool's receipt over all of them, keeps their closing employed and reserve, and
+   writes one member row for each member: the own member's is the pool's hours as today, a pair member's 0. A
+   pair member with anyone employed or in reserve on this path is `StaffingError::PopulationInvariant`. Why every
+   member: `validate_member_budgets` counts member rows against employment terms (`payments/settlement.rs:117-131`)
+   and `advance_records` wants a receipt for every wage member of a staffed site (`financial/layoffs.rs:73-79`).
+   The engine's arithmetic is unchanged by rows of 0 (attendance and staffing shares with one non-zero weight,
+   no money moved for 0 hours, no record of layoffs from a receipt of zeros); Task 1b's `pc-a6` proves it. Three
+   pinned counts and one loop move, and the lead accepts them here: `tests/doubled.rs`
+   `check_employment_and_taxes`: 32 rows; its loop asserts payee and member id for the eight own rows, and for
+   each pair row the host's site, the host's rate, the home's household as payee and `pair_member_id`;
+   `tests/runner.rs` `the_runner_keeps_the_member_receipts` 8 members to 32 and 8 member labor rows to 32 (the own
+   rows as today, the pair rows 0). The client's `frame.rs` reads people at work by the site's workers and would
+   be overwritten by the pair receipts; it sums `opening_employed` by the member's own household instead. The
+   client's `reading.rs` `read_work` skips a receipt whose payee is not the workplace's own household and whose
+   `attended_hours` is 0. So its pin of 8 flows (`the_quiet_period_gives_480_hours_and_no_idle_hour`) stays, no
+   flow drawn today changes (`work_flows` already skips flows of 0), and a household's real hours after a move
+   still show.
 
 - [ ] **Step 1: Write the crate's failing tests** in `tests/worlds.rs`:
   - `the_plain_world_opens_with_10320_dollars_and_eighty_people`: ten household accounts (no 22, 23); cohorts
@@ -499,9 +552,10 @@ PushOnOnePlace,
     950_000 micro-units at both places, minimum 1_000_000 and maximum 1_000_000_000; site cash $2,400, $1,760,
     $1,760, $2,800; total money 20,960,000,000 (fund) and 19,040,000,000 (plain).
   - `each_opening_push_moves_only_its_figure` (fund, small): P1 owner cohorts 4 and 4, their stocks and purchase
-    limits 8; P7 cohorts 12; P3 shop cash $700 in both places, total 10,840,000,000; P4 the clinic rows `Wage($11)`
-    in both places, every other row $10; P4a only member 3 at $11; P5 the 16 fund rows at 1,125 bps and the 16
-    treasury rows at 500; every other part of the state equal to the quiet opening's.
+    limits 8; P7 cohorts 12; P3 shop cash $700 in both places, total 10,840,000,000; P4 the four rows at each
+    clinic's site (its own and the three of other households) `Wage($11)` in both places, every other row $10; P4a
+    only the four rows at clinic A's site at $11; P5 the 16 fund rows at 1,125 bps and the 16 treasury rows at 500;
+    every other part of the state equal to the quiet opening's.
   - `the_power_cut_at_the_opening_plans_in_ten_hour_batches`: utility commitments and planned batches 12, its
     nameplate rows 12 in every period, its labor 120 hours; `runner.shocks()` holds `PowerCut` from period 1 where it
     is pushed; P6a in place A only, place B as quiet; `lift` refused with `HoldsUntilStartOver`.
@@ -509,7 +563,12 @@ PushOnOnePlace,
     `Places::A` gives `PushOnOnePlace`.
   - `the_scene_world_is_the_runner_s_opening`: three steps of `Runner::open()` and of
     `Runner::open_world(&World::scene())` give equal histories.
-  The crate's tests as built pass unchanged.
+  - `every_world_authors_the_seekers_rows` (moved from Task 3's `the_seekers_world_authors_every_pair`): in each
+    of the four worlds 24 pair rows, 12 a place, each at 0 hours, at its host's rate, its payee the home's
+    household, ids `pair_member_id`; no pair of two places.
+  - `the_pair_rows_take_nothing`: 34 steps of `Runner::open()`: in every period each pair member's staffing
+    receipt and member labor row is 0 in every field, and the own rows equal those of the same period's pool.
+  The crate's tests as built pass unchanged, but for the three counts and the loop of decision 7.
 - [ ] **Step 2: Run them and see them fail.** `mise run rust:test:q -- -p babylon-circuit-worlds`. Expected: does
   not compile, no `World`.
 - [ ] **Step 3: Implement** the world, the per-world builders, the runner's constructor, checks and read access.
@@ -603,9 +662,12 @@ pub(crate) fn assert_set(set: &str, produced: &[(&str, String)], fixture: &str);
   `assert_set` over the 25 runs at 400 periods against its fixture. Add the dev-dependency and write the lock.
   Write the runs and the writer; make the fixture with `print_reference_digests`.
 - [ ] **Step 4: Run** the quick and unit tests, then the long tests in the background. Expected: 25 of 25 at both
-  scales. If not, find the first differing column. A cause in the crate's world or the writer is fixed there; a
-  cause in the engine (the merged prototype's engine with every switch off differs from this branch) is a stop:
-  report it.
+  scales, with the seekers' rows in every world (Task 1a, decision 7): this is also the proof that rows no rule
+  reads change no compared column. If not, find the first differing column. A cause in the crate's world or the
+  writer is fixed there; a cause in the engine (the merged prototype's engine with every switch off differs from
+  this branch) is a stop: report it. If the difference goes away with the pair rows left out (a local run, not
+  committed), stop and report: the fallback is a `World` field that authors them only when the world opens with
+  seekers, the scene's world always, and the plan says the bench then proves nothing of the scene's opening.
 - [ ] **Run the gate. Commit** `test(material-circuit): the doubled bench of the restoring-forces rounds`.
 
 ### Task 2: The setting
@@ -618,10 +680,13 @@ pub(crate) fn assert_set(set: &str, produced: &[(&str, String)], fixture: &str);
   `clearing/rule.rs`, two are `fn` lines that return the type (`src/catalog.rs` `fn policy` and the small worlds'
   `doubled/catalog.rs` `fn market_clearing`), the other 14 are literals, among them
   `tests/small_world/support.rs:430` and the small worlds' `doubled/catalog.rs`, which gets `adjustments:
-  world.rules.clone()`);
-  `tests/adjustment_bench/runs.rs` (the form's list); `babylon-circuit-worlds` `src/doubled/world.rs` (`World`
-  gains `rules`) and `src/doubled/catalog.rs` (its literal writes the world's rules);
-  `contracts/material_circuit_v4.yaml` and the digest.
+  rules.to_vec()`);
+  `tests/adjustment_bench/runs.rs` (the form's list) and `tests/adjustment_bench.rs` (the quick test of Step 4);
+  `babylon-circuit-worlds` `src/doubled/world.rs` (`World` gains `rules`, `switches_at` and `switches`),
+  `src/doubled/catalog.rs` (`catalog_of` takes the rules), `src/runner.rs` (`mod rules; pub use`),
+  `src/runner/rules.rs` (create), `src/runner/run.rs` (the rules, the cache key, `turn_on`),
+  `src/runner/result.rs` (`PeriodResult.rules`), `src/runner/error.rs` (`RunnerError::Rule`), `src/lib.rs`,
+  `tests/runner.rs`; `contracts/material_circuit_v4.yaml` and the digest.
 
 **Interfaces:**
 
@@ -648,6 +713,10 @@ pub enum AdjustmentRule {
 impl AdjustmentRule {
     /// The rule's tag in the catalog bytes: 1 to 6 in the order above.
     pub(crate) const fn tag(self) -> u8;
+    /// The rules this one needs, in the order above: `StopWithoutPay` needs `SeekingInPlace`; `OwnerRestart`
+    /// needs `HiringWithinMeans`, `StopWithoutPay` and `RestingPrice`; the others need none. The one table that
+    /// `refuse_combinations` and the runner read.
+    #[must_use] pub const fn needs(self) -> &'static [AdjustmentRule];
 }
 /// Whether `rules` asks for a rule of this kind.
 pub(crate) fn asks(rules: &[AdjustmentRule], rule: AdjustmentRule) -> bool;
@@ -658,8 +727,70 @@ pub(crate) fn restart_outlay_periods(rules: &[AdjustmentRule]) -> Option<u64>;
 /// Empty keeps today's behaviour and bytes.
 pub adjustments: Vec<AdjustmentRule>,
 // babylon-circuit-worlds src/doubled/world.rs, World gains (empty in World::scene()):
-/// The rules its catalog asks for, written as the market policy's `adjustments`.
+/// The rules the world opens with: `Runner::open_world` turns each on, in order, before the first step.
 pub rules: Vec<AdjustmentRule>,
+impl World {
+    /// The six rules in the order of `AdjustmentRule`, the restart with the periods of outlay of `scale`
+    /// (1 period of outlay at the small figures, 2 at the national).
+    #[must_use] pub const fn switches_at(scale: Scale) -> [AdjustmentRule; 6];
+    /// `switches_at(self.scale)`: the six rules of this world.
+    #[must_use] pub const fn switches(&self) -> [AdjustmentRule; 6];
+}
+// babylon-circuit-worlds src/doubled/catalog.rs (replaces Task 1a's signature)
+/// # Errors
+/// As `catalog`; `WorldError::Engine` when the engine's admission refuses the rules.
+pub fn catalog_of(world: &World, figures: &Figures, rules: &[AdjustmentRule])
+    -> Result<MaterialCatalog, WorldError>;
+// babylon-circuit-worlds src/runner/rules.rs
+/// A rule of the run and the first period closed under it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuleOn { pub rule: AdjustmentRule, pub from: u64 }
+/// Where a rule's switch stands for the next period.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Switch {
+    /// On from `from`; it holds until the run is started over.
+    On { from: u64 },
+    /// Off; `turn_on` would turn it on from the next period.
+    Ready,
+    /// Off; it waits for these rules, in the order of `AdjustmentRule`.
+    Waits { needs: Vec<AdjustmentRule> },
+}
+/// Why a rule was not turned on. Nothing changes then.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuleError {
+    /// The run is stopped.
+    Stopped,
+    /// A rule of this kind is on already.
+    AlreadyOn { rule: AdjustmentRule, from: u64 },
+    /// A rule it needs is not on.
+    Waits { rule: AdjustmentRule, needs: Vec<AdjustmentRule> },
+    /// The engine's admission refused the catalog of the next period with the rule.
+    Refused { rule: AdjustmentRule, error: WorldError },
+}
+/// The rule's name, as the scene and the refusals say it.
+#[must_use] pub const fn rule_name(rule: AdjustmentRule) -> &'static str;
+// impl Display for RuleError, and impl Error.
+// babylon-circuit-worlds src/runner/run.rs
+impl Runner {
+    /// Turn a rule on from the next period (`next_period()`, the `from` a strike gets). It holds until the run is
+    /// started over.
+    /// # Errors
+    /// `RuleError`, in this order: `Stopped`; `AlreadyOn` (the same kind, any `outlay_periods`); `Waits` (a rule of
+    /// `needs` is not on); `Refused` (the catalog of the next period's figures with the rule added).
+    pub fn turn_on(&mut self, rule: AdjustmentRule) -> Result<(), RuleError>;
+    /// The rules on, in the order turned on.
+    #[must_use] pub fn rules(&self) -> &[RuleOn];
+    /// The rules the catalog of `period` asks for, in the order of `AdjustmentRule`.
+    #[must_use] pub fn rules_at(&self, period: u64) -> Vec<AdjustmentRule>;
+    /// Where the switch of a rule of this kind stands.
+    #[must_use] pub fn switch(&self, rule: AdjustmentRule) -> Switch;
+}
+// babylon-circuit-worlds src/runner/result.rs, PeriodResult gains:
+/// The rules its catalog asked for, in the order of `AdjustmentRule`.
+pub rules: Vec<AdjustmentRule>,
+// babylon-circuit-worlds src/runner/error.rs, RunnerError gains:
+/// `open_world` could not turn on a rule of the world.
+Rule(RuleError),
 // src/wire/catalog.rs
 /// A market policy that asks for adjustments writes this version first, then its rules, then every byte the
 /// same catalog writes without them.
@@ -693,12 +824,28 @@ const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
    rules, the refusals and "a rule not yet built is refused"; `P13_asking` gains "and the rules of ADR314 only by
    naming them in adjustments". Each later task replaces its rule's line there with its rule in the contract's
    style.
-5. **The bench's form.** `Form::rules(self, scale: Scale) -> Vec<AdjustmentRule>`; `Form::A6` gives an empty
-   list. `OwnerRestart`'s `outlay_periods` is 1 at the small figures and 2 at the national (`SPIKE_J_PERIODS`).
-   `runs()` puts the list in each run's `World.rules`; the crate's catalog writes it. No catalog is built in the
-   bench. The small worlds' test `the_scene_asks_for_no_rule` pins `World::scene().rules` empty and the scene
+5. **The bench's form.** `Form::rules(self, scale: Scale) -> Vec<AdjustmentRule>`, taken from
+   `World::switches_at(scale)`; `Form::A6` gives an empty list. `OwnerRestart`'s `outlay_periods` is 1 at the small
+   figures and 2 at the national (`SPIKE_J_PERIODS`). `Form::ALL` lists the forms built so far. `runs()` puts the
+   list in each run's `World.rules`; `Runner::open_world` turns them on before the first step. No catalog is built
+   in the bench. The small worlds' test `the_scene_asks_for_no_rule` pins `World::scene().rules` empty and the scene
    catalog's `adjustments` empty.
    `World::scene()` stops being `const` here, since it holds a `Vec`.
+6. **The runner's rules** (ADR321, K3). The runner keeps `Vec<RuleOn>` and its world. `turn_on` checks in the
+   order of its `# Errors`, then builds `catalog_of(world, &book.figures(next), &with_the_rule)` and caches it;
+   only then is the rule recorded, with `from = self.state.period`. So a refusal changes nothing, and the
+   engine's admission is the last word (until Task 8 it refuses a rule not yet built). `open_world` opens with no
+   rule, then calls `turn_on` for each of `world.rules`, so its rules are on from period 1: one road for the bench
+   and the scene. There is no turn-off; a new runner clears every rule and every shock.
+7. **The cache** is `Vec<(CatalogKey, MaterialCatalog)>` with a private `CatalogKey { figures: Figures, rules:
+   Vec<AdjustmentRule> }`. `advance` builds the key from `book.figures(period)` and `rules_at(period)` and puts
+   the rules in `PeriodResult.rules`.
+8. **Words.** `rule_name` gives the label: "A bound on hiring", "People look for work in their place", "No money,
+   no work", "A resting price", "The owner restarts a stopped workplace", "A goods price steps down". Inside a
+   sentence the same words stand in lower case. `RuleError` says: "the run is stopped"; "{name} is on from period
+   {from} and holds until you start over"; "{name} waits for {needs in lower case, joined by \" and \"}"; "the
+   engine refused {name in lower case}: {error}", where `{error}` is the inner error of `WorldError::Engine`, not
+   `WorldError`'s own words. `RunnerError::Rule` says "the world's rules: {error}".
 
 - [ ] **Step 1: Write the failing tests** in `src/catalog.rs`'s tests:
   `adjustments_write_version_nine_before_the_bytes_without_them` (with `[HiringWithinMeans]`: bytes at
@@ -716,13 +863,39 @@ const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
   The four combination tests call `refuse_combinations` directly, each with a list that it must refuse and the
   same list with the missing rule added (or in order, or with `outlay_periods: 1`), which it must pass. So they
   are never refused for being not yet built, and they hold in every task.
-  `PINNED_BASE_DIGEST` and `PINNED_POLICY_DIGEST` pass unchanged.
+  `PINNED_BASE_DIGEST` and `PINNED_POLICY_DIGEST` pass unchanged. Also `needs_is_the_table_of_the_refusals`:
+  for each rule, `refuse_combinations` refuses the list of the rule alone exactly when `needs()` is not empty,
+  and passes it with every rule it needs added, and the rules those need, in the order of `AdjustmentRule` (for
+  `OwnerRestart`: `[HiringWithinMeans, SeekingInPlace, StopWithoutPay, RestingPrice, OwnerRestart {
+  outlay_periods: 1 }]`).
+  In the small worlds' `tests/runner.rs`:
+  - `a_rule_not_yet_built_is_refused_by_turn_on`: `Runner::open()`, two steps, `turn_on(GoodsStepDown)` gives
+    `RuleError::Refused { rule: GoodsStepDown, error: WorldError::Engine(..MarketClearingInvariant..) }`;
+    `rules()` is empty, `switch(GoodsStepDown)` is `Ready`, and five more steps equal a twin runner's that was
+    never asked. Task 8 removes this test with `NOT_YET_BUILT`.
+  - `a_switch_says_what_it_waits_for`: at the opening, `switch(StopWithoutPay)` is `Waits { needs:
+    [SeekingInPlace] }` and `turn_on(StopWithoutPay)` is `RuleError::Waits` with the same list;
+    `switch(OwnerRestart { outlay_periods: 1 })` is `Waits { needs: [HiringWithinMeans, StopWithoutPay,
+    RestingPrice] }`; `switch(HiringWithinMeans)` is `Ready`.
+  - In the existing `the_run_stops_at_its_horizon`, after the stop, add: `turn_on(HiringWithinMeans)` is
+    `RuleError::Stopped`.
+  - `each_period_says_its_rules`: three steps of `Runner::open()`: every `PeriodResult.rules` is empty.
 - [ ] **Step 2: Run them and see them fail.** `mise run rust:test:q -- -p babylon-material-circuit -E
-  'test(adjustments) | test(admission_refuses)'`. Expected: does not compile, no field `adjustments`.
+  'test(adjustments) | test(admission_refuses) | test(needs_is)'`, then `mise run rust:test:q -- -p
+  babylon-circuit-worlds -E 'test(a_rule_not_yet_built_is_refused_by_turn_on) |
+  test(a_switch_says_what_it_waits_for) | test(the_run_stops_at_its_horizon) | test(each_period_says_its_rules)'`.
+  Expected: does not compile, no field `adjustments`.
 - [ ] **Step 3: Implement** the type, the field, the bytes, the refusals, the 14 literals, the contract and the
-  digest.
-- [ ] **Step 4: Run** the engine's tests, the small worlds' tests and the bench's quick test. Expected: all pass,
-  no pinned value changed.
+  digest; `AdjustmentRule::needs`; in `babylon-circuit-worlds`, `RuleOn`, `Switch`, `RuleError`, `turn_on`,
+  `rules`, `rules_at`, `switch`, `World::switches` and `switches_at`, the cache key and `PeriodResult.rules`.
+- [ ] **Step 4: Run** the engine's tests, the small worlds' tests and the bench's quick tests. Add the bench's
+  quick test `opening_with_a_form_is_turning_its_rules_on_first`: for each `Form::ALL` and both scales, the runs
+  `fund-quiet`, `fund-P2`, `fund-P6` and `plain-P2`, 34 periods, opened as `rows` does (`open_world(&run.world)`,
+  which turns the rules on, then `run.strikes` struck) and as `open_world` of the same world with no rules, then
+  `run.strikes` struck, then `turn_on` of each of the form's rules in order, all before the first step: equal
+  `state_digest` in every period and equal projected rows. So the order of turn-ons and strikes before the first
+  step does not matter. With `Form::A6` alone this is trivial; each rule task's form makes it bite. Expected: all
+  pass, no pinned value changed.
 - [ ] **Run the gate. Commit** `feat(material-circuit): let a market policy name the rules of ADR314`.
 
 ### Task 3: People look for work in their place (`pc-seek`)
@@ -732,10 +905,10 @@ const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
 - Modify: `src/staffing.rs` (`mod place; pub use`); `src/transition/state.rs` (`ClosedMaterialPeriod`);
   `src/model.rs` (`MaterialCircuitTransition.adjustments`); `src/financial/layoffs.rs` (advance with moves);
   `src/catalog.rs` (lift the refusal); `src/lib.rs`; the contract and the digest.
-- Modify (the small worlds): `src/doubled/opening.rs` (the pair members and terms when the world asks for
-  seekers); `src/doubled/staffing.rs` (`pool_members_of`, `places`); `src/ids.rs` (`Workplace::pair_member_id`);
-  `src/runner/run.rs` (the staffing step through `staff_in_places`, the members kept, each place's people checked);
-  `src/runner/result.rs` (`PeriodReceipts.adjustments`); `tests/worlds.rs`.
+- Modify (the small worlds): `src/doubled/staffing.rs` (`pool_members_of`, `places`); `src/runner/run.rs` (from
+  the seekers' first period, the staffing step through `staff_in_places`, the members and bindings taken from it,
+  each place's people checked); `src/runner/result.rs` (`PeriodReceipts.adjustments`); `tests/worlds.rs`;
+  `tests/runner.rs`. The pair rows and `Workplace::pair_member_id` are Task 1a's.
 - Modify: the bench: `runs.rs` (`Form::Seek`), `rows.rs` (the seekers' columns); add `digests/pc-seek-400.txt`,
   `pc-seek-nat-400.txt`.
 
@@ -810,17 +983,10 @@ impl ClosedMaterialPeriod {
         staffing: &PlaceStaffing,
     ) -> Result<MaterialCircuitTransition, MaterialCircuitError>;
 }
-// babylon-circuit-worlds src/ids.rs
-impl Workplace {
-    /// The member of `home`'s household at this workplace: the workplace's own member when `home` is it, else
-    /// byte `0x40 + 8 x home.index() + self.index()` (the prototype's `lend_member`).
-    #[must_use] pub const fn pair_member_id(self, home: Workplace) -> StaffingMemberId;
-}
 // babylon-circuit-worlds src/doubled/staffing.rs
 /// Each place's pools: place A's four, then place B's.
 #[must_use] pub fn places() -> Vec<StaffingPlace>;
-/// Every pool's members at the opening: one for each household of its place, in member order, the pool's own
-/// people in its own member, nobody in the others.
+/// Every pool's members at the opening, as `members_of` (Task 1a), one `PoolMembers` a pool in pool order.
 /// # Errors
 /// As `member_of`.
 pub fn pool_members_of(world: &World) -> Result<Vec<PoolMembers>, WorldError>;
@@ -828,7 +994,8 @@ pub fn pool_members_of(world: &World) -> Result<Vec<PoolMembers>, WorldError>;
 impl Runner {
     /// The staffing after the last step.
     #[must_use] pub const fn staffing(&self) -> &StaffingState;
-    /// The members the runner keeps between periods; empty unless the world asks for `SeekingInPlace`.
+    /// The members the runner keeps between periods: every pool's, one for each household of its place, on both
+    /// paths. The runner's field becomes `Vec<PoolMembers>` here.
     #[must_use] pub fn members(&self) -> &[PoolMembers];
 }
 // babylon-circuit-worlds src/runner/result.rs, PeriodReceipts gains:
@@ -864,21 +1031,27 @@ pub adjustments: Vec<AdjustmentReceipt>,
    published. `member_receipts` stay the engine's decision.
 7. **The place** is the caller's. Every pool is in exactly one place. The caller is the runner: it passes
    `doubled::places()`, each place of the doubled world its own.
-8. **The crate's world** authors, when its rules ask for seekers, one member and one `EmploymentTerms` row (the
-   host's site and rate, the person's household as payee) and one member row of 0 hours for every ordered pair of
-   workplaces of a place, after the workplaces' own rows (`support.rs:2776-2802, 2852-2861`), with the prototype's
-   member identities (`Workplace::pair_member_id`). The runner opens the members with `pool_members_of`, keeps
-   them between periods, and, when the catalog asks for `SeekingInPlace`, staffs with `staff_in_places` and
-   finishes with `finish_with_place_staffing` in place of `advance_staffing`, `distribute_staffing_members` and
-   `finish_with_staffing`; a catalog that does not ask runs the loop of Task 1a. The small worlds' test
-   `the_seekers_world_authors_every_pair` pins 12 pair rows a place (24 in all), each at 0 hours, and the members'
-   ids, and `the_quiet_world_without_seekers_has_no_pair` pins that `World::scene()` has none.
+8. **The runner.** Every world holds the pair rows and the runner keeps every pool's members from the opening
+   (Task 1a, decision 7). For each period whose rules (`rules_at(period)`) hold `SeekingInPlace`, it staffs with
+   `staff_in_places` over its kept members and `doubled::places()` and finishes with
+   `finish_with_place_staffing` in place of `advance_staffing`, `distribute_staffing_members` and
+   `finish_with_staffing`; it then keeps `PlaceStaffing.members`, the state, and the pools' bindings read from
+   `PlaceStaffing.state` (a move changes a pool's labor force, decision 5), which `staffing_requests` takes from
+   the next period on. A period without the rule runs the loop of Task 1a. `finish_with_staffing` refuses a
+   catalog that asks for `SeekingInPlace` (`MarketClearingInvariant`), as `staff_in_places` refuses one that does
+   not, so a wrong path fails loudly in either direction. Turned on in the middle of a run (from period F), the
+   first close with the rule is F's; its moves set the people of F + 1; nobody moves in a period before F. The
+   members at F are the kept ones, whose own member holds the pool's people (the force never changed before F),
+   and the records of layoffs that decide who is covered are the state's, kept since period 1.
+   Task 1a's `every_world_authors_the_seekers_rows` replaces this task's `the_seekers_world_authors_every_pair`,
+   and `the_quiet_world_without_seekers_has_no_pair` is dropped: by the ruling every world has the rows.
 9. **Bench columns:** `seekers_<copy>`, `people_<copy>`, `people_<site>`, `looking_<site>`,
    `covered_own_<site>`, `parked_<site>`, `pair_working_/pair_looking_/pair_covered_<host>_from_<home>`, in the
    prototype's order (`spike.rs` `line`, the step S block). They are computed from `PlaceStaffing` and the state's
    record of layoffs, read through `PeriodResult`, `Runner::staffing`, `Runner::members` and `Runner::state`. The
    runner checks each place's persons (the sum of its pools' labor forces) against the opening's after every
-   period, in place of Task 1a's check of each workplace, and refuses with `PersonsNotConserved`.
+   period, and each workplace's as in Task 1a only for periods closed before the seekers' first period; it
+   refuses with `PersonsNotConserved`.
 
 - [ ] **Step 1: Write the failing unit tests** in `src/staffing/place.rs`:
   - `a_host_takes_the_uncovered_first`: two pools of one place, host need 3, the other pool's member reserves
@@ -888,12 +1061,27 @@ pub adjustments: Vec<AdjustmentReceipt>,
   - `a_seeker_stays_in_their_place`: two places, a host in one and seekers only in the other: no move.
   - `a_move_keeps_every_person`: in each of the above, the sum of every pool's labor force before equals after.
   - `a_pool_in_no_place_is_refused` and `a_pool_in_two_places_is_refused`.
-- [ ] **Step 2: Run them and see them fail** (`-E 'test(place)'`): `staff_in_places` not found.
+  - `the_old_finish_refuses_a_catalog_that_asks_for_seekers` (`finish_with_staffing` with a catalog asking
+    `SeekingInPlace`: `Err(MarketClearingInvariant)`; decision 8).
+- [ ] **Step 2: Run them and see them fail** (`-E 'test(place) | test(the_old_finish)'`): `staff_in_places` not
+  found.
 - [ ] **Step 3: Implement** the step, the receipts, the finish, the contract line (replacing the refusal line of
   Task 2) and the digest. Lift the refusal of `SeekingInPlace`.
-- [ ] **Step 4: The runner and the bench.** In the crate: the pair rows, the members, the runner's call, the
-  check by place, and the two tests of decision 8. In the bench: `Form::Seek` (`[SeekingInPlace]`), the columns.
-  Add the
+- [ ] **Step 4: The runner and the bench.** In the crate: the members and bindings kept from `PlaceStaffing`, the
+  runner's call by period, the check by place. In `tests/runner.rs`, the late turn-on script that Tasks 4 to 8
+  extend, `const LATE: [(u64, AdjustmentRule); 1] = [(20, SeekingInPlace)]` (turn on after that many steps):
+  - `a_late_turn_on_gives_the_same_bytes_twice`: the scene's world with `(HarvestFails, Both, UntilLifted)`
+    struck before step 1, `LATE` applied, 60 steps, twice: equal histories and state digests; `rules()` is
+    `[RuleOn { rule: SeekingInPlace, from: 21 }]`; `history()[19].rules` is empty, `history()[20].rules` is
+    `[SeekingInPlace]`.
+  - `nobody_moves_before_the_seekers_are_on`: the same run: no `PlaceMove` receipt in periods 1 to 20.
+  - `a_rule_on_cannot_be_turned_on_again`: after `LATE`, `turn_on(SeekingInPlace)` is `RuleError::AlreadyOn {
+    rule: SeekingInPlace, from: 21 }` and the next five steps equal a twin's.
+  In the bench: `Form::Seek` (`[SeekingInPlace]`), the columns, and the quick test
+  `a_late_turn_on_keeps_money_and_people`: for each form beyond `A6` and both scales, the runs `fund-quiet`,
+  `fund-P2`, `fund-P6` and `plain-P2`: 20 steps, then the form's rules turned on in order, then 40 steps; every
+  step is `Ok` (the runner's checks of money, persons and each place hold) and every `PeriodResult.rules` before
+  period 21 is empty. Add the
   quick test `the_quiet_world_with_seekers_is_still_for_34_periods` (as Task 1b's, with the seekers' columns) and
   the long tests `reproduces_pc_seek_400` and `reproduces_pc_seek_nat_400`; make their fixtures.
 - [ ] **Step 5: Run** the crate's tests, then every long test in the background. Expected: `pc-a6` and `pc-seek`,
@@ -906,7 +1094,8 @@ pub adjustments: Vec<AdjustmentReceipt>,
 - Create: `src/adjustment/bound.rs`.
 - Modify: `src/transition/state.rs` (`next_plans`, `ClosedMaterialPeriod` field and `staffing_requests`);
   `src/adjustment/receipts.rs`; `src/catalog.rs`; the contract and the digest; the bench (`Form::Bound`,
-  `bound_hours_<site>`, `bound_by_<site>`); `digests/pc-bound-400.txt`, `pc-bound-nat-400.txt`.
+  `bound_hours_<site>`, `bound_by_<site>`); `digests/pc-bound-400.txt`, `pc-bound-nat-400.txt`; the small worlds'
+  `tests/runner.rs` (`LATE` gains the bound). The runner does not change.
 
 **Interfaces:**
 
@@ -972,6 +1161,10 @@ pub enum HiringLimit { None, Capacity, Inputs, Money, Other }
    merchant's request follows the capped plan as today. Payroll reads the capped plan.
 6. **Order:** processes so that every provider of a service input comes before its buyers, ties and cycles by
    process id (departure 6).
+7. **Turned on in the middle of a run** (from period F): the bound keeps nothing from one close to the next (the
+   prototype's `BOUND` serves only its own close's `next_period`, `spike_bound.rs:99-122`). The close of F is the
+   first to reckon it; it cuts the attendance planned for F + 1 and caps that close's staffing requests, so hours
+   first change in F + 1. Period F's own attendance was planned without it at the close of F - 1.
 
 - [ ] **Step 1: Write the failing unit tests** in `src/adjustment/bound.rs`:
   - `the_opening_is_not_cut`: `batches_within(120, 10_000_000, 0, 1_200_000_000) == 120` (the utility),
@@ -986,7 +1179,10 @@ pub enum HiringLimit { None, Capacity, Inputs, Money, Other }
 - [ ] **Step 3: Implement**; lift the refusal; contract and digest.
 - [ ] **Step 4: The bench.** `Form::Bound` (`[HiringWithinMeans, SeekingInPlace]`), its columns, the quick test
   `the_quiet_world_with_the_bound_is_still_for_34_periods`, the long tests `reproduces_pc_bound_400` and
-  `reproduces_pc_bound_nat_400`, their fixtures.
+  `reproduces_pc_bound_nat_400`, their fixtures. The small worlds' `LATE` gains `(24, HiringWithinMeans)`; its
+  tests then also pin `[RuleOn { SeekingInPlace, 21 }, RuleOn { HiringWithinMeans, 25 }]` and no `HiringBound`
+  receipt before period 25. The bench's `opening_with_a_form_is_turning_its_rules_on_first` and
+  `a_late_turn_on_keeps_money_and_people` cover `Form::Bound` by `Form::ALL`.
 - [ ] **Step 5: Run** the crate's tests, then every long test. Expected: three forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a workplace asks for hands it can pay and supply`.
 
@@ -996,9 +1192,9 @@ pub enum HiringLimit { None, Capacity, Inputs, Money, Other }
 - Create: `src/adjustment/standing.rs`.
 - Modify: `src/staffing/place.rs`; `src/transition/state.rs` (the close's entry with standing; the refusal in the
   others; `PlaceStaffing.standing`); `src/adjustment/receipts.rs`; `src/catalog.rs`; the contract and the digest;
-  `babylon-circuit-worlds` `src/runner/run.rs` (the standing kept between periods, the close with standing when
-  the catalog asks for `StopWithoutPay`, `Runner::standing`); the bench (`Form::Stop`, `stopped_<site>`);
-  `digests/pc-stop-*.txt`.
+  `babylon-circuit-worlds` `src/runner/run.rs` (the standing kept between periods, the close with standing for
+  each period whose rules hold `StopWithoutPay`, `Runner::standing`) and `tests/runner.rs`; the bench
+  (`Form::Stop`, `stopped_<site>`); `digests/pc-stop-*.txt`.
 
 **Interfaces:**
 
@@ -1065,8 +1261,12 @@ if bsl-lint flags it, make it an enum `Payment { Paid, Short }`.
    `close_material_period_with_portfolios`, which `babylon-tick` calls, cannot run the rule without its memory, and
    neither can the restart, which needs the stop rule. `staff_in_places` returns the standing as it stands after
    the rule in `PlaceStaffing.standing`; the runner keeps that and passes it to the next close. The runner closes
-   with `close_material_period_with_standing` when the catalog asks for `StopWithoutPay`, else with
-   `close_material_period` as in Task 1a.
+   with `close_material_period_with_standing` for each period whose rules (`rules_at(period)`) hold
+   `StopWithoutPay`, else with `close_material_period` as in Task 1a. The runner holds
+   `WorkplaceStanding::opening()` from the opening until the first close with the rule, so a rule turned on in
+   the middle of a run (from period F) starts from an empty standing, as period 1 does: every workplace `Free`.
+   That is sound because the rule's test reads the receipts of the period it closes (decision 2): a workplace
+   that cannot pay in F is held at the close of F, and its limit caps the staffing of F + 1.
 2. **The test**, per site, from this period's `member_labor_use` receipts: `available`, `attended`,
    `unattended` summed over its members; `bill = sum(available_hours x member's wage rate)`; `employed` = its pools'
    opening employed; `hpp` = its pool's hours per person.
@@ -1095,12 +1295,18 @@ if bsl-lint flags it, make it an enum `Payment { Paid, Short }`.
     employed 5: limit 6);
   - `the_old_entry_refuses_the_stop_rule` (`close_material_period` with a catalog asking `StopWithoutPay`:
     `Err(MarketClearingInvariant)`).
+  - `the_new_entry_with_an_empty_standing_is_the_opening_s`: `close_material_period_with_standing` with
+    `WorkplaceStanding::opening()`, and with a standing that a crate test builds with one `Free` row for each
+    site: both closes give equal transitions after the same finish.
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement**; lift the refusal; contract and digest.
 - [ ] **Step 4: The runner and the bench.** The runner's close with standing and `Runner::standing`; `Form::Stop`,
   the column, the quick test
   `the_quiet_world_with_the_stop_rule_is_still_for_34_periods`, `reproduces_pc_stop_400`,
-  `reproduces_pc_stop_nat_400`, their fixtures.
+  `reproduces_pc_stop_nat_400`, their fixtures. The small worlds' `LATE` gains `(28, StopWithoutPay)`, and
+  `tests/runner.rs` gains `the_stop_rule_turned_on_late_starts_from_an_empty_standing`: after 28 steps of `LATE`,
+  `standing()` equals `&WorkplaceStanding::opening()`; no `Stop` receipt before period 29; a `Stop` receipt for
+  each of the 8 sites at period 29 (each site is tested at each close, decision 2).
 - [ ] **Step 5: Run.** Expected: four forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): no money, no work (A17)`.
 
@@ -1138,6 +1344,9 @@ pub struct RestingPriceReceipt {
 2. A resting goods offer is not quoted: reason `Hold`. A resting service keeps its price: reason `Hold`. The cost
    and priced-out step ups do not run for it.
 3. `rests` is a free function of the price modules; put it in `src/adjustment/` and import it in both.
+4. **Turned on in the middle of a run** (from period F): the rule keeps nothing between closes (the prototype's
+   `IDLE` is set before each close and `RESTED` taken after it, `spike_rest.rs:40-69`); it reads the labor rows of
+   the period it closes, which exist in every period. The close of F is the first whose prices for F + 1 rest.
 
 - [ ] **Step 1: Write the failing unit tests:** `a_workplace_with_hands_does_not_rest` (8 hours, offered 0:
   false); `a_workplace_with_goods_on_offer_does_not_rest` (0 hours, offered 3: false); `an_idle_workplace_rests`
@@ -1145,6 +1354,7 @@ pub struct RestingPriceReceipt {
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement**; lift the refusal; contract and digest.
 - [ ] **Step 4: The bench.** `Form::Rest`, the quick test, `reproduces_pc_rest_400`, `reproduces_pc_rest_nat_400`.
+  The small worlds' `LATE` gains `(32, RestingPrice)`; no `RestingPrice` receipt before period 33.
 - [ ] **Step 5: Run.** Expected: five forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a stopped workplace's price rests`.
 
@@ -1157,7 +1367,7 @@ pub struct RestingPriceReceipt {
   `src/adjustment/receipts.rs`; `src/catalog.rs`; the contract and the digest; the bench (`Form::Restart`; columns
   `restart_test_<site>`, `stopped_since_<site>`, `restart_inputs_<site>`, `owner_spare_<copy>`, read from
   `PeriodReceipts.adjustments` and `Runner::standing`; the runner does not change);
-  `digests/pc-restart-*.txt`.
+  `digests/pc-restart-*.txt`; the small worlds' `tests/runner.rs`.
 
 **Interfaces:**
 
@@ -1216,13 +1426,15 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
    unit's cost is raised to that cost, at the rate of decision 4:
    `unit = ceil(batch_cost / output a batch)`, every offer of the site set to it; the period's price or service
    market receipt gets the new `next_price` (its reason stays `Hold`), and a `RestingPriceToCostReceipt`.
-3. **Counters.** `periods_since_work` and `quiet_periods` go to 0 if the site made or sold anything this period,
-   else up by one, after (b) has run. The prototype's words, kept exactly (`sales_and_output`, `support.rs:3622`,
-   and its caller in `run_staffed`, about 3966): `sales` = the quantity of its local transfers as supplier, plus
-   its local fulfillments as retailer, plus its service markets' `performed_quantity`; `output` = a production
-   receipt's `produced_batches x quantity_per_batch` (the last such receipt of the site, as the prototype assigns
-   it), plus the quantity of local transfers it received as buyer. It made or sold anything when `sales > 0`, or
-   when it has a recurring production row and `output > 0`.
+3. **Counters.** They advance only in a close whose catalog asks for the restart, as the prototype's do (made at
+   0 before period 1, `support.rs:3957`, and advanced only in `restart_close`, `3705-3711`); a site with no row
+   gets one (`Free`, 0, 0). `periods_since_work` and `quiet_periods` go to 0 if the site made or sold anything
+   this period, else up by one, after (b) has run. The prototype's words, kept exactly (`sales_and_output`,
+   `support.rs:3622`, and its caller in `run_staffed`, about 3966): `sales` = the quantity of its local
+   transfers as supplier, plus its local fulfillments as retailer, plus its service markets'
+   `performed_quantity`; `output` = a production receipt's `produced_batches x quantity_per_batch` (the last such
+   receipt of the site, as the prototype assigns it), plus the quantity of local transfers it received as buyer.
+   It made or sold anything when `sales > 0`, or when it has a recurring production row and `output > 0`.
 4. **The test**, for each site whose labor rows of the closing period offer 0 hours and with
    `quiet_periods >= 3` (`const RESTART_QUIET_PERIODS: u64 = 3`): `turned` = the sum, over every
    `market_clearings` receipt of the site this close (not only short markets), of `demand_at_quote -
@@ -1248,6 +1460,14 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
 9. `rate` in decisions 2 and 4 is the largest `Wage` rate of the site's employment terms (departure 7); `price` is
    the site's posted price; `out` is the output of one batch (one unit for a merchant); `cash` is the site's cash at
    the close.
+10. **Turned on in the middle of a run** (from period F): the counters are 0 at the close of F, whatever the site
+    did before (decision 3). A site idle before F counts 1, 2, 3 at the closes of F, F + 1 and F + 2, is first
+    tested at the close of F + 2 (`RESTART_QUIET_PERIODS`), and if restarted works from F + 3. Counted from
+    period 1 the arithmetic is the same. The hold the stop rule kept since its own first period is the standing's
+    and is read as it stands. The restart needs the bound and the resting price on, so this close has a
+    `HiringBound` and its `RestingPriceReceipt`s. This is the lead's call of 23 November, reported to the
+    Director: the rule counts quiet periods from the period it is turned on, and the scene's words for the switch
+    must say that a workplace is tested after three quiet periods under the rule.
 
 - [ ] **Step 1: Write the failing unit tests** in `src/adjustment/restart.rs`:
   - `a_restart_that_puts_in_nothing_is_refused` (plan $40, cash $40: no restart; cash $39: $1 put in);
@@ -1259,11 +1479,17 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
     `NoBuyer`);
   - `the_restart_moves_money_with_a_receipt` (the transfer receipt's amount equals the site's cash gain and the
     owner's cash loss; total money unchanged).
+  - `a_workplace_is_tested_at_its_third_quiet_close` (a standing row of 0 and 0 for a site with 0 hours that made
+    and sold nothing: `NotTested` at the first and second close, tested at the third).
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement**; lift the refusal; contract and digest.
 - [ ] **Step 4: The bench.** `Form::Restart` (`[HiringWithinMeans, SeekingInPlace, StopWithoutPay, RestingPrice,
   OwnerRestart { outlay_periods }]`, 1 period small, 2 national), its columns, the quick test,
-  `reproduces_pc_restart_400`, `reproduces_pc_restart_nat_400`.
+  `reproduces_pc_restart_400`, `reproduces_pc_restart_nat_400`. The small worlds' `LATE` gains
+  `(36, OwnerRestart { outlay_periods: 1 })`; no `Restart` receipt before period 37. And
+  `the_restart_waits_for_its_rules`: with seekers and the stop rule on only, `switch(OwnerRestart {
+  outlay_periods: 1 })` is `Waits { needs: [HiringWithinMeans, RestingPrice] }` and `turn_on` is `RuleError::Waits`
+  with that list.
 - [ ] **Step 5: Run.** Expected: six forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): an owner restarts a stopped workplace with its own money`.
 
@@ -1314,6 +1540,8 @@ pub struct GoodsOfferReceipt {
    handling hours). Services are untouched: no quote before plans, no gain (departure 4).
 4. **Bench columns:** `unsold_<site>` = `offered - sold` (without `kept`), `turned_payers_<site>` = the price
    receipt's `unserved_quantity`, farms and shops only, after the bound's columns, as `spike.rs` `write_run`.
+5. **Turned on in the middle of a run** (from period F): the rule keeps nothing between closes; the close of F is
+   the first to quote goods before plans and post a stepped-down price for F + 1.
 
 - [ ] **Step 1: Write the failing unit tests** in `src/recurring/prices.rs`: `a_step_down_goes_under_cost` (old
   $38, step $1, unit cost $38, goods unsold, nobody waiting: $37); `a_step_down_stops_at_the_minimum` (old $1.50,
@@ -1324,7 +1552,9 @@ pub struct GoodsOfferReceipt {
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement**; lift the refusal; contract and digest.
 - [ ] **Step 4: The bench.** `Form::Down` (the six rules), its columns, the quick test,
-  `reproduces_pc_down_400`, `reproduces_pc_down_nat_400`.
+  `reproduces_pc_down_400`, `reproduces_pc_down_nat_400`. The small worlds' `LATE` gains `(40, GoodsStepDown)`;
+  no `GoodsOffer` receipt before period 41. Remove `a_rule_not_yet_built_is_refused_by_turn_on` with
+  `NOT_YET_BUILT` (Task 2, decision 3).
 - [ ] **Step 5: Run.** Expected: seven forms, 25 of 25 at both figures. The `pc-down` rows passed the Director's
   test where there is a fund in Task 0, so the built form passes it: every column the counters read is compared.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a goods price steps down when goods go unsold (A1)`.
@@ -1406,7 +1636,7 @@ compared the two. What it found, and what the lead decided:
   opening: the utility plans 12 batches of 10 hours. The scene's own power cut, struck in the middle of a run,
   swaps the catalog only, so it is not the bench's P6, and the reference rows do not cover it.
 - **One loop.** The bench had its own period loop in this plan. It now steps the crate's `Runner`, the loop the
-  scene runs. Tasks 3 and 5 change that runner where they changed the bench's loop.
+  scene runs. Tasks 1a, 2, 3 and 5 change that runner (Tasks 3 and 5 where they changed the bench's loop).
 - **Timing was checked by reading:** a ten-period strike before the first step holds in periods 1 to 10, as the
   prototype's catalogs do. The engine calls of the runner and of the prototype's loop are the same, in the same
   order.
@@ -1420,6 +1650,8 @@ compared the two. What it found, and what the lead decided:
   seekers the runner rebuilds each member from the opening's people, so the members would have to be kept on both
   paths; the runner's cache of catalogs is keyed by the production figures alone; and a rule that needs another
   cannot be turned off alone.
+  Settled (Tasks 1a, 2, 3, 5): the pair rows in every world; the members kept on both paths; the cache keyed by
+  figures and rules; no turn-off, so no chain to undo.
 - **Task 0 is not built in a worktree of its own,** as first written: see its "Where".
 
 ## The Director's rulings of 23 November, afternoon (ADR321)
@@ -1461,15 +1693,18 @@ place left without a product for good):
 | with the stop rule, the resting price and the restart (`c2-pc-restart`) | 1 | 1 | 405 |
 | with the step down as measured (`c2-pc-down`) | 1 | 0 | 440 |
 
-**What a switch in the middle of a run asks of the build** (for the companion tasks, before Task 3):
+**What a switch in the middle of a run asks of the build** (settled in Tasks 1a, 1b, 2 and 3 to 8):
 
-- The runner gains a way to turn a rule on for the next period, and refuses one whose needed rules are not on.
-  It cannot turn one off; starting over clears all. The runner's cache of catalogs is keyed by the production
-  figures and the list of rules.
-- The seekers' rows (one `EmploymentTerms` and one member row for each household at each workplace of its place)
-  are authored at every opening, so that the seekers can be turned on later. Whether rows that no rule reads
-  change a reference set is checked on `pc-a6` before Task 3: if they do, the bench's worlds author them only
-  when asked and the scene's world always, and the plan says so.
-- A rule that keeps a memory (`WorkplaceStanding`, the hiring bound) starts it empty in the period it is turned
-  on. The members are kept on both paths of the runner.
-- The scene shows, for each rule, the period it is on from, and for a rule that waits, what it waits for.
+- `Runner::turn_on` (Task 2) turns a rule on from `next_period()`, the `from` a strike gets, and refuses, changing
+  nothing: a stopped run; a rule already on; a rule whose needed rules are not on; a catalog the engine's
+  admission refuses. There is no turn-off; starting over is a new runner. `Runner::open_world` turns the world's
+  rules on with it before the first step. The cache of catalogs is keyed by the figures and the rules.
+- The seekers' rows are authored in every world (Task 1a). The state has no catalog digest and the scene's design
+  forbids a state edit from outside, so they cannot be added at turn-on. The loop without seekers keeps every
+  member and writes a member row for each, as the engine's payroll and layoff checks require. `pc-a6` (Task 1b)
+  proves they change no compared column; three pinned counts and one loop of the crate's tests move (Task 1a,
+  decision 7).
+- The bound, the resting price and the step down keep nothing between closes. `WorkplaceStanding` starts as
+  `WorkplaceStanding::opening()` at the stop rule's first close; the restart's counters start at 0 at its first
+  close and advance only while it is on.
+- The runner gives the scene, for each rule, `Switch::On { from }`, `Ready` or `Waits { needs }` (Task 2).

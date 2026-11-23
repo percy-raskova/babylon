@@ -15,6 +15,10 @@ pub enum WorldError {
     Location(String),
     /// A checked sum or product overflowed.
     Arithmetic,
+    /// A push this world cannot take: the fund's taxes in the plain world.
+    PushNotInThisWorld,
+    /// The fund's taxes struck in one place: there is one fund.
+    PushOnOnePlace,
 }
 
 impl Display for WorldError {
@@ -24,6 +28,12 @@ impl Display for WorldError {
             Self::Staffing(error) => write!(f, "{error}"),
             Self::Location(text) => write!(f, "the place {text:?} is not a location"),
             Self::Arithmetic => write!(f, "a sum or product in the world's opening overflowed"),
+            Self::PushNotInThisWorld => {
+                write!(f, "this world has no fund to take the fund's taxes down")
+            }
+            Self::PushOnOnePlace => {
+                write!(f, "there is one fund: its taxes are lowered in both places")
+            }
         }
     }
 }

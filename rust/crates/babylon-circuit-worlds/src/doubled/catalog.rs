@@ -1,8 +1,9 @@
 //! The catalog of the doubled world: what each workplace makes, takes and handles.
 
 use crate::doubled::figures::{self, Figures};
+use crate::doubled::world::World;
 use crate::ids;
-use crate::{Good, Household, Kind, Place, Workplace, WorldError};
+use crate::{Good, Kind, Place, Workplace, WorldError};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     CapacitySupply, CommodityDefinition, CommodityKind, HouseholdNeed, HouseholdNeedBasis,
@@ -18,13 +19,21 @@ pub(crate) const FARM_BATCH_INPUT: u64 = 10;
 /// What a farm of one place has planned at the opening: four batches.
 pub(crate) const FARM_OPENING_BATCHES: u64 = 4;
 
-/// The catalog, with the given figures of production.
+/// The scene's catalog, with the given figures of production.
+///
+/// # Errors
+/// As `catalog_of`.
+pub fn catalog(figures: &Figures) -> Result<MaterialCatalog, WorldError> {
+    catalog_of(&World::scene(), figures)
+}
+
+/// The catalog of a world, with the given figures of production.
 ///
 /// # Errors
 /// `WorldError::Engine` when the engine refuses the catalog, `WorldError::Location` when the
 /// place does not parse, `WorldError::Arithmetic` when a figure overflows.
-pub fn catalog(figures: &Figures) -> Result<MaterialCatalog, WorldError> {
-    Ok(MaterialCatalog::try_new(definition(figures)?)?)
+pub fn catalog_of(world: &World, figures: &Figures) -> Result<MaterialCatalog, WorldError> {
+    Ok(MaterialCatalog::try_new(definition(world, figures)?)?)
 }
 
 fn commodities() -> Vec<CommodityDefinition> {
@@ -125,9 +134,9 @@ fn labor_coefficients(figures: &Figures) -> Vec<LaborCoefficient> {
     rows
 }
 
-fn household_needs() -> Vec<HouseholdNeed> {
+fn household_needs(world: &World) -> Vec<HouseholdNeed> {
     let mut rows = Vec::new();
-    for household in Household::ALL {
+    for household in world.households() {
         for good in Good::ALL {
             rows.push(HouseholdNeed {
                 principal_id: household.principal(),
@@ -142,9 +151,9 @@ fn household_needs() -> Vec<HouseholdNeed> {
     rows
 }
 
-fn household_wants() -> Vec<HouseholdWant> {
+fn household_wants(world: &World) -> Vec<HouseholdWant> {
     let mut rows = Vec::new();
-    for household in Household::ALL {
+    for household in world.households() {
         for (tier, good) in [
             (WantTier::Comfort, Good::Care),
             (WantTier::Luxury, Good::Food),
@@ -164,13 +173,13 @@ fn household_wants() -> Vec<HouseholdWant> {
     rows
 }
 
-fn market_clearing() -> MarketClearingPolicy {
+fn market_clearing(world: &World) -> MarketClearingPolicy {
     MarketClearingPolicy {
         paying_order: Good::ALL
             .iter()
             .map(|g| (g.good_id(), ids::goods_unit()))
             .collect(),
-        household_wants: household_wants(),
+        household_wants: household_wants(world),
         plans_from_spare_money: true,
     }
 }
@@ -217,13 +226,13 @@ fn handling_coefficients() -> Vec<MerchantHandlingCoefficient> {
 
 /// The farm and the clinic of a place buy power from its utility; the caps are twice the
 /// opening requirement (the farm's 40 units, the clinic's 40), so they never bind.
-fn service_inputs() -> Result<Vec<ServiceInputPolicy>, WorldError> {
+fn service_inputs(world: &World) -> Result<Vec<ServiceInputPolicy>, WorldError> {
     let farm_need = FARM_OPENING_BATCHES
         .checked_mul(FARM_BATCH_INPUT)
         .ok_or(WorldError::Arithmetic)?;
-    let clinic_need = figures::place_persons()?;
     let mut rows = Vec::new();
     for place in Place::ALL {
+        let clinic_need = figures::place_persons(world, place)?;
         for (kind, need) in [(Kind::Farm, farm_need), (Kind::Clinic, clinic_need)] {
             let cap = need.checked_mul(2).ok_or(WorldError::Arithmetic)?;
             rows.push(ServiceInputPolicy {
@@ -240,9 +249,9 @@ fn service_inputs() -> Result<Vec<ServiceInputPolicy>, WorldError> {
     Ok(rows)
 }
 
-fn definition(figures: &Figures) -> Result<MaterialCatalogDefinition, WorldError> {
+fn definition(world: &World, figures: &Figures) -> Result<MaterialCatalogDefinition, WorldError> {
     Ok(MaterialCatalogDefinition {
-        market_clearing: Some(market_clearing()),
+        market_clearing: Some(market_clearing(world)),
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: Workplace::ALL
             .iter()
@@ -264,7 +273,7 @@ fn definition(figures: &Figures) -> Result<MaterialCatalogDefinition, WorldError
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],
-        service_inputs: service_inputs()?,
-        household_needs: household_needs(),
+        service_inputs: service_inputs(world)?,
+        household_needs: household_needs(world),
     })
 }

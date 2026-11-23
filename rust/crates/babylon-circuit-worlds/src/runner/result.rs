@@ -4,8 +4,9 @@ use crate::doubled::Figures;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, CapitalAccount, DistributionReceipt, GoodId, HouseholdCohort,
-    HouseholdConsumptionReceipt, HouseholdDemandReceipt, HouseholdServiceReceipt, IncomeReceipt,
-    LaborUseReceipt, LocalRetailFulfillmentReceipt, LocalTransferReceipt, MarketClearingReceipt,
+    HouseholdConsumptionReceipt, HouseholdDemandReceipt, HouseholdServiceReceipt,
+    HouseholdTierReceipt, HouseholdWantReceipt, IncomeReceipt, LaborUseReceipt,
+    LocalRetailFulfillmentReceipt, LocalTransferReceipt, MarketClearingReceipt,
     MemberLaborUseReceipt, MerchantHandlingReceipt, MoneyTransferReceipt, OwnershipClaim,
     PriceReceipt, ProcurementReceipt, ProductionReceipt, PublicBudgetReceipt, PublicProgramReceipt,
     ServiceMarketReceipt, ServiceOutputReceipt, ServicePerformanceReceipt, SiteId,
@@ -23,6 +24,9 @@ pub struct PeriodResult {
     pub receipts: PeriodReceipts,
     /// The member receipts of the staffing; the transition's own list is empty.
     pub members: Vec<StaffingMemberReceipt>,
+    /// Hours asked of staffing for the next period, by `Workplace::index`: the sum over the period's
+    /// requests.
+    pub asked: [u64; 8],
     /// What the next state holds.
     pub closing: Closing,
     /// The measures of the period.
@@ -46,6 +50,8 @@ pub struct PeriodReceipts {
     pub procurement: Vec<ProcurementReceipt>,
     pub household_demand: Vec<HouseholdDemandReceipt>,
     pub household_consumption: Vec<HouseholdConsumptionReceipt>,
+    pub household_wants: Vec<HouseholdWantReceipt>,
+    pub household_tiers: Vec<HouseholdTierReceipt>,
     pub money_transfers: Vec<MoneyTransferReceipt>,
     pub wage_accruals: Vec<WageAccrualReceipt>,
     pub taxes: Vec<TaxReceipt>,

@@ -48,27 +48,36 @@ fn the_same_steps_give_the_same_bytes_twice() -> TestResult {
 fn the_runner_keeps_the_member_receipts() -> TestResult {
     let runner = run(1)?;
     let first: &PeriodResult = runner.history().first().ok_or("no first period")?;
-    assert_eq!(first.members.len(), 8);
+    assert_eq!(first.members.len(), 32);
     let opening: Vec<u64> = Workplace::ALL
         .iter()
         .map(|w| {
             first
                 .members
                 .iter()
-                .find(|m| Workplace::from_site(m.site_id) == Some(*w))
+                .find(|m| m.member.member_id() == w.member_id())
                 .map(|m| m.opening_employed)
                 .ok_or("a workplace without a member receipt")
         })
         .collect::<Result<_, _>>()?;
     assert_eq!(opening, [12, 4, 4, 4, 12, 4, 4, 4]);
     let rows = &first.receipts.member_labor_use;
-    assert_eq!(rows.len(), 8);
+    assert_eq!(rows.len(), 32);
     for workplace in Workplace::ALL {
         let row = rows
             .iter()
-            .find(|row| row.site_id == workplace.site_id())
+            .find(|row| row.member_id == workplace.member_id())
             .ok_or("a workplace without a member labor row")?;
         assert_eq!(row.payee, workplace.workers().principal());
+        assert_eq!(row.site_id, workplace.site_id());
+    }
+    for (home, host) in Workplace::pairs() {
+        let row = rows
+            .iter()
+            .find(|row| row.member_id == host.pair_member_id(home))
+            .ok_or("a pair without a member labor row")?;
+        assert_eq!(row.payee, home.workers().principal());
+        assert_eq!(row.attended_hours, 0);
     }
     Ok(())
 }

@@ -1,14 +1,15 @@
 //! The runner: one period is the engine's own, in the order of the game's staffed run.
 
-use crate::doubled::{self, Figures, HORIZON, OPENING_MONEY, PERSONS};
+use crate::doubled::{self, Figures, World, HORIZON};
 use crate::runner::error::{RunnerError, Stage};
 use crate::runner::result::{Closing, PeriodReceipts, PeriodResult, PeriodSummary};
 use crate::shocks::{Lasts, Places, Shock, ShockBook, ShockError};
-use crate::{Kind, Place, Workplace, WorldError};
+use crate::{Kind, OpeningPush, Place, Pushed, Workplace, WorldError};
 use babylon_material_circuit::{
     self as engine, CircuitAccounting, LaborCapacityRow, MaterialCatalog, MaterialCircuitError,
     MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MonetaryCircuit,
-    SiteId, StaffingMemberReceipt, StaffingPoolBinding, StaffingState, StaffingWorkRequest,
+    SiteId, StaffingError, StaffingMemberReceipt, StaffingMemberState, StaffingPoolBinding,
+    StaffingState, StaffingWorkRequest,
 };
 
 /// What one successful period hands back to the runner.
@@ -16,22 +17,37 @@ struct Stepped {
     result: PeriodResult,
     state: MaterialCircuitState,
     staffing: StaffingState,
+    members: Vec<Vec<StaffingMemberState>>,
 }
 
 /// What the staffing of one period decided.
 struct Staffed {
     labor: Vec<LaborCapacityRow>,
+    member_labor: Vec<MemberLaborCapacityRow>,
     members: Vec<StaffingMemberReceipt>,
+    kept: Vec<Vec<StaffingMemberState>>,
     staffing: StaffingState,
     employed: [u64; 8],
     reserve: [u64; 8],
+    asked: [u64; 8],
+}
+
+/// What the world held when it opened: the runner refuses a period that does not keep it.
+struct Opening {
+    money: i128,
+    persons: u64,
+    /// Each place's people, by `Workplace::index`: the persons of its workers.
+    workers: [u64; 8],
 }
 
 /// The doubled world, stepped one period at a time. The runner keeps every period's result and
 /// never the state; a refusal stops it, and starting over is a new runner.
 pub struct Runner {
+    world: World,
+    opening: Opening,
     state: MaterialCircuitState,
     staffing: StaffingState,
+    members: Vec<Vec<StaffingMemberState>>,
     bindings: Vec<StaffingPoolBinding>,
     catalogs: Vec<(Figures, MaterialCatalog)>,
     book: ShockBook,
@@ -40,24 +56,70 @@ pub struct Runner {
 }
 
 impl Runner {
-    /// The doubled world at its opening.
+    /// The scene's world at its opening.
     ///
     /// # Errors
-    /// `RunnerError::World` when the engine refuses the opening.
+    /// As `open_world`.
     pub fn open() -> Result<Self, RunnerError> {
-        let state = doubled::opening_state()?;
-        let (bindings, staffing) = doubled::staffing()?;
+        Self::open_world(&World::scene())
+    }
+
+    /// The world at its opening. A pushed power cut is struck in the book from period 1, until started over.
+    /// The opening's money, persons and each place's people are measured here and checked after every period.
+    /// The runner keeps the world (each period's catalog is built from it) and every pool's members.
+    ///
+    /// # Errors
+    /// `RunnerError::World` when the world or the engine refuses the opening.
+    pub fn open_world(world: &World) -> Result<Self, RunnerError> {
+        let state = doubled::opening_state_of(world)?;
+        let (bindings, staffing) = doubled::staffing_of(world)?;
+        let members = doubled::members_of(world)?;
+        let opening = measure(world, &state)?;
+        let mut book = ShockBook::default();
+        if let Some(Pushed {
+            push: OpeningPush::PowerCut,
+            places,
+        }) = world.pushed
+        {
+            book.strike(Shock::PowerCut, places, Lasts::UntilLifted, state.period)?;
+        }
         let mut runner = Self {
+            world: world.clone(),
+            opening,
             state,
             staffing,
+            members,
             bindings,
             catalogs: Vec::new(),
-            book: ShockBook::default(),
+            book,
             history: Vec::new(),
             stopped: None,
         };
-        runner.ensure_catalog(&Figures::OPENING)?;
+        let figures = runner.book.figures(runner.state.period);
+        runner.ensure_catalog(&figures)?;
         Ok(runner)
+    }
+
+    /// The world the runner opened.
+    #[must_use]
+    pub const fn world(&self) -> &World {
+        &self.world
+    }
+
+    /// The state after the last step: the opening of the next period.
+    #[must_use]
+    pub const fn state(&self) -> &MaterialCircuitState {
+        &self.state
+    }
+
+    /// The catalog the last step closed under; `None` before the first step.
+    #[must_use]
+    pub fn catalog(&self) -> Option<&MaterialCatalog> {
+        let figures = self.history.last()?.figures;
+        self.catalogs
+            .iter()
+            .find(|(known, _)| *known == figures)
+            .map(|(_, catalog)| catalog)
     }
 
     /// The period the next step closes.
@@ -91,6 +153,7 @@ impl Runner {
             Ok(stepped) => {
                 self.state = stepped.state;
                 self.staffing = stepped.staffing;
+                self.members = stepped.members;
                 self.history.push(stepped.result);
                 self.history.last().ok_or(RunnerError::Stopped)
             }
@@ -132,7 +195,8 @@ impl Runner {
 
     fn ensure_catalog(&mut self, figures: &Figures) -> Result<(), WorldError> {
         if !self.catalogs.iter().any(|(known, _)| known == figures) {
-            self.catalogs.push((*figures, doubled::catalog(figures)?));
+            self.catalogs
+                .push((*figures, doubled::catalog_of(&self.world, figures)?));
         }
         Ok(())
     }
@@ -156,23 +220,18 @@ impl Runner {
         let requests = closed
             .staffing_requests(catalog, &self.bindings)
             .map_err(|error| engine_error(period, Stage::StaffingRequests, error))?;
-        let staffed = staff(period, &self.staffing, &requests)?;
-        let member_labor = staffed
-            .labor
-            .iter()
-            .map(|row| {
-                Ok(MemberLaborCapacityRow {
-                    member_id: site_workplace(row.site_id)?.member_id(),
-                    period: row.period,
-                    available_hours: row.available,
-                })
-            })
-            .collect::<Result<Vec<_>, RunnerError>>()?;
+        let staffed = staff(period, &self.staffing, &self.members, &requests)?;
         let transition = closed
-            .finish_with_staffing(catalog, staffed.labor, member_labor, &staffed.members)
+            .finish_with_staffing(
+                catalog,
+                staffed.labor,
+                staffed.member_labor,
+                &staffed.members,
+            )
             .map_err(|error| engine_error(period, Stage::Finish, error))?;
         check_conserved(
             period,
+            &self.opening,
             &transition.state,
             &staffed.employed,
             &staffed.reserve,
@@ -193,12 +252,14 @@ impl Runner {
             closing,
             summary,
             state_digest,
+            asked: staffed.asked,
             receipts: take_receipts(&transition),
         };
         Ok(Stepped {
             result,
             state: transition.state,
             staffing: staffed.staffing,
+            members: staffed.kept,
         })
     }
 }
@@ -219,10 +280,11 @@ fn site_workplace(site: SiteId) -> Result<Workplace, RunnerError> {
     })
 }
 
-/// Advance the staffing, then give each pool's one member its share.
+/// Advance the staffing, then share each pool's receipt over its members, who are kept.
 fn staff(
     period: u64,
     staffing: &StaffingState,
+    members: &[Vec<StaffingMemberState>],
     requests: &[StaffingWorkRequest],
 ) -> Result<Staffed, RunnerError> {
     let transition =
@@ -231,30 +293,116 @@ fn staff(
             stage: Stage::AdvanceStaffing,
             error,
         })?;
-    let mut members = Vec::new();
+    let distribution = |error: StaffingError| RunnerError::Staffing {
+        period,
+        stage: Stage::DistributeMembers,
+        error,
+    };
+    let mut shares = Vec::new();
+    let mut kept = vec![Vec::new(); members.len()];
     let mut employed = [0; 8];
     let mut reserve = [0; 8];
     for receipt in transition.receipts() {
         let workplace = site_workplace(receipt.binding().site_id())?;
-        let state = doubled::member(workplace, receipt.opening_employed())?;
-        let shares = engine::distribute_staffing_members(receipt, &[state]).map_err(|error| {
-            RunnerError::Staffing {
-                period,
-                stage: Stage::DistributeMembers,
-                error,
-            }
-        })?;
-        members.extend(shares);
+        let pool = members
+            .get(workplace.index())
+            .ok_or(RunnerError::World(WorldError::Arithmetic))?;
+        let rows = engine::distribute_staffing_members(receipt, pool).map_err(distribution)?;
+        let next = rows
+            .iter()
+            .map(|row| next_member(workplace, row))
+            .collect::<Result<Vec<_>, StaffingError>>()
+            .map_err(distribution)?;
+        if let Some(slot) = kept.get_mut(workplace.index()) {
+            *slot = next;
+        }
+        shares.extend(rows);
         employed[workplace.index()] = receipt.closing_employed();
         reserve[workplace.index()] = receipt.closing_reserve();
     }
     let labor = transition.next_labor().to_vec();
+    let member_labor = member_labor_rows(&labor, &kept)?;
+    let asked = hours_asked(requests)?;
     Ok(Staffed {
         labor,
-        members,
+        member_labor,
+        members: shares,
+        kept,
         staffing: transition.into_state(),
         employed,
         reserve,
+        asked,
+    })
+}
+
+/// A member after its share: the same member with its closing persons. A pair member holds nobody on
+/// this path.
+fn next_member(
+    workplace: Workplace,
+    row: &StaffingMemberReceipt,
+) -> Result<StaffingMemberState, StaffingError> {
+    let own = row.member.member_id() == workplace.member_id();
+    if !own && (row.closing_employed != 0 || row.closing_reserve != 0) {
+        return Err(StaffingError::PopulationInvariant);
+    }
+    StaffingMemberState::try_new(
+        row.member.clone(),
+        row.closing_employed,
+        row.closing_reserve,
+    )
+}
+
+/// One row of hours for each member: the pool's for its own member, none for a pair member.
+fn member_labor_rows(
+    labor: &[LaborCapacityRow],
+    kept: &[Vec<StaffingMemberState>],
+) -> Result<Vec<MemberLaborCapacityRow>, RunnerError> {
+    let mut rows = Vec::new();
+    for row in labor {
+        let workplace = site_workplace(row.site_id)?;
+        let pool = kept
+            .get(workplace.index())
+            .ok_or(RunnerError::World(WorldError::Arithmetic))?;
+        for member in pool {
+            let own = member.binding().member_id() == workplace.member_id();
+            rows.push(MemberLaborCapacityRow {
+                member_id: member.binding().member_id(),
+                period: row.period,
+                available_hours: if own { row.available } else { 0 },
+            });
+        }
+    }
+    Ok(rows)
+}
+
+/// Hours asked of staffing, by workplace: the sum over the period's requests.
+fn hours_asked(requests: &[StaffingWorkRequest]) -> Result<[u64; 8], RunnerError> {
+    let mut asked = [0_u64; 8];
+    for request in requests {
+        add_to(
+            &mut asked,
+            site_workplace(request.site_id())?,
+            request.hours(),
+        )?;
+    }
+    Ok(asked)
+}
+
+/// What the world holds at its opening: money, cohort persons and each place's people.
+fn measure(world: &World, state: &MaterialCircuitState) -> Result<Opening, RunnerError> {
+    let money = monetary(state.period, state)?
+        .book
+        .total_cash_and_reserves()
+        .map_err(|error| engine_error(state.period, Stage::Read, error.into()))?
+        .micro_units();
+    let mut workers = [0_u64; 8];
+    for workplace in Workplace::ALL {
+        workers[workplace.index()] = world.persons(workplace.workers());
+    }
+    Ok(Opening {
+        money,
+        persons: cohort_persons(state, state.period)?,
+        workers,
     })
 }
 
@@ -285,6 +433,7 @@ fn cohort_persons(state: &MaterialCircuitState, period: u64) -> Result<u64, Runn
 /// Money and persons are the opening's, or the period is refused.
 fn check_conserved(
     period: u64,
+    opening: &Opening,
     next: &MaterialCircuitState,
     employed: &[u64; 8],
     reserve: &[u64; 8],
@@ -294,18 +443,18 @@ fn check_conserved(
         .total_cash_and_reserves()
         .map_err(|error| engine_error(period, Stage::Read, error.into()))?
         .micro_units();
-    if money != OPENING_MONEY {
+    if money != opening.money {
         return Err(RunnerError::MoneyNotConserved {
             period,
-            opening: OPENING_MONEY,
+            opening: opening.money,
             closing: money,
         });
     }
     let persons = cohort_persons(next, period)?;
-    if persons != PERSONS {
+    if persons != opening.persons {
         return Err(RunnerError::PersonsNotConserved {
             period,
-            opening: PERSONS,
+            opening: opening.persons,
             closing: persons,
         });
     }
@@ -314,7 +463,7 @@ fn check_conserved(
         let pool = employed[i]
             .checked_add(reserve[i])
             .ok_or(RunnerError::World(WorldError::Arithmetic))?;
-        let workers = workplace.workers().opening_persons();
+        let workers = opening.workers[i];
         if pool != workers {
             return Err(RunnerError::PersonsNotConserved {
                 period,
@@ -456,6 +605,8 @@ fn take_receipts(transition: &MaterialCircuitTransition) -> PeriodReceipts {
         procurement: transition.procurement.clone(),
         household_demand: transition.household_demand.clone(),
         household_consumption: transition.household_consumption.clone(),
+        household_wants: transition.household_wants.clone(),
+        household_tiers: transition.household_tiers.clone(),
         money_transfers: transition.money_transfers.clone(),
         wage_accruals: transition.wage_accruals.clone(),
         taxes: transition.taxes.clone(),

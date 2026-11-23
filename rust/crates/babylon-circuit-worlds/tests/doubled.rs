@@ -279,12 +279,21 @@ fn check_stocks_and_hours(state: &MaterialCircuitState) -> TestResult {
 }
 
 fn check_employment_and_taxes(circuit: &MonetaryCircuit) -> TestResult {
-    assert_eq!(circuit.employment.len(), 8);
-    for row in &circuit.employment {
+    assert_eq!(circuit.employment.len(), 32);
+    let (own, pairs) = circuit.employment.split_at(8);
+    for row in own {
         assert_eq!(row.compensation, LaborCompensation::Wage(dollars(10)));
         let w = Workplace::from_site(row.site_id).ok_or("unknown site")?;
         assert_eq!(row.payee, w.workers().principal());
         assert_eq!(row.member_id, w.member_id());
+    }
+    let expected: Vec<_> = Workplace::pairs().collect();
+    assert_eq!(pairs.len(), expected.len());
+    for (row, (home, host)) in pairs.iter().zip(expected) {
+        assert_eq!(row.site_id, host.site_id());
+        assert_eq!(row.compensation, LaborCompensation::Wage(dollars(10)));
+        assert_eq!(row.payee, home.workers().principal());
+        assert_eq!(row.member_id, host.pair_member_id(home));
     }
     let financial = &circuit.financial;
     assert_eq!(financial.taxes.len(), 32);

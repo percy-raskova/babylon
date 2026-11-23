@@ -170,6 +170,10 @@ fn read_work(result: &PeriodResult) -> Result<Vec<WorkFlow>, ReadingError> {
             .ok_or_else(|| ReadingError::UnknownParty(format!("{receipt:?}")))?;
         let workplace = Workplace::from_site(receipt.site_id)
             .ok_or_else(|| ReadingError::UnknownParty(format!("{receipt:?}")))?;
+        // A pair member holds nobody until people move: its receipt of no hours is no flow.
+        if household != workplace.workers() && receipt.attended_hours == 0 {
+            continue;
+        }
         let given = receipt
             .production_hours
             .checked_add(receipt.handling_hours)

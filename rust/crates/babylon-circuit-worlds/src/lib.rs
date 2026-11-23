@@ -10,6 +10,7 @@ pub mod ids;
 pub mod runner;
 pub mod shocks;
 
+pub use doubled::{Economy, OpeningPush, Pushed, Scale, World};
 pub use error::WorldError;
 pub use ids::{
     corridor, fund, goods_unit, hours_unit, location, route, treasury, Good, Household, Kind,

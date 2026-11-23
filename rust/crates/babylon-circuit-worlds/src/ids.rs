@@ -68,10 +68,10 @@ impl Kind {
     }
 }
 
-/// An identity byte from a small index of the world (at most 24).
+/// An identity byte from a small index of the world (at most 127).
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "every index of this world is below 25, and a const fn cannot use try_from"
+    reason = "every index of this world is below 128, and a const fn cannot use try_from"
 )]
 const fn byte(index: usize) -> u8 {
     index as u8
@@ -170,6 +170,27 @@ impl Workplace {
     #[must_use]
     pub const fn workers(self) -> Household {
         Household::Workers(self)
+    }
+
+    /// The member of `home`'s household at this workplace: the workplace's own member when `home` is it, else
+    /// byte `0x40 + 8 x home.index() + self.index()` (the prototype's `lend_member`).
+    #[must_use]
+    pub const fn pair_member_id(self, home: Workplace) -> StaffingMemberId {
+        if home.index() == self.index() {
+            self.member_id()
+        } else {
+            StaffingMemberId::from_bytes(bytes(byte(0x40 + 8 * home.index() + self.index())))
+        }
+    }
+
+    /// Every ordered pair `(home, host)` of two workplaces of one place, home first by index.
+    pub fn pairs() -> impl Iterator<Item = (Workplace, Workplace)> {
+        Self::ALL.into_iter().flat_map(|home| {
+            Self::ALL
+                .into_iter()
+                .filter(move |host| host.place == home.place && *host != home)
+                .map(move |host| (home, host))
+        })
     }
 
     #[must_use]

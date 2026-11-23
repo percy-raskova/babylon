@@ -1,6 +1,7 @@
 //! The figures of the doubled world that a shock may move, and the ones that never move.
 
-use crate::{Household, Place, WorldError};
+use crate::doubled::world::World;
+use crate::{Place, WorldError};
 
 /// Capacity and corridor rows are written for periods 1 to `HORIZON`.
 pub const HORIZON: u64 = 1_000;
@@ -31,14 +32,15 @@ impl Figures {
     };
 }
 
-/// Persons of one place: the households' opening persons, which are the same in both places.
+/// Persons of one place at the opening, before any push: what its households hold.
 ///
 /// # Errors
 /// `WorldError::Arithmetic` when the sum overflows.
-pub(crate) fn place_persons() -> Result<u64, WorldError> {
-    Household::ALL
-        .iter()
-        .filter(|h| h.place() == Place::A)
-        .try_fold(0_u64, |sum, h| sum.checked_add(h.opening_persons()))
+pub(crate) fn place_persons(world: &World, place: Place) -> Result<u64, WorldError> {
+    world
+        .households()
+        .into_iter()
+        .filter(|h| h.place() == place)
+        .try_fold(0_u64, |sum, h| sum.checked_add(world.persons(h)))
         .ok_or(WorldError::Arithmetic)
 }

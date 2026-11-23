@@ -1,6 +1,6 @@
 //! What a step of the runner refuses with, in words a person can read.
 
-use crate::WorldError;
+use crate::{ShockError, WorldError};
 use babylon_material_circuit::{MaterialCircuitError, StaffingError};
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
@@ -63,6 +63,8 @@ pub enum RunnerError {
     },
     /// The world's own builder refused.
     World(WorldError),
+    /// A shock the world opens with was refused by the book.
+    Shock(ShockError),
     /// The money of the world changed.
     MoneyNotConserved {
         /// The period being closed.
@@ -105,6 +107,7 @@ impl Display for RunnerError {
             ),
             Self::Staffing { period, error, .. } => write!(f, "Period {period}: {error}"),
             Self::World(error) => write!(f, "{error}"),
+            Self::Shock(error) => write!(f, "{error}"),
             Self::MoneyNotConserved {
                 period,
                 opening,
@@ -137,5 +140,11 @@ impl Error for RunnerError {}
 impl From<WorldError> for RunnerError {
     fn from(error: WorldError) -> Self {
         Self::World(error)
+    }
+}
+
+impl From<ShockError> for RunnerError {
+    fn from(error: ShockError) -> Self {
+        Self::Shock(error)
     }
 }

@@ -395,14 +395,18 @@ impl Population {
                 usize::try_from(cohort.persons).map_err(|_| FrameError::Arithmetic)?,
             );
         }
-        let mut at_work = BTreeMap::new();
+        // Every member counts for its own household, at whichever workplace it works.
+        let mut at_work: BTreeMap<Household, usize> = BTreeMap::new();
         for member in &result.members {
-            let w = Workplace::from_site(member.site_id)
-                .ok_or_else(|| missing("a staffing member of no workplace"))?;
+            let h = Household::from_principal(member.member.household_id())
+                .ok_or_else(|| missing("a staffing member of no household"))?;
             let employed =
                 usize::try_from(member.opening_employed).map_err(|_| FrameError::Arithmetic)?;
-            let count = persons.get(&w.workers()).copied().unwrap_or(0);
-            at_work.insert(w.workers(), employed.min(count));
+            let slot = at_work.entry(h).or_insert(0);
+            *slot = slot.checked_add(employed).ok_or(FrameError::Arithmetic)?;
+        }
+        for (h, employed) in &mut at_work {
+            *employed = (*employed).min(persons.get(h).copied().unwrap_or(0));
         }
         Ok(Self { persons, at_work })
     }

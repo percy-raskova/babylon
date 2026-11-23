@@ -13,8 +13,9 @@ use hypergraph_rs::geometry::Positions;
 use hypergraph_rs::geometry::Rect;
 use hypergraph_rs::geometry::SpreadParams;
 
-/// Where each workplace stands across the plane, by `Workplace::index`; y is 0.
-pub const WORKPLACE_X: [f64; 8] = [-11.5, -8.5, -5.5, -2.5, 2.5, 5.5, 8.5, 11.5];
+/// Where each workplace stands across the plane, by `Workplace::index`; y is 0. They stand 2.8
+/// apart: at 3 an owner's outline that held them all ran past the plane's edge.
+pub const WORKPLACE_X: [f64; 8] = [-11.0, -8.2, -5.4, -2.6, 2.6, 5.4, 8.2, 11.0];
 /// The treasury's body.
 pub const TREASURY_AT: Point = (-2.2, 11.2);
 /// The fund's body.
@@ -22,11 +23,15 @@ pub const FUND_AT: Point = (2.2, 11.2);
 /// A particle paid wages by a workplace leans to `(x, WAGE_ANCHOR_Y)`: above it.
 pub const WAGE_ANCHOR_Y: f64 = 3.3;
 /// A particle paid profit by a workplace leans to `(x, PROFIT_ANCHOR_Y)`: below it.
-pub const PROFIT_ANCHOR_Y: f64 = -2.6;
+pub const PROFIT_ANCHOR_Y: f64 = -2.4;
 /// A particle paid benefits by the treasury leans here.
 pub const TREASURY_ANCHOR: Point = (-2.2, 8.3);
 /// A particle paid benefits by the fund leans here.
 pub const FUND_ANCHOR: Point = (2.2, 8.3);
+/// How far a household paid benefits leans to its own place's side, by `Place::index`. The two
+/// places' households are paid alike, so without it they stand on one point and the spread parts
+/// them on a slant; with it Place A's stands left of Place B's, 2 apart.
+pub const BENEFIT_LEAN: [f64; 2] = [-1.0, 1.0];
 /// Where a group paid by nobody this period stands, by `Place::index`.
 pub const HOME: [Point; 2] = [(-7.0, 6.0), (7.0, 6.0)];
 /// The least distance between two groups, and the steps of the spread.
@@ -42,9 +47,11 @@ pub const PERSON_COLUMNS: usize = 4;
 /// The distance between persons of a cluster.
 pub const PERSON_STEP: f64 = 0.45;
 /// `OutlineParams::new(reach, cell, share)` of a workforce, an owner and the fund. An owner's
-/// members stand 3 apart: at a reach of 1.0 its set drew as five separate loops; at 2.2 it is one
-/// outline round its four workplaces.
-pub const OUTLINE: [(f64, f64, f64); 3] = [(1.0, 0.2, 0.92), (2.2, 0.2, 0.92), (1.6, 0.2, 0.92)];
+/// workplaces stand 2.8 apart: at a reach of 1.0 its set drew as five separate loops; at 2.2,
+/// with the workplaces 3 apart, it was one outline with a notch beside its weakest workplace; at
+/// 2.3 the hills overlap, the notch is gone and the outline stays inside the plane. The fund's
+/// reach is 1.3, so that its outline stays clear of the fund's label.
+pub const OUTLINE: [(f64, f64, f64); 3] = [(1.0, 0.2, 0.92), (2.3, 0.2, 0.92), (1.3, 0.2, 0.92)];
 /// The height of a particle.
 pub const PARTICLE_Y: f32 = 0.10;
 /// The height of a mark's ends.
@@ -56,18 +63,23 @@ pub const MONEY_RING_Y: f32 = 0.035;
 /// The height of the outlines of workforces, owners and the fund.
 pub const SET_Y: [f32; 3] = [0.02, 0.04, 0.06];
 
-/// Where a body that paid a household anchors it, or `None` for a payment that places no one.
+/// Where a body that paid a household of `place` anchors it, or `None` for a payment that places
+/// no one.
 ///
-/// Wages lean above the workplace, profit below it, benefits to the treasury or the fund.
+/// Wages lean above the workplace, profit below it, benefits to the treasury or the fund, on the
+/// household's own side of it (`BENEFIT_LEAN`).
 #[must_use]
-pub fn anchor(kind: PaymentKind, payer: Party) -> Option<Point> {
+pub fn anchor(kind: PaymentKind, payer: Party, place: Place) -> Option<Point> {
+    let lean = BENEFIT_LEAN[place.index()];
     match (kind, payer) {
         (PaymentKind::Wages, Party::Workplace(w)) => Some((WORKPLACE_X[w.index()], WAGE_ANCHOR_Y)),
         (PaymentKind::Profit, Party::Workplace(w)) => {
             Some((WORKPLACE_X[w.index()], PROFIT_ANCHOR_Y))
         }
-        (PaymentKind::Benefits, Party::Treasury) => Some(TREASURY_ANCHOR),
-        (PaymentKind::Benefits, Party::Fund) => Some(FUND_ANCHOR),
+        (PaymentKind::Benefits, Party::Treasury) => {
+            Some((TREASURY_ANCHOR.0 + lean, TREASURY_ANCHOR.1))
+        }
+        (PaymentKind::Benefits, Party::Fund) => Some((FUND_ANCHOR.0 + lean, FUND_ANCHOR.1)),
         _ => None,
     }
 }
@@ -147,14 +159,18 @@ mod tests {
 
     #[test]
     fn wages_lean_above_a_workplace_and_profit_below_it() {
-        let wage = anchor(PaymentKind::Wages, Party::Workplace(CLINIC_A));
-        let profit = anchor(PaymentKind::Profit, Party::Workplace(CLINIC_A));
-        assert_eq!(wage, Some((-5.5, 3.3)));
-        assert_eq!(profit, Some((-5.5, -2.6)));
-        assert_eq!(anchor(PaymentKind::Purchases, Party::Fund), None);
+        let wage = anchor(PaymentKind::Wages, Party::Workplace(CLINIC_A), Place::A);
+        let profit = anchor(PaymentKind::Profit, Party::Workplace(CLINIC_A), Place::B);
+        assert_eq!(wage, Some((-5.4, 3.3)));
+        assert_eq!(profit, Some((-5.4, -2.4)));
+        assert_eq!(anchor(PaymentKind::Purchases, Party::Fund, Place::A), None);
         assert_eq!(
-            anchor(PaymentKind::Benefits, Party::Treasury),
-            Some(TREASURY_ANCHOR)
+            anchor(PaymentKind::Benefits, Party::Treasury, Place::A),
+            Some((-3.2, 8.3))
+        );
+        assert_eq!(
+            anchor(PaymentKind::Benefits, Party::Fund, Place::B),
+            Some((3.2, 8.3))
         );
     }
 

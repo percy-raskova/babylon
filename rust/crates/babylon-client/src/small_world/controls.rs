@@ -6,8 +6,8 @@ use super::frame::BodyPicture;
 use super::reading::Party;
 use super::scene;
 use super::scene::{
-    SceneCamera, SceneCommand, SceneRunner, SceneShown, SceneStatus, BAR_HEIGHT, HEADER_HEIGHT,
-    RAIL_WIDTH,
+    OpeningPeriod, SceneCamera, SceneCommand, SceneRunner, SceneShown, SceneStatus, BAR_HEIGHT,
+    HEADER_HEIGHT, RAIL_WIDTH,
 };
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_theme as theme;
@@ -353,14 +353,17 @@ pub fn paint_banner(
     }
 }
 
-/// "Nothing has run yet" stands in the middle of the viewport until a period is shown.
+/// "Nothing has run yet" stands in the middle of the viewport until a period is shown. It is
+/// left out while the scene is about to show its opening period by itself.
 pub fn paint_empty_line(
     mut commands: Commands,
     runner: Res<SceneRunner>,
+    opening: Option<Res<OpeningPeriod>>,
     line: Query<Entity, With<EmptyLine>>,
 ) {
     let existing = line.iter().next();
-    match (runner.shown.is_none(), existing) {
+    let waits = runner.shown.is_none() && !opening.is_some_and(|opening| opening.pending);
+    match (waits, existing) {
         (true, None) => {
             commands.spawn((
                 EmptyLine,

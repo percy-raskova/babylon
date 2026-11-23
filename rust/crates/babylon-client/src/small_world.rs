@@ -11,5 +11,7 @@ pub mod table;
 pub use reading::{
     read_period, GoodsMove, Party, Payment, PaymentKind, PeriodReading, ReadingError, WorkFlow,
 };
-pub use scene::{install_scene, SceneCommand, SceneRunner, SceneStatus, SmallWorldPlugin};
+pub use scene::{
+    install_scene, open_on_first_period, SceneCommand, SceneRunner, SceneStatus, SmallWorldPlugin,
+};
 pub use table::{table, Grouping, Table, TableRow, NOT_MEASURED};

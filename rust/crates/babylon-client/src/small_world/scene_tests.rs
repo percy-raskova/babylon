@@ -4,7 +4,7 @@ use super::{
     ShowPeriod, SurfaceId, VisualAssetsPlugin,
 };
 use crate::small_world::controls::{
-    BodyLabel, SceneButton, COPIES_LINE, EMPTY_LINE, NOT_WAYNE_LINE, UNFOGGED_LINE,
+    BodyLabel, EmptyLine, SceneButton, COPIES_LINE, EMPTY_LINE, NOT_WAYNE_LINE, UNFOGGED_LINE,
 };
 use crate::small_world::scene;
 use bevy::asset::AssetPlugin;
@@ -200,7 +200,7 @@ fn start_over_rebuilds_the_opening() -> TestResult {
 }
 
 #[test]
-fn play_steps_on_its_timer() -> TestResult {
+fn play_steps_at_once_and_then_on_its_timer() -> TestResult {
     let mut app = scene_app(None)?;
     app.update();
     let begun = app.world().resource::<Time>().elapsed();
@@ -216,16 +216,63 @@ fn play_steps_on_its_timer() -> TestResult {
             app.update();
         }
     };
-    reach(&mut app, 3.49);
-    assert_eq!(history(&app), 0);
-    reach(&mut app, 3.5);
+    reach(&mut app, 0.01);
     assert_eq!(history(&app), 1);
-    reach(&mut app, 7.0);
+    reach(&mut app, 3.49);
+    assert_eq!(history(&app), 1);
+    reach(&mut app, 3.5);
     assert_eq!(history(&app), 2);
+    reach(&mut app, 7.0);
+    assert_eq!(history(&app), 3);
     send(&mut app, SceneCommand::Pause);
     reach(&mut app, 14.0);
-    assert_eq!(history(&app), 2);
+    assert_eq!(history(&app), 3);
     assert!(!app.world().resource::<SceneStatus>().playing);
+    Ok(())
+}
+
+#[test]
+fn the_window_can_open_on_its_first_period() -> TestResult {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        ImagePlugin::default(),
+        TextPlugin,
+        TexturePlugin,
+        bevy::picking::PickingPlugin,
+    ))
+    .init_asset::<Mesh>()
+    .init_asset::<StandardMaterial>()
+    .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+        10,
+    )));
+    scene::install_scene(&mut app, None)?;
+    scene::open_on_first_period(&mut app);
+    app.finish();
+    app.cleanup();
+    let lines = |app: &mut App| {
+        app.world_mut()
+            .query_filtered::<Entity, With<EmptyLine>>()
+            .iter(app.world())
+            .count()
+    };
+    // Half a second in: nothing has run, and the scene does not say "press Step".
+    updates(&mut app, 50);
+    assert_eq!(history(&app), 0);
+    assert_eq!(lines(&mut app), 0);
+    // After `OPENING_DELAY` the first period is shown, once, and the scene is not playing.
+    updates(&mut app, 110);
+    assert_eq!(history(&app), 1);
+    assert_eq!(app.world().resource::<FlowReport>().period, Some(1));
+    assert!(!app.world().resource::<SceneStatus>().playing);
+    updates(&mut app, 400);
+    assert_eq!(history(&app), 1);
+    // A run started over waits for the player's first step, and says so.
+    send(&mut app, SceneCommand::StartOver);
+    updates(&mut app, 200);
+    assert_eq!(history(&app), 0);
+    assert_eq!(lines(&mut app), 1);
     Ok(())
 }
 

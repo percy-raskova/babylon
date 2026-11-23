@@ -178,7 +178,11 @@ fn build_small_world(app: &mut App, script: Option<PathBuf>) -> Result<(), Strin
     );
     install_window_camera_coherence(app);
     log::info!("babylon-client starting (small world)");
+    let scripted = script.is_some();
     crate::small_world::install_scene(app, script)?;
+    if !scripted {
+        crate::small_world::open_on_first_period(app);
+    }
     Ok(())
 }
 

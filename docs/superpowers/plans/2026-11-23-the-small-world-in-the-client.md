@@ -647,19 +647,21 @@ shown appeared only in its last beat, so the first marks flew to places where no
 
 ```rust
 // src/small_world/layout.rs: every number of the scene's plane. Plan units; the scene is plan_to_scene(p, h).
-pub const WORKPLACE_X: [f64; 8] = [-11.5, -8.5, -5.5, -2.5, 2.5, 5.5, 8.5, 11.5];   // by Workplace::index, y 0
+pub const WORKPLACE_X: [f64; 8] = [-11.0, -8.2, -5.4, -2.6, 2.6, 5.4, 8.2, 11.0];   // by Workplace::index, y 0
 pub const TREASURY_AT: Point = (-2.2, 11.2);  pub const FUND_AT: Point = (2.2, 11.2);
 pub const WAGE_ANCHOR_Y: f64 = 3.3;      // a particle paid wages by a workplace leans to (x, 3.3): above it
-pub const PROFIT_ANCHOR_Y: f64 = -2.6;   // a particle paid profit by a workplace leans to (x, -2.6): below it
+pub const PROFIT_ANCHOR_Y: f64 = -2.4;   // a particle paid profit by a workplace leans to (x, -2.4): below it
 pub const TREASURY_ANCHOR: Point = (-2.2, 8.3); pub const FUND_ANCHOR: Point = (2.2, 8.3);
+pub const BENEFIT_LEAN: [f64; 2] = [-1.0, 1.0];   // a household paid benefits leans to its own place's side
 pub const HOME: [Point; 2] = [(-7.0, 6.0), (7.0, 6.0)];   // where a group paid by nobody this period stands
 pub const GROUP_SPREAD: (f64, u32) = (1.6, 8);  pub const PERSON_SPREAD: (f64, u32) = (0.4, 8); // min distance, steps
 pub const SPREAD_BOUNDS: Rect = (-12.8, -4.2, 12.8, 12.6);
 pub const PLANE: Rect = (-13.2, -4.6, 13.2, 13.1);   // what the view is fitted to: 26.4 wide, 17.7 deep
 pub const PERSON_COLUMNS: usize = 4;  pub const PERSON_STEP: f64 = 0.45;   // a cluster of persons, rows going +y
-// OutlineParams::new(reach, cell, share) of a workforce, an owner, the fund. An owner's members stand 3 apart:
-// at a reach of 1.0 its set drew as five separate loops; at 2.2 it is one outline round its four workplaces.
-pub const OUTLINE: [(f64, f64, f64); 3] = [(1.0, 0.2, 0.92), (2.2, 0.2, 0.92), (1.6, 0.2, 0.92)];
+// OutlineParams::new(reach, cell, share) of a workforce, an owner, the fund. An owner's workplaces stand 2.8
+// apart: at a reach of 1.0 its set drew as five separate loops; at 2.3 it is one outline with no notch, inside
+// the plane. The fund's reach is 1.3, clear of the fund's label.
+pub const OUTLINE: [(f64, f64, f64); 3] = [(1.0, 0.2, 0.92), (2.3, 0.2, 0.92), (1.3, 0.2, 0.92)];
 pub const PARTICLE_Y: f32 = 0.10; pub const MARK_Y: f32 = 0.15; pub const HOURS_RING_Y: f32 = 0.03;
 pub const MONEY_RING_Y: f32 = 0.035; pub const SET_Y: [f32; 3] = [0.02, 0.04, 0.06]; // workforces, owners, fund
 // src/small_world/frame.rs
@@ -735,9 +737,9 @@ pub const HOURS_PER_MARK: u64 = 2; pub const UNITS_PER_MARK: u64 = 4; pub const 
 
 - [ ] **Step 1: Write the failing tests** (quiet period 1, Groups, unless named):
   - `the_quiet_period_stands_by_its_ties`: 12 particles; each worker group at `(WORKPLACE_X[i], 3.3)`, style 3 for
-    the two groups of 12 and style 0 for the six of 4; owner A at (-7.3, -2.6) and owner B at (6.7, -2.6) (profit
-    192 / 96 / 256 / 96 a place), style 2; the two supported groups (style 2), who share their ties, stand apart
-    (the distance pinned from the first run) with their midpoint at (1.1, 8.3) within 1e-9; `at` is
+    the two groups of 12 and style 0 for the six of 4; owner A at (-7.08, -2.4) and owner B at (6.52, -2.4)
+    (profit 192 / 96 / 256 / 96 a place), style 2; the two supported groups (style 2) stand side by side, Place
+    A's left of Place B's, 2.0 apart, with their midpoint at (1.1, 8.3) within 1e-9; `at` is
     `plan_to_scene(p, 0.10)`.
   - `an_owner_s_set_is_one_outline`: each owner's `SetFrame` has an outline of exactly one closed path that holds
     the plan points of its household and of its four workplaces (the fault the first numbers had: five loops).
@@ -845,11 +847,12 @@ const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not me
    `Runner`; a step builds the picture and writes `ShowPeriod`), `.before(FieldSystems::Install)`; `SceneSet::Paint`
    (labels, rings, panels) `.after(FieldSystems::Animate)`.
 5. **Commands.** `Step`: `runner.step()`, then `build_picture` and `ShowPeriod`; `status_after` sets `refusal` to
-   the error's `Display` and stops play. `Play` steps every `PLAY_INTERVAL` of `Time` (three beats of 1 s and half a
-   second at rest) until `Pause` or a refusal. `Again` writes `ReplayPeriod`. `StartOver` replaces the runner with
-   `Runner::open()`, clears `refusal`, despawns nothing of the library's (the next `ShowPeriod` replaces it) and
-   shows no period until the next step. A frame the library refuses (`FrameRefused`) is shown as the refusal too, in
-   its own words, and stops play. `Particles` and `Marks` (Task 8) rebuild the shown period's picture.
+   the error's `Display` and stops play. `Play` shows the next period at once and then one every
+   `PLAY_INTERVAL` of `Time` (three beats of 1 s and half a second at rest) until `Pause` or a refusal. `Again`
+   writes `ReplayPeriod`. `StartOver` replaces the runner with `Runner::open()`, clears `refusal`, despawns nothing
+   of the library's (the next `ShowPeriod` replaces it) and shows no period until the next step. A frame the
+   library refuses (`FrameRefused`) is shown as the refusal too, in its own words, and stops play. `Particles` and
+   `Marks` (Task 8) rebuild the shown period's picture.
 6. **Camera and bodies.** One `Camera3d`, order 0, no `RenderLayers` (layer 0, where the library's entities are),
    looking straight down with no perspective: `Transform::from_translation(m + Vec3::Y * 40.0).looking_at(m,
    Vec3::NEG_Z)`, `m` the middle of `PLANE` in the scene, and `Projection::Orthographic` with
@@ -911,7 +914,9 @@ const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not me
     period 1); `a_step_shows_the_next_period`
     (one `Step`, 3 updates: history 1, `FlowReport.period` `Some(1)`); `again_replays_without_stepping`;
     `start_over_rebuilds_the_opening` (3 steps and a strike, then `StartOver`: history 0, no strike, next period 1);
-    `play_steps_on_its_timer` (`Play`, advance 3.5 s of manual time: 1 period; 7.0 s: 2; `Pause`: no more);
+    `play_steps_at_once_and_then_on_its_timer` (`Play`: 1 period at once; 3.5 s of manual time on: 2; 7.0 s: 3;
+    `Pause`: no more); `the_window_can_open_on_its_first_period` (with `open_on_first_period`: nothing and no
+    "press Step" line at 0.5 s, period 1 once after 1.5 s, not playing; a run started over waits and says so);
     `a_refusal_is_shown_in_the_engine_s_words` (`status_after(&Err(RunnerError::PastHorizon { period: 999 }))` has
     `refusal` "Period 999: this test economy is built for 998 periods" and `playing` false);
     `the_unfogged_words_are_on_screen` (the header's two `Text`s read exactly as decision 7 has them);
@@ -1154,8 +1159,31 @@ What changed, in Tasks 5, 6 and 7 above:
 8. The library showed the first period's dots only in its last beat. That is mended there before this scene pins
    it.
 
-Left to the look after Task 7: whether the scene plays its first period by itself when it opens, and the final
-numbers. The mock's source and its captures are kept in the lead's session folder, not in the repository.
+The mock's source and its captures are kept in the lead's session folder, not in the repository.
+
+### The second look, at the real window (after Task 7)
+
+The lead ran the real client with `--small-world`, captured its window in each beat and in the People view, and put
+the captures beside the mock's. The scene matched the mock in its parts and its sizes. What was changed by eye, in
+the commit after Task 7's:
+
+- **The households the fund pays stand side by side.** Both places' supported households are paid alike, so they
+  stood on one point, the spread parted them on a slant, and their outline covered the fund's label. A household
+  paid benefits now leans 1.0 to its own place's side (`BENEFIT_LEAN`), and the fund's outline has a reach of 1.3.
+- **An owner's outline had a notch** beside its weakest workplace, and at a larger reach it ran past the plane's
+  edge. The workplaces now stand 2.8 apart (`WORKPLACE_X`), the owner's reach is 2.3 and profit leans to y -2.4.
+- **Play shows the next period at once,** then one every `PLAY_INTERVAL`. Before, a press of Play showed nothing
+  for 3.5 s.
+- **The window opens on its first period.** `open_on_first_period` shows period 1 once, 1.5 s after the scene
+  opens (`OPENING_DELAY`). In its first moments a window draws nothing of the plane, and a period begun at once
+  lost its first beat. The line "Nothing has run yet" is left out while that period is pending. A run started over
+  waits for the player's step, as before. A scripted run (`--small-world-script`) opens on nothing: its script
+  starts the run.
+- **Accepted as built:** the header's padding is 16 across and 2 down (16 all round does not hold two lines in 48
+  px); a frame the library refuses reads "Period {p}: the picture was refused: {error}".
+- **For Task 8:** the scene's command handler has an arm that does nothing for `Particles`, `Marks`, `Strike`,
+  `Lift`, `Grouping` and `TablePeriod`; Task 8 fills it. The right 400 px of the window stay empty until Task 8's
+  rail. The lead looks again when the rail and the controls are in, before the six rules get their switches.
 
 The Director saw the mock's pictures that morning and answered three questions (ADR320, S2, S8 and S9): the look
 is the one to build; the scene opens on household groups; and after this plan the six rules of the closest form

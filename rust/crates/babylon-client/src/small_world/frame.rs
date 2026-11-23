@@ -432,7 +432,7 @@ fn paid_by(reading: &PeriodReading) -> (Paid, Paid) {
         let Party::Household(h) = payment.payee else {
             continue;
         };
-        let Some(at) = layout::anchor(payment.kind, payment.payer) else {
+        let Some(at) = layout::anchor(payment.kind, payment.payer, h.place()) else {
             continue;
         };
         let weight = dollars_f64(payment.amount);
@@ -1022,11 +1022,11 @@ mod tests {
             let style = if w.kind == Kind::Utility { 3 } else { 0 };
             assert_eq!(p.style, style, "{w:?}");
         }
-        for (place, x) in [(Place::A, -7.3), (Place::B, 6.7)] {
+        for (place, x) in [(Place::A, -7.08), (Place::B, 6.52)] {
             let owner = particle_of(&picture, &household_id(Household::Owner(place)))?;
             assert!(near(
                 owner.at,
-                hypergraph_rs_bevy::plan_to_scene((x, -2.6), 0.10)
+                hypergraph_rs_bevy::plan_to_scene((x, -2.4), 0.10)
             ));
             assert_eq!(owner.style, 2);
         }
@@ -1043,6 +1043,8 @@ mod tests {
         assert!((f64::midpoint(pa.1, pb.1) - 8.3).abs() < 1e-9);
         let apart = (pa.0 - pb.0).hypot(pa.1 - pb.1);
         assert!((apart - SUPPORTED_APART).abs() < 1e-9, "apart {apart}");
+        assert!(pa.0 < pb.0, "Place A's stands left of Place B's");
+        assert!((pa.1 - pb.1).abs() < 1e-9, "side by side");
         for p in &picture.frame.particles {
             let at = picture.positions.get(&p.id).ok_or("a placed particle")?;
             assert_eq!(p.at, hypergraph_rs_bevy::plan_to_scene(at, 0.10));
@@ -1050,8 +1052,8 @@ mod tests {
         Ok(())
     }
 
-    /// The distance the two supported groups part to, from the first run.
-    const SUPPORTED_APART: f64 = 1.6;
+    /// The distance between the two supported groups: twice the lean of a benefit's anchor.
+    const SUPPORTED_APART: f64 = 2.0;
 
     #[test]
     fn an_owner_s_set_is_one_outline() -> TestResult {

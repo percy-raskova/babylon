@@ -198,6 +198,41 @@ pub fn install_scene(app: &mut App, script: Option<PathBuf>) -> Result<(), Strin
     Ok(())
 }
 
+/// How long the window stands before its first period plays. A window draws nothing of the
+/// plane in its first moments, and a period that began at once would lose its first beat.
+pub const OPENING_DELAY: Duration = Duration::from_millis(1_500);
+
+/// The scene is about to show its first period by itself.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OpeningPeriod {
+    /// True until the first period is shown, by the scene or by a step of the player's.
+    pub pending: bool,
+}
+
+/// Show the first period soon after the scene opens, so that its window does not stay on a plane
+/// with nothing in it. `install_scene` leaves this out: a scripted run starts from nothing.
+pub fn open_on_first_period(app: &mut App) {
+    app.insert_resource(OpeningPeriod { pending: true })
+        .add_systems(Update, play_opening_period.in_set(SceneSet::Input));
+}
+
+fn play_opening_period(
+    time: Res<Time>,
+    scene: Res<SceneRunner>,
+    mut opening: ResMut<OpeningPeriod>,
+    mut commands: MessageWriter<SceneCommand>,
+) {
+    if !opening.pending {
+        return;
+    }
+    if !scene.runner.history().is_empty() {
+        opening.pending = false;
+    } else if time.elapsed() >= OPENING_DELAY {
+        opening.pending = false;
+        commands.write(SceneCommand::Step);
+    }
+}
+
 /// The scene's own resources, messages and systems. `install_scene` adds it last, after it
 /// has opened the runner, so it is not added by itself.
 pub struct SmallWorldPlugin {
@@ -441,10 +476,12 @@ impl Stage<'_> {
     fn handle(&mut self, command: SceneCommand) {
         match command {
             SceneCommand::Step => self.step(),
+            // Play shows the next period at once, then one every `PLAY_INTERVAL`.
             SceneCommand::Play => {
-                if self.status.refusal.is_none() {
+                if self.status.refusal.is_none() && !self.status.playing {
                     self.status.playing = true;
                     self.clock.0 = Duration::ZERO;
+                    self.step();
                 }
             }
             SceneCommand::Pause => self.status.playing = false,

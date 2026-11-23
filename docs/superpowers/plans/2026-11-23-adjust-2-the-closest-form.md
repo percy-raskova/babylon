@@ -27,7 +27,8 @@ branch `spike/r10-P` (head 3944ee9f3) and, after Task 0, `spike/closest-ref`. It
 what it computes. It is not the code to ship. Builders read it only with `git show <branch>:<path>`.
 
 **When it is built (ADR320, 23 November 2026).** The Director ruled "screen first": the small world
-runs in the client first, then the bridge is built, then this plan, each rule visible when it lands.
+runs in the client first. Asked what comes after the scene, the Director picked "Rules into the scene
+first": this plan is built next, each rule with its own switch in the scene, and the bridge after it.
 Task 0 may run earlier, whenever the build machine has a free turn, because it changes nothing in the
 repository and its gate decides whether the plan stands.
 

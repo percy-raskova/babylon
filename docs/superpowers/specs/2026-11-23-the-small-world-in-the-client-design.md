@@ -25,7 +25,8 @@ All of it on 23 November 2026, in the question dialog. The labels are the Direct
 for word.
 
 1. **The order: "Screen first".** Then, after the sizing in section 3, the road below changed that
-   order in one point: the bridge moved to second place.
+   order in one point: the bridge moved to second place. Answer 9 changed it again: the rules come
+   before the bridge.
 2. **The first world: "The small world, to poke".** "The test economy as a scene in the client,
    drawn by its ties as a hypergraph, with buttons for the pushes: fail the harvest, cut the
    power."
@@ -41,13 +42,24 @@ for word.
 6. **Sets: "Workforces, owners, the fund".** "Three kinds of real hyperedge, declared with the
    membership values built last week: the people of each workplace with their hours, an owner with
    what they hold, and the households the fund pays with what it pays. Each gets a membrane."
+7. **The look: "Yes, build this".** Asked later the same morning, with a mock of the scene drawn by
+   the real renderer in front of them. It looks straight down; the workplaces stand along the
+   bottom with their rings, their workers above them, each owner below inside one outline round
+   its four workplaces, the treasury and the fund at the top. "The scene is built as in the
+   reworked mock. After its first real window I look again, tune the sizes, and show you before
+   more is built on it."
+8. **It opens on "Household groups".** "Twelve dots, one a household group, larger where the group
+   holds more people. This follows your ruling of 21 November: a particle is a household group."
+9. **After the scene: "Rules into the scene first".** "Build the six rules next, each with its own
+   switch in the scene, so a slump is seen to end on screen. About nine tasks. The bridge to the
+   real game comes after them."
 
-The order of the one build machine that follows from 1 and 3:
+The order of the one build machine that follows from 1, 3 and 9:
 
 - **Now:** the library's Bevy crate is finished; the small world runs in the client.
+- **Then:** the six rules of the closest form, each with its own switch in this scene.
 - **Then:** the bridge (`docs/superpowers/plans/2026-11-20-opening-stage-4b-records.md`).
-- **Then:** the small world moves onto the tick's records; the rules of the closest form land,
-  each one visible in this scene.
+- **Then:** the small world moves onto the tick's records.
 - **Later:** a real saved campaign.
 
 The scene itself is ruled by ADR317 and its design
@@ -250,11 +262,11 @@ library's branch.
 
 ### 6.6 What changes later
 
+- **Next, with the closest form:** each rule is a named switch in the scene, with its own marks: a
+  move of people between workplaces, a workplace that rests, an owner's money going in.
 - **After the bridge:** each step goes through the tick's register. The crimson squares become
   full where hours are recorded, and "stored work got back" is measured. The runner and the entry
   are rebuilt; the frame builder then reads the receipts the stored records carry.
-- **With the closest form:** each rule is a named switch in the scene, with its own marks: a move
-  of people between workplaces, a workplace that rests, an owner's money going in.
 - **Later:** a real saved campaign. How a shock enters a saved campaign is its own design.
 
 ## 7. How we will know it works
@@ -288,7 +300,8 @@ look, within the client's own theme. How the history table pages. The names of t
    scene also has a closer look, by a switch: one dot a person. Eighty dots then stand in their
    membranes, and a layoff is seen as people leaving one. A standing line says what that look is:
    the record counts people; it does not follow a person, and the people of one group share one
-   purse. Both are built. Which one the scene opens on is the Director's to change.
+   purse. Both are built. The Director confirmed that it opens on household groups (section 2,
+   answer 8).
 2. **An owner's set** holds the owner's household and its workplaces, the workplaces with the
    capital the owner has in them.
 3. **Goods are drawn hollow** until the tick's records carry this economy.

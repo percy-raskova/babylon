@@ -30,6 +30,20 @@ ADR320_screen_first_the_small_world_in_the_client:
     - >-
         Director, 2026-11-23, in the question dialog, asked what counts as a
         set in the small world: "Workforces, owners, the fund".
+    - >-
+        Director, 2026-11-23, later that morning, on seeing the hypergraph
+        library's timing example open on the desktop: "man this shit looks
+        bizarre and weird".
+    - >-
+        Director, 2026-11-23, in the question dialog, shown a mock of the
+        scene drawn by the real renderer and asked whether that is the look
+        to build: "Yes, build this".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked which the scene
+        opens on: "Household groups".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked what is built
+        after the scene: "Rules into the scene first".
   context: |
     On 22 November the Director ruled how the test economy is judged (ADR319)
     and picked the next step: plan the build of the closest form, behind a
@@ -54,12 +68,17 @@ ADR320_screen_first_the_small_world_in_the_client:
     done. Every piece of work on the economy names its road to the screen:
     the tick, the stored records, the client's scene.
 
-    S2. THE ORDER OF THE ONE BUILD MACHINE, as the Director picked it after
-    the sizing. Now: the library's Bevy crate is finished, and the small
-    world runs in the client. Then: the bridge (the tick, the stored records
-    and the client learn the new economy; plan stage 4b). Then: the small
-    world moves onto the tick's records, and the rules of the closest form
-    land, each one visible. Later: a real saved campaign.
+    S2. THE ORDER OF THE ONE BUILD MACHINE, as the Director last picked it.
+    Now: the library's Bevy crate is finished, and the small world runs in
+    the client. Then: the six rules of the closest form, each with its own
+    switch in the scene, so that a slump is seen to end on screen. Then: the
+    bridge (the tick, the stored records and the client learn the new
+    economy; plan stage 4b). Then: the small world moves onto the tick's
+    records. Later: a real saved campaign. After the sizing the Director had
+    first put the bridge second and the rules third. Asked later that
+    morning, with the scene's mock in front of them, the Director put the
+    rules before the bridge: the scene runs the engine itself, so a rule is
+    seen in it without the bridge.
 
     S3. THE FIRST WORLD PEOPLE SEE IS THE SMALL TEST ECONOMY, TO POKE. It is
     the doubled world of the measurement rounds: two places, eight
@@ -86,6 +105,18 @@ ADR320_screen_first_the_small_world_in_the_client:
     S7. PLAY IN THE REAL GAME STAYS IN WAYNE. The small world is a scene to
     poke. It says on screen that it is a test economy, no real place, and
     not saved.
+
+    S8. THE LOOK OF THE SCENE. It looks straight down. Eight workplaces stand
+    along the bottom, each with a bone ring for hours and a gold ring for
+    money. Its workers stand above it in a bone outline. Each owner stands
+    below, inside one gold outline that wraps its four workplaces. The
+    treasury and the fund stand at the top. The Director approved this look
+    from a mock drawn by the real renderer. The lead looks again at the real
+    window before more is built on it, and shows the Director.
+
+    S9. THE SCENE OPENS ON HOUSEHOLD GROUPS, as ADR317's ruling 4 has it:
+    twelve dots, larger where a group holds more people. A switch shows
+    people.
   amends:
     - >-
         ADR317, R8 ("The first scene with real numbers is the whole
@@ -93,8 +124,8 @@ ADR320_screen_first_the_small_world_in_the_client:
         country stays the first scene with the country's own numbers.
     - >-
         The Director's pick of 2026-11-22 (evening), "Plan the closest form's
-        build": the plan is finished and filed; its build waits behind the
-        scene and the bridge (S2).
+        build": the plan is finished and filed; its build follows the scene
+        and comes before the bridge (S2).
     - >-
         The design of the opening of the national economy, build order: stage
         4b (the records carried once) is built before the reference tables
@@ -105,8 +136,8 @@ ADR320_screen_first_the_small_world_in_the_client:
         household group, and the scene opens on that; this world has twelve.
         A switch gives a closer look, one dot a person: eighty stand in their
         membranes, and a standing line says that the record counts people and
-        does not follow one. Both are built. Which one the scene opens on is
-        the Director's to change.
+        does not follow one. Both are built. The Director confirmed on
+        2026-11-23 that the scene opens on household groups (S9).
     - >-
         Goods are drawn hollow in this build. The hours stored in goods are
         worked out from the tick's register, and the tick refuses this economy
@@ -163,7 +194,8 @@ ADR320_screen_first_the_small_world_in_the_client:
     - >-
         The first scene shows the engine as it is today. On the bench that
         form left a workplace stopped for good in most pushed runs. The rules
-        that mend it arrive as switches in the same scene.
+        that mend it arrive as switches in the same scene, next, before the
+        bridge (S2).
     - >-
         The bridge's plan was checked against the code on 2026-11-23, three
         days after it was written. Four findings would have stopped a
@@ -199,11 +231,17 @@ ADR320_screen_first_the_small_world_in_the_client:
       reason: >-
         Both offered and not chosen. An organized group reaches toward the
         design of organized workers, which is not ruled yet.
+    - name: The bridge before the rules, as picked after the sizing
+      reason: >-
+        Offered again and not chosen. The scene would show today's engine,
+        where a pushed workplace mostly stays stopped, for longer.
+    - name: A tilted view, like the sketch
+      reason: >-
+        Offered and not chosen. Dots and rings become ovals and the picture
+        takes less of the window's height.
+    - name: The scene opens on people
+      reason: Offered and not chosen. ADR317's ruling 4 stands; people are behind the switch.
   open_questions:
-    - >-
-        Whether the rules of the closest form should land in this scene before
-        the bridge. The scene runs the engine itself, so a rule can be seen in
-        it without the bridge. Put to the Director on 2026-11-23.
     - >-
         How a shock enters a saved campaign, when the small world becomes one.
   verification: |

@@ -553,9 +553,10 @@ pub fn table(reading: &PeriodReading, grouping: Grouping) -> Result<Table, Readi
    what it was paid, money out what it paid). By class: "Owners who earn" (no household in this world: `members` 0
    and zeros), "Owners who do not earn" (the owner households), "Earners who do not own" (the worker households),
    "Neither owner nor earner" (the supported households); for households, work given is the hours they gave. By
-   place: "Place A", "Place B" (each the sum of the rows of its workplaces and households) and "Shared: treasury and
-   fund". A group's sum is the sum of its members' own figures. The scales are the largest hours figure and the
-   largest money figure among the rows shown: two scales, never one.
+   place: "Place A", "Place B" (money: the sum of the rows of its workplaces and households; hours: the hours that
+   reached its workplaces, counted once, since the same hours are the households' work given) and "Shared: treasury
+   and fund". Apart from a place's hours, a group's sum is the sum of its members' own figures. The scales are the
+   largest hours figure and the largest money figure among the rows shown: two scales, never one.
 
 - [ ] **Step 1: Write the failing tests** (each from `Runner::open()` and one or two steps; money in millionths):
   - `every_payment_of_the_quiet_period_is_read_once`: period 1 has 8 wage payments summing 4,800,000,000;
@@ -593,8 +594,9 @@ pub fn table(reading: &PeriodReading, grouping: Grouping) -> Result<Table, Readi
   "https://github.com/percy-raskova/hypergraph-rs.git", rev = "LIBRARY_REV" }`); `rust/Cargo.lock`; the client's
   `src/small_world/frame.rs` (created here with one test only; Task 6 fills it).
 
-`LIBRARY_REV` is given in this task's brief by the lead: the pushed head of the library's branch `feat/bevy-crate`
-once its own plan has closed (its tasks 12 and 13 and its loose ends). On 2026-11-23 the library's frame-time
+`LIBRARY_REV` is given in this task's brief by the lead: a pushed commit of the library's branch `feat/bevy-crate`
+that holds the mend named below. The pin is raised again when the library's own plan has closed (its tasks 12 and
+13 and its loose ends) and when the Director has ordered its merge. On 2026-11-23 the library's frame-time
 trial showed that plain marks, one entity a mark, are far over budget, so its Task 12 is built: with full motion the
 marks of one stream are one mesh moved by a shader, and no entity carries `MarkOf` a mark. Tasks 6 to 9 read the
 library's code at `LIBRARY_REV`, not this plan's memory of it. `LIBRARY_REV` also holds the library's mend of 23
@@ -986,8 +988,8 @@ pub fn not_drawn_line(report: &FlowReport) -> String;                      // pu
    `NOT_MEASURED` in every row. Under the hours figures a bar of height 6 in `BONE`, width `value / hours_scale` of
    the column; under the money figures a bar in `GOLD`, width `value / money_scale`. The two scales never meet.
 7. **Picking.** A click (`PointerClick`, primary button) on a body (`SceneBody`), a particle (`ParticleId`) or a set
-   (`SetId` on the entity or its `ChildOf` parent) sets `ScenePick`; a click on empty space clears it. The inspector (right rail,
-   middle, title the pick's label) shows `inspect`'s rows for the shown period:
+   (`SetId` on the entity or its `ChildOf` parent) sets `ScenePick`; a click on empty space clears it. The inspector
+   (right rail, middle, title the pick's label) shows `inspect`'s rows for the shown period:
    - a workplace: hours given to it, paid not used, workers employed and in reserve (its member receipt), made,
      money in and out by kind, cash at the close, posted price; the treasury or fund: money in and out by kind,
      cash at the close;
@@ -1154,6 +1156,10 @@ What changed, in Tasks 5, 6 and 7 above:
 
 Left to the look after Task 7: whether the scene plays its first period by itself when it opens, and the final
 numbers. The mock's source and its captures are kept in the lead's session folder, not in the repository.
+
+The Director saw the mock's pictures that morning and answered three questions (ADR320, S2, S8 and S9): the look
+is the one to build; the scene opens on household groups; and after this plan the six rules of the closest form
+are built, each with its own switch in this scene, before the bridge.
 
 ## The lead's answers to the plan's questions (23 November 2026)
 

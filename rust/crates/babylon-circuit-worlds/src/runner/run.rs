@@ -3,7 +3,8 @@
 use crate::doubled::{self, Figures, HORIZON, OPENING_MONEY, PERSONS};
 use crate::runner::error::{RunnerError, Stage};
 use crate::runner::result::{Closing, PeriodReceipts, PeriodResult, PeriodSummary};
-use crate::{Kind, Workplace, WorldError};
+use crate::shocks::{Lasts, Places, Shock, ShockBook, ShockError};
+use crate::{Kind, Place, Workplace, WorldError};
 use babylon_material_circuit::{
     self as engine, CircuitAccounting, LaborCapacityRow, MaterialCatalog, MaterialCircuitError,
     MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MonetaryCircuit,
@@ -33,6 +34,7 @@ pub struct Runner {
     staffing: StaffingState,
     bindings: Vec<StaffingPoolBinding>,
     catalogs: Vec<(Figures, MaterialCatalog)>,
+    book: ShockBook,
     history: Vec<PeriodResult>,
     stopped: Option<RunnerError>,
 }
@@ -50,6 +52,7 @@ impl Runner {
             staffing,
             bindings,
             catalogs: Vec::new(),
+            book: ShockBook::default(),
             history: Vec::new(),
             stopped: None,
         };
@@ -98,6 +101,35 @@ impl Runner {
         }
     }
 
+    /// The shocks struck so far.
+    #[must_use]
+    pub const fn shocks(&self) -> &ShockBook {
+        &self.book
+    }
+
+    /// Strike a shock from the next period on.
+    ///
+    /// # Errors
+    /// `ShockError` when the shock already holds, cannot last so long, or the run is stopped;
+    /// nothing is struck then.
+    pub fn strike(&mut self, shock: Shock, places: Places, lasts: Lasts) -> Result<(), ShockError> {
+        if self.stopped.is_some() {
+            return Err(ShockError::Stopped);
+        }
+        self.book.strike(shock, places, lasts, self.state.period)
+    }
+
+    /// Lift a shock from the next period on.
+    ///
+    /// # Errors
+    /// `ShockError` when the shock does not hold, cannot be lifted, or the run is stopped.
+    pub fn lift(&mut self, shock: Shock, place: Place) -> Result<(), ShockError> {
+        if self.stopped.is_some() {
+            return Err(ShockError::Stopped);
+        }
+        self.book.lift(shock, place, self.state.period)
+    }
+
     fn ensure_catalog(&mut self, figures: &Figures) -> Result<(), WorldError> {
         if !self.catalogs.iter().any(|(known, _)| known == figures) {
             self.catalogs.push((*figures, doubled::catalog(figures)?));
@@ -111,7 +143,7 @@ impl Runner {
         if past {
             return Err(RunnerError::PastHorizon { period });
         }
-        let figures = Figures::OPENING;
+        let figures = self.book.figures(period);
         self.ensure_catalog(&figures)?;
         let catalog = self
             .catalogs

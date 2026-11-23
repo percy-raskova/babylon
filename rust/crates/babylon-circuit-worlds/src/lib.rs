@@ -8,6 +8,7 @@ pub mod doubled;
 pub mod error;
 pub mod ids;
 pub mod runner;
+pub mod shocks;
 
 pub use error::WorldError;
 pub use ids::{
@@ -17,3 +18,4 @@ pub use ids::{
 pub use runner::{
     Closing, PeriodReceipts, PeriodResult, PeriodSummary, Runner, RunnerError, Stage,
 };
+pub use shocks::{Lasts, Places, Shock, ShockBook, ShockError, Strike};

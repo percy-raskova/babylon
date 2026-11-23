@@ -1201,7 +1201,9 @@ read at 1366 x 768, and one commit after Task 9's changed them (the numbers are 
   now stand in the rail under "Shocks", above the list of what was struck: a shock's name, its figure, its buttons
   in a row that wraps, and for the power cut its standing line. The refusal's notice stands under them. The bar is
   one row and 48 high (`BAR_HEIGHT`). This replaces Task 8's decision 1 on where they stand; their words and what
-  a press does are as built. The six rules of the closest form get the bar's second row when they are built.
+  a press does are as built. The six rules of the closest form do not get a second row of the bar, as first
+  meant: six switches are wider than the window, and a taller bar cuts the list of shocks. They get a list in
+  the rail's lower part, behind a second tab beside the shocks (the plan of the closest form, Task 2c).
 - **The inspector is a panel over the viewport's top right** (top `HEADER_HEIGHT + 12`, right `RAIL_WIDTH + 12`, 340
   wide), shown only while something is picked. A click on it keeps the pick. It left the rail, which has no room
   for it beside the table and the shocks. This replaces Task 8's decision 7 on where it stands.

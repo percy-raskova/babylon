@@ -39,9 +39,14 @@ repository and its gate decides whether the plan stands.
 **The road to the screen.** The client's scene of the small world
 (`docs/superpowers/specs/2026-11-23-the-small-world-in-the-client-design.md`) runs the engine itself, so a
 rule is seen there as soon as its task lands. Each rule task therefore has a companion task in the client,
-written when the scene exists: the rule becomes a named switch of the scene, off by default, and its
-receipts become marks (a move of people between workplaces; a workplace that rests; an owner's money
-going in; a price that came down, in the table). A rule task is not done until its switch is on screen.
+right after it. Task 2c builds the list of switches in the rail's lower part (behind a second tab, beside the
+shocks), the command, the refusal's notice and the script's command, and shows no switch. Tasks 3c to 8c each
+put one rule's switch in that list, off by default, and turn its receipts into marks: a household's hours at
+another workplace, and the outline and the persons that follow them; the hours a workplace asked for and those
+its money and inputs allow; a workplace held back by no money, no work, its centre disc dim; a price that
+rests; an owner's money going in, a sixth gold stream; a goods price that stepped down, in the panel. `table.rs`
+is not edited: once the owner's money can be read (Task 7c), the table's money in and out count it as they
+count every payment. A rule task is not done until its companion has put its switch on screen.
 What a campaign needs before it may ask for these rules is under "Stored format" below.
 
 The scene and the bench run one world and one loop: the doubled world and the `Runner` of
@@ -52,7 +57,7 @@ power cut does; a rule that needs another can be turned on only once the other i
 of rules from period 1; a rule turned on later is seen on screen and is not measured. One road serves both:
 `Runner::turn_on` (Task 2) turns a rule on from `next_period()`, the `from` a strike gets, and
 `Runner::open_world` turns on the world's rules with it before the first step. The seekers' rows are in every
-world from Task 1a, read by no rule until the seekers are on. The client's switches are the companion tasks.
+world from Task 1a, read by no rule until the seekers are on. The client's switches are Tasks 2c to 8c.
 
 **The bench's drive.** `BENCH` below is `/media/user/dev-ssd/babylon-bench/restoring-forces`: the rows of
 every measured set (`out/`), the scripts that ran them (`scripts/`) and the lead's counters (`k-scripts/`).
@@ -144,7 +149,9 @@ Nothing is bent to match.
   and `mise run ...`. A build in another checkout empties this one's cache: launch long tests with `--no-build`
   after a build when the lead says another checkout is building.
 - No pinned value of an existing test changes. No assertion is loosened. The small world's runs
-  (`tests/small_world/`) keep every figure. If one must move, stop and tell the lead.
+  (`tests/small_world/`) keep every figure. If one must move, stop and tell the lead. The client's scene has one
+  named exception, the lead's: Task 7c moves the count of streams in `the_styles_name_the_plans_units` from 9 to
+  10 (the owner's money is a sixth kind of payment).
 - Money is `i128` millionths of a dollar (`Currency`); quantities and hours are `u64`; arithmetic is checked and a
   failure is a typed error (`MaterialCircuitError` or `StaffingError`), never a panic or a wrap. Saturation only
   where these decisions name it.
@@ -164,9 +171,17 @@ Nothing is bent to match.
   `mise run rust:test:q -- -p babylon-tick`; `mise run rust:test:q -- -p babylon-circuit-worlds`;
   `mise run check:bsl-sentinels`. A task that changes the `src/` of `babylon-circuit-worlds` (Tasks 1a, 2, 3 and
   5) also runs the client's tests of the scene, which steps that crate's runner: `mise run rust:test:q -- -p
-  babylon-client -E 'test(small_world)'`. A task that only adds tests to the crate (Tasks 4, 6, 7 and 8) does not.
+  babylon-client -E 'test(small_world)'`. So does Task 8, which removes one test of the scene. A task that only
+  adds tests to the crate (Tasks 4, 6 and 7) does not.
   The rest of the client is compiled by the clippy leg. If a task changes anything under `tools/`, `.mise.toml` or
   `.github/`, also the Python unit tests that read it (no task here does).
+  **The companion's gate** (Tasks 2c to 8c, which change only the client's scene), one leg at a time from `rust/`:
+  the fmt and clippy legs above; `mise run rust:test:q -- -p babylon-client -E 'test(small_world)'`;
+  `mise run check:bsl-sentinels`. Not the engine's, the tick's or the small worlds' legs, and not the long tests.
+  A companion's proof script is run by the lead on the real display, never by the builder; the client's own
+  rules (the scene plan's Global Constraints: no test opens a window; every visual entity carries
+  `DeclaredSurface { id: SurfaceId::SmallWorld }`; a figure on screen is exactly a receipt's; words that name a unit
+  are built from the constants; the look's numbers are the lead's) hold in every companion.
 - **The long tests.** Ignored by default. Run once at the end of the task, in the background, in one cargo
   process: `mise run rust:test:q -- -p babylon-material-circuit --test adjustment_bench -E
   'test(/^reproduces_/)' --run-ignored only`. This runs every set built so far: a later task must not change an
@@ -200,12 +215,16 @@ Nothing is bent to match.
    deterministic and keeps money and people; each refusal changes nothing. Pinned by Task 2's
    `opening_with_a_form_is_turning_its_rules_on_first` and the runner's tests named in Tasks 2 to 8. No reference
    set covers a late turn-on, and nothing says one does.
+8. **A mark the receipts did not give.** Every row a rule adds to the panel is a sum of its receipts' fields, and
+   a period without the rule draws and prints what it did before. Pinned by each companion's
+   `..._rows_are_its_receipt_s` tests and by Task 3c's `without_a_move_every_frame_is_as_before`.
 
 ## File Structure
 
 | File | Responsibility | Task |
 | --- | --- | --- |
-| `rust/crates/babylon-material-circuit/tests/adjustment_bench.rs` | The bench binary: modules and the long tests | 1, 3-8 |
+| `rust/crates/babylon-material-circuit/tests/adjustment_bench.rs` | The bench binary's root: its modules, and `include!` of `adjustment_bench/sets.rs` | 1 |
+| `rust/crates/babylon-material-circuit/tests/adjustment_bench/sets.rs` | The bench's quick tests, its long tests and `print_reference_digests` | 1, 2-8 |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/runs.rs` | The 25 runs of a set and the form's rules | 1, 2 |
 | `rust/crates/babylon-material-circuit/Cargo.toml`, `rust/Cargo.lock` | The engine's dev-dependency on the small worlds | 1 |
 | `rust/crates/babylon-circuit-worlds/src/doubled/world.rs` | Which world opens: plain or fund, its scale, its push, its rules | 1, 2 |
@@ -214,13 +233,18 @@ Nothing is bent to match.
 | `rust/crates/babylon-circuit-worlds/src/runner/rules.rs` | The rules of a run: `RuleOn`, `Switch`, `RuleError` | 2 |
 | `rust/crates/babylon-circuit-worlds/tests/worlds.rs` | The plain world, the national figures and each opening push pinned | 1, 3 |
 | `rust/crates/babylon-circuit-worlds/tests/{doubled,runner}.rs` | The pair rows' counts; a late turn-on and its refusals | 1, 2-8 |
-| `rust/crates/babylon-client/src/small_world/frame.rs` | People at work summed by household, not by site | 1 |
-| `rust/crates/babylon-client/src/small_world/reading.rs` | `read_work` skips a pair receipt of 0 hours | 1 |
+| `rust/crates/babylon-client/src/small_world/frame.rs` | People at work summed by household, not by site; a household's persons and hours at each workplace; a held workplace; the capital stream | 1, 3c, 5c, 7c |
+| `rust/crates/babylon-client/src/small_world/reading.rs` | `read_work` skips a pair receipt of 0 hours; the owner's money read as capital | 1, 7c |
+| `rust/crates/babylon-client/src/small_world/rules.rs` | `SceneRule`, `SHOWN_RULES`, the list of switches in the rail's lower part, the refusals' words | 2c-8c |
+| `rust/crates/babylon-client/src/small_world/marks.rs` | The rules' receipts as rows of the panel | 3c-8c |
+| `rust/crates/babylon-client/src/small_world/{scene,panel,script}.rs` | `SceneCommand::TurnOn` and `Lower`, the two tabs of the rail's lower part, the dim centre disc, the notice's `say`, `{"rule": ..}` and the report's rules; the panel's rows of the rules; capital in "Not drawn" | 2c, 3c, 5c, 7c |
+| `rust/crates/babylon-client/src/small_world/inspect.rs` | "At work" summed by household; `good_name` made `pub(super)` | 3c, 6c |
+| `rust/crates/babylon-client/src/small_world/{scene_tests,script_tests}.rs` | The scene's tests and each companion's proof script | 2c-8c |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/rows.rs` | The row writer | 1, 3-8 |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/compare.rs` | Projection, digests, the report of a mismatch | 1 |
 | `rust/crates/babylon-material-circuit/tests/adjustment_bench/digests/pc-*.txt` | sha256 of each reference run file | 1, 3-8 |
 | `rust/crates/babylon-material-circuit/src/clearing/rule.rs` | `MarketClearingPolicy.adjustments` | 2 |
-| `rust/crates/babylon-material-circuit/src/adjustment.rs` and `src/adjustment/*.rs` | The rules' types and arithmetic | 2-8 |
+| `rust/crates/babylon-material-circuit/src/adjustment.rs` and `src/adjustment/*.rs` | The rules' types and arithmetic; every public receipt type, enum and `RESTART_QUIET_PERIODS` exported from `src/lib.rs` in the task that adds it, for the client's companions | 2-8 |
 | `rust/crates/babylon-material-circuit/src/staffing/place.rs` | Seekers in their place; the stop rule's limits | 3, 5 |
 | `rust/crates/babylon-material-circuit/src/transition/state.rs` | The close's new steps and the closed period's methods | 3-7 |
 | `rust/crates/babylon-material-circuit/src/recurring/prices.rs`, `src/clearing/table.rs` | Rest and step down of goods | 6, 8 |
@@ -681,7 +705,8 @@ pub(crate) fn assert_set(set: &str, produced: &[(&str, String)], fixture: &str);
   `doubled/catalog.rs` `fn market_clearing`), the other 14 are literals, among them
   `tests/small_world/support.rs:430` and the small worlds' `doubled/catalog.rs`, which gets `adjustments:
   rules.to_vec()`);
-  `tests/adjustment_bench/runs.rs` (the form's list) and `tests/adjustment_bench.rs` (the quick test of Step 4);
+  `tests/adjustment_bench/runs.rs` (the form's list) and `tests/adjustment_bench/sets.rs` (the quick test of Step
+  4);
   `babylon-circuit-worlds` `src/doubled/world.rs` (`World` gains `rules`, `switches_at` and `switches`),
   `src/doubled/catalog.rs` (`catalog_of` takes the rules), `src/runner.rs` (`mod rules; pub use`),
   `src/runner/rules.rs` (create), `src/runner/run.rs` (the rules, the cache key, `turn_on`),
@@ -898,6 +923,253 @@ const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
   pass, no pinned value changed.
 - [ ] **Run the gate. Commit** `feat(material-circuit): let a market policy name the rules of ADR314`.
 
+### Task 2c: The rules' switches stand ready in the scene (the client; no switch yet)
+
+**Files:**
+- Create: `rust/crates/babylon-client/src/small_world/rules.rs`.
+- Modify (under `rust/crates/babylon-client/src/`): `small_world.rs` (`pub mod rules;`); `small_world/scene.rs`
+  (`SceneCommand::TurnOn` and `SceneCommand::Lower`, the stage's `turn_on`, the observer, the paint chain);
+  `small_world/panel.rs` (`Lower`, `PanelView.lower`, `PanelButton::Lower`, `LowerBody`, the tabs of the rail's
+  lower part, `paint_lower`, `ShockNotice::say`, `mark` made `pub(super)`); `small_world/script.rs`
+  (`ScriptCommand::Rule`, `ScriptReport.rules`); `small_world/scene_tests.rs`; `small_world/script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/rules.rs
+/// A rule of the closest form as the scene names it: the kinds of `World::switches`, in the order of
+/// `AdjustmentRule`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SceneRule { HiringWithinMeans, SeekingInPlace, StopWithoutPay, RestingPrice, OwnerRestart, GoodsStepDown }
+impl SceneRule {
+    pub const ALL: [SceneRule; 6];
+    /// The order of the list on screen, which is the order the rules are built and the order of the list the
+    /// Director picked: the seekers, the bound, the stop rule, the resting price, the restart, the step down.
+    pub const LISTED: [SceneRule; 6];
+    /// Its place in `World::switches`: 0 to 5 in the order of `ALL`.
+    #[must_use] pub const fn index(self) -> usize;
+    /// `hiring_within_means`, `seeking_in_place`, `stop_without_pay`, `resting_price`, `owner_restart`,
+    /// `goods_step_down`.
+    #[must_use] pub const fn script_name(self) -> &'static str;
+    /// The script's name read back.
+    #[must_use] pub fn named(name: &str) -> Option<SceneRule>;
+    /// The rule of this kind that `world` turns on: `world.switches()[self.index()]`.
+    #[must_use] pub fn rule(self, world: &World) -> AdjustmentRule;
+    /// The kind of a rule (`OwnerRestart` with any `outlay_periods`).
+    #[must_use] pub const fn of(rule: AdjustmentRule) -> SceneRule;
+}
+/// The rules whose switches the scene shows: the first of `SceneRule::LISTED`, as far as they are built. Each
+/// rule's companion task appends its own; nothing else does.
+pub const SHOWN_RULES: &[SceneRule] = &[];
+/// Whether the rail has the rules' tab: every other place reads this, not `SHOWN_RULES.is_empty()`.
+#[allow(clippy::const_is_empty, reason = "the list grows task by task")]
+pub const RULES_SHOWN: bool = !SHOWN_RULES.is_empty();
+/// The title of the list's one column.
+pub const FROM_LINE: &str = "on from period";
+/// The standing lines under the list.
+pub const RULES_LINE: &str =
+    "Turned on, a rule stays until you start over. A rule that needs another waits for it.";
+/// A rule's switch: the button of its row in the rules' tab.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuleButton(pub SceneRule);
+/// The list of the rules' tab, rebuilt when the runner changes.
+#[derive(Component)] pub struct RulesBody;
+/// One row of the list as it is drawn.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SwitchRow {
+    pub rule: SceneRule,
+    /// `rule_name` of the world's rule of this kind.
+    pub name: &'static str,
+    /// The first period closed under it, while it is on.
+    pub from: Option<u64>,
+    /// "(needs: {names})" while it waits: each name with its first letter in lower case, joined by "; ".
+    pub needs: Option<String>,
+}
+/// The row of one rule from where its switch stands.
+#[must_use] pub fn switch_row(rule: SceneRule, name: &'static str, switch: &Switch) -> SwitchRow;
+/// A row for each of `SHOWN_RULES`, in order: `switch_row` of `runner.switch(rule.rule(runner.world()))`.
+#[must_use] pub fn switch_rows(runner: &Runner) -> Vec<SwitchRow>;
+/// The runner's refusal in its own words, the first letter in upper case.
+#[must_use] pub fn rule_refusal_words(error: &RuleError) -> String;
+/// The rules' tab: `RulesBody`, then `RULES_LINE`, then a `NoticeLine`.
+pub fn spawn_rules_tab(body: &mut ChildSpawnerCommands);
+/// Rebuild the list when the runner changed.
+pub fn paint_rules(mut commands: Commands, scene: Res<SceneRunner>, body: Query<Entity, With<RulesBody>>);
+/// A press of a rule's row.
+pub fn pressed(event: On<PointerClick>, buttons: Query<&RuleButton>, mut commands: MessageWriter<SceneCommand>);
+// src/small_world/panel.rs
+/// What the lower part of the rail shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lower { #[default] Shocks, Rules }
+// PanelView gains (its `Default` gives `Lower::Shocks`):
+pub lower: Lower,
+// PanelButton gains:
+Lower(Lower),
+/// A body of the rail's lower part, shown while the view's `lower` is its own.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LowerBody(pub Lower);
+impl ShockNotice {
+    /// Show these words for `NOTICE_SECONDS`.
+    pub fn say(&mut self, words: String);
+}
+pub(super) fn mark(node: &mut Node, border: &mut BorderColor, selected: bool);   // was private
+/// A tab's caption: "Shocks" or "Shocks · {count} holding"; "Rules" or "Rules · {count} on". The count is left
+/// out when it is 0.
+#[must_use] pub fn lower_caption(lower: Lower, count: usize) -> String;
+/// Show the body of the chosen tab and write the two tabs' captions.
+pub fn paint_lower(
+    view: Res<PanelView>,
+    scene: Res<SceneRunner>,
+    mut bodies: Query<(&LowerBody, &mut Node)>,
+    tabs: Query<(&PanelButton, &Children)>,
+    mut captions: Query<&mut Text>,
+);
+// src/small_world/scene.rs, SceneCommand gains:
+TurnOn(SceneRule),
+Lower(Lower),
+// src/small_world/script.rs, ScriptCommand gains:
+Rule(String),
+// ScriptReport gains:
+/// The rules on, in the order turned on: the script's name and the first period closed under it.
+pub rules: Vec<(String, u64)>,
+```
+
+`AdjustmentRule` is imported from `babylon_material_circuit`; `World`, `Runner`, `RuleOn`, `Switch`, `RuleError`
+and `rule_name` from `babylon_circuit_worlds`, as Tasks 1a and 2 export them.
+
+**Decisions:**
+1. **Where the switches stand: the lower part of the rail, as a list.** The Director picked a list in the dialog
+   of 23 November: the six rules one under another, a column "on from period", "(needs: ...)" under a rule that
+   waits, and the two standing sentences. The bar cannot hold six switches: a second row of them is wider than
+   the window once periods have three digits, and a taller bar cuts the rail's list of shocks. So the bar and
+   `BAR_HEIGHT` do not change, and `the_bar_has_one_row` stays as it is.
+2. **One list.** `SHOWN_RULES` is empty here, so `RULES_SHOWN` is false: the rail's lower part keeps its title
+   "Shocks", no tab and no list is spawned, and nothing on screen changes in this task. Each companion (3c to 8c)
+   appends its rule, in the order of `SceneRule::LISTED`, in the same commit as its marks. The gate's clippy leg
+   (`-D warnings`) would refuse `.is_empty()` on a constant (`const_is_empty`), so only `RULES_SHOWN` reads it,
+   under its one `#[allow]`; every other place reads `RULES_SHOWN`. If the leg does not flag it, drop the
+   attribute; do not loosen anything else.
+3. **The lower part of the rail** (`panel.rs` `spawn_rail`, its second section). The shock controls with their
+   notice and `ShocksBody` go into one column node with `LowerBody(Lower::Shocks)`, with and without rules, so
+   the shocks' tree is one. When `RULES_SHOWN`, the title "Shocks" gives way to a row of two tabs (`column_gap` 4,
+   `margin` bottom 4) built as the table's are: `spawn_pressed(tabs, PanelButton::Lower(Lower::Shocks), "Shocks",
+   13.0)` and the same for `Lower::Rules` with "Rules"; and a second column node with `LowerBody(Lower::Rules)`
+   follows, filled by `rules::spawn_rules_tab`. `chosen` gains the arm `PanelButton::Lower(lower) => Some(*lower
+   == view.lower)`, so `paint_choices` marks the chosen tab. `press_panel` writes `SceneCommand::Lower(lower)`,
+   and the stage sets `view.lower`. `paint_lower` gives the body of `view.lower` `Display::Flex` and the other
+   `Display::None`, and writes the captions (`lower_caption` with the count of the rows of `shock_rows` that
+   hold, and with `runner.rules().len()`) into the one text child of each tab, with `set_if_neq`. While
+   `RULES_SHOWN` is false the shocks' body is shown whatever `view.lower` says. The view opens on the shocks;
+   "Start over" keeps the tab (`start_over` resets only `view.period`).
+4. **The list** (`paint_rules`, as `paint_shocks` rebuilds its own: only when the runner changed). `RulesBody`
+   is a column with `row_gap` 2. Its first child is a node of the full width with `justify_content: FlexEnd`
+   that holds `FROM_LINE` (Body 11, `GRAY`), so the title ends where the periods end. Then one column node for
+   each of `switch_rows`: its row (`column_gap` 4), and under it, while the rule waits, its `needs` line (Body
+   11, `GRAY`, `margin` left 12). The row holds a button with `RuleButton(rule)`, built as
+   `panel::spawn_pressed` builds one (`ui::pressable()`, height 28, border 1, padding 8, no background) but
+   with `flex_grow: 1.0` and its caption, the rule's name (Body 13), at the left; then a node 44 wide with
+   `justify_content: FlexEnd` that holds `from` as a plain number (Body 13, `PAPER`) while the rule is on, and
+   nothing otherwise. On: `panel::mark(.., true)` and the name in `PAPER`. Ready: no mark, the name in `PAPER`.
+   Waiting: no mark, the name in `GRAY`. Every text is built by `controls::text`, which carries
+   `DeclaredSurface { id: SurfaceId::SmallWorld }`.
+5. **Under the list,** as siblings of `RulesBody` that no repaint rebuilds: `RULES_LINE` (`controls::text`,
+   Body 11, `GRAY`, `margin` top 6; it wraps to two lines), then a `NoticeLine` built as the shocks' own
+   (`controls::text("", 12.0, theme::RED, ..)`, `margin` top 4). `paint_notice` already writes every
+   `NoticeLine`, so a refusal is read in whichever tab is shown.
+6. **The rule a switch turns on** is `rule.rule(scene.runner.world())`: the scene's world's own (the restart with
+   1 period of outlay at the small figures). `SceneRule::of` matches the kind, so the restart's figure is never
+   written in the client.
+7. **A press** (a primary click only) writes `SceneCommand::TurnOn(rule)` whatever its row says.
+   `Stage::turn_on` takes the rule first (`let wanted = rule.rule(self.scene.runner.world());`, since the call
+   borrows the runner mutably), then calls `Runner::turn_on(wanted)`; on `Err(error)` it calls
+   `self.notice.say(rules::rule_refusal_words(&error))`. Either way it sets `self.view.lower = Lower::Rules`, so
+   a script's capture after a rule shows the list. A waiting rule, a rule on, a stopped run and (until Task 8) a
+   rule not yet built are all told that way, and the runner changes nothing (Task 2, decision 6). "Start over"
+   clears every rule, since it opens a new runner (`scene.rs` `start_over`); nothing is added for it.
+8. **The script.** `{"rule":"<name>"}` with the six names of `script_name`; `check_names` refuses any other name
+   before the window opens; `begin` writes `SceneCommand::TurnOn` and checks as a strike does, so a refused rule
+   ends the script with `refusal.json`. `ScriptReport.rules` lists `runner.rules()` as `(script_name, from)`.
+9. **Words.** The names and the refusals are the runner's (Task 2, decision 8), a refusal's first letter raised.
+   `FROM_LINE`, "(needs: ...)" and `RULES_LINE` are the words of the list the Director picked. The picked list
+   named two rules shorter ("People look for work", "The owner restarts a workplace"); the scene says the
+   runner's names, one source for the list, the refusals and the script's report. No word says the bench
+   measured a rule (ADR321).
+10. **Order of painting:** `panel::paint_lower` and `rules::paint_rules` join the `Paint` chain after
+    `panel::paint_shocks`; `rules::pressed` is added as an observer beside `panel::pressed`.
+11. **Room.** At 1366 x 768 the lower part has about 300 px under its tabs, and six rows with two needs lines,
+    the standing lines and the notice take about 280. The sizes above are the lead's by reckoning; the lead
+    looks at the real window after Task 3c and tunes them, and a builder does not judge them.
+12. **A literal of `PanelView`** in a test or in the code gains `lower` (or `..PanelView::default()`). That
+    changes no pinned value.
+
+- [ ] **Step 1: Write the failing tests** (in `scene_tests.rs` unless named otherwise; `scene_app(None)` as built).
+  Write the variants qualified (`SceneRule::...` for a scene's rule, `AdjustmentRule::...` inside `Switch` and
+  `RuleError`): the two enums share their names, and the lines below leave the type out only to stay short.
+  - `scene_rules_follow_the_world_s_switches` (in `rules.rs`): for each of `SceneRule::ALL`, `rule.index()` is
+    its place in `SceneRule::ALL`, `SceneRule::of(World::scene().switches()[rule.index()]) == rule`, and
+    `SceneRule::named(rule.script_name()) == Some(rule)`; `SceneRule::OwnerRestart.rule(&World::scene())` is
+    `AdjustmentRule::OwnerRestart { outlay_periods: 1 }`; `SceneRule::ALL` is sorted; `SceneRule::LISTED` is
+    `[SeekingInPlace, HiringWithinMeans, StopWithoutPay, RestingPrice, OwnerRestart, GoodsStepDown]`;
+    `SHOWN_RULES == &SceneRule::LISTED[..SHOWN_RULES.len()]`; the six script names as in the Interfaces;
+    `named("everything")` is `None`.
+  - `a_rule_s_refusal_is_told_in_the_runner_s_words` (in `rules.rs`): `Waits { rule: StopWithoutPay, needs:
+    vec![SeekingInPlace] }` gives "No money, no work waits for people look for work in their place";
+    `AlreadyOn { rule: SeekingInPlace, from: 14 }` gives "People look for work in their place is on from period 14
+    and holds until you start over"; `Stopped` gives "The run is stopped".
+  - `a_row_says_where_its_switch_stands` (in `rules.rs`): `switch_row(SeekingInPlace, "People look for work in
+    their place", &Switch::On { from: 14 })` has `from: Some(14)` and `needs: None`; with `Switch::Ready` both
+    are `None`; `switch_row(StopWithoutPay, .., &Switch::Waits { needs: vec![SeekingInPlace] })` has `needs:
+    Some("(needs: people look for work in their place)")`; with `needs: vec![HiringWithinMeans, StopWithoutPay,
+    RestingPrice]` it is `Some("(needs: a bound on hiring; no money, no work; a resting price)")`.
+    `switch_rows(&Runner::open()?)` has one row for each of `SHOWN_RULES`, in order, each named by `rule_name`.
+  - `the_lower_tabs_count_what_holds` (in `panel.rs`): `lower_caption(Lower::Rules, 0)` is "Rules" and with 2 it
+    is "Rules · 2 on"; `lower_caption(Lower::Shocks, 0)` is "Shocks" and with 3 it is "Shocks · 3 holding".
+  - `the_rail_has_the_rules_tab_only_for_rules_shown`: with `RULES_SHOWN` false, no `PanelButton::Lower` and no
+    `RulesBody` exist, "Shocks" is on screen once, and the one `LowerBody` is the shocks', shown. Otherwise two
+    `PanelButton::Lower` tabs captioned "Shocks" and "Rules", the shocks' body shown and the rules' body
+    `Display::None`; after a click on the rules' tab and two updates the two are swapped, `view.lower` is
+    `Lower::Rules`, the tab's left border is `px(3)`, and under the rules' `LowerBody` stand `RulesBody`, whose
+    descendants hold `FROM_LINE` and then `SHOWN_RULES.len()` `RuleButton`s in the order of `SHOWN_RULES`, then
+    `RULES_LINE`, then a `NoticeLine`. Written so that it holds in every companion.
+  - `a_rule_that_waits_is_refused_in_the_scene_s_words`: `TurnOn(StopWithoutPay)` before any step, two updates: the
+    notice reads "No money, no work waits for people look for work in their place"; `runner.rules()` is empty;
+    `history` is 0; `view.lower` is `Lower::Rules`.
+  - `a_rule_not_yet_built_is_refused_in_the_scene`: one step, `TurnOn(GoodsStepDown)`: the notice starts with
+    "The engine refused a goods price steps down: "; `runner.rules()` is empty. Task 8 removes this test, with
+    `NOT_YET_BUILT`.
+  - `every_shown_rule_turns_on_from_the_next_period_and_holds`: while `RULES_SHOWN` is false it returns
+    `Ok(())` before any step. Else two steps; for each of `SHOWN_RULES` in order, with k the number of rules on
+    after this click (1 for the first): click its `RuleButton`, two updates: `switch(rule.rule(world))` is `On {
+    from: 3 }`, its row holds the text "3", its button's left border is `px(3)` in `YELLOW`, and the rules' tab
+    is captioned "Rules · {k} on". Click it again (the list was rebuilt: find the button again): the notice is
+    "{name} is on from period 3 and holds until you start over" and `rules()` is unchanged. Then `RULES_LINE`
+    is on screen; then `StartOver`: `rules()` is empty, no row holds a period, and the tab is captioned "Rules".
+    With `SHOWN_RULES` empty this test checks nothing; each companion makes it bite, as Task 2's
+    `opening_with_a_form_is_turning_its_rules_on_first` does for the bench.
+  - In `script_tests.rs`: `the_script_names_the_six_rules` (each `{"rule":"<name>"}` parses to `Rule(name)`;
+    `{"rule":"everything"}` on line 2 is `Line { line: 2, .. }`).
+  - `a_refused_rule_ends_the_script_and_keeps_the_refusal` (in `scene_tests.rs`, beside
+    `a_refused_strike_ends_the_script_and_keeps_the_refusal`, with 500 updates as
+    `a_script_presses_the_same_controls` has, since a step waits for its beats to rest): script `{"step":1}`,
+    `{"rule":"stop_without_pay"}`: replies "done" then "refused" with reason "No money, no work waits for people
+    look for work in their place"; `refusal.json` exists and its `rules` is `[]`.
+- [ ] **Step 2: Run them and see them fail.** `mise run rust:test:q -- -p babylon-client -E 'test(small_world)'`.
+  Expected: does not compile, no module `rules`.
+- [ ] **Step 3: Implement** the module, the two commands, the stage's `turn_on`, the lower part's bodies and
+  tabs, `paint_lower`, the list, the notice's `say`, the script's command and the report's field.
+- [ ] **Step 4: Run them.** Expected: all pass; no pinned value of the client changed, `the_bar_has_one_row`
+  among them.
+- [ ] **Step 5: The proof script for the lead** (decision 7 of the scene plan's Task 9). Add it to
+  `script_tests.rs` as `PROOF_2C` with `the_proof_script_of_task_2c_parses` (4 commands). Hand the lead the command
+  `mise exec -- cargo run -p babylon-client -- --small-world --small-world-script <folder>/proof.jsonl` (from
+  `rust/`, a folder made by `mktemp -d`) and the script; do not run it:
+  `{"step":2}`, `{"report":"before-rules"}`, `{"capture":"before-rules"}`, `{"rule":"stop_without_pay"}`.
+  The lead's check: the window looks as at the third look (the lower part titled "Shocks", no tab);
+  `before-rules.json` has `"rules": []`; `replies.jsonl` ends with line 4 "refused" and the waiting words;
+  `refusal.json` exists.
+- [ ] **Run the companion's gate** (Global Constraints). **Commit** `feat(client): the rules' switches stand ready in
+  the small world`.
+
 ### Task 3: People look for work in their place (`pc-seek`)
 
 **Files:**
@@ -1088,6 +1360,116 @@ pub adjustments: Vec<AdjustmentReceipt>,
   25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): people look for work in their place (A14)`.
 
+### Task 3c: People look for work, switched on in the scene (the client)
+
+**Files:**
+- Create: `rust/crates/babylon-client/src/small_world/marks.rs`.
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `rules.rs` (`SHOWN_RULES` gains
+  `SeekingInPlace`); `frame.rs` (the workforce set and the persons by member); `inspect.rs` ("At work" summed by
+  household); `panel.rs` (`rows_for` appends `marks::rule_rows`); `../small_world.rs` (`pub mod marks;`);
+  `scene_tests.rs`; `script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/marks.rs
+type Rows = Vec<(String, String)>;
+/// The rows the rules add to the panel of a pick, for the period at `index` of `history`.
+/// # Errors
+/// `FrameError::Edge` for a receipt of no workplace, pool or household of the world;
+/// `FrameError::Arithmetic` for a sum that overflows.
+pub fn rule_rows(history: &[PeriodResult], index: usize, pick: &Pick) -> Result<Rows, FrameError>;
+/// Whether the period's catalog asked for a rule of this kind.
+#[must_use] pub fn holds(result: &PeriodResult, rule: SceneRule) -> bool;
+/// The period's moves of people, in receipt order.
+pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt>;
+fn seeker_rows_of_workplace(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError>;
+fn seeker_rows_of_household(result: &PeriodResult, h: Household, rows: &mut Rows) -> Result<(), FrameError>;
+// src/small_world/frame.rs, Population gains:
+/// Persons of a household at work at a workplace: the `opening_employed` of the member of that household at
+/// that site.
+at_work_at: BTreeMap<(Household, Workplace), usize>,
+/// Which of a household's persons work where: its own workplace first, then `Workplace::ALL` order; persons
+/// not at work follow.
+fn person_ranges(pop: &Population, h: Household) -> Vec<(Workplace, Range<usize>)>;
+```
+
+**Decisions:**
+1. **The switch.** `SHOWN_RULES` becomes `&[SeekingInPlace]`: the rail's lower part gets its two tabs and the
+   list its first row, and Task 2c's tests now bite for this rule.
+2. **On the plane, nothing new**, with two mends found in `frame.rs`. A mover's hours are a member
+   labor receipt of its home household at the host (Task 1a, decision 7), read as a `WorkFlow` from the household
+   to the host, so the bone dots already go there. Two things did not follow them, and are mended here:
+   - The workforce set of `w` (Groups mode) holds `w.workers()` with the hours its own household gave `w`, then
+     each other household with hours given to `w` above 0, with those hours. Today the whole of `given_to(w)` is
+     booked to `w.workers()`.
+   - People mode: `Population` keeps the persons of each household at each workplace (`opening_employed` of each
+     member receipt, by the member's household and site, each at most the household's persons). `person_ranges`
+     gives a household's persons out by member, own workplace first, then `Workplace::ALL` order, then the
+     persons not at work. `stand_people` clusters each range at the wage anchor of its workplace; a workforce's
+     persons are the persons of each household in its range at `w` (for the own household, every person not
+     in a range at another workplace, as today), `HOURS_PER_PERSON` each in order from that household's hours.
+   Without a move each household has one range, at its own workplace, and every frame is byte for byte today's.
+3. **The household's "At work"** sums `opening_employed` over every member receipt of the household, at most its
+   persons (`inspect.rs` `household_rows`). Today it reads the first member at the site.
+4. **Rows of a workplace** (`marks.rs`), only while `holds(result, SeekingInPlace)`, numbers by
+   `human_numbers::grouped`:
+   - "Looked for work in {place label}": the sum of `closing_reserve` over the period's member receipts at its
+     site (the engine's decision before any move, Task 3 decision 6);
+   - "Found work at {host label}", one row a host, in `Workplace::ALL` order: the sum of `persons` of the moves
+     whose `from_pool` is its pool;
+   - "Taken on from {household label}", one row a household, in `Household::ALL` order: the sum of `persons` of
+     the moves whose `host_pool` is its pool;
+   - "Working here from {household label}", one row each other household with `opening_employed` above 0 at its
+     site.
+5. **Rows of a worker household**, only while the rule holds: "Worked at {workplace label}", one row a workplace
+   with its member's `opening_employed` above 0, in `Workplace::ALL` order.
+6. **Pool to workplace** is `Workplace::ALL.find(|w| w.pool_id() == pool)`; none is `FrameError::Edge`. A move is
+   for the next period (Task 3, decision 8), so a host's "Taken on" of period F is its "Working here" of F + 1.
+7. **The table is not changed:** it already books hours to the workplace they reached and to the household that
+   gave them (`table.rs` `row`).
+
+- [ ] **Step 1: Write the failing tests:**
+  - `a_move_is_read_from_its_receipts` (in `marks.rs`): a world and strikes as the bench runs them, with
+    `rules: vec![World::switches_at(Scale::Small)[1]]` (the seekers): first `fund-P2`, opened as the bench opens
+    it (`Runner::open_world(&World { rules, ..World::scene() })`, then `strike(HarvestFails, Both, UntilLifted)`
+    before step 1; the client cannot call the bench itself). The test
+    finds, in its own run, the first period that holds a `PlaceMove` receipt and pins it; the builder checks once,
+    by hand, that the bench's `pair_working_` column of that run (`BENCH/out/pc-seek-400/fund-P2.tsv`) is above 0
+    from that period on (or the next one, as Task 3's writer has it) and writes the number into the test. If
+    `fund-P2` has no move, the builder takes by hand the first fund run of `pc-seek-400` in run order whose
+    `pair_working_` column is above 0. The test never reads the drive. In that period: a `PlaceMove` receipt
+    exists; the host's rows "Taken on from {home}" and the home workplace's "Found work at {host}" equal the
+    sums of its `persons`. In the next period: the
+    host's "Working here from {home}" and the home household's "Worked at {host}" equal its member receipt's
+    `opening_employed`; the host's workforce set (Groups) has `household:{home}` with the hours of that
+    household's `WorkFlow` to the host; in People mode the host's workforce holds that many persons of the home
+    household, each at most `HOURS_PER_PERSON` hours. If no fund run of the set has a move, stop and report.
+  - `without_a_move_every_frame_is_as_before` (in `frame.rs`): 34 steps of `Runner::open()` with the seekers
+    turned on before step 1, and of a twin without them: `build_picture` equal in both modes in every period.
+  - `a_household_is_at_work_wherever_its_members_work` (in `inspect.rs`): a quiet period whose member receipts are
+    edited so that 1 of farm A's 4 workers is the member of their household at clinic A: "At work" is still 4,
+    and with the rule in `result.rules` the rows "Worked at Place A farm" 3 and "Worked at Place A clinic" 1.
+  - In `script_tests.rs`: `the_proof_script_of_task_3c_parses` (9 commands).
+  - `a_script_turns_a_rule_on` (in `scene_tests.rs`): script `{"step":1}`, `{"rule":"seeking_in_place"}`,
+    `{"report":"on"}`: three "done" replies; `on.json` has `"rules": [["seeking_in_place", 2]]`.
+- [ ] **Step 2: Run them and see them fail** (`-E 'test(small_world)'`): `marks` not found.
+- [ ] **Step 3: Implement** the rule in the list, the frame's persons by member, "At work", the rows.
+- [ ] **Step 4: Run** the client's scene tests. Expected: all pass, the frame tests as pinned, and Task 2c's
+  `every_shown_rule_turns_on_from_the_next_period_and_holds` and
+  `the_rail_has_the_rules_tab_only_for_rules_shown` now checking the seekers' switch, and
+  `every_visual_entity_of_the_scene_declares_the_small_world` now biting for the tabs and the list.
+- [ ] **Step 5: The proof script for the lead** (`PROOF_3C`, as Task 2c's Step 5):
+  `{"step":20}`, `{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}`, `{"step":10}`,
+  `{"rule":"seeking_in_place"}`, `{"step":20}`, `{"capture":"seekers-on"}`, `{"particles":"people"}`,
+  `{"capture":"seekers-people"}`, `{"report":"seekers-on"}`. The check: `seekers-on.json` has
+  `"rules": [["seeking_in_place", 31]]`; the pictures show the rail's lower part with its two tabs, "Rules · 1
+  on" chosen, the row "People look for work in their place" marked with 31 under "on from period", and the
+  standing lines. This is the lead's first look at the list in the real window: its sizes are the lead's to
+  tune, and the Director is shown it before the other switches follow. Whether anyone moved is read from the
+  people view and the lead's pick.
+- [ ] **Run the companion's gate. Commit** `feat(client): people look for work, switched on in the small world`.
+
 ### Task 4: A bound on hiring (`pc-bound`)
 
 **Files:**
@@ -1096,6 +1478,7 @@ pub adjustments: Vec<AdjustmentReceipt>,
   `src/adjustment/receipts.rs`; `src/catalog.rs`; the contract and the digest; the bench (`Form::Bound`,
   `bound_hours_<site>`, `bound_by_<site>`); `digests/pc-bound-400.txt`, `pc-bound-nat-400.txt`; the small worlds'
   `tests/runner.rs` (`LATE` gains the bound). The runner does not change.
+- Modify: `src/lib.rs` (export the new receipt types for the client's companion).
 
 **Interfaces:**
 
@@ -1128,6 +1511,7 @@ pub struct HiringBoundReceipt {
     pub limit: HiringLimit,
 }
 /// What set a cut: the bench writes 0 to 4 in this order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HiringLimit { None, Capacity, Inputs, Money, Other }
 ```
 
@@ -1186,6 +1570,57 @@ pub enum HiringLimit { None, Capacity, Inputs, Money, Other }
 - [ ] **Step 5: Run** the crate's tests, then every long test. Expected: three forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a workplace asks for hands it can pay and supply`.
 
+### Task 4c: A bound on hiring, switched on in the scene (the client)
+
+**Files:**
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `rules.rs` (`SHOWN_RULES` gains
+  `HiringWithinMeans`); `marks.rs` (the bound's rows); `scene_tests.rs` or `marks.rs` tests;
+  `script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/marks.rs
+/// The bound's rows of a workplace from the period's `HiringBound` receipts of its site.
+fn bound_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError>;
+/// "nothing", "its capacity", "its inputs", "its money", "another limit".
+#[must_use] pub const fn limit_words(limit: HiringLimit) -> &'static str;
+/// 0 to 4 in the order of `HiringLimit`, as the bench writes `bound_by_` (Task 4, decision 4).
+const fn limit_code(limit: HiringLimit) -> u8;
+```
+
+**Decisions:**
+1. **The switch.** `SHOWN_RULES` becomes `&[SeekingInPlace, HiringWithinMeans]`.
+2. **No mark on the plane.**
+3. **Rows of a workplace**, when the period holds `HiringBound` receipts of its site: "Hours asked for the next
+   period" (the sum of `asked_hours`), "Hours its money and inputs allow" (the sum of `bound_hours`), "Bound by"
+   (`limit_words` of the limit of the receipt with the largest `limit_code`; `HiringLimit` derives no order).
+   Hours by `human_numbers::grouped`. "Next period" because the bound of the close of P cuts the
+   attendance of P + 1 (Task 4, decision 7).
+
+- [ ] **Step 1: Write the failing tests:**
+  - `the_bound_s_rows_are_its_receipt_s` (in `marks.rs`): a quiet period with one `HiringBoundReceipt` injected for
+    farm A's site (`asked_hours: 40, bound_hours: 30, limit: HiringLimit::Money`): the rows read "40", "30", "its
+    money"; each `HiringLimit` has its words.
+  - `the_bound_reads_as_the_bench_counts_it` (in `marks.rs`): as Task 3c's run, with `Form::Bound`'s rules (`[
+    HiringWithinMeans, SeekingInPlace]` from `World::switches_at(Scale::Small)`). The test finds, in its own run,
+    the first period that holds a `HiringBound` receipt whose `limit` is not `HiringLimit::None` and pins it; the
+    builder checks once, by hand, that the bench's `bound_by_` column of that site in `BENCH/out/pc-bound-400/` of
+    that run is above 0 from that period on (or the next one, as Task 4's writer has it) and writes the number into
+    the test. The test never reads the drive. At that period that site's "Bound by" is not "nothing", and in every
+    period up to it each workplace's rows equal its receipts' sums. If no fund run of the set has a cut, stop and
+    report.
+  - `the_proof_script_of_task_4c_parses` (11 commands).
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run** (Task 2c's tests bite for two
+  switches).
+- [ ] **Step 5: The proof script for the lead** (`PROOF_4C`, as Task 2c's Step 5), one command a line:
+  `{"step":20}`, `{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}`, `{"step":10}`,
+  `{"rule":"seeking_in_place"}`, `{"step":5}`, `{"rule":"hiring_within_means"}`, `{"step":20}`,
+  `{"capture":"bound-on"}`, `{"particles":"people"}`, `{"capture":"bound-people"}`, `{"report":"bound-on"}`
+  (11). The check: `"rules": [["seeking_in_place", 31], ["hiring_within_means", 36]]`; the row "A bound on
+  hiring" marked, with 36.
+- [ ] **Run the companion's gate. Commit** `feat(client): a bound on hiring, switched on in the small world`.
+
 ### Task 5: No money, no work (`pc-stop`)
 
 **Files:**
@@ -1195,6 +1630,7 @@ pub enum HiringLimit { None, Capacity, Inputs, Money, Other }
   `babylon-circuit-worlds` `src/runner/run.rs` (the standing kept between periods, the close with standing for
   each period whose rules hold `StopWithoutPay`, `Runner::standing`) and `tests/runner.rs`; the bench
   (`Form::Stop`, `stopped_<site>`); `digests/pc-stop-*.txt`.
+- Modify: `src/lib.rs` (export the new receipt types for the client's companion).
 
 **Interfaces:**
 
@@ -1310,12 +1746,89 @@ if bsl-lint flags it, make it an enum `Payment { Paid, Short }`.
 - [ ] **Step 5: Run.** Expected: four forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): no money, no work (A17)`.
 
+### Task 5c: No money, no work, switched on in the scene (the client)
+
+**Files:**
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `rules.rs` (`SHOWN_RULES` gains
+  `StopWithoutPay`); `frame.rs` (`BodyPicture.held`); `scene.rs` (`BodyCore`, the dim material, `paint_cores`);
+  `marks.rs` (the stop's rows, `held_since`); `scene_tests.rs`; `script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/frame.rs, BodyPicture gains:
+/// Held back by no money, no work at this close: its site's `StopReceipt` of the period says `Held`.
+/// Only on workplaces.
+pub held: bool,
+// src/small_world/scene.rs
+/// A body's centre disc: a component put on the existing core disc, not a new entity.
+#[derive(Component)] struct BodyCore;
+// SceneMaterials gains `dim: Handle<StandardMaterial>` (`unlit(DIM)`).
+/// The centre disc of a held workplace in `DIM`, every other in gold; all gold while nothing is shown.
+fn paint_cores(
+    shown: Res<SceneShown>,
+    materials: Option<Res<SceneMaterials>>,
+    plates: Query<&SceneBody>,
+    mut cores: Query<(&ChildOf, &mut MeshMaterial3d<StandardMaterial>), With<BodyCore>>,
+);
+// src/small_world/marks.rs
+/// The first period of the unbroken run of closes, ending at `index`, whose receipts hold the site `Held`.
+#[must_use] pub fn held_since(history: &[PeriodResult], index: usize, w: Workplace) -> Option<u64>;
+fn stop_rows(history: &[PeriodResult], index: usize, w: Workplace, rows: &mut Rows) -> Result<(), FrameError>;
+```
+
+**Decisions:**
+1. **The switch.** `SHOWN_RULES` becomes `&[SeekingInPlace, HiringWithinMeans, StopWithoutPay]`. It waits for the
+   seekers (Task 2): until they are on its name is in `GRAY`, with "(needs: people look for work in their place)"
+   under it, and its press tells the runner's words.
+2. **On the plane:** a workplace whose `StopReceipt` of the period says `StopHold::Held` has its centre disc in
+   `DIM`, the field palette's no-reading colour; its rings, which are its hours and money of the period, and its
+   label do not change. `paint_cores` runs in the `Paint` chain after `redraw_rings`, only when `SceneShown`
+   changed. Held, not the bench's `stopped_` (no hours and nobody employed): the rule's own word for a workplace
+   it holds back.
+3. **Rows of a workplace**, when the period holds its site's `StopReceipt`: if `Held`, "No money, no work" |
+   "held since period {held_since}" and, when `limit` is `Some(n)`, "Most it may employ" | n; if it could not pay
+   (`could_not_pay`, or `Payment::Short` if Task 5 made it an enum), "Hours it could not pay" | the sum of
+   `unattended_hours` of the period's member labor receipts at its site. A `Free` site that paid gets no row.
+4. `held_since` walks back from `index` while each period holds a `Held` receipt for the site; it reads only the
+   history's receipts.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `a_held_workplace_is_drawn_dim` (in `scene_tests.rs`): one step; build the picture of that period with a
+    `StopReceipt { site_id: clinic A, could_not_pay: true, hold: Held, limit: Some(0), .. }` pushed into its
+    `receipts.adjustments`; put it in `SceneShown`; two updates: clinic A's `BodyCore` has the dim handle, the
+    other nine the gold one; its two rings and its label as before; `SceneShown(None)`: all gold.
+  - `held_since_counts_the_unbroken_run` (in `marks.rs`): a history of 7 copies of a quiet period, periods 1 to
+    7, with clinic A `Free` at 4 and `Held` at 5, 6, 7: `held_since(.., 6, clinic A) == Some(5)`; at index 3,
+    `None`.
+  - `the_stop_s_rows_are_its_receipt_s` (in `marks.rs`): on that history, at index 6: "No money, no work" |
+    "held since period 5", "Most it may employ" | "0", and "Hours it could not pay" equal to the sum of the
+    period's `unattended_hours` at the site.
+  - `every_close_with_the_rule_tests_every_site` (in `marks.rs`): `Runner::open()`, seekers and the stop rule
+    turned on before step 1, 34 steps: 8 `Stop` receipts a period; every workplace's rows equal its receipt's (the
+    stop rule never acts on the bench, so these are `Free` and print nothing: say so in the report).
+  - `the_stop_rule_waits_for_the_seekers_on_screen` (in `scene_tests.rs`): at the opening the row "No money, no
+    work" has its name in `GRAY` and the line "(needs: people look for work in their place)" under it; a click on
+    it: the notice "No money, no work waits for people look for work in their place"; then the seekers' row
+    clicked: its name is `PAPER` and that line is gone.
+  - `the_proof_script_of_task_5c_parses` (13 commands).
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run.**
+- [ ] **Step 5: The proof script for the lead** (`PROOF_5C`, as Task 2c's Step 5), one command a line:
+  `{"step":20}`, `{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}`, `{"step":10}`,
+  `{"rule":"seeking_in_place"}`, `{"step":5}`, `{"rule":"hiring_within_means"}`, `{"step":5}`,
+  `{"rule":"stop_without_pay"}`, `{"step":20}`, `{"capture":"stop-on"}`, `{"particles":"people"}`,
+  `{"capture":"stop-people"}`, `{"report":"stop-on"}` (13). The check: three rules, the stop from 41; a capture of the
+  list with three marked rows. A second script, `waits.jsonl`: `{"step":1}`, `{"rule":"stop_without_pay"}`:
+  `refusal.json` with the waiting words.
+- [ ] **Run the companion's gate. Commit** `feat(client): no money, no work, switched on in the small world`.
+
 ### Task 6: A resting price (`pc-rest`)
 
 **Files:**
 - Modify: `src/recurring/prices.rs`; `src/services/market.rs`; `src/clearing/table.rs` (`offered`);
   `src/adjustment/receipts.rs`; `src/catalog.rs`; the contract and the digest; the bench (`Form::Rest`);
   `digests/pc-rest-*.txt`.
+- Modify: `src/lib.rs` (export the new receipt types for the client's companion).
 
 **Interfaces:**
 
@@ -1358,6 +1871,36 @@ pub struct RestingPriceReceipt {
 - [ ] **Step 5: Run.** Expected: five forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a stopped workplace's price rests`.
 
+### Task 6c: A resting price, switched on in the scene (the client)
+
+**Files:**
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `rules.rs` (`SHOWN_RULES` gains `RestingPrice`);
+  `marks.rs` (the rest's row); `inspect.rs` (`good_name` made `pub(super)`); `script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/marks.rs
+fn resting_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError>;
+```
+
+**Decisions:**
+1. **The switch.** `SHOWN_RULES` becomes `&[SeekingInPlace, HiringWithinMeans, StopWithoutPay, RestingPrice]`.
+2. **No mark on the plane.** A row a `RestingPriceReceipt` of its site: "Price rests · {good}" |
+   `human_numbers::currency(price)`, the good's name as `inspect.rs` `good_name` gives it (made `pub(super)`).
+
+- [ ] **Step 1: Write the failing tests:** `the_resting_price_s_row_is_its_receipt_s` (in `marks.rs`: a quiet
+  period with a `RestingPriceReceipt` for farm A's food at $25 injected: "Price rests · food" | "$25.00"; no row
+  for any other workplace); `the_proof_script_of_task_6c_parses` (15 commands).
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run.**
+- [ ] **Step 5: The proof script for the lead** (`PROOF_6C`, as Task 2c's Step 5), one command a line:
+  `{"step":20}`, `{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}`, `{"step":10}`,
+  `{"rule":"seeking_in_place"}`, `{"step":5}`, `{"rule":"hiring_within_means"}`, `{"step":5}`,
+  `{"rule":"stop_without_pay"}`, `{"step":5}`, `{"rule":"resting_price"}`, `{"step":20}`,
+  `{"capture":"rest-on"}`, `{"particles":"people"}`, `{"capture":"rest-people"}`, `{"report":"rest-on"}` (15).
+  The check: four rules, the rest from 46.
+- [ ] **Run the companion's gate. Commit** `feat(client): a resting price, switched on in the small world`.
+
 ### Task 7: The owner restarts a stopped workplace, mended (`pc-restart`)
 
 **Files:**
@@ -1368,6 +1911,7 @@ pub struct RestingPriceReceipt {
   `restart_test_<site>`, `stopped_since_<site>`, `restart_inputs_<site>`, `owner_spare_<copy>`, read from
   `PeriodReceipts.adjustments` and `Runner::standing`; the runner does not change);
   `digests/pc-restart-*.txt`; the small worlds' `tests/runner.rs`.
+- Modify: `src/lib.rs` (export the new receipt types for the client's companion).
 
 **Interfaces:**
 
@@ -1436,7 +1980,8 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
    receipt of the site, as the prototype assigns it), plus the quantity of local transfers it received as buyer.
    It made or sold anything when `sales > 0`, or when it has a recurring production row and `output > 0`.
 4. **The test**, for each site whose labor rows of the closing period offer 0 hours and with
-   `quiet_periods >= 3` (`const RESTART_QUIET_PERIODS: u64 = 3`): `turned` = the sum, over every
+   `quiet_periods >= 3` (`pub const RESTART_QUIET_PERIODS: u64 = 3`, exported from `src/lib.rs`: the scene's words
+   are built from it, Task 7c): `turned` = the sum, over every
    `market_clearings` receipt of the site this close (not only short markets), of `demand_at_quote -
    sold_quantity` (`restart_close`, `support.rs`, about 3728-3733; checked subtraction, a negative is
    `Arithmetic`); `revenue = min(turned, out) x price`; pass only if
@@ -1466,8 +2011,9 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
     period 1 the arithmetic is the same. The hold the stop rule kept since its own first period is the standing's
     and is read as it stands. The restart needs the bound and the resting price on, so this close has a
     `HiringBound` and its `RestingPriceReceipt`s. This is the lead's call of 23 November, reported to the
-    Director: the rule counts quiet periods from the period it is turned on, and the scene's words for the switch
-    must say that a workplace is tested after three quiet periods under the rule.
+    Director: the rule counts quiet periods from the period it is turned on, and the scene's words must say that
+    a workplace is tested after three quiet periods under the rule: while the rule holds, a workplace's panel
+    reads "Tested after | 3 quiet periods under the rule" (Task 7c).
 
 - [ ] **Step 1: Write the failing unit tests** in `src/adjustment/restart.rs`:
   - `a_restart_that_puts_in_nothing_is_refused` (plan $40, cash $40: no restart; cash $39: $1 put in);
@@ -1493,6 +2039,87 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
 - [ ] **Step 5: Run.** Expected: six forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): an owner restarts a stopped workplace with its own money`.
 
+### Task 7c: An owner restarts a stopped workplace, switched on in the scene (the client)
+
+**Files:**
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `rules.rs` (`SHOWN_RULES` gains
+  `OwnerRestart`); `reading.rs` (`PaymentKind::Capital`); `frame.rs` (`STREAM_MONEY`, the styles,
+  `payment_stream`, the pinned count of streams); `panel.rs` (`not_drawn_line`); `marks.rs` (the restart's rows,
+  the owner's spare); `scene_tests.rs` (the not-drawn line with capital); `script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/reading.rs, PaymentKind gains (last, so `ALL` keeps its order):
+/// An owner's money put into a workplace it owns (`CashTransferPurpose::CapitalContribution`).
+Capital,
+pub const ALL: [PaymentKind; 6];   // label "capital"
+// src/small_world/frame.rs
+/// The streams of wages, purchases, taxes, benefits, profit and capital.
+pub const STREAM_MONEY: [u16; 6] = [4, 5, 6, 7, 8, 9];
+// src/small_world/marks.rs
+fn restart_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError>;
+fn owner_rows(result: &PeriodResult, h: Household, rows: &mut Rows) -> Result<(), FrameError>;
+/// "not tested", "tested, failed", "tested, no owner's money", "restarted".
+#[must_use] pub const fn test_words(test: RestartTest) -> &'static str;
+```
+
+**Decisions:**
+1. **The switch.** `SHOWN_RULES` becomes the five rules without `GoodsStepDown`. It waits for the bound, the stop
+   rule and the resting price; its rule is the scene world's (`outlay_periods: 1`).
+2. **The money:** `read_payments` reads `CashTransferPurpose::CapitalContribution` as `PaymentKind::Capital`,
+   its payer the debit's cash account, as a tax is read. `HouseholdTransfer`, `TransportService` and `MutualAid`
+   stay refused. Without this the first restart stops the scene: `read_payments` refuses that purpose today.
+3. **On the plane:** a sixth gold stream, `STREAM_MONEY[5]`, built as the other five (beat 2, `MONEY_PER_MARK`,
+   streaks, swatch 2), from the owner's household group to the workplace: `money_flows` draws it with no change.
+   `layout::anchor` gives capital no anchor, so the owner's group does not move for it.
+4. **The panel:** "Money in · capital" on the workplace and "Money out · capital" on the owner come from the
+   existing loop over `PaymentKind::ALL`. A `RestartReceipt` of the site adds "Owner's restart" | `test_words`;
+   when tested, "Turned away" | `turned` units and "One batch costs" | `batch_cost`; when restarted, "Owner put
+   in" | `money`; when `inputs_short`, "Inputs short" | "yes". A `RestingPriceToCostReceipt` adds "Resting price
+   raised to cost" | "{old} to {raised}". An owner household with an `OwnerSpareReceipt` adds "Spare for a
+   restart" | `spare`. Money by `human_numbers::currency`.
+5. **The sentence of ADR321's reading** (Task 7, decision 10): while `holds(result, OwnerRestart)`, every
+   workplace's panel has "Tested after" | "{RESTART_QUIET_PERIODS} quiet periods under the rule", the figure from
+   the engine's constant, which Task 7 makes public.
+6. **"Not drawn"** names capital only when the period's report has a capital stream with a total above 0: ",
+   capital {c}" at its end. So `not_drawn_line_prints_the_report` keeps its words.
+7. **The table is not edited.** It sums every payment, so the owner's money is in its money in and out, where
+   without decision 2 it could not be built at all.
+8. **A pinned count moves** (named in the Global Constraints): `the_styles_name_the_plans_units` expects 10
+   streams, not 9.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `a_capital_contribution_is_read_as_capital` (in `reading.rs`): the first period with its first profit transfer
+    edited (purpose `Cash(CapitalContribution)`, debit and credit locations swapped, so the owner pays the site):
+    one `Capital` payment, owner to site, of that amount; the profit total less that amount; the other four
+    totals unchanged.
+  - `the_owner_s_money_is_a_sixth_gold_stream` (in `frame.rs`): that period's picture has one flow of stream 9
+    from the owner's group point to the site's body; `each_stream_draws_and_counts_exactly_its_own_total`'s check
+    (drawn plus not drawn is the total) holds for it.
+  - `the_panel_lists_the_owner_s_money` (in `marks.rs`): the workplace's rows hold "Money in · capital" and the
+    owner's "Money out · capital", each the amount; the table's money in of the workplace counts it.
+  - `the_restart_s_rows_are_its_receipt_s` (in `marks.rs`): injected `RestartReceipt { test: Restarted, money:
+    $40, batch_cost: $23, turned: 3, inputs_short: false, .. }`: "restarted", "3", "$23.00", "$40.00"; with
+    `OwnerRestart` in `result.rules`, "Tested after" | "3 quiet periods under the rule"; without it, no such row;
+    each `RestartTest` has its words; an `OwnerSpareReceipt` of $50 gives the owner "Spare for a restart" |
+    "$50.00".
+  - `the_not_drawn_line_names_capital_only_when_there_is_some` (in `scene_tests.rs`, beside
+    `not_drawn_line_prints_the_report`): the quiet period's report gives the line as pinned; the same report
+    with a capital stream's entry added by hand, its total above 0, gives a line that ends with ", capital {c}".
+  - `the_proof_script_of_task_7c_parses` (17 commands).
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run** (with the one moved count).
+- [ ] **Step 5: The proof script for the lead** (`PROOF_7C`, as Task 2c's Step 5), one command a line:
+  `{"step":20}`, `{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}`, `{"step":10}`,
+  `{"rule":"seeking_in_place"}`, `{"step":5}`, `{"rule":"hiring_within_means"}`, `{"step":5}`,
+  `{"rule":"stop_without_pay"}`, `{"step":5}`, `{"rule":"resting_price"}`, `{"step":5}`,
+  `{"rule":"owner_restart"}`, `{"step":20}`, `{"capture":"restart-on"}`, `{"particles":"people"}`,
+  `{"capture":"restart-people"}`, `{"report":"restart-on"}` (17). The check: five rules, the restart from 51;
+  whether a restart happens in the run is read from the panel (Task 0 counted 39 restarts over the 25 runs of
+  `pc-restart-400`; this run may hold none).
+- [ ] **Run the companion's gate. Commit** `feat(client): an owner restarts a stopped workplace, switched on in the
+  small world`.
+
 ### Task 8: A goods price steps down, as measured (`pc-down`)
 
 **Files:**
@@ -1501,6 +2128,9 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
   `src/recurring/firms.rs` (the gain in the plans); `src/adjustment/receipts.rs`; `src/catalog.rs`; the contract
   (`P9_posted_price` too) and the digest; the bench (`Form::Down`, `unsold_<site>`, `turned_payers_<site>` for
   farms and shops); `digests/pc-down-*.txt`.
+- Modify: `src/lib.rs` (export the new receipt types for the client's companion).
+- Modify (the client): `rust/crates/babylon-client/src/small_world/scene_tests.rs` (remove
+  `a_rule_not_yet_built_is_refused_in_the_scene`).
 
 **Interfaces:**
 
@@ -1554,10 +2184,51 @@ pub struct GoodsOfferReceipt {
 - [ ] **Step 4: The bench.** `Form::Down` (the six rules), its columns, the quick test,
   `reproduces_pc_down_400`, `reproduces_pc_down_nat_400`. The small worlds' `LATE` gains `(40, GoodsStepDown)`;
   no `GoodsOffer` receipt before period 41. Remove `a_rule_not_yet_built_is_refused_by_turn_on` with
-  `NOT_YET_BUILT` (Task 2, decision 3).
+  `NOT_YET_BUILT` (Task 2, decision 3), and the scene's twin `a_rule_not_yet_built_is_refused_in_the_scene`
+  (the client's `scene_tests.rs`), which fails once the engine admits the last rule. Then run the client's
+  scene tests too: `mise run rust:test:q -- -p babylon-client -E 'test(small_world)'`.
 - [ ] **Step 5: Run.** Expected: seven forms, 25 of 25 at both figures. The `pc-down` rows passed the Director's
   test where there is a fund in Task 0, so the built form passes it: every column the counters read is compared.
 - [ ] **Run the gate. Commit** `feat(material-circuit): a goods price steps down when goods go unsold (A1)`.
+
+### Task 8c: A goods price steps down, switched on in the scene (the client)
+
+**Files:**
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `rules.rs` (`SHOWN_RULES` is the six); `marks.rs`
+  (the offer's rows); `script_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/marks.rs
+fn offer_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError>;
+```
+
+**Decisions:**
+1. **The switch.** `SHOWN_RULES` is `SceneRule::LISTED`, the six.
+2. **No mark on the plane.** For each `GoodsOfferReceipt` of the site: "Offered · {good}" | `offered`, "Sold ·
+   {good}" | `sold`, "Kept as a buffer · {good}" | `kept` (units by `grouped`); and when the period's
+   `PriceReceipt` of that site and good has `reason: PriceDecision::ExcessStock` and `next_price < old_price`:
+   "Price stepped down · {good}" | "{old} to {next}". `planned_gain` is not printed.
+3. **The rule not yet built is gone:** Task 8 removed `NOT_YET_BUILT` and, with it, the scene's test
+   `a_rule_not_yet_built_is_refused_in_the_scene`. No other assertion changes.
+
+- [ ] **Step 1: Write the failing tests:** `the_offer_s_rows_are_its_receipt_s` (in `marks.rs`: a quiet period with
+  a `GoodsOfferReceipt` for farm A's food, offered 40, sold 30, kept 4, injected, and its `PriceReceipt` set to
+  `ExcessStock`, $25 to $24: the four rows "40", "30", "4", "$25.00 to $24.00"; with `UnservedDemand`, no "stepped
+  down" row); `every_offer_reads_as_its_receipt` (as Task 3c's run with the six rules from
+  `World::switches_at(Scale::Small)`, 40 periods: at least one `GoodsOffer` receipt, else stop and report; every
+  workplace's rows equal its receipts); `the_proof_script_of_task_8c_parses` (12 commands).
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.** **Step 4: Run.** Expected: every client test
+  passes; Task 2c's tests check all six switches.
+- [ ] **Step 5: The proof script for the lead** (`PROOF_8C`): `{"step":1}`,
+  `{"strike":{"shock":"harvest_fails","places":"both","lasts":"until_lifted"}}`, `{"step":20}`,
+  `{"rule":"seeking_in_place"}`, `{"rule":"hiring_within_means"}`, `{"rule":"stop_without_pay"}`,
+  `{"rule":"resting_price"}`, `{"rule":"owner_restart"}`, `{"rule":"goods_step_down"}`, `{"step":40}`,
+  `{"capture":"all-six"}`, `{"report":"all-six"}`. The check: six rules, each from 22; the list shows six marked
+  rows, the standing lines and no needs line, all inside the rail; the lead looks at the hours of `all-six.json`
+  beside those of the same run without rules.
+- [ ] **Run the companion's gate. Commit** `feat(client): a goods price steps down, switched on in the small world`.
 
 ## Self-review notes
 
@@ -1584,7 +2255,10 @@ pub struct GoodsOfferReceipt {
   variant added in each of Tasks 4 to 8), `PlaceStaffing` (Task 3, `standing` added in Task 5),
   `WorkplaceStanding` (Task 5, counters added in Task 7), `HiringBound` and `bound_hiring` (Task 4, read again in
   Task 7), `close_material_period_with_standing` and the private `close_with_rules` (Task 5, used by Task 7),
-  `refuse_combinations` and `NOT_YET_BUILT` (Task 2, the const lifted kind by kind in Tasks 3 to 8).
+  `refuse_combinations` and `NOT_YET_BUILT` (Task 2, the const lifted kind by kind in Tasks 3 to 8). In the
+  client: `SceneRule`, `SHOWN_RULES`, `RuleButton` and `SceneCommand::TurnOn` (Task 2c, the list grown kind by
+  kind in Tasks 3c to 8c), `marks::rule_rows` (Task 3c, one group of rows added in each of 4c to 8c),
+  `BodyPicture.held` (5c), `PaymentKind::Capital` (7c).
 
 ## The lead's answers to the plan's three questions (23 November 2026)
 
@@ -1707,4 +2381,33 @@ place left without a product for good):
 - The bound, the resting price and the step down keep nothing between closes. `WorkplaceStanding` starts as
   `WorkplaceStanding::opening()` at the stop rule's first close; the restart's counters start at 0 at its first
   close and advance only while it is on.
-- The runner gives the scene, for each rule, `Switch::On { from }`, `Ready` or `Waits { needs }` (Task 2).
+- The runner gives the scene, for each rule, `Switch::On { from }`, `Ready` or `Waits { needs }` (Task 2); the
+  scene's switches read it (Task 2c), and each rule's companion puts its switch on screen (Tasks 3c to 8c).
+
+## What Tasks 1a and 1b built (23 November 2026, evening)
+
+Both are built, reviewed and approved (`69cff3d0b`, `096d5a528`). The bench reproduces `pc-a6-400` and
+`pc-a6-nat-400`, 25 runs of 25 each, at its first run; the lead ran the two long tests again. So the crate's
+worlds are the prototype's, and the seekers' rows that every world now authors change no compared column. A
+later task builds on the code as it stands, which differs from the text above in these points:
+
+- **The bench's tests stand in `tests/adjustment_bench/sets.rs`,** which the root `tests/adjustment_bench.rs`
+  pulls in with `include!("adjustment_bench/sets.rs")`. The sentinels allow a file with a folder beside it only
+  `mod` and `pub use`, and a test inside a child module would not match the long tests' filter
+  (`test(/^reproduces_/)`). Where a task says a test goes into `tests/adjustment_bench.rs`, it goes into
+  `sets.rs`.
+- **`print_reference_digests`** reads no environment variable. It prints every set, each under a line
+  `== <set>`: `--run-ignored only -E 'test(print_reference_digests)' --no-capture`. A rule task adds its two sets
+  to it and copies its lines into the new fixtures.
+- **The runner and the world** gained what their tests needed beyond the Interfaces: `RunnerError::Shock`
+  (`open_world` strikes a pushed power cut through the book), `World::is_pushed(push, place)`, and
+  `Workplace::pairs()`, the ordered (home, host) pairs of one place, the home first, which is the order of the
+  authored pair rows.
+- **The client's `inspect.rs` was not changed:** a household's "At work" still reads the first member at its
+  workplace's site. It is right while nobody moves, since a pool's own member sorts first. Task 3c mends it
+  (its decision 3).
+- **Reviewers' notes kept for one later task** (none blocks a rule): the push test sets the book and the costs
+  aside for every push, not only for the shops' push; the power-cut test does not read the planned batches of
+  the recurring production; in the runner a pool with no staffing receipt would lose its members without a
+  word of its own (`run.rs`, `kept`; the check of each place's people would then refuse the period); the
+  projection drops every empty line; the row writer takes its header from period 1 and adds unchecked.

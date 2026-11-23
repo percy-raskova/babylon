@@ -556,6 +556,7 @@ dependencies = [
 name = "babylon-material-circuit"
 version = "0.1.0"
 dependencies = [
+ "babylon-circuit-worlds",
  "babylon-kernel",
  "serde_json",
 ]

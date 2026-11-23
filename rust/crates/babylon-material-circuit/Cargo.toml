@@ -14,6 +14,7 @@ workspace = true
 babylon-kernel = { path = "../babylon-kernel" }
 
 [dev-dependencies]
+babylon-circuit-worlds = { path = "../babylon-circuit-worlds" }
 serde_json = "1"
 
 [lib]

@@ -1,0 +1,135 @@
+//! The 25 runs of a set: the doubled worlds of the restoring-forces rounds, each pushed one way.
+
+use babylon_circuit_worlds::{Economy, Lasts, OpeningPush, Places, Pushed, Scale, Shock, World};
+
+/// The rules a set runs with. Task 1b has one; each rule task adds the next.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Form {
+    /// Rule A6 only: the engine as built, no new rule.
+    A6,
+}
+
+/// One of the 25 runs: its file name, its world, and the shocks struck through `Runner::strike`
+/// before the first step.
+pub(crate) struct BenchRun {
+    pub(crate) name: &'static str,
+    pub(crate) world: World,
+    pub(crate) strikes: Vec<(Shock, Places, Lasts)>,
+}
+
+/// How a run differs from the quiet world.
+#[derive(Clone, Copy)]
+enum Push {
+    Opening(OpeningPush, Places),
+    Harvest(Places, Lasts),
+}
+
+fn run(name: &'static str, economy: Economy, scale: Scale, push: Option<Push>) -> BenchRun {
+    let (pushed, strikes) = match push {
+        None => (None, Vec::new()),
+        Some(Push::Opening(push, places)) => (Some(Pushed { push, places }), Vec::new()),
+        Some(Push::Harvest(places, lasts)) => (None, vec![(Shock::HarvestFails, places, lasts)]),
+    };
+    BenchRun {
+        name,
+        world: World {
+            economy,
+            scale,
+            pushed,
+        },
+        strikes,
+    }
+}
+
+/// The pushes both worlds take, in the prototype's order, and the four of place A alone.
+fn pushes() -> [(&'static str, &'static str, Push); 7] {
+    [
+        (
+            "plain-P1",
+            "fund-P1",
+            Push::Opening(OpeningPush::LessDemand, Places::Both),
+        ),
+        (
+            "plain-P2",
+            "fund-P2",
+            Push::Harvest(Places::Both, Lasts::UntilLifted),
+        ),
+        (
+            "plain-P3",
+            "fund-P3",
+            Push::Opening(OpeningPush::LessMoney, Places::Both),
+        ),
+        (
+            "plain-P4",
+            "fund-P4",
+            Push::Opening(OpeningPush::HigherPay, Places::Both),
+        ),
+        (
+            "plain-P6",
+            "fund-P6",
+            Push::Opening(OpeningPush::PowerCut, Places::Both),
+        ),
+        (
+            "plain-P7",
+            "fund-P7",
+            Push::Opening(OpeningPush::MoreMouths, Places::Both),
+        ),
+        (
+            "plain-P8",
+            "fund-P8",
+            Push::Harvest(Places::Both, Lasts::TenPeriods),
+        ),
+    ]
+}
+
+fn one_place() -> [(&'static str, &'static str, Push); 4] {
+    [
+        (
+            "plain-P2a",
+            "fund-P2a",
+            Push::Harvest(Places::A, Lasts::UntilLifted),
+        ),
+        (
+            "plain-P4a",
+            "fund-P4a",
+            Push::Opening(OpeningPush::HigherPay, Places::A),
+        ),
+        (
+            "plain-P6a",
+            "fund-P6a",
+            Push::Opening(OpeningPush::PowerCut, Places::A),
+        ),
+        (
+            "plain-P8a",
+            "fund-P8a",
+            Push::Harvest(Places::A, Lasts::TenPeriods),
+        ),
+    ]
+}
+
+/// The 25 runs in the prototype's order: plain quiet, P1, P2, P3, P4, P6, P7, P8, P2a, P4a, P6a, P8a, then
+/// fund quiet, P1, P2, P3, P4, P6, P7, P8, P5, P2a, P4a, P6a, P8a.
+pub(crate) fn runs(form: Form, scale: Scale) -> Vec<BenchRun> {
+    let Form::A6 = form;
+    let mut out = vec![run("plain-quiet", Economy::Plain, scale, None)];
+    for (plain, _, push) in pushes() {
+        out.push(run(plain, Economy::Plain, scale, Some(push)));
+    }
+    for (plain, _, push) in one_place() {
+        out.push(run(plain, Economy::Plain, scale, Some(push)));
+    }
+    out.push(run("fund-quiet", Economy::Fund, scale, None));
+    for (_, fund, push) in pushes() {
+        out.push(run(fund, Economy::Fund, scale, Some(push)));
+    }
+    out.push(run(
+        "fund-P5",
+        Economy::Fund,
+        scale,
+        Some(Push::Opening(OpeningPush::LowerFundTaxes, Places::Both)),
+    ));
+    for (_, fund, push) in one_place() {
+        out.push(run(fund, Economy::Fund, scale, Some(push)));
+    }
+    out
+}

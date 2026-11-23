@@ -720,9 +720,17 @@ if [ "$status" -eq 0 ]; then
           --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
           --skip staffing_history::production_history --skip organizer:: --skip money_journal:: --skip inspection_copy:: \
           --skip state_opponent_history:: --skip state_opponent_nonwitness:: --skip county_review_playthroughs:: \
+          --skip support::live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness \
           --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break
       done
+      # The all-county Michigan cards proof gets its own deadline. Once the two repaired
+      # reader tests ran to their end, the ordinary reader deadline left it unfinished.
+      if [ "$status" -eq 0 ]; then
+        run_phase michigan_county_cards 600 cargo test -p babylon-persistence --test observer_material_live \
+          support::live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
       # Full-prefix history corruption/reopen proofs get their own deadline.
       # Sharing the ordinary reader deadline left the 16-period proof unfinished.
       if [ "$status" -eq 0 ]; then

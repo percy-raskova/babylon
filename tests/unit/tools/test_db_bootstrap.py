@@ -312,6 +312,13 @@ def test_fresh_runtime_focuses_cover_current_live_consumers() -> None:
     assert "reader_threads=4" in runner
     assert "--skip statewide:: --skip statewide_qualified::" in runner
     assert "run_phase statewide_synthetic 600 cargo test" in runner
+    assert "run_phase michigan_county_cards 600 cargo test" in runner
+    assert (
+        runner.count(
+            "support::live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness"
+        )
+        == 2
+    )
     assert not (ROOT / "tools/run_rust_legacy_adopter_pg.sh").exists()
     for retired in (
         "schema_epoch_matrix",
@@ -398,15 +405,16 @@ def test_heavy_children_and_enclosing_ci_have_truthful_deadlines() -> None:
         if job_name == "pg-integration-shards":
             assert (
                 step["timeout-minutes"]
-                == "${{ matrix.focus == 'archive' && 145 || matrix.focus == 'reader' && 70 || 45 }}"
+                == "${{ matrix.focus == 'archive' && 145 || matrix.focus == 'reader' && 80 || 45 }}"
             )
             assert (
                 job["timeout-minutes"]
-                == "${{ matrix.focus == 'archive' && 155 || matrix.focus == 'reader' && 80 || 55 }}"
+                == "${{ matrix.focus == 'archive' && 155 || matrix.focus == 'reader' && 90 || 55 }}"
             )
             assert 600 + 180 + contract_seconds + 600 <= 45 * 60
-            # Reader roles, observations, history and statewide proofs each get a phase.
-            assert 70 * 60 >= 600 + 180 + 4 * 600 + 600
+            # Reader roles, observations, the all-county cards, history and statewide
+            # proofs each get a phase.
+            assert 80 * 60 >= 600 + 180 + 5 * 600 + 600
             # Eight existing groups plus four checkpoint controls run serially.
             assert 145 * 60 >= 600 + 180 + 12 * 600 + 600
         else:

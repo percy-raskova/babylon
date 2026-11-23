@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -298,6 +299,7 @@ def test_fresh_runtime_focuses_cover_current_live_consumers() -> None:
         "current_schema::live_tests::",
         "--test reference_integrity",
         "runtime::live_tests::live_",
+        "event_storage::store::",
         "archive_revision::worker::live_tests::",
         "--skip ::organizer_capture:: --skip ::short_publication:: --skip ::checkpoint_membership::",
         "for archive_group in organizer_capture short_publication bounds revisions wakeup",
@@ -327,6 +329,81 @@ def test_fresh_runtime_focuses_cover_current_live_consumers() -> None:
         "legacy_adopter_postgres",
     ):
         assert retired not in runner
+
+
+_EXACT_TEST_PATH = re.compile(r'"?((?:[a-z0-9_]+::)+(?:[a-z0-9_]+|\$[a-z_]+))"?')
+# A name the runner takes from a `case` it checks first, not from a loop or an assignment.
+_EXACT_NAMES_FROM_A_CASE = {
+    "county_test": ("county_review_playthroughs", "county_review_playthroughs_smoke"),
+}
+
+
+def _exact_live_test_selections() -> list[tuple[str, str]]:
+    """Return every (cargo target, test path) the runner selects with ``--exact``."""
+    runner = _postgres_runner()
+    joined = re.sub(r"\\\n\s*", " ", runner)
+    loops = {
+        match.group(1): tuple(match.group(2).split())
+        for match in re.finditer(r"for (\w+) in ([a-z0-9_ ]+); do", joined)
+    }
+    assigned = dict(re.findall(r"^\s*(\w+_test)=([a-z0-9_:]+)\s*$", runner, flags=re.MULTILINE))
+    for name, values in _EXACT_NAMES_FROM_A_CASE.items():
+        assert f"{' | '.join(values)}) ;;" in runner, name
+    selections: set[tuple[str, str]] = set()
+    for command in joined.splitlines():
+        if "cargo test" not in command or "--exact" not in command:
+            continue
+        integration = re.search(r"--test (\w+)", command)
+        if "--lib" in command:
+            target = "lib"
+        else:
+            assert integration is not None, command
+            target = integration.group(1)
+        tokens = [match.group(1) for match in _EXACT_TEST_PATH.finditer(command)]
+        tokens += [assigned[name] for name in re.findall(r'"\$(\w+_test)"', command)]
+        assert tokens, command
+        for token in tokens:
+            prefix, _, last = token.rpartition("::")
+            if not last.startswith("$"):
+                selections.add((target, token))
+                continue
+            variable = last[1:]
+            values = loops.get(variable) or _EXACT_NAMES_FROM_A_CASE.get(variable)
+            assert values, f"the runner builds an exact test name from ${variable}: {command}"
+            selections.update((target, f"{prefix}::{value}") for value in values)
+    return sorted(selections)
+
+
+def _resolve_rust_test(target: str, path: str) -> tuple[Path, list[str], bool]:
+    """Find the file a test path names; report inline modules and the function it lacks."""
+    crate = ROOT / "rust/crates/babylon-persistence"
+    directory = crate / "src" if target == "lib" else crate / "tests" / target
+    current = directory / ("lib.rs" if target == "lib" else "main.rs")
+    inline: list[str] = []
+    *modules, function = path.split("::")
+    for module in modules:
+        file = directory / f"{module}.rs"
+        if file.exists():
+            current, inline = file, []
+        else:
+            inline.append(module)
+        directory = directory / module
+    assert current.exists(), current
+    text = current.read_text(encoding="utf-8")
+    missing = [name for name in inline if not re.search(rf"\bmod {re.escape(name)}\b", text)]
+    return current, missing, re.search(rf"\bfn {re.escape(function)}\b", text) is not None
+
+
+def test_every_test_the_runner_selects_exactly_exists_in_the_rust_sources() -> None:
+    """Under ``--exact`` a stale module path selects nothing and its phase passes empty."""
+    selections = _exact_live_test_selections()
+    assert len(selections) >= 18
+    stale = []
+    for target, path in selections:
+        source, missing_modules, has_function = _resolve_rust_test(target, path)
+        if missing_modules or not has_function:
+            stale.append(f"{path} (looked in {source.relative_to(ROOT)})")
+    assert not stale, "the runner selects tests that do not exist: " + "; ".join(stale)
 
 
 def test_disposable_pg_runner_proves_fresh_schema_and_michigan_smoke() -> None:
@@ -381,6 +458,7 @@ def test_heavy_children_and_enclosing_ci_have_truthful_deadlines() -> None:
         "run_phase reference_integrity 900 cargo test",
         "run_phase reference_catalog 600 cargo test",
         "run_phase runtime 600 cargo test",
+        "run_phase event_storage 600 cargo test",
         'run_phase material_writer_bounds 180 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN"',
         "run_phase archive_worker 600 cargo test",
         'run_phase "archive_$archive_group" 600 cargo test',

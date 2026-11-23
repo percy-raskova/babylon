@@ -621,7 +621,7 @@ if [ "$status" -eq 0 ]; then
       if [ "$status" -eq 0 ]; then
         run_phase material_writer_bounds 180 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
           cargo test -p babylon-persistence --lib \
-          material_runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction \
+          material_runtime::runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction \
           --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       fi
       if [ "$status" -eq 0 ]; then

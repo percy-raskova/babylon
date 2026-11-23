@@ -25,12 +25,18 @@ an earlier record. The round wrote 67 whole sets of 400 periods.
 
 ## 1. The answer
 
-- **No form passes the Director's test at both sets of figures.** Three forms pass at the small figures: the light form
-  with the mended restart and the step down, under no credit and under a term of 3, and the same with capacity added,
-  under a term of 3. Each fails at the national figures, and each fails there in the same run as every form of rounds
-  eight and nine: the harvest that fails in one place for ten periods and returns.
+- **As I read the Director's test, no form passes it at both sets of figures.** Three forms pass at the small figures:
+  the light form with the mended restart and the step down, under no credit and under a term of 3, and the same with
+  capacity added, under a term of 3. Each fails at the national figures, and each fails there in the same run as every
+  form of rounds eight and nine: the harvest that fails in one place for ten periods and returns.
 - **That run fails in every national set of this round**, all 21 of them. In the form that comes closest it is the only
   run that fails, under both credits.
+- **That verdict turns on half a line that I added to the test.** Its second line reads "work and output are back within
+  five years". To count it I added "and still back at the end". Without my half, 6 forms pass the whole test at both
+  sets of figures, the closest form under both credits among them (section 2). In each of them the harvest's own loss is
+  made good within five years. What my half counts is a later slump: in one run at the national figures the hours fall
+  again years after the harvest has returned, to a first low 5.2 to 6.5 years after the start, and end at 70% to 82%
+  (section 8). Whether that later slump is a failure or play is the first question for the Director.
 - **The step down is the piece that matters.** With it no shop's price is a ratchet any more: over the pushed runs a
   shop's posted price stepped down 1,582 and 1,927 times, where in the light form it never did. Hours rise from 396 and
   402 to 439 and 443 with no credit, and no workplace is stopped for good at the end, at either set of figures.
@@ -94,6 +100,24 @@ The same run is close to passing in one more set: all four steps with the whole 
 national figures. R2 in fund-P8a: output short at the end at clinic_b; R3 in fund-P2: nothing made or sold for good at
 clinic_a, clinic_b. That form fails at the small figures, where 8 of the 17 pushed runs end with a workplace stopped for
 good.
+
+**Read without my added half.** Here the second line is met when there is a period within five years of the harvest's
+return in which hours and every workplace's output are back to nineteen twentieths, whatever comes after. Rounds nine
+and ten measured 45 forms at both sets of figures. With my half none of them passes at both. Without it these 6 do:
+
+| Form | Credit | Stops, small and national | Hours | What my added half counted: small | national |
+| --- | --- | --- | --- | --- | --- |
+| The light form with the mended restart and the step down | no credit | 0 and 0 | 439 and 443 | nothing | fund-P8a: hours end at 78% |
+| The light form with the mended restart and the step down | a term of 3 | 0 and 0 | 445 and 443 | nothing | fund-P8a: hours end at 82% |
+| The same, with the step down for goods only | no credit | 0 and 0 | 436 and 440 | nothing | fund-P8a: hours end at 75% |
+| The light form, as round nine left it | a term of 3 | 0 and 0 | 421 and 425 | plain-P8a: clinic_a ends smaller | fund-P8a: hours end at 70% |
+| All four without adding | a term of 3 | 0 and 0 | 417 and 447 | fund-P8a: hours end at 72% | fund-P8a: hours end at 78% |
+| The light form, as round nine left it (a set of round nine) | a term of 13 | 0 and 0 | 438 and 418 | plain-P8a: clinic_a ends smaller | fund-P8a: hours end at 70% |
+
+In all 6 the national set fails my half in one run only, the harvest that fails in one place and returns, and for one
+reason: a later slump, whose first low comes 5.2 to 6.5 years after the start and whose hours end at 70% to 82%. Read on
+the whole economy instead of workplace by workplace, my reading still passes no national set (counted for the end of the
+run).
 
 ## 3. What a player would see
 
@@ -269,7 +293,8 @@ failed.
 3. **To the end.** The price of food stops climbing and stays between $90 and $100: the ratchet is gone, and the price
    has found the level at which those who can pay take what there is. The clinic sells 15 of 40 units on the mean of the
    last 20 periods, because workers who pay that much for food cannot pay for care. Hours end at 375 with no credit and
-   394 under a term of 3, of 480.
+   394 under a term of 3, of 480. With no credit the hours are back at nineteen twentieths in only 4 of the 350 periods
+   after period 50.
 
 So the step down ends the climb and does not end the crisis. The price of food rose for a reason the price rule counts
 as sound: buyers with money were turned away. What nothing on the bench answers is where that money came from, the
@@ -306,6 +331,9 @@ pace is up to five years back.
   price stepped up for needs nobody could pay for. The count showed the opposite fault, a price that never steps down,
   and I redrew the step. The lesson is in my notes: every "because" in a design note gets its own count before a builder
   is briefed on it.
+- **A second fault of mine, found while writing the final report.** The first version of this record (commit
+  `7c73aa582`) said that no form passes and did not say that this rests on the half-line I added to the test, nor count
+  what passes without it. This version does, in sections 1, 2 and 11. No figure of the first version changed.
 
 ## 10. What ten rounds measured, rule by rule
 
@@ -329,11 +357,13 @@ here is what the bench says, not a decision to build.
 
 ## 11. What waits for the Director
 
-1. **Whether the crisis of section 8 is a fault or play.** A local crop failure ends, and three years later the cost of
-   living rises, owners grow rich and workers go without care. With the step down it stops climbing and does not end; in
-   one form with pay by steps and the loan it ends after about eighteen years. By my reading of R2 it fails.
-2. **Whether my reading of R2 stands.** "Still back at the end" is my addition to "back within five years", and I ask
-   that every workplace's output be back, not the whole. An economy that came back changed fails it.
+1. **Whether the later slump of section 8 is a failure or play.** This one answer decides the verdict. A local crop
+   failure ends and everything is back. About three years after it the cost of living rises, owners grow rich and
+   workers go without care, and in the closest form that does not end. If it is play, 6 forms meet the test at both sets
+   of figures and the closest form is the one to build. If it is a failure, no form passes, and what is missing is
+   whatever ends it: in this round only a form with pay that moves by steps did, over about eighteen years.
+2. **Whether the rest of my reading stands.** I ask that every workplace's own output be back, not only the whole. An
+   economy that came back changed fails that. It changes no verdict of this round at the national figures.
 3. **Which rules to build into the engine.** Section 10 gives what the bench says. Building them is a new piece of work,
    larger than any round, and none of it is planned.
 4. **What the bench never reached**: organized workers who answer a squeeze (A16), the founding of a new workplace

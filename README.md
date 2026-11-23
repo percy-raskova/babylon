@@ -211,6 +211,8 @@ Open or continue the native observer:
 mise run play
 ```
 
+A small test economy that is not Wayne and is not saved opens with `mise run play:small-world`.
+
 The launcher builds the runtime and client, reuses a reachable local database,
 and prepares the campaign at its durable period. New campaigns start at period
 zero.

@@ -832,3 +832,101 @@ fn the_units_line_is_built_from_the_marks_constants() {
         "One dot: 2 hours of work. One square: 4 units of a good. One streak: $80. Hours and money are two scales."
     );
 }
+
+/// A folder of this test's own, removed when it goes out of scope.
+struct TestFolder(std::path::PathBuf);
+
+impl TestFolder {
+    fn new() -> Result<Self, Box<dyn Error>> {
+        let folder = std::env::temp_dir().join(format!("babylon-script-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&folder)?;
+        Ok(Self(folder))
+    }
+}
+
+impl Drop for TestFolder {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn a_script_presses_the_same_controls() -> TestResult {
+    let folder = TestFolder::new()?;
+    let script = folder.0.join("run.jsonl");
+    std::fs::write(
+        &script,
+        "{\"step\":1}\n{\"strike\":{\"shock\":\"harvest_fails\",\"places\":\"a\",\"lasts\":\"until_lifted\"}}\n",
+    )?;
+    let mut app = scene_app(Some(script))?;
+    updates(&mut app, 500);
+    let scene = app.world().resource::<SceneRunner>();
+    assert_eq!(scene.runner.history().len(), 1);
+    assert_eq!(scene.runner.shocks().strikes().len(), 1);
+    let replies = std::fs::read_to_string(folder.0.join("replies.jsonl"))?;
+    let lines: Vec<&str> = replies.lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            r#"{"event":"done","line":1}"#,
+            r#"{"event":"done","line":2}"#
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn a_refused_strike_ends_the_script_and_keeps_the_refusal() -> TestResult {
+    let folder = TestFolder::new()?;
+    let script = folder.0.join("run.jsonl");
+    std::fs::write(
+        &script,
+        "{\"strike\":{\"shock\":\"power_cut\",\"places\":\"a\",\"lasts\":\"ten_periods\"}}\n{\"step\":1}\n",
+    )?;
+    let mut app = scene_app(Some(script))?;
+    updates(&mut app, 50);
+    assert_eq!(history(&app), 0);
+    let replies = std::fs::read_to_string(folder.0.join("replies.jsonl"))?;
+    assert!(replies.contains(r#""event":"refused""#), "{replies}");
+    assert!(folder.0.join("refusal.json").exists());
+    Ok(())
+}
+
+#[test]
+fn a_capture_is_saved_as_a_png() -> TestResult {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
+
+    let folder = TestFolder::new()?;
+    let script = folder.0.join("run.jsonl");
+    std::fs::write(&script, "{\"capture\":\"shot\"}\n")?;
+    let mut app = scene_app(Some(script))?;
+    updates(&mut app, 3);
+    let entity = {
+        let world = app.world_mut();
+        world
+            .query_filtered::<Entity, With<Screenshot>>()
+            .single(world)?
+    };
+    let image = Image::new_fill(
+        Extent3d {
+            width: 2,
+            height: 2,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[200, 30, 40, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    app.world_mut()
+        .trigger(ScreenshotCaptured { entity, image });
+    updates(&mut app, 3);
+    let saved = image::open(folder.0.join("shot.png"))?;
+    assert_eq!((saved.width(), saved.height()), (2, 2));
+    let replies = std::fs::read_to_string(folder.0.join("replies.jsonl"))?;
+    assert_eq!(replies.lines().count(), 1);
+    assert!(replies.contains(r#""event":"done""#));
+    Ok(())
+}

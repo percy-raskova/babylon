@@ -74,6 +74,7 @@ request; hosted release qualification owns the full documentation build.
 
 ```bash
 mise run play                         # Durable Bevy observer session
+mise run play:small-world             # The small test economy in the client (not Wayne, not saved)
 mise run sim:report                    # 15 periods / 60 weeks; includes annual rollover
 mise run sim:report 130                # 10 modeled years; each period is four weeks
 mise run data:doctor                   # Local reference input checks

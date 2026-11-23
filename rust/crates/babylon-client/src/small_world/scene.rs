@@ -8,12 +8,15 @@
 use super::controls;
 use super::frame;
 use super::frame::{BodyPicture, ParticleMode, Picture};
+use super::frame_time;
+use super::frame_time::SceneFrameTimes;
 use super::inspect;
 use super::inspect::ScenePick;
 use super::layout::{FUND_AT, HOURS_RING_Y, MONEY_RING_Y, PLANE, TREASURY_AT, WORKPLACE_X};
 use super::panel;
 use super::panel::{PanelView, ShockChoices, ShockNotice};
 use super::reading::Party;
+use super::script;
 use super::table::Grouping;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_ui;
@@ -83,10 +86,6 @@ pub struct SceneStatus {
     pub playing: bool,
     pub refusal: Option<String>,
 }
-
-/// The script file the scene was given, for the script's own system.
-#[derive(Resource, Default, Clone, Debug, PartialEq, Eq)]
-pub struct SceneScript(pub Option<PathBuf>);
 
 /// Time since the last played step.
 #[derive(Resource, Default)]
@@ -177,6 +176,7 @@ pub fn status_after(step: &Result<&PeriodResult, RunnerError>) -> SceneStatus {
 /// # Errors
 /// The runner's or the field's refusal, in words.
 pub fn install_scene(app: &mut App, script: Option<PathBuf>) -> Result<(), String> {
+    let script = script.map(|path| script::load_script(&path)).transpose()?;
     let runner = Runner::open().map_err(|error| error.to_string())?;
     let field = FieldPlugin::new(
         frame::field_config(),
@@ -198,7 +198,15 @@ pub fn install_scene(app: &mut App, script: Option<PathBuf>) -> Result<(), Strin
             mode: ParticleMode::default(),
             shown: None,
         })
-        .add_plugins(SmallWorldPlugin { script });
+        .add_plugins(SmallWorldPlugin);
+    if let Some(run) = script {
+        app.insert_resource(run).add_systems(
+            Update,
+            script::run_script
+                .after(fit_viewport)
+                .in_set(SceneSet::Input),
+        );
+    }
     Ok(())
 }
 
@@ -239,9 +247,7 @@ fn play_opening_period(
 
 /// The scene's own resources, messages and systems. `install_scene` adds it last, after it
 /// has opened the runner, so it is not added by itself.
-pub struct SmallWorldPlugin {
-    pub script: Option<PathBuf>,
-}
+pub struct SmallWorldPlugin;
 
 impl Plugin for SmallWorldPlugin {
     fn build(&self, app: &mut App) {
@@ -253,7 +259,8 @@ impl Plugin for SmallWorldPlugin {
             .init_resource::<PanelView>()
             .init_resource::<ShockChoices>()
             .init_resource::<ShockNotice>()
-            .insert_resource(SceneScript(self.script.clone()))
+            .init_resource::<SceneFrameTimes>()
+            .add_systems(Last, frame_time::time_frames)
             .configure_sets(
                 Update,
                 (SceneSet::Input, SceneSet::Run)

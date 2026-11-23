@@ -678,6 +678,11 @@ PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -c
 description = "Open or continue the durable economic observer with isolated read capabilities"
 run = "uv run --frozen python tools/run_observer_session.py"
 
+[tasks."play:small-world"]
+description = "Open the small test economy in the client: not Wayne, not saved (ADR320)"
+dir = "rust"
+run = "cargo run -p babylon-client --locked -- --small-world"
+
 [tasks."data:lodes-od"]
 description = "Download LODES OD commuter flow data (Michigan, current year). Tri-county minimum: --states mi"
 usage = '''

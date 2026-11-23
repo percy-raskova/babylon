@@ -144,8 +144,11 @@ The doubled world of the measurement rounds, with taxes and the benefits fund.
 
 ### 6.2 How it runs
 
-- In the client's own process. No runtime process, no database, no save. The scene is reached from
-  the opening screen and from a command-line flag, and says on screen that it is not saved.
+- In the client's own process. No runtime process, no database, no save. The scene is reached by
+  one command (`mise run play:small-world`), by a flag of the client, and from a button on the
+  title screen. The observer's window cannot open without a campaign and cannot shed its own
+  parts while it runs, so the button opens the scene in a window of its own. The scene says on
+  screen that it is not saved.
 - One period is the engine's own period, as section 3 names it. The scene never changes the
   engine's state from outside.
 - **Step** advances one period and plays its three beats. **Play** steps on a timer. **Again**
@@ -189,11 +192,15 @@ position is worked out from the period's figures, once a period.
      taxes, benefits, profit paid out.
   One mark stands for a fixed amount, printed on screen, one figure for hours and one for money.
   No line of code relates the two.
-- **The table.** Four columns: work given, stored work got back, money in, money out. "Stored
-  work got back" reads "not measured yet" in this build. Grouped by workplace; by class (owner or
-  not, earner or not); by place.
+- **The table.** Work given; paid, not used (ADR317's ruling 17 gives idle hours their own
+  column); stored work got back; money in; money out. "Stored work got back" reads "not measured
+  yet" in this build. Grouped by workplace; by class (owner or not, earner or not); by place.
 - **The words on screen.** "ADMIN · MATERIAL TRUTH · UNFOGGED", as ADR217 has it. "A test economy.
   Not Wayne. Not saved."
+- **A declared surface.** The client keeps a manifest of everything it shows, and a test holds
+  every shipped visual to it. The scene is entered there as a sixth surface, an administrative
+  one, with the manifest's own line: "unfogged material truth; no player knowledge state".
+- **Still marks.** A switch shows the three beats as still paths, for reduced motion.
 - **Selection.** Picking a body, a particle or a set shows its own figures of the period.
 
 ### 6.4 Shocks
@@ -205,13 +212,19 @@ and while it holds.
 | Shock | The figure | Lasts |
 | --- | --- | --- |
 | The harvest fails | a farm makes 9 food a batch, not 10 | ten periods, then it returns; or until lifted |
-| The power is cut | a utility makes 9 power for 10 hours, not 10 | until lifted |
-| Pay rises at the clinic | an hour costs $11, not $10 | until lifted |
-| The fund's taxes are cut | the two tax rates fall by a quarter | until lifted |
+| The power is cut | a utility makes 9 power for 10 hours, not 10 | until the run is started over |
 
 - Each is struck in Place A, in Place B or in both.
-- A shock that holds is listed with the period it began. Lifting it restores the opening's figure
-  from the next period on.
+- A shock that holds is listed with the period it began. Lifting the harvest's shock restores the
+  opening's yield from the next period on.
+- **The power cut is not lifted in this build.** It changes the size of a batch (ten hours and nine
+  units, where the opening has one hour and one unit), and the engine keeps its plans in batches.
+  Lifted in the middle of a run, a plan made under the cut would be read in the old size for one
+  period, and power would fall to about a tenth for a reason that is no part of the economy. So it
+  holds until the run is started over, and the scene says so.
+- **Two more shocks were meant and are left out:** a pay rise at the clinic and a cut of the
+  fund's taxes. The plan found that a wage and a tax rate live in the state, not in the catalog,
+  and the scene never changes the state from outside (the last point below).
 - The bench's other pushes change the number of people or the money a workplace opens with. They
   are openings, not shocks: struck in the middle of a run they would create or destroy people or
   money. They are left out (section 9, call 4).
@@ -250,7 +263,11 @@ library's branch.
   streaks drawn and "not drawn" add up to the period's hours, goods and payments.
 - The same steps give the same frames twice.
 - The real client is driven by script: open the scene, step, fail the harvest in Place A, step
-  ten periods; the farm's hours fall in A and not in B. A picture is kept for the Director.
+  ten periods. Farm A then makes 36 food a period and farm B 40, and every workplace's hours in A
+  and in B are written down as the client reports them. A picture is kept for the Director. (The
+  first wording asked that the farm's hours fall in A. The plan counted the bench's rows: with the
+  harvest failed in A, farm A worked its full 40 hours for the first 46 periods, and the fall
+  showed at the clinic and the utility. A line of mine that had not been counted.)
 - The frame time is measured on the build machine and stated.
 
 ## 8. Left to the builder
@@ -271,9 +288,12 @@ look, within the client's own theme. How the history table pages. The names of t
 2. **An owner's set** holds the owner's household and its workplaces, the workplaces with the
    capital the owner has in them.
 3. **Goods are drawn hollow** until the tick's records carry this economy.
-4. **Four shocks are offered** (section 6.4). Fewer mouths, more mouths and a shop that opens
-   with half its money are left out, because struck mid-run they would create or destroy people
+4. **Two shocks are offered** (section 6.4): the harvest and the power cut, the two the Director
+   named. The power cut holds until the run is started over. A pay rise and a tax cut are left
+   out because their figures live in the state. Fewer mouths, more mouths and a shop that opens
+   with half its money are left out because struck mid-run they would create or destroy people
    or money.
-5. **The scene is reached** from a button on the opening screen and from a command-line flag.
+5. **The scene is reached** by `mise run play:small-world`, by a flag of the client, and from a
+   button on the title screen, which opens it in a window of its own.
 6. **The two copies are named** Place A and Place B.
 7. **The fund world** is the one shown, because the ruled sets include the fund.

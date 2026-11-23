@@ -113,11 +113,24 @@ ADR320_screen_first_the_small_world_in_the_client:
         until the bridge is built. A hollow square stands for goods and for no
         number of hours (ADR317, ruling 18), and the scene says so.
     - >-
-        Four shocks are offered: the harvest fails (ten periods, or until
-        lifted), the power is cut, pay rises at the clinic, the fund's taxes
-        are cut. The bench's pushes that change the number of people or a
+        Two shocks are offered, the two the Director named: the harvest fails
+        (ten periods, or until lifted) and the power is cut. The power cut
+        changes the size of a batch, so it holds until the run is started
+        over; lifted in the middle of a run it would cut power to about a
+        tenth for one period for a reason that is no part of the economy. A
+        pay rise and a tax cut are left out: the plan found that a wage and a
+        tax rate live in the state, and the scene never changes the state from
+        outside. The bench's pushes that change the number of people or a
         workplace's opening money are left out: struck in the middle of a run
         they would create or destroy people or money.
+    - >-
+        The scene is declared as a sixth surface of the client's manifest, an
+        administrative one, and the test that pins the manifest's closed set
+        gains it on purpose.
+    - >-
+        The button on the title screen opens the scene in a window of its own.
+        The observer's window cannot open without a campaign and cannot shed
+        its own parts while it runs.
     - >-
         The fund world is the one shown, because the ruled sets include the
         fund. The two copies are named Place A and Place B. Both carry
@@ -129,7 +142,8 @@ ADR320_screen_first_the_small_world_in_the_client:
   consequences:
     - >-
         The design is `docs/superpowers/specs/2026-11-23-the-small-world-in-the-client-design.md`.
-        Its plan follows in one draft and one check, then it is built.
+        Its plan is `docs/superpowers/plans/2026-11-23-the-small-world-in-the-client.md`: one
+        draft, one check, one revision, nine tasks.
     - >-
         The doubled world and its shocks come out of the scratch branches into
         a crate of small worlds that the client may depend on. Its identities

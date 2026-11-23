@@ -1,5 +1,5 @@
 meta:
-  version: 1.109.0
+  version: 1.110.0
   updated: '2026-11-23'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR321_the_six_rules_as_measured:
+    title: The six rules are built as measured; the test is scored where there is a fund; a rule turns on at any period
+    status: accepted
+    date: '2026-11-23'
+    file: ADR321_the_six_rules_as_measured.yaml
   ADR320_screen_first_the_small_world_in_the_client:
     title: Screen first; the small test economy runs in the client, drawn by its ties, with labelled shocks
     status: accepted

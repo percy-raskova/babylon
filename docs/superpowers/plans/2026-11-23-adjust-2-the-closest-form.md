@@ -6,8 +6,9 @@
 
 **Goal:** Build into the engine the form the Director picked on 22 November 2026: "a bound on hiring; people
 look for work in their place; no money, no work; resting price, mended restart; a goods price steps down, to its
-cost and no lower". Behind a setting no campaign asks for yet. Each rule reproduces its rows of the test economy
-before it merges.
+cost and no lower". The last clause was the lead's wording and no round measured it: on 23 November the Director
+ruled that the step down is built as measured, under cost if it must (ADR321, K1). Behind a setting no campaign
+asks for yet. Each rule reproduces its rows of the test economy before it merges.
 
 **Architecture:** Six rules, each asked for by one entry in a new list on the catalog's market policy, as rule A6
 is asked for by its flag. A catalog that does not ask runs today's code and keeps every byte. The rules sit where
@@ -45,9 +46,11 @@ What a campaign needs before it may ask for these rules is under "Stored format"
 
 The scene and the bench run one world and one loop: the doubled world and the `Runner` of
 `babylon-circuit-worlds` (Tasks 1a and 1b). So a rule proven on the bench is the rule the scene runs. How a switch
-behaves in the middle of a run is settled with the companion tasks. The lead's leaning: a switch turns its rule on
-from the next period and holds until the run is started over, as the power cut does, and a rule that needs another
-can be turned on only after it. What stands in the way today is listed under "What the built crate changed".
+behaves in the middle of a run was ruled by the Director on 23 November ("On anytime, off by restart", ADR321,
+K3): a switch turns its rule on from the next period, and the rule holds until the run is started over, as the
+power cut does; a rule that needs another can be turned on only once the other is on. The bench proves each set
+of rules from period 1; a rule turned on later is seen on screen and is not measured. What stands in the way
+today is listed under "What the built crate changed"; the companion tasks settle each before Task 3 is built.
 
 **The bench's drive.** `BENCH` below is `/media/user/dev-ssd/babylon-bench/restoring-forces`: the rows of
 every measured set (`out/`), the scripts that ran them (`scripts/`) and the lead's counters (`k-scripts/`).
@@ -90,9 +93,12 @@ this plan.
    copy's buyers and members queue as the first copy's do, by digesting old identities and flipping a bit. That is a
    measuring aid inside the engine, and nothing of it is built. Task 0 adds one switch that leaves it unregistered
    (`spike_t.rs` is then inert, byte for byte, by its own doc comment) and makes every reference set with it.
-3. **The step down stops at cost.** The prototype stops at the policy minimum, $1 (`spike/r10-P`
-   `src/recurring/prices.rs:436-439`). Task 0 adds the cost floor to the prototype behind a switch, proves the
-   switch off changes nothing, and judges the new sets by the Director's test before anything is built.
+3. **The step down is built as the prototype has it: it stops at the policy minimum,** $1 on the bench
+   (`spike/r10-P` `src/recurring/prices.rs:436-439`). So this is no departure any more. The lead had planned a
+   floor at cost, from words of the lead's own that no round had measured. Task 0 added that floor to the
+   prototype behind a switch, proved that the switch off changes nothing, and counted both forms; the Director
+   then ruled "As measured" (ADR321, K1). The floored rows are kept for the record as `pc-downfloor`, and
+   nothing of the floor is built.
 4. **The step down is for goods only.** The prototype's `SPIKE_DOWN` also moves services: a provider quotes before
    it plans and plans for buyers at a lower price (`services/market.rs:408, 596-610` on `spike/r10-P`). The
    Director's words and D1 name goods. Task 0 makes the reference with the prototype's own `SPIKE_DOWN_GOODS=on`,
@@ -227,7 +233,8 @@ runner is `BENCH/scripts/closest-ref-run.sh` (steps `p1`, `p2`, `c2sets`, `p3`, 
 about 21 s after the build. `BENCH/k-scripts/cmp_sets.py` names the first period and column where two sets
 differ on the projected rows.
 
-**Produces:** the fourteen sets below, each 25 files of 401 lines; nine `c2-` sets under `BENCH/c2/`
+**Produces:** the fourteen sets below and the floored form at both figures (`pc-downfloor`, for the record), each
+25 files of 401 lines; nine `c2-` sets and the floored form's two under `BENCH/c2/`
 (decision 3); a note `pc-sets.md` beside them with every proof line (P1 to P4), the hunks of C3 (b) that could not
 keep their lines, every explained difference, every count and both verdicts. Nothing in the repository.
 
@@ -304,7 +311,8 @@ keep their lines, every explained difference, every count and both verdicts. Not
    | `pc-stop` | `SPIKE_SEEK=on SPIKE_BOUND=on SPIKE_STOP=on` | Task 5 |
    | `pc-rest` | the same and `SPIKE_REST=on` | Task 6 |
    | `pc-restart` | the same and `SPIKE_RESTART=on SPIKE_MEND=on` | Task 7 |
-   | `pc-down` | the same and `SPIKE_DOWN=on SPIKE_DOWN_GOODS=on SPIKE_DOWN_FLOOR=cost` | Task 8 |
+   | `pc-down` | the same and `SPIKE_DOWN=on SPIKE_DOWN_GOODS=on` | Task 8 |
+   | `pc-downfloor` | the same and `SPIKE_DOWN_FLOOR=cost` | none: kept for the record (ADR321, K1) |
 
    Every intermediate form has a set: no task builds two rules to reach a reference.
 3. **Every difference from the old rows is explained.** A set and its old twin of the same rules need not be
@@ -315,10 +323,10 @@ keep their lines, every explained difference, every count and both verdicts. Not
    `r10-P-down-goods-none` (both figures). To separate the two causes, each of these nine sets is also run once
    at C2, before the merge, as `c2-<name>` (under `BENCH/c2/`; deleted when the plan is built). For each run the lead
    writes in `pc-sets.md`, on the projected rows (Task 1b, decision 4): whether `c2-<name>` equals the old twin,
-   and if not the first differing period and column and why the aliases (or, for `pc-down` only, C1: a price
-   held at cost) change it there; then whether `pc-<name>` equals `c2-<name>`, and if not the first differing
-   period and column and the merged commit and code line that explain it. A difference with no explanation stops the
-   plan. Also reported, not gated: for `pc-down`, the count of `flow_down_uncosted` over each set; for every set,
+   and if not the first differing period and column and why the aliases change it there; then whether
+   `pc-<name>` equals `c2-<name>`, and if not the first differing period and column and the merged commit and code
+   line that explain it. A difference with no explanation stops the plan. Also reported, not gated: for
+   `pc-downfloor`, the count of `flow_down_uncosted` over each set; for every set,
    the number of site-periods with `restart_test_` above 0. (The old `r10-P-down-goods-none-nat-400` has none in
    all 80,000 site-periods, so at the national figures the restart's money path may never run; if
    `pc-restart-nat-400` and `pc-down-nat-400` also have none, its proof rests on the small figures and Task 7's
@@ -326,17 +334,22 @@ keep their lines, every explained difference, every count and both verdicts. Not
 4. **The Director's test as ruled.** Run the lead's counters on every set:
    `python3 -I BENCH/k-scripts/r9_tests.py BENCH/out '^pc-'` then
    `python3 -I BENCH/k-scripts/r10_ruled.py BENCH/out <tests.json>`.
-   Record `passes_as_ruled` for each. **Gate:** `pc-down-400` and `pc-down-nat-400` both pass. If either fails,
-   stop: the lead takes the rows to the Director, and no task of this plan starts. The other twelve verdicts are
-   reported only; their forms are steps, not candidates.
+   then `python3 -I BENCH/k-scripts/ruled_by_world.py <tests.json> <ruled.json>`, which scores the test as the
+   Director ruled on 23 November (ADR321, K2): lines 2 and 3 over the runs of the world with a fund, line 1 in
+   both calm worlds, and the runs of the world with no fund counted the same way and reported.
+   **Gate:** `pc-down-400` and `pc-down-nat-400` both pass where there is a fund. If either fails, stop: the lead
+   takes the rows to the Director, and no rule task (2 to 8) starts. Tasks 1a and 1b build no rule and may start
+   once Task 0 has made the sets they reproduce. The other verdicts are reported only; their forms are steps,
+   not candidates.
 
 - [ ] **Step 1:** Make the worktree and the branch; write C1; run P1. Expected: 25 of 25, twice.
 - [ ] **Step 2:** Write C2; run P2. Expected: 25 of 25, twice.
 - [ ] **Step 3:** Before merging, run the nine `c2-` sets of decision 3 at C2. Merge (C3) as resolved there; run
   P3 and P4. Expected: all pass; P4 prints only the hunks it names. Else stop.
-- [ ] **Step 4:** Run the fourteen sets; copy them to the drive; write the explanations and counts of decision 3.
+- [ ] **Step 4:** Run the sixteen sets; copy them to the drive; write the explanations and counts of decision 3.
   Expected: every difference explained. Else stop.
-- [ ] **Step 5:** Run the counters. Expected: `pc-down` passes at both figures. Else stop and report.
+- [ ] **Step 5:** Run the counters. Expected: `pc-down` passes where there is a fund at both figures. Else stop
+  and report.
 
 ### Task 1a: The small worlds hold every world of the bench
 
@@ -628,8 +641,9 @@ pub enum AdjustmentRule {
     /// Its owner restarts a stopped workplace with the owner's own money (A17, A19, ADR318 L1),
     /// for `outlay_periods` periods of one batch's cost a batch.
     OwnerRestart { outlay_periods: u64 },
-    /// A goods price steps down when goods beyond the buffer went unsold, to its cost and no lower (A1).
-    StepDownToCost,
+    /// A goods price steps down when goods beyond the buffer went unsold, under its cost if it must (A1;
+    /// ADR321, K1).
+    GoodsStepDown,
 }
 impl AdjustmentRule {
     /// The rule's tag in the catalog bytes: 1 to 6 in the order above.
@@ -1253,7 +1267,7 @@ pub struct RestingPriceToCostReceipt { pub period: u64, pub site_id: SiteId, pub
 - [ ] **Step 5: Run.** Expected: six forms, 25 of 25 at both figures.
 - [ ] **Run the gate. Commit** `feat(material-circuit): an owner restarts a stopped workplace with its own money`.
 
-### Task 8: A goods price steps down, to its cost and no lower (`pc-down`)
+### Task 8: A goods price steps down, as measured (`pc-down`)
 
 **Files:**
 - Modify: `src/recurring/prices.rs` (`update_prices`, `quote`); `src/clearing/table.rs` and
@@ -1277,33 +1291,33 @@ pub(crate) fn goods_gain_at(&self, key: StockKey, price: Currency) -> Result<u64
 // AdjustmentReceipt gains GoodsOffer(GoodsOfferReceipt):
 pub struct GoodsOfferReceipt {
     pub period: u64, pub site_id: SiteId, pub good_id: GoodId, pub unit_id: UnitId,
-    pub offered: u64, pub sold: u64, pub kept: u64, pub floor: Currency, pub planned_gain: u64,
+    pub offered: u64, pub sold: u64, pub kept: u64, pub planned_gain: u64,
 }
 ```
 
 **Decisions** (the prototype is `spike/closest-ref` `src/recurring/prices.rs:262-477` with
-`SPIKE_DOWN_GOODS=on` and `SPIKE_DOWN_FLOOR=cost`, `clearing/table.rs:175-277`, `clearing/ladder.rs:190-218`,
+`SPIKE_DOWN_GOODS=on` and the floor's switch unset, `clearing/table.rs:175-277`, `clearing/ladder.rs:190-218`,
 `state.rs:1189-1259`, `firms.rs:764-767, 926-928`):
 1. **The test.** `waiting` as today (paid household purchases not filled, restock orders not shipped, final-demand
    orders not filled, and what bids could pay for at the posted price in a short market and did not get).
    `kept` = the seller's production policy's `output_buffer` (0 for a seller with none). `unsold` = sold plus kept
    below what its goods markets offered. Order: `Fixed`; a resting seller holds; step up as today; else step down
    one step if `waiting == 0` and (`stock > target_stock` or `unsold`); else hold.
-2. **The floor**, for every step down while the catalog asks: `max(minimum, unit cost)`, the unit cost being
-   `costs.goods_price_cost(key).unit_cost()` of the period, the figure the cost-pressure test reads; with no
-   observation this period, `minimum` (departure 3; Task 0 counts how often). A step down for unsold goods records
-   reason `ExcessStock`, the step-down reason that exists: no new `PriceDecision`, because `babylon-tick` and
-   `babylon-persistence` match on it exhaustively (`recurring_receipt.rs:159-167`, `projection.rs:110-143`). The
-   `GoodsOfferReceipt` says why.
+2. **No floor at cost** (the Director's ruling of 23 November, ADR321, K1). A step down stops at the price
+   policy's `minimum`, as every step down of the engine does today: the seller may sell under its cost and bears
+   the loss from its own money. The reference branch's switch `SPIKE_DOWN_FLOOR` is not this rule and nothing of
+   it is built. A step down for unsold goods records reason `ExcessStock`, the step-down reason that exists: no
+   new `PriceDecision`, because `babylon-tick` and `babylon-persistence` match on it exhaustively
+   (`recurring_receipt.rs:159-167`, `projection.rs:110-143`). The `GoodsOfferReceipt` says why.
 3. **Plans at the new price.** While the catalog asks, goods are quoted before `plan_production`, and a seller that
    stepped down adds `goods_gain_at(new price)` to its unshipped quantity (makers) or its merchandise (merchants'
    handling hours). Services are untouched: no quote before plans, no gain (departure 4).
 4. **Bench columns:** `unsold_<site>` = `offered - sold` (without `kept`), `turned_payers_<site>` = the price
    receipt's `unserved_quantity`, farms and shops only, after the bound's columns, as `spike.rs` `write_run`.
 
-- [ ] **Step 1: Write the failing unit tests** in `src/recurring/prices.rs`: `a_step_down_stops_at_cost` (old $38,
-  step $1, unit cost $37.50: $37.50); `a_step_down_below_cost_is_not_taken` (unit cost $38: holds at $38);
-  `without_a_cost_the_floor_is_the_minimum` (old $1.50, step $1, no observation: $1);
+- [ ] **Step 1: Write the failing unit tests** in `src/recurring/prices.rs`: `a_step_down_goes_under_cost` (old
+  $38, step $1, unit cost $38, goods unsold, nobody waiting: $37); `a_step_down_stops_at_the_minimum` (old $1.50,
+  step $1, minimum $1: $1; old $1: holds at $1);
   `a_buffer_is_not_unsold` (offered 40, sold 0, kept 40: not unsold); `a_buyer_who_could_pay_and_waited_bars_the_step`
   (waiting 1, unsold: no step down); `not_asking_keeps_todays_price_rule` (the same offers, catalog not asking:
   today's decisions).
@@ -1312,13 +1326,13 @@ pub struct GoodsOfferReceipt {
 - [ ] **Step 4: The bench.** `Form::Down` (the six rules), its columns, the quick test,
   `reproduces_pc_down_400`, `reproduces_pc_down_nat_400`.
 - [ ] **Step 5: Run.** Expected: seven forms, 25 of 25 at both figures. The `pc-down` rows passed the Director's
-  test as ruled in Task 0, so the built form passes it: every column the counters read is compared.
-- [ ] **Run the gate. Commit** `feat(material-circuit): a goods price steps down to its cost and no lower (A1)`.
+  test where there is a fund in Task 0, so the built form passes it: every column the counters read is compared.
+- [ ] **Run the gate. Commit** `feat(material-circuit): a goods price steps down when goods go unsold (A1)`.
 
 ## Self-review notes
 
 - **Every rule has a task.** (a) the bound, Task 4; (b) seekers, Task 3; (c) the stop rule, Task 5; (d) the
-  resting price, Task 6; (e) the restart with its three mends, Task 7; (g) the step down to cost, Task 8. Rule A6
+  resting price, Task 6; (e) the restart with its three mends, Task 7; (g) the step down, Task 8. Rule A6
   is built; Task 1b proves the bench against it.
 - **Every task has a reference that Task 0 makes.** No reference that exists today was made by this branch's engine
   (departure 1), so all fourteen are made anew from the prototype changed in exactly three proven ways (C1 to C3)
@@ -1407,3 +1421,55 @@ compared the two. What it found, and what the lead decided:
   paths; the runner's cache of catalogs is keyed by the production figures alone; and a rule that needs another
   cannot be turned off alone.
 - **Task 0 is not built in a worktree of its own,** as first written: see its "Where".
+
+## The Director's rulings of 23 November, afternoon (ADR321)
+
+Task 0's first runs, on the prototype's own engine, were counted before anything was built. The record is
+`pc-sets.md` on the bench's drive. Two findings went to the Director, and four answers came back in the dialog.
+
+**What was found.** The lead's words "to its cost and no lower" were not the measured rule: with that floor the
+whole form fails line 3 of the test at both sets of figures, and as measured it passes. And rounds nine and ten
+queued buyers in an order the engine does not have (departure 2): in the engine's own order the form as measured
+passes at the country's figures and fails line 3 in one run of 25 at the small figures. Every failure is a clinic
+shut for good in the world with no fund. In the world with a fund no workplace is shut at the end in any of 104
+runs.
+
+**Why a clinic stays shut** (counted over all 23 long clinic stops of the no-fund world): care is the last thing a
+household buys; in a squeeze there comes a period when no household buys it; the clinic had planned as many hours
+as its money could pay, pays for them and uses none; its money falls to a few dollars in that one period; then no
+money, no work, and its owner restarts it only from spare money.
+
+**The answers** (labels word for word):
+
+1. "As measured (Recommended)": no floor at cost. Task 8, departure 3, the reference set `pc-down` and the name
+   `GoodsStepDown` follow. The floored rows are kept as `pc-downfloor`.
+2. "Play, as you ruled (Recommended)": the test is scored in the world with a fund; the world with no fund is
+   counted and reported. Task 0's gate follows.
+3. "On anytime, off by restart (Recommended)": a rule turned on works from the next period and holds until the
+   run is started over. A rule that needs another waits for it: the stop rule needs the seekers; the restart
+   needs the stop rule, the resting price and the bound (Task 2's refusals).
+4. "Yes, go on (Recommended)": the look of the scene's real window stands.
+
+**Each step of the form in the engine's own order** (prototype's engine, small figures; a lasting failure is a
+place left without a product for good):
+
+| Built so far | Runs with a lasting failure, of 25 | In the fund world, of 13 | Mean hours, of 480 |
+| --- | --- | --- | --- |
+| no new rule (`c2-pc-a6`) | 6 | 4 | 340 |
+| looking for work, alone (`c2-pc-seek`) | 8 | 4 | 216 |
+| with the bound (`c2-pc-bound`) | 6 | 4 | 340 |
+| with the stop rule, the resting price and the restart (`c2-pc-restart`) | 1 | 1 | 405 |
+| with the step down as measured (`c2-pc-down`) | 1 | 0 | 440 |
+
+**What a switch in the middle of a run asks of the build** (for the companion tasks, before Task 3):
+
+- The runner gains a way to turn a rule on for the next period, and refuses one whose needed rules are not on.
+  It cannot turn one off; starting over clears all. The runner's cache of catalogs is keyed by the production
+  figures and the list of rules.
+- The seekers' rows (one `EmploymentTerms` and one member row for each household at each workplace of its place)
+  are authored at every opening, so that the seekers can be turned on later. Whether rows that no rule reads
+  change a reference set is checked on `pc-a6` before Task 3: if they do, the bench's worlds author them only
+  when asked and the scene's world always, and the plan says so.
+- A rule that keeps a memory (`WorkplaceStanding`, the hiring bound) starts it empty in the period it is turned
+  on. The members are kept on both paths of the runner.
+- The scene shows, for each rule, the period it is on from, and for a rule that waits, what it waits for.

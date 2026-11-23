@@ -1187,6 +1187,8 @@ the commit after Task 7's:
   `Lift`, `Grouping` and `TablePeriod`; Task 8 fills it. The right 400 px of the window stay empty until Task 8's
   rail. The lead looks again when the rail and the controls are in, before the six rules get their switches.
 
+The Director saw the captures the same afternoon and answered "Yes, go on" (ADR321, K4): the look stands.
+
 The Director saw the mock's pictures that morning and answered three questions (ADR320, S2, S8 and S9): the look
 is the one to build; the scene opens on household groups; and after this plan the six rules of the closest form
 are built, each with its own switch in this scene, before the bridge.

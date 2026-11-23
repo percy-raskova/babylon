@@ -174,3 +174,4 @@ ADR319_a_shock_is_not_a_failure:
   related:
     - ADR314_how_the_economy_adjusts
     - ADR318_who_carries_a_losing_workplace
+    - ADR321_the_six_rules_as_measured

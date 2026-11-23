@@ -357,6 +357,8 @@ here is what the bench says, not a decision to build.
 
 ## 11. What waits for the Director
 
+Items 1 and 2 were answered on the evening of 22 November: section 12.
+
 1. **Whether the later slump of section 8 is a failure or play.** This one answer decides the verdict. A local crop
    failure ends and everything is back. About three years after it the cost of living rises, owners grow rich and
    workers go without care, and in the closest form that does not end. If it is play, 6 forms meet the test at both sets
@@ -371,3 +373,20 @@ here is what the bench says, not a decision to build.
 5. **Whether an owner may take idle money out of a workplace** (step W). I built it as a reading of the ruling on
    losses; it has not been ruled.
 
+
+## 12. Ruled by the Director after this record
+
+Asked in the question dialog on the evening of 22 November 2026, and recorded in ADR319 as J5 and J6:
+
+- **The later slump of section 8: "Play, ended by struggle".** It does not fail the test. It lasts until workers win
+  pay. Organized workers who answer a squeeze (rule A16) are designed next as the way out, and how that fight looks is
+  the Director's to rule then.
+- **Back means: "The whole economy".** Hours and total output are back. One workplace may end smaller, shut or change
+  hands.
+- **Next: "Plan the closest form's build".** One plan builds the measured rules into the engine, behind a setting no
+  campaign asks for yet. Each rule must reproduce its rows of the test economy before it merges.
+
+Counted from the same rows with the test as ruled: 6 of the 45 forms measured at both sets of figures pass at both. They
+are the six of section 2. In each of them the harvest that fails in one place, at the national figures, has work and the
+whole output back in period 11, the first period after it returns. So the test economy meets the Director's test, and
+the closest form is the one to build: the light form with the mended restart and the step down of a goods price.

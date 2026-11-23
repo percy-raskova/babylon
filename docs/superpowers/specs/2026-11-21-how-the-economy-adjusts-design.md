@@ -413,6 +413,13 @@ shut, reopened or changed hands, who ends up poorer, and the pace are reported a
 section 6 asks for an economy that swings and for slumps that leave marks. The pace named above
 stays.
 
+On the evening of the same day the Director ruled on two readings of the second of those three
+(ADR319, J5 and J6). It is about the harvest's own loss. A slump that begins years after the
+harvest has returned (the cost of living rises, owners grow rich, workers go without care) does not
+fail it: it is play, and it lasts until workers win pay. Organized workers who answer a squeeze
+(A16) are designed next as its way out. And "back" means the whole economy: hours and total output,
+not each workplace's own. A workplace that ends smaller, shut or in other hands is a mark.
+
 ## 9. Calls made here, for the Director to check
 
 1. Raw goods and energy move in large steps and open where the market closed; they are not sold by

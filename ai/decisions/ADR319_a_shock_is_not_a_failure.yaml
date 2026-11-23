@@ -16,6 +16,13 @@ ADR319_a_shock_is_not_a_failure:
     - >-
         Director, 2026-11-22, in the question dialog, asked what pace a slump
         should have for play: "Keep the design's pace".
+    - >-
+        Director, 2026-11-22 (evening), in the question dialog, asked whether
+        the slump that comes years after a harvest has failed and returned
+        fails the test or is play: "Play, ended by struggle".
+    - >-
+        Director, 2026-11-22 (evening), in the question dialog, asked whether
+        "back" means the whole economy or every workplace: "The whole economy".
   context: |
     The Director had asked for a stopping point for the rounds of measurement
     on the small test economy. The lead set one from four lines of section 8
@@ -64,6 +71,19 @@ ADR319_a_shock_is_not_a_failure:
     and up to five back. One period is four weeks, thirteen periods a year.
     The pace is a result: if it is far off, policy rows are changed once and
     the numbers are brought to the Director, as section 8 has it.
+
+    J5. A LATER SLUMP IS PLAY, ENDED BY STRUGGLE. Line (2) of J2 is about the
+    harvest's own loss: it is met when work and output are back at some time
+    within five years of the harvest's return. A slump that begins after that
+    (the cost of living rises, care runs short, owners grow rich, workers go
+    without care) does not fail the test. It lasts until workers win pay.
+    Organized workers who answer a squeeze (rule A16 of the design) are
+    designed next as the way out. How that fight looks is the Director's to
+    rule when it is designed.
+
+    J6. BACK MEANS THE WHOLE ECONOMY. Hours and total output are back. One
+    workplace may end smaller, shut or change hands. That is a scar, and scars
+    stay.
   amends:
     - >-
         The design's section 8, "Back after a shock that ends": the scored
@@ -76,10 +96,14 @@ ADR319_a_shock_is_not_a_failure:
         settled.
   lead_readings_for_the_director_to_check:
     - >-
-        Back within five years: there is a period up to 76 in which the hours
-        attended are at nineteen twentieths of the opening's or more and every
-        workplace's output is at nineteen twentieths of the calm run's or
-        more; and both still hold on the mean of the last 20 periods.
+        Back within five years, as ruled by J5 and J6: there is a period up to
+        76 in which the hours attended are at nineteen twentieths of the calm
+        run's or more, and so is the whole output (every workplace's output,
+        valued at the calm run's opening prices and summed). The lead had
+        first read it more strictly, in two ways that the Director did not
+        keep: every workplace's own output, and both still holding on the mean
+        of the last 20 periods. Rounds nine and ten were counted with that
+        first reading and state so.
     - >-
         Left without a product for good: at the end of 400 periods a workplace
         has made or sold nothing in each of the last ten. On the test economy
@@ -93,6 +117,19 @@ ADR319_a_shock_is_not_a_failure:
     - >-
         A form of the rules passes when its runs pass at the small figures and
         at the country's under one and the same credit.
+  consequences:
+    - >-
+        Counted from the rows of rounds nine and ten with the ruled reading:
+        6 of the 45 forms measured at both sets of figures pass the test at
+        both. With the lead's first reading none did. The closest is the light
+        form with the mended restart and the step down of a goods price, under
+        no credit and under a loan with a term of 3 (round ten's record,
+        section 2).
+    - >-
+        The Director's next step, picked in the same dialog: "Plan the closest
+        form's build". One plan builds the measured rules into the engine
+        behind a setting no campaign asks for yet, and each rule must
+        reproduce its rows of the test economy before it merges.
   alternatives_rejected:
     - >-
         "Only: nothing ends in ruin": work need not come back even after a
@@ -108,6 +145,17 @@ ADR319_a_shock_is_not_a_failure:
         The lead's first reading: every period at nineteen twentieths, and
         hours and pay at rest. It scores as faults what section 6 of the
         design asks for.
+    - >-
+        "A failure: it must end alone": every slump ends within five years
+        without a fight, so no form passes and pay that follows the cost of
+        living is designed and measured first. Offered in the evening's
+        dialog, not picked.
+    - >-
+        "Play as it stands": the later slump is a scar and nothing is designed
+        to end it. Offered in the evening's dialog, not picked.
+    - >-
+        "Every workplace": each workplace's own output is back. Offered in the
+        evening's dialog, not picked.
   open_questions:
     - >-
         How fast a period passes on the player's screen. That is the client's
@@ -115,6 +163,10 @@ ADR319_a_shock_is_not_a_failure:
     - >-
         Section 8's test of a cycle with no outside push needs banks and
         capital that moves. The test economy has no capital that moves yet.
+    - >-
+        How organized workers answer a squeeze and win pay (A16), and so how a
+        later slump ends in play. Not designed yet; the Director rules on it
+        when it is.
   verification: |
     Each round's record states the three scored lines for every form of the
     rules at both sets of figures, and reports the rest beside them. The lead

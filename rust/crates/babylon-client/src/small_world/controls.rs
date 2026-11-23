@@ -34,6 +34,7 @@ pub const EMPTY_LINE: &str = "Nothing has run yet. Press Step.";
 pub const HOLLOW_DOT_LINE: &str = "A hollow dot: hours paid and not used.";
 pub const GOODS_HOLLOW_LINE: &str = "Goods are drawn hollow: the hours stored in goods are not measured here until this world runs on the tick's records.";
 pub const OUTLINE_LINE: &str = "An outline holds nine tenths of its set's number.";
+pub const PICK_LINE: &str = "Click a body, a dot or an outline.";
 pub const PEOPLE_LINE: &str = "One dot is one person. The record counts people; it does not follow a person, and the people of one group share one purse.";
 
 /// "One dot: 2 hours of work. One square: 4 units of a good. One streak: $80. Hours and money
@@ -75,7 +76,7 @@ pub enum SceneButton {
 }
 
 /// The row of the control bar a button sits in: row 1 holds the run's buttons, the particle
-/// switch and the marks' motion; row 2 holds the shock controls.
+/// switch and the marks' motion.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ControlRow(pub u8);
 
@@ -93,7 +94,7 @@ pub struct HeaderState;
 pub struct RefusalBanner;
 #[derive(Component)]
 pub struct EmptyLine;
-/// The column of standing lines at the viewport's bottom left.
+/// The column of standing lines (the key) at the viewport's top left.
 #[derive(Component)]
 pub struct StandingColumn;
 /// The line that stands while people are shown.
@@ -124,6 +125,7 @@ pub fn spawn_chrome(commands: &mut Commands) {
     spawn_header(commands);
     spawn_bar(commands);
     panel::spawn_rail(commands);
+    panel::spawn_inspector(commands);
     spawn_standing_lines(commands);
     commands.spawn((
         text(COPIES_LINE, 13.0, theme::PAPER, ObserverFontRole::Body),
@@ -157,10 +159,10 @@ fn spawn_standing_lines(commands: &mut Commands) {
             Node {
                 position_type: PositionType::Absolute,
                 left: px(16),
-                right: px(RAIL_WIDTH + 16.0),
-                bottom: px(BAR_HEIGHT + 8.0 + 18.0),
+                top: px(HEADER_HEIGHT + 12.0),
+                width: px(340),
                 flex_direction: FlexDirection::Column,
-                row_gap: px(2),
+                row_gap: px(3),
                 ..default()
             },
         ))
@@ -171,14 +173,18 @@ fn spawn_standing_lines(commands: &mut Commands) {
                 GOODS_HOLLOW_LINE,
                 OUTLINE_LINE,
             ] {
-                column.spawn(text(line, 13.0, theme::PAPER, ObserverFontRole::Body));
+                column.spawn(text(line, 12.0, theme::PAPER, ObserverFontRole::Body));
             }
             column.spawn((
-                text("", 13.0, theme::PAPER, ObserverFontRole::Body),
+                text("", 12.0, theme::PAPER, ObserverFontRole::Body),
                 panel::NotDrawnLine,
             ));
+            column.spawn(text(PICK_LINE, 12.0, theme::PAPER, ObserverFontRole::Body));
         });
 }
+
+/// Where the people line stands in the column: after the four fixed lines of the key.
+const PEOPLE_LINE_AT: usize = 4;
 
 /// The people line stands while people are shown, and not otherwise.
 pub fn paint_people_line(
@@ -194,10 +200,15 @@ pub fn paint_people_line(
         column.single(),
     ) {
         (true, None, Ok(column)) => {
-            commands.entity(column).with_child((
-                text(PEOPLE_LINE, 13.0, theme::YELLOW, ObserverFontRole::Body),
-                PeopleLine,
-            ));
+            let line = commands
+                .spawn((
+                    text(PEOPLE_LINE, 12.0, theme::YELLOW, ObserverFontRole::Body),
+                    PeopleLine,
+                ))
+                .id();
+            commands
+                .entity(column)
+                .insert_children(PEOPLE_LINE_AT, &[line]);
         }
         (false, Some(entity), _) => commands.entity(entity).despawn(),
         _ => {}
@@ -271,46 +282,38 @@ fn spawn_bar(commands: &mut Commands) {
                 height: px(BAR_HEIGHT),
                 padding: UiRect::all(px(8)),
                 flex_direction: FlexDirection::Column,
-                row_gap: px(8),
                 ..default()
             },
             BackgroundColor(theme::PANEL),
             ZIndex(10),
         ))
         .with_children(|bar| {
-            for number in [1_u8, 2] {
-                bar.spawn((
-                    ControlRow(number),
-                    Node {
-                        height: px(32),
-                        column_gap: px(8),
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
-                .with_children(|row| {
-                    if number == 1 {
-                        for (kind, caption) in [
-                            (SceneButton::Step, "Step"),
-                            (SceneButton::PlayPause, "Play"),
-                            (SceneButton::Again, "Again"),
-                            (SceneButton::StartOver, "Start over"),
-                            (
-                                SceneButton::Particles(ParticleMode::Groups),
-                                "Household groups",
-                            ),
-                            (SceneButton::Particles(ParticleMode::People), "People"),
-                            (SceneButton::Marks(Motion::Full), "Moving"),
-                            (SceneButton::Marks(Motion::Reduced), "Still"),
-                        ] {
-                            spawn_button(row, kind, caption);
-                        }
-                    } else {
-                        panel::spawn_shock_controls(row);
-                    }
-                });
-            }
-            panel::spawn_notice(bar);
+            bar.spawn((
+                ControlRow(1),
+                Node {
+                    height: px(32),
+                    column_gap: px(8),
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+            ))
+            .with_children(|row| {
+                for (kind, caption) in [
+                    (SceneButton::Step, "Step"),
+                    (SceneButton::PlayPause, "Play"),
+                    (SceneButton::Again, "Again"),
+                    (SceneButton::StartOver, "Start over"),
+                    (
+                        SceneButton::Particles(ParticleMode::Groups),
+                        "Household groups",
+                    ),
+                    (SceneButton::Particles(ParticleMode::People), "People"),
+                    (SceneButton::Marks(Motion::Full), "Moving"),
+                    (SceneButton::Marks(Motion::Reduced), "Still"),
+                ] {
+                    spawn_button(row, kind, caption);
+                }
+            });
         });
 }
 

@@ -46,7 +46,7 @@ pub const PLAY_INTERVAL: Duration = Duration::from_millis(3_500);
 /// The header's height in logical pixels.
 pub const HEADER_HEIGHT: f32 = 48.0;
 /// The control bar's height in logical pixels.
-pub const BAR_HEIGHT: f32 = 72.0;
+pub const BAR_HEIGHT: f32 = 48.0;
 /// The right rail's width, where the table and the inspector stand.
 pub const RAIL_WIDTH: f32 = 400.0;
 
@@ -288,6 +288,7 @@ impl Plugin for SmallWorldPlugin {
                     controls::paint_people_line,
                     panel::paint_table,
                     panel::paint_inspector,
+                    panel::paint_inspector_panel,
                     panel::paint_shocks,
                     panel::paint_choices,
                     panel::paint_notice,

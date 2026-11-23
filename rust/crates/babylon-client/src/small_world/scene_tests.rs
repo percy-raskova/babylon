@@ -4,17 +4,18 @@ use super::{
     ShowPeriod, SurfaceId, VisualAssetsPlugin,
 };
 use crate::small_world::controls::{
-    BodyLabel, EmptyLine, PeopleLine, SceneButton, COPIES_LINE, EMPTY_LINE, NOT_WAYNE_LINE,
-    UNFOGGED_LINE,
+    BodyLabel, ControlRow, EmptyLine, PeopleLine, SceneButton, StandingColumn, COPIES_LINE,
+    EMPTY_LINE, NOT_WAYNE_LINE, PICK_LINE, UNFOGGED_LINE,
 };
 use crate::small_world::frame::ParticleMode;
 use crate::small_world::inspect::ScenePick;
 use crate::small_world::panel;
 use crate::small_world::panel::{
-    InspectorBody, PagerLabel, PanelButton, PanelView, ShockButton, ShockNotice, TableBody,
+    InspectorBody, InspectorPanel, PagerLabel, PanelButton, PanelView, ShockButton, ShockNotice,
+    TableBody, STORED_WORK_LINE, TO_THE_CENT_LINE,
 };
 use crate::small_world::scene::SceneShown;
-use crate::small_world::table::{Grouping, NOT_MEASURED};
+use crate::small_world::table::Grouping;
 use crate::small_world::{controls, scene};
 use babylon_circuit_worlds::{Kind, Place, Workplace};
 use bevy::asset::AssetPlugin;
@@ -693,20 +694,30 @@ fn the_table_switches_its_grouping_and_period() -> TestResult {
     };
     assert_eq!(label.as_deref(), Some("Period 1"));
     assert!(texts(&mut app).contains(&earners));
-    let cells = |figures: [&str; 5]| figures.map(str::to_owned).to_vec();
+    let cells = |figures: [&str; 4]| figures.map(str::to_owned).to_vec();
     assert_eq!(
         table_row(&mut app, "Earners who do not own")?,
-        cells(["480", "0", NOT_MEASURED, "$4,800.00", "$4,800.00"])
+        cells(["480", "0", "$4,800.00", "$4,800.00"])
     );
     for label in ["Owners who do not earn", "Neither owner nor earner"] {
         let row = table_row(&mut app, label)?;
-        assert_eq!(row[3], "$1,280.00", "{label} in");
-        assert_eq!(row[4], "$1,280.00", "{label} out");
+        assert_eq!(row[2], "$1,280.00", "{label} in");
+        assert_eq!(row[3], "$1,280.00", "{label} out");
     }
     let owners = table_row(&mut app, "Owners who earn")?;
     assert_eq!(owners[0], "0");
+    assert_eq!(owners[2], "$0.00");
     assert_eq!(owners[3], "$0.00");
-    assert_eq!(owners[4], "$0.00");
+    let all = texts(&mut app);
+    assert!(all.contains(&"Stored work got back: not measured yet.".to_owned()));
+    assert!(all.contains(
+        &"Money in the table is rounded to the cent. Click a body for exact figures.".to_owned()
+    ));
+    assert_eq!(STORED_WORK_LINE, "Stored work got back: not measured yet.");
+    assert_eq!(
+        TO_THE_CENT_LINE,
+        "Money in the table is rounded to the cent. Click a body for exact figures."
+    );
     // The scene still shows the latest period.
     assert_eq!(app.world().resource::<SceneRunner>().shown, Some(2));
     let latest = panel_button(&mut app, PanelButton::Latest)?;
@@ -808,6 +819,102 @@ fn a_click_on_empty_space_clears_the_pick() -> TestResult {
     click(&mut app, nothing);
     updates(&mut app, 2);
     assert_eq!(app.world().resource::<ScenePick>().0, None);
+    Ok(())
+}
+
+#[test]
+fn a_click_on_the_inspector_keeps_the_pick() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let plate = {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &SceneBody)>()
+            .iter(world)
+            .map(|(entity, _)| entity)
+            .next()
+            .ok_or("no plate")?
+    };
+    click(&mut app, plate);
+    updates(&mut app, 2);
+    let picked = app.world().resource::<ScenePick>().0.clone();
+    assert!(picked.is_some());
+    let panel = {
+        let world = app.world_mut();
+        let panel = world
+            .query_filtered::<(Entity, &Node), With<InspectorPanel>>()
+            .iter(world)
+            .map(|(entity, node)| (entity, node.display))
+            .next()
+            .ok_or("no inspector panel")?;
+        assert_ne!(panel.1, Display::None, "shown while something is picked");
+        panel.0
+    };
+    click(&mut app, panel);
+    updates(&mut app, 2);
+    assert_eq!(app.world().resource::<ScenePick>().0, picked);
+    Ok(())
+}
+
+#[test]
+fn the_inspector_is_hidden_without_a_pick() -> TestResult {
+    let mut app = scene_app(None)?;
+    updates(&mut app, 3);
+    let world = app.world_mut();
+    let display = world
+        .query_filtered::<&Node, With<InspectorPanel>>()
+        .iter(world)
+        .map(|node| node.display)
+        .next()
+        .ok_or("no inspector panel")?;
+    assert_eq!(display, Display::None);
+    Ok(())
+}
+
+#[test]
+fn the_bar_has_one_row() -> TestResult {
+    let mut app = scene_app(None)?;
+    app.update();
+    let world = app.world_mut();
+    let rows: Vec<(Entity, u8)> = world
+        .query::<(Entity, &ControlRow)>()
+        .iter(world)
+        .map(|(entity, row)| (entity, row.0))
+        .collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1, 1);
+    let buttons = world
+        .get::<Children>(rows[0].0)
+        .map_or(0, |c| c.iter().count());
+    assert_eq!(buttons, 8);
+    Ok(())
+}
+
+#[test]
+fn the_key_stands_at_the_top_left() -> TestResult {
+    let mut app = scene_app(None)?;
+    app.update();
+    let world = app.world_mut();
+    let (column, node) = world
+        .query_filtered::<(Entity, &Node), With<StandingColumn>>()
+        .iter(world)
+        .next()
+        .ok_or("no standing column")?;
+    assert_eq!(node.top, px(scene::HEADER_HEIGHT + 12.0));
+    assert_eq!(node.left, px(16));
+    assert_eq!(node.width, px(340));
+    assert_eq!(node.right, Val::Auto);
+    assert_eq!(node.bottom, Val::Auto);
+    let last = world
+        .get::<Children>(column)
+        .and_then(|c| c.last().copied())
+        .ok_or("no lines")?;
+    assert_eq!(
+        world.get::<Text>(last).map(|t| t.0.as_str()),
+        Some(PICK_LINE)
+    );
+    assert_eq!(PICK_LINE, "Click a body, a dot or an outline.");
     Ok(())
 }
 

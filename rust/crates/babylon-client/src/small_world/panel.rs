@@ -7,7 +7,7 @@ use super::frame::{self, Picture, STREAM_GOODS, STREAM_MONEY, STREAM_WORK};
 use super::inspect::{self, Pick, ScenePick};
 use super::reading;
 use super::scene::{SceneCommand, SceneRunner, SceneShown, BAR_HEIGHT, HEADER_HEIGHT, RAIL_WIDTH};
-use super::table::{self, Grouping, Table, NOT_MEASURED};
+use super::table::{self, Grouping, Table};
 use crate::human_numbers;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
@@ -26,15 +26,18 @@ pub const NOTICE_SECONDS: Duration = Duration::from_secs(4);
 pub const POWER_CUT_LINE: &str =
     "A power cut changes the size of a batch, so it holds until you start over.";
 
-const TABLE_COLUMNS: [&str; 5] = [
-    "Work given",
-    "Paid, not used",
-    "Stored work got back",
-    "Money in",
-    "Money out",
-];
-const LABEL_WIDTH: f32 = 96.0;
-const CELL_WIDTH: f32 = 56.0;
+/// Under the table: the column the table no longer carries, said once.
+pub const STORED_WORK_LINE: &str = "Stored work got back: not measured yet.";
+/// Under the table: why its money differs from the inspector's.
+pub const TO_THE_CENT_LINE: &str =
+    "Money in the table is rounded to the cent. Click a body for exact figures.";
+
+const TABLE_COLUMNS: [&str; 4] = ["Work given", "Paid, not used", "Money in", "Money out"];
+const LABEL_WIDTH: f32 = 140.0;
+/// The figure cells' widths, in the columns' order.
+const CELL_WIDTHS: [f32; 4] = [40.0, 48.0, 74.0, 74.0];
+/// The inspector panel's width, and the key's.
+const SIDE_PANEL_WIDTH: f32 = 340.0;
 const ROW_HEIGHT: f32 = 22.0;
 const BAR_THICKNESS: f32 = 6.0;
 const RAIL_PADDING: f32 = 12.0;
@@ -207,7 +210,7 @@ pub fn not_drawn_line(report: &FlowReport) -> String {
     let dollars = |stream: u16| {
         left_out(stream)
             .and_then(|v| i128::try_from(v).ok())
-            .map_or_else(too_large, human_numbers::currency)
+            .map_or_else(too_large, human_numbers::currency_to_cent)
     };
     format!(
         "Not drawn: {} hours; food {}, power {}, care {} units; wages {}, purchases {}, taxes {}, benefits {}, profit {}",
@@ -227,6 +230,10 @@ pub fn not_drawn_line(report: &FlowReport) -> String {
 pub struct TableBody;
 #[derive(Component)]
 pub struct PagerLabel;
+/// The panel over the viewport's top right that holds the pick's figures; shown only while
+/// something is picked.
+#[derive(Component)]
+pub struct InspectorPanel;
 #[derive(Component)]
 pub struct InspectorTitle;
 #[derive(Component)]
@@ -251,6 +258,7 @@ pub(super) fn spawn_pressed<B: Bundle>(
             kind,
             Node {
                 height: px(BUTTON_HEIGHT),
+                flex_shrink: 0.0,
                 border: UiRect::all(px(1)),
                 padding: UiRect::horizontal(px(8)),
                 justify_content: JustifyContent::Center,
@@ -268,96 +276,105 @@ pub(super) fn spawn_pressed<B: Bundle>(
         ));
 }
 
-/// Row 2 of the control bar: for each shock, its tag, name and figure, where to strike it, how
-/// long, and "Strike"; under the power cut's controls the line that says why it cannot be lifted.
-pub fn spawn_shock_controls(row: &mut ChildSpawnerCommands) {
-    for shock in Shock::ALL {
-        row.spawn(Node {
+/// The shock controls of the rail: for each shock, a line with its tag and name, its figure, and
+/// a line that wraps with where to strike it, how long, and "Strike"; under the power cut's
+/// controls the line that says why it cannot be lifted. The refused strike's notice follows.
+pub fn spawn_shock_controls(parent: &mut ChildSpawnerCommands) {
+    parent
+        .spawn(Node {
             flex_direction: FlexDirection::Column,
+            row_gap: px(10),
+            ..default()
+        })
+        .with_children(|shocks| {
+            for shock in Shock::ALL {
+                spawn_shock(shocks, shock);
+            }
+        });
+    parent.spawn((
+        controls::text("", 12.0, theme::RED, ObserverFontRole::Body),
+        NoticeLine,
+        Node {
+            margin: UiRect::top(px(4)),
+            ..default()
+        },
+    ));
+}
+
+fn spawn_shock(shocks: &mut ChildSpawnerCommands, shock: Shock) {
+    shocks
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: px(2),
             ..default()
         })
         .with_children(|group| {
             group
                 .spawn(Node {
-                    column_gap: px(8),
+                    column_gap: px(6),
                     align_items: AlignItems::Center,
                     ..default()
                 })
                 .with_children(|line| {
                     line.spawn(controls::text(
                         "SHOCK",
-                        14.0,
+                        13.0,
                         theme::RED,
                         ObserverFontRole::Display,
                     ));
                     line.spawn(controls::text(
                         shock.name(),
-                        14.0,
+                        13.0,
                         theme::PAPER,
                         ObserverFontRole::Body,
                     ));
-                    line.spawn(controls::text(
-                        shock.figure(),
-                        14.0,
-                        theme::GRAY,
-                        ObserverFontRole::Body,
-                    ));
+                });
+            group.spawn(controls::text(
+                shock.figure(),
+                12.0,
+                theme::GRAY,
+                ObserverFontRole::Body,
+            ));
+            group
+                .spawn(Node {
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: px(4),
+                    row_gap: px(4),
+                    ..default()
+                })
+                .with_children(|buttons| {
                     for places in [Places::A, Places::B, Places::Both] {
                         let caption = match places {
                             Places::A => "Place A",
                             Places::B => "Place B",
                             Places::Both => "Both",
                         };
-                        spawn_pressed(line, ShockButton::Place(shock, places), caption, 14.0);
+                        spawn_pressed(buttons, ShockButton::Place(shock, places), caption, 14.0);
                     }
                     if shock == Shock::HarvestFails {
                         for lasts in [Lasts::TenPeriods, Lasts::UntilLifted] {
                             spawn_pressed(
-                                line,
+                                buttons,
                                 ShockButton::Lasts(shock, lasts),
                                 lasts.label(),
                                 14.0,
                             );
                         }
                     }
-                    spawn_pressed(line, ShockButton::Strike(shock), "Strike", 14.0);
+                    spawn_pressed(buttons, ShockButton::Strike(shock), "Strike", 14.0);
                 });
             if shock == Shock::PowerCut {
                 group.spawn(controls::text(
                     POWER_CUT_LINE,
-                    13.0,
+                    11.0,
                     theme::GRAY,
                     ObserverFontRole::Body,
                 ));
             }
         });
-    }
 }
 
-/// The words of a refused strike, in the corner of the control bar.
-pub fn spawn_notice(bar: &mut ChildSpawnerCommands) {
-    bar.spawn((
-        controls::text("", 13.0, theme::RED, ObserverFontRole::Body),
-        NoticeLine,
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(8),
-            bottom: px(0),
-            ..default()
-        },
-    ));
-}
-
-fn rail_title(parent: &mut ChildSpawnerCommands, words: &str) {
-    parent.spawn(controls::text(
-        words,
-        16.0,
-        theme::YELLOW,
-        ObserverFontRole::Display,
-    ));
-}
-
-/// The right rail: the table at the top, the inspector in the middle, the shocks last.
+/// The right rail: the table with its two lines at the top, the shocks below it.
 pub fn spawn_rail(commands: &mut Commands) {
     commands
         .spawn((
@@ -369,7 +386,6 @@ pub fn spawn_rail(commands: &mut Commands) {
                 width: px(RAIL_WIDTH),
                 padding: UiRect::all(px(RAIL_PADDING)),
                 flex_direction: FlexDirection::Column,
-                row_gap: px(12),
                 overflow: Overflow::clip(),
                 ..default()
             },
@@ -391,41 +407,79 @@ pub fn spawn_rail(commands: &mut Commands) {
                         ..default()
                     },
                 ));
+                for line in [STORED_WORK_LINE, TO_THE_CENT_LINE] {
+                    section.spawn(controls::text(
+                        line,
+                        11.0,
+                        theme::GRAY,
+                        ObserverFontRole::Body,
+                    ));
+                }
             });
             rail.spawn(Node {
                 flex_direction: FlexDirection::Column,
-                row_gap: px(2),
+                margin: UiRect::top(px(14)),
                 ..default()
             })
             .with_children(|section| {
-                section.spawn((
-                    controls::text("Inspector", 16.0, theme::YELLOW, ObserverFontRole::Display),
-                    InspectorTitle,
-                ));
-                section.spawn((
-                    InspectorBody,
-                    Node {
-                        flex_direction: FlexDirection::Column,
+                section
+                    .spawn(Node {
+                        margin: UiRect::bottom(px(4)),
                         ..default()
-                    },
-                ));
-            });
-            rail.spawn(Node {
-                flex_direction: FlexDirection::Column,
-                row_gap: px(2),
-                ..default()
-            })
-            .with_children(|section| {
-                rail_title(section, "Shocks");
+                    })
+                    .with_child(controls::text(
+                        "Shocks",
+                        16.0,
+                        theme::YELLOW,
+                        ObserverFontRole::Display,
+                    ));
+                spawn_shock_controls(section);
                 section.spawn((
                     ShocksBody,
                     Node {
                         flex_direction: FlexDirection::Column,
                         row_gap: px(2),
+                        margin: UiRect::top(px(8)),
                         ..default()
                     },
                 ));
             });
+        });
+}
+
+/// The inspector: a panel over the viewport's top right, shown only while something is picked.
+pub fn spawn_inspector(commands: &mut Commands) {
+    commands
+        .spawn((
+            InspectorPanel,
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(HEADER_HEIGHT + 12.0),
+                right: px(RAIL_WIDTH + 12.0),
+                width: px(SIDE_PANEL_WIDTH),
+                padding: UiRect::all(px(10)),
+                border: UiRect::all(px(1)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(theme::PANEL),
+            BorderColor::all(theme::GRAY),
+            ZIndex(5),
+        ))
+        .with_children(|panel| {
+            panel.spawn((
+                controls::text("", 14.0, theme::YELLOW, ObserverFontRole::Display),
+                InspectorTitle,
+            ));
+            panel.spawn((
+                InspectorBody,
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+            ));
         });
 }
 
@@ -482,9 +536,9 @@ fn money_units(value: i128) -> u128 {
     u128::try_from(value.max(0)).unwrap_or(0)
 }
 
-fn spawn_cell(row: &mut ChildSpawnerCommands, figure: &str, bar: Option<(f32, Color)>) {
+fn spawn_cell(row: &mut ChildSpawnerCommands, width: f32, figure: &str, bar: Option<(f32, Color)>) {
     row.spawn(Node {
-        width: px(CELL_WIDTH),
+        width: px(width),
         flex_direction: FlexDirection::Column,
         overflow: Overflow::clip(),
         ..default()
@@ -519,10 +573,10 @@ fn spawn_table(body: &mut ChildSpawnerCommands, table: &Table) {
             width: px(LABEL_WIDTH),
             ..default()
         });
-        for name in TABLE_COLUMNS {
+        for (name, width) in TABLE_COLUMNS.into_iter().zip(CELL_WIDTHS) {
             header
                 .spawn(Node {
-                    width: px(CELL_WIDTH),
+                    width: px(width),
                     ..default()
                 })
                 .with_child(controls::text(
@@ -562,19 +616,18 @@ fn spawn_table(body: &mut ChildSpawnerCommands, table: &Table) {
             };
             let money = |value: i128| {
                 (
-                    human_numbers::currency(value),
+                    human_numbers::currency_to_cent(value),
                     Some((percent_of(money_units(value), money_scale), GOLD)),
                 )
             };
             let cells = [
                 hours(line.work_given),
                 hours(line.paid_not_used),
-                (NOT_MEASURED.to_owned(), None),
                 money(line.money_in),
                 money(line.money_out),
             ];
-            for (figure, bar) in cells {
-                spawn_cell(row, &figure, bar);
+            for ((figure, bar), width) in cells.into_iter().zip(CELL_WIDTHS) {
+                spawn_cell(row, width, &figure, bar);
             }
         });
     }
@@ -628,6 +681,7 @@ pub fn paint_table(
 fn spawn_rows(body: &mut ChildSpawnerCommands, rows: &[(String, String)]) {
     for (label, value) in rows {
         body.spawn(Node {
+            height: px(18),
             justify_content: JustifyContent::SpaceBetween,
             column_gap: px(8),
             ..default()
@@ -635,17 +689,34 @@ fn spawn_rows(body: &mut ChildSpawnerCommands, rows: &[(String, String)]) {
         .with_children(|line| {
             line.spawn(controls::text(
                 label,
-                13.0,
+                12.0,
                 theme::PAPER,
                 ObserverFontRole::Body,
             ));
             line.spawn(controls::text(
                 value,
-                13.0,
+                12.0,
                 theme::PAPER,
                 ObserverFontRole::Exact,
             ));
         });
+    }
+}
+
+/// The inspector's panel stands while something is picked and not otherwise.
+pub fn paint_inspector_panel(
+    pick: Res<ScenePick>,
+    mut panel: Query<&mut Node, With<InspectorPanel>>,
+) {
+    let display = if pick.0.is_some() {
+        Display::Flex
+    } else {
+        Display::None
+    };
+    for mut node in &mut panel {
+        if node.display != display {
+            node.display = display;
+        }
     }
 }
 
@@ -665,7 +736,7 @@ pub fn paint_inspector(
     let words = pick
         .0
         .as_ref()
-        .map_or_else(|| "Inspector".to_owned(), inspect::pick_label);
+        .map_or_else(String::new, inspect::pick_label);
     for mut text in &mut title {
         text.set_if_neq(Text::new(words.clone()));
     }
@@ -674,7 +745,7 @@ pub fn paint_inspector(
     };
     let history = scene.runner.history();
     let rows = match (&pick.0, view_index(&view, history.len())) {
-        (None, _) => Err("Click a body, a dot or an outline.".to_owned()),
+        (None, _) => Ok(Vec::new()),
         (Some(_), None) => Err("Nothing has run yet.".to_owned()),
         (Some(pick), Some(index)) => rows_for(&scene, &shown, index, pick),
     };
@@ -935,6 +1006,15 @@ pub fn pressed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::small_world::table::NOT_MEASURED;
+
+    #[test]
+    fn the_stored_work_line_is_built_from_the_not_measured_words() {
+        assert_eq!(
+            STORED_WORK_LINE,
+            format!("Stored work got back: {NOT_MEASURED}.")
+        );
+    }
     use babylon_circuit_worlds::Runner;
     use std::error::Error;
 

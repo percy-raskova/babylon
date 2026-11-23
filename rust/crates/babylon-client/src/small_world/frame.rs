@@ -161,6 +161,7 @@ pub fn field_palette() -> Palette {
     }
 }
 
+/// A mark stands for at least one: a zero figure fails the build, never a run.
 const fn unit(n: u64) -> NonZeroU64 {
     match NonZeroU64::new(n) {
         Some(unit) => unit,
@@ -168,16 +169,20 @@ const fn unit(n: u64) -> NonZeroU64 {
     }
 }
 
+const HOURS_UNIT: NonZeroU64 = unit(HOURS_PER_MARK);
+const UNITS_UNIT: NonZeroU64 = unit(UNITS_PER_MARK);
+const MONEY_UNIT: NonZeroU64 = unit(MONEY_PER_MARK);
+
 fn stream(
     beat: usize,
-    per_mark: u64,
+    per_mark: NonZeroU64,
     glyphs: (Glyph, Glyph),
     size: f32,
     swatch: u16,
 ) -> StreamStyle {
     StreamStyle {
         beat,
-        unit: unit(per_mark),
+        unit: per_mark,
         full: glyphs.0,
         hollow: glyphs.1,
         size,
@@ -212,17 +217,11 @@ pub fn field_styles() -> FieldStyles {
         size,
         swatch: 0,
     };
-    let mut streams = vec![stream(
-        0,
-        HOURS_PER_MARK,
-        (Glyph::Disc, Glyph::Ring),
-        0.11,
-        0,
-    )];
+    let mut streams = vec![stream(0, HOURS_UNIT, (Glyph::Disc, Glyph::Ring), 0.11, 0)];
     for _ in STREAM_GOODS {
         streams.push(stream(
             1,
-            UNITS_PER_MARK,
+            UNITS_UNIT,
             (Glyph::Square, Glyph::SquareFrame),
             0.13,
             1,
@@ -231,7 +230,7 @@ pub fn field_styles() -> FieldStyles {
     for _ in STREAM_MONEY {
         streams.push(stream(
             2,
-            MONEY_PER_MARK,
+            MONEY_UNIT,
             (Glyph::Streak, Glyph::Streak),
             0.34,
             2,
@@ -578,13 +577,17 @@ fn mean(points: &[Point], h: Household) -> Result<Point, FrameError> {
 }
 
 impl Standing {
-    fn point(&self, party: Party) -> Point {
-        match party {
+    fn point(&self, party: Party) -> Result<Point, FrameError> {
+        Ok(match party {
             Party::Workplace(w) => (WORKPLACE_X[w.index()], 0.0),
-            Party::Household(h) => self.households.get(&h).copied().unwrap_or_default(),
+            Party::Household(h) => self
+                .households
+                .get(&h)
+                .copied()
+                .ok_or_else(|| missing(&format!("no place for {}", household_id(h))))?,
             Party::Treasury => TREASURY_AT,
             Party::Fund => FUND_AT,
-        }
+        })
     }
 }
 
@@ -780,8 +783,8 @@ fn fund_set(
             ParticleMode::Groups => put(&mut graph, FUND_EDGE, &household_id(h), micro)?,
             ParticleMode::People => {
                 let n = pop.persons(h);
-                let out = pop.at_work(h).min(n);
-                let first = if out < n { out } else { 0 };
+                let working = pop.at_work(h).min(n);
+                let first = if working < n { working } else { 0 };
                 for (offset, share) in split_money(micro, n - first)?.into_iter().enumerate() {
                     put(&mut graph, FUND_EDGE, &person_id(h, first + offset), share)?;
                 }
@@ -870,10 +873,14 @@ fn short_of(body: Point, from: Point, short: f64) -> Point {
     (body.0 + dx / length * short, body.1 + dy / length * short)
 }
 
-fn work_flows(work: &[WorkFlow], standing: &Standing, into: &mut Vec<Flow>) {
+fn work_flows(
+    work: &[WorkFlow],
+    standing: &Standing,
+    into: &mut Vec<Flow>,
+) -> Result<(), FrameError> {
     for f in work {
-        let from = standing.point(Party::Household(f.household));
-        let body = standing.point(Party::Workplace(f.workplace));
+        let from = standing.point(Party::Household(f.household))?;
+        let body = standing.point(Party::Workplace(f.workplace))?;
         if f.given > 0 {
             into.push(flow(STREAM_WORK, from, body, f.given, false));
         }
@@ -882,13 +889,19 @@ fn work_flows(work: &[WorkFlow], standing: &Standing, into: &mut Vec<Flow>) {
             into.push(flow(STREAM_WORK, from, end, f.idle, true));
         }
     }
+    Ok(())
 }
 
-fn goods_flows(goods: &[GoodsMove], standing: &Standing, into: &mut Vec<Flow>) {
+fn goods_flows(
+    goods: &[GoodsMove],
+    standing: &Standing,
+    into: &mut Vec<Flow>,
+) -> Result<(), FrameError> {
     for m in goods {
-        let (from, to) = (standing.point(m.from), standing.point(m.to));
+        let (from, to) = (standing.point(m.from)?, standing.point(m.to)?);
         into.push(flow(good_stream(m.good), from, to, m.quantity, true));
     }
+    Ok(())
 }
 
 fn money_flows(
@@ -899,7 +912,7 @@ fn money_flows(
     for p in &reading.payments {
         let amount = u64::try_from(p.amount).map_err(|_| FrameError::Arithmetic)?;
         if amount > 0 {
-            let (from, to) = (standing.point(p.payer), standing.point(p.payee));
+            let (from, to) = (standing.point(p.payer)?, standing.point(p.payee)?);
             into.push(flow(payment_stream(p.kind), from, to, amount, false));
         }
     }
@@ -921,8 +934,8 @@ pub fn build_picture(result: &PeriodResult, mode: ParticleMode) -> Result<Pictur
         fund: fund_set(result, &pop, mode)?,
     };
     let mut flows = Vec::new();
-    work_flows(&reading.work, &standing, &mut flows);
-    goods_flows(&reading.goods, &standing, &mut flows);
+    work_flows(&reading.work, &standing, &mut flows)?;
+    goods_flows(&reading.goods, &standing, &mut flows)?;
     money_flows(&reading, &standing, &mut flows)?;
     let frame = FieldFrame {
         period: reading.period,
@@ -1263,6 +1276,20 @@ mod tests {
             assert_eq!(app.world().resource::<FlowReport>().period, Some(1));
         }
         Ok(())
+    }
+
+    #[test]
+    fn a_household_with_no_place_is_an_error_not_the_origin() {
+        let standing = Standing {
+            households: BTreeMap::new(),
+            particles: Vec::new(),
+            positions: Positions::new(),
+        };
+        assert!(matches!(
+            standing.point(Party::Household(Household::ALL[0])),
+            Err(FrameError::Edge(_))
+        ));
+        assert!(standing.point(Party::Treasury).is_ok());
     }
 
     #[test]

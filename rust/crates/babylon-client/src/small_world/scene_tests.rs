@@ -11,10 +11,10 @@ use crate::small_world::frame::ParticleMode;
 use crate::small_world::inspect::ScenePick;
 use crate::small_world::panel;
 use crate::small_world::panel::{
-    InspectorBody, PagerLabel, PanelButton, PanelView, ShockButton, ShockNotice,
+    InspectorBody, PagerLabel, PanelButton, PanelView, ShockButton, ShockNotice, TableBody,
 };
 use crate::small_world::scene::SceneShown;
-use crate::small_world::table::Grouping;
+use crate::small_world::table::{Grouping, NOT_MEASURED};
 use crate::small_world::{controls, scene};
 use babylon_circuit_worlds::{Kind, Place, Workplace};
 use bevy::asset::AssetPlugin;
@@ -522,6 +522,47 @@ fn inspector_rows(app: &mut App) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The table's rows as their words: the label, then each cell's figure.
+fn table_rows(app: &mut App) -> Vec<Vec<String>> {
+    let world = app.world_mut();
+    let Some(body) = world
+        .query_filtered::<Entity, With<TableBody>>()
+        .iter(world)
+        .next()
+    else {
+        return Vec::new();
+    };
+    let rows: Vec<Entity> = world
+        .get::<Children>(body)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+    rows.into_iter()
+        .map(|row| {
+            let cells: Vec<Entity> = world
+                .get::<Children>(row)
+                .map(|c| c.iter().collect())
+                .unwrap_or_default();
+            cells
+                .into_iter()
+                .filter_map(|cell| {
+                    world
+                        .get::<Children>(cell)?
+                        .iter()
+                        .find_map(|e| world.get::<Text>(e).map(|t| t.0.clone()))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn table_row(app: &mut App, label: &str) -> Result<Vec<String>, String> {
+    table_rows(app)
+        .into_iter()
+        .find(|row| row.first().map(String::as_str) == Some(label))
+        .map(|row| row[1..].to_vec())
+        .ok_or_else(|| format!("no table row {label}"))
+}
+
 fn row_value(rows: &[(String, String)], label: &str) -> Option<String> {
     rows.iter()
         .find(|(l, _)| l == label)
@@ -652,6 +693,20 @@ fn the_table_switches_its_grouping_and_period() -> TestResult {
     };
     assert_eq!(label.as_deref(), Some("Period 1"));
     assert!(texts(&mut app).contains(&earners));
+    let cells = |figures: [&str; 5]| figures.map(str::to_owned).to_vec();
+    assert_eq!(
+        table_row(&mut app, "Earners who do not own")?,
+        cells(["480", "0", NOT_MEASURED, "$4,800.00", "$4,800.00"])
+    );
+    for label in ["Owners who do not earn", "Neither owner nor earner"] {
+        let row = table_row(&mut app, label)?;
+        assert_eq!(row[3], "$1,280.00", "{label} in");
+        assert_eq!(row[4], "$1,280.00", "{label} out");
+    }
+    let owners = table_row(&mut app, "Owners who earn")?;
+    assert_eq!(owners[0], "0");
+    assert_eq!(owners[3], "$0.00");
+    assert_eq!(owners[4], "$0.00");
     // The scene still shows the latest period.
     assert_eq!(app.world().resource::<SceneRunner>().shown, Some(2));
     let latest = panel_button(&mut app, PanelButton::Latest)?;
@@ -715,7 +770,7 @@ fn a_pick_shows_its_own_figures() -> TestResult {
                     .iter()
                     .find(|child| world.get::<Mesh3d>(*child).is_some())
             })
-            .unwrap_or(set)
+            .ok_or("set workforce:a:farm has no child mesh")?
     };
     click(&mut app, set);
     updates(&mut app, 2);

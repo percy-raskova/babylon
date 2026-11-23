@@ -185,22 +185,29 @@ pub fn shock_rows(book: &ShockBook, next_period: u64) -> Vec<ShockRow> {
         .collect()
 }
 
+/// The words for a figure too large to add exactly.
+fn too_large() -> String {
+    "too large to add".to_owned()
+}
+
 /// What the period's picture left out, every figure from the library's own report.
 #[must_use]
 pub fn not_drawn_line(report: &FlowReport) -> String {
     if report.streams.is_empty() {
         return String::new();
     }
-    let left_out = |stream: u16| -> u128 {
+    let left_out = |stream: u16| -> Option<u128> {
         report
             .streams
             .iter()
             .filter(|s| s.stream == stream)
-            .fold(0, |sum, s| sum.saturating_add(s.not_drawn))
+            .try_fold(0_u128, |sum, s| sum.checked_add(s.not_drawn))
     };
-    let units = |stream: u16| human_numbers::grouped(left_out(stream));
+    let units = |stream: u16| left_out(stream).map_or_else(too_large, human_numbers::grouped);
     let dollars = |stream: u16| {
-        human_numbers::currency(i128::try_from(left_out(stream)).unwrap_or(i128::MAX))
+        left_out(stream)
+            .and_then(|v| i128::try_from(v).ok())
+            .map_or_else(too_large, human_numbers::currency)
     };
     format!(
         "Not drawn: {} hours; food {}, power {}, care {} units; wages {}, purchases {}, taxes {}, benefits {}, profit {}",
@@ -697,7 +704,9 @@ fn rows_for(
     let result = &history[index];
     let built: Picture;
     let picture = match &shown.0 {
-        Some(picture) if index + 1 == history.len() => picture,
+        Some(picture) if index + 1 == history.len() && picture.reading.period == result.period => {
+            picture
+        }
         _ => {
             built = frame::build_picture(result, scene.mode).map_err(|e| e.to_string())?;
             &built

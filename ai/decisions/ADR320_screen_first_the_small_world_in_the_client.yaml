@@ -1,0 +1,198 @@
+ADR320_screen_first_the_small_world_in_the_client:
+  title: Screen first; the small test economy runs in the client, drawn by its ties, with labelled shocks
+  date: '2026-11-23'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-23, in a message sent after the measurement of the
+        test economy closed and the build of the closest form was picked: "i
+        want to make sure that we get this into a game system people can see
+        in bevy with the hypergraph visualizations and what not".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked in what order the
+        one build machine takes the bridge, the scene and the rules: "Screen
+        first".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked in which world
+        people see the new economy first: "The small world, to poke".
+    - >-
+        Director, 2026-11-23, in the question dialog, after the roads were
+        sized, asked how the client opens the small test economy: "In the
+        client now, saved later".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked which small world
+        people see: "The doubled world".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked what a push is in
+        the game's terms: "A labelled shock, this scene only".
+    - >-
+        Director, 2026-11-23, in the question dialog, asked what counts as a
+        set in the small world: "Workforces, owners, the fund".
+  context: |
+    On 22 November the Director ruled how the test economy is judged (ADR319)
+    and picked the next step: plan the build of the closest form, behind a
+    setting no campaign asks for yet. On 23 November the Director asked that
+    the work be seen in the Bevy client with the hypergraph scene.
+
+    That day nothing of the new economy could be seen. The tick refused every
+    period with market clearings or tier rows. Every campaign catalog was
+    compiled with no market policy. The scene of ADR317 had its geometry in
+    the hypergraph library and three of thirteen tasks of its Bevy crate,
+    and nothing in the game. The rules measured over ten rounds lived only where
+    the engine's tests reach.
+
+    The lead sized how the client could open the small test economy. Three
+    facts came out of it. The small world on the branch is one place of forty
+    people; the doubled world lives only on the scratch branches. The two
+    shocks the Director named exist only there too. Every shock is a change
+    of a figure in the catalog, and a saved campaign fixes its catalog: the
+    stored-hours ledger refuses a period whose catalog changed.
+  decision: |
+    S1. SCREEN FIRST. A rule that only the engine's tests can reach is not
+    done. Every piece of work on the economy names its road to the screen:
+    the tick, the stored records, the client's scene.
+
+    S2. THE ORDER OF THE ONE BUILD MACHINE, as the Director picked it after
+    the sizing. Now: the library's Bevy crate is finished, and the small
+    world runs in the client. Then: the bridge (the tick, the stored records
+    and the client learn the new economy; plan stage 4b). Then: the small
+    world moves onto the tick's records, and the rules of the closest form
+    land, each one visible. Later: a real saved campaign.
+
+    S3. THE FIRST WORLD PEOPLE SEE IS THE SMALL TEST ECONOMY, TO POKE. It is
+    the doubled world of the measurement rounds: two places, eight
+    workplaces, eighty people, one treasury and one fund.
+
+    S4. IT RUNS IN THE CLIENT. The client runs the engine itself for this one
+    world: step, auto-play, push at any period, no save, no runtime process
+    and no database. Its cost is accepted: for a while a second path to the
+    figures stands beside the stored records, and three to four tasks of it
+    are rebuilt when the world moves onto the tick's records.
+
+    S5. A PUSH IS A LABELLED SHOCK OF THIS SCENE ONLY. It is a control of the
+    small world's scene, marked as a shock, with the figure it changes
+    printed beside it. It is not a player's action and not part of Wayne's
+    game.
+
+    S6. THE SETS OF THE SMALL WORLD ARE WORKFORCES, OWNERS AND THE FUND. Three
+    kinds of real hyperedge whose memberships carry a number: the people of
+    each workplace with their hours, an owner with what they hold, and the
+    households the fund pays with what it pays. Each gets a membrane. An
+    organized group in this world waits for the design of organized workers,
+    which is the Director's to rule.
+
+    S7. PLAY IN THE REAL GAME STAYS IN WAYNE. The small world is a scene to
+    poke. It says on screen that it is a test economy, no real place, and
+    not saved.
+  amends:
+    - >-
+        ADR317, R8 ("The first scene with real numbers is the whole
+        country"): the first scene people see is the small world. The whole
+        country stays the first scene with the country's own numbers.
+    - >-
+        The Director's pick of 2026-11-22 (evening), "Plan the closest form's
+        build": the plan is finished and filed; its build waits behind the
+        scene and the bridge (S2).
+    - >-
+        The design of the opening of the national economy, build order: stage
+        4b (the records carried once) is built before the reference tables
+        and the twelve trades are finished, as the bridge of S2.
+  lead_readings_for_the_director_to_check:
+    - >-
+        What a particle is in this scene. ADR317 R4 rules that a particle is a
+        household group, and this world has twelve. Drawn one dot a person,
+        eighty stand in their membranes; but the record counts people and does
+        not follow one. Asked in the dialog of 2026-11-23. The frame builder
+        carries both readings as one setting until it is answered.
+    - >-
+        Goods are drawn hollow in this build. The hours stored in goods are
+        worked out from the tick's register, and the tick refuses this economy
+        until the bridge is built. A hollow square stands for goods and for no
+        number of hours (ADR317, ruling 18), and the scene says so.
+    - >-
+        Four shocks are offered: the harvest fails (ten periods, or until
+        lifted), the power is cut, pay rises at the clinic, the fund's taxes
+        are cut. The bench's pushes that change the number of people or a
+        workplace's opening money are left out: struck in the middle of a run
+        they would create or destroy people or money.
+    - >-
+        The fund world is the one shown, because the ruled sets include the
+        fund. The two copies are named Place A and Place B. Both carry
+        Wayne's county code in the engine's data, where a location must be a
+        county; the scene does not show it.
+    - >-
+        Until the Director orders the merge of the library's Bevy crate, the
+        game's pin of the library names a commit of the library's branch.
+  consequences:
+    - >-
+        The design is `docs/superpowers/specs/2026-11-23-the-small-world-in-the-client-design.md`.
+        Its plan follows in one draft and one check, then it is built.
+    - >-
+        The doubled world and its shocks come out of the scratch branches into
+        a crate of small worlds that the client may depend on. Its identities
+        are the prototype's, so the bench of the closest form's plan can later
+        prove the same world against the measured rows.
+    - >-
+        The game's pin of the hypergraph library is raised to the revision
+        that holds the plugin, and its Bevy lock moves to 0.20.1.
+    - >-
+        The first scene shows the engine as it is today. On the bench that
+        form left a workplace stopped for good in most pushed runs. The rules
+        that mend it arrive as switches in the same scene.
+    - >-
+        The bridge's plan was checked against the code on 2026-11-23, three
+        days after it was written. Four findings would have stopped a
+        builder; they are entered in the plan before it is built.
+  alternatives_rejected:
+    - name: The bridge, then the scene, then the rules
+      reason: >-
+        Picked first ("Screen first") and changed by the Director an hour
+        later, after the sizing showed that the small world can run in the
+        client with no bridge and be on screen about thirteen tasks sooner.
+    - name: In turns, one task of each line
+      reason: Offered and not chosen. Every line is slower and the first thing on screen comes later.
+    - name: The rules first, as picked the evening before
+      reason: Offered and not chosen. Nothing new would be on screen until the rules, the bridge and the scene were all built.
+    - name: Wayne only
+      reason: >-
+        Offered and not chosen. The new economy shows there only once the
+        national opening is rebuilt on it, which is the longer road.
+    - name: A real saved campaign as the first form
+      reason: >-
+        Offered and not chosen. Nine to fourteen tasks after the bridge and
+        the scene's sums, and a shock cannot enter a saved campaign without a
+        ruling of its own.
+    - name: The small world in the client on the tick's register, after the bridge
+      reason: Offered and not chosen. Little is rebuilt later, but it is on screen about thirteen tasks later.
+    - name: A recorded run played back
+      reason: Not offered. It is the cheapest, but the player cannot push when they choose, so it is not "to poke".
+    - name: The one-place world
+      reason: Offered and not chosen. It is on the branch today, but a shock strikes everything at once.
+    - name: Shocks as the first scenario events of the real game
+      reason: Offered and not chosen. Larger, and it needs a design of its own.
+    - name: One organized group as a set, or no sets at all
+      reason: >-
+        Both offered and not chosen. An organized group reaches toward the
+        design of organized workers, which is not ruled yet.
+  open_questions:
+    - >-
+        Whether a particle of this scene is a household group or a person
+        (asked 2026-11-23).
+    - >-
+        Whether the rules of the closest form should land in this scene before
+        the bridge. The scene runs the engine itself, so a rule can be seen in
+        it without the bridge (asked 2026-11-23).
+    - >-
+        How a shock enters a saved campaign, when the small world becomes one.
+  verification: |
+    The design's section 7. The quiet world stays still in the scene's runner
+    for 34 periods; money and people stay exact under every shock; the frame
+    builder's figures add up to the period's own; the same steps give the same
+    frames twice; the real client is driven by script and a picture is kept.
+  related:
+    - ADR317_field_and_particles
+    - ADR319_a_shock_is_not_a_failure
+    - ADR314_how_the_economy_adjusts
+    - ADR313_the_national_economy_opens_in_balance

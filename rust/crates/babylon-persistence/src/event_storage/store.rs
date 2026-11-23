@@ -789,6 +789,7 @@ mod live_payload_controls {
     use crate::material_runtime::DurableMaterialRuntime;
     use crate::michigan_content::MichiganContentPreset;
     use crate::michigan_material::MichiganDeliveryPreset;
+    use crate::test_support::EventContinuityDatabase;
     use babylon_graph::stable_element::StableElementKey;
     use postgres::NoTls;
     use postgres::Transaction;
@@ -1077,7 +1078,7 @@ mod live_payload_controls {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_all_nine_event_payload_tags_match_independent_typed_reference() {
-        let database = crate::test_support::EventContinuityDatabase::create("payloadtags");
+        let database = EventContinuityDatabase::create("payloadtags");
         let config = database.config().clone();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_9a11,
@@ -1153,7 +1154,7 @@ mod live_payload_controls {
         reason = "`live_node_refs_share_exact_names_and_preserve_foreign_scenarios` keeps one authored fixture and its assertions together"
     )]
     fn live_node_refs_share_exact_names_and_preserve_foreign_scenarios() {
-        let database = crate::test_support::EventContinuityDatabase::create("nodereferences");
+        let database = EventContinuityDatabase::create("nodereferences");
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_9a12,
         ));
@@ -1263,6 +1264,7 @@ mod marker_integrity_controls {
     use crate::material_runtime::DurableMaterialRuntime;
     use crate::michigan_content::MichiganContentPreset;
     use crate::michigan_material::MichiganDeliveryPreset;
+    use crate::test_support::EventContinuityDatabase;
     use postgres::Client;
     use postgres::{GenericClient, NoTls};
     use uuid::Uuid;
@@ -1498,7 +1500,7 @@ mod marker_integrity_controls {
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_deferred_marker_integrity_table() {
-        let owned = crate::test_support::EventContinuityDatabase::create("integrity");
+        let owned = EventContinuityDatabase::create("integrity");
         let config = owned.config().clone();
         let database = config
             .get_dbname()

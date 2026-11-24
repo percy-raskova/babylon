@@ -2644,3 +2644,46 @@ in these points:
   periods 37, 44 and 50); with the bound on from the same period all four work to period 80; the stop rule
   changes no figure of the report while the bound is on, and without the bound the farm's panel reads "held
   since period 43".
+
+## What Tasks 6 to 8c built (24 November 2026, morning)
+
+All six are built and reviewed (`b5556a420`, `36820e130`, `06dc07420`, `be6fd57fe`, `145b1485f`, `0a541db2a`;
+then the lead's `4fc08c109`). The six rules stand in the engine and each is a switch in the scene. The bench
+reproduces all seven reference sets, 25 runs of 25 at both figures; the lead ran the fourteen long tests again.
+Whatever is built next builds on the code as it stands, which differs from the text above in these points:
+
+- **The client matches `AdjustmentReceipt` (eight variants) exhaustively in four functions of `marks.rs`**
+  (`restart_rows`, `moves`, `stop_of`, `bounds_of`) and in one test. A new variant needs an arm in each.
+- **Task 6, the resting price:** `adjustment/rest.rs` `rests` reads the members' labor rows of the closing
+  period (`economy.member_labor`; the state's labor rows are pruned by then), and `rest::made_hours` is its
+  reading of "no hours made". `RestingPrice` receipts stand FIRST in `adjustments` (services, then goods); their
+  `period` is the closing period. A rested offer of a fixed price reports `Hold`. In the small worlds' `LATE`
+  scene no price rests; `a_workplace_left_without_hands_holds_its_price` is the test that sees one.
+- **Task 7, the restart:** `restart_stopped` runs at the very end of `close_with_rules` and pushes the owner's
+  `Cash(CapitalContribution)` as the LAST money transfer of the period. `WorkplaceStandingRow` carries
+  `periods_since_work` and `quiet_periods` through the stop round (`row_of`). `HiringBound.cuts` and `rebound`
+  (in `bound.rs`) reckon the bound again, only when a price was raised or a restart done; the rebound's
+  `HiringBound` receipts replace the earlier ones in place, and `RestingPriceToCost`, `OwnerSpare` and `Restart`
+  follow. A `RestartReceipt` is written only for a TESTED workplace; `owner` is `None` when the test failed. An
+  `OwnerSpareReceipt` is written at every close for every owner. `RESTART_QUIET_PERIODS` is public.
+- **Task 8, the step down:** `update_prices` returns `Quoted` (`prices`, `rests`, `offers`, `gains()`);
+  `MarketTable::record` takes the bids of a goods market; `GoodsOffer` receipts stand after the resting prices
+  and before the bound's. `NOT_YET_BUILT` is gone: admission calls `refuse_combinations` only, and all six
+  rules can be asked for together. Contract keys `ADR314_rest`, `ADR314_restart`, `ADR314_down`;
+  `P9_posted_price` is rewritten. One clause of `ADR314_adjustments` still says a rule not yet built is
+  refused: it is stale.
+- **Tasks 6c to 8c:** `SHOWN_RULES` is the six. `PaymentKind::Capital` is the sixth kind (label "capital"),
+  read from `CashTransferPurpose::CapitalContribution`; `STREAM_MONEY` has six streams and the styles ten. In
+  `marks.rs`: `resting_rows`, `offer_rows`, `restart_rows` and `owner_rows` (the last two return nothing),
+  `test_words`. A workplace's rule rows come in this order: the seekers', the bound's, the stop rule's, "Price
+  rests", the offer's rows, the restart's rows, and "Tested after" last, on every workplace while the restart
+  holds. An owner's rows end with "Spare for a restart".
+- **The script** (`4fc08c109`): `{"receipts":"<name>"}` writes `<name>.txt`, every period kept under a line
+  `period N` with one line for each of the rules' receipts of its close as the engine prints it
+  (`script::receipts_text`). In the small worlds a site's id is its `Workplace::index` plus one in every byte,
+  a good's id is 1 for food, 2 for power, 3 for care, and an owner's principal is 20 (Place A) or 21 (Place B).
+- **What the lead's look counted** (from the scripts' reports and receipts, to period 80): with the rules
+  turned on five periods apart in the slump of Task 3d's proof, the clinic of Place A is shut from period 37;
+  its price rests at $35.00 from the close of 46; at the close of 53 its owners restart it with $368.97 and it
+  works to period 80. The step down changes no figure before period 77. In the proof of Task 8c the sixth rule
+  changes no figure of the report, since no seller is left with goods unsold beyond its buffer.

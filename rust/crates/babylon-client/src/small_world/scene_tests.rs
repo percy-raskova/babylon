@@ -1475,3 +1475,108 @@ fn fast_beats_change_no_frame() -> TestResult {
     assert_eq!(slow.0, fast.0);
     Ok(())
 }
+
+#[test]
+fn a_held_workplace_is_drawn_dim() -> TestResult {
+    use super::{BodyCore, SceneMaterials};
+    use crate::small_world::frame;
+    use babylon_material_circuit::{AdjustmentReceipt, StopHold, StopReceipt};
+
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let clinic = Workplace {
+        place: Place::A,
+        kind: Kind::Clinic,
+    };
+    let mut result = app
+        .world()
+        .resource::<SceneRunner>()
+        .runner
+        .history()
+        .last()
+        .ok_or("a period")?
+        .clone();
+    result
+        .receipts
+        .adjustments
+        .push(AdjustmentReceipt::Stop(StopReceipt {
+            period: result.period,
+            site_id: clinic.site_id(),
+            could_not_pay: true,
+            hold: StopHold::Held,
+            limit: Some(0),
+        }));
+    let picture = frame::build_picture(&result, ParticleMode::Groups)?;
+    assert_eq!(picture.bodies.iter().filter(|b| b.held).count(), 1);
+    app.world_mut().resource_mut::<SceneShown>().0 = Some(picture);
+    updates(&mut app, 2);
+    let cores = |app: &mut App| -> Result<Vec<(Party, bool)>, Box<dyn Error>> {
+        let (dim, gold) = {
+            let materials = app.world().resource::<SceneMaterials>();
+            (materials.dim.clone(), materials.gold.clone())
+        };
+        let world = app.world_mut();
+        let found: Vec<(Entity, Handle<StandardMaterial>)> = world
+            .query_filtered::<(&ChildOf, &MeshMaterial3d<StandardMaterial>), With<BodyCore>>()
+            .iter(world)
+            .map(|(parent, material)| (parent.parent(), material.0.clone()))
+            .collect();
+        let mut out = Vec::new();
+        for (plate, handle) in found {
+            let party = world.get::<SceneBody>(plate).ok_or("a plate")?.0;
+            assert!(handle == dim || handle == gold);
+            out.push((party, handle == dim));
+        }
+        Ok(out)
+    };
+    let held = cores(&mut app)?;
+    assert_eq!(held.len(), 10);
+    for (party, dim) in &held {
+        assert_eq!(*dim, *party == Party::Workplace(clinic), "{party:?}");
+    }
+    assert_eq!(count_of::<BodyRing>(&mut app), 16);
+    assert_eq!(count_of::<BodyLabel>(&mut app), 10);
+    app.world_mut().resource_mut::<SceneShown>().0 = None;
+    updates(&mut app, 2);
+    let none = cores(&mut app)?;
+    assert_eq!(none.len(), 10);
+    assert!(none.iter().all(|(_, dim)| !dim));
+    Ok(())
+}
+
+#[test]
+fn the_stop_rule_waits_for_the_seekers_on_screen() -> TestResult {
+    const STOP: &str = "No money, no work";
+    const SEEKERS: &str = "People look for work in their place";
+    const NEEDS: &str = "(needs: people look for work in their place)";
+    let color_of = |app: &mut App, name: &str| -> Option<Color> {
+        let world = app.world_mut();
+        world
+            .query::<(&Text, &TextColor)>()
+            .iter(world)
+            .find_map(|(text, color)| (text.0 == name).then_some(color.0))
+    };
+    let mut app = scene_app(None)?;
+    updates(&mut app, 2);
+    assert_eq!(color_of(&mut app, STOP), Some(crate::observer_theme::GRAY));
+    assert!(texts(&mut app).contains(&NEEDS.to_owned()));
+    let stop = rule_button(&mut app, SceneRule::StopWithoutPay)?;
+    click(&mut app, stop);
+    updates(&mut app, 2);
+    assert!(texts(&mut app).contains(&format!(
+        "{STOP} waits for people look for work in their place"
+    )));
+    assert_eq!(rules_on(&app), 0);
+    let seekers = rule_button(&mut app, SceneRule::SeekingInPlace)?;
+    click(&mut app, seekers);
+    updates(&mut app, 2);
+    assert_eq!(rules_on(&app), 1);
+    assert_eq!(color_of(&mut app, STOP), Some(crate::observer_theme::PAPER));
+    assert_eq!(
+        color_of(&mut app, SEEKERS),
+        Some(crate::observer_theme::PAPER)
+    );
+    assert!(!texts(&mut app).contains(&NEEDS.to_owned()));
+    Ok(())
+}

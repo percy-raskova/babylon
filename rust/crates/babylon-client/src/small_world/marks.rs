@@ -8,7 +8,8 @@ use super::rules::SceneRule;
 use crate::human_numbers;
 use babylon_circuit_worlds::{Household, PeriodResult, Workplace};
 use babylon_material_circuit::{
-    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StaffingPoolId,
+    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StaffingPoolId, StopHold,
+    StopReceipt,
 };
 use std::collections::BTreeMap;
 
@@ -53,6 +54,11 @@ pub fn rule_rows(history: &[PeriodResult], index: usize, pick: &Pick) -> Result<
             bound_rows(result, *w, &mut rows)?;
         }
     }
+    if holds(result, SceneRule::StopWithoutPay) {
+        if let Pick::Body(Party::Workplace(w)) = pick {
+            stop_rows(history, index, *w, &mut rows)?;
+        }
+    }
     Ok(rows)
 }
 
@@ -75,6 +81,73 @@ pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt> {
             AdjustmentReceipt::PlaceMove(moved) => Some(moved),
             AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::Stop(_) => None,
         })
+}
+
+/// The period's stop receipt of a workplace's site.
+fn stop_of(result: &PeriodResult, w: Workplace) -> Option<&StopReceipt> {
+    result
+        .receipts
+        .adjustments
+        .iter()
+        .find_map(|receipt| match receipt {
+            AdjustmentReceipt::Stop(stop) if stop.site_id == w.site_id() => Some(stop),
+            AdjustmentReceipt::Stop(_)
+            | AdjustmentReceipt::HiringBound(_)
+            | AdjustmentReceipt::PlaceMove(_) => None,
+        })
+}
+
+/// Whether the period's receipts hold the workplace's site `Held`.
+fn is_held_in(result: &PeriodResult, w: Workplace) -> bool {
+    stop_of(result, w).is_some_and(|stop| stop.hold == StopHold::Held)
+}
+
+/// The first period of the unbroken run of closes, ending at `index`, whose receipts hold the site `Held`.
+#[must_use]
+pub fn held_since(history: &[PeriodResult], index: usize, w: Workplace) -> Option<u64> {
+    let mut since = None;
+    for result in history.get(..=index)?.iter().rev() {
+        if !is_held_in(result, w) {
+            break;
+        }
+        since = Some(result.period);
+    }
+    since
+}
+
+/// The stop rule's rows of a workplace from the period's `StopReceipt` of its site.
+fn stop_rows(
+    history: &[PeriodResult],
+    index: usize,
+    w: Workplace,
+    rows: &mut Rows,
+) -> Result<(), FrameError> {
+    let result = history
+        .get(index)
+        .ok_or_else(|| missing("no such period in the history"))?;
+    let Some(stop) = stop_of(result, w) else {
+        return Ok(());
+    };
+    if stop.hold == StopHold::Held {
+        let since = held_since(history, index, w).ok_or_else(|| missing("a held run"))?;
+        rows.push((
+            "No money, no work".to_owned(),
+            format!("held since period {since}"),
+        ));
+        if let Some(limit) = stop.limit {
+            rows.push(("Most it may employ".to_owned(), grouped(limit)));
+        }
+    }
+    if stop.could_not_pay {
+        let unpaid = result
+            .receipts
+            .member_labor_use
+            .iter()
+            .filter(|row| row.site_id == w.site_id())
+            .try_fold(0_u64, |sum, row| add(sum, row.unattended_hours))?;
+        rows.push(("Hours it could not pay".to_owned(), grouped(unpaid)));
+    }
+    Ok(())
 }
 
 /// The period's bound receipts of a workplace's site, in receipt order.
@@ -234,7 +307,7 @@ mod tests {
     use babylon_circuit_worlds::{
         Household, Kind, Lasts, Place, Places, Runner, Scale, Shock, Workplace, World,
     };
-    use babylon_material_circuit::AdjustmentRule;
+    use babylon_material_circuit::{AdjustmentRule, StopHold, StopReceipt};
     use std::error::Error;
 
     type TestResult = Result<(), Box<dyn Error>>;
@@ -507,6 +580,159 @@ mod tests {
                             Some(limit_words(limit).to_owned())
                         );
                     }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn clinic_a() -> Workplace {
+        Workplace {
+            place: Place::A,
+            kind: Kind::Clinic,
+        }
+    }
+
+    /// Seven copies of a quiet period, periods 1 to 7, the stop rule asked; clinic A is `Free` at 4 and `Held`
+    /// at 5, 6 and 7 (limit 0, could not pay). In the seventh each of its members left 3 hours unattended.
+    fn stop_history() -> Result<(Vec<PeriodResult>, u64), Box<dyn Error>> {
+        let base = Runner::open()?.step()?.clone();
+        let site = clinic_a().site_id();
+        let mut history = Vec::new();
+        for period in 1..=7_u64 {
+            let mut result = base.clone();
+            result.period = period;
+            result.rules = vec![AdjustmentRule::StopWithoutPay];
+            let held = period >= 5;
+            result
+                .receipts
+                .adjustments
+                .push(AdjustmentReceipt::Stop(StopReceipt {
+                    period,
+                    site_id: site,
+                    could_not_pay: held,
+                    hold: if held { StopHold::Held } else { StopHold::Free },
+                    limit: held.then_some(0),
+                }));
+            history.push(result);
+        }
+        let mut unattended = 0_u64;
+        for row in &mut history[6].receipts.member_labor_use {
+            if row.site_id == site {
+                row.unattended_hours = 3;
+                unattended += 3;
+            }
+        }
+        assert!(unattended > 0, "the clinic has members to leave unpaid");
+        Ok((history, unattended))
+    }
+
+    #[test]
+    fn held_since_counts_the_unbroken_run() -> TestResult {
+        let (history, _) = stop_history()?;
+        let clinic = clinic_a();
+        assert_eq!(held_since(&history, 6, clinic), Some(5));
+        assert_eq!(held_since(&history, 4, clinic), Some(5));
+        assert_eq!(held_since(&history, 3, clinic), None);
+        assert_eq!(
+            held_since(
+                &history,
+                6,
+                Workplace {
+                    place: Place::A,
+                    kind: Kind::Farm
+                }
+            ),
+            None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_stop_s_rows_are_its_receipt_s() -> TestResult {
+        let (history, unattended) = stop_history()?;
+        let pick = Pick::Body(Party::Workplace(clinic_a()));
+        let rows = rule_rows(&history, 6, &pick)?;
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "No money, no work".to_owned(),
+                    "held since period 5".to_owned()
+                ),
+                ("Most it may employ".to_owned(), "0".to_owned()),
+                (
+                    "Hours it could not pay".to_owned(),
+                    human_numbers::grouped(u128::from(unattended))
+                ),
+            ]
+        );
+        // A free workplace that paid gets no row; a period the rule is not asked in adds none.
+        assert_eq!(rule_rows(&history, 3, &pick)?, Rows::new());
+        let mut unasked = history.clone();
+        unasked[6].rules = Vec::new();
+        assert_eq!(rule_rows(&unasked, 6, &pick)?, Rows::new());
+        Ok(())
+    }
+
+    #[test]
+    fn every_close_with_the_rule_tests_every_site() -> TestResult {
+        let switches = World::switches_at(Scale::Small);
+        let mut runner = Runner::open()?;
+        runner.turn_on(switches[1])?;
+        runner.turn_on(switches[2])?;
+        for _ in 0..34 {
+            runner.step()?;
+        }
+        let history = runner.history();
+        assert_eq!(history.len(), 34);
+        for (index, result) in history.iter().enumerate() {
+            let stops: Vec<&StopReceipt> = result
+                .receipts
+                .adjustments
+                .iter()
+                .filter_map(|receipt| match receipt {
+                    AdjustmentReceipt::Stop(stop) => Some(stop),
+                    AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::PlaceMove(_) => None,
+                })
+                .collect();
+            assert_eq!(stops.len(), 8, "period {}", result.period);
+            for w in Workplace::ALL {
+                let stop = stops
+                    .iter()
+                    .find(|stop| stop.site_id == w.site_id())
+                    .ok_or("a receipt for each site")?;
+                let rows = rule_rows(history, index, &Pick::Body(Party::Workplace(w)))?;
+                let stop_rows: Vec<&(String, String)> = rows
+                    .iter()
+                    .filter(|(label, _)| {
+                        matches!(
+                            label.as_str(),
+                            "No money, no work" | "Most it may employ" | "Hours it could not pay"
+                        )
+                    })
+                    .collect();
+                let unpaid: u64 = result
+                    .receipts
+                    .member_labor_use
+                    .iter()
+                    .filter(|row| row.site_id == w.site_id())
+                    .map(|row| row.unattended_hours)
+                    .sum();
+                let expected = usize::from(stop.hold == StopHold::Held)
+                    + usize::from(stop.hold == StopHold::Held && stop.limit.is_some())
+                    + usize::from(stop.could_not_pay);
+                assert_eq!(
+                    stop_rows.len(),
+                    expected,
+                    "{w:?} in period {}",
+                    result.period
+                );
+                if stop.could_not_pay {
+                    assert_eq!(
+                        row_of(&rows, "Hours it could not pay"),
+                        Some(human_numbers::grouped(u128::from(unpaid)))
+                    );
                 }
             }
         }

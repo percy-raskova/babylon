@@ -21,7 +21,7 @@ use super::script;
 use super::table::Grouping;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_ui;
-use crate::palette::{BONE, FIELD, GOLD};
+use crate::palette::{BONE, DIM, FIELD, GOLD};
 use crate::visual_assets::VisualAssetsPlugin;
 use babylon_circuit_worlds::{
     Lasts, PeriodResult, Place, Places, Runner, RunnerError, Shock, Workplace,
@@ -132,10 +132,15 @@ pub struct SceneBody(pub Party);
 #[derive(Component)]
 struct BodyRing;
 
+/// A body's centre disc: a component put on the existing core disc, not a new entity.
+#[derive(Component)]
+struct BodyCore;
+
 #[derive(Resource)]
 struct SceneMaterials {
     bone: Handle<StandardMaterial>,
     gold: Handle<StandardMaterial>,
+    dim: Handle<StandardMaterial>,
 }
 
 /// The ten bodies of the plane: eight workplaces, the treasury and the fund.
@@ -284,6 +289,7 @@ impl Plugin for SmallWorldPlugin {
                 (
                     show_refusals,
                     redraw_rings,
+                    paint_cores,
                     controls::paint_header,
                     controls::paint_buttons,
                     controls::paint_banner,
@@ -345,10 +351,11 @@ fn setup_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     spawn_cameras(&mut commands);
-    let (field, bone, gold) = (
+    let (field, bone, gold, dim) = (
         materials.add(unlit(FIELD)),
         materials.add(unlit(BONE)),
         materials.add(unlit(GOLD)),
+        materials.add(unlit(DIM)),
     );
     let plate = meshes.add(flat(Circle::new(PLATE_RADIUS)));
     let core = meshes.add(flat(Circle::new(CORE_RADIUS)));
@@ -367,6 +374,7 @@ fn setup_scene(
                 body.spawn((
                     Mesh3d(core.clone()),
                     MeshMaterial3d(gold.clone()),
+                    BodyCore,
                     lift,
                     DeclaredSurface::new(SurfaceId::SmallWorld),
                 ));
@@ -380,7 +388,7 @@ fn setup_scene(
                 }
             });
     }
-    commands.insert_resource(SceneMaterials { bone, gold });
+    commands.insert_resource(SceneMaterials { bone, gold, dim });
     controls::spawn_chrome(&mut commands);
 }
 
@@ -690,6 +698,39 @@ fn redraw_rings(
                     status.playing = false;
                 }
             }
+        }
+    }
+}
+
+/// The centre disc of a held workplace in `DIM`, every other in gold; all gold while nothing is shown.
+fn paint_cores(
+    shown: Res<SceneShown>,
+    materials: Option<Res<SceneMaterials>>,
+    plates: Query<&SceneBody>,
+    mut cores: Query<(&ChildOf, &mut MeshMaterial3d<StandardMaterial>), With<BodyCore>>,
+) {
+    let Some(materials) = materials else {
+        return;
+    };
+    if !shown.is_changed() {
+        return;
+    }
+    for (parent, mut material) in &mut cores {
+        let held = shown.0.as_ref().is_some_and(|picture| {
+            plates.get(parent.parent()).is_ok_and(|plate| {
+                picture
+                    .bodies
+                    .iter()
+                    .any(|body| body.party == plate.0 && body.held)
+            })
+        });
+        let wanted = if held {
+            &materials.dim
+        } else {
+            &materials.gold
+        };
+        if material.0 != *wanted {
+            material.0 = wanted.clone();
         }
     }
 }

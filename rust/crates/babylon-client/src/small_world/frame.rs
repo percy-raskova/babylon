@@ -14,7 +14,7 @@ use super::reading::{GoodsMove, Party, PaymentKind, PeriodReading, ReadingError,
 use crate::palette::{BONE, CRIMSON, DIM, GOLD};
 use babylon_circuit_worlds::doubled::HOURS_PER_PERSON;
 use babylon_circuit_worlds::{Good, Household, Kind, PeriodResult, Place, Workplace};
-use babylon_material_circuit::AccountId;
+use babylon_material_circuit::{AccountId, AdjustmentReceipt, StopHold};
 use hypergraph_rs::geometry::GeometryError;
 use hypergraph_rs::geometry::OutlineParams;
 use hypergraph_rs::geometry::Point;
@@ -78,6 +78,9 @@ pub struct BodyPicture {
     pub money_ring: Option<f32>,
     /// Units made this period; only on workplaces.
     pub made: Option<u64>,
+    /// Held back by no money, no work at this close: its site's `StopReceipt` of the period says `Held`.
+    /// Only on workplaces.
+    pub held: bool,
 }
 
 /// The three kinds of sets, each its own hypergraph with its own number.
@@ -682,6 +685,7 @@ fn bodies(result: &PeriodResult, reading: &PeriodReading) -> Result<Vec<BodyPict
             hours_ring: hours_ring(reached),
             money_ring: money_ring(taken),
             made: Some(result.summary.made[w.index()]),
+            held: is_held(result, w),
         });
     }
     for (party, at) in [(Party::Treasury, TREASURY_AT), (Party::Fund, FUND_AT)] {
@@ -692,9 +696,18 @@ fn bodies(result: &PeriodResult, reading: &PeriodReading) -> Result<Vec<BodyPict
             hours_ring: None,
             money_ring: None,
             made: None,
+            held: false,
         });
     }
     Ok(bodies)
+}
+
+/// Whether the period's `StopReceipt` of the workplace's site says `Held`.
+fn is_held(result: &PeriodResult, w: Workplace) -> bool {
+    result.receipts.adjustments.iter().any(|receipt| {
+        matches!(receipt, AdjustmentReceipt::Stop(stop)
+            if stop.site_id == w.site_id() && stop.hold == StopHold::Held)
+    })
 }
 
 // ---- sets ----

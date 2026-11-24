@@ -9,5 +9,5 @@ pub mod world;
 pub use catalog::{catalog, catalog_of};
 pub use figures::{Figures, HORIZON, HOURS_PER_PERSON, OPENING_MONEY, PERSONS};
 pub use opening::{opening_state, opening_state_of};
-pub use staffing::{member, member_of, members_of, staffing, staffing_of};
+pub use staffing::{member, member_of, members_of, places, pool_members_of, staffing, staffing_of};
 pub use world::{Economy, OpeningPush, Pushed, Scale, World};

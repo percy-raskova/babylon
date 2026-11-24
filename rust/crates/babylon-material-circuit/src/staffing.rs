@@ -5,6 +5,7 @@
 
 mod members;
 mod model;
+mod place;
 mod transition;
 
 pub(crate) use members::proportional_shares;
@@ -17,6 +18,8 @@ pub use model::{
     StaffingError, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState,
     StaffingReceipt, StaffingState, StaffingTransition, StaffingWorkRequest, StaffingWorkSource,
 };
+pub(crate) use place::{staff_places, PlaceRules};
+pub use place::{PlaceStaffing, PlaceStaffingError, PoolMembers, StaffingPlace};
 pub use transition::advance_staffing;
 
 #[cfg(test)]

@@ -83,7 +83,6 @@ pub(crate) fn restart_outlay_periods(rules: &[AdjustmentRule]) -> Option<u64> {
 /// catalog can ask for a rule that does nothing. Each rule's task removes its own kind.
 pub(crate) const NOT_YET_BUILT: &[AdjustmentRule] = &[
     AdjustmentRule::HiringWithinMeans,
-    AdjustmentRule::SeekingInPlace,
     AdjustmentRule::StopWithoutPay,
     AdjustmentRule::RestingPrice,
     AdjustmentRule::OwnerRestart { outlay_periods: 1 },

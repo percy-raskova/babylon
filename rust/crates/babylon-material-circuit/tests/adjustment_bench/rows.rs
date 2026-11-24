@@ -4,9 +4,9 @@ use super::compare;
 use super::runs::BenchRun;
 use babylon_circuit_worlds::{ids, Good, Household, Kind, PeriodResult, Place, Runner, Workplace};
 use babylon_material_circuit::{
-    self as engine, AccountId, CircuitAccounting, GoodId, HouseholdStandard, LaborCompensation,
-    MarketMoment, MaterialCatalog, MaterialCircuitState, MonetaryCircuit, RecurringEconomy, SiteId,
-    WantTier,
+    self as engine, AccountId, AdjustmentRule, CircuitAccounting, GoodId, HouseholdStandard,
+    LaborCompensation, MarketMoment, MaterialCatalog, MaterialCircuitState, MonetaryCircuit,
+    RecurringEconomy, SiteId, StaffingMemberId, StaffingState, WantTier,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -476,8 +476,95 @@ fn put_standards_and_public(line: &mut Line, result: &PeriodResult) {
     line.money("total_money", result.summary.total_money);
 }
 
+/// The persons a record of layoffs holds for one member.
+fn covered_of(state: &MaterialCircuitState, member: StaffingMemberId) -> u64 {
+    economy(state)
+        .financial
+        .layoffs
+        .iter()
+        .filter(|record| record.member_id == member)
+        .flat_map(|record| record.cohorts.iter())
+        .sum()
+}
+
+/// Persons parked: those a workplace kept at work beyond the hours it paid for, up to what it asked of them.
+fn parked(result: &PeriodResult, opening: &StaffingState, hours_per_person: u64) -> [u64; 8] {
+    let mut planned = [0_u64; 8];
+    let mut attended = [0_u64; 8];
+    for row in &result.receipts.member_labor_use {
+        let i = index_of(row.site_id);
+        planned[i] += row.planned_hours;
+        attended[i] += row.attended_hours;
+    }
+    let mut employed_open = [0_u64; 8];
+    for pool in opening.pools() {
+        employed_open[index_of(pool.binding().site_id())] += pool.employed();
+    }
+    let mut out = [0_u64; 8];
+    for (i, slot) in out.iter_mut().enumerate() {
+        let paid = attended[i].div_ceil(hours_per_person);
+        let unpaid_asked = planned[i].div_ceil(hours_per_person).saturating_sub(paid);
+        let stayed = result.closing.employed[i].min(employed_open[i]);
+        *slot = unpaid_asked.min(stayed.saturating_sub(paid));
+    }
+    out
+}
+
+/// Step S, when people look for work in their place: people by place and by workplace at the close, who is
+/// parked, and the persons of each household at each workplace that is not their own.
+fn put_seekers(line: &mut Line, runner: &Runner, result: &PeriodResult, opening: &StaffingState) {
+    let state = runner.state();
+    let mut people = [0_u64; 8];
+    let mut looking = [0_u64; 8];
+    for pool in runner.staffing().pools() {
+        let i = index_of(pool.binding().site_id());
+        people[i] = pool.binding().labor_force();
+        looking[i] = pool.reserve();
+    }
+    for place in Place::ALL {
+        let range = 4 * place.index()..4 * place.index() + 4;
+        let name = place_name(place);
+        line.put(
+            format!("seekers_{name}"),
+            looking[range.clone()].iter().sum::<u64>(),
+        );
+        line.put(format!("people_{name}"), people[range].iter().sum::<u64>());
+    }
+    for workplace in Workplace::ALL {
+        let i = workplace.index();
+        let name = site_name(workplace);
+        line.put(format!("people_{name}"), people[i]);
+        line.put(format!("looking_{name}"), looking[i]);
+        line.put(
+            format!("covered_own_{name}"),
+            covered_of(state, workplace.member_id()),
+        );
+    }
+    let parked = parked(result, opening, runner.world().hours_per_person());
+    line.each_site("parked", &parked);
+    for (host, pool) in Workplace::ALL.iter().zip(runner.members()) {
+        for member in &pool.members {
+            let Some(Household::Workers(home)) =
+                Household::from_principal(member.binding().household_id())
+            else {
+                panic!("a member of a worker household");
+            };
+            if home == *host {
+                continue;
+            }
+            let pair = format!("{}_from_{}", site_name(*host), site_name(home));
+            line.put(format!("pair_working_{pair}"), member.employed());
+            line.put(format!("pair_looking_{pair}"), member.reserve());
+            line.put(
+                format!("pair_covered_{pair}"),
+                covered_of(state, member.binding().member_id()),
+            );
+        }
+    }
+}
+
 /// One period's line, in column order.
-fn line(runner: &Runner, result: &PeriodResult) -> Line {
+fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line {
     let catalog = runner
         .catalog()
         .unwrap_or_else(|| panic!("a step has closed under a catalog"));
@@ -491,6 +578,9 @@ fn line(runner: &Runner, result: &PeriodResult) -> Line {
     put_markets(&mut line, &markets);
     put_needs(&mut line, result);
     put_standards_and_public(&mut line, result);
+    if result.rules.contains(&AdjustmentRule::SeekingInPlace) {
+        put_seekers(&mut line, runner, result, opening);
+    }
     line
 }
 
@@ -537,12 +627,13 @@ pub(crate) fn rows_and_digests(
     let mut digests = Vec::new();
     let mut text = String::new();
     for index in 0..periods {
+        let opening = runner.staffing().clone();
         let result = runner
             .step()
             .unwrap_or_else(|error| panic!("{} steps period {}: {error:?}", run.name, index + 1))
             .clone();
         digests.push(result.state_digest);
-        let row = line(&runner, &result);
+        let row = line(&runner, &result, &opening);
         if index == 0 {
             let header: Vec<&str> = row.columns.iter().map(|(name, _)| name.as_str()).collect();
             let mut unique = header.clone();

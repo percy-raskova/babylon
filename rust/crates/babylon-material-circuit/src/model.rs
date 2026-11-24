@@ -1,5 +1,6 @@
 //! Current production, inventory, freight and order state.
 
+use crate::AdjustmentReceipt;
 use crate::CompanyBasisMovement;
 use crate::HouseholdLifecycleReceipt;
 use crate::HouseholdTierReceipt;
@@ -801,4 +802,6 @@ pub struct MaterialCircuitTransition {
     pub household_wants: Vec<HouseholdWantReceipt>,
     /// What each account wanted and bought in each tier, at posted prices, by account and tier.
     pub household_tiers: Vec<HouseholdTierReceipt>,
+    /// What the rules of ADR314 did, in the order they acted. Empty unless the catalog asks.
+    pub adjustments: Vec<AdjustmentReceipt>,
 }

@@ -3,10 +3,10 @@
 use crate::doubled::opening;
 use crate::doubled::world::World;
 use crate::ids;
-use crate::{Kind, Workplace, WorldError};
+use crate::{Kind, Place, Workplace, WorldError};
 use babylon_material_circuit::{
-    StaffingMemberBinding, StaffingMemberState, StaffingPolicy, StaffingPoolBinding,
-    StaffingPoolState, StaffingState, StaffingWorkSource,
+    PoolMembers, StaffingMemberBinding, StaffingMemberState, StaffingPlace, StaffingPolicy,
+    StaffingPoolBinding, StaffingPoolState, StaffingState, StaffingWorkSource,
 };
 
 /// The scene's pool bindings, and the state that opens with every worker employed and none in reserve.
@@ -104,4 +104,34 @@ pub fn members_of(world: &World) -> Result<Vec<Vec<StaffingMemberState>>, WorldE
         pools.push(members);
     }
     Ok(pools)
+}
+
+/// Each place's pools: place A's four, then place B's, each in site order.
+#[must_use]
+pub fn places() -> Vec<StaffingPlace> {
+    Place::ALL
+        .iter()
+        .map(|&place| StaffingPlace {
+            pools: Workplace::ALL
+                .iter()
+                .filter(|workplace| workplace.place == place)
+                .map(|workplace| workplace.pool_id())
+                .collect(),
+        })
+        .collect()
+}
+
+/// Every pool's members at the opening, as `members_of`: one `PoolMembers` for each pool, in pool order.
+///
+/// # Errors
+/// As `member_of`.
+pub fn pool_members_of(world: &World) -> Result<Vec<PoolMembers>, WorldError> {
+    Ok(Workplace::ALL
+        .iter()
+        .zip(members_of(world)?)
+        .map(|(workplace, members)| PoolMembers {
+            pool_id: workplace.pool_id(),
+            members,
+        })
+        .collect())
 }

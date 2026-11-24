@@ -17,6 +17,8 @@ pub enum Stage {
     AdvanceStaffing,
     /// `distribute_staffing_members`.
     DistributeMembers,
+    /// `staff_in_places`.
+    StaffInPlaces,
     /// `finish_with_staffing`.
     Finish,
     /// `material_circuit_state_digest`.
@@ -34,6 +36,7 @@ impl Stage {
             Self::StaffingRequests => "the requests for staff",
             Self::AdvanceStaffing => "the staffing",
             Self::DistributeMembers => "the members' shares",
+            Self::StaffInPlaces => "the staffing of each place",
             Self::Finish => "the finish",
             Self::Digest => "the digest",
             Self::Read => "the reading",

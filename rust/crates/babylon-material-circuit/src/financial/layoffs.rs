@@ -17,6 +17,22 @@ pub(crate) fn holds_after_layoff_program(economy: &MonetaryCircuit) -> bool {
         .any(|p| matches!(p.terms, PublicProgramTerms::AfterLayoff { .. }))
 }
 
+/// The recipients of the after-layoff programs, and the periods a record keeps (the longest term's half
+/// periods, rounded up, at most `MAX_LAYOFF_PERIODS`; 0 without such a program).
+pub(crate) fn program_window(
+    economy: &MonetaryCircuit,
+) -> (BTreeSet<FinalDemandPrincipalId>, usize) {
+    let mut recipients = BTreeSet::new();
+    let mut window = 0_usize;
+    for program in &economy.financial.programs {
+        if let PublicProgramTerms::AfterLayoff { half_periods, .. } = program.terms {
+            recipients.extend(program.recipients.iter().copied());
+            window = window.max(usize::from(half_periods.div_ceil(2)));
+        }
+    }
+    (recipients, window.min(MAX_LAYOFF_PERIODS))
+}
+
 /// Advance every record of layoffs from the member receipts of the closing period.
 ///
 /// Records whose member is no longer paid a wage to a recipient of an after-layoff program are
@@ -33,15 +49,7 @@ pub(crate) fn advance_records(
     receipts: &[StaffingMemberReceipt],
 ) -> Result<()> {
     let invalid = MaterialCircuitError::PublicProgramInvariant;
-    let mut recipients = BTreeSet::new();
-    let mut window = 0_usize;
-    for program in &economy.financial.programs {
-        if let PublicProgramTerms::AfterLayoff { half_periods, .. } = program.terms {
-            recipients.extend(program.recipients.iter().copied());
-            window = window.max(usize::from(half_periods.div_ceil(2)));
-        }
-    }
-    let window = window.min(MAX_LAYOFF_PERIODS);
+    let (recipients, window) = program_window(economy);
     let old = std::mem::take(&mut economy.financial.layoffs);
     if recipients.is_empty() {
         return Ok(());

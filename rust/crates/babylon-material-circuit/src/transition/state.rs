@@ -40,7 +40,10 @@ use crate::production;
 use crate::production::ServiceStageBooks;
 use crate::recurring::firms::Wanted;
 use crate::services::ServiceClose;
+use crate::staffing::PlaceRules;
 use crate::tiers::HouseholdLists;
+use crate::AdjustmentReceipt;
+use crate::AdjustmentRule;
 use crate::AidFreightLot;
 use crate::AidMandate;
 use crate::AidOutcome;
@@ -59,12 +62,16 @@ use crate::HouseholdTimeReceipt;
 use crate::IncomeReceipt;
 use crate::InstallationDecisionReceipt;
 use crate::InstallationReceipt;
+use crate::LaborCompensation;
 use crate::LaborUseReceipt;
 use crate::LogisticsNodeId;
 use crate::MaintenanceReceipt;
 use crate::MemberLaborCapacityRow;
 use crate::MemberLaborUseReceipt;
 use crate::MoneyTransferReceipt;
+use crate::PlaceStaffing;
+use crate::PlaceStaffingError;
+use crate::PoolMembers;
 use crate::PriceReceipt;
 use crate::ProcurementReceipt;
 use crate::ProductionPlanReceipt;
@@ -72,6 +79,8 @@ use crate::ProductionReceipt;
 use crate::RouteStageCapacity;
 use crate::ServiceStage;
 use crate::StaffingMemberReceipt;
+use crate::StaffingPlace;
+use crate::StaffingState;
 use crate::StaffingWorkSource;
 use crate::SupplierTransport;
 use crate::WageAccrualReceipt;
@@ -800,6 +809,7 @@ impl ClosedMaterialPeriod {
         member_labor: Vec<MemberLaborCapacityRow>,
         members: &[StaffingMemberReceipt],
     ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        refuse_unless_seeking(catalog, false)?;
         let closing = self
             .next_period
             .checked_sub(1)
@@ -808,6 +818,99 @@ impl ClosedMaterialPeriod {
             crate::financial::advance_records(economy, closing, members)?;
         }
         self.finish_workforce_unchecked(catalog, next_labor, member_labor)
+    }
+
+    /// The catalog's staffing for a world whose people look for work in their place.
+    ///
+    /// The engine's decision comes first, pool by pool and member by member; a workplace calls back its own
+    /// people. Then each workplace that still lacks hands, the highest wage first, takes the people looking for
+    /// work at the other workplaces of its place: those no record of layoffs covers first, then the covered,
+    /// the newest laid off first. A move is for good.
+    ///
+    /// # Errors
+    /// `Circuit(MarketClearingInvariant)` when the catalog does not ask for `SeekingInPlace`; a circuit
+    /// refusal of the requests; `Staffing(..)` for a pool in no place or in two, members that are not the
+    /// pool's people, or arithmetic.
+    pub fn staff_in_places(
+        &self,
+        catalog: &MaterialCatalog,
+        opening: &StaffingState,
+        members: &[PoolMembers],
+        places: &[StaffingPlace],
+    ) -> Result<PlaceStaffing, PlaceStaffingError> {
+        refuse_unless_seeking(catalog, true)?;
+        let bindings: Vec<StaffingPoolBinding> = opening
+            .pools()
+            .iter()
+            .map(|pool| pool.binding().clone())
+            .collect();
+        let requests = self.staffing_requests(catalog, &bindings)?;
+        let no_recipients = BTreeSet::new();
+        let mut wages = BTreeMap::new();
+        let (recipients, window, records) = match &self.transition.state.accounting {
+            CircuitAccounting::Monetary(economy) => {
+                for term in &economy.employment {
+                    if let LaborCompensation::Wage(rate) = term.compensation {
+                        let wage = wages.entry(term.site_id).or_insert(0_i128);
+                        *wage = (*wage).max(rate.micro_units());
+                    }
+                }
+                let (recipients, window) = crate::financial::program_window(economy);
+                (recipients, window, economy.financial.layoffs.as_slice())
+            }
+            CircuitAccounting::PhysicalControl => (no_recipients, 0, &[][..]),
+        };
+        let rules = PlaceRules {
+            recipients: &recipients,
+            window,
+            records,
+            wages: &wages,
+        };
+        crate::staffing::staff_places(opening, &requests, members, places, &rules)
+    }
+
+    /// Finish after `staff_in_places`: advance the record of layoffs with the moves, install the hours, and
+    /// put the moves in `adjustments`.
+    ///
+    /// # Errors
+    /// As `finish_with_staffing`; `MarketClearingInvariant` when the catalog does not ask for
+    /// `SeekingInPlace`; `PublicProgramInvariant` when the record the engine keeps is not the one the moves
+    /// mean.
+    pub fn finish_with_place_staffing(
+        mut self,
+        catalog: &MaterialCatalog,
+        staffing: &PlaceStaffing,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        refuse_unless_seeking(catalog, true)?;
+        let closing = self
+            .next_period
+            .checked_sub(1)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        if let CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            crate::financial::advance_records(economy, closing, &staffing.record_receipts)?;
+            if let Some(expected) = &staffing.records {
+                let kept: Vec<_> = economy
+                    .financial
+                    .layoffs
+                    .iter()
+                    .map(|record| (record.member_id, record.cohorts.clone()))
+                    .collect();
+                if &kept != expected {
+                    return Err(MaterialCircuitError::PublicProgramInvariant);
+                }
+            }
+        }
+        self.transition.adjustments = staffing
+            .moves
+            .iter()
+            .cloned()
+            .map(AdjustmentReceipt::PlaceMove)
+            .collect();
+        self.finish_workforce_unchecked(
+            catalog,
+            staffing.labor.clone(),
+            staffing.member_labor.clone(),
+        )
     }
 
     fn refuse_without_record_of_layoffs(&self) -> Result<(), MaterialCircuitError> {
@@ -888,6 +991,22 @@ impl ClosedMaterialPeriod {
             })
             .collect();
         Ok(self.transition)
+    }
+}
+
+/// The catalog's staffing is by place exactly when its market policy asks for `SeekingInPlace`: the old finish
+/// refuses a catalog that asks (`asks == false`), the place finish one that does not (`asks == true`).
+fn refuse_unless_seeking(
+    catalog: &MaterialCatalog,
+    asks: bool,
+) -> Result<(), MaterialCircuitError> {
+    let seeking = catalog.market_clearing.as_ref().is_some_and(|policy| {
+        crate::adjustment::asks(&policy.adjustments, AdjustmentRule::SeekingInPlace)
+    });
+    if seeking == asks {
+        Ok(())
+    } else {
+        Err(MaterialCircuitError::MarketClearingInvariant)
     }
 }
 
@@ -1750,6 +1869,7 @@ pub fn close_material_period_with_portfolios(
             market_clearings: close.funded.markets.into_receipts(),
             household_wants: tiers.0,
             household_tiers: tiers.1,
+            adjustments: Vec::new(),
         },
     })
 }

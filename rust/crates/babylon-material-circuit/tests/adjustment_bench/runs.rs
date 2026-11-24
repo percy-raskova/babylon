@@ -8,11 +8,13 @@ use babylon_material_circuit::AdjustmentRule;
 pub(crate) enum Form {
     /// Rule A6 only: the engine as built, no new rule.
     A6,
+    /// People look for work in their place (A14).
+    Seek,
 }
 
 impl Form {
     /// The forms built so far.
-    pub(crate) const ALL: [Self; 1] = [Self::A6];
+    pub(crate) const ALL: [Self; 2] = [Self::A6, Self::Seek];
 
     /// The rules the form turns on, in the order of `AdjustmentRule`, taken from `World::switches_at(scale)`
     /// as each rule task adds its form. `A6` asks for none.
@@ -20,6 +22,7 @@ impl Form {
         let switches = World::switches_at(scale);
         match self {
             Self::A6 => switches.iter().take(0).copied().collect(),
+            Self::Seek => vec![switches[1]],
         }
     }
 }

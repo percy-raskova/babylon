@@ -6,7 +6,7 @@
 
 mod accounts;
 mod adjustment;
-pub use adjustment::AdjustmentRule;
+pub use adjustment::{AdjustmentReceipt, AdjustmentRule, PlaceMoveReceipt};
 mod agency_attendance;
 pub use agency_attendance::{
     agency_shift_id, AgencyAttendanceInput, AgencyAttendanceOutcome,
@@ -96,11 +96,11 @@ pub use services::{
     ServicePriceDecision, ServiceStage, MAX_SERVICE_RECEIPTS_PER_PERIOD,
 };
 pub use staffing::{
-    advance_staffing, distribute_staffing_members, MemberLaborCapacityRow, StaffingError,
-    StaffingMemberBinding, StaffingMemberId, StaffingMemberReceipt, StaffingMemberState,
-    StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState, StaffingReceipt,
-    StaffingState, StaffingTransition, StaffingWorkRequest, StaffingWorkSource,
-    MAX_STAFFING_MEMBERS,
+    advance_staffing, distribute_staffing_members, MemberLaborCapacityRow, PlaceStaffing,
+    PlaceStaffingError, PoolMembers, StaffingError, StaffingMemberBinding, StaffingMemberId,
+    StaffingMemberReceipt, StaffingMemberState, StaffingPlace, StaffingPolicy, StaffingPoolBinding,
+    StaffingPoolId, StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition,
+    StaffingWorkRequest, StaffingWorkSource, MAX_STAFFING_MEMBERS,
 };
 pub use valuation::{
     CapitalAccount, CompanyBasisAsset, CompanyBasisMovement, CompanySale, EquityCarryingValue,

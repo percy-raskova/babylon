@@ -1,12 +1,14 @@
 //! The runner: the quiet doubled world stays still, byte for byte, and stops where it must.
 
 use babylon_circuit_worlds::{
-    PeriodResult, RuleError, Runner, RunnerError, Stage, Switch, Workplace, WorldError,
+    Lasts, PeriodResult, Places, RuleError, RuleOn, Runner, RunnerError, Shock, Stage, Switch,
+    Workplace, WorldError,
 };
 use babylon_material_circuit::AdjustmentRule::{
-    GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+    self, GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace,
+    StopWithoutPay,
 };
-use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::{AdjustmentReceipt, MaterialCircuitError};
 use std::error::Error;
 use std::time::Instant;
 
@@ -210,4 +212,111 @@ fn a_refusal_of_a_rule_is_worded_for_the_scene() {
         RunnerError::Rule(RuleError::Stopped).to_string(),
         "the world's rules: the run is stopped"
     );
+}
+
+/// The rules turned on in the middle of a run, each after this many steps. Tasks 4 to 8 add their rules.
+const LATE: [(u64, AdjustmentRule); 1] = [(20, SeekingInPlace)];
+
+/// The scene's world with the harvest failing in both places, the `LATE` rules applied, and `steps` steps taken.
+fn late_run(steps: u64) -> Result<Runner, Box<dyn Error>> {
+    let mut runner = Runner::open()?;
+    runner.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+    for step in 0..steps {
+        for (after, rule) in LATE {
+            if after == step {
+                runner.turn_on(rule)?;
+            }
+        }
+        runner.step()?;
+    }
+    Ok(runner)
+}
+
+#[test]
+fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
+    let one = late_run(60)?;
+    let two = late_run(60)?;
+    assert_eq!(one.history(), two.history());
+    for (a, b) in one.history().iter().zip(two.history()) {
+        assert_eq!(a.state_digest, b.state_digest, "period {}", a.period);
+    }
+    assert_eq!(
+        one.rules(),
+        [RuleOn {
+            rule: SeekingInPlace,
+            from: 21
+        }]
+    );
+    assert_eq!(one.history()[19].rules.len(), 0);
+    assert_eq!(one.history()[20].rules, [SeekingInPlace]);
+    Ok(())
+}
+
+#[test]
+fn nobody_moves_before_the_seekers_are_on() -> TestResult {
+    let runner = late_run(60)?;
+    let moves = |result: &PeriodResult| {
+        result
+            .receipts
+            .adjustments
+            .iter()
+            .filter(|row| matches!(row, AdjustmentReceipt::PlaceMove(_)))
+            .count()
+    };
+    for result in &runner.history()[..20] {
+        assert_eq!(moves(result), 0, "period {}", result.period);
+    }
+    assert!(
+        runner.history()[20..]
+            .iter()
+            .any(|result| moves(result) > 0),
+        "the failed harvest sends people looking for work elsewhere once the seekers are on"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_rule_on_cannot_be_turned_on_again() -> TestResult {
+    let mut asked = late_run(21)?;
+    let mut twin = late_run(21)?;
+    assert_eq!(
+        asked.turn_on(SeekingInPlace),
+        Err(RuleError::AlreadyOn {
+            rule: SeekingInPlace,
+            from: 21
+        })
+    );
+    for _ in 0..5 {
+        asked.step()?;
+        twin.step()?;
+    }
+    assert_eq!(asked.history(), twin.history());
+    Ok(())
+}
+
+#[test]
+fn the_runner_keeps_a_member_for_each_household_of_every_pool() -> TestResult {
+    let runner = run(2)?;
+    assert_eq!(runner.members().len(), 8);
+    for (workplace, pool) in Workplace::ALL.iter().zip(runner.members()) {
+        assert_eq!(pool.pool_id, workplace.pool_id());
+        assert_eq!(pool.members.len(), 4);
+        let ids: Vec<_> = pool
+            .members
+            .iter()
+            .map(|m| m.binding().member_id())
+            .collect();
+        let mut sorted = ids.clone();
+        sorted.sort();
+        assert_eq!(ids, sorted, "member order");
+        assert_eq!(ids[0], workplace.member_id());
+    }
+    let places = babylon_circuit_worlds::doubled::places();
+    assert_eq!(places.len(), 2);
+    for (place, workplaces) in places.iter().zip(Workplace::ALL.chunks(4)) {
+        let pools: Vec<_> = workplaces.iter().map(|w| w.pool_id()).collect();
+        assert_eq!(place.pools, pools);
+    }
+    assert_eq!(runner.staffing().period(), 3);
+    Ok(())
 }

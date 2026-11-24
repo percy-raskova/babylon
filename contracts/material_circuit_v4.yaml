@@ -210,6 +210,17 @@ market_clearing:
     list is written as the u16 9, the count as u16, then each tag as u8; the stop rule needs the seekers, the
     restart needs the bound, the stop rule and the resting price, and a restart has at least one period of outlay;
     every other combination is admitted; a rule not yet built is refused; empty keeps today's bytes
+  ADR314_seeking: >-
+    when a catalog asks for SeekingInPlace the staffing of a closed period is by place: the engine's decision first,
+    pool by pool and member by member, so that a workplace calls back its own people; then each workplace that still
+    lacks hands (the hours it asked, over its hours a person, rounded up, less its employed persons), the highest
+    wage first, then the one that lacks most, then site order, takes whole persons from the people looking for work
+    at the other workplaces of its place: those that no record of layoffs covers first, pool by pool in site order
+    and member by member, then the covered by the periods since they were laid off, the newest first; a person moved
+    joins the host's member of their household for good, both labor forces change, and the move is a receipt
+    (PlaceMove); the record of layoffs advances as if a covered person who left were hired back by the member they
+    left and an uncovered one had left its reserve before the decision; the staffing that does not ask for the rule
+    refuses a catalog that does, and the place staffing refuses one that does not
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out

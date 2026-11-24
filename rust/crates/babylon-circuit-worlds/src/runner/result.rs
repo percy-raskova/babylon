@@ -3,8 +3,8 @@
 use crate::doubled::Figures;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, AdjustmentRule, CapitalAccount, DistributionReceipt, GoodId, HouseholdCohort,
-    HouseholdConsumptionReceipt, HouseholdDemandReceipt, HouseholdServiceReceipt,
+    AccountId, AdjustmentReceipt, AdjustmentRule, CapitalAccount, DistributionReceipt, GoodId,
+    HouseholdCohort, HouseholdConsumptionReceipt, HouseholdDemandReceipt, HouseholdServiceReceipt,
     HouseholdTierReceipt, HouseholdWantReceipt, IncomeReceipt, LaborUseReceipt,
     LocalRetailFulfillmentReceipt, LocalTransferReceipt, MarketClearingReceipt,
     MemberLaborUseReceipt, MerchantHandlingReceipt, MoneyTransferReceipt, OwnershipClaim,
@@ -64,6 +64,8 @@ pub struct PeriodReceipts {
     pub prices: Vec<PriceReceipt>,
     pub service_markets: Vec<ServiceMarketReceipt>,
     pub market_clearings: Vec<MarketClearingReceipt>,
+    /// What the rules of ADR314 did at the close, in the order they acted. Empty unless a rule acted.
+    pub adjustments: Vec<AdjustmentReceipt>,
 }
 
 /// Read from the next state before it is carried on.

@@ -472,3 +472,16 @@ fn the_proof_script_of_task_8c_parses() {
         ])
     );
 }
+
+#[test]
+fn the_script_names_a_file_of_receipts() {
+    assert_eq!(
+        script::parse_script(r#"{"receipts":"kept"}"#),
+        Ok(vec![ScriptCommand::Receipts("kept".into())])
+    );
+    let refused = script::parse_script("{\"step\":1}\n{\"receipts\":\"a/b\"}");
+    assert!(
+        matches!(&refused, Err(ScriptError::Line { line: 2, reason }) if reason.contains("a/b")),
+        "a file name with a path in it must be refused at its line: {refused:?}"
+    );
+}

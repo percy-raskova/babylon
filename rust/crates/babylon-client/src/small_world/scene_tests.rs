@@ -1329,6 +1329,43 @@ fn scripted(text: &str, frames: usize) -> Result<(App, TestFolder), Box<dyn Erro
     Ok((app, folder))
 }
 
+/// What a script writes for `receipts` is every period kept, each under its line, with the rules' receipts
+/// of its close exactly as the engine prints them.
+#[test]
+fn a_script_s_receipts_are_the_engine_s_own() -> TestResult {
+    use crate::small_world::script;
+
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::TurnOn(SceneRule::SeekingInPlace));
+    send(&mut app, SceneCommand::TurnOn(SceneRule::HiringWithinMeans));
+    for _ in 0..3 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+    }
+    let scene = app.world().resource::<SceneRunner>();
+    let history = scene.runner.history();
+    assert_eq!(history.len(), 3);
+    let receipts: usize = history.iter().map(|r| r.receipts.adjustments.len()).sum();
+    assert!(
+        receipts > 0,
+        "the test bites only while a rule leaves receipts"
+    );
+    let text = script::receipts_text(scene);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), history.len() + receipts);
+    let mut at = 0;
+    for result in history {
+        assert_eq!(lines[at], format!("period {}", result.period));
+        at += 1;
+        for receipt in &result.receipts.adjustments {
+            assert_eq!(lines[at], format!("{receipt:?}"));
+            at += 1;
+        }
+    }
+    assert!(text.ends_with('\n'));
+    Ok(())
+}
+
 /// The report's hours are named for what they hold: on the clock is the summary's hours attended,
 /// given and idle are the sums of the period's own work flows, and the first is the two others.
 #[test]

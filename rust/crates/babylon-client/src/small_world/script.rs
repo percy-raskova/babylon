@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error as FormatError, Formatter};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+use std::iter;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -47,6 +48,9 @@ pub enum ScriptCommand {
     Particles(String),
     Capture(String),
     Report(String),
+    /// `{"receipts":"<name>"}`: writes `<name>.txt`, every period kept under a line `period N` with one
+    /// line for each of the rules' receipts of its close, as the engine prints it.
+    Receipts(String),
     WaitFrames(u32),
     /// `{"lower":"shocks"}` or `{"lower":"rules"}`: what a click on that tab of the rail's lower part does.
     Lower(String),
@@ -176,7 +180,9 @@ fn check_names(command: &ScriptCommand) -> Result<(), String> {
                 ));
             }
         }
-        ScriptCommand::Capture(name) | ScriptCommand::Report(name) => {
+        ScriptCommand::Capture(name)
+        | ScriptCommand::Report(name)
+        | ScriptCommand::Receipts(name) => {
             if !stem_is_plain(name) {
                 return Err(format!("a file name is letters, digits, - and _: {name:?}"));
             }
@@ -388,6 +394,31 @@ pub(super) fn build_report(
     })
 }
 
+/// Every period kept under a line `period N`, with one line for each of the rules' receipts of its close as
+/// the engine prints it: what a rule did in a run is counted from this text.
+pub(super) fn receipts_text(scene: &SceneRunner) -> String {
+    scene
+        .runner
+        .history()
+        .iter()
+        .flat_map(|result| {
+            iter::once(format!("period {}\n", result.period)).chain(
+                result
+                    .receipts
+                    .adjustments
+                    .iter()
+                    .map(|receipt| format!("{receipt:?}\n")),
+            )
+        })
+        .collect()
+}
+
+fn write_text(path: &Path, text: &str) -> Result<(), String> {
+    let mut file = File::create(path).map_err(|error| error.to_string())?;
+    file.write_all(text.as_bytes())
+        .map_err(|error| error.to_string())
+}
+
 fn write_json(path: &Path, report: &ScriptReport) -> Result<(), String> {
     let text = serde_json::to_string_pretty(report).map_err(|error| error.to_string())?;
     let mut file = File::create(path).map_err(|error| error.to_string())?;
@@ -559,6 +590,13 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
             let written = build_report(&world.scene, &world.times, None)
                 .and_then(|report| write_json(&run.folder.join(format!("{name}.json")), &report));
             match written {
+                Ok(()) => done(run, world),
+                Err(reason) => refuse(run, world, &reason),
+            }
+        }
+        ScriptCommand::Receipts(name) => {
+            let text = receipts_text(&world.scene);
+            match write_text(&run.folder.join(format!("{name}.txt")), &text) {
                 Ok(()) => done(run, world),
                 Err(reason) => refuse(run, world, &reason),
             }

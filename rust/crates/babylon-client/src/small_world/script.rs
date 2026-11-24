@@ -6,8 +6,10 @@ use super::frame::ParticleMode;
 use super::frame_time::{FrameTime, SceneFrameTimes};
 use super::inspect::{self, ScenePick};
 use super::panel::{self, Lower, ShockNotice};
+use super::reading;
 use super::rules::SceneRule;
 use super::scene::{SceneCommand, SceneRunner, SceneStatus};
+use super::table::{self, Grouping, Table, TableRow};
 use babylon_circuit_worlds::{Lasts, PeriodResult, Place, Places, Shock, Workplace};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
@@ -207,12 +209,17 @@ pub fn parse_script(text: &str) -> Result<Vec<ScriptCommand>, ScriptError> {
     Ok(commands)
 }
 
-/// What `Report(name)` writes: per workplace, the hours given and the units made in every period
-/// kept, in the order of the periods.
+/// What `Report(name)` writes: per workplace, the hours and the units made in every period kept,
+/// in the order of the periods. The hours are told three ways, and each name says which.
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct ScriptReport {
     pub period: u64,
+    /// Hours people were on the clock, worked or not: the period summary's hours attended.
+    pub hours_on_the_clock: Vec<(String, Vec<u64>)>,
+    /// The table's "Work given": the hours that were used.
     pub hours_given: Vec<(String, Vec<u64>)>,
+    /// The table's "Paid, not used": hours on the clock that were paid and not used.
+    pub hours_idle: Vec<(String, Vec<u64>)>,
     pub made: Vec<(String, Vec<u64>)>,
     pub shocks: Vec<String>,
     /// The rules on, in the order turned on: the script's name and the first period closed under it.
@@ -299,13 +306,53 @@ fn append_reply(
     writeln!(file, "{value}").map_err(|error| error.to_string())
 }
 
+/// One hour column of the table by workplace, for every workplace and every period kept.
+fn table_column(
+    tables: &[Table],
+    pick: fn(&TableRow) -> u64,
+) -> Result<Vec<(String, Vec<u64>)>, String> {
+    Workplace::ALL
+        .iter()
+        .map(|workplace| {
+            let label = workplace.label();
+            let values = tables
+                .iter()
+                .map(|table| {
+                    table
+                        .rows
+                        .iter()
+                        .find(|row| row.label == label)
+                        .map(pick)
+                        .ok_or_else(|| {
+                            format!(
+                                "the table of period {} has no row for {label}",
+                                table.period
+                            )
+                        })
+                })
+                .collect::<Result<Vec<u64>, String>>()?;
+            Ok((label, values))
+        })
+        .collect()
+}
+
 /// The report of the run so far.
-fn build_report(
+///
+/// # Errors
+/// The reading's own words when a period kept cannot be read or its table cannot be summed.
+pub(super) fn build_report(
     scene: &SceneRunner,
     times: &SceneFrameTimes,
     refusal: Option<String>,
-) -> ScriptReport {
+) -> Result<ScriptReport, String> {
     let history = scene.runner.history();
+    let tables = history
+        .iter()
+        .map(|result| {
+            let reading = reading::read_period(result).map_err(|error| error.to_string())?;
+            table::table(&reading, Grouping::Workplace).map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<Table>, String>>()?;
     let by_workplace = |pick: fn(&PeriodResult, usize) -> u64| {
         Workplace::ALL
             .iter()
@@ -320,9 +367,11 @@ fn build_report(
             })
             .collect::<Vec<(String, Vec<u64>)>>()
     };
-    ScriptReport {
+    Ok(ScriptReport {
         period: u64::try_from(history.len()).unwrap_or(u64::MAX),
-        hours_given: by_workplace(|result, k| result.summary.hours_attended[k]),
+        hours_on_the_clock: by_workplace(|result, k| result.summary.hours_attended[k]),
+        hours_given: table_column(&tables, |row| row.work_given)?,
+        hours_idle: table_column(&tables, |row| row.paid_not_used)?,
         made: by_workplace(|result, k| result.summary.made[k]),
         shocks: panel::shock_rows(scene.runner.shocks(), scene.runner.next_period())
             .into_iter()
@@ -336,7 +385,7 @@ fn build_report(
             .collect(),
         frame: times.last,
         refusal,
-    }
+    })
 }
 
 fn write_json(path: &Path, report: &ScriptReport) -> Result<(), String> {
@@ -414,8 +463,9 @@ fn refuse(run: &mut ScriptRun, world: &mut ScriptWorld, reason: &str) {
     if let Err(error) = append_reply(&run.folder, run.line(), "refused", Some(reason)) {
         log::error!("small world script: the reply could not be written: {error}");
     }
-    let report = build_report(&world.scene, &world.times, Some(reason.to_owned()));
-    if let Err(error) = write_json(&run.folder.join(REFUSAL_FILE), &report) {
+    let kept = build_report(&world.scene, &world.times, Some(reason.to_owned()))
+        .and_then(|report| write_json(&run.folder.join(REFUSAL_FILE), &report));
+    if let Err(error) = kept {
         log::error!("small world script: the refusal could not be kept: {error}");
     }
     log::error!(
@@ -506,8 +556,9 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
             Err(reason) => refuse(run, world, &reason),
         },
         ScriptCommand::Report(name) => {
-            let report = build_report(&world.scene, &world.times, None);
-            match write_json(&run.folder.join(format!("{name}.json")), &report) {
+            let written = build_report(&world.scene, &world.times, None)
+                .and_then(|report| write_json(&run.folder.join(format!("{name}.json")), &report));
+            match written {
                 Ok(()) => done(run, world),
                 Err(reason) => refuse(run, world, &reason),
             }

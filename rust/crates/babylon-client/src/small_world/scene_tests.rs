@@ -1321,6 +1321,78 @@ fn scripted(text: &str, frames: usize) -> Result<(App, TestFolder), Box<dyn Erro
     Ok((app, folder))
 }
 
+/// The report's hours are named for what they hold: on the clock is the summary's hours attended,
+/// given and idle are the sums of the period's own work flows, and the first is the two others.
+#[test]
+fn the_report_tells_hours_on_the_clock_from_hours_given() -> TestResult {
+    use crate::small_world::frame_time::SceneFrameTimes;
+    use crate::small_world::{reading, script};
+
+    let mut app = scene_app(None)?;
+    let run = |app: &mut App, steps: usize| {
+        for _ in 0..steps {
+            send(app, SceneCommand::Step);
+            updates(app, 3);
+        }
+    };
+    run(&mut app, 20);
+    send(
+        &mut app,
+        SceneCommand::Strike(Shock::HarvestFails, Places::A, Lasts::UntilLifted),
+    );
+    run(&mut app, 10);
+    send(&mut app, SceneCommand::TurnOn(SceneRule::SeekingInPlace));
+    run(&mut app, 10);
+    let scene = app.world().resource::<SceneRunner>();
+    let history = scene.runner.history();
+    assert_eq!(history.len(), 40);
+    let report = script::build_report(scene, &SceneFrameTimes::default(), None)?;
+    assert_eq!(report.period, 40);
+    let mut idle_somewhere = false;
+    for (k, workplace) in Workplace::ALL.iter().enumerate() {
+        let (label, on_the_clock) = &report.hours_on_the_clock[k];
+        let (given_label, given) = &report.hours_given[k];
+        let (idle_label, idle) = &report.hours_idle[k];
+        assert_eq!(*label, workplace.label());
+        assert_eq!(given_label, label);
+        assert_eq!(idle_label, label);
+        assert_eq!(on_the_clock.len(), 40);
+        assert_eq!(given.len(), 40);
+        assert_eq!(idle.len(), 40);
+        for (p, result) in history.iter().enumerate() {
+            let flows = reading::read_period(result)?.work;
+            let of_here = flows.iter().filter(|flow| flow.workplace == *workplace);
+            let (used, unused) = of_here.fold((0_u64, 0_u64), |(used, unused), flow| {
+                (used + flow.given, unused + flow.idle)
+            });
+            assert_eq!(on_the_clock[p], result.summary.hours_attended[k]);
+            assert_eq!(given[p], used, "{label}, period {}", result.period);
+            assert_eq!(idle[p], unused, "{label}, period {}", result.period);
+            assert_eq!(
+                on_the_clock[p],
+                given[p] + idle[p],
+                "{label}, period {}",
+                result.period
+            );
+            idle_somewhere |= idle[p] > 0;
+        }
+    }
+    assert!(
+        idle_somewhere,
+        "the test bites only while some hours are paid and not used"
+    );
+    // The farm of Place A in period 40, as the scene's panel showed it: 80 on the clock, 30 used.
+    let farm_a = Workplace {
+        place: Place::A,
+        kind: Kind::Farm,
+    };
+    let k = farm_a.index();
+    assert_eq!(report.hours_on_the_clock[k].1[39], 80);
+    assert_eq!(report.hours_given[k].1[39], 30);
+    assert_eq!(report.hours_idle[k].1[39], 50);
+    Ok(())
+}
+
 #[test]
 fn groups_paid_by_nobody_stand_at_their_own_homes() -> TestResult {
     use crate::small_world::frame;

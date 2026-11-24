@@ -1075,6 +1075,18 @@ fn texts_under(world: &World, entity: Entity, into: &mut Vec<String>) {
     }
 }
 
+/// The rule buttons under an entity, in the order of the tree.
+fn rule_buttons_under(world: &World, entity: Entity, into: &mut Vec<SceneRule>) {
+    if let Some(button) = world.get::<RuleButton>(entity) {
+        into.push(button.0);
+    }
+    if let Some(children) = world.get::<Children>(entity) {
+        for child in children.iter() {
+            rule_buttons_under(world, child, into);
+        }
+    }
+}
+
 fn caption_of(app: &mut App, tab: Lower) -> Result<String, Box<dyn Error>> {
     let world = app.world_mut();
     let entity = world
@@ -1128,25 +1140,33 @@ fn the_rail_has_the_rules_tab_only_for_rules_shown() -> TestResult {
     let world = app.world_mut();
     let node = world.get::<Node>(tab).ok_or("tab has no node")?;
     assert_eq!(node.border.left, px(3));
-    let body = world
-        .query_filtered::<Entity, With<RulesBody>>()
-        .single(world)?;
-    let mut inside = Vec::new();
-    texts_under(world, body, &mut inside);
-    assert_eq!(inside.first().map(String::as_str), Some(FROM_LINE));
-    let buttons = world.query::<&RuleButton>().iter(world).count();
-    assert_eq!(buttons, SHOWN_RULES.len());
-    let lowest = world
-        .query_filtered::<Entity, With<LowerBody>>()
+    let lower = world
+        .query::<(Entity, &LowerBody)>()
         .iter(world)
-        .count();
-    assert_eq!(lowest, 2);
-    let all = texts(&mut app);
-    let line = all
+        .find_map(|(entity, body)| (body.0 == Lower::Rules).then_some(entity))
+        .ok_or("no rules body")?;
+    let kids: Vec<Entity> = world
+        .get::<Children>(lower)
+        .ok_or("rules body has no children")?
         .iter()
-        .position(|w| w == RULES_LINE)
-        .ok_or("no rules line")?;
-    assert!(line > 0);
+        .collect();
+    assert_eq!(kids.len(), 3);
+    assert!(world.get::<RulesBody>(kids[0]).is_some());
+    let mut standing = Vec::new();
+    texts_under(world, kids[1], &mut standing);
+    assert_eq!(standing, vec![RULES_LINE.to_owned()]);
+    assert!(world.get::<NoticeLine>(kids[2]).is_some());
+    let mut inside = Vec::new();
+    texts_under(world, kids[0], &mut inside);
+    assert_eq!(inside.first().map(String::as_str), Some(FROM_LINE));
+    let mut listed = Vec::new();
+    rule_buttons_under(world, kids[0], &mut listed);
+    assert_eq!(listed, SHOWN_RULES.to_vec());
+    assert_eq!(
+        world.query::<&RuleButton>().iter(world).count(),
+        SHOWN_RULES.len()
+    );
+    assert_eq!(count_of::<LowerBody>(&mut app), 2);
     assert_eq!(count_of::<NoticeLine>(&mut app), 2);
     Ok(())
 }
@@ -1234,6 +1254,17 @@ fn every_shown_rule_turns_on_from_the_next_period_and_holds() -> TestResult {
     updates(&mut app, 3);
     assert_eq!(rules_on(&app), 0);
     assert_eq!(caption_of(&mut app, Lower::Rules)?, "Rules");
+    for rule in SHOWN_RULES {
+        let entity = rule_button(&mut app, *rule)?;
+        let world = app.world_mut();
+        let row = world.get::<ChildOf>(entity).ok_or("no row")?.parent();
+        let mut inside = Vec::new();
+        texts_under(world, row, &mut inside);
+        assert!(
+            !inside.iter().any(|w| w.parse::<u32>().is_ok()),
+            "{inside:?}"
+        );
+    }
     Ok(())
 }
 

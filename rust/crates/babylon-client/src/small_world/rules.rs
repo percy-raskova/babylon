@@ -238,6 +238,7 @@ fn spawn_row(list: &mut ChildSpawnerCommands, row: &SwitchRow) {
                 let mut node = Node {
                     height: px(ROW_HEIGHT),
                     flex_grow: 1.0,
+                    flex_shrink: 0.0,
                     border: UiRect::all(px(1)),
                     padding: UiRect::horizontal(px(8)),
                     align_items: AlignItems::Center,

@@ -21,6 +21,7 @@ pub use model::{
 pub(crate) use place::{staff_places, PlaceRules};
 pub use place::{PlaceStaffing, PlaceStaffingError, PoolMembers, StaffingPlace};
 pub use transition::advance_staffing;
+pub(crate) use transition::advance_staffing_limited;
 
 #[cfg(test)]
 mod tests;

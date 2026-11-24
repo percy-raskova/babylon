@@ -10,7 +10,7 @@ mod state;
 pub use state::{
     advance_material_circuit, advance_material_circuit_with_aid, close_material_period,
     close_material_period_with_aid, close_material_period_with_portfolios,
-    close_material_period_with_support, ClosedMaterialPeriod,
+    close_material_period_with_standing, close_material_period_with_support, ClosedMaterialPeriod,
 };
 pub(crate) use state::{
     canonical_state, check_order_principal_limits, has_duplicate, validate_route_stages,

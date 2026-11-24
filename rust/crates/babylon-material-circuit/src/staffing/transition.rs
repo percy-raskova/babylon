@@ -8,7 +8,7 @@ use super::StaffingReceipt;
 use super::StaffingState;
 use super::StaffingTransition;
 use super::StaffingWorkRequest;
-use crate::{LaborCapacityRow, MAX_STAFFING_WORK_SOURCES};
+use crate::{LaborCapacityRow, SiteId, MAX_STAFFING_WORK_SOURCES};
 
 fn reserved_vec<T>(count: usize) -> Result<Vec<T>, StaffingError> {
     let mut rows = Vec::new();
@@ -64,6 +64,7 @@ fn advance_pool(
     current_request: u64,
     period: u64,
     next_period: u64,
+    limit: Option<u64>,
 ) -> Result<(StaffingPoolState, StaffingReceipt, LaborCapacityRow), StaffingError> {
     let binding = opening.binding();
     let schedule = binding.policy().hours_per_person();
@@ -71,7 +72,9 @@ fn advance_pool(
     let requested_people = (retained / schedule)
         .checked_add(u64::from(!retained.is_multiple_of(schedule)))
         .ok_or(StaffingError::Arithmetic)?;
-    let target = requested_people.min(binding.labor_force());
+    let target = requested_people
+        .min(binding.labor_force())
+        .min(limit.unwrap_or(u64::MAX));
     let (employed, reserve) = if target >= opening.employed() {
         let hires = target - opening.employed();
         (
@@ -133,6 +136,18 @@ pub fn advance_staffing(
     opening: &StaffingState,
     requests: &[StaffingWorkRequest],
 ) -> Result<StaffingTransition, StaffingError> {
+    advance_staffing_limited(opening, requests, &BTreeMap::new())
+}
+
+/// `advance_staffing` where no workplace in `limits` employs more persons than its limit after the close.
+///
+/// # Errors
+/// As `advance_staffing`.
+pub(crate) fn advance_staffing_limited(
+    opening: &StaffingState,
+    requests: &[StaffingWorkRequest],
+    limits: &BTreeMap<SiteId, u64>,
+) -> Result<StaffingTransition, StaffingError> {
     let next_period = opening
         .period()
         .checked_add(1)
@@ -143,8 +158,13 @@ pub fn advance_staffing(
     let mut receipts = reserved_vec(count)?;
     let mut labor = reserved_vec(count)?;
     for (opening_pool, request) in opening.pools().iter().zip(requests) {
-        let (pool, receipt, capacity) =
-            advance_pool(opening_pool, request, opening.period(), next_period)?;
+        let (pool, receipt, capacity) = advance_pool(
+            opening_pool,
+            request,
+            opening.period(),
+            next_period,
+            limits.get(&opening_pool.binding().site_id()).copied(),
+        )?;
         pools.push(pool);
         receipts.push(receipt);
         labor.push(capacity);

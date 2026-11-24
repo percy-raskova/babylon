@@ -1,5 +1,6 @@
 //! What the rules of ADR314 did at one close.
 
+use super::standing::StopHold;
 use crate::{FinalDemandPrincipalId, SiteId, StaffingMemberId, StaffingPoolId, UnitId};
 
 /// What the rules of ADR314 did at one close, in the order they acted.
@@ -9,6 +10,24 @@ pub enum AdjustmentReceipt {
     HiringBound(HiringBoundReceipt),
     /// Persons moved from one workplace's people looking for work to another that needed hands (A14).
     PlaceMove(PlaceMoveReceipt),
+    /// What the stop rule decided of one workplace at the close (A17).
+    Stop(StopReceipt),
+}
+
+/// One workplace's test of the stop rule at one close: whether it could not pay, whether it is held back after
+/// it, and how many persons it may employ.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StopReceipt {
+    /// The period that closed: the one whose attendance was tested.
+    pub period: u64,
+    /// The workplace.
+    pub site_id: SiteId,
+    /// Whether some of its people's hours were not paid this period.
+    pub could_not_pay: bool,
+    /// Whether it is held back after this close.
+    pub hold: StopHold,
+    /// The most persons it may employ after this close; `None` when not limited.
+    pub limit: Option<u64>,
 }
 
 /// Persons of one household who left the people looking for work at one workplace of their place and were

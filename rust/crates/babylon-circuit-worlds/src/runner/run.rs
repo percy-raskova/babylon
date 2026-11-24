@@ -13,7 +13,7 @@ use babylon_material_circuit::{
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow,
     MonetaryCircuit, PlaceStaffing, PlaceStaffingError, PoolMembers, SiteId, StaffingError,
     StaffingMemberReceipt, StaffingMemberState, StaffingPoolBinding, StaffingState,
-    StaffingWorkRequest,
+    StaffingWorkRequest, WorkplaceStanding,
 };
 
 /// What one successful period hands back to the runner.
@@ -22,6 +22,7 @@ struct Stepped {
     state: MaterialCircuitState,
     staffing: StaffingState,
     members: Vec<PoolMembers>,
+    standing: WorkplaceStanding,
 }
 
 /// What the staffing of one period decided.
@@ -34,6 +35,8 @@ struct Staffed {
     employed: [u64; 8],
     reserve: [u64; 8],
     asked: [u64; 8],
+    /// What the stop rule remembers after the close; the standing it had when the rule is not on.
+    standing: WorkplaceStanding,
 }
 
 /// What the world held when it opened: the runner refuses a period that does not keep it.
@@ -59,6 +62,7 @@ pub struct Runner {
     state: MaterialCircuitState,
     staffing: StaffingState,
     members: Vec<PoolMembers>,
+    standing: WorkplaceStanding,
     bindings: Vec<StaffingPoolBinding>,
     catalogs: Vec<(CatalogKey, MaterialCatalog)>,
     rules: Vec<RuleOn>,
@@ -101,6 +105,7 @@ impl Runner {
             state,
             staffing,
             members,
+            standing: WorkplaceStanding::opening(),
             bindings,
             catalogs: Vec::new(),
             rules: Vec::new(),
@@ -132,6 +137,12 @@ impl Runner {
     #[must_use]
     pub const fn staffing(&self) -> &StaffingState {
         &self.staffing
+    }
+
+    /// What the rules remember of each workplace after the last step; `WorkplaceStanding::opening()` before it.
+    #[must_use]
+    pub const fn standing(&self) -> &WorkplaceStanding {
+        &self.standing
     }
 
     /// The members the runner keeps between periods: every pool's, one for each household of its place.
@@ -192,6 +203,7 @@ impl Runner {
                     .collect();
                 self.staffing = stepped.staffing;
                 self.members = stepped.members;
+                self.standing = stepped.standing;
                 self.history.push(stepped.result);
                 self.history.last().ok_or(RunnerError::Stopped)
             }
@@ -343,8 +355,12 @@ impl Runner {
             .find(|(known, _)| *known == key)
             .map(|(_, catalog)| catalog)
             .ok_or(RunnerError::World(WorldError::Arithmetic))?;
-        let closed = engine::close_material_period(catalog, &self.state)
-            .map_err(|error| engine_error(period, Stage::Close, error))?;
+        let closed = if rules.contains(&AdjustmentRule::StopWithoutPay) {
+            engine::close_material_period_with_standing(catalog, &self.state, &self.standing)
+        } else {
+            engine::close_material_period(catalog, &self.state)
+        }
+        .map_err(|error| engine_error(period, Stage::Close, error))?;
         let requests = closed
             .staffing_requests(catalog, &self.bindings)
             .map_err(|error| engine_error(period, Stage::StaffingRequests, error))?;
@@ -358,7 +374,13 @@ impl Runner {
                 .map_err(|error| engine_error(period, Stage::Finish, error))?;
             (placed_staffing(placed, &requests)?, transition)
         } else {
-            let staffed = staff(period, &self.staffing, &self.members, &requests)?;
+            let staffed = staff(
+                period,
+                &self.staffing,
+                &self.members,
+                &requests,
+                &self.standing,
+            )?;
             let transition = closed
                 .finish_with_staffing(
                     catalog,
@@ -401,6 +423,7 @@ impl Runner {
             state: transition.state,
             staffing: staffed.staffing,
             members: staffed.kept,
+            standing: staffed.standing,
         })
     }
 }
@@ -432,6 +455,7 @@ fn staff(
     staffing: &StaffingState,
     members: &[PoolMembers],
     requests: &[StaffingWorkRequest],
+    standing: &WorkplaceStanding,
 ) -> Result<Staffed, RunnerError> {
     let transition =
         engine::advance_staffing(staffing, requests).map_err(|error| RunnerError::Staffing {
@@ -483,6 +507,7 @@ fn staff(
         employed,
         reserve,
         asked,
+        standing: standing.clone(),
     })
 }
 
@@ -508,6 +533,7 @@ fn placed_staffing(
         employed,
         reserve,
         asked: hours_asked(requests)?,
+        standing: placed.standing,
     })
 }
 

@@ -510,6 +510,20 @@ fn parked(result: &PeriodResult, opening: &StaffingState, hours_per_person: u64)
     out
 }
 
+/// Step T, when no money means no work: 1 for a workplace that attended no hours and employs nobody after
+/// staffing.
+fn stopped(result: &PeriodResult) -> [u64; 8] {
+    let mut attended = [0_u64; 8];
+    for row in &result.receipts.member_labor_use {
+        attended[index_of(row.site_id)] += row.attended_hours;
+    }
+    let mut out = [0_u64; 8];
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = u64::from(attended[i] == 0 && result.closing.employed[i] == 0);
+    }
+    out
+}
+
 /// Step S, when people look for work in their place: people by place and by workplace at the close, who is
 /// parked, and the persons of each household at each workplace that is not their own.
 fn put_seekers(line: &mut Line, runner: &Runner, result: &PeriodResult, opening: &StaffingState) {
@@ -542,6 +556,9 @@ fn put_seekers(line: &mut Line, runner: &Runner, result: &PeriodResult, opening:
     }
     let parked = parked(result, opening, runner.world().hours_per_person());
     line.each_site("parked", &parked);
+    if result.rules.contains(&AdjustmentRule::StopWithoutPay) {
+        line.each_site("stopped", &stopped(result));
+    }
     for (host, pool) in Workplace::ALL.iter().zip(runner.members()) {
         for member in &pool.members {
             let Some(Household::Workers(home)) =

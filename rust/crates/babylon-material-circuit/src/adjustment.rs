@@ -3,10 +3,17 @@
 mod bound;
 mod policy;
 mod receipts;
+mod standing;
 
 pub(crate) use bound::{bound_hiring, HiringBound};
 pub use policy::AdjustmentRule;
 pub(crate) use policy::{admit, asks};
 #[cfg(test)]
 pub(crate) use policy::{refuse_combinations, NOT_YET_BUILT};
-pub use receipts::{AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt};
+pub use receipts::{
+    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StopReceipt,
+};
+#[cfg(test)]
+pub(crate) use standing::{judge, SiteTest};
+pub(crate) use standing::{test_workplaces, StopRound};
+pub use standing::{StopHold, WorkplaceStanding, WorkplaceStandingRow};

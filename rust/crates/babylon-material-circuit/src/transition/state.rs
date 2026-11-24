@@ -32,7 +32,7 @@ use crate::{
     UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
-use crate::adjustment::HiringBound;
+use crate::adjustment::{HiringBound, StopRound};
 use crate::clearing::MarketTable;
 use crate::financial::FinancialClose;
 use crate::inventory;
@@ -86,6 +86,7 @@ use crate::StaffingState;
 use crate::StaffingWorkSource;
 use crate::SupplierTransport;
 use crate::WageAccrualReceipt;
+use crate::WorkplaceStanding;
 use babylon_kernel::content_digest;
 use babylon_kernel::currency::Currency;
 use outbound::HandOver;
@@ -620,6 +621,8 @@ pub struct ClosedMaterialPeriod {
     transition: MaterialCircuitTransition,
     next_period: u64,
     hiring_bound: Option<HiringBound>,
+    /// What the stop rule remembered before this close; `Some` only through `close_material_period_with_standing`.
+    standing: Option<WorkplaceStanding>,
 }
 
 impl ClosedMaterialPeriod {
@@ -866,13 +869,53 @@ impl ClosedMaterialPeriod {
             }
             CircuitAccounting::PhysicalControl => (no_recipients, 0, &[][..]),
         };
+        let stop = self.stop_round(catalog, opening, &wages)?;
+        let no_limits = BTreeMap::new();
         let rules = PlaceRules {
             recipients: &recipients,
             window,
             records,
             wages: &wages,
+            limits: stop.as_ref().map_or(&no_limits, |round| &round.limits),
         };
-        crate::staffing::staff_places(opening, &requests, members, places, &rules)
+        let mut staffed =
+            crate::staffing::staff_places(opening, &requests, members, places, &rules)?;
+        match stop {
+            Some(round) => {
+                staffed.standing = round.standing;
+                staffed.stops = round.receipts;
+            }
+            None => {
+                staffed.standing = self.standing.clone().unwrap_or_default();
+            }
+        }
+        Ok(staffed)
+    }
+
+    /// The stop rule's test of every workplace, when the catalog asks for it.
+    fn stop_round(
+        &self,
+        catalog: &MaterialCatalog,
+        opening: &StaffingState,
+        wages: &BTreeMap<SiteId, i128>,
+    ) -> Result<Option<StopRound>, PlaceStaffingError> {
+        if !asks_for(catalog, AdjustmentRule::StopWithoutPay) {
+            return Ok(None);
+        }
+        let (Some(standing), CircuitAccounting::Monetary(economy)) =
+            (&self.standing, &self.transition.state.accounting)
+        else {
+            return Err(MaterialCircuitError::MarketClearingInvariant.into());
+        };
+        let round = crate::adjustment::test_workplaces(
+            economy,
+            &self.transition.member_labor_use,
+            self.closing_period(),
+            opening,
+            wages,
+            standing,
+        )?;
+        Ok(Some(round))
     }
 
     /// Finish after `staff_in_places`: advance the record of layoffs with the moves, install the hours, and
@@ -906,6 +949,9 @@ impl ClosedMaterialPeriod {
                 }
             }
         }
+        self.transition
+            .adjustments
+            .extend(staffing.stops.iter().copied().map(AdjustmentReceipt::Stop));
         self.transition.adjustments.extend(
             staffing
                 .moves
@@ -1003,6 +1049,14 @@ impl ClosedMaterialPeriod {
 
 /// The catalog's staffing is by place exactly when its market policy asks for `SeekingInPlace`: the old finish
 /// refuses a catalog that asks (`asks == false`), the place finish one that does not (`asks == true`).
+/// Whether the catalog's market policy asks for a rule of this kind.
+fn asks_for(catalog: &MaterialCatalog, rule: AdjustmentRule) -> bool {
+    catalog
+        .market_clearing
+        .as_ref()
+        .is_some_and(|policy| crate::adjustment::asks(&policy.adjustments, rule))
+}
+
 fn refuse_unless_seeking(
     catalog: &MaterialCatalog,
     asks: bool,
@@ -1789,10 +1843,6 @@ pub fn close_material_period_with_support(
 /// Close using the prior authenticated company evidence and finite-kernel outcomes.
 /// # Errors
 /// Refuses incomplete, duplicated, stale or ineligible company choices.
-#[allow(
-    clippy::too_many_lines,
-    reason = "one transition record is assembled from every receipt family"
-)]
 pub fn close_material_period_with_portfolios(
     catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
@@ -1802,6 +1852,62 @@ pub fn close_material_period_with_portfolios(
     previous: Option<&CompanyPortfolioRegister>,
     selections: &[CompanyPortfolioSelection],
 ) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    if asks_for(catalog, AdjustmentRule::StopWithoutPay) {
+        return Err(MaterialCircuitError::MarketClearingInvariant);
+    }
+    close_with_rules(
+        catalog,
+        opening,
+        (aid_inputs, collection_inputs, agency_inputs),
+        (previous, selections),
+        None,
+    )
+}
+
+/// `close_material_period` for a catalog whose rules remember workplaces: the stop rule's memory is given, and
+/// `staff_in_places` returns it as it stands after the close. With `WorkplaceStanding::opening()` every
+/// workplace is free, as at the opening.
+///
+/// # Errors
+/// As `close_material_period`.
+pub fn close_material_period_with_standing(
+    catalog: &MaterialCatalog,
+    opening: &MaterialCircuitState,
+    standing: &WorkplaceStanding,
+) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    close_with_rules(
+        catalog,
+        opening,
+        (&[], &[], &[]),
+        (None, &[]),
+        Some(standing),
+    )
+}
+
+/// The inputs of the support closes: aid, collections and agency attendance.
+type SupportInputs<'a> = (
+    &'a [AidResolveInput],
+    &'a [CollectionResolveInput],
+    &'a [AgencyAttendanceInput],
+);
+
+/// The close, whatever the entry: the rules' memory, when the entry has one, rides on the closed period.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one transition record is assembled from every receipt family"
+)]
+fn close_with_rules(
+    catalog: &MaterialCatalog,
+    opening: &MaterialCircuitState,
+    support: SupportInputs<'_>,
+    company: (
+        Option<&CompanyPortfolioRegister>,
+        &[CompanyPortfolioSelection],
+    ),
+    standing: Option<&WorkplaceStanding>,
+) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    let (aid_inputs, collection_inputs, agency_inputs) = support;
+    let (previous, selections) = company;
     let mut portfolios = CompanyInvestment::prepare(catalog, opening, previous, selections)?;
     let mut close = close_support_parts(
         catalog,
@@ -1867,6 +1973,7 @@ pub fn close_material_period_with_portfolios(
     Ok(ClosedMaterialPeriod {
         next_period,
         hiring_bound: plans.bound,
+        standing: standing.cloned(),
         transition: MaterialCircuitTransition {
             household_lifecycle,
             resident_workforce_attrition: Vec::new(),

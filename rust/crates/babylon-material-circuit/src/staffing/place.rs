@@ -10,6 +10,7 @@ use crate::financial::LayoffRecord;
 use crate::{
     FinalDemandPrincipalId, LaborCapacityRow, MaterialCircuitError, MemberLaborCapacityRow,
     PlaceMoveReceipt, SiteId, StaffingMemberId, StaffingMemberReceipt, StaffingWorkRequest,
+    StopReceipt, WorkplaceStanding,
 };
 
 /// The pools whose people look for work at one another: one place.
@@ -45,6 +46,11 @@ pub struct PlaceStaffing {
     pub member_receipts: Vec<StaffingMemberReceipt>,
     /// Every move of persons from one pool's reserve to a host.
     pub moves: Vec<PlaceMoveReceipt>,
+    /// What the rules remember of each workplace after this close; the standing given, unchanged, when the
+    /// catalog does not ask for the stop rule.
+    pub standing: WorkplaceStanding,
+    /// What the stop rule decided of each workplace, in site order; empty when the catalog does not ask.
+    pub(crate) stops: Vec<StopReceipt>,
     /// The receipts the record of layoffs advances from: the decision with each move written as the hire or
     /// departure it amounts to. Built and used inside the close; not published.
     pub(crate) record_receipts: Vec<StaffingMemberReceipt>,
@@ -82,6 +88,8 @@ pub(crate) struct PlaceRules<'a> {
     pub(crate) records: &'a [LayoffRecord],
     /// The largest wage of each site's employment terms, in millionths of a dollar.
     pub(crate) wages: &'a BTreeMap<SiteId, i128>,
+    /// The most persons each limited workplace may employ after the close (the stop rule).
+    pub(crate) limits: &'a BTreeMap<SiteId, u64>,
 }
 
 /// One member of one pool, through the engine's decision and the moves.
@@ -201,9 +209,12 @@ fn pools_decided(
             .ok_or_else(|| refuse(StaffingError::PopulationInvariant))?;
         let hours = binding.policy().hours_per_person();
         let asked = receipt.current_unretained_hours();
-        let people = asked
+        let mut people = asked
             .div_ceil(hours)
             .saturating_sub(receipt.closing_employed());
+        if let Some(limit) = rules.limits.get(&binding.site_id()) {
+            people = people.min(limit.saturating_sub(receipt.closing_employed()));
+        }
         pools.push(PoolWork {
             receipt: receipt.clone(),
             place,
@@ -419,7 +430,7 @@ pub(crate) fn staff_places(
     rules: &PlaceRules<'_>,
 ) -> Result<PlaceStaffing, PlaceStaffingError> {
     let at = positions(opening, places)?;
-    let decided = super::advance_staffing(opening, requests)?;
+    let decided = super::advance_staffing_limited(opening, requests, rules.limits)?;
     let mut pools = pools_decided(decided.receipts(), members, &at, rules)?;
     let mut hosts: Vec<usize> = (0..pools.len()).filter(|&i| pools[i].need > 0).collect();
     let wage = |pool: &PoolWork| {
@@ -542,6 +553,8 @@ fn conclude(
         receipts: decided.receipts().to_vec(),
         member_receipts,
         moves,
+        standing: WorkplaceStanding::opening(),
+        stops: Vec::new(),
         record_receipts,
         records: (rules.window > 0 && !rules.recipients.is_empty()).then_some(records),
     })
@@ -552,6 +565,7 @@ mod tests {
     use super::{
         staff_places, PlaceRules, PlaceStaffing, PlaceStaffingError, PoolMembers, StaffingPlace,
     };
+    use crate::adjustment::{self, SiteTest, StopHold};
     use crate::financial::LayoffRecord;
     use crate::{
         FinalDemandPrincipalId, SiteId, StaffingError, StaffingMemberBinding, StaffingMemberId,
@@ -641,6 +655,7 @@ mod tests {
         places: Vec<StaffingPlace>,
         recipients: BTreeSet<FinalDemandPrincipalId>,
         wages: BTreeMap<SiteId, i128>,
+        limits: BTreeMap<SiteId, u64>,
         records: Vec<LayoffRecord>,
     }
 
@@ -667,6 +682,7 @@ mod tests {
                 .collect(),
             recipients: BTreeSet::new(),
             wages: BTreeMap::new(),
+            limits: BTreeMap::new(),
             records: Vec::new(),
         }
     }
@@ -677,6 +693,7 @@ mod tests {
             window: if case.recipients.is_empty() { 0 } else { 7 },
             records: &case.records,
             wages: &case.wages,
+            limits: &case.limits,
         };
         staff_places(
             &case.state,
@@ -841,5 +858,89 @@ mod tests {
             run(&case),
             Err(PlaceStaffingError::Staffing(StaffingError::DuplicatePool))
         );
+    }
+
+    #[test]
+    fn a_limit_caps_what_a_host_takes() {
+        let mut case = takes_case();
+        // Pool 1 employs 7 and lacks 3; with room for one more person it takes one.
+        case.limits.insert(site(1), 8);
+        let placed = run(&case).expect("the place staffs");
+        let taken: u64 = placed.moves.iter().map(|m| m.persons).sum();
+        assert_eq!(taken, 1);
+        assert_eq!(placed.state.pools()[0].employed(), 8);
+        assert_kept(&case, &placed);
+    }
+
+    #[test]
+    fn a_limit_below_the_employed_lets_people_go_to_the_reserve() {
+        let mut case = case(&[(1, &[(1, 7, 0)], 70, 70)], &[&[1]]);
+        case.limits.insert(site(1), 3);
+        let placed = run(&case).expect("the place staffs");
+        let pool = &placed.state.pools()[0];
+        assert_eq!((pool.employed(), pool.reserve()), (3, 4));
+        assert_kept(&case, &placed);
+    }
+
+    fn test_of(attended: u64, unattended: u64) -> SiteTest {
+        SiteTest {
+            available: attended + unattended,
+            attended,
+            unattended,
+            bill: 0,
+            cash: 0,
+            employed: 5,
+            hours_per_person: 8,
+            rate: 10_000_000,
+        }
+    }
+
+    #[test]
+    fn a_workplace_that_could_not_pay_keeps_whom_it_paid() {
+        let verdict = adjustment::judge(StopHold::Free, &test_of(20, 20)).expect("a verdict");
+        assert!(verdict.could_not_pay);
+        assert_eq!(verdict.hold, StopHold::Held);
+        assert_eq!(verdict.limit, Some(3));
+    }
+
+    #[test]
+    fn a_held_workplace_that_paid_everyone_is_free() {
+        let verdict = adjustment::judge(StopHold::Held, &test_of(40, 0)).expect("a verdict");
+        assert!(!verdict.could_not_pay);
+        assert_eq!(verdict.hold, StopHold::Free);
+        assert_eq!(verdict.limit, None);
+    }
+
+    #[test]
+    fn a_held_workplace_hires_only_as_far_as_its_money() {
+        let test = SiteTest {
+            available: 0,
+            bill: 400_000_000,
+            cash: 500_000_000,
+            ..test_of(0, 0)
+        };
+        let verdict = adjustment::judge(StopHold::Held, &test).expect("a verdict");
+        assert!(!verdict.could_not_pay);
+        assert_eq!(verdict.hold, StopHold::Held);
+        assert_eq!(verdict.limit, Some(6));
+    }
+
+    #[test]
+    fn a_free_workplace_that_paid_has_no_limit() {
+        let verdict = adjustment::judge(StopHold::Free, &test_of(40, 0)).expect("a verdict");
+        assert_eq!(verdict.hold, StopHold::Free);
+        assert_eq!(verdict.limit, None);
+    }
+
+    #[test]
+    fn a_held_workplace_that_owes_its_own_wages_hires_nobody() {
+        let test = SiteTest {
+            available: 0,
+            bill: 600_000_000,
+            cash: 500_000_000,
+            ..test_of(0, 0)
+        };
+        let verdict = adjustment::judge(StopHold::Held, &test).expect("a verdict");
+        assert_eq!(verdict.limit, Some(5));
     }
 }

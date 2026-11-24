@@ -7,7 +7,8 @@
 mod accounts;
 mod adjustment;
 pub use adjustment::{
-    AdjustmentReceipt, AdjustmentRule, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt,
+    AdjustmentReceipt, AdjustmentRule, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StopHold,
+    StopReceipt, WorkplaceStanding, WorkplaceStandingRow,
 };
 mod agency_attendance;
 pub use agency_attendance::{
@@ -117,7 +118,7 @@ pub use tiers::{
 pub use transition::{
     advance_material_circuit, advance_material_circuit_with_aid, close_material_period,
     close_material_period_with_aid, close_material_period_with_portfolios,
-    close_material_period_with_support, ClosedMaterialPeriod,
+    close_material_period_with_standing, close_material_period_with_support, ClosedMaterialPeriod,
 };
 pub use wire::{
     decode_material_circuit_state, decode_material_circuit_state_for_encoding,

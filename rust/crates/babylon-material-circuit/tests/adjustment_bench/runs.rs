@@ -12,11 +12,13 @@ pub(crate) enum Form {
     Seek,
     /// A bound on hiring, with people looking for work in their place.
     Bound,
+    /// No money, no work, with the bound and the seekers.
+    Stop,
 }
 
 impl Form {
     /// The forms built so far.
-    pub(crate) const ALL: [Self; 3] = [Self::A6, Self::Seek, Self::Bound];
+    pub(crate) const ALL: [Self; 4] = [Self::A6, Self::Seek, Self::Bound, Self::Stop];
 
     /// The rules the form turns on, in the order of `AdjustmentRule`, taken from `World::switches_at(scale)`
     /// as each rule task adds its form. `A6` asks for none.
@@ -26,6 +28,7 @@ impl Form {
             Self::A6 => switches.iter().take(0).copied().collect(),
             Self::Seek => vec![switches[1]],
             Self::Bound => vec![switches[0], switches[1]],
+            Self::Stop => vec![switches[0], switches[1], switches[2]],
         }
     }
 }

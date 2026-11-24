@@ -8,7 +8,7 @@ use babylon_material_circuit::AdjustmentRule::{
     self, GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace,
     StopWithoutPay,
 };
-use babylon_material_circuit::{AdjustmentReceipt, MaterialCircuitError};
+use babylon_material_circuit::{AdjustmentReceipt, MaterialCircuitError, WorkplaceStanding};
 use std::error::Error;
 use std::time::Instant;
 
@@ -215,7 +215,11 @@ fn a_refusal_of_a_rule_is_worded_for_the_scene() {
 }
 
 /// The rules turned on in the middle of a run, each after this many steps. Tasks 4 to 8 add their rules.
-const LATE: [(u64, AdjustmentRule); 2] = [(20, SeekingInPlace), (24, HiringWithinMeans)];
+const LATE: [(u64, AdjustmentRule); 3] = [
+    (20, SeekingInPlace),
+    (24, HiringWithinMeans),
+    (28, StopWithoutPay),
+];
 
 /// The scene's world with the harvest failing in both places, the `LATE` rules applied, and `steps` steps taken.
 fn late_run(steps: u64) -> Result<Runner, Box<dyn Error>> {
@@ -250,6 +254,10 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
             RuleOn {
                 rule: HiringWithinMeans,
                 from: 25
+            },
+            RuleOn {
+                rule: StopWithoutPay,
+                from: 29
             }
         ]
     );
@@ -271,6 +279,31 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
         bounds(&one.history()[24]) > 0,
         "the bound's first close is period 25's"
     );
+    Ok(())
+}
+
+#[test]
+fn the_stop_rule_turned_on_late_starts_from_an_empty_standing() -> TestResult {
+    let runner = late_run(28)?;
+    assert_eq!(runner.standing(), &WorkplaceStanding::opening());
+    let stops = |result: &PeriodResult| {
+        result
+            .receipts
+            .adjustments
+            .iter()
+            .filter(|row| matches!(row, AdjustmentReceipt::Stop(_)))
+            .count()
+    };
+    for result in runner.history() {
+        assert_eq!(stops(result), 0, "period {}", result.period);
+    }
+    let runner = late_run(29)?;
+    assert_eq!(
+        stops(&runner.history()[28]),
+        8,
+        "each site is tested at period 29"
+    );
+    assert_eq!(runner.standing().rows().len(), 8);
     Ok(())
 }
 

@@ -73,7 +73,7 @@ pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt> {
         .iter()
         .filter_map(|receipt| match receipt {
             AdjustmentReceipt::PlaceMove(moved) => Some(moved),
-            AdjustmentReceipt::HiringBound(_) => None,
+            AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::Stop(_) => None,
         })
 }
 
@@ -85,7 +85,9 @@ fn bounds_of(result: &PeriodResult, w: Workplace) -> impl Iterator<Item = &Hirin
         .iter()
         .filter_map(move |receipt| match receipt {
             AdjustmentReceipt::HiringBound(bound) if bound.site_id == w.site_id() => Some(bound),
-            AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::PlaceMove(_) => None,
+            AdjustmentReceipt::HiringBound(_)
+            | AdjustmentReceipt::PlaceMove(_)
+            | AdjustmentReceipt::Stop(_) => None,
         })
 }
 

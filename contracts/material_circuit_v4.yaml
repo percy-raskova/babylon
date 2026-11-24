@@ -232,6 +232,15 @@ market_clearing:
     attendance plan of the next period and the staffing requests are lowered by the cut, planned batches, orders and
     prices are not; each attendance row has a receipt (HiringBound) with the hours asked, the hours it can work and
     what set the cut (capacity, inputs, money, other); the bound keeps nothing from one close to the next
+  ADR314_stop: >-
+    when a catalog asks for StopWithoutPay (it needs SeekingInPlace) the close is made with the rule's memory of
+    each workplace (hold: free or held), and before the staffing each workplace is tested from the period's member
+    labor receipts: if some of its people's hours were not paid it keeps the persons it paid, the hours paid
+    rounded up to whole persons, at most those it employed, and is held; a held workplace whose people were all
+    paid for the hours made available is free; one that is still held may employ the persons it employed and as
+    many more as its cash, after its own people's wages, pays one period of at its wage; the limit caps the
+    engine's staffing and the seekers' need; each workplace has a receipt (Stop) with whether it could not pay,
+    its hold and its limit; the entries that carry no memory refuse a catalog that asks for the rule
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out

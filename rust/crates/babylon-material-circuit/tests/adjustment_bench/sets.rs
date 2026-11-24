@@ -2,7 +2,9 @@
 // into the root of the test binary, so the tests keep their bare names (`reproduces_*`).
 
 use babylon_circuit_worlds::{doubled, Runner, Scale, World};
-use babylon_material_circuit::{self as engine, MaterialCircuitError, PlaceStaffingError};
+use babylon_material_circuit::{
+    self as engine, MaterialCircuitError, PlaceStaffingError, WorkplaceStanding,
+};
 use rows::TurnedOn;
 use runs::Form;
 
@@ -18,6 +20,8 @@ const PC_SEEK_400: &str = include_str!("digests/pc-seek-400.txt");
 const PC_SEEK_NAT_400: &str = include_str!("digests/pc-seek-nat-400.txt");
 const PC_BOUND_400: &str = include_str!("digests/pc-bound-400.txt");
 const PC_BOUND_NAT_400: &str = include_str!("digests/pc-bound-nat-400.txt");
+const PC_STOP_400: &str = include_str!("digests/pc-stop-400.txt");
+const PC_STOP_NAT_400: &str = include_str!("digests/pc-stop-nat-400.txt");
 
 fn produce(form: Form, scale: Scale, periods: u64) -> Vec<(&'static str, String)> {
     runs::runs(form, scale)
@@ -100,6 +104,28 @@ fn the_quiet_world_with_the_bound_is_still_for_34_periods() {
         Some("bound_by_shop_b"),
         "the bound's columns come last"
     );
+}
+
+#[test]
+fn the_quiet_world_with_the_stop_rule_is_still_for_34_periods() {
+    assert_quiet(Form::Stop);
+    let runs = runs::runs(Form::Stop, Scale::Small);
+    let run = runs
+        .iter()
+        .find(|run| run.name == "fund-quiet")
+        .expect("the fund world's quiet run");
+    let text = rows::rows(run, 2);
+    let header: Vec<&str> = text.lines().next().unwrap_or("").split('\t').collect();
+    let position = |name: &str| header.iter().position(|column| *column == name);
+    let parked = position("parked_shop_b").expect("parked");
+    let stopped = position("stopped_utility_a").expect("stopped");
+    assert_eq!(stopped, parked + 1, "the stopped columns follow the parked ones");
+    for line in text.lines().skip(1) {
+        for site in ["utility_a", "shop_b"] {
+            let at = position(&format!("stopped_{site}")).expect("stopped");
+            assert_eq!(field(line, at), "0", "a quiet workplace is not stopped");
+        }
+    }
 }
 
 #[test]
@@ -193,6 +219,66 @@ fn the_old_finish_refuses_a_catalog_that_asks_for_seekers() {
 }
 
 #[test]
+fn the_old_entry_refuses_the_stop_rule() {
+    let asking = World {
+        rules: Form::Stop.rules(Scale::Small),
+        ..World::scene()
+    };
+    let mut runner = Runner::open_world(&asking).expect("the world opens");
+    runner.step().expect("a period closes");
+    let catalog = runner.catalog().expect("a catalog closed the period");
+    assert_eq!(
+        engine::close_material_period(catalog, runner.state()).err(),
+        Some(MaterialCircuitError::MarketClearingInvariant)
+    );
+    assert!(engine::close_material_period_with_standing(
+        catalog,
+        runner.state(),
+        runner.standing()
+    )
+    .is_ok());
+}
+
+#[test]
+fn the_new_entry_with_an_empty_standing_is_the_opening_s() {
+    let asking = World {
+        rules: Form::Stop.rules(Scale::Small),
+        ..World::scene()
+    };
+    let mut runner = Runner::open_world(&asking).expect("the world opens");
+    runner.step().expect("a period closes");
+    let kept = runner.standing().clone();
+    assert_eq!(kept.rows().len(), 8, "every site has a row after a close");
+    assert!(kept
+        .rows()
+        .iter()
+        .all(|row| row.hold == engine::StopHold::Free));
+    let catalog = runner.catalog().expect("a catalog closed the period");
+    let finish = |standing: &WorkplaceStanding| {
+        let closed =
+            engine::close_material_period_with_standing(catalog, runner.state(), standing)
+                .expect("a close");
+        let placed = closed
+            .staff_in_places(
+                catalog,
+                runner.staffing(),
+                runner.members(),
+                &doubled::places(),
+            )
+            .expect("places staff");
+        let after = placed.standing.clone();
+        let transition = closed
+            .finish_with_place_staffing(catalog, &placed)
+            .expect("a finish");
+        (after, transition)
+    };
+    let (empty_after, empty) = finish(&WorkplaceStanding::opening());
+    let (free_after, with_rows) = finish(&kept);
+    assert_eq!(empty_after, free_after);
+    assert_eq!(empty, with_rows);
+}
+
+#[test]
 #[ignore = "25 runs of 400 periods; run in the background"]
 fn reproduces_pc_a6_400() {
     let produced = produce(Form::A6, Scale::Small, PERIODS_LONG);
@@ -229,6 +315,20 @@ fn reproduces_pc_bound_400() {
 
 #[test]
 #[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_stop_400() {
+    let produced = produce(Form::Stop, Scale::Small, PERIODS_LONG);
+    compare::assert_set("pc-stop-400", &produced, PC_STOP_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_stop_nat_400() {
+    let produced = produce(Form::Stop, Scale::National, PERIODS_LONG);
+    compare::assert_set("pc-stop-nat-400", &produced, PC_STOP_NAT_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
 fn reproduces_pc_bound_nat_400() {
     let produced = produce(Form::Bound, Scale::National, PERIODS_LONG);
     compare::assert_set("pc-bound-nat-400", &produced, PC_BOUND_NAT_400);
@@ -246,6 +346,8 @@ fn print_reference_digests() {
         ("pc-seek-nat-400", Form::Seek, Scale::National),
         ("pc-bound-400", Form::Bound, Scale::Small),
         ("pc-bound-nat-400", Form::Bound, Scale::National),
+        ("pc-stop-400", Form::Stop, Scale::Small),
+        ("pc-stop-nat-400", Form::Stop, Scale::National),
     ] {
         println!("== {set}");
         for run in runs::runs(form, scale) {

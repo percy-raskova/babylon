@@ -1,6 +1,5 @@
 //! Resolve the opaque freight and equipment IDs present at either display-window boundary.
-use super::book::Result;
-use super::model::{LaborId, LaborNode, RecordedLaborError};
+use super::{LaborId, LaborNode, RecordedLaborError, Result};
 use babylon_material_circuit::{
     CircuitAccounting, MaterialCatalog, MaterialCircuitState, ProcessId,
 };

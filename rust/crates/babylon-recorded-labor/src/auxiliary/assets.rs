@@ -1,16 +1,20 @@
 //! Installation work in progress, maintenance service and equipment wear.
-use super::super::book::{Frame, Result};
-use super::super::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
-use super::super::view::PeriodView;
-use crate::recorded_labor::LaborDisposition;
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::book::{Frame, Result};
+use crate::model::{
+    LaborBasis, LaborDisposition, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
+};
+use crate::view::PeriodView;
 
 use babylon_material_circuit::{
     EquipmentCohortId, EquipmentDefinition, EquipmentWearReceipt, InstallationReceipt,
     MaintenanceReceipt, MaterialCatalog, MaterialCircuitState, ProcessId, ProductiveEquipment,
 };
 
-pub(in super::super) fn productive_assets(
+/// The service of maintenance and equipment that one process uses up.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn productive_assets(
     frame: &mut Frame,
     process: ProcessId,
     maintenance: Option<&MaintenanceReceipt>,
@@ -57,7 +61,11 @@ pub(in super::super) fn productive_assets(
     Ok(total)
 }
 
-pub(in super::super) fn maintenance_and_installation(
+/// Maintenance service and installation projects of the period.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn maintenance_and_installation(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
     view: &PeriodView<'_>,
@@ -95,7 +103,11 @@ pub(in super::super) fn maintenance_and_installation(
     Ok(())
 }
 
-pub(super) fn maintenance_close(frame: &mut Frame, row: &MaintenanceReceipt) -> Result<()> {
+/// The maintenance service closes: expiry, spare parts and work for the next service.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn maintenance_close(frame: &mut Frame, row: &MaintenanceReceipt) -> Result<()> {
     let binding = &row.binding;
     let node = LaborNode::maintenance(binding.consumer_process_id);
     let receipt = ReceiptRef::new(LaborReceiptFamily::Maintenance, 0);
@@ -141,7 +153,11 @@ pub(super) fn maintenance_close(frame: &mut Frame, row: &MaintenanceReceipt) -> 
     frame.credit(node, row.next_service.available_batches, basis.add(work)?)
 }
 
-pub(super) fn installation(
+/// One installation project: its materials and its work, to a project or to installed equipment.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn installation(
     frame: &mut Frame,
     content: &ProductiveEquipment,
     after: &MaterialCircuitState,

@@ -41,6 +41,7 @@ PEDANTIC_RUST_PACKAGES = [
     "babylon-material-circuit",
     "babylon-persistence",
     "babylon-practice-contract",
+    "babylon-recorded-labor",
     "babylon-rtd",
     "babylon-tick",
     "bsl-lint",

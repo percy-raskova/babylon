@@ -1,11 +1,9 @@
 //! Only committed household contributions count as collection work.
-use super::household_work;
-use super::view::{self, PeriodView};
-use crate::production_projection::recurring_fixture;
-use crate::recorded_labor::book::{Book, Frame};
-use crate::recorded_labor::model::{
+use super::view;
+use super::{
     LaborDisposition, LaborEdge, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
 };
+use crate::production_projection::recurring_fixture;
 use crate::test_support;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
@@ -13,6 +11,8 @@ use babylon_material_circuit::{
     HouseholdContributionReceipt, HouseholdTimeAccounting, HouseholdTimeBook, MaterialCircuitState,
     OrganizationAccountId, UnitId,
 };
+use babylon_recorded_labor::phases as household_work;
+use babylon_recorded_labor::{Book, Frame, PeriodView};
 use babylon_tick::material_world::MaterialTickReceipts;
 
 fn period_view<'a>(

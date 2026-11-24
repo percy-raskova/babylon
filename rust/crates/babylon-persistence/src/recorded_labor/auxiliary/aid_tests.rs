@@ -1,9 +1,7 @@
 //! Fulfillment occurs only once, when the food leaves its donor.
-use super::aid;
 use crate::production_projection::recurring_fixture;
-use crate::recorded_labor::book::{Book, Frame};
-use crate::recorded_labor::model::{LaborBasis, LaborNode};
-use crate::recorded_labor::view::{self, PeriodView};
+use crate::recorded_labor::view;
+use crate::recorded_labor::{LaborBasis, LaborNode};
 use crate::test_support;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
@@ -11,6 +9,8 @@ use babylon_material_circuit::{
     CircuitAccounting, FinalDemandPrincipalId, FreightLotId, MaterialCatalog,
     MaterialCatalogDefinition, MaterialCircuitState, UnitId,
 };
+use babylon_recorded_labor::phases as aid;
+use babylon_recorded_labor::{Book, Frame, PeriodView};
 use babylon_tick::material_world::MaterialTickReceipts;
 
 fn period_view<'a>(

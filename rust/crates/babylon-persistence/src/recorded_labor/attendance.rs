@@ -1,10 +1,7 @@
 //! Member attendance and household time are physical records independent of their cash treatment.
-use super::book::Result;
-use super::model::{
-    LaborId, ReceiptRef, RecordedAttendance, RecordedHouseholdTime, RecordedLaborError,
-};
+use super::model::{RecordedAttendance, RecordedHouseholdTime};
+use super::{LaborId, LaborReceiptFamily, ReceiptRef, RecordedLaborError, Result};
 use crate::production_projection;
-use crate::recorded_labor::LaborReceiptFamily;
 use babylon_material_circuit::{LaborCompensation, MaterialCatalog, MaterialCircuitState};
 use babylon_tick::material_world::MaterialTickReceipts;
 

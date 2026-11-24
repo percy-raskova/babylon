@@ -1,10 +1,10 @@
 //! Performed service grants carry their producer's basis for this period only.
-use super::super::book::{Frame, Result};
-use super::super::model::{LaborNode, ReceiptRef, RecordedLaborError};
-use super::super::production;
-use super::super::view::PeriodView;
-use crate::recorded_labor::LaborDisposition;
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::book::{Frame, Handed, Result};
+use crate::model::{
+    LaborDisposition, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
+};
+use crate::production;
+use crate::view::PeriodView;
 use babylon_material_circuit::{
     AccountId, MaterialCatalog, ServicePerformanceReceipt, ServiceStage,
 };
@@ -20,7 +20,11 @@ fn buyer(row: &ServicePerformanceReceipt) -> Result<LaborNode> {
     }
 }
 
-pub(in super::super) fn handoff(
+/// Performed services of one stage pass to their buyers.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn handoff(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
     phase: ServiceStage,
@@ -70,6 +74,13 @@ pub(in super::super) fn handoff(
             basis,
             ReceiptRef::new(LaborReceiptFamily::ServicePerformance, ordinal),
         );
+        frame.handed.push(Handed {
+            receipt: ReceiptRef::new(LaborReceiptFamily::ServicePerformance, ordinal),
+            from: source,
+            to: target,
+            quantity: row.performed_quantity,
+            basis,
+        });
         grants.push((target, row.performed_quantity, basis));
     }
     for (source, (ordinal, row)) in expected {
@@ -98,7 +109,10 @@ struct GrantTotals {
 
 /// Storable production has already withdrawn its performed intermediate inputs.
 /// Household needs consume their pooled service grants, then unused grants expire.
-pub(in super::super) fn finish(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn finish(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     let mismatch = RecordedLaborError::ReceiptMismatch("service use");
     let mut totals = BTreeMap::<LaborNode, GrantTotals>::new();
     for row in view.receipts.service_performance {

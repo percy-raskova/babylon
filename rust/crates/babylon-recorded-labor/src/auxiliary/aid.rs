@@ -1,9 +1,9 @@
 //! Physical household gifts and actual voluntary handling time.
-use super::super::book::{Frame, Result};
-use super::super::model::{LaborNode, ReceiptRef, RecordedLaborError};
-use super::super::view::PeriodView;
-use crate::recorded_labor::LaborDisposition;
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::book::{Frame, Result};
+use crate::model::{
+    LaborDisposition, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
+};
+use crate::view::PeriodView;
 use babylon_material_circuit::{
     AidFreightLot, AidOutcome, AidReceipt, AidTransport, CircuitAccounting, MaterialCatalog,
     MaterialCircuitState, OrderId,
@@ -44,7 +44,11 @@ fn lot_for<'a>(
     Ok(lot)
 }
 
-pub(in super::super) fn aid_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+/// Gifts in transit arrive or are lost.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn aid_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     if view.receipts.aid.is_empty() {
         return Ok(());
     }
@@ -82,7 +86,11 @@ pub(in super::super) fn aid_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -
     Ok(())
 }
 
-pub(in super::super) fn aid_dispatch(
+/// Gifts leave the donors, with the donors' own hours posted to them.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn aid_dispatch(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
     view: &PeriodView<'_>,

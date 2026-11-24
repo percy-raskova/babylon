@@ -1,9 +1,7 @@
 //! Hand off one service batch to industry and households, then expire the true residuals.
-use super::close;
 use crate::production_projection::recurring_fixture;
-use crate::recorded_labor::book::{Book, Frame};
-use crate::recorded_labor::model::{LaborBasis, LaborNode, RecordedLaborError};
-use crate::recorded_labor::view::{self, PeriodView};
+use crate::recorded_labor::view;
+use crate::recorded_labor::{LaborBasis, LaborNode, RecordedLaborError};
 use crate::test_support;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
@@ -11,6 +9,8 @@ use babylon_material_circuit::{
     MaterialCircuitState, OrderId, ProcessOutput, ServiceOutputReceipt, ServicePerformanceReceipt,
     ServiceStage,
 };
+use babylon_recorded_labor::phases as close;
+use babylon_recorded_labor::{Book, Frame, PeriodView};
 use babylon_tick::material_world::MaterialTickReceipts;
 
 fn period_view<'a>(

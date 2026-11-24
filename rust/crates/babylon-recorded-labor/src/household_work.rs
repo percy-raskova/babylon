@@ -1,13 +1,17 @@
 //! Household hours that leave the book without a good: observations of an agency and the organizer's
 //! cash collection. Both read the view of one period.
-use super::book::{Frame, Result};
-use super::model::{LaborNode, ReceiptRef, RecordedLaborError};
-use super::view::PeriodView;
-use crate::recorded_labor::LaborDisposition;
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::book::{Frame, Result};
+use crate::model::{
+    LaborDisposition, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
+};
+use crate::view::PeriodView;
 use babylon_material_circuit::{CircuitAccounting, HouseholdTimeAccounting};
 
-pub(super) fn agency_observations(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+/// Hours a household gave to an agency leave the book.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn agency_observations(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     for (ordinal, row) in view.receipts.agency.iter().enumerate() {
         let basis = frame.direct(
             LaborNode::household_work(row.principal_id, row.labor_unit_id),
@@ -21,7 +25,10 @@ pub(super) fn agency_observations(frame: &mut Frame, view: &PeriodView<'_>) -> R
 }
 
 /// The cash gift consumes an identified household contribution without creating a carried good.
-pub(super) fn collections(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn collections(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     let mismatch = RecordedLaborError::ReceiptMismatch("collections");
     let row = match view.receipts.collections {
         [] => return Ok(()),

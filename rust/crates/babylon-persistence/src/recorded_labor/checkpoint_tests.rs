@@ -82,9 +82,9 @@ fn checkpoint_resumes_real_carry_and_refuses_corrupt_or_unrelated_boundaries() {
 
 #[test]
 fn checkpoint_validates_the_physical_quantity_commitment_and_format_version() {
-    use super::book::{Book, Position};
     use super::checkpoint::{self, Source};
     use super::{LaborBasis, LaborId, LaborNode};
+    use babylon_recorded_labor::{Book, Position};
     use std::collections::BTreeMap;
     let node = LaborNode::Equipment {
         cohort: LaborId([5; 32]),

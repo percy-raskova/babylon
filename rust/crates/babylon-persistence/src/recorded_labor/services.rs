@@ -1,6 +1,3 @@
-//! Actual staged service deliveries, use and expiry.
-mod close;
+//! Inner tests of the staged service phases, which stay with the stored records' fixtures.
 #[cfg(test)]
 mod tests;
-
-pub(super) use close::{finish, handoff};

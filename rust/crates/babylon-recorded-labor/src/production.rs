@@ -1,17 +1,16 @@
 //! Reconstruct actual recipe debits before any outputs of the same phase become available.
-use super::auxiliary;
-use super::book::{Frame, Result};
-use super::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
-use super::services;
-use super::view::PeriodView;
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::auxiliary;
+use crate::book::{Frame, Result};
+use crate::model::{LaborBasis, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError};
+use crate::services;
+use crate::view::PeriodView;
 use babylon_material_circuit::{
     CommodityKind, EquipmentWearReceipt, GoodId, MaintenanceReceipt, MaterialCatalog,
     ProcessOutput, ProductionReceipt, ServiceStage, UnitId,
 };
 use std::collections::BTreeMap;
 
-pub(super) fn stage(
+pub(crate) fn stage(
     catalog: &MaterialCatalog,
     good: GoodId,
     unit: UnitId,
@@ -100,11 +99,11 @@ fn output(
     Ok(())
 }
 
-pub(super) fn execute(
-    frame: &mut Frame,
-    catalog: &MaterialCatalog,
-    view: &PeriodView<'_>,
-) -> Result<()> {
+/// Production: inputs, work and outputs, stage by stage, with the services handed over after each.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn execute(frame: &mut Frame, catalog: &MaterialCatalog, view: &PeriodView<'_>) -> Result<()> {
     let mut phases = BTreeMap::new();
     for (ordinal, row) in view.receipts.production.iter().enumerate() {
         let output = catalog

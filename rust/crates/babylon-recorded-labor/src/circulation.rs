@@ -1,16 +1,20 @@
 //! Recorded commercial lots and retail deliveries; destination credits follow the physical phases.
-use super::book::{Frame, Result};
-use super::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
-use super::view::{PeriodView, ReceiptView};
-use crate::recorded_labor::LaborDisposition;
-use crate::recorded_labor::LaborReceiptFamily;
+use crate::book::{Frame, Handed, Result};
+use crate::model::{
+    LaborBasis, LaborDisposition, LaborNode, LaborReceiptFamily, ReceiptRef, RecordedLaborError,
+};
+use crate::view::{PeriodView, ReceiptView};
 use babylon_material_circuit::{
     CircuitAccounting, MaterialCatalog, MerchantHandlingReceipt, OrderId, OutboundOrderId, SiteId,
     UnitId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn freight_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+/// Freight lots whose stage ends this period are lost in part, or arrive.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn freight_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     let closing: BTreeSet<_> = view.after.freight.iter().map(|lot| lot.lot_id).collect();
     let mut losses: BTreeMap<_, _> = view
         .receipts
@@ -65,17 +69,38 @@ pub(super) fn freight_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Resu
     Ok(())
 }
 
+/// One move out of a site: `to` is where the fold books it, `receiver` is the node that receives the stock.
 #[derive(Clone, Copy)]
-struct Handoff {
-    order: OutboundOrderId,
-    site: SiteId,
-    from: LaborNode,
-    to: LaborNode,
-    qty: u64,
-    reference: ReceiptRef,
+pub(crate) struct Handoff {
+    pub(crate) order: OutboundOrderId,
+    pub(crate) site: SiteId,
+    pub(crate) from: LaborNode,
+    pub(crate) to: LaborNode,
+    pub(crate) receiver: LaborNode,
+    pub(crate) qty: u64,
+    pub(crate) reference: ReceiptRef,
 }
 impl Handoff {
-    fn debit(self, frame: &mut Frame, handling: &mut Handling<'_>) -> Result<LaborBasis> {
+    /// The basis of the move, with the handling hours added, written as handed over.
+    pub(crate) fn debit(
+        self,
+        frame: &mut Frame,
+        handling: &mut Handling<'_>,
+    ) -> Result<LaborBasis> {
+        let basis = self.take(frame, handling)?;
+        if self.qty > 0 {
+            frame.handed.push(Handed {
+                receipt: self.reference,
+                from: self.from,
+                to: self.receiver,
+                quantity: self.qty,
+                basis,
+            });
+        }
+        Ok(basis)
+    }
+
+    fn take(self, frame: &mut Frame, handling: &mut Handling<'_>) -> Result<LaborBasis> {
         let basis = frame.take(self.from, self.qty)?;
         frame.edge(self.from, self.to, self.qty, basis, self.reference);
         let Some((ordinal, row)) = handling.rows.remove(&self.order) else {
@@ -101,9 +126,9 @@ impl Handoff {
     }
 }
 
-struct Handling<'a> {
-    units: BTreeMap<SiteId, UnitId>,
-    rows: BTreeMap<OutboundOrderId, (usize, &'a MerchantHandlingReceipt)>,
+pub(crate) struct Handling<'a> {
+    pub(crate) units: BTreeMap<SiteId, UnitId>,
+    pub(crate) rows: BTreeMap<OutboundOrderId, (usize, &'a MerchantHandlingReceipt)>,
 }
 impl<'a> Handling<'a> {
     fn new(catalog: &MaterialCatalog, receipts: &ReceiptView<'a>) -> Result<Self> {
@@ -145,6 +170,7 @@ fn suppliers(view: &PeriodView<'_>) -> Result<BTreeMap<OrderId, Handoff>> {
             site: lot.source_site_id,
             from: LaborNode::site(lot.source_site_id, lot.good_id, lot.unit_id),
             to: LaborNode::freight(lot.lot_id),
+            receiver: LaborNode::freight(lot.lot_id),
             qty: row.quantity,
             reference: ReceiptRef::new(LaborReceiptFamily::Dispatches, i),
         };
@@ -158,6 +184,7 @@ fn suppliers(view: &PeriodView<'_>) -> Result<BTreeMap<OrderId, Handoff>> {
             site: row.supplier_site_id,
             from: LaborNode::site(row.supplier_site_id, row.good_id, row.unit_id),
             to: LaborNode::site(row.buyer_site_id, row.good_id, row.unit_id),
+            receiver: LaborNode::site(row.buyer_site_id, row.good_id, row.unit_id),
             qty: row.quantity,
             reference: ReceiptRef::new(LaborReceiptFamily::LocalTransfers, i),
         };
@@ -167,11 +194,11 @@ fn suppliers(view: &PeriodView<'_>) -> Result<BTreeMap<OrderId, Handoff>> {
     }
     Ok(supplies)
 }
-pub(super) fn outbound(
-    frame: &mut Frame,
-    catalog: &MaterialCatalog,
-    view: &PeriodView<'_>,
-) -> Result<()> {
+/// Deliveries, local transfers and retail fulfillments leave their sites, with their handling hours.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn outbound(frame: &mut Frame, catalog: &MaterialCatalog, view: &PeriodView<'_>) -> Result<()> {
     let supplies = suppliers(view)?;
     let mut handling = Handling::new(catalog, &view.receipts)?;
     let new: BTreeSet<_> = view
@@ -216,6 +243,7 @@ pub(super) fn outbound(
             site: row.retailer_site_id,
             from: source,
             to: dest,
+            receiver: target,
             qty: row.quantity,
             reference: receipt,
         };
@@ -238,7 +266,11 @@ pub(super) fn outbound(
     Ok(())
 }
 
-pub(super) fn consume(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+/// Households consume their stock.
+///
+/// # Errors
+/// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
+pub fn consume(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     for (i, row) in view.receipts.household_consumption.iter().enumerate() {
         let stock = LaborNode::household(row.principal_id, row.good_id, row.unit_id);
         if row.period != view.period || frame.quantity(stock) != row.available_quantity {

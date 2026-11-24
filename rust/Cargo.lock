@@ -570,6 +570,7 @@ dependencies = [
  "babylon-kernel",
  "babylon-material-circuit",
  "babylon-practice-contract",
+ "babylon-recorded-labor",
  "babylon-tick",
  "fallible-iterator",
  "flate2",
@@ -591,6 +592,15 @@ dependencies = [
  "babylon-kernel",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "babylon-recorded-labor"
+version = "0.1.0"
+dependencies = [
+ "babylon-kernel",
+ "babylon-material-circuit",
+ "serde",
 ]
 
 [[package]]

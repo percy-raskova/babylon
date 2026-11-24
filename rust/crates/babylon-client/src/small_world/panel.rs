@@ -800,13 +800,11 @@ fn spawn_hours_table(body: &mut ChildSpawnerCommands, table: &HoursTable) {
             let given = line.given.map_or_else(
                 || (DASH.to_owned(), None),
                 |g| {
+                    // A u64 times 10^6 always fits in a u128.
                     let figure = u128::from(g);
                     (
                         human_numbers::grouped(figure),
-                        Some((
-                            percent_of(figure.saturating_mul(1_000_000), table.scale),
-                            BONE,
-                        )),
+                        Some((percent_of(figure * 1_000_000, table.scale), BONE)),
                     )
                 },
             );

@@ -55,12 +55,9 @@ pub(crate) fn micro_hours(value: u128) -> String {
 /// Micro-hours to the nearest whole hour, half up, grouped as `grouped` groups.
 pub(crate) fn micro_hours_to_hour(value: u128) -> String {
     let whole = value / 1_000_000;
+    // A u128 divided by 10^6, plus one, cannot overflow.
     let half_or_more = value % 1_000_000 >= 500_000;
-    grouped(if half_or_more {
-        whole.saturating_add(1)
-    } else {
-        whole
-    })
+    grouped(if half_or_more { whole + 1 } else { whole })
 }
 
 #[cfg(test)]

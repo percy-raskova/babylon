@@ -818,7 +818,16 @@ fn a_household_s_panel_shows_its_hours_by_claim() -> TestResult {
     updates(&mut app, 2);
     let rows = inspector_rows(&mut app);
     let (back, support) = (row_value(&rows, "Hours back"), row_value(&rows, "Support"));
-    assert!(back.is_some());
+    let record = {
+        let scene = app.world().resource::<SceneRunner>();
+        let latest = scene.runner.history().last().ok_or("no period")?;
+        let hours = latest.hours.as_ref().ok_or("no record of hours")?;
+        hours
+            .household(babylon_circuit_worlds::Household::Supported(Place::A))
+            .ok_or("no household record")?
+            .back_micro_hours
+    };
+    assert_eq!(back, Some(crate::human_numbers::micro_hours(record)));
     assert_eq!(back, support);
     assert_eq!(row_value(&rows, "For work").as_deref(), Some("0"));
     let at = |label: &str| rows.iter().position(|(l, _)| l.starts_with(label));

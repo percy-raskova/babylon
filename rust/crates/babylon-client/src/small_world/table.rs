@@ -5,6 +5,7 @@
 
 use super::reading::{Party, PeriodReading, ReadingError};
 use babylon_circuit_worlds::{Household, PeriodHours, PeriodResult, Place, Workplace};
+use std::fmt::Debug;
 
 /// Micro-hours in one hour.
 const MICRO_HOURS: u128 = 1_000_000;
@@ -234,7 +235,7 @@ fn add_micro(a: u128, b: u128) -> Result<u128, ReadingError> {
     a.checked_add(b).ok_or(ReadingError::Arithmetic)
 }
 
-fn unknown(what: impl std::fmt::Debug) -> ReadingError {
+fn unknown(what: impl Debug) -> ReadingError {
     ReadingError::UnknownParty(format!("{what:?} in the record of hours"))
 }
 
@@ -496,6 +497,7 @@ mod tests {
             ),
             (EARNERS, |h| matches!(h, Household::Workers(_))),
             (NEITHER, |h| matches!(h, Household::Supported(_))),
+            (OWNERS_WHO_EARN, |_| false),
         ] {
             let mut expected = sum_of(keep)?;
             expected.label = label.to_owned();
@@ -523,6 +525,15 @@ mod tests {
             ),
             (None, None, None, None, None)
         );
+        for (label, place) in [("Place A", Place::A), ("Place B", Place::B)] {
+            let row = hours_row(&places, label)?;
+            let mut expected = match place {
+                Place::A => sum_of(|h| h.place() == Place::A)?,
+                Place::B => sum_of(|h| h.place() == Place::B)?,
+            };
+            expected.label = label.to_owned();
+            assert_eq!(row, &expected, "{label}");
+        }
         let place_a = hours_row(&places, "Place A")?;
         assert_eq!(
             (place_a.given, place_a.back),

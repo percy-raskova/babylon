@@ -10,6 +10,7 @@ pub mod ids;
 pub mod runner;
 pub mod shocks;
 
+pub use babylon_recorded_labor::{Claim, ClaimError, ClaimHours};
 pub use doubled::{Economy, OpeningPush, Pushed, Scale, World};
 pub use error::WorldError;
 pub use ids::{

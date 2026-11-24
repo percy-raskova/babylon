@@ -483,3 +483,230 @@ fn a_runner_opened_without_hours_keeps_no_record() -> TestResult {
     }
     Ok(())
 }
+
+/// The four claims add up to what reached each household group.
+fn claims_add_up(result: &PeriodResult) -> TestResult {
+    for (household, h) in &hours_of(result)?.households {
+        assert_eq!(
+            h.claims.total()?,
+            h.back_micro_hours,
+            "period {} {household:?}: the claims add up",
+            result.period
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_worker_s_and_a_supported_person_s_back_are_whole_from_period_one() -> TestResult {
+    let mut runner = scene_with_hours()?;
+    for _ in 0..12 {
+        runner.step()?;
+    }
+    let mut met_worker = false;
+    let mut met_supported = false;
+    for result in runner.history() {
+        for (household, h) in &hours_of(result)?.households {
+            let p = result.period;
+            match household {
+                Household::Workers(_) => {
+                    met_worker |= h.back_micro_hours > 0;
+                    assert_eq!(
+                        h.claims.work, h.back_micro_hours,
+                        "period {p} {household:?}"
+                    );
+                    assert_eq!(
+                        h.claims.owning + h.claims.support + h.claims.not_recorded,
+                        0
+                    );
+                }
+                Household::Supported(_) => {
+                    met_supported |= h.back_micro_hours > 0;
+                    assert_eq!(
+                        h.claims.support, h.back_micro_hours,
+                        "period {p} {household:?}"
+                    );
+                    assert_eq!(h.claims.work + h.claims.owning + h.claims.not_recorded, 0);
+                }
+                Household::Owner(_) => {}
+            }
+        }
+    }
+    assert!(met_worker && met_supported, "the test met no back to split");
+    Ok(())
+}
+
+#[test]
+fn an_owner_s_back_is_by_owning_from_period_two() -> TestResult {
+    let mut runner = scene_with_hours()?;
+    for _ in 0..12 {
+        runner.step()?;
+    }
+    let mut met = false;
+    for result in runner.history() {
+        for (household, h) in &hours_of(result)?.households {
+            if !matches!(household, Household::Owner(_)) {
+                continue;
+            }
+            let p = result.period;
+            met |= h.back_micro_hours > 0;
+            if p == 1 {
+                assert_eq!(
+                    h.claims.not_recorded, h.back_micro_hours,
+                    "period {p} {household:?}"
+                );
+            } else {
+                assert_eq!(
+                    h.claims.owning, h.back_micro_hours,
+                    "period {p} {household:?}"
+                );
+            }
+        }
+    }
+    assert!(met, "the test met no owner's back to split");
+    Ok(())
+}
+
+/// Every household's running sums, from period 1: hours back for work, and hours on the clock.
+struct Clocks {
+    work: Vec<u128>,
+    clock: Vec<u128>,
+}
+
+impl Clocks {
+    fn new() -> Self {
+        Self {
+            work: Vec::new(),
+            clock: Vec::new(),
+        }
+    }
+
+    /// Add one period; the hours back for work stay within a million micro-hours for each hour on the clock.
+    fn count(&mut self, label: &str, result: &PeriodResult) -> TestResult {
+        let hours = hours_of(result)?;
+        self.work.resize(hours.households.len(), 0);
+        self.clock.resize(hours.households.len(), 0);
+        for (at, (household, h)) in hours.households.iter().enumerate() {
+            self.work[at] += h.claims.work;
+            self.clock[at] += u128::from(h.clock);
+            assert!(
+                self.work[at] <= self.clock[at] * MICROS,
+                "{label}: period {} {household:?}: back for work {} micro-hours, clock {} hours",
+                result.period,
+                self.work[at],
+                self.clock[at]
+            );
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn every_period_the_splits_add_up_and_the_purses_are_the_book_s() -> TestResult {
+    let mut quiet = scene_with_hours()?;
+    for _ in 0..34 {
+        let result = quiet.step()?;
+        check_period(result)?;
+        claims_add_up(result)?;
+    }
+    let mut every_rule = Runner::open_world_with_hours(&World {
+        rules: World::switches_at(Scale::Small).to_vec(),
+        ..World::scene()
+    })?;
+    every_rule.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+    for _ in 0..60 {
+        claims_add_up(every_rule.step()?)?;
+    }
+    let mut late = scene_with_hours()?;
+    late.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+    for step in 0..60 {
+        for (after, rule) in LATE {
+            if after == step {
+                late.turn_on(rule)?;
+            }
+        }
+        claims_add_up(late.step()?)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn no_group_s_back_for_work_passes_its_clock() -> TestResult {
+    let mut quiet = scene_with_hours()?;
+    let mut clocks = Clocks::new();
+    for _ in 0..34 {
+        clocks.count("quiet", quiet.step()?)?;
+    }
+    let cases: [&[(Shock, Places)]; 5] = [
+        &[(Shock::HarvestFails, Places::A)],
+        &[(Shock::HarvestFails, Places::Both)],
+        &[(Shock::PowerCut, Places::A)],
+        &[(Shock::PowerCut, Places::Both)],
+        &[
+            (Shock::HarvestFails, Places::Both),
+            (Shock::PowerCut, Places::Both),
+        ],
+    ];
+    for (at, case) in cases.into_iter().enumerate() {
+        let mut runner = shocked(case)?;
+        let mut clocks = Clocks::new();
+        for _ in 0..60 {
+            clocks.count(&format!("shock case {at}"), runner.step()?)?;
+        }
+    }
+    let mut every_rule = Runner::open_world_with_hours(&World {
+        rules: World::switches_at(Scale::Small).to_vec(),
+        ..World::scene()
+    })?;
+    every_rule.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+    let mut clocks = Clocks::new();
+    for _ in 0..60 {
+        clocks.count("every rule", every_rule.step()?)?;
+    }
+    let mut late = scene_with_hours()?;
+    late.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+    let mut clocks = Clocks::new();
+    for step in 0..60 {
+        for (after, rule) in LATE {
+            if after == step {
+                late.turn_on(rule)?;
+            }
+        }
+        clocks.count("late rules", late.step()?)?;
+    }
+    Ok(())
+}
+
+/// Pinned from a real run: with the harvest failed in both places until lifted, the first period in which a
+/// worker household's back runs through both wages and support (the fund's laid-off program) is period 17,
+/// where the clinic workers of place A got 15,755,312 micro-hours by work and 1,133,577 by support.
+#[test]
+fn the_laid_off_program_mixes_wages_and_support() -> TestResult {
+    let mut runner = shocked(&[(Shock::HarvestFails, Places::Both)])?;
+    for _ in 0..60 {
+        let result = runner.step()?;
+        let mixed: Vec<_> = hours_of(result)?
+            .households
+            .iter()
+            .filter(|(household, h)| {
+                matches!(household, Household::Workers(_))
+                    && h.claims.work > 0
+                    && h.claims.support > 0
+            })
+            .collect();
+        if mixed.is_empty() {
+            continue;
+        }
+        assert_eq!(result.period, 17, "the first period of a mixed back");
+        let clinic = workplace(Place::A, Kind::Clinic);
+        let (_, h) = mixed
+            .iter()
+            .find(|(household, _)| *household == Household::Workers(clinic))
+            .ok_or("the clinic workers of place A have no mixed back")?;
+        assert_eq!(h.claims.work, 15_755_312);
+        assert_eq!(h.claims.support, 1_133_577);
+        assert_eq!(h.back_micro_hours, 16_888_889);
+        return Ok(());
+    }
+    Err("no worker household had a mixed back in 60 periods".into())
+}

@@ -504,6 +504,11 @@ fn hours_fold_every_reference_run() {
                         panic!("{form:?} {scale:?} {} strikes: {error}", run.name)
                     });
                 }
+                // Over the run so far, each household group's hours back for work and its hours on the
+                // clock (the bribe, ADR322 H4): the first never passes a million micro-hours per hour of
+                // the second.
+                let mut back_for_work: Vec<u128> = Vec::new();
+                let mut on_the_clock: Vec<u128> = Vec::new();
                 for period in 1..=PERIODS_LONG {
                     let result = runner.step().unwrap_or_else(|error| {
                         panic!("{form:?} {scale:?} {} period {period}: {error}", run.name)
@@ -513,6 +518,19 @@ fn hours_fold_every_reference_run() {
                     });
                     if let Err(law) = assert_hours_laws(hours) {
                         panic!("{form:?} {scale:?} {} period {period}: {law}", run.name);
+                    }
+                    back_for_work.resize(hours.households.len(), 0);
+                    on_the_clock.resize(hours.households.len(), 0);
+                    for (at, (household, row)) in hours.households.iter().enumerate() {
+                        back_for_work[at] += row.claims.work;
+                        on_the_clock[at] += u128::from(row.clock);
+                        assert!(
+                            back_for_work[at] <= on_the_clock[at] * 1_000_000,
+                            "{form:?} {scale:?} {} period {period} {household:?}: back for work {} micro-hours, clock {} hours",
+                            run.name,
+                            back_for_work[at],
+                            on_the_clock[at]
+                        );
                     }
                 }
             }

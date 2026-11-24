@@ -4,6 +4,7 @@
 mod auxiliary;
 mod book;
 mod circulation;
+mod claim;
 mod fold;
 mod household_work;
 mod model;
@@ -17,6 +18,7 @@ pub mod phases;
 mod tests;
 
 pub use book::{Book, Carry, Frame, Handed, Position};
+pub use claim::{split_hours, Claim, ClaimError, ClaimHours, Mix, Paid, Purses};
 pub use fold::{check_opening, fold_period, opening_book, positions_of, FoldedPeriod};
 pub use model::{
     LaborBasis, LaborDisposition, LaborEdge, LaborId, LaborNode, LaborReceiptFamily, ReceiptRef,

@@ -1,9 +1,10 @@
 //! What a step of the runner refuses with, in words a person can read.
 
 use crate::runner::rules::RuleError;
+use crate::Household;
 use crate::{ShockError, WorldError};
 use babylon_material_circuit::{MaterialCircuitError, StaffingError};
-use babylon_recorded_labor::RecordedLaborError;
+use babylon_recorded_labor::{ClaimError, RecordedLaborError};
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
@@ -120,6 +121,31 @@ pub enum RunnerError {
         /// What could not be placed.
         what: String,
     },
+    /// The purses could not follow the period's money.
+    ClaimRefused {
+        /// The period being closed.
+        period: u64,
+        /// The purses' refusal.
+        error: ClaimError,
+    },
+    /// The kinds of a household's purse and its reserves are not its cash and reserves in the book.
+    PurseNotBook {
+        /// The period being closed.
+        period: u64,
+        /// The difference found.
+        error: ClaimError,
+    },
+    /// The splits of a group's back do not add up to its back.
+    ClaimsNotBack {
+        /// The period being closed.
+        period: u64,
+        /// The group.
+        household: Household,
+        /// Micro-hours that reached its home.
+        back: u128,
+        /// Micro-hours in the four claims.
+        claims: u128,
+    },
     /// The test economy has no rows past its horizon.
     PastHorizon {
         /// The period that was asked for.
@@ -176,6 +202,22 @@ impl Display for RunnerError {
             Self::HoursUnplaced { period, what } => {
                 write!(f, "Period {period}: the hours ledger cannot place {what}")
             }
+            Self::ClaimRefused { period, error } => {
+                write!(f, "Period {period}: the purses could not follow the money: {error}")
+            }
+            Self::PurseNotBook { period, error } => write!(
+                f,
+                "Period {period}: the kinds of money are not the book's money: {error}"
+            ),
+            Self::ClaimsNotBack {
+                period,
+                household,
+                back,
+                claims,
+            } => write!(
+                f,
+                "Period {period}: {household:?}'s back is {back} micro-hours, its claims add up to {claims}"
+            ),
             Self::PastHorizon { period } => {
                 write!(f, "Period {period}: this test economy is built for 998 periods")
             }

@@ -5,13 +5,16 @@
 
 use crate::runner::error::{HoursRun, RunnerError};
 use crate::{Household, Place, Workplace, World};
+
 use babylon_material_circuit::{
-    MaterialCatalog, MaterialCircuitState, MaterialCircuitTransition, MemberLaborUseReceipt, SiteId,
+    MaterialCatalog, MaterialCircuitState, MaterialCircuitTransition, MemberLaborUseReceipt,
+    OutboundOrderId, SiteId,
 };
 use babylon_recorded_labor as labor;
 use babylon_recorded_labor::{
-    Book, Carry, FoldedPeriod, Handed, LaborId, LaborNode, LaborReceiptFamily, PeriodView,
-    ReceiptRef, ReceiptView, RecordedLaborError, MICROS_PER_HOUR,
+    Book, Carry, ClaimError, ClaimHours, FoldedPeriod, Handed, LaborId, LaborNode,
+    LaborReceiptFamily, Paid, PeriodView, Purses, ReceiptRef, ReceiptView, RecordedLaborError,
+    MICROS_PER_HOUR,
 };
 
 /// A goods move as the scene reads it: the receipt list and its index.
@@ -54,6 +57,8 @@ pub struct HouseholdHours {
     pub opening_micro_units: u128,
     /// Units that reached its home.
     pub units: u64,
+    /// Its back split by the claim; the four add up to `back_micro_hours`.
+    pub claims: ClaimHours,
 }
 
 /// One workplace's hours. `made_micro_hours`: the production edges into its own stock, as made. `handed_*`:
@@ -153,6 +158,7 @@ impl PeriodHours {
 pub(crate) struct HoursLedger {
     hours: Book,
     units: Book,
+    purses: Purses,
 }
 
 fn refused(period: u64, run: HoursRun) -> impl Fn(RecordedLaborError) -> RunnerError {
@@ -192,6 +198,8 @@ impl HoursLedger {
                 .map_err(refused(period, HoursRun::Hours))?,
             units: labor::opening_book(catalog, state, Carry::OpeningUnits)
                 .map_err(refused(period, HoursRun::OpeningUnits))?,
+            purses: Purses::open(state)
+                .map_err(|error| RunnerError::PurseNotBook { period, error })?,
         })
     }
 
@@ -213,6 +221,13 @@ impl HoursLedger {
         let units = labor::fold_period(&self.units, catalog, &view, Carry::OpeningUnits)
             .map_err(refused(period, HoursRun::OpeningUnits))?;
         same_moves(period, &hours.handed, &units.handed)?;
+        let mut purses = self.purses.clone();
+        let paid = purses
+            .follow(&transition.money_transfers)
+            .map_err(|error| RunnerError::ClaimRefused { period, error })?;
+        purses
+            .check(&transition.state)
+            .map_err(|error| RunnerError::PurseNotBook { period, error })?;
         let record = PeriodHours {
             hours: totals(&hours),
             opening_units: totals(&units),
@@ -228,6 +243,7 @@ impl HoursLedger {
             opening: &self.hours,
             hours: &hours,
             units: &units,
+            paid: &paid,
         };
         let households = reader.households()?;
         let workplaces = reader.workplaces()?;
@@ -235,6 +251,7 @@ impl HoursLedger {
         let next = Self {
             hours: hours.closing,
             units: units.closing,
+            purses,
         };
         Ok((
             next,
@@ -342,6 +359,12 @@ struct Reader<'a> {
     opening: &'a Book,
     hours: &'a FoldedPeriod,
     units: &'a FoldedPeriod,
+    /// What paid for each order this period.
+    paid: &'a Paid,
+}
+
+fn claim_refused(period: u64) -> impl Fn(ClaimError) -> RunnerError {
+    move |error| RunnerError::ClaimRefused { period, error }
 }
 
 fn workplace_of(id: LaborId) -> Option<Workplace> {
@@ -358,6 +381,26 @@ fn given_of(receipt: &MemberLaborUseReceipt) -> Option<u64> {
 }
 
 impl Reader<'_> {
+    /// The order that paid for what a hand-over brought to a household: its receipt's own.
+    fn order_of(&self, receipt: ReceiptRef) -> Result<OutboundOrderId, RunnerError> {
+        let period = self.period;
+        let ordinal = receipt.ordinal;
+        match receipt.family {
+            LaborReceiptFamily::LocalFulfillments => self
+                .transition
+                .local_fulfillments
+                .get(ordinal)
+                .map(|row| OutboundOrderId::LocalFinalDemand(row.order_id)),
+            LaborReceiptFamily::ServicePerformance => self
+                .transition
+                .service_performance
+                .get(ordinal)
+                .map(|row| OutboundOrderId::Service(row.order_id)),
+            _ => None,
+        }
+        .ok_or_else(|| unplaced(period, "a hand-over to a household by no order"))
+    }
+
     fn households(&self) -> Result<Vec<(Household, HouseholdHours)>, RunnerError> {
         let period = self.period;
         let mut rows: Vec<(Household, HouseholdHours)> = self
@@ -393,6 +436,25 @@ impl Reader<'_> {
                 units.basis.recorded_micro_hours,
             )?;
             plus_u64(period, &mut row.1.units, hours.quantity)?;
+            let order = self.order_of(hours.receipt)?;
+            let paid = self
+                .paid
+                .get(&order)
+                .ok_or_else(|| claim_refused(period)(ClaimError::UnknownOrder(order)))?;
+            let split = labor::split_hours(hours.basis.recorded_micro_hours, paid)
+                .map_err(claim_refused(period))?;
+            row.1.claims.add(split).map_err(claim_refused(period))?;
+        }
+        for (household, row) in &rows {
+            let claims = row.claims.total().map_err(claim_refused(period))?;
+            if claims != row.back_micro_hours {
+                return Err(RunnerError::ClaimsNotBack {
+                    period,
+                    household: *household,
+                    back: row.back_micro_hours,
+                    claims,
+                });
+            }
         }
         Ok(rows)
     }
@@ -526,9 +588,9 @@ mod tests {
     use crate::shocks::ShockBook;
     use babylon_kernel::currency::Currency;
     use babylon_material_circuit::{
-        self as engine, AgencyAttendanceInput, AgencyAttendanceOutcome,
-        AgencyObservationFundingReceipt, FinalDemandPrincipalId, OrganizationAccountId, ShiftId,
-        UnitId,
+        self as engine, AccountId, AgencyAttendanceInput, AgencyAttendanceOutcome,
+        AgencyObservationFundingReceipt, CashTransferPurpose, FinalDemandPrincipalId,
+        MoneyLocation, MoneyTransferPurpose, OrganizationAccountId, ShiftId, UnitId,
     };
     use std::error::Error;
 
@@ -659,5 +721,72 @@ mod tests {
             }
         );
         Ok(())
+    }
+
+    /// A real period whose profit is shared out last: with the last `OwnershipDistribution` to an owner taken
+    /// out of the list nothing draws on it later, so the purses follow and then differ from the book.
+    #[test]
+    fn a_purse_that_is_not_the_book_s_is_refused() -> TestResult {
+        let mut p = a_real_period()?;
+        let ledger = HoursLedger::open(&p.catalog, &p.state)?;
+        let last = p
+            .transition
+            .money_transfers
+            .iter()
+            .rposition(|transfer| {
+                transfer.purpose
+                    == MoneyTransferPurpose::Cash(CashTransferPurpose::OwnershipDistribution)
+                    && matches!(
+                        transfer.credit.location,
+                        MoneyLocation::Cash(AccountId::Household(_))
+                    )
+            })
+            .ok_or("no profit shared out to a household in the first period")?;
+        p.transition.money_transfers.remove(last);
+        let Err(error) = ledger.fold(&p.world, &p.catalog, &p.state, &p.transition) else {
+            return Err("a purse that is not the book's was folded".into());
+        };
+        assert!(
+            matches!(
+                error,
+                RunnerError::PurseNotBook {
+                    period: 1,
+                    error: ClaimError::PurseDiffers { .. }
+                }
+            ),
+            "{error:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_claim_refusals_are_told_in_words() {
+        let refused = RunnerError::ClaimRefused {
+            period: 3,
+            error: ClaimError::Overdrawn,
+        };
+        assert_eq!(
+            refused.to_string(),
+            "Period 3: the purses could not follow the money: more was drawn than the purse holds"
+        );
+        let differs = RunnerError::PurseNotBook {
+            period: 4,
+            error: ClaimError::Unpaid,
+        };
+        assert_eq!(
+            differs.to_string(),
+            "Period 4: the kinds of money are not the book's money: hours to split and no money that paid for them"
+        );
+        let household = Household::Owner(Place::A);
+        let not_back = RunnerError::ClaimsNotBack {
+            period: 5,
+            household,
+            back: 10,
+            claims: 9,
+        };
+        assert_eq!(
+            not_back.to_string(),
+            format!("Period 5: {household:?}'s back is 10 micro-hours, its claims add up to 9")
+        );
     }
 }

@@ -1,13 +1,13 @@
 //! Physical household gifts and actual voluntary handling time.
 use super::super::book::{Frame, Result};
 use super::super::model::{LaborNode, ReceiptRef, RecordedLaborError};
+use super::super::view::PeriodView;
 use crate::recorded_labor::LaborDisposition;
 use crate::recorded_labor::LaborReceiptFamily;
 use babylon_material_circuit::{
     AidFreightLot, AidOutcome, AidReceipt, AidTransport, CircuitAccounting, MaterialCatalog,
     MaterialCircuitState, OrderId,
 };
-use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
 
 fn lots(state: &MaterialCircuitState) -> BTreeMap<OrderId, &AidFreightLot> {
@@ -44,25 +44,21 @@ fn lot_for<'a>(
     Ok(lot)
 }
 
-pub(in super::super) fn aid_arrivals(
-    frame: &mut Frame,
-    before: &MaterialCircuitState,
-    receipts: &MaterialTickReceipts,
-) -> Result<()> {
-    if receipts.aid.is_empty() {
+pub(in super::super) fn aid_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+    if view.receipts.aid.is_empty() {
         return Ok(());
     }
-    let opening = lots(before);
+    let opening = lots(view.before);
     // The engine removes a stage loss before handing off the surviving portion.
     // Its receipt tape subsequently sorts by outcome and places Granted before Lost.
     for phase in [AidOutcome::Lost, AidOutcome::Granted] {
-        for (ordinal, row) in receipts.aid.iter().enumerate().filter(|(_, r)| {
+        for (ordinal, row) in view.receipts.aid.iter().enumerate().filter(|(_, r)| {
             r.outcome == phase && matches!(r.transport, AidTransport::Routed { .. })
         }) {
             let lot = lot_for(&opening, row)?;
-            if row.dispatch_period >= receipts.resolve_tick
-                || row.period != receipts.resolve_tick
-                || lot.stage_arrival_period != receipts.resolve_tick
+            if row.dispatch_period >= view.period
+                || row.period != view.period
+                || lot.stage_arrival_period != view.period
                 || row.quantity == 0
                 || row.contribution_hours != 0
             {
@@ -89,14 +85,14 @@ pub(in super::super) fn aid_arrivals(
 pub(in super::super) fn aid_dispatch(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
-    after: &MaterialCircuitState,
-    receipts: &MaterialTickReceipts,
+    view: &PeriodView<'_>,
 ) -> Result<()> {
-    if receipts.aid.is_empty() {
+    if view.receipts.aid.is_empty() {
         return Ok(());
     }
-    let closing = lots(after);
-    let mut sent: Vec<_> = receipts
+    let closing = lots(view.after);
+    let mut sent: Vec<_> = view
+        .receipts
         .aid
         .iter()
         .enumerate()
@@ -119,15 +115,14 @@ pub(in super::super) fn aid_dispatch(
             .map_err(|_| mismatch)?;
         let mandate = &catalog.aid_mandates[idx];
         row.validate_against(mandate).map_err(|_| mismatch)?;
-        if row.dispatch_period != receipts.resolve_tick || row.period != receipts.resolve_tick {
+        if row.dispatch_period != view.period || row.period != view.period {
             return Err(mismatch);
         }
         let target = match row.transport {
             AidTransport::Local => LaborNode::household(row.recipient, row.good_id, row.unit_id),
             AidTransport::Routed { .. } => {
                 let lot = lot_for(&closing, row)?;
-                if lot.quantity != row.quantity || lot.stage_arrival_period <= receipts.resolve_tick
-                {
+                if lot.quantity != row.quantity || lot.stage_arrival_period <= view.period {
                     return Err(mismatch);
                 }
                 LaborNode::freight(lot.lot_id)

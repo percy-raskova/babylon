@@ -3,12 +3,12 @@ use super::auxiliary;
 use super::book::{Frame, Result};
 use super::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
 use super::services;
+use super::view::PeriodView;
 use crate::recorded_labor::LaborReceiptFamily;
 use babylon_material_circuit::{
     CommodityKind, EquipmentWearReceipt, GoodId, MaintenanceReceipt, MaterialCatalog,
     ProcessOutput, ProductionReceipt, ServiceStage, UnitId,
 };
-use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
 
 pub(super) fn stage(
@@ -103,10 +103,10 @@ fn output(
 pub(super) fn execute(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
-    r: &MaterialTickReceipts,
+    view: &PeriodView<'_>,
 ) -> Result<()> {
     let mut phases = BTreeMap::new();
-    for (ordinal, row) in r.production.iter().enumerate() {
+    for (ordinal, row) in view.receipts.production.iter().enumerate() {
         let output = catalog
             .process_outputs
             .binary_search_by_key(&row.process_id, |o| o.process_id)
@@ -123,7 +123,7 @@ pub(super) fn execute(
         });
     }
     let mut wear = BTreeMap::new();
-    for (ordinal, row) in r.equipment_wear.iter().enumerate() {
+    for (ordinal, row) in view.receipts.equipment_wear.iter().enumerate() {
         wear.entry(row.process_id)
             .or_insert_with(Vec::new)
             .push((ordinal, row));
@@ -145,17 +145,17 @@ pub(super) fn execute(
                     catalog,
                     batch,
                     debit,
-                    r.maintenance.as_ref(),
+                    view.receipts.maintenance,
                     &cohorts,
                 )?;
             }
         }
         if let Some(phase) = phase {
-            services::handoff(frame, catalog, phase, r)?;
+            services::handoff(frame, catalog, phase, view)?;
         }
     }
     if !wear.is_empty() {
         return Err(RecordedLaborError::ReceiptMismatch("equipment_wear"));
     }
-    services::finish(frame, r)
+    services::finish(frame, view)
 }

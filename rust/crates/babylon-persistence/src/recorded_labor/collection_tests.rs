@@ -1,5 +1,6 @@
 //! Only committed household contributions count as collection work.
-use super::attendance;
+use super::household_work;
+use super::view::{self, PeriodView};
 use crate::production_projection::recurring_fixture;
 use crate::recorded_labor::book::{Book, Frame};
 use crate::recorded_labor::model::{
@@ -12,6 +13,19 @@ use babylon_material_circuit::{
     HouseholdContributionReceipt, HouseholdTimeAccounting, HouseholdTimeBook, MaterialCircuitState,
     OrganizationAccountId, UnitId,
 };
+use babylon_tick::material_world::MaterialTickReceipts;
+
+fn period_view<'a>(
+    state: &'a MaterialCircuitState,
+    receipts: &'a MaterialTickReceipts,
+) -> PeriodView<'a> {
+    PeriodView {
+        period: receipts.resolve_tick,
+        before: state,
+        after: state,
+        receipts: view::receipt_view(receipts, &[]),
+    }
+}
 
 fn funded_state() -> MaterialCircuitState {
     let (_, mut state) = recurring_fixture::materials();
@@ -59,7 +73,7 @@ fn collection_work_is_released_once_for_the_actual_contribution() {
     receipts.collections.push(row);
     let mismatch = RecordedLaborError::ReceiptMismatch("collections");
     assert_eq!(
-        attendance::collections(&mut frame, &closing, &receipts),
+        household_work::collections(&mut frame, &period_view(&closing, &receipts)),
         Err(mismatch)
     );
     let CircuitAccounting::Monetary(e) = &mut closing.accounting else {
@@ -72,7 +86,8 @@ fn collection_work_is_released_once_for_the_actual_contribution() {
         period: 1,
         contribution,
     });
-    attendance::collections(&mut frame, &closing, &receipts).expect("performed partial collection");
+    household_work::collections(&mut frame, &period_view(&closing, &receipts))
+        .expect("performed partial collection");
     let [edge] = frame.edges.as_slice() else {
         panic!("exactly one edge for performed work");
     };
@@ -104,11 +119,12 @@ fn refused_collection_records_no_work_and_rejects_fabricated_hours() {
     row.transfer_ordinal = None;
     row.contribution_use_id = [0; 32];
     receipts.collections.push(row);
-    attendance::collections(&mut frame, &closing, &receipts).expect("refused gift");
+    household_work::collections(&mut frame, &period_view(&closing, &receipts))
+        .expect("refused gift");
     receipts.collections[0].performed_hours = 2;
     let mismatch = RecordedLaborError::ReceiptMismatch("collections");
     assert_eq!(
-        attendance::collections(&mut frame, &closing, &receipts),
+        household_work::collections(&mut frame, &period_view(&closing, &receipts)),
         Err(mismatch)
     );
     assert_eq!(frame.edges, [] as [LaborEdge; 0]);

@@ -1,15 +1,11 @@
 //! Member attendance and household time are physical records independent of their cash treatment.
-use super::book::{Frame, Result};
+use super::book::Result;
 use super::model::{
-    LaborId, LaborNode, ReceiptRef, RecordedAttendance, RecordedHouseholdTime, RecordedLaborError,
+    LaborId, ReceiptRef, RecordedAttendance, RecordedHouseholdTime, RecordedLaborError,
 };
 use crate::production_projection;
-use crate::recorded_labor::LaborDisposition;
 use crate::recorded_labor::LaborReceiptFamily;
-use babylon_material_circuit::{
-    CircuitAccounting, HouseholdTimeAccounting, LaborCompensation, MaterialCatalog,
-    MaterialCircuitState,
-};
+use babylon_material_circuit::{LaborCompensation, MaterialCatalog, MaterialCircuitState};
 use babylon_tick::material_world::MaterialTickReceipts;
 
 use super::RecordedCompensation;
@@ -70,59 +66,4 @@ pub(super) fn household_time(r: &MaterialTickReceipts) -> Result<Vec<RecordedHou
             })
         })
         .collect()
-}
-
-pub(super) fn agency_observations(frame: &mut Frame, r: &MaterialTickReceipts) -> Result<()> {
-    for (ordinal, row) in r.agency_paid.iter().enumerate() {
-        let basis = frame.direct(
-            LaborNode::household_work(row.principal_id, row.labor_unit_id),
-            LaborNode::sink(LaborDisposition::AgencyObservation),
-            row.hours,
-            ReceiptRef::new(LaborReceiptFamily::AgencyPaid, ordinal),
-        )?;
-        frame.release_basis(basis)?;
-    }
-    Ok(())
-}
-
-/// The cash gift consumes an identified household contribution without creating a carried good.
-pub(super) fn collections(
-    frame: &mut Frame,
-    after: &MaterialCircuitState,
-    r: &MaterialTickReceipts,
-) -> Result<()> {
-    let mismatch = RecordedLaborError::ReceiptMismatch("collections");
-    let row = match r.collections.as_slice() {
-        [] => return Ok(()),
-        [row] => row,
-        _ => return Err(mismatch),
-    };
-    row.validate().map_err(|_| mismatch)?;
-    if row.period != r.resolve_tick {
-        return Err(mismatch);
-    }
-    let CircuitAccounting::Monetary(e) = &after.accounting else {
-        return Err(mismatch);
-    };
-    let HouseholdTimeAccounting::Modeled(book) = &e.household_time else {
-        return Err(mismatch);
-    };
-    let Some(usage) = row.contribution_use() else {
-        return Ok(());
-    };
-    let index = book
-        .contributions
-        .binary_search_by_key(&usage.use_id, |actual| actual.contribution.use_id)
-        .map_err(|_| mismatch)?;
-    let actual = &book.contributions[index];
-    if actual.period != row.period || actual.contribution != usage {
-        return Err(mismatch);
-    }
-    let basis = frame.direct(
-        LaborNode::household_work(row.donor, row.labor_unit_id),
-        LaborNode::sink(LaborDisposition::OrganizerCashCollection),
-        usage.hours,
-        ReceiptRef::new(LaborReceiptFamily::Collections, 0),
-    )?;
-    frame.release_basis(basis)
 }

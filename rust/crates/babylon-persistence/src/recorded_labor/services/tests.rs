@@ -3,12 +3,27 @@ use super::close;
 use crate::production_projection::recurring_fixture;
 use crate::recorded_labor::book::{Book, Frame};
 use crate::recorded_labor::model::{LaborBasis, LaborNode, RecordedLaborError};
+use crate::recorded_labor::view::{self, PeriodView};
 use crate::test_support;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, CommodityKind, FinalDemandPrincipalId, HouseholdServiceReceipt, MaterialCatalog,
-    OrderId, ProcessOutput, ServiceOutputReceipt, ServicePerformanceReceipt, ServiceStage,
+    MaterialCircuitState, OrderId, ProcessOutput, ServiceOutputReceipt, ServicePerformanceReceipt,
+    ServiceStage,
 };
+use babylon_tick::material_world::MaterialTickReceipts;
+
+fn period_view<'a>(
+    state: &'a MaterialCircuitState,
+    receipts: &'a MaterialTickReceipts,
+) -> PeriodView<'a> {
+    PeriodView {
+        period: receipts.resolve_tick,
+        before: state,
+        after: state,
+        receipts: view::receipt_view(receipts, &[]),
+    }
+}
 
 fn grant(
     output: &ProcessOutput,
@@ -36,7 +51,7 @@ fn grant(
 
 #[test]
 fn service_hours_follow_performance_and_exclude_unperformed_claims() {
-    let (catalog, _) = recurring_fixture::materials();
+    let (catalog, state) = recurring_fixture::materials();
     let mut definition = catalog.into_definition();
     let product = definition.process_outputs[0].clone();
     let user = definition.process_outputs[1].site_id;
@@ -94,13 +109,13 @@ fn service_hours_follow_performance_and_exclude_unperformed_claims() {
         unmet_quantity: 0,
         unused_quantity: 1,
     });
-    close::handoff(&mut frame, &catalog, phase, &receipts)
+    close::handoff(&mut frame, &catalog, phase, &period_view(&state, &receipts))
         .expect("settled performance and unallocated expiry");
     assert_eq!(frame.book[&consumer].basis.recorded_micro_hours, 6);
     assert_eq!(frame.book[&household_node].basis.recorded_micro_hours, 8);
     assert_eq!(frame.released_micro_hours, 3);
     assert_eq!(
-        close::finish(&mut frame, &receipts),
+        close::finish(&mut frame, &period_view(&state, &receipts)),
         Err(RecordedLaborError::ReceiptMismatch("service use"))
     );
     let embodied = frame
@@ -113,7 +128,8 @@ fn service_hours_follow_performance_and_exclude_unperformed_claims() {
             unknown_opening: true
         }
     );
-    close::finish(&mut frame, &receipts).expect("household use and unused grants");
+    close::finish(&mut frame, &period_view(&state, &receipts))
+        .expect("household use and unused grants");
     assert!(frame.book.is_empty());
     assert_eq!(frame.released_micro_hours, 13);
     assert_eq!(frame.direct_micro_hours, 0);

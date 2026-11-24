@@ -1,34 +1,30 @@
 //! Recorded commercial lots and retail deliveries; destination credits follow the physical phases.
 use super::book::{Frame, Result};
 use super::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
+use super::view::{PeriodView, ReceiptView};
 use crate::recorded_labor::LaborDisposition;
 use crate::recorded_labor::LaborReceiptFamily;
 use babylon_material_circuit::{
-    CircuitAccounting, MaterialCatalog, MaterialCircuitState, MerchantHandlingReceipt, OrderId,
-    OutboundOrderId, SiteId, UnitId,
+    CircuitAccounting, MaterialCatalog, MerchantHandlingReceipt, OrderId, OutboundOrderId, SiteId,
+    UnitId,
 };
-use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn freight_arrivals(
-    frame: &mut Frame,
-    before: &MaterialCircuitState,
-    after: &MaterialCircuitState,
-    r: &MaterialTickReceipts,
-) -> Result<()> {
-    let closing: BTreeSet<_> = after.freight.iter().map(|lot| lot.lot_id).collect();
-    let mut losses: BTreeMap<_, _> = r
+pub(super) fn freight_arrivals(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+    let closing: BTreeSet<_> = view.after.freight.iter().map(|lot| lot.lot_id).collect();
+    let mut losses: BTreeMap<_, _> = view
+        .receipts
         .losses
         .iter()
         .enumerate()
         .map(|(i, loss)| (loss.lot_id, (i, loss)))
         .collect();
-    let mut arrivals = r.arrivals.iter().enumerate();
-    if losses.len() != r.losses.len() {
+    let mut arrivals = view.receipts.arrivals.iter().enumerate();
+    if losses.len() != view.receipts.losses.len() {
         return Err(RecordedLaborError::ReceiptMismatch("losses"));
     }
-    for lot in &before.freight {
-        if lot.stage_arrival_period != r.resolve_tick {
+    for lot in &view.before.freight {
+        if lot.stage_arrival_period != view.period {
             continue;
         }
         let node = LaborNode::freight(lot.lot_id);
@@ -110,14 +106,14 @@ struct Handling<'a> {
     rows: BTreeMap<OutboundOrderId, (usize, &'a MerchantHandlingReceipt)>,
 }
 impl<'a> Handling<'a> {
-    fn new(catalog: &MaterialCatalog, r: &'a MaterialTickReceipts) -> Result<Self> {
+    fn new(catalog: &MaterialCatalog, receipts: &ReceiptView<'a>) -> Result<Self> {
         let units = catalog
             .merchants
             .iter()
             .map(|row| (row.site_id, row.labor_unit_id))
             .collect();
         let mut rows = BTreeMap::new();
-        for (ordinal, row) in r.handling.iter().enumerate() {
+        for (ordinal, row) in receipts.handling.iter().enumerate() {
             if row.handled_quantity == 0 {
                 if row.used_hours != 0 {
                     return Err(RecordedLaborError::InvalidAttendance);
@@ -130,17 +126,14 @@ impl<'a> Handling<'a> {
     }
 }
 
-fn suppliers(
-    after: &MaterialCircuitState,
-    r: &MaterialTickReceipts,
-) -> Result<BTreeMap<OrderId, Handoff>> {
-    let lots: BTreeMap<_, _> = after.freight.iter().map(|l| (l.lot_id, l)).collect();
+fn suppliers(view: &PeriodView<'_>) -> Result<BTreeMap<OrderId, Handoff>> {
+    let lots: BTreeMap<_, _> = view.after.freight.iter().map(|l| (l.lot_id, l)).collect();
     let mut supplies = BTreeMap::new();
-    for (i, row) in r.dispatches.iter().enumerate() {
+    for (i, row) in view.receipts.dispatches.iter().enumerate() {
         let lot = lots
             .get(&row.lot_id)
             .ok_or(RecordedLaborError::ReceiptMismatch("dispatches"))?;
-        if lot.dispatch_period != r.resolve_tick
+        if lot.dispatch_period != view.period
             || lot.order_id != row.order_id
             || lot.quantity != row.quantity
             || lot.route_id != row.route_id
@@ -159,7 +152,7 @@ fn suppliers(
             return Err(RecordedLaborError::ReceiptMismatch("dispatches"));
         }
     }
-    for (i, row) in r.local_transfers.iter().enumerate() {
+    for (i, row) in view.receipts.local_transfers.iter().enumerate() {
         let m = Handoff {
             order: OutboundOrderId::Delivery(row.order_id),
             site: row.supplier_site_id,
@@ -177,13 +170,12 @@ fn suppliers(
 pub(super) fn outbound(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
-    before: &MaterialCircuitState,
-    after: &MaterialCircuitState,
-    r: &MaterialTickReceipts,
+    view: &PeriodView<'_>,
 ) -> Result<()> {
-    let supplies = suppliers(after, r)?;
-    let mut handling = Handling::new(catalog, r)?;
-    let new: BTreeSet<_> = r
+    let supplies = suppliers(view)?;
+    let mut handling = Handling::new(catalog, &view.receipts)?;
+    let new: BTreeSet<_> = view
+        .receipts
         .procurement
         .iter()
         .filter(|p| p.admitted_quantity > 0)
@@ -199,7 +191,7 @@ pub(super) fn outbound(
         }
     }
     let mut pantry = BTreeSet::new();
-    if let CircuitAccounting::Monetary(e) = &before.accounting {
+    if let CircuitAccounting::Monetary(e) = &view.before.accounting {
         if let Some(recurring) = &e.recurring {
             pantry.extend(
                 recurring
@@ -209,7 +201,7 @@ pub(super) fn outbound(
             );
         }
     }
-    for (i, row) in r.local_fulfillments.iter().enumerate() {
+    for (i, row) in view.receipts.local_fulfillments.iter().enumerate() {
         let source = LaborNode::site(row.retailer_site_id, row.good_id, row.unit_id);
         let target = LaborNode::household(row.demand_principal_id, row.good_id, row.unit_id);
         let receipt = ReceiptRef::new(LaborReceiptFamily::LocalFulfillments, i);
@@ -246,10 +238,10 @@ pub(super) fn outbound(
     Ok(())
 }
 
-pub(super) fn consume(frame: &mut Frame, r: &MaterialTickReceipts) -> Result<()> {
-    for (i, row) in r.household_consumption.iter().enumerate() {
+pub(super) fn consume(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
+    for (i, row) in view.receipts.household_consumption.iter().enumerate() {
         let stock = LaborNode::household(row.principal_id, row.good_id, row.unit_id);
-        if row.period != r.resolve_tick || frame.quantity(stock) != row.available_quantity {
+        if row.period != view.period || frame.quantity(stock) != row.available_quantity {
             return Err(RecordedLaborError::ReceiptMismatch("household_consumption"));
         }
         frame.release(

@@ -9,11 +9,13 @@ mod checkpoint;
 mod circulation;
 #[cfg(test)]
 mod collection_tests;
+mod household_work;
 mod identities;
 mod model;
 mod period;
 mod production;
 mod services;
+mod view;
 
 pub use checkpoint::RecordedLaborCheckpoint;
 pub use identities::{RecordedAsset, RecordedAssetIdentity};
@@ -28,3 +30,5 @@ mod tests;
 
 #[cfg(test)]
 mod checkpoint_tests;
+#[cfg(test)]
+mod stored_form_tests;

@@ -1,6 +1,7 @@
 //! Installation work in progress, maintenance service and equipment wear.
 use super::super::book::{Frame, Result};
 use super::super::model::{LaborBasis, LaborNode, ReceiptRef, RecordedLaborError};
+use super::super::view::PeriodView;
 use crate::recorded_labor::LaborDisposition;
 use crate::recorded_labor::LaborReceiptFamily;
 
@@ -8,7 +9,6 @@ use babylon_material_circuit::{
     EquipmentCohortId, EquipmentDefinition, EquipmentWearReceipt, InstallationReceipt,
     MaintenanceReceipt, MaterialCatalog, MaterialCircuitState, ProcessId, ProductiveEquipment,
 };
-use babylon_tick::material_world::MaterialTickReceipts;
 
 pub(in super::super) fn productive_assets(
     frame: &mut Frame,
@@ -60,31 +60,29 @@ pub(in super::super) fn productive_assets(
 pub(in super::super) fn maintenance_and_installation(
     frame: &mut Frame,
     catalog: &MaterialCatalog,
-    after: &MaterialCircuitState,
-    receipts: &MaterialTickReceipts,
+    view: &PeriodView<'_>,
 ) -> Result<()> {
+    let after = view.after;
     match (
         &catalog.maintenance_binding,
-        &receipts.maintenance,
+        view.receipts.maintenance,
         after.maintenance_service,
     ) {
         (None, None, None) => {}
         (Some(binding), Some(row), Some(next))
-            if *binding == row.binding
-                && next == row.next_service
-                && row.period == receipts.resolve_tick =>
+            if *binding == row.binding && next == row.next_service && row.period == view.period =>
         {
             maintenance_close(frame, row)?;
         }
         _ => return Err(RecordedLaborError::ReceiptMismatch("maintenance service")),
     }
-    if !receipts.installation.is_empty() {
+    if !view.receipts.installation.is_empty() {
         let content = catalog
             .equipment_content()
             .ok_or(RecordedLaborError::ReceiptMismatch(
                 "installation definition",
             ))?;
-        for (ordinal, row) in receipts.installation.iter().enumerate() {
+        for (ordinal, row) in view.receipts.installation.iter().enumerate() {
             installation(
                 frame,
                 content,

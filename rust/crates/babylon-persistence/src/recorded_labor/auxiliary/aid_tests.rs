@@ -3,13 +3,27 @@ use super::aid;
 use crate::production_projection::recurring_fixture;
 use crate::recorded_labor::book::{Book, Frame};
 use crate::recorded_labor::model::{LaborBasis, LaborNode};
+use crate::recorded_labor::view::{self, PeriodView};
 use crate::test_support;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, AidFreightLot, AidMandate, AidOutcome, AidReceipt, AidReceiving, AidTransport,
     CircuitAccounting, FinalDemandPrincipalId, FreightLotId, MaterialCatalog,
-    MaterialCatalogDefinition, UnitId,
+    MaterialCatalogDefinition, MaterialCircuitState, UnitId,
 };
+use babylon_tick::material_world::MaterialTickReceipts;
+
+fn period_view<'a>(
+    state: &'a MaterialCircuitState,
+    receipts: &'a MaterialTickReceipts,
+) -> PeriodView<'a> {
+    PeriodView {
+        period: receipts.resolve_tick,
+        before: state,
+        after: state,
+        receipts: view::receipt_view(receipts, &[]),
+    }
+}
 
 fn routed_mandate(definition: &MaterialCatalogDefinition) -> AidMandate {
     let stage = &definition.route_stages[0];
@@ -118,7 +132,7 @@ fn partial_aid_loss_moves_the_remaining_food_and_fulfillment_hours_to_the_recipi
         contribution_hours: 6,
     };
     receipts.aid = vec![actual.clone()];
-    aid::aid_dispatch(&mut frame, &catalog, &state, &receipts)
+    aid::aid_dispatch(&mut frame, &catalog, &period_view(&state, &receipts))
         .expect("three packages and six actual fulfillment hours");
     assert_eq!(frame.book[&source].basis.recorded_micro_hours, 2);
     assert_eq!(
@@ -136,7 +150,8 @@ fn partial_aid_loss_moves_the_remaining_food_and_fulfillment_hours_to_the_recipi
     lost.quantity = 1;
     receipts.resolve_tick = 2;
     receipts.aid = vec![actual, lost];
-    aid::aid_arrivals(&mut frame, &state, &receipts).expect("stage loss followed by handoff");
+    aid::aid_arrivals(&mut frame, &period_view(&state, &receipts))
+        .expect("stage loss followed by handoff");
     assert_eq!(frame.direct_micro_hours, 6_000_000);
     assert_eq!(frame.released_micro_hours, 2_000_001);
     assert_eq!(

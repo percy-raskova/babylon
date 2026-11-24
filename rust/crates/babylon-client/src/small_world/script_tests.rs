@@ -186,8 +186,8 @@ fn the_script_names_tabs_picks_and_beats() {
         (r#"{"lower":"table"}"#, "table"),
         (r#"{"pick":"household:19"}"#, "household:19"),
         (r#"{"pick":"workplace:c:farm"}"#, "workplace:c:farm"),
-        (r#"{"beat_millis":5}"#, "5"),
-        (r#"{"beat_millis":5000}"#, "5000"),
+        (r#"{"beat_millis":5}"#, "not 5"),
+        (r#"{"beat_millis":5000}"#, "not 5000"),
     ] {
         let refused = script::parse_script(&format!("{{\"step\":1}}\n{bad}"));
         assert!(

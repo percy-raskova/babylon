@@ -578,8 +578,8 @@ fn stand(
 }
 
 /// People: a worker household's employed persons cluster at its workplace's wage anchor, its
-/// other persons at the point its benefits give (or home); owners and supported persons cluster
-/// at their group's point. Then every person is spread.
+/// other persons at the point its benefits give (or their place's idle ground); owners and
+/// supported persons cluster at their group's point. Then every person is spread.
 fn stand_people(
     groups: &BTreeMap<Household, Point>,
     benefits: &Paid,
@@ -1127,6 +1127,20 @@ mod tests {
 
     fn near(a: Vec3, b: Vec3) -> bool {
         a.distance(b) < 1e-5
+    }
+
+    #[test]
+    fn people_out_of_work_and_unsupported_stand_at_their_place_s_idle_ground() -> TestResult {
+        let clinic_a = Household::Workers(Workplace {
+            place: Place::A,
+            kind: Kind::Clinic,
+        });
+        assert_eq!(idle_of(&Paid::new(), clinic_a)?, layout::IDLE_GROUND[0]);
+        assert_ne!(layout::IDLE_GROUND[0], layout::home_of(clinic_a));
+        let mut benefits = Paid::new();
+        benefits.insert(clinic_a, vec![(layout::FUND_ANCHOR, 1.0)]);
+        assert_eq!(idle_of(&benefits, clinic_a)?, layout::FUND_ANCHOR);
+        Ok(())
     }
 
     #[test]

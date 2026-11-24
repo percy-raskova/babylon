@@ -653,23 +653,23 @@ fn advance(&mut self) -> Result<Stepped, RunnerError> {
     let requests = closed.staffing_requests(catalog, &self.bindings)?;         // as today
     let (staffed, transition) = /* as today, run.rs:367-393: the fight always takes the seekers' arm */;
     check_conserved(period, &self.opening, &transition.state, (..), seeking)?; // as today
-    let (ledger, hours) = /* stored hours, Task 3: fold when self.hours is Some */;
+    let (hours, record) = self.fold_hours(catalog, &transition)?;             // stored hours, as built
     let state_digest = engine::material_circuit_state_digest(catalog, &transition.state)?;
     let (closing, summary) = read_closing(period, &figures, &transition, staffed.employed, staffed.reserve)?;
     let receipts = take_receipts(&transition);            // gains `orders: transition.orders.clone()`
     let mut result = PeriodResult { period, figures, rules, members: staffed.members, closing, summary,
-        state_digest, asked: staffed.asked, receipts, hours, fight: None };
+        state_digest, asked: staffed.asked, receipts, hours: record, fight: None };
     let book = match decided {                            // step 1 of this close reads the result so far
         None => None,
         Some(d) => {
             let view = ClosedView { period, result: &result, history: &self.history, state: &transition.state };
-            let (book, record) = fight::close(d, &view).map_err(|error| RunnerError::Fight { period, error })?;
-            result.fight = Some(record);
+            let (book, fought) = fight::close(d, &view).map_err(|error| RunnerError::Fight { period, error })?;
+            result.fight = Some(fought);
             Some(book)
         }
     };
     Ok(Stepped { result, state: transition.state, staffing: staffed.staffing, members: staffed.kept,
-        standing: staffed.standing, hours: ledger, fight: book })
+        standing: staffed.standing, hours, fight: book })
 }
 ```
 
@@ -721,13 +721,17 @@ What PF17 (Part Two, task P2-7) needs, in the stored-hours plan's names: the run
 `PeriodHours::household(Household) -> Option<&HouseholdHours>`; `HouseholdHours.clock: u64` (hours on the
 clock, whole, `attended_hours`), `HouseholdHours.claims: ClaimHours { work, owning, support, not_recorded }`
 (micro-hours, `work` = hours back for work). "Hours beyond the clock" has no name there: the bribe is counted
-only by the test `no_group_s_back_for_work_passes_its_clock` (`W/../tests/hours.rs`, over the run so far).
+only by two tests, `no_group_s_back_for_work_passes_its_clock` (`W/../tests/hours.rs`, over the run so far)
+and the bench's `hours_fold_every_reference_run` (`sets.rs`, over `Form::ALL`); the runner does not refuse it.
 PF17 derives it in `W/fight/payer.rs` over a span of six periods as `max(0, sum(claims.work) - 1_000_000 *
 sum(clock))`, and each figure "for one person on the clock" over the span's persons on the clock, the sum of
 the household's members' `opening_employed` (`PeriodResult.members`). Spans: the six periods before the
 stoppage began and the six after the win. Call 24 amends the stored-hours test for runs with a win: that test
 runs worlds with no fight, so the amendment is a sentence of the stored-hours design and a guard that
-`hours_fold_every_reference_run` folds no fight world.
+`hours_fold_every_reference_run` folds no fight world: `Form::ALL` holds neither `Form::Fight` nor
+`Form::Offered` (Task 9's `the_fight_form_is_down_with_the_fight`). In Part One a fight is folded by Task 2's
+`a_fight_world_folds_its_payments`, by Task 8's `a_fight_in_the_slump_folds_its_hours` and by Task 9's count,
+which also counts the groups past their clock.
 
 ### Notes for the engine's tasks (1, 3, 4, 5)
 
@@ -1499,7 +1503,10 @@ the runner calls `fight::decide(..)`.
 
     Assert: the shop's workers' `claims.support > 0`, `claims.work > claims.support` ($400 of wages against $100
     of support in its purse), `claims.owning == 0`, `claims.not_recorded == 0`, and the four add up to
-    `back_micro_hours`. The same close with `PeriodOrders::none(1)` gives `claims.support == 0`.
+    `back_micro_hours`. The same close with `PeriodOrders::none(1)` gives `claims.support == 0`. The same close
+    with the payment and a `WageShareOrder { payer: shop_a.principal(), organization: slot 0, share_bps: 1_000 }`
+    folds too, with the same four checks: Part One's `decide` orders no payment of either kind, so this test is
+    the only fold of both before Part Two.
 - [ ] **Step 4: Run them and see them fail:** `mise run rust:test:q -- -p babylon-circuit-worlds -E 'test(fight) |
   test(folds_its_payments) | test(step_of_pay)'`. Expected: does not compile (no `Fight`, no `with_fight`, no field
   `fight`, no `organization_account`). Step 1's test is not among the failures once the rest compiles.
@@ -1539,13 +1546,15 @@ the runner calls `fight::decide(..)`.
       last: self.history.last(), history: &self.history }).map_err(|error| RunnerError::Fight { period, error })?) };
   // close: `None` keeps run.rs:358-363 exactly; `Some(d)` calls close_material_period_with_orders(catalog,
   // &self.state, stop_on.then_some(&self.standing), &d.orders).map_err(|e| ordered_error(period, e))?
-  // ... staffing, check_conserved, stored hours' fold, digest, read_closing: as today ...
+  // ... staffing, check_conserved, stored hours' fold, digest, read_closing: as today. The fold is
+  // `let (hours, record) = self.fold_hours(catalog, &transition)?;`: `hours` is the ledger, `record` the
+  // period's record of hours.
   let mut result = PeriodResult { period, figures, rules, members: staffed.members, closing, summary,
-      state_digest, asked: staffed.asked, receipts: take_receipts(&transition), hours, fight: None };
+      state_digest, asked: staffed.asked, receipts: take_receipts(&transition), hours: record, fight: None };
   let book = match decided { None => None, Some(d) => {
-      let (book, record) = fight::close(d, &ClosedView { period, result: &result, history: &self.history,
+      let (book, fought) = fight::close(d, &ClosedView { period, result: &result, history: &self.history,
           state: &transition.state }).map_err(|error| RunnerError::Fight { period, error })?;
-      result.fight = Some(record);
+      result.fight = Some(fought);
       Some(book) } };
   ```
 
@@ -1560,7 +1569,9 @@ the runner calls `fight::decide(..)`.
 - [ ] **Step 10: Run them and see them pass:** the command of Step 4, then `mise run rust:test:q -- -p
   babylon-circuit-worlds`. Expected: all pass, Step 1's pins unchanged.
 - [ ] **Run the gate:** the small worlds' gate; then, in the background, the 14 long tests and
-  `hours_fold_every_reference_run`. Expected: 25 of 25 in each `reproduces_` set; the hours fold passes.
+  `hours_fold_every_reference_run`. Expected: 25 of 25 in each `reproduces_` set; the hours fold passes. It folds
+  no fight world (`Form::ALL`): in Part One a fight is folded by `a_fight_world_folds_its_payments`, by Task 8's
+  `fund_p2_fight` runs and by Task 9's count.
 - [ ] **Commit** the subject above. The body says: a world asks for the fight at its opening and opens the
   accounts it asks for and 16 kept for founding, with their locations; a world that does not ask keeps every byte
   (the two pinned digests, the 14 long tests); the runner decides before the close and closes with the orders
@@ -3859,8 +3870,18 @@ for offer in book.offers_for(view.period) {             // Workplace::ALL order
     period 23 (`within_year(23) == 0`) it is `Stop` again.
   - `the_quiet_fight_world_stays_still`: 34 steps of `World::scene_with_fight()`: every summary equals period 1's;
     every `fight.orders` is empty; every decision is a `Stop` decision with `choice: Work`.
-  - On `fund_p2_fight()` = `down_fund_p2(Fight::Asked(none()))`, 120 steps each
-    `Ok` (the runner refuses money or people not conserved):
+  - On `fund_p2_fight()` = `down_fund_p2(Fight::Asked(none()))`, opened with `Runner::open_world_with_hours`,
+    120 steps each `Ok`: the runner refuses money or people not conserved, and a period the hours ledger cannot
+    place. The scene opens a fight with hours, so these runs are where the ledger first folds a rate that
+    changed, hours withheld, hours above the rolls and places taken; nothing else does before the real display.
+    - `a_fight_in_the_slump_folds_its_hours`: every period's `hours` is `Some` and keeps the four laws that
+      `tests/hours.rs`'s `check_period` asserts, written again as a private helper of `tests/fight.rs`: for both
+      totals `opening + direct == closing + released`; `hours.hours.direct` is 1,000,000 times the hours given
+      by all households; given by household equals given by workplace; each place's `back + held_closing + left
+      == given + held_opening`. It asserts nothing about a group and its clock: with a won rise a group may pass
+      it, which is counted in Task 9 and shown in Part Two (F9, PF17), never refused. If the ledger refuses a
+      period or a law fails, do not mend the ledger and do not bend the test: report the period, the error or the
+      law, and the receipts that disagree.
     - `a_won_rate_s_first_period_in_the_slump` (Review Focus 1): count the `RateReceipt`s with `new_rate >
       old_rate`, those of them whose site has a `LaborUseReceipt` with `unfunded_hours > 0` in the same period,
       and those whose site has an `AdjustmentReceipt::Stop` with `hold: Held` in the same period; print the three
@@ -4520,7 +4541,10 @@ Commit `test(material-circuit): the later slump counted with the pay fight`.
 
 Consumes: everything of Part One: `World::with_fight`, `FightOpening`, `PeriodResult.fight`, `PeriodFight`'s
 fields, `Stoppage`, `StoppageEnd`, `HouseholdDecision`, `StopChoice`, and in `receipts.orders` the receipts of
-Tasks 3 to 5.
+Tasks 3 to 5. From stored hours (its Tasks 3 and 4, as built): `Runner::open_world_with_hours`,
+`PeriodResult.hours: Option<PeriodHours>`, `PeriodHours::household(Household) -> Option<&HouseholdHours>`,
+`HouseholdHours.clock: u64` (whole hours on the clock) and `HouseholdHours.claims.work: u128` (micro-hours back
+for work).
 
 Produces:
 
@@ -4547,10 +4571,12 @@ impl FightCount { pub(crate) fn line(&self) -> String; pub(crate) const HEADER: 
 fn fight_counts_the_later_slump();
 ```
 
-`fight_count` opens both runs with `Runner::open_world` and strikes as `rows_and_digests` does
-(`TurnedOn::AtOpening`), steps each `periods` times, and panics on a refusal with the run's name, the scale and the
-period. It does not call `rows::rows`: the row writer's `account_name` refuses an organization account
-(rows.rs:44-58), and the fight run's book holds 16. A taker or a striker is named by `Household::label()`.
+`fight_count` opens the fight's run with `Runner::open_world_with_hours`, so the hours ledger folds every period
+of a fight, and the absent twin with `Runner::open_world` (stored hours' own long test folds the twins). It
+strikes as `rows_and_digests` does (`TurnedOn::AtOpening`), steps each `periods` times, and panics on a refusal
+with the run's name, the scale and the period. It does not call `rows::rows`: the row writer's `account_name`
+refuses an organization account (rows.rs:44-58), and the fight run's book holds 16. A taker or a striker is named
+by `Household::label()`.
 
 **The columns, one line for each of the 25 runs at each figures (50 lines), tab-separated:**
 
@@ -4571,27 +4597,31 @@ period. It does not call `rows::rows`: the row writer's `account_name` refuses a
 | `low_clock`, `low_period` | the lowest sum of `summary.hours_attended` over the fight run, and its first period |
 | `back_400_per_100` | `clock_400 * 100 / clock_1` (whole); `absent_back_400_per_100` the same of the absent run |
 | `first_stoppage`, `last_end` | the period of the first stoppage begun; the last `ended` period (`-` when none) |
+| `past_clock` | household groups of the fight run whose hours back for work pass their hours on the clock, counted over the whole run: the sum of `claims.work` above 1,000,000 times the sum of `clock` (the measure of stored hours' `no_group_s_back_for_work_passes_its_clock`). Counted, never asserted |
 
 After the table, two blocks for the lead, each line naming its run and scale: `stopped <run> <scale> <period>
 <workplace> <household>:<persons> ...` for every stoppage begun (from `Stoppage.began` and its first `out`), and
 `took <run> <scale> <period> <taker> at <host> <persons> from <household>:<persons> ...` for every
 `StaffingOrderReceipt` (its `household_id`, `order.host_pool`, `moved` and `displaced` by member, each member
-named by its household).
+named by its household). A third block, `past <run> <scale> <household> <work micro-hours> <clock hours>`, has
+one line for every group counted in `past_clock`.
 
 **The second table, `Form::Offered`**, one line for each of the same 25 runs at each figures, after the first
 table and its blocks, under its own header: `run`, `scale`, `rises_won`, `rise_micro`, `rises_unpaid`,
 `rises_held`, `clock_1`, `clock_200`, `clock_400`, `absent_200`, `absent_400`, `low_clock`, `low_period`,
-`back_400_per_100`, `absent_back_400_per_100`, and `steps_max` as the largest steps offered (from the
+`back_400_per_100`, `absent_back_400_per_100`, `past_clock` (with its `past` block), and `steps_max` as the
+largest steps offered (from the
 `RateReceipt`s: `(new_rate - old_rate)` over the workplace's `pay_step`, the most of the run). Each column reads
 as in the first table. The same `fight_count` gives it; the stoppage columns, which are 0 there, are left out.
 
 **What it asserts** (and only this): every step of every run is `Ok` (the runner refuses money or people not
-conserved, and any refusal of the orders); every `PeriodFight.orders_digest` equals
-`period_orders_digest(&orders)`; for `Form::Fight` only, every `RateReceipt` follows a `GaveWay` of the close
-before at its site; `Form::ALL` contains neither `Form::Fight` nor `Form::Offered`. **What it only prints:** everything
-in the table and the two blocks,
-for the lead to read with the Director. The 14 `reproduces_` sets are proved untouched by the gate, not by this
-test.
+conserved, any refusal of the orders, and in a fight's run a period the hours ledger cannot place); every
+`PeriodFight.orders_digest` equals `period_orders_digest(&orders)`; for `Form::Fight` only, every `RateReceipt`
+follows a `GaveWay` of the close before at its site; `Form::ALL` contains neither `Form::Fight` nor
+`Form::Offered`. **What it only prints:** everything in the tables and their blocks, for the lead to read with
+the Director. That includes the groups past their clock: a won rise may carry its winners past it, which F9
+judges and Part Two shows (PF17); it is no fault of a run. The 14 `reproduces_` sets are proved untouched by the
+gate, not by this test.
 
 - [ ] **Step 1: Write the failing test** in `sets.rs`: `fight_counts_the_later_slump`, `#[ignore]`, not named
   `reproduces_` so the long tests' filter does not take it. For `scale` in `[Scale::Small, Scale::National]`, zip
@@ -4615,8 +4645,9 @@ test.
   ```
 
   It steps 200 runs of 400 periods (`fight_count` steps a run and its absent twin, for the fight's table and for
-  the offered one, 25 of each at both figures), about the time of eight `reproduces_` sets; note the time in the
-  report. A failure names the run, the scale and the period: stop and report it, do not mend it here.
+  the offered one, 25 of each at both figures), about the time of eight `reproduces_` sets, and the 100 fight
+  runs fold their hours as well (stored hours' long test folds 350 such runs twice in about seven minutes); note
+  the time in the report. A failure names the run, the scale and the period: stop and report it, do not mend it here.
 - [ ] **Run the gate:** the small worlds' gate; then the 14 long tests in the background: 25 of 25 in each set.
 - [ ] **Commit** the subject above, without the log. The body says: the closest form with the fight asked for and
   no organization, and with rises offered at once (the bench's instrument), as forms outside `Form::ALL`; the
@@ -4767,6 +4798,10 @@ Numbered as the tasks cite them.
 18. Task 9 counts a second run that is no rule of the game (design call 47): `Employers::OfferAtOnce`, where what
     the people of a workplace would ask is offered at once. It tells whether rises that follow needs end the later
     slump, even if few stoppages win. It is never reachable from the scene.
+19. Task 9 opens its fight runs with the hours ledger and counts the household groups whose hours back for work
+    pass their hours on the clock over the run (`past_clock`). It is counted and never asserted: F9 judges a win
+    by the winners' hours, so the first count already tells on which side of the clock the winners stand. It also
+    puts a hundred fights through the ledger before part two is built on it.
 
 ### Confirmed for the engine's tasks
 
@@ -5241,5 +5276,36 @@ call, a contract, a founding, or the line under a win: they are Part Two's. Task
 
 ## What the reading against the built stored-hours code changed
 
-Nothing yet. The reading is owed before Task 1 starts: stored hours' Tasks 2 to 7 were not built when this plan
-was written.
+**The small worlds' part, read on 24 November against commit 1f50648dc** (stored hours' Tasks 2 to 4 built: the
+ledger's fold in a crate of its own, the runner's fold of every period, hours back split by the claim). One
+reader, reading only that commit. What it changed:
+
+1. **The fold's names in `advance`.** The built code reads `let (hours, record) = self.fold_hours(catalog,
+   &transition)?;`: `hours` is the ledger and `record` the period's record. The runner snippet of File Structure
+   and Task 2's Step 8 now write `hours: record` in `PeriodResult` and `hours` in `Stepped`, and the fight's own
+   record is named `fought`. As first written the snippets did not compile.
+2. **A fight is folded before the real display.** The scene opens a fight with hours; every runner test and the
+   bench opened it without. Task 8 gains `a_fight_in_the_slump_folds_its_hours` (the slump's fight opened with
+   hours, the four laws of a period on every period). Task 9 opens its fight runs with hours.
+3. **Task 2's fold test folds a wage share as well as a fund payment.** Part One's `decide` orders neither, so
+   that test is the only fold of both before Part Two.
+4. **Where the bribe is counted.** Two tests count it, not one: `no_group_s_back_for_work_passes_its_clock` and
+   the bench's `hours_fold_every_reference_run`. What keeps a fight world out of the second is that `Form::ALL`
+   holds neither `Form::Fight` nor `Form::Offered`. The runner refuses no group for it.
+5. **Task 9 counts the groups past their clock** (the lead's call 19): `past_clock` and its block, in both tables.
+
+**What the reader found right**, by reading the fold (`babylon-recorded-labor`) and the runner's `HoursLedger`:
+the ledger can place every receipt of the five acts and needs to learn nothing for Part One. It reads goods,
+stocks and money, never the rolls or a rate. A wage at a new rate is pay for work; hours withheld are simply not
+attended; hours above the rolls are given by the taker's household; a place taken moves nobody the ledger reads;
+`Cash(MutualAid)` into a household is support, and out of one it draws the purse. Two things it relies on are the
+engine tasks' to keep: each transfer's receipt goes into `money_transfers` in the order it is posted (Task 1),
+and a member receipt's payee is a household of the world (Task 5). One case the reader could not settle from the
+code: a handling row with nothing handled and hours used is refused (`InvalidAttendance`); whether a shop with all
+its hours withheld, or takers at a shop with nothing to handle, write one is seen in Task 8's new test.
+
+**The scene's part** (Tasks 2c to 8c) is read against the built scene after stored hours' Task 7, before Task 2c
+starts; this section is amended then.
+
+The table "Where this meets stored hours" was checked row by row for the small worlds and is true as written.
+The reader's report is kept with the lead's notes.

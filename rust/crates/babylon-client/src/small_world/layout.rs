@@ -5,7 +5,7 @@
 //! only (dollars as `f64`): no hour enters a position.
 
 use super::reading::{Party, PaymentKind};
-use babylon_circuit_worlds::Place;
+use babylon_circuit_worlds::{Household, Place, Workplace};
 use hypergraph_rs::geometry;
 use hypergraph_rs::geometry::GeometryError;
 use hypergraph_rs::geometry::Point;
@@ -32,8 +32,8 @@ pub const FUND_ANCHOR: Point = (2.2, 8.3);
 /// places' households are paid alike, so without it they stand on one point and the spread parts
 /// them on a slant; with it Place A's stands left of Place B's, 2 apart.
 pub const BENEFIT_LEAN: [f64; 2] = [-1.0, 1.0];
-/// Where a group paid by nobody this period stands, by `Place::index`.
-pub const HOME: [Point; 2] = [(-7.0, 6.0), (7.0, 6.0)];
+/// How far behind its workplace's wage anchor a workers' group paid by nobody stands (plan units, up).
+pub const UNPAID_BEHIND: f64 = 1.6;
 /// The least distance between two groups, and the steps of the spread.
 pub const GROUP_SPREAD: (f64, u32) = (1.6, 8);
 /// The least distance between two persons, and the steps of the spread.
@@ -84,14 +84,35 @@ pub fn anchor(kind: PaymentKind, payer: Party, place: Place) -> Option<Point> {
     }
 }
 
-/// The weighted mean of the anchors that paid a household, or the place's `HOME` when nobody did.
+/// Where a group paid by nobody this period stands. A workers' group: behind its own workplace's
+/// people, `(WORKPLACE_X[w.index()], WAGE_ANCHOR_Y + UNPAID_BEHIND)`. An owners' group: on the profit
+/// row under the middle of its place's four workplaces. A supported group: at the fund's anchor on
+/// its own side. No hour enters a home: it is a constant of the household.
+#[must_use]
+pub fn home_of(h: Household) -> Point {
+    match h {
+        Household::Workers(w) => (WORKPLACE_X[w.index()], WAGE_ANCHOR_Y + UNPAID_BEHIND),
+        Household::Owner(place) => {
+            let of_place: Vec<f64> = Workplace::ALL
+                .into_iter()
+                .filter(|w| w.place == place)
+                .map(|w| WORKPLACE_X[w.index()])
+                .collect();
+            let n = f64::from(u8::try_from(of_place.len()).unwrap_or(u8::MAX));
+            (of_place.iter().sum::<f64>() / n, PROFIT_ANCHOR_Y)
+        }
+        Household::Supported(place) => (FUND_ANCHOR.0 + BENEFIT_LEAN[place.index()], FUND_ANCHOR.1),
+    }
+}
+
+/// The weighted mean of the anchors that paid a household, or `home` when nobody did.
 ///
 /// # Errors
 /// `GeometryError` when a weight is negative or not finite.
-pub fn stand_at(place: Place, paid: &[(Point, f64)]) -> Result<Point, GeometryError> {
+pub fn stand_at(home: Point, paid: &[(Point, f64)]) -> Result<Point, GeometryError> {
     let anchors: Vec<Point> = paid.iter().map(|(at, _)| *at).collect();
     let weights: Vec<f64> = paid.iter().map(|(_, weight)| *weight).collect();
-    Ok(geometry::barycentre(&anchors, &weights)?.unwrap_or(HOME[place.index()]))
+    Ok(geometry::barycentre(&anchors, &weights)?.unwrap_or(home))
 }
 
 /// A cluster of `n` persons round a point: four across, rows going `+y`.
@@ -175,12 +196,28 @@ mod tests {
     }
 
     #[test]
-    fn a_group_paid_by_nobody_stands_at_home_and_one_paid_leans_to_the_larger_share() {
-        assert_eq!(stand_at(Place::B, &[]), Ok(HOME[1]));
+    fn a_group_paid_by_nobody_stands_at_its_own_home() {
+        let near = |a: Point, b: Point| (a.0 - b.0).abs() < 1e-12 && (a.1 - b.1).abs() < 1e-12;
+        assert!(near(home_of(Household::Workers(CLINIC_A)), (-5.4, 4.9)));
+        assert!(near(home_of(Household::Owner(Place::A)), (-6.8, -2.4)));
+        assert!(near(home_of(Household::Owner(Place::B)), (6.8, -2.4)));
+        assert!(near(home_of(Household::Supported(Place::A)), (1.2, 8.3)));
+        assert!(near(home_of(Household::Supported(Place::B)), (3.2, 8.3)));
+        for (k, a) in Household::ALL.into_iter().enumerate() {
+            assert_eq!(stand_at(home_of(a), &[]), Ok(home_of(a)));
+            for b in Household::ALL.into_iter().skip(k + 1) {
+                let (p, q) = (home_of(a), home_of(b));
+                assert!(
+                    (p.0 - q.0).hypot(p.1 - q.1) >= GROUP_SPREAD.0,
+                    "{a:?} and {b:?}"
+                );
+            }
+        }
         let paid = [(TREASURY_ANCHOR, 1.0), (FUND_ANCHOR, 3.0)];
-        let at = stand_at(Place::A, &paid).expect("finite weights");
+        let at = stand_at(home_of(Household::Supported(Place::A)), &paid).expect("finite weights");
         assert!((at.0 - 1.1).abs() < 1e-12 && (at.1 - 8.3).abs() < 1e-12);
-        assert!(stand_at(Place::A, &[(FUND_ANCHOR, -1.0)]).is_err());
+        let home = home_of(Household::Owner(Place::A));
+        assert!(stand_at(home, &[(FUND_ANCHOR, -1.0)]).is_err());
     }
 
     #[test]

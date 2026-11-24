@@ -4,7 +4,8 @@
 
 use super::frame::ParticleMode;
 use super::frame_time::{FrameTime, SceneFrameTimes};
-use super::panel::{self, ShockNotice};
+use super::inspect::{self, ScenePick};
+use super::panel::{self, Lower, ShockNotice};
 use super::rules::SceneRule;
 use super::scene::{SceneCommand, SceneRunner, SceneStatus};
 use babylon_circuit_worlds::{Lasts, PeriodResult, Place, Places, Shock, Workplace};
@@ -15,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error as FormatError, Formatter};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// The file the replies are appended to, in the script's folder.
 pub const REPLIES_FILE: &str = "replies.jsonl";
@@ -43,8 +46,21 @@ pub enum ScriptCommand {
     Capture(String),
     Report(String),
     WaitFrames(u32),
+    /// `{"lower":"shocks"}` or `{"lower":"rules"}`: what a click on that tab of the rail's lower part does.
+    Lower(String),
+    /// `{"pick":"<id>"}`: what a click on that body or particle picks. `household:N` or `person:N:k`
+    /// (N is 11 to 18 for the workers of utility A, utility B, farm A, farm B, clinic A, clinic B,
+    /// shop A, shop B; 20 and 21 the owners of A and B; 22 and 23 the supported of A and B), a
+    /// workplace's id (`workplace:a:farm`), `treasury`, `fund`, or `none` (a click on empty space).
+    Pick(String),
+    /// `{"beat_millis":N}`: from now on every beat lasts N milliseconds (20 to 1000; the scene's own
+    /// is 1000).
+    BeatMillis(u32),
     Quit,
 }
+
+/// The shortest and the longest beat a script may set, in milliseconds.
+const BEAT_MILLIS: RangeInclusive<u32> = 20..=1_000;
 
 /// Why a script was refused: the line, and the words.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +119,14 @@ fn mode_named(name: &str) -> Option<ParticleMode> {
     }
 }
 
+fn lower_named(name: &str) -> Option<Lower> {
+    match name {
+        "shocks" => Some(Lower::Shocks),
+        "rules" => Some(Lower::Rules),
+        _ => None,
+    }
+}
+
 /// A file's stem is letters, digits, `-` and `_` and nothing else: no folder, no dot.
 fn stem_is_plain(name: &str) -> bool {
     !name.is_empty()
@@ -136,6 +160,19 @@ fn check_names(command: &ScriptCommand) -> Result<(), String> {
         }
         ScriptCommand::Particles(name) => {
             known(mode_named(name), "particles", name)?;
+        }
+        ScriptCommand::Lower(name) => {
+            known(lower_named(name), "tab", name)?;
+        }
+        ScriptCommand::Pick(id) => {
+            known(inspect::pick_named(id), "body, group or person", id)?;
+        }
+        ScriptCommand::BeatMillis(millis) => {
+            if !BEAT_MILLIS.contains(millis) {
+                return Err(format!(
+                    "a beat lasts 20 to 1000 milliseconds, not {millis}"
+                ));
+            }
         }
         ScriptCommand::Capture(name) | ScriptCommand::Report(name) => {
             if !stem_is_plain(name) {
@@ -345,7 +382,8 @@ fn start_capture(run: &ScriptRun, name: &str, commands: &mut Commands) -> Result
 pub struct ScriptWorld<'w> {
     time: Res<'w, Time>,
     clock: Res<'w, BeatClock>,
-    config: Res<'w, FieldConfig>,
+    config: ResMut<'w, FieldConfig>,
+    pick: ResMut<'w, ScenePick>,
     scene: Res<'w, SceneRunner>,
     status: Res<'w, SceneStatus>,
     notice: ResMut<'w, ShockNotice>,
@@ -435,6 +473,27 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
                 world.presses.write(SceneCommand::TurnOn(rule));
             }
             run.state = State::Checking(0);
+        }
+        ScriptCommand::Lower(name) => {
+            if let Some(lower) = lower_named(&name) {
+                world.presses.write(SceneCommand::Lower(lower));
+            }
+            run.state = State::Checking(0);
+        }
+        ScriptCommand::Pick(id) => {
+            if let Some(pick) = inspect::pick_named(&id) {
+                *world.pick = pick;
+            }
+            run.state = State::Checking(0);
+        }
+        ScriptCommand::BeatMillis(millis) => {
+            let beat = Duration::from_millis(u64::from(millis));
+            world
+                .config
+                .beats
+                .iter_mut()
+                .for_each(|length| *length = beat);
+            done(run, world);
         }
         ScriptCommand::Particles(name) => {
             if let Some(mode) = mode_named(&name) {

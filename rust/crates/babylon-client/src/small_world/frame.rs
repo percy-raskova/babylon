@@ -501,7 +501,7 @@ fn paid_by(reading: &PeriodReading) -> (Paid, Paid) {
 
 fn stand_of(paid: &Paid, h: Household) -> Result<Point, FrameError> {
     let anchors = paid.get(&h).map_or(&[][..], Vec::as_slice);
-    Ok(layout::stand_at(h.place(), anchors)?)
+    Ok(layout::stand_at(layout::home_of(h), anchors)?)
 }
 
 fn group_style(persons: usize) -> u16 {

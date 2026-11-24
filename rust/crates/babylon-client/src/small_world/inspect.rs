@@ -75,10 +75,24 @@ pub(super) fn household_of(id: &str) -> Option<(Household, Option<usize>)> {
         .map(|h| (h, None))
 }
 
-fn workplace_of(id: &str) -> Option<Workplace> {
+pub(super) fn workplace_of(id: &str) -> Option<Workplace> {
     Workplace::ALL
         .into_iter()
         .find(|w| frame::workplace_id(*w) == id)
+}
+
+/// What a click on the entity named `id` leaves picked: no pick for `none` (a click on empty
+/// space); `None` for an id that names no body, group or person of the scene.
+#[must_use]
+pub(super) fn pick_named(id: &str) -> Option<ScenePick> {
+    let pick = match id {
+        "none" => None,
+        "treasury" => Some(Pick::Body(Party::Treasury)),
+        "fund" => Some(Pick::Body(Party::Fund)),
+        _ if household_of(id).is_some() => Some(Pick::Particle(id.to_owned())),
+        _ => Some(Pick::Body(Party::Workplace(workplace_of(id)?))),
+    };
+    Some(ScenePick(pick))
 }
 
 /// A member of a set, or a pick's own name, in words.
@@ -241,7 +255,7 @@ fn household_rows(
         .ok_or(FrameError::Arithmetic)?;
     let mut rows = vec![
         row("Persons", human_numbers::grouped(persons)),
-        row("At work", human_numbers::grouped(at_work)),
+        row("Employed", human_numbers::grouped(at_work)),
         row("Hours given", hours_text(given)),
     ];
     money_rows(picture, Party::Household(h), &mut rows)?;
@@ -433,7 +447,8 @@ mod tests {
         let picture = frame::build_picture(&result, ParticleMode::Groups)?;
         let pick = Pick::Body(Party::Household(home));
         let rows = inspect(&picture, &result, &pick)?;
-        assert_eq!(value(&rows, "At work"), Some("4".to_owned()));
+        assert_eq!(value(&rows, "Employed"), Some("4".to_owned()));
+        assert_eq!(value(&rows, "At work"), None);
         assert_eq!(
             marks::rule_rows(&[result.clone()], 0, &pick)?,
             Vec::<(String, String)>::new()

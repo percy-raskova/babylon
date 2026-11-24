@@ -1310,3 +1310,135 @@ fn a_script_turns_a_rule_on() -> TestResult {
     assert_eq!(value["rules"], serde_json::json!([["seeking_in_place", 2]]));
     Ok(())
 }
+
+/// The scene run by a script given as text, for `updates` frames, in a folder of its own.
+fn scripted(text: &str, frames: usize) -> Result<(App, TestFolder), Box<dyn Error>> {
+    let folder = TestFolder::new()?;
+    let script = folder.0.join("run.jsonl");
+    std::fs::write(&script, text)?;
+    let mut app = scene_app(Some(script))?;
+    updates(&mut app, frames);
+    Ok((app, folder))
+}
+
+#[test]
+fn groups_paid_by_nobody_stand_at_their_own_homes() -> TestResult {
+    use crate::small_world::frame;
+    use crate::small_world::layout::{self, GROUP_SPREAD};
+    use babylon_circuit_worlds::Household;
+
+    let mut app = scene_app(None)?;
+    let run = |app: &mut App, steps: usize| {
+        for _ in 0..steps {
+            send(app, SceneCommand::Step);
+            updates(app, 3);
+        }
+    };
+    run(&mut app, 20);
+    send(
+        &mut app,
+        SceneCommand::Strike(Shock::HarvestFails, Places::A, Lasts::UntilLifted),
+    );
+    run(&mut app, 10);
+    send(&mut app, SceneCommand::TurnOn(SceneRule::SeekingInPlace));
+    run(&mut app, 20);
+    let scene = app.world().resource::<SceneRunner>();
+    assert_eq!(scene.runner.history().len(), 50);
+    let shown = app.world().resource::<SceneShown>();
+    let picture = shown.0.as_ref().ok_or("period 50 is shown")?;
+    assert_eq!(picture.mode, ParticleMode::Groups);
+    let paid = |h: Household| {
+        picture.reading.payments.iter().any(|p| {
+            p.payee == Party::Household(h) && layout::anchor(p.kind, p.payer, h.place()).is_some()
+        })
+    };
+    // The test bites only while the owners of Place A and a workers' group of Place A are both
+    // paid by nobody: that is when an owner's outline was drawn round unpaid workers.
+    let unpaid: Vec<Household> = Household::ALL.into_iter().filter(|h| !paid(*h)).collect();
+    assert!(
+        unpaid.contains(&Household::Owner(Place::A))
+            && unpaid
+                .iter()
+                .any(|h| matches!(h, Household::Workers(w) if w.place == Place::A)),
+        "the test cannot bite: paid by nobody in period 50: {unpaid:?}"
+    );
+    for h in unpaid {
+        let at = picture
+            .positions
+            .get(&frame::household_id(h))
+            .ok_or("a placed group")?;
+        let home = layout::home_of(h);
+        assert!(
+            (at.0 - home.0).hypot(at.1 - home.1) < GROUP_SPREAD.0,
+            "{h:?} stands at {at:?}, its home is {home:?}"
+        );
+    }
+    for (k, a) in Household::ALL.into_iter().enumerate() {
+        for b in Household::ALL.into_iter().skip(k + 1) {
+            let p = picture
+                .positions
+                .get(&frame::household_id(a))
+                .ok_or("placed")?;
+            let q = picture
+                .positions
+                .get(&frame::household_id(b))
+                .ok_or("placed")?;
+            assert!(
+                (p.0 - q.0).hypot(p.1 - q.1) >= GROUP_SPREAD.0 - 1e-9,
+                "{a:?} and {b:?} stand together"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn a_scripted_pick_is_a_click_s_pick() -> TestResult {
+    use crate::small_world::inspect::Pick;
+
+    let head = "{\"beat_millis\":20}\n{\"step\":1}\n";
+    let (app, _folder) = scripted(&format!("{head}{{\"pick\":\"household:15\"}}\n"), 400)?;
+    assert_eq!(
+        app.world().resource::<ScenePick>().0,
+        Some(Pick::Particle("household:15".to_owned()))
+    );
+    let (app, _folder) = scripted(&format!("{head}{{\"pick\":\"workplace:a:farm\"}}\n"), 400)?;
+    let farm = Workplace {
+        place: Place::A,
+        kind: Kind::Farm,
+    };
+    assert_eq!(
+        app.world().resource::<ScenePick>().0,
+        Some(Pick::Body(Party::Workplace(farm)))
+    );
+    let (app, _folder) = scripted(
+        &format!("{head}{{\"pick\":\"fund\"}}\n{{\"pick\":\"none\"}}\n"),
+        400,
+    )?;
+    assert_eq!(app.world().resource::<ScenePick>().0, None);
+    Ok(())
+}
+
+#[test]
+fn a_scripted_tab_is_a_click_s_tab() -> TestResult {
+    let (app, _folder) = scripted("{\"lower\":\"rules\"}\n", 50)?;
+    assert_eq!(app.world().resource::<PanelView>().lower, Lower::Rules);
+    let (app, _folder) = scripted("{\"lower\":\"rules\"}\n{\"lower\":\"shocks\"}\n", 50)?;
+    assert_eq!(app.world().resource::<PanelView>().lower, Lower::Shocks);
+    Ok(())
+}
+
+#[test]
+fn fast_beats_change_no_frame() -> TestResult {
+    let (slow, _a) = scripted("{\"step\":3}\n", 2_000)?;
+    let (fast, _b) = scripted("{\"beat_millis\":40}\n{\"step\":3}\n", 2_000)?;
+    assert_eq!(history(&slow), 3);
+    assert_eq!(history(&fast), 3);
+    let (slow, fast) = (
+        slow.world().resource::<SceneShown>(),
+        fast.world().resource::<SceneShown>(),
+    );
+    assert!(slow.0.is_some());
+    assert_eq!(slow.0, fast.0);
+    Ok(())
+}

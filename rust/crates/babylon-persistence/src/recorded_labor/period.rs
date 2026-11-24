@@ -86,7 +86,7 @@ fn positions(book: &Book) -> Result<(u128, Vec<RecordedLaborPosition>)> {
 }
 
 /// The positions of `before` match `book`; the sum of the book's hours. Refuses `OpeningPositionMismatch`,
-/// then `Arithmetic`, as the two steps of the fold always did.
+/// then `Arithmetic`, as today's two steps do.
 fn check_opening(
     book: &Book,
     catalog: &MaterialCatalog,

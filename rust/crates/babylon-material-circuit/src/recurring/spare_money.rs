@@ -159,7 +159,7 @@ struct Reads<'a> {
 }
 
 /// The largest `Wage` rate of each (site, labor unit).
-fn wages(economy: &MonetaryCircuit) -> BTreeMap<(SiteId, UnitId), i128> {
+pub(crate) fn wages(economy: &MonetaryCircuit) -> BTreeMap<(SiteId, UnitId), i128> {
     let mut wage = BTreeMap::new();
     for terms in &economy.employment {
         if let LaborCompensation::Wage(rate) = terms.compensation {

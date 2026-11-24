@@ -6,7 +6,9 @@
 
 mod accounts;
 mod adjustment;
-pub use adjustment::{AdjustmentReceipt, AdjustmentRule, PlaceMoveReceipt};
+pub use adjustment::{
+    AdjustmentReceipt, AdjustmentRule, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt,
+};
 mod agency_attendance;
 pub use agency_attendance::{
     agency_shift_id, AgencyAttendanceInput, AgencyAttendanceOutcome,

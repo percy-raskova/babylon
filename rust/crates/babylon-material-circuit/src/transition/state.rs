@@ -32,6 +32,7 @@ use crate::{
     UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
+use crate::adjustment::HiringBound;
 use crate::clearing::MarketTable;
 use crate::financial::FinancialClose;
 use crate::inventory;
@@ -77,6 +78,7 @@ use crate::ProcurementReceipt;
 use crate::ProductionPlanReceipt;
 use crate::ProductionReceipt;
 use crate::RouteStageCapacity;
+use crate::ServicePerformanceReceipt;
 use crate::ServiceStage;
 use crate::StaffingMemberReceipt;
 use crate::StaffingPlace;
@@ -617,6 +619,7 @@ pub(crate) fn freight_lot_id(order: OrderId, period: u64) -> FreightLotId {
 pub struct ClosedMaterialPeriod {
     transition: MaterialCircuitTransition,
     next_period: u64,
+    hiring_bound: Option<HiringBound>,
 }
 
 impl ClosedMaterialPeriod {
@@ -666,17 +669,20 @@ impl ClosedMaterialPeriod {
         let mut requests = Vec::new();
         let mut nonmerchant = BTreeMap::<(SiteId, UnitId), u64>::new();
         for request in production {
+            let hours = self.hiring_bound.as_ref().map_or(request.hours, |bound| {
+                bound.capped_hours(request.process_id, request.hours)
+            });
             let total = nonmerchant
                 .entry((request.site_id, request.unit_id))
                 .or_default();
             *total = total
-                .checked_add(request.hours)
+                .checked_add(hours)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
             requests.push((
                 StaffingWorkSource::Production(request.process_id),
                 request.site_id,
                 request.unit_id,
-                request.hours,
+                hours,
             ));
         }
         let maintenance_request = self
@@ -900,12 +906,13 @@ impl ClosedMaterialPeriod {
                 }
             }
         }
-        self.transition.adjustments = staffing
-            .moves
-            .iter()
-            .cloned()
-            .map(AdjustmentReceipt::PlaceMove)
-            .collect();
+        self.transition.adjustments.extend(
+            staffing
+                .moves
+                .iter()
+                .cloned()
+                .map(AdjustmentReceipt::PlaceMove),
+        );
         self.finish_workforce_unchecked(
             catalog,
             staffing.labor.clone(),
@@ -1247,20 +1254,32 @@ pub(crate) fn dispatch_and_replenish(
     Ok((outbound, procurement))
 }
 
+/// What the closed period did that the next plans read: its maintenance and the performance of its services.
+#[derive(Clone, Copy)]
+pub(crate) struct ClosedWork<'a> {
+    pub(crate) maintenance: Option<&'a MaintenanceReceipt>,
+    pub(crate) performance: &'a [ServicePerformanceReceipt],
+}
+
 pub(crate) struct NextPlans {
     production: Vec<ProductionPlanReceipt>,
     prices: Vec<PriceReceipt>,
+    bound: Option<HiringBound>,
 }
 
 pub(crate) fn next_plans(
     context: MaterialContext<'_>,
     dispatches: &[RoutedDispatchReceipt],
     outbound: &OutboundReceipts,
-    maintenance: Option<&MaintenanceReceipt>,
+    closed: ClosedWork<'_>,
     next_period: u64,
     wanted: Wanted<'_>,
     costs: &CostClose,
 ) -> Result<NextPlans, MaterialCircuitError> {
+    let ClosedWork {
+        maintenance,
+        performance,
+    } = closed;
     let MaterialContext { catalog, state } = context;
     let sold = (
         &outbound.local_transfers[..],
@@ -1286,9 +1305,24 @@ pub(crate) fn next_plans(
         next_period,
     )?;
     let prices = crate::recurring::prices::update_prices(catalog, state, wanted, costs)?;
+    let asks_bound = catalog.market_clearing.as_ref().is_some_and(|policy| {
+        crate::adjustment::asks(&policy.adjustments, AdjustmentRule::HiringWithinMeans)
+    });
+    let bound = if asks_bound {
+        Some(crate::adjustment::bound_hiring(
+            catalog,
+            state,
+            performance,
+            maintenance,
+            next_period,
+        )?)
+    } else {
+        None
+    };
     Ok(NextPlans {
         production: production_plans,
         prices,
+        bound,
     })
 }
 
@@ -1798,7 +1832,10 @@ pub fn close_material_period_with_portfolios(
         },
         &close.dispatches,
         &close.outbound,
-        close.funded.production.maintenance.as_ref(),
+        ClosedWork {
+            maintenance: close.funded.production.maintenance.as_ref(),
+            performance: &close.funded.services.performance,
+        },
         next_period,
         Wanted {
             demand: &close.funded.household_demand,
@@ -1819,8 +1856,17 @@ pub fn close_material_period_with_portfolios(
     )?;
     let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
     let tiers = close.funded.services.tier_receipts(close.state.period)?;
+    let adjustments = plans.bound.as_ref().map_or_else(Vec::new, |bound| {
+        bound
+            .rows
+            .iter()
+            .cloned()
+            .map(AdjustmentReceipt::HiringBound)
+            .collect()
+    });
     Ok(ClosedMaterialPeriod {
         next_period,
+        hiring_bound: plans.bound,
         transition: MaterialCircuitTransition {
             household_lifecycle,
             resident_workforce_attrition: Vec::new(),
@@ -1869,7 +1915,7 @@ pub fn close_material_period_with_portfolios(
             market_clearings: close.funded.markets.into_receipts(),
             household_wants: tiers.0,
             household_tiers: tiers.1,
-            adjustments: Vec::new(),
+            adjustments,
         },
     })
 }

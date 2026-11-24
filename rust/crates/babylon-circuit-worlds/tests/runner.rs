@@ -215,7 +215,7 @@ fn a_refusal_of_a_rule_is_worded_for_the_scene() {
 }
 
 /// The rules turned on in the middle of a run, each after this many steps. Tasks 4 to 8 add their rules.
-const LATE: [(u64, AdjustmentRule); 1] = [(20, SeekingInPlace)];
+const LATE: [(u64, AdjustmentRule); 2] = [(20, SeekingInPlace), (24, HiringWithinMeans)];
 
 /// The scene's world with the harvest failing in both places, the `LATE` rules applied, and `steps` steps taken.
 fn late_run(steps: u64) -> Result<Runner, Box<dyn Error>> {
@@ -242,13 +242,35 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
     }
     assert_eq!(
         one.rules(),
-        [RuleOn {
-            rule: SeekingInPlace,
-            from: 21
-        }]
+        [
+            RuleOn {
+                rule: SeekingInPlace,
+                from: 21
+            },
+            RuleOn {
+                rule: HiringWithinMeans,
+                from: 25
+            }
+        ]
     );
     assert_eq!(one.history()[19].rules.len(), 0);
     assert_eq!(one.history()[20].rules, [SeekingInPlace]);
+    assert_eq!(one.history()[24].rules, [HiringWithinMeans, SeekingInPlace]);
+    let bounds = |result: &PeriodResult| {
+        result
+            .receipts
+            .adjustments
+            .iter()
+            .filter(|row| matches!(row, AdjustmentReceipt::HiringBound(_)))
+            .count()
+    };
+    for result in &one.history()[..24] {
+        assert_eq!(bounds(result), 0, "period {}", result.period);
+    }
+    assert!(
+        bounds(&one.history()[24]) > 0,
+        "the bound's first close is period 25's"
+    );
     Ok(())
 }
 

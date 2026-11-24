@@ -82,7 +82,6 @@ pub(crate) fn restart_outlay_periods(rules: &[AdjustmentRule]) -> Option<u64> {
 /// The rules no task has built yet. Admission refuses a list that asks for one of these kinds, so that no
 /// catalog can ask for a rule that does nothing. Each rule's task removes its own kind.
 pub(crate) const NOT_YET_BUILT: &[AdjustmentRule] = &[
-    AdjustmentRule::HiringWithinMeans,
     AdjustmentRule::StopWithoutPay,
     AdjustmentRule::RestingPrice,
     AdjustmentRule::OwnerRestart { outlay_periods: 1 },

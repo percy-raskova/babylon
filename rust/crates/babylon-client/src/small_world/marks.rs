@@ -65,8 +65,9 @@ pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt> {
         .receipts
         .adjustments
         .iter()
-        .map(|receipt| match receipt {
-            AdjustmentReceipt::PlaceMove(moved) => moved,
+        .filter_map(|receipt| match receipt {
+            AdjustmentReceipt::PlaceMove(moved) => Some(moved),
+            AdjustmentReceipt::HiringBound(_) => None,
         })
 }
 

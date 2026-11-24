@@ -16,6 +16,8 @@ const PC_A6_400: &str = include_str!("digests/pc-a6-400.txt");
 const PC_A6_NAT_400: &str = include_str!("digests/pc-a6-nat-400.txt");
 const PC_SEEK_400: &str = include_str!("digests/pc-seek-400.txt");
 const PC_SEEK_NAT_400: &str = include_str!("digests/pc-seek-nat-400.txt");
+const PC_BOUND_400: &str = include_str!("digests/pc-bound-400.txt");
+const PC_BOUND_NAT_400: &str = include_str!("digests/pc-bound-nat-400.txt");
 
 fn produce(form: Form, scale: Scale, periods: u64) -> Vec<(&'static str, String)> {
     runs::runs(form, scale)
@@ -78,6 +80,26 @@ fn the_quiet_world_with_seekers_is_still_for_34_periods() {
     for name in ["seekers_a", "people_b", "parked_shop_b", "pair_looking_farm_a_from_clinic_a"] {
         assert!(header.split('\t').any(|column| column == name), "{name}");
     }
+}
+
+#[test]
+fn the_quiet_world_with_the_bound_is_still_for_34_periods() {
+    assert_quiet(Form::Bound);
+    let runs = runs::runs(Form::Bound, Scale::Small);
+    let run = runs
+        .iter()
+        .find(|run| run.name == "fund-quiet")
+        .expect("the fund world's quiet run");
+    let text = rows::rows(run, 2);
+    let header = text.lines().next().unwrap_or("");
+    for name in ["bound_hours_utility_a", "bound_by_shop_b"] {
+        assert!(header.split('\t').any(|column| column == name), "{name}");
+    }
+    assert_eq!(
+        header.split('\t').next_back(),
+        Some("bound_by_shop_b"),
+        "the bound's columns come last"
+    );
 }
 
 #[test]
@@ -198,6 +220,20 @@ fn reproduces_pc_seek_nat_400() {
     compare::assert_set("pc-seek-nat-400", &produced, PC_SEEK_NAT_400);
 }
 
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_bound_400() {
+    let produced = produce(Form::Bound, Scale::Small, PERIODS_LONG);
+    compare::assert_set("pc-bound-400", &produced, PC_BOUND_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_bound_nat_400() {
+    let produced = produce(Form::Bound, Scale::National, PERIODS_LONG);
+    compare::assert_set("pc-bound-nat-400", &produced, PC_BOUND_NAT_400);
+}
+
 /// Prints the fixture lines of every set from the reference rows on the bench's drive. Run once with
 /// `--run-ignored only -E 'test(print_reference_digests)' --no-capture` and commit what it printed.
 #[test]
@@ -208,6 +244,8 @@ fn print_reference_digests() {
         ("pc-a6-nat-400", Form::A6, Scale::National),
         ("pc-seek-400", Form::Seek, Scale::Small),
         ("pc-seek-nat-400", Form::Seek, Scale::National),
+        ("pc-bound-400", Form::Bound, Scale::Small),
+        ("pc-bound-nat-400", Form::Bound, Scale::National),
     ] {
         println!("== {set}");
         for run in runs::runs(form, scale) {

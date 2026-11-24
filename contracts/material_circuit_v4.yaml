@@ -221,6 +221,17 @@ market_clearing:
     (PlaceMove); the record of layoffs advances as if a covered person who left were hired back by the member they
     left and an uncovered one had left its reserve before the decision; the staffing that does not ask for the rule
     refuses a catalog that does, and the place staffing refuses one that does not
+  ADR314_bound: >-
+    when a catalog asks for HiringWithinMeans, at the close after the next period's plans and prices, each workplace
+    asks people only for the hours it can work: a maker, the batches its capacity can run, that its service inputs
+    can feed (what the provider plans to make, as far as its capacity and its own bound, less what the provider's
+    other buyers took in the period that closed, within the policy's caps) and that its money, at the close, pays
+    for, at its wage for the hours of a batch and the provider's posted price for each service input, the money an
+    earlier request of the same site took first; a merchant, the handling that the goods it holds or has due need,
+    as far as its money pays at its wage; providers are reckoned before their buyers, ties by process id; the
+    attendance plan of the next period and the staffing requests are lowered by the cut, planned batches, orders and
+    prices are not; each attendance row has a receipt (HiringBound) with the hours asked, the hours it can work and
+    what set the cut (capacity, inputs, money, other); the bound keeps nothing from one close to the next
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out

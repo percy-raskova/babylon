@@ -4,9 +4,9 @@ use super::compare;
 use super::runs::BenchRun;
 use babylon_circuit_worlds::{ids, Good, Household, Kind, PeriodResult, Place, Runner, Workplace};
 use babylon_material_circuit::{
-    self as engine, AccountId, AdjustmentRule, CircuitAccounting, GoodId, HouseholdStandard,
-    LaborCompensation, MarketMoment, MaterialCatalog, MaterialCircuitState, MonetaryCircuit,
-    RecurringEconomy, SiteId, StaffingMemberId, StaffingState, WantTier,
+    self as engine, AccountId, AdjustmentReceipt, AdjustmentRule, CircuitAccounting, GoodId,
+    HouseholdStandard, LaborCompensation, MarketMoment, MaterialCatalog, MaterialCircuitState,
+    MonetaryCircuit, RecurringEconomy, SiteId, StaffingMemberId, StaffingState, WantTier,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -563,6 +563,26 @@ fn put_seekers(line: &mut Line, runner: &Runner, result: &PeriodResult, opening:
     }
 }
 
+/// Step B, when a workplace asks for hands only for the hours it can work: each workplace's hours it may ask
+/// of people for the next period and the largest limit that set a cut (0 to 4), over its attendance rows.
+fn put_bound(line: &mut Line, result: &PeriodResult) {
+    let mut hours = [0_u64; 8];
+    let mut limit = [0_u64; 8];
+    for receipt in &result.receipts.adjustments {
+        if let AdjustmentReceipt::HiringBound(row) = receipt {
+            let i = index_of(row.site_id);
+            hours[i] += row.bound_hours;
+            limit[i] = limit[i].max(u64::from(row.limit as u8));
+        }
+    }
+    for workplace in Workplace::ALL {
+        let i = workplace.index();
+        let name = site_name(workplace);
+        line.put(format!("bound_hours_{name}"), hours[i]);
+        line.put(format!("bound_by_{name}"), limit[i]);
+    }
+}
+
 /// One period's line, in column order.
 fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line {
     let catalog = runner
@@ -580,6 +600,9 @@ fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line
     put_standards_and_public(&mut line, result);
     if result.rules.contains(&AdjustmentRule::SeekingInPlace) {
         put_seekers(&mut line, runner, result, opening);
+    }
+    if result.rules.contains(&AdjustmentRule::HiringWithinMeans) {
+        put_bound(&mut line, result);
     }
     line
 }

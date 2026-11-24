@@ -432,6 +432,35 @@ fn the_proof_script_of_task_7c_parses() {
     );
 }
 
+/// The proof script of Task 5 of stored hours, run by the lead on the display.
+const PROOF_SH5: &str = r#"{"step":1}
+{"capture":"hours-1"}
+{"step":1}
+{"capture":"hours-2"}
+{"step":2}
+{"capture":"hours-4"}
+{"step":8}
+{"capture":"hours-12"}
+"#;
+
+#[test]
+fn the_proof_script_of_stored_hours_task_5_parses() {
+    let commands = script::parse_script(PROOF_SH5);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(1),
+            ScriptCommand::Capture("hours-1".into()),
+            ScriptCommand::Step(1),
+            ScriptCommand::Capture("hours-2".into()),
+            ScriptCommand::Step(2),
+            ScriptCommand::Capture("hours-4".into()),
+            ScriptCommand::Step(8),
+            ScriptCommand::Capture("hours-12".into()),
+        ])
+    );
+}
+
 /// The proof script of Task 8c, run by the lead on the display.
 const PROOF_8C: &str = r#"{"step":1}
 {"strike":{"shock":"harvest_fails","places":"both","lasts":"until_lifted"}}

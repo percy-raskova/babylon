@@ -24,7 +24,7 @@ use crate::observer_ui;
 use crate::palette::{BONE, DIM, FIELD, GOLD};
 use crate::visual_assets::VisualAssetsPlugin;
 use babylon_circuit_worlds::{
-    Lasts, PeriodResult, Place, Places, Runner, RunnerError, Shock, Workplace,
+    Lasts, PeriodResult, Place, Places, Runner, RunnerError, Shock, Workplace, World,
 };
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{ScalingMode, Viewport};
@@ -177,6 +177,14 @@ pub fn status_after(step: &Result<&PeriodResult, RunnerError>) -> SceneStatus {
     }
 }
 
+/// The scene's runner: the scene's world with the hours ledger. "Start over" opens it again.
+///
+/// # Errors
+/// As `Runner::open_world_with_hours`.
+pub fn open_runner() -> Result<Runner, RunnerError> {
+    Runner::open_world_with_hours(&World::scene())
+}
+
 /// Adds the scene to an app that already has Bevy's own plugins: the fonts, the picking of
 /// meshes, the hypergraph library's field, and the scene's resources and systems. It adds none
 /// of the observer's plugins and no session, pipe or reader.
@@ -185,7 +193,7 @@ pub fn status_after(step: &Result<&PeriodResult, RunnerError>) -> SceneStatus {
 /// The runner's or the field's refusal, in words.
 pub fn install_scene(app: &mut App, script: Option<PathBuf>) -> Result<(), String> {
     let script = script.map(|path| script::load_script(&path)).transpose()?;
-    let runner = Runner::open().map_err(|error| error.to_string())?;
+    let runner = open_runner().map_err(|error| error.to_string())?;
     let field = FieldPlugin::new(
         frame::field_config(),
         frame::field_styles(),
@@ -296,6 +304,7 @@ impl Plugin for SmallWorldPlugin {
                     controls::paint_empty_line,
                     controls::place_labels,
                     controls::paint_people_line,
+                    controls::paint_opening_line,
                     panel::paint_table,
                     panel::paint_inspector,
                     panel::paint_inspector_panel,
@@ -504,7 +513,7 @@ impl Stage<'_> {
     }
 
     fn start_over(&mut self) {
-        match Runner::open() {
+        match open_runner() {
             Ok(runner) => {
                 self.scene.runner = runner;
                 self.scene.shown = None;

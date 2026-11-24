@@ -6,9 +6,6 @@
 use super::reading::{Party, PeriodReading, ReadingError};
 use babylon_circuit_worlds::{Household, Place, Workplace};
 
-/// What the "stored work got back" column shows: it has no figure yet.
-pub const NOT_MEASURED: &str = "not measured yet";
-
 const SHARED_LABEL: &str = "Shared: treasury and fund";
 const OWNERS_WHO_EARN: &str = "Owners who earn";
 const OWNERS_WHO_DO_NOT: &str = "Owners who do not earn";

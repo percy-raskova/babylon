@@ -4,6 +4,8 @@
 
 use super::frame::{BodyPicture, ParticleMode, HOURS_PER_MARK, MONEY_PER_MARK, UNITS_PER_MARK};
 use super::panel;
+use super::panel::PanelView;
+use super::reading;
 use super::reading::Party;
 use super::scene;
 use super::scene::{
@@ -32,10 +34,47 @@ pub const EMPTY_LINE: &str = "Nothing has run yet. Press Step.";
 
 /// The standing lines of the scene.
 pub const HOLLOW_DOT_LINE: &str = "A hollow dot: hours paid and not used.";
-pub const GOODS_HOLLOW_LINE: &str = "Goods are drawn hollow: the hours stored in goods are not measured here until this world runs on the tick's records.";
+pub const GOODS_HOLLOW_LINE: &str =
+    "A hollow part of a square: goods from the opening stock, whose hours were never measured.";
 pub const OUTLINE_LINE: &str = "An outline holds nine tenths of its set's number.";
 pub const PICK_LINE: &str = "Click a body, a dot or an outline.";
 pub const PEOPLE_LINE: &str = "One dot is one person. The record counts people; it does not follow a person, and the people of one group share one purse.";
+
+/// The figure of the standing line: 100.
+pub const PER_HUNDRED: u64 = 100;
+
+/// The standing line of ruling 18: "Of every 100 units moved this period, {n} come from the opening stock.";
+/// empty without a record.
+#[must_use]
+pub fn opening_line(per_hundred: Option<u64>) -> String {
+    per_hundred.map_or_else(String::new, |n| {
+        format!("Of every {PER_HUNDRED} units moved this period, {n} come from the opening stock.")
+    })
+}
+
+/// The standing line's text entity.
+#[derive(Component)]
+pub struct OpeningLine;
+
+/// Write the standing line when the picture changes: the share of the period the table reads.
+pub fn paint_opening_line(
+    shown: Res<SceneShown>,
+    scene: Res<SceneRunner>,
+    view: Res<PanelView>,
+    mut line: Query<&mut Text, With<OpeningLine>>,
+) {
+    if !(shown.is_changed() || scene.is_changed() || view.is_changed()) {
+        return;
+    }
+    let history = scene.runner.history();
+    let per_hundred = panel::view_index(&view, history.len())
+        .and_then(|i| reading::read_period(&history[i]).ok())
+        .and_then(|read| read.opening_per_hundred);
+    let words = opening_line(per_hundred);
+    for mut text in &mut line {
+        text.set_if_neq(Text::new(words.clone()));
+    }
+}
 
 /// "One dot: 2 hours of work. One square: 4 units of a good. One streak: $80. Hours and money
 /// are two scales." Its three figures are the constants the marks are drawn with.
@@ -167,14 +206,19 @@ fn spawn_standing_lines(commands: &mut Commands) {
             },
         ))
         .with_children(|column| {
-            for line in [
-                units_line().as_str(),
-                HOLLOW_DOT_LINE,
-                GOODS_HOLLOW_LINE,
-                OUTLINE_LINE,
-            ] {
+            for line in [units_line().as_str(), HOLLOW_DOT_LINE, GOODS_HOLLOW_LINE] {
                 column.spawn(text(line, 12.0, theme::PAPER, ObserverFontRole::Body));
             }
+            column.spawn((
+                text("", 12.0, theme::PAPER, ObserverFontRole::Body),
+                OpeningLine,
+            ));
+            column.spawn(text(
+                OUTLINE_LINE,
+                12.0,
+                theme::PAPER,
+                ObserverFontRole::Body,
+            ));
             column.spawn((
                 text("", 12.0, theme::PAPER, ObserverFontRole::Body),
                 panel::NotDrawnLine,
@@ -183,8 +227,8 @@ fn spawn_standing_lines(commands: &mut Commands) {
         });
 }
 
-/// Where the people line stands in the column: after the four fixed lines of the key.
-const PEOPLE_LINE_AT: usize = 4;
+/// Where the people line stands in the column: after the five fixed lines of the key (was 4).
+const PEOPLE_LINE_AT: usize = 5;
 
 /// The people line stands while people are shown, and not otherwise.
 pub fn paint_people_line(

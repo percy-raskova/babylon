@@ -28,8 +28,6 @@ pub const NOTICE_SECONDS: Duration = Duration::from_secs(4);
 pub const POWER_CUT_LINE: &str =
     "A power cut changes the size of a batch, so it holds until you start over.";
 
-/// Under the table: the column the table no longer carries, said once.
-pub const STORED_WORK_LINE: &str = "Stored work got back: not measured yet.";
 /// Under the table: why its money differs from the inspector's.
 pub const TO_THE_CENT_LINE: &str =
     "Money in the table is rounded to the cent. Click a body for exact figures.";
@@ -439,14 +437,12 @@ pub fn spawn_rail(commands: &mut Commands) {
                         ..default()
                     },
                 ));
-                for line in [STORED_WORK_LINE, TO_THE_CENT_LINE] {
-                    section.spawn(controls::text(
-                        line,
-                        11.0,
-                        theme::GRAY,
-                        ObserverFontRole::Body,
-                    ));
-                }
+                section.spawn(controls::text(
+                    TO_THE_CENT_LINE,
+                    11.0,
+                    theme::GRAY,
+                    ObserverFontRole::Body,
+                ));
             });
             rail.spawn(Node {
                 flex_direction: FlexDirection::Column,
@@ -586,7 +582,7 @@ fn spawn_tabs_and_pager(section: &mut ChildSpawnerCommands) {
 }
 
 /// The index of the history the view reads, or none while nothing has been closed.
-fn view_index(view: &PanelView, closed: usize) -> Option<usize> {
+pub(super) fn view_index(view: &PanelView, closed: usize) -> Option<usize> {
     let last = closed.checked_sub(1)?;
     match view.period.and_then(|p| usize::try_from(p).ok()) {
         Some(p) if (1..=closed).contains(&p) => p.checked_sub(1),
@@ -1139,15 +1135,6 @@ pub fn pressed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::small_world::table::NOT_MEASURED;
-
-    #[test]
-    fn the_stored_work_line_is_built_from_the_not_measured_words() {
-        assert_eq!(
-            STORED_WORK_LINE,
-            format!("Stored work got back: {NOT_MEASURED}.")
-        );
-    }
     use babylon_circuit_worlds::Runner;
     use std::error::Error;
 

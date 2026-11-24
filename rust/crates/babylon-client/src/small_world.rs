@@ -20,4 +20,4 @@ pub use reading::{
 pub use scene::{
     install_scene, open_on_first_period, SceneCommand, SceneRunner, SceneStatus, SmallWorldPlugin,
 };
-pub use table::{table, Grouping, Table, TableRow, NOT_MEASURED};
+pub use table::{table, Grouping, Table, TableRow};

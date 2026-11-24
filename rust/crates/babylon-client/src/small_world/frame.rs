@@ -1031,7 +1031,21 @@ fn goods_flows(
 ) -> Result<(), FrameError> {
     for m in goods {
         let (from, to) = (standing.point(m.from)?, standing.point(m.to)?);
-        into.push(flow(good_stream(m.good), from, to, m.quantity, true));
+        let stream = good_stream(m.good);
+        let Some(opening) = m.opening else {
+            into.push(flow(stream, from, to, m.quantity, true));
+            continue;
+        };
+        let full = m
+            .quantity
+            .checked_sub(opening)
+            .ok_or(FrameError::Arithmetic)?;
+        if full > 0 {
+            into.push(flow(stream, from, to, full, false));
+        }
+        if opening > 0 {
+            into.push(flow(stream, from, to, opening, true));
+        }
     }
     Ok(())
 }
@@ -1313,6 +1327,78 @@ mod tests {
             .iter()
             .filter(|f| STREAM_GOODS.contains(&f.stream))
             .all(|f| f.hollow));
+        Ok(())
+    }
+
+    fn hours_period(period: usize) -> Result<PeriodResult, Box<dyn Error>> {
+        let mut runner = crate::small_world::scene::open_runner()?;
+        let mut last = None;
+        for _ in 0..period {
+            last = Some(runner.step()?.clone());
+        }
+        last.ok_or_else(|| "no period".into())
+    }
+
+    fn stream_totals(picture: &Picture, stream: u16) -> Result<(u128, u128), Box<dyn Error>> {
+        let (_, report) =
+            hypergraph_rs_bevy::select_flows(&picture.frame.flows, &field_styles().streams)?;
+        Ok((
+            report_of(&report, stream, false)?.total,
+            report_of(&report, stream, true)?.total,
+        ))
+    }
+
+    #[test]
+    fn every_hollow_part_is_the_record_s() -> TestResult {
+        let first = build_picture(&hours_period(1)?, ParticleMode::Groups)?;
+        let (food, power, care) = (STREAM_GOODS[0], STREAM_GOODS[1], STREAM_GOODS[2]);
+        assert_eq!(stream_totals(&first, food)?, (40, 120));
+        assert_eq!(stream_totals(&first, power)?, (240, 0));
+        assert_eq!(stream_totals(&first, care)?, (80, 0));
+        let second = build_picture(&hours_period(2)?, ParticleMode::Groups)?;
+        assert_eq!(stream_totals(&second, food)?, (100, 60));
+        let mut runner = crate::small_world::scene::open_runner()?;
+        for _ in 0..12 {
+            let result = runner.step()?.clone();
+            let picture = build_picture(&result, ParticleMode::Groups)?;
+            let hours = result.hours.as_ref().ok_or("no hours")?;
+            let mut hollow: Vec<u64> = Vec::new();
+            let mut full: Vec<u64> = Vec::new();
+            for m in &picture.reading.goods {
+                let opening = m.opening.ok_or("a move with no opening")?;
+                assert!(opening <= m.quantity);
+                hollow.push(opening);
+                full.push(m.quantity - opening);
+            }
+            let mut want: Vec<u64> = hours
+                .moves
+                .iter()
+                .filter(|m| m.quantity > 0)
+                .map(|m| {
+                    ((m.opening_micro_units + 500_000) / 1_000_000).min(u128::from(m.quantity))
+                })
+                .map(u64::try_from)
+                .collect::<Result<_, _>>()?;
+            want.sort_unstable();
+            hollow.sort_unstable();
+            assert_eq!(hollow, want, "period {}", result.period);
+            let flow_hollow: u64 = picture
+                .frame
+                .flows
+                .iter()
+                .filter(|f| STREAM_GOODS.contains(&f.stream) && f.hollow)
+                .map(|f| f.amount)
+                .sum();
+            let flow_full: u64 = picture
+                .frame
+                .flows
+                .iter()
+                .filter(|f| STREAM_GOODS.contains(&f.stream) && !f.hollow)
+                .map(|f| f.amount)
+                .sum();
+            assert_eq!(flow_hollow, hollow.iter().sum::<u64>());
+            assert_eq!(flow_full, full.iter().sum::<u64>());
+        }
         Ok(())
     }
 

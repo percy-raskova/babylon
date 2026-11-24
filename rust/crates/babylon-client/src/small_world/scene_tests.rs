@@ -12,7 +12,7 @@ use crate::small_world::inspect::ScenePick;
 use crate::small_world::panel;
 use crate::small_world::panel::{
     InspectorBody, InspectorPanel, Lower, LowerBody, NoticeLine, PagerLabel, PanelButton,
-    PanelView, ShockButton, ShockNotice, TableBody, STORED_WORK_LINE, TO_THE_CENT_LINE,
+    PanelView, ShockButton, ShockNotice, TableBody, TO_THE_CENT_LINE,
 };
 use crate::small_world::rules::{
     RuleButton, RulesBody, SceneRule, FROM_LINE, RULES_LINE, RULES_SHOWN, SHOWN_RULES,
@@ -713,11 +713,10 @@ fn the_table_switches_its_grouping_and_period() -> TestResult {
     assert_eq!(owners[2], "$0.00");
     assert_eq!(owners[3], "$0.00");
     let all = texts(&mut app);
-    assert!(all.contains(&"Stored work got back: not measured yet.".to_owned()));
+    assert!(!all.iter().any(|t| t.starts_with("Stored work got back")));
     assert!(all.contains(
         &"Money in the table is rounded to the cent. Click a body for exact figures.".to_owned()
     ));
-    assert_eq!(STORED_WORK_LINE, "Stored work got back: not measured yet.");
     assert_eq!(
         TO_THE_CENT_LINE,
         "Money in the table is rounded to the cent. Click a body for exact figures."
@@ -930,7 +929,7 @@ fn not_drawn_line_prints_the_report() -> TestResult {
     let line = panel::not_drawn_line(app.world().resource::<FlowReport>());
     assert_eq!(
         line,
-        "Not drawn: 0 hours; food 8, power 12, care 4 units; wages $0.00, purchases $1,680.00, taxes $960.00, benefits $0.00, profit $160.00"
+        "Not drawn: 0 hours; food 4, power 12, care 4 units; wages $0.00, purchases $1,680.00, taxes $960.00, benefits $0.00, profit $160.00"
     );
     assert!(texts(&mut app).contains(&line));
     Ok(())
@@ -1695,5 +1694,64 @@ fn the_stop_rule_waits_for_the_seekers_on_screen() -> TestResult {
         Some(crate::observer_theme::PAPER)
     );
     assert!(!texts(&mut app).contains(&NEEDS.to_owned()));
+    Ok(())
+}
+
+#[test]
+fn the_scene_measures_hours() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    assert!(app.world().resource::<SceneRunner>().runner.history()[0]
+        .hours
+        .is_some());
+    send(&mut app, SceneCommand::StartOver);
+    updates(&mut app, 3);
+    assert_eq!(history(&app), 0);
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    assert!(app.world().resource::<SceneRunner>().runner.history()[0]
+        .hours
+        .is_some());
+    Ok(())
+}
+
+#[test]
+fn the_standing_line_counts_the_opening_share() -> TestResult {
+    let mut app = scene_app(None)?;
+    for share in [25, 13, 6, 3] {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+        let line =
+            format!("Of every 100 units moved this period, {share} come from the opening stock.");
+        assert_eq!(
+            texts(&mut app)
+                .iter()
+                .filter(|t| t.starts_with("Of every 100 units"))
+                .collect::<Vec<_>>(),
+            [&line]
+        );
+    }
+    assert_eq!(controls::opening_line(None), "");
+    Ok(())
+}
+
+#[test]
+fn the_goods_line_says_a_hollow_part_is_opening_stock() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let all = texts(&mut app);
+    assert_eq!(
+        all.iter()
+            .filter(|t| *t == controls::GOODS_HOLLOW_LINE)
+            .count(),
+        1
+    );
+    assert_eq!(
+        controls::GOODS_HOLLOW_LINE,
+        "A hollow part of a square: goods from the opening stock, whose hours were never measured."
+    );
+    assert!(!all.iter().any(|t| t.contains("not measured")));
     Ok(())
 }

@@ -3,7 +3,7 @@
 //! Every figure here comes from a receipt of the engine. Hours are `u64` hours, goods are `u64`
 //! units and payments are `i128` millionths of a dollar; the three are never added together.
 
-use babylon_circuit_worlds::{Good, Household, PeriodResult, Workplace};
+use babylon_circuit_worlds::{Good, Household, MovedBy, PeriodHours, PeriodResult, Workplace};
 use babylon_material_circuit::{
     AccountId, CashTransferPurpose, GoodId, MoneyLocation, MoneyTransferPurpose,
     MoneyTransferReceipt, OutboundOrderId, ShiftId,
@@ -99,6 +99,9 @@ pub struct GoodsMove {
     pub from: Party,
     pub to: Party,
     pub quantity: u64,
+    /// Units of the move that come from the opening stock, to the nearest whole unit (half up); `None` when
+    /// the period has no record of hours.
+    pub opening: Option<u64>,
 }
 
 /// One payment, counted once.
@@ -117,6 +120,9 @@ pub struct PeriodReading {
     pub work: Vec<WorkFlow>,
     pub goods: Vec<GoodsMove>,
     pub payments: Vec<Payment>,
+    /// Of every 100 units moved this period, how many come from the opening stock, to the nearest whole
+    /// number (half up); `None` without a record of hours.
+    pub opening_per_hundred: Option<u64>,
 }
 
 /// Why a period cannot be read.
@@ -157,14 +163,67 @@ pub fn read_period(result: &PeriodResult) -> Result<PeriodReading, ReadingError>
     let mut goods = read_goods(result)?;
     let mut payments = read_payments(&result.receipts.money_transfers)?;
     work.sort_by_key(|f| (f.household, f.workplace, f.given, f.idle));
-    goods.sort_by_key(|m| (m.good, m.from, m.to, m.quantity));
+    goods.sort_by_key(|m| (m.good, m.from, m.to, m.quantity, m.opening));
     payments.sort_by_key(|p| (p.kind, p.payer, p.payee, p.amount));
     Ok(PeriodReading {
         period: result.period,
         work,
         goods,
         payments,
+        opening_per_hundred: opening_per_hundred(result)?,
     })
+}
+
+/// Micro-units in one unit.
+const MICRO_UNITS: u128 = 1_000_000;
+
+/// A move's opening units from the record: to the nearest whole unit (half up), at most the move's quantity.
+fn opening_units(
+    hours: &PeriodHours,
+    moved_by: MovedBy,
+    receipt: &dyn Debug,
+) -> Result<u64, ReadingError> {
+    let record = hours
+        .of_move(moved_by)
+        .ok_or_else(|| ReadingError::UnknownParty(format!("{receipt:?}")))?;
+    let rounded = record
+        .opening_micro_units
+        .checked_add(MICRO_UNITS / 2)
+        .ok_or(ReadingError::Arithmetic)?
+        / MICRO_UNITS;
+    let whole = u64::try_from(rounded).map_err(|_| ReadingError::Arithmetic)?;
+    Ok(whole.min(record.quantity))
+}
+
+/// Of every 100 units the period's moves carried, how many come from the opening stock (half up).
+fn opening_per_hundred(result: &PeriodResult) -> Result<Option<u64>, ReadingError> {
+    let Some(hours) = &result.hours else {
+        return Ok(None);
+    };
+    let mut opening: u128 = 0;
+    let mut quantity: u128 = 0;
+    for record in &hours.moves {
+        opening = opening
+            .checked_add(record.opening_micro_units)
+            .ok_or(ReadingError::Arithmetic)?;
+        quantity = quantity
+            .checked_add(u128::from(record.quantity))
+            .ok_or(ReadingError::Arithmetic)?;
+    }
+    let divisor = quantity
+        .checked_mul(MICRO_UNITS)
+        .ok_or(ReadingError::Arithmetic)?;
+    if divisor == 0 {
+        return Ok(Some(0));
+    }
+    let share = opening
+        .checked_mul(100)
+        .and_then(|n| n.checked_add(divisor / 2))
+        .ok_or(ReadingError::Arithmetic)?
+        / divisor;
+    Ok(Some(
+        u64::try_from(share).map_err(|_| ReadingError::Arithmetic)?,
+    ))
 }
 
 fn read_work(result: &PeriodResult) -> Result<Vec<WorkFlow>, ReadingError> {
@@ -207,29 +266,45 @@ fn good_of(id: GoodId, receipt: &dyn Debug) -> Result<Good, ReadingError> {
 
 fn read_goods(result: &PeriodResult) -> Result<Vec<GoodsMove>, ReadingError> {
     let receipts = &result.receipts;
+    let hours = result.hours.as_ref();
+    // The record holds a hand-over only for a move that moved something: a receipt of no unit is dropped below,
+    // so it needs no opening.
+    let opening = |moved_by: MovedBy,
+                   quantity: u64,
+                   receipt: &dyn Debug|
+     -> Result<Option<u64>, ReadingError> {
+        match (hours, quantity) {
+            (None, _) => Ok(None),
+            (Some(_), 0) => Ok(Some(0)),
+            (Some(record), _) => opening_units(record, moved_by, receipt).map(Some),
+        }
+    };
     let mut goods = Vec::new();
-    for r in &receipts.service_performance {
+    for (index, r) in receipts.service_performance.iter().enumerate() {
         goods.push(GoodsMove {
             good: good_of(r.good_id, r)?,
             from: party_of(AccountId::Site(r.provider_site_id), r)?,
             to: party_of(r.buyer, r)?,
             quantity: r.performed_quantity,
+            opening: opening(MovedBy::ServicePerformance(index), r.performed_quantity, r)?,
         });
     }
-    for r in &receipts.local_transfers {
+    for (index, r) in receipts.local_transfers.iter().enumerate() {
         goods.push(GoodsMove {
             good: good_of(r.good_id, r)?,
             from: party_of(AccountId::Site(r.supplier_site_id), r)?,
             to: party_of(AccountId::Site(r.buyer_site_id), r)?,
             quantity: r.quantity,
+            opening: opening(MovedBy::LocalTransfer(index), r.quantity, r)?,
         });
     }
-    for r in &receipts.local_fulfillments {
+    for (index, r) in receipts.local_fulfillments.iter().enumerate() {
         goods.push(GoodsMove {
             good: good_of(r.good_id, r)?,
             from: party_of(AccountId::Site(r.retailer_site_id), r)?,
             to: party_of(AccountId::Household(r.demand_principal_id), r)?,
             quantity: r.quantity,
+            opening: opening(MovedBy::LocalFulfillment(index), r.quantity, r)?,
         });
     }
     goods.retain(|m| m.quantity > 0);

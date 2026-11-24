@@ -26,8 +26,8 @@ PER-371.
 **When it is built.** After the closest form's plan
 (`docs/superpowers/plans/2026-11-23-adjust-2-the-closest-form.md`), Tasks 2 to 8 and 2c to 8c, and before the
 bridge (ADR322, H3). Tasks 1 and 2 touch only the stored records and are written against the code as it stands
-today. Tasks 3 to 7 are written against the closest form's Interfaces; at the head of each, the code as built
-binds, and the lead reads the task again against the built code before it starts.
+today. Tasks 3 to 7 were written against the closest form's Interfaces and read against its code once it was
+built, on 24 November; the last section says what that reading changed. Where the code differs still, it binds.
 
 ## The Director's rulings (ADR322)
 
@@ -653,8 +653,8 @@ HoursUnplaced { period: u64, what: String },
 
 ### Task 4: By the claim
 
-The code as built binds: the lead reads this task again against the runner and the engine's money receipts after
-the closest form's Task 7 (the owner's `CapitalContribution`) before it starts. Commit
+The lead read this task against the engine's money receipts as built on 24 November, the owner's
+`CapitalContribution` of the closest form's restart among them; the text below is amended. Commit
 `feat(circuit-worlds): hours back split by the claim, checked every period`.
 
 **Files:**
@@ -824,9 +824,9 @@ crate.
 
 ### Task 5: The scene, first part: goods part full, the standing line, the words
 
-The code as built binds: the lead reads this task again against the client after the closest form's Task 8c
-(`rules.rs`, `marks.rs`, the two tabs of the rail's lower part, `PaymentKind::Capital`, the sixth money stream)
-before it starts. Commit `feat(client): goods squares fill as their hours are measured`.
+The lead read this task against the client as built on 24 November (`rules.rs`, `marks.rs`, the two tabs of the
+rail's lower part, `PaymentKind::Capital`, the sixth money stream); the text below is amended. Commit
+`feat(client): goods squares fill as their hours are measured`.
 
 **Files:**
 - Modify (under `rust/crates/babylon-client/src/small_world/`): `scene.rs` (the scene opens its runner with

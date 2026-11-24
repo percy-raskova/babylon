@@ -60,7 +60,7 @@ fn good_name(good: Good) -> &'static str {
 }
 
 /// The household a group id names, and the person's number when the id is a person's.
-fn household_of(id: &str) -> Option<(Household, Option<usize>)> {
+pub(super) fn household_of(id: &str) -> Option<(Household, Option<usize>)> {
     if let Some(rest) = id.strip_prefix("person:") {
         let (group, k) = rest.split_once(':')?;
         let k = k.parse::<usize>().ok()?;
@@ -223,14 +223,15 @@ fn household_rows(
         .find(|c| c.principal_id == h.principal())
         .map(|c| u128::from(c.persons))
         .ok_or_else(|| missing(&format!("no cohort for {}", h.label())))?;
-    let at_work = match h {
-        Household::Workers(w) => result
-            .members
-            .iter()
-            .find(|m| Workplace::from_site(m.site_id) == Some(w))
-            .map_or(0, |m| u128::from(m.opening_employed).min(persons)),
-        Household::Owner(_) | Household::Supported(_) => 0,
-    };
+    let at_work = result
+        .members
+        .iter()
+        .filter(|m| m.member.household_id() == h.principal())
+        .try_fold(0_u128, |sum, m| {
+            sum.checked_add(u128::from(m.opening_employed))
+        })
+        .ok_or(FrameError::Arithmetic)?
+        .min(persons);
     let given = picture
         .reading
         .work
@@ -379,4 +380,72 @@ pub fn picked(
         at = parents.get(entity).ok().map(ChildOf::parent);
     }
     pick.set_if_neq(ScenePick(None));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::small_world::frame::ParticleMode;
+    use crate::small_world::marks;
+    use babylon_circuit_worlds::{Kind, Runner};
+    use babylon_material_circuit::AdjustmentRule;
+    use std::error::Error;
+
+    type TestResult = Result<(), Box<dyn Error>>;
+
+    fn value(rows: &[(String, String)], label: &str) -> Option<String> {
+        rows.iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, value)| value.clone())
+    }
+
+    #[test]
+    fn a_household_is_at_work_wherever_its_members_work() -> TestResult {
+        let farm = Workplace {
+            place: Place::A,
+            kind: Kind::Farm,
+        };
+        let clinic = Workplace {
+            place: Place::A,
+            kind: Kind::Clinic,
+        };
+        let home = farm.workers();
+        let mut result = Runner::open()?.step()?.clone();
+        let mut moved = 0;
+        for member in &mut result.members {
+            if member.member.household_id() != home.principal() {
+                continue;
+            }
+            if member.site_id == farm.site_id() {
+                assert_eq!(member.opening_employed, 4);
+                member.opening_employed = 3;
+                moved += 1;
+            } else if member.site_id == clinic.site_id() {
+                assert_eq!(member.opening_employed, 0);
+                member.opening_employed = 1;
+                moved += 1;
+            }
+        }
+        assert_eq!(
+            moved, 2,
+            "the pair rows of farm A's workers at farm and clinic"
+        );
+        let picture = frame::build_picture(&result, ParticleMode::Groups)?;
+        let pick = Pick::Body(Party::Household(home));
+        let rows = inspect(&picture, &result, &pick)?;
+        assert_eq!(value(&rows, "At work"), Some("4".to_owned()));
+        assert_eq!(
+            marks::rule_rows(&[result.clone()], 0, &pick)?,
+            Vec::<(String, String)>::new()
+        );
+        result.rules = vec![AdjustmentRule::SeekingInPlace];
+        let rows = marks::rule_rows(&[result], 0, &pick)?;
+        assert_eq!(value(&rows, "Worked at Place A farm"), Some("3".to_owned()));
+        assert_eq!(
+            value(&rows, "Worked at Place A clinic"),
+            Some("1".to_owned())
+        );
+        assert_eq!(rows.len(), 2);
+        Ok(())
+    }
 }

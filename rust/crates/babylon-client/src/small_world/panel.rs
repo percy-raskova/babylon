@@ -5,6 +5,7 @@
 use super::controls::{self, SceneButton};
 use super::frame::{self, Picture, STREAM_GOODS, STREAM_MONEY, STREAM_WORK};
 use super::inspect::{self, Pick, ScenePick};
+use super::marks;
 use super::reading;
 use super::rules::{self, RULES_SHOWN};
 use super::scene::{SceneCommand, SceneRunner, SceneShown, BAR_HEIGHT, HEADER_HEIGHT, RAIL_WIDTH};
@@ -843,7 +844,9 @@ fn rows_for(
             &built
         }
     };
-    inspect::inspect(picture, result, pick).map_err(|e| e.to_string())
+    let mut rows = inspect::inspect(picture, result, pick).map_err(|e| e.to_string())?;
+    rows.extend(marks::rule_rows(history, index, pick).map_err(|e| e.to_string())?);
+    Ok(rows)
 }
 
 /// Repaint the list of what was struck.

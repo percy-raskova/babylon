@@ -1288,3 +1288,25 @@ fn a_refused_rule_ends_the_script_and_keeps_the_refusal() -> TestResult {
     assert_eq!(value["rules"], serde_json::json!([]));
     Ok(())
 }
+
+#[test]
+fn a_script_turns_a_rule_on() -> TestResult {
+    let folder = TestFolder::new()?;
+    let script = folder.0.join("run.jsonl");
+    std::fs::write(
+        &script,
+        "{\"step\":1}\n{\"rule\":\"seeking_in_place\"}\n{\"report\":\"on\"}\n",
+    )?;
+    let mut app = scene_app(Some(script))?;
+    updates(&mut app, 500);
+    let replies = std::fs::read_to_string(folder.0.join("replies.jsonl"))?;
+    let lines: Vec<&str> = replies.lines().collect();
+    assert_eq!(lines.len(), 3, "{replies}");
+    for (k, line) in lines.iter().enumerate() {
+        assert_eq!(*line, format!("{{\"event\":\"done\",\"line\":{}}}", k + 1));
+    }
+    let kept = std::fs::read_to_string(folder.0.join("on.json"))?;
+    let value: Value = serde_json::from_str(&kept)?;
+    assert_eq!(value["rules"], serde_json::json!([["seeking_in_place", 2]]));
+    Ok(())
+}

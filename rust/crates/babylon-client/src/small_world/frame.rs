@@ -27,6 +27,7 @@ use hypergraph_rs_bevy::{
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::num::NonZeroU64;
+use std::ops::Range;
 use std::time::Duration;
 
 /// The stream of hours given to workplaces.
@@ -378,6 +379,9 @@ fn missing(what: &str) -> FrameError {
 struct Population {
     persons: BTreeMap<Household, usize>,
     at_work: BTreeMap<Household, usize>,
+    /// Persons of a household at work at a workplace: the `opening_employed` of the member of that household at
+    /// that site.
+    at_work_at: BTreeMap<(Household, Workplace), usize>,
 }
 
 impl Population {
@@ -397,18 +401,30 @@ impl Population {
         }
         // Every member counts for its own household, at whichever workplace it works.
         let mut at_work: BTreeMap<Household, usize> = BTreeMap::new();
+        let mut at_work_at: BTreeMap<(Household, Workplace), usize> = BTreeMap::new();
         for member in &result.members {
             let h = Household::from_principal(member.member.household_id())
                 .ok_or_else(|| missing("a staffing member of no household"))?;
+            let w = Workplace::from_site(member.site_id)
+                .ok_or_else(|| missing("a staffing member at no workplace"))?;
             let employed =
                 usize::try_from(member.opening_employed).map_err(|_| FrameError::Arithmetic)?;
             let slot = at_work.entry(h).or_insert(0);
             *slot = slot.checked_add(employed).ok_or(FrameError::Arithmetic)?;
+            let here = at_work_at.entry((h, w)).or_insert(0);
+            *here = here.checked_add(employed).ok_or(FrameError::Arithmetic)?;
         }
         for (h, employed) in &mut at_work {
             *employed = (*employed).min(persons.get(h).copied().unwrap_or(0));
         }
-        Ok(Self { persons, at_work })
+        for ((h, _), employed) in &mut at_work_at {
+            *employed = (*employed).min(persons.get(h).copied().unwrap_or(0));
+        }
+        Ok(Self {
+            persons,
+            at_work,
+            at_work_at,
+        })
     }
 
     fn persons(&self, h: Household) -> usize {
@@ -418,6 +434,41 @@ impl Population {
     fn at_work(&self, h: Household) -> usize {
         self.at_work.get(&h).copied().unwrap_or(0)
     }
+
+    fn at_work_at(&self, h: Household, w: Workplace) -> usize {
+        self.at_work_at.get(&(h, w)).copied().unwrap_or(0)
+    }
+}
+
+/// Which of a household's persons work where: its own workplace first, then `Workplace::ALL` order, each range
+/// the persons at work there as far as the household's persons reach; persons not at work follow. A range of
+/// no persons is left out. Without a move a household has one range, at its own workplace.
+fn person_ranges(pop: &Population, h: Household) -> Vec<(Workplace, Range<usize>)> {
+    let own = match h {
+        Household::Workers(w) => Some(w),
+        Household::Owner(_) | Household::Supported(_) => None,
+    };
+    let order = own
+        .into_iter()
+        .chain(Workplace::ALL.into_iter().filter(|w| Some(*w) != own));
+    let mut ranges = Vec::new();
+    let mut start = 0_usize;
+    for w in order {
+        let here = pop
+            .at_work_at(h, w)
+            .min(pop.persons(h).saturating_sub(start));
+        let end = start + here;
+        if end > start {
+            ranges.push((w, start..end));
+            start = end;
+        }
+    }
+    ranges
+}
+
+/// Where the persons not at work begin: after the last range.
+fn rest_of(ranges: &[(Workplace, Range<usize>)]) -> usize {
+    ranges.last().map_or(0, |(_, range)| range.end)
 }
 
 /// Where the households and persons stand, and the particles that show them.
@@ -530,10 +581,14 @@ fn stand_people(
     for h in Household::ALL {
         let n = pop.persons(h);
         let points = match h {
-            Household::Workers(w) => {
-                let employed = pop.at_work(h).min(n);
-                let anchor = (WORKPLACE_X[w.index()], WAGE_ANCHOR_Y);
-                let mut points = layout::cluster(anchor, employed);
+            Household::Workers(_) => {
+                let ranges = person_ranges(pop, h);
+                let mut points = Vec::new();
+                for (w, range) in &ranges {
+                    let anchor = (WORKPLACE_X[w.index()], WAGE_ANCHOR_Y);
+                    points.extend(layout::cluster(anchor, range.len()));
+                }
+                let employed = rest_of(&ranges).min(n);
                 points.extend(layout::cluster(stand_of(benefits, h)?, n - employed));
                 points
             }
@@ -647,15 +702,34 @@ fn put<M: Clone>(
         .map_err(|error| FrameError::Edge(error.to_string()))
 }
 
-fn given_to(reading: &PeriodReading, w: Workplace) -> Result<u64, FrameError> {
+/// The hours a household gave a workplace.
+fn given_by(reading: &PeriodReading, h: Household, w: Workplace) -> Result<u64, FrameError> {
     reading
         .work
         .iter()
-        .filter(|f| f.workplace == w)
+        .filter(|f| f.workplace == w && f.household == h)
         .try_fold(0_u64, |sum, f| add_hours(sum, f.given))
 }
 
-/// A workforce: its household with the hours given, or its persons, ten hours each in order.
+/// Persons of a household with the hours given out to them ten each in order, put into the edge.
+fn put_persons(
+    graph: &mut Hypergraph<(), (), u64>,
+    edge: &str,
+    h: Household,
+    persons: impl Iterator<Item = usize>,
+    given: u64,
+) -> Result<(), FrameError> {
+    let mut left = given;
+    for k in persons {
+        let hours = left.min(HOURS_PER_PERSON);
+        left -= hours;
+        put(graph, edge, &person_id(h, k), hours)?;
+    }
+    Ok(())
+}
+
+/// A workforce: its own household with the hours it gave and each other household with the hours it gave
+/// above 0, or their persons at the workplace, ten hours each in order.
 fn workforces(
     reading: &PeriodReading,
     pop: &Population,
@@ -664,15 +738,47 @@ fn workforces(
     let mut graph = Hypergraph::new();
     for w in Workplace::ALL {
         let edge = workforce_edge(w);
-        let given = given_to(reading, w)?;
+        let own = w.workers();
         match mode {
-            ParticleMode::Groups => put(&mut graph, &edge, &household_id(w.workers()), given)?,
+            ParticleMode::Groups => {
+                put(
+                    &mut graph,
+                    &edge,
+                    &household_id(own),
+                    given_by(reading, own, w)?,
+                )?;
+                for h in Household::ALL.into_iter().filter(|h| *h != own) {
+                    let given = given_by(reading, h, w)?;
+                    if given > 0 {
+                        put(&mut graph, &edge, &household_id(h), given)?;
+                    }
+                }
+            }
             ParticleMode::People => {
-                let mut left = given;
-                for k in 0..pop.persons(w.workers()) {
-                    let hours = left.min(HOURS_PER_PERSON);
-                    left -= hours;
-                    put(&mut graph, &edge, &person_id(w.workers(), k), hours)?;
+                // The own household's persons not at another workplace: its range here, then those not at work.
+                let ranges = person_ranges(pop, own);
+                let here = ranges
+                    .iter()
+                    .find(|(at, _)| *at == w)
+                    .map(|(_, range)| range.clone())
+                    .unwrap_or_default();
+                let idle = rest_of(&ranges)..pop.persons(own);
+                put_persons(
+                    &mut graph,
+                    &edge,
+                    own,
+                    here.chain(idle),
+                    given_by(reading, own, w)?,
+                )?;
+                for h in Household::ALL.into_iter().filter(|h| *h != own) {
+                    let given = given_by(reading, h, w)?;
+                    let range = person_ranges(pop, h)
+                        .into_iter()
+                        .find(|(at, _)| *at == w)
+                        .map(|(_, range)| range);
+                    if let (true, Some(range)) = (given > 0, range) {
+                        put_persons(&mut graph, &edge, h, range, given)?;
+                    }
                 }
             }
         }
@@ -961,7 +1067,7 @@ pub fn build_picture(result: &PeriodResult, mode: ParticleMode) -> Result<Pictur
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_circuit_worlds::{Lasts, Places, Runner, Shock};
+    use babylon_circuit_worlds::{Lasts, Places, Runner, Scale, Shock, World};
     use bevy::prelude::*;
     use bevy::time::TimeUpdateStrategy;
     use hypergraph_rs::geometry;
@@ -1196,6 +1302,25 @@ mod tests {
             .collect();
         assert_eq!(paid.len(), 16);
         assert!(paid.iter().all(|dollars| (*dollars - 60.0).abs() < 1e-9));
+        Ok(())
+    }
+
+    #[test]
+    fn without_a_move_every_frame_is_as_before() -> TestResult {
+        let seekers = World::switches_at(Scale::Small)[1];
+        let mut with = Runner::open()?;
+        with.turn_on(seekers)?;
+        let mut without = Runner::open()?;
+        for _ in 0..34 {
+            let on = with.step()?.clone();
+            let off = without.step()?.clone();
+            assert_eq!(on.rules, vec![seekers]);
+            assert_eq!(off.rules, Vec::new());
+            assert_eq!(super::super::marks::moves(&on).count(), 0);
+            for mode in [ParticleMode::Groups, ParticleMode::People] {
+                assert_eq!(build_picture(&on, mode)?, build_picture(&off, mode)?);
+            }
+        }
         Ok(())
     }
 

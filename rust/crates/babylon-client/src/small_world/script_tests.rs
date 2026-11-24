@@ -131,3 +131,38 @@ fn the_proof_script_of_task_2c_parses() {
         ])
     );
 }
+
+/// The proof script of Task 3c, run by the lead on the display.
+const PROOF_3C: &str = r#"{"step":20}
+{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}
+{"step":10}
+{"rule":"seeking_in_place"}
+{"step":20}
+{"capture":"seekers-on"}
+{"particles":"people"}
+{"capture":"seekers-people"}
+{"report":"seekers-on"}
+"#;
+
+#[test]
+fn the_proof_script_of_task_3c_parses() {
+    let commands = script::parse_script(PROOF_3C);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(20),
+            ScriptCommand::Strike {
+                shock: "harvest_fails".into(),
+                places: "a".into(),
+                lasts: "until_lifted".into(),
+            },
+            ScriptCommand::Step(10),
+            ScriptCommand::Rule("seeking_in_place".into()),
+            ScriptCommand::Step(20),
+            ScriptCommand::Capture("seekers-on".into()),
+            ScriptCommand::Particles("people".into()),
+            ScriptCommand::Capture("seekers-people".into()),
+            ScriptCommand::Report("seekers-on".into()),
+        ])
+    );
+}

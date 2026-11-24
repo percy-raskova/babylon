@@ -6,6 +6,7 @@ pub mod frame;
 pub mod frame_time;
 pub mod inspect;
 pub mod layout;
+pub mod marks;
 pub mod panel;
 pub mod reading;
 pub mod rules;

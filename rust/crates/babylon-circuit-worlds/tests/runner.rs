@@ -217,11 +217,12 @@ fn a_refusal_of_a_rule_is_worded_for_the_scene() {
 }
 
 /// The rules turned on in the middle of a run, each after this many steps. Tasks 4 to 8 add their rules.
-const LATE: [(u64, AdjustmentRule); 4] = [
+const LATE: [(u64, AdjustmentRule); 5] = [
     (20, SeekingInPlace),
     (24, HiringWithinMeans),
     (28, StopWithoutPay),
     (32, RestingPrice),
+    (36, OwnerRestart { outlay_periods: 1 }),
 ];
 
 /// The scene's world with the harvest failing in both places, the `LATE` rules applied, and `steps` steps taken.
@@ -265,6 +266,10 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
             RuleOn {
                 rule: RestingPrice,
                 from: 33
+            },
+            RuleOn {
+                rule: OwnerRestart { outlay_periods: 1 },
+                from: 37
             }
         ]
     );
@@ -286,6 +291,39 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
         bounds(&one.history()[24]) > 0,
         "the bound's first close is period 25's"
     );
+    Ok(())
+}
+
+#[test]
+fn no_restart_is_tested_before_the_rule_is_on() -> TestResult {
+    let runner = late_run(80)?;
+    let tested = |result: &PeriodResult| {
+        result
+            .receipts
+            .adjustments
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row,
+                    AdjustmentReceipt::Restart(_) | AdjustmentReceipt::OwnerSpare(_)
+                )
+            })
+            .count()
+    };
+    for result in &runner.history()[..36] {
+        assert_eq!(tested(result), 0, "period {}", result.period);
+    }
+    assert!(
+        tested(&runner.history()[36]) > 0,
+        "the owners' spare money is read at the first close under the rule"
+    );
+    // The counters start at 0 when the rule is turned on, whatever the workplaces did before.
+    let before = late_run(36)?;
+    assert!(before
+        .standing()
+        .rows()
+        .iter()
+        .all(|row| (row.periods_since_work, row.quiet_periods) == (0, 0)));
     Ok(())
 }
 

@@ -29,6 +29,12 @@ pub(crate) fn rests(
     {
         return false;
     }
+    !made_hours(state, site)
+}
+
+/// Whether a workplace's people made available any hours in the closing period: the members' labor rows of
+/// that period, through the employment terms that name the workplace.
+pub(crate) fn made_hours(state: &MaterialCircuitState, site: SiteId) -> bool {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return false;
     };
@@ -38,7 +44,7 @@ pub(crate) fn rests(
         .filter(|terms| terms.site_id == site)
         .map(|terms| terms.member_id)
         .collect();
-    !economy.member_labor.iter().any(|row| {
+    economy.member_labor.iter().any(|row| {
         row.period == state.period && row.available_hours > 0 && members.contains(&row.member_id)
     })
 }

@@ -600,6 +600,59 @@ fn put_bound(line: &mut Line, result: &PeriodResult) {
     }
 }
 
+/// Round nine's step R and round ten's step M, when an owner restarts a stopped workplace: the test of each
+/// workplace (0 not tested, 1 failed, 2 passed with no buyer, 3 restarted), the periods since it made or sold
+/// anything, whether the test passed on its sales and failed on the inputs, and each owner's money beyond one
+/// period of its own need.
+fn put_restart(line: &mut Line, runner: &Runner, result: &PeriodResult) {
+    let mut test = [0_u8; 8];
+    let mut inputs = [0_u8; 8];
+    let mut spare = [0_i128; 2];
+    for receipt in &result.receipts.adjustments {
+        match receipt {
+            AdjustmentReceipt::Restart(row) => {
+                let i = index_of(row.site_id);
+                test[i] = row.test as u8;
+                inputs[i] = u8::from(row.inputs_short);
+            }
+            AdjustmentReceipt::OwnerSpare(row) => {
+                let AccountId::Household(principal) = row.owner else {
+                    panic!("an owner is a household");
+                };
+                let Some(Household::Owner(place)) = Household::from_principal(principal) else {
+                    panic!("an owner of the doubled world");
+                };
+                spare[place.index()] = row.spare.micro_units();
+            }
+            _ => {}
+        }
+    }
+    for workplace in Workplace::ALL {
+        let i = workplace.index();
+        let name = site_name(workplace);
+        line.put(format!("restart_test_{name}"), test[i]);
+        let since = runner
+            .standing()
+            .rows()
+            .iter()
+            .find(|row| row.site_id == workplace.site_id())
+            .map_or(0, |row| row.periods_since_work);
+        line.put(format!("stopped_since_{name}"), since);
+    }
+    for workplace in Workplace::ALL {
+        line.put(
+            format!("restart_inputs_{}", site_name(workplace)),
+            inputs[workplace.index()],
+        );
+    }
+    for place in Place::ALL {
+        line.money(
+            format!("owner_spare_{}", place_name(place)),
+            spare[place.index()],
+        );
+    }
+}
+
 /// One period's line, in column order.
 fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line {
     let catalog = runner
@@ -617,6 +670,13 @@ fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line
     put_standards_and_public(&mut line, result);
     if result.rules.contains(&AdjustmentRule::SeekingInPlace) {
         put_seekers(&mut line, runner, result, opening);
+    }
+    if result
+        .rules
+        .iter()
+        .any(|rule| matches!(rule, AdjustmentRule::OwnerRestart { .. }))
+    {
+        put_restart(&mut line, runner, result);
     }
     if result.rules.contains(&AdjustmentRule::HiringWithinMeans) {
         put_bound(&mut line, result);

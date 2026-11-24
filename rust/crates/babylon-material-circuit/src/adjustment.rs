@@ -4,20 +4,24 @@ mod bound;
 mod policy;
 mod receipts;
 mod rest;
+mod restart;
 mod standing;
 
 pub(crate) use bound::{bound_hiring, HiringBound};
+
 pub use policy::AdjustmentRule;
 pub(crate) use policy::{admit, asks};
 #[cfg(test)]
 pub(crate) use policy::{refuse_combinations, NOT_YET_BUILT};
 pub use receipts::{
-    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, RestingPriceReceipt,
-    StopReceipt,
+    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, OwnerSpareReceipt, PlaceMoveReceipt,
+    RestartReceipt, RestartTest, RestingPriceReceipt, RestingPriceToCostReceipt, StopReceipt,
 };
 pub(crate) use rest::resting_among;
 #[cfg(test)]
 pub(crate) use rest::rests;
+pub(crate) use restart::restart_stopped;
+pub use restart::RESTART_QUIET_PERIODS;
 #[cfg(test)]
 pub(crate) use standing::{judge, SiteTest};
 pub(crate) use standing::{test_workplaces, StopRound};

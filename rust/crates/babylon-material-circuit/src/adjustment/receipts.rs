@@ -3,7 +3,9 @@
 use super::standing::StopHold;
 use babylon_kernel::currency::Currency;
 
-use crate::{FinalDemandPrincipalId, GoodId, SiteId, StaffingMemberId, StaffingPoolId, UnitId};
+use crate::{
+    AccountId, FinalDemandPrincipalId, GoodId, SiteId, StaffingMemberId, StaffingPoolId, UnitId,
+};
 
 /// What the rules of ADR314 did at one close, in the order they acted.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -16,6 +18,71 @@ pub enum AdjustmentReceipt {
     Stop(StopReceipt),
     /// A workplace that employed nobody and offered nothing held a price at this close (A17, A19).
     RestingPrice(RestingPriceReceipt),
+    /// A resting price under one unit's cost was raised to it (A19).
+    RestingPriceToCost(RestingPriceToCostReceipt),
+    /// The restart's test of one stopped workplace, and its money when it passed (A17, A19, ADR318 L1).
+    Restart(RestartReceipt),
+    /// What an owner has beyond one period of its own need: the money a restart may use.
+    OwnerSpare(OwnerSpareReceipt),
+}
+
+/// A resting price raised to the cost of one unit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RestingPriceToCostReceipt {
+    /// The period that closed.
+    pub period: u64,
+    /// The seller.
+    pub site_id: SiteId,
+    /// The price that stood.
+    pub old: Currency,
+    /// The price now: one unit's cost, rounded up to the micro-unit.
+    pub raised: Currency,
+}
+
+/// What the restart's test made of a workplace that employed nobody: the bench writes 0 to 3 in this order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestartTest {
+    /// Not tested: it works, or it has not been quiet long enough.
+    NotTested,
+    /// Tested and not restarted: what the buyers it turned away would pay does not cover one batch, the
+    /// inputs of a batch cannot be had, or the restart would put in nothing.
+    Failed,
+    /// It passed, and its owner has not the spare money.
+    NoBuyer,
+    /// Its owner put money in.
+    Restarted,
+}
+
+/// The restart's test of one workplace at one close. A workplace that was not tested has no receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RestartReceipt {
+    /// The period that closed.
+    pub period: u64,
+    /// The workplace.
+    pub site_id: SiteId,
+    /// What the test made of it.
+    pub test: RestartTest,
+    /// Whether it passed on its sales and failed because the inputs of one batch could not be had.
+    pub inputs_short: bool,
+    /// The owner whose money it was tested against; `None` when it did not pass.
+    pub owner: Option<AccountId>,
+    /// The money the owner put in; 0 unless restarted.
+    pub money: Currency,
+    /// The cost of one batch.
+    pub batch_cost: Currency,
+    /// The units its buyers could pay for at its price and were not sold.
+    pub turned: u64,
+}
+
+/// One owner's money beyond one period of its own need, at a close.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OwnerSpareReceipt {
+    /// The period that closed.
+    pub period: u64,
+    /// The owner.
+    pub owner: AccountId,
+    /// Its cash less one period of the goods and services it requires, at posted prices.
+    pub spare: Currency,
 }
 
 /// One price held at a close because its seller employed nobody and offered nothing.

@@ -16,11 +16,20 @@ pub(crate) enum Form {
     Stop,
     /// A resting price, with the stop rule, the bound and the seekers.
     Rest,
+    /// An owner restarts a stopped workplace, with the resting price, the stop rule, the bound and the seekers.
+    Restart,
 }
 
 impl Form {
     /// The forms built so far.
-    pub(crate) const ALL: [Self; 5] = [Self::A6, Self::Seek, Self::Bound, Self::Stop, Self::Rest];
+    pub(crate) const ALL: [Self; 6] = [
+        Self::A6,
+        Self::Seek,
+        Self::Bound,
+        Self::Stop,
+        Self::Rest,
+        Self::Restart,
+    ];
 
     /// The rules the form turns on, in the order of `AdjustmentRule`, taken from `World::switches_at(scale)`
     /// as each rule task adds its form. `A6` asks for none.
@@ -32,6 +41,13 @@ impl Form {
             Self::Bound => vec![switches[0], switches[1]],
             Self::Stop => vec![switches[0], switches[1], switches[2]],
             Self::Rest => vec![switches[0], switches[1], switches[2], switches[3]],
+            Self::Restart => vec![
+                switches[0],
+                switches[1],
+                switches[2],
+                switches[3],
+                switches[4],
+            ],
         }
     }
 }

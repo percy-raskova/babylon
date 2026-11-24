@@ -248,6 +248,32 @@ market_clearing:
     does not move that product's posted price at the close: the price decision is Hold and the product's own quote
     (its step ups and step downs) does not run for it, a service keeps its price; the rule keeps nothing from one
     close to the next; each price that rested has a receipt (RestingPrice) with the period, the product and the price
+  ADR314_restart: >-
+    when a catalog asks for OwnerRestart (which asks for the bound, the stop rule and the resting price), the close
+    ends with the restart, before staffing, and the entry that carries the stop rule's memory is the only one that
+    runs it. In this order. (b) a price that rested at this close and stands under one unit's cost (a maker's hours
+    at its largest wage rate and each input at the highest posted price among its provider's offers; a merchant's
+    hours a unit and its supplier's price; over the units of a batch, rounded up to the micro-unit) is raised to
+    that cost, every offer of the workplace, the period's price and service market receipts take the new price
+    and each raise has a receipt (RestingPriceToCost). The counters of the memory (periods since it made or sold
+    anything; quiet periods) go to 0 for a workplace that sold anything or, having a production row, made or took
+    in anything, else up by one; they advance only in a close whose catalog asks for the restart. A workplace whose
+    people made available no hours in the closing period and that has 3 quiet periods is tested: what its buyers
+    could pay for at its price and were not sold (the sum, over its market receipts of this close, of demand at the
+    quote less the quantity sold) up to one batch must be worth more than one batch costs, and the inputs of one
+    batch must be had (held, or made this period by a supplier that employs people, within what that supplier plans
+    to make for the next period under its own bound, less what its other buyers took, within a service's caps).
+    It then plans batches (what was turned away over a batch's output, at least one, at most its nameplate) for
+    the periods of outlay the rule names; the money is that plan less the cash it holds, and a restart that would
+    put in nothing is refused. The buyer is the holder of its ownership claim, from that owner's own spare money
+    only: the owner's cash less one period of the goods and services its household requires at posted prices;
+    candidates go in the order of what each would earn on the money put in, highest first, ties by site, and
+    each takes its money out of what is left of that owner's spare. The money is a cash transfer (capital
+    contribution) with its receipt, carried in the cost book as the owner's equity and the workplace's
+    contributed capital; it is never paid back and never earnings. The workplace's hold is lifted and its quiet
+    periods go to 0. Then the bound of the next period is reckoned again, so that a restarted workplace may hire at
+    once: what the first bound cut is put back and the bound runs again, replacing the bound and its receipts. Each
+    tested workplace has a receipt (Restart), each owner one (OwnerSpare)
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out

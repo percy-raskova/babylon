@@ -30,6 +30,22 @@ pub struct WorkplaceStandingRow {
     pub site_id: SiteId,
     /// Whether it is held back.
     pub hold: StopHold,
+    /// Periods since it last made or sold anything. Counted only while the restart is asked for.
+    pub periods_since_work: u64,
+    /// The same, counted again from 0 at a restart: the restart's test reads it.
+    pub quiet_periods: u64,
+}
+
+impl WorkplaceStandingRow {
+    /// A workplace the rules have not yet seen: free, with nothing counted.
+    pub(crate) const fn new(site_id: SiteId) -> Self {
+        Self {
+            site_id,
+            hold: StopHold::Free,
+            periods_since_work: 0,
+            quiet_periods: 0,
+        }
+    }
 }
 
 /// What the rules remember of each workplace from one close to the next. The caller keeps it, as it keeps the
@@ -58,6 +74,29 @@ impl WorkplaceStanding {
         self.rows
             .binary_search_by_key(&site, |row| row.site_id)
             .map_or(StopHold::Free, |index| self.rows[index].hold)
+    }
+
+    /// The row of a workplace: a fresh one for a workplace the rules have not seen.
+    pub(crate) fn row_of(&self, site: SiteId) -> WorkplaceStandingRow {
+        self.rows
+            .binary_search_by_key(&site, |row| row.site_id)
+            .map_or_else(
+                |_| WorkplaceStandingRow::new(site),
+                |index| self.rows[index],
+            )
+    }
+
+    /// The row of a workplace for change, made at the opening's values when there is none; rows stay in site
+    /// order.
+    pub(crate) fn row_mut(&mut self, site: SiteId) -> &mut WorkplaceStandingRow {
+        let index = match self.rows.binary_search_by_key(&site, |row| row.site_id) {
+            Ok(index) => index,
+            Err(index) => {
+                self.rows.insert(index, WorkplaceStandingRow::new(site));
+                index
+            }
+        };
+        &mut self.rows[index]
     }
 }
 
@@ -249,9 +288,10 @@ pub(crate) fn test_workplaces(
         if let Some(limit) = verdict.limit {
             limits.insert(site, limit);
         }
+        let kept = previous.row_of(site);
         rows.push(WorkplaceStandingRow {
-            site_id: site,
             hold: verdict.hold,
+            ..kept
         });
         receipts.push(StopReceipt {
             period,

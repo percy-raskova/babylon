@@ -30,6 +30,8 @@ pub(crate) struct HiringBound {
     pub(crate) next_period: u64,
     pub(crate) process: BTreeMap<ProcessId, (u64, u64)>,
     pub(crate) rows: Vec<HiringBoundReceipt>,
+    /// The hours the bound took off each attendance row of the next period.
+    pub(crate) cuts: BTreeMap<(SiteId, UnitId), u64>,
 }
 
 impl HiringBound {
@@ -461,6 +463,7 @@ pub(crate) fn bound_hiring(
         next_period,
         process: BTreeMap::new(),
         rows: Vec::new(),
+        cuts: BTreeMap::new(),
     };
     let notes = {
         let CircuitAccounting::Monetary(economy) = &state.accounting else {
@@ -501,6 +504,7 @@ pub(crate) fn bound_hiring(
         let lost = notes.cut.get(&key).copied().unwrap_or(0);
         let asked_hours = notes.asked.get(&key).copied().unwrap_or(row.planned_hours);
         row.planned_hours = row.planned_hours.saturating_sub(lost);
+        bound.cuts.insert(key, lost);
         let limit = if lost > 0 {
             notes.by.get(&key).copied().unwrap_or(HiringLimit::Other)
         } else {
@@ -516,6 +520,44 @@ pub(crate) fn bound_hiring(
         });
     }
     Ok(bound)
+}
+
+/// The bound of the next period reckoned again from the state as it now stands, after an owner's money is in:
+/// what the earlier bound took off each attendance row of the next period is put back, then the bound runs as
+/// it ran at the close.
+///
+/// # Errors
+/// As `bound_hiring`; `MonetaryInvariant` for an attendance row the earlier bound did not reckon.
+pub(crate) fn rebound(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    earlier: &HiringBound,
+    performance: &[ServicePerformanceReceipt],
+    maintenance: Option<&MaintenanceReceipt>,
+) -> Result<HiringBound> {
+    let next_period = earlier.next_period;
+    if let CircuitAccounting::Monetary(economy) = &mut state.accounting {
+        let recurring = economy
+            .recurring
+            .as_mut()
+            .ok_or(MaterialCircuitError::MonetaryInvariant)?;
+        for row in recurring
+            .attendance
+            .iter_mut()
+            .filter(|row| row.period == next_period)
+        {
+            let cut = earlier
+                .cuts
+                .get(&(row.site_id, row.unit_id))
+                .copied()
+                .ok_or(MaterialCircuitError::MonetaryInvariant)?;
+            row.planned_hours = row
+                .planned_hours
+                .checked_add(cut)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+    }
+    bound_hiring(catalog, state, performance, maintenance, next_period)
 }
 
 #[cfg(test)]

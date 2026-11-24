@@ -1965,6 +1965,7 @@ fn close_with_rules(
     )?;
     let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
     let tiers = close.funded.services.tier_receipts(close.state.period)?;
+    let mut bound = plans.bound;
     // In the order they acted: the prices that rested (services, then goods), then the bound.
     let mut adjustments: Vec<AdjustmentReceipt> = close
         .funded
@@ -1975,7 +1976,7 @@ fn close_with_rules(
         .copied()
         .map(AdjustmentReceipt::RestingPrice)
         .collect();
-    if let Some(bound) = &plans.bound {
+    if let Some(bound) = &bound {
         adjustments.extend(
             bound
                 .rows
@@ -1984,60 +1985,69 @@ fn close_with_rules(
                 .map(AdjustmentReceipt::HiringBound),
         );
     }
+    let mut transition = MaterialCircuitTransition {
+        household_lifecycle,
+        resident_workforce_attrition: Vec::new(),
+        agency_attendance: close.households.agency.into_iter().collect(),
+        collections: close.collections,
+        aid: close.aid_receipts,
+        aid_contributions: settled.aid_contributions,
+        household_time: close.households.time,
+        installation: close.funded.production.installation,
+        installation_decisions: close.funded.production.installation_decisions,
+        company_basis: settled.company_basis,
+        equipment_wear: settled.equipment_wear,
+        investment,
+        public_budgets: close.funded.finance.public_budgets,
+        public_programs: close.funded.finance.programs,
+        taxes: close.funded.finance.taxes,
+        distributions: close.funded.finance.distributions,
+        company_distributions: close.funded.finance.company_distributions,
+        contributions: close.funded.finance.contributions,
+        staffing_members: vec![],
+        member_labor_use: close.households.member_labor_use,
+        service_performance: close.funded.services.performance,
+        household_services: close.funded.services.household,
+        service_markets: close.funded.services.markets,
+        service_outputs: close.funded.services.outputs,
+        income: settled.income,
+        state: close.state,
+        household_demand: close.funded.household_demand,
+        household_consumption: close.households.consumption,
+        procurement: close.procurement,
+        production_plans: plans.production,
+        prices: plans.prices,
+        money_transfers: close.money_transfers,
+        wage_accruals: close.wage_accruals,
+        labor_use: close.households.labor_use,
+        production: close.funded.production.production,
+        dispatches: close.dispatches,
+        losses: close.due.losses,
+        arrivals: close.due.arrivals,
+        deliveries: close.due.deliveries,
+        realizations: close.due.realizations,
+        handling: close.outbound.handling,
+        local_fulfillments: close.outbound.local_fulfillments,
+        local_transfers: close.outbound.local_transfers,
+        maintenance: close.funded.production.maintenance,
+        market_clearings: close.funded.markets.into_receipts(),
+        household_wants: tiers.0,
+        household_tiers: tiers.1,
+        adjustments,
+    };
+    let mut kept = standing.cloned();
+    if asks_for(catalog, AdjustmentRule::OwnerRestart { outlay_periods: 1 }) {
+        // The restart needs the bound and the stop rule's memory: admission and the entries see to both.
+        let (Some(held), Some(bound)) = (kept.as_mut(), bound.as_mut()) else {
+            return Err(MaterialCircuitError::MarketClearingInvariant);
+        };
+        crate::adjustment::restart_stopped(catalog, &mut transition, held, bound, next_period)?;
+    }
     Ok(ClosedMaterialPeriod {
         next_period,
-        hiring_bound: plans.bound,
-        standing: standing.cloned(),
-        transition: MaterialCircuitTransition {
-            household_lifecycle,
-            resident_workforce_attrition: Vec::new(),
-            agency_attendance: close.households.agency.into_iter().collect(),
-            collections: close.collections,
-            aid: close.aid_receipts,
-            aid_contributions: settled.aid_contributions,
-            household_time: close.households.time,
-            installation: close.funded.production.installation,
-            installation_decisions: close.funded.production.installation_decisions,
-            company_basis: settled.company_basis,
-            equipment_wear: settled.equipment_wear,
-            investment,
-            public_budgets: close.funded.finance.public_budgets,
-            public_programs: close.funded.finance.programs,
-            taxes: close.funded.finance.taxes,
-            distributions: close.funded.finance.distributions,
-            company_distributions: close.funded.finance.company_distributions,
-            contributions: close.funded.finance.contributions,
-            staffing_members: vec![],
-            member_labor_use: close.households.member_labor_use,
-            service_performance: close.funded.services.performance,
-            household_services: close.funded.services.household,
-            service_markets: close.funded.services.markets,
-            service_outputs: close.funded.services.outputs,
-            income: settled.income,
-            state: close.state,
-            household_demand: close.funded.household_demand,
-            household_consumption: close.households.consumption,
-            procurement: close.procurement,
-            production_plans: plans.production,
-            prices: plans.prices,
-            money_transfers: close.money_transfers,
-            wage_accruals: close.wage_accruals,
-            labor_use: close.households.labor_use,
-            production: close.funded.production.production,
-            dispatches: close.dispatches,
-            losses: close.due.losses,
-            arrivals: close.due.arrivals,
-            deliveries: close.due.deliveries,
-            realizations: close.due.realizations,
-            handling: close.outbound.handling,
-            local_fulfillments: close.outbound.local_fulfillments,
-            local_transfers: close.outbound.local_transfers,
-            maintenance: close.funded.production.maintenance,
-            market_clearings: close.funded.markets.into_receipts(),
-            household_wants: tiers.0,
-            household_tiers: tiers.1,
-            adjustments,
-        },
+        hiring_bound: bound,
+        standing: kept,
+        transition,
     })
 }
 

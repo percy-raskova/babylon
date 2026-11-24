@@ -24,6 +24,8 @@ const PC_STOP_400: &str = include_str!("digests/pc-stop-400.txt");
 const PC_STOP_NAT_400: &str = include_str!("digests/pc-stop-nat-400.txt");
 const PC_REST_400: &str = include_str!("digests/pc-rest-400.txt");
 const PC_REST_NAT_400: &str = include_str!("digests/pc-rest-nat-400.txt");
+const PC_RESTART_400: &str = include_str!("digests/pc-restart-400.txt");
+const PC_RESTART_NAT_400: &str = include_str!("digests/pc-restart-nat-400.txt");
 
 fn produce(form: Form, scale: Scale, periods: u64) -> Vec<(&'static str, String)> {
     runs::runs(form, scale)
@@ -133,6 +135,33 @@ fn the_quiet_world_with_the_stop_rule_is_still_for_34_periods() {
 #[test]
 fn the_quiet_world_with_the_resting_price_is_still_for_34_periods() {
     assert_quiet(Form::Rest);
+}
+
+#[test]
+fn the_quiet_world_with_the_restart_is_still_for_34_periods() {
+    assert_quiet(Form::Restart);
+    let runs = runs::runs(Form::Restart, Scale::Small);
+    let run = runs
+        .iter()
+        .find(|run| run.name == "fund-quiet")
+        .expect("the fund world's quiet run");
+    let text = rows::rows(run, 6);
+    let header: Vec<&str> = text.lines().next().unwrap_or("").split('\t').collect();
+    let position = |name: &str| header.iter().position(|column| *column == name);
+    for name in [
+        "restart_test_utility_a",
+        "stopped_since_shop_b",
+        "restart_inputs_clinic_a",
+        "owner_spare_b",
+    ] {
+        assert!(position(name).is_some(), "{name}");
+    }
+    for line in text.lines().skip(1) {
+        for site in ["utility_a", "shop_b"] {
+            let at = position(&format!("restart_test_{site}")).expect("restart test");
+            assert_eq!(field(line, at), "0", "a quiet workplace is not tested");
+        }
+    }
 }
 
 #[test]
@@ -350,6 +379,46 @@ fn reproduces_pc_rest_nat_400() {
 
 #[test]
 #[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_restart_400() {
+    let produced = produce(Form::Restart, Scale::Small, PERIODS_LONG);
+    compare::assert_set("pc-restart-400", &produced, PC_RESTART_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_restart_nat_400() {
+    let produced = produce(Form::Restart, Scale::National, PERIODS_LONG);
+    compare::assert_set("pc-restart-nat-400", &produced, PC_RESTART_NAT_400);
+}
+
+#[test]
+fn the_restart_waits_for_its_rules() {
+    use engine::AdjustmentRule::{
+        HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+    };
+    use babylon_circuit_worlds::{RuleError, Switch};
+    let restart = OwnerRestart { outlay_periods: 1 };
+    let mut runner = Runner::open().expect("the scene opens");
+    runner.turn_on(SeekingInPlace).expect("the seekers turn on");
+    runner.turn_on(StopWithoutPay).expect("the stop rule turns on");
+    let needs = vec![HiringWithinMeans, RestingPrice];
+    assert_eq!(
+        runner.switch(restart),
+        Switch::Waits {
+            needs: needs.clone()
+        }
+    );
+    assert_eq!(
+        runner.turn_on(restart),
+        Err(RuleError::Waits {
+            rule: restart,
+            needs
+        })
+    );
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
 fn reproduces_pc_bound_nat_400() {
     let produced = produce(Form::Bound, Scale::National, PERIODS_LONG);
     compare::assert_set("pc-bound-nat-400", &produced, PC_BOUND_NAT_400);
@@ -371,6 +440,8 @@ fn print_reference_digests() {
         ("pc-stop-nat-400", Form::Stop, Scale::National),
         ("pc-rest-400", Form::Rest, Scale::Small),
         ("pc-rest-nat-400", Form::Rest, Scale::National),
+        ("pc-restart-400", Form::Restart, Scale::Small),
+        ("pc-restart-nat-400", Form::Restart, Scale::National),
     ] {
         println!("== {set}");
         for run in runs::runs(form, scale) {

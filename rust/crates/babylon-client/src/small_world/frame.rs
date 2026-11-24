@@ -1036,15 +1036,19 @@ fn goods_flows(
             into.push(flow(stream, from, to, m.quantity, true));
             continue;
         };
+        // A part smaller than a square is not drawn hollow: it is drawn full (S10).
+        let hollow = (opening / UNITS_PER_MARK)
+            .checked_mul(UNITS_PER_MARK)
+            .ok_or(FrameError::Arithmetic)?;
         let full = m
             .quantity
-            .checked_sub(opening)
+            .checked_sub(hollow)
             .ok_or(FrameError::Arithmetic)?;
         if full > 0 {
             into.push(flow(stream, from, to, full, false));
         }
-        if opening > 0 {
-            into.push(flow(stream, from, to, opening, true));
+        if hollow > 0 {
+            into.push(flow(stream, from, to, hollow, true));
         }
     }
     Ok(())
@@ -1356,7 +1360,7 @@ mod tests {
         assert_eq!(stream_totals(&first, power)?, (240, 0));
         assert_eq!(stream_totals(&first, care)?, (80, 0));
         let second = build_picture(&hours_period(2)?, ParticleMode::Groups)?;
-        assert_eq!(stream_totals(&second, food)?, (100, 60));
+        assert_eq!(stream_totals(&second, food)?, (120, 40));
         let mut runner = crate::small_world::scene::open_runner()?;
         for _ in 0..12 {
             let result = runner.step()?.clone();
@@ -1367,9 +1371,11 @@ mod tests {
             for m in &picture.reading.goods {
                 let opening = m.opening.ok_or("a move with no opening")?;
                 assert!(opening <= m.quantity);
-                hollow.push(opening);
-                full.push(m.quantity - opening);
+                let squares = opening / UNITS_PER_MARK * UNITS_PER_MARK;
+                hollow.push(squares);
+                full.push(m.quantity - squares);
             }
+            // The record's opening, rounded to the unit, taken down to whole squares.
             let mut want: Vec<u64> = hours
                 .moves
                 .iter()
@@ -1377,6 +1383,7 @@ mod tests {
                 .map(|m| {
                     ((m.opening_micro_units + 500_000) / 1_000_000).min(u128::from(m.quantity))
                 })
+                .map(|units| units / u128::from(UNITS_PER_MARK) * u128::from(UNITS_PER_MARK))
                 .map(u64::try_from)
                 .collect::<Result<_, _>>()?;
             want.sort_unstable();
@@ -1398,6 +1405,41 @@ mod tests {
                 .sum();
             assert_eq!(flow_hollow, hollow.iter().sum::<u64>());
             assert_eq!(flow_full, full.iter().sum::<u64>());
+        }
+        Ok(())
+    }
+
+    fn goods_not_drawn(picture: &Picture, stream: u16) -> Result<u128, Box<dyn Error>> {
+        let (_, report) =
+            hypergraph_rs_bevy::select_flows(&picture.frame.flows, &field_styles().streams)?;
+        Ok(report
+            .streams
+            .iter()
+            .filter(|r| r.stream == stream)
+            .map(|r| r.not_drawn)
+            .sum())
+    }
+
+    #[test]
+    fn the_split_loses_no_goods() -> TestResult {
+        let mut with = crate::small_world::scene::open_runner()?;
+        let mut without = Runner::open()?;
+        for _ in 0..12 {
+            let on = with.step()?.clone();
+            let off = without.step()?.clone();
+            let split = build_picture(&on, ParticleMode::Groups)?;
+            let whole = build_picture(&off, ParticleMode::Groups)?;
+            for stream in STREAM_GOODS {
+                let (a, b) = (
+                    goods_not_drawn(&split, stream)?,
+                    goods_not_drawn(&whole, stream)?,
+                );
+                assert!(
+                    a <= b,
+                    "period {} stream {stream}: {a} not drawn with hours, {b} without",
+                    on.period
+                );
+            }
         }
         Ok(())
     }

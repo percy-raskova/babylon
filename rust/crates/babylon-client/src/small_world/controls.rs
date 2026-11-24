@@ -33,7 +33,7 @@ pub const EMPTY_LINE: &str = "Nothing has run yet. Press Step.";
 /// The standing lines of the scene.
 pub const HOLLOW_DOT_LINE: &str = "A hollow dot: hours paid and not used.";
 pub const GOODS_HOLLOW_LINE: &str =
-    "A hollow part of a square: goods from the opening stock, whose hours were never measured.";
+    "A hollow square: goods from the opening stock, whose hours were never measured. A part smaller than a square is drawn full.";
 pub const OUTLINE_LINE: &str = "An outline holds nine tenths of its set's number.";
 pub const PICK_LINE: &str = "Click a body, a dot or an outline.";
 pub const PEOPLE_LINE: &str = "One dot is one person. The record counts people; it does not follow a person, and the people of one group share one purse.";

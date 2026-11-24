@@ -936,6 +936,27 @@ fn not_drawn_line_prints_the_report() -> TestResult {
 }
 
 #[test]
+fn the_not_drawn_line_of_periods_two_and_four() -> TestResult {
+    let mut app = scene_app(None)?;
+    let mut lines = Vec::new();
+    for period in 1..=4 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+        if period % 2 == 0 {
+            lines.push(panel::not_drawn_line(app.world().resource::<FlowReport>()));
+        }
+    }
+    assert_eq!(
+        lines,
+        [
+            "Not drawn: 0 hours; food 4, power 12, care 4 units; wages $0.00, purchases $1,680.00, taxes $960.00, benefits $0.00, profit $160.00",
+            "Not drawn: 0 hours; food 8, power 12, care 4 units; wages $0.00, purchases $1,680.00, taxes $960.00, benefits $0.00, profit $160.00",
+        ]
+    );
+    Ok(())
+}
+
+#[test]
 fn the_not_drawn_line_names_capital_only_when_there_is_some() -> TestResult {
     let mut app = scene_app(None)?;
     send(&mut app, SceneCommand::Step);
@@ -1770,7 +1791,7 @@ fn the_goods_line_says_a_hollow_part_is_opening_stock() -> TestResult {
     );
     assert_eq!(
         controls::GOODS_HOLLOW_LINE,
-        "A hollow part of a square: goods from the opening stock, whose hours were never measured."
+        "A hollow square: goods from the opening stock, whose hours were never measured. A part smaller than a square is drawn full."
     );
     assert!(!all.iter().any(|t| t.contains("not measured")));
     Ok(())

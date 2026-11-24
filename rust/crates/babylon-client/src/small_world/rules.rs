@@ -107,6 +107,7 @@ pub const SHOWN_RULES: &[SceneRule] = &[
     SceneRule::SeekingInPlace,
     SceneRule::HiringWithinMeans,
     SceneRule::StopWithoutPay,
+    SceneRule::RestingPrice,
 ];
 /// Whether the rail has the rules' tab: every other place reads this, not `SHOWN_RULES.is_empty()`.
 #[allow(clippy::const_is_empty, reason = "the list grows task by task")]

@@ -51,7 +51,7 @@ fn account_of(party: Party) -> AccountId {
     }
 }
 
-fn good_name(good: Good) -> &'static str {
+pub(super) fn good_name(good: Good) -> &'static str {
     match good {
         Good::Food => "food",
         Good::Power => "power",

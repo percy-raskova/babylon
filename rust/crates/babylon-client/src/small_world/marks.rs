@@ -6,7 +6,7 @@ use super::inspect::{self, Pick};
 use super::reading::Party;
 use super::rules::SceneRule;
 use crate::human_numbers;
-use babylon_circuit_worlds::{Household, PeriodResult, Workplace};
+use babylon_circuit_worlds::{Good, Household, PeriodResult, Workplace};
 use babylon_material_circuit::{
     AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StaffingPoolId, StopHold,
     StopReceipt,
@@ -59,7 +59,29 @@ pub fn rule_rows(history: &[PeriodResult], index: usize, pick: &Pick) -> Result<
             stop_rows(history, index, *w, &mut rows)?;
         }
     }
+    if holds(result, SceneRule::RestingPrice) {
+        if let Pick::Body(Party::Workplace(w)) = pick {
+            resting_rows(result, *w, &mut rows)?;
+        }
+    }
     Ok(rows)
+}
+
+/// A row for each price the workplace's site held at this close, from its `RestingPriceReceipt`s.
+fn resting_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError> {
+    for receipt in &result.receipts.adjustments {
+        if let AdjustmentReceipt::RestingPrice(rest) = receipt {
+            if rest.site_id == w.site_id() {
+                let good = Good::from_good(rest.good_id)
+                    .ok_or_else(|| missing("a resting price of a good of no world"))?;
+                rows.push((
+                    format!("Price rests \u{b7} {}", inspect::good_name(good)),
+                    human_numbers::currency(rest.price.micro_units()),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether the period's catalog asked for a rule of this kind.
@@ -311,7 +333,8 @@ mod tests {
     use babylon_circuit_worlds::{
         Household, Kind, Lasts, Place, Places, Runner, Scale, Shock, Workplace, World,
     };
-    use babylon_material_circuit::{AdjustmentRule, StopHold, StopReceipt};
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{AdjustmentRule, RestingPriceReceipt, StopHold, StopReceipt};
     use std::error::Error;
 
     type TestResult = Result<(), Box<dyn Error>>;
@@ -740,6 +763,41 @@ mod tests {
                         Some(human_numbers::grouped(u128::from(unpaid)))
                     );
                 }
+            }
+        }
+        Ok(())
+    }
+    #[test]
+    fn the_resting_price_s_row_is_its_receipt_s() -> TestResult {
+        let farm = Workplace {
+            place: Place::A,
+            kind: Kind::Farm,
+        };
+        let mut result = Runner::open()?.step()?.clone();
+        result.rules = vec![AdjustmentRule::RestingPrice];
+        let unit_id = result.members.first().ok_or("a member")?.unit_id;
+        result
+            .receipts
+            .adjustments
+            .push(AdjustmentReceipt::RestingPrice(RestingPriceReceipt {
+                period: result.period,
+                site_id: farm.site_id(),
+                good_id: Good::Food.good_id(),
+                unit_id,
+                price: Currency::from_micro_units(25_000_000),
+            }));
+        let history = [result];
+        let rows = rule_rows(&history, 0, &Pick::Body(Party::Workplace(farm)))?;
+        assert_eq!(
+            rows,
+            vec![("Price rests \u{b7} food".to_owned(), "$25.00".to_owned())]
+        );
+        for w in Workplace::ALL {
+            if w != farm {
+                assert_eq!(
+                    rule_rows(&history, 0, &Pick::Body(Party::Workplace(w)))?,
+                    Rows::new()
+                );
             }
         }
         Ok(())

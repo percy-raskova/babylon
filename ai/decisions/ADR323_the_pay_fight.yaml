@@ -54,6 +54,26 @@ ADR323_the_pay_fight:
         Director, 2026-11-24, in that third dialog, asked to approve the
         design and say when it is built: "Approve; before the bridge
         (Recommended)".
+    - >-
+        Director, 2026-11-24, in a fourth dialog while the build was planned,
+        asked how the owners count what a walkout at all four of their
+        workplaces of a place costs them, since with no organization the
+        people of a whole place walk out in the same period: "Share it by
+        takings (Recommended)".
+    - >-
+        Director, 2026-11-24, in that fourth dialog, asked when a household
+        counts as short of pay, so that it may stop work with no call, where
+        some of its people are laid off: "One person, full work
+        (Recommended)".
+    - >-
+        Director, 2026-11-24, in that fourth dialog, asked when a person
+        whose place is taken in a stoppage draws the unemployment benefit,
+        with the design's sentence on Michigan's law named: "Delay in part
+        two (Recommended)".
+    - >-
+        Director, 2026-11-24, in that fourth dialog, asked whether the Game
+        Design Standard gets one line at its question W-A that points to this
+        record: "Add the pointer (Recommended)".
   context: |
     ADR319 (J5) ruled that a slump which begins years after a failed harvest
     has returned is play, ended by struggle: "It lasts until workers win
@@ -169,12 +189,41 @@ ADR323_the_pay_fight:
     scene, the six rules, stored hours, the pay fight, the bridge, the world
     on the tick's records.
 
+    F11. ONE EMPLOYER HAS ONE LOSS, SHARED BY TAKINGS. In the Director's
+    pick: "The period's loss is shared among the struck workplaces by what
+    each had been paying the owners. The owners give way first where the
+    money is (in the later slump, the shop) and hold out elsewhere, where
+    the struck work is then offered to people who look for work. A stoppage
+    at one workplace alone still counts the whole loss, so the people of a
+    utility can win by stopping the power. A walkout of a whole place asks
+    for more and takes longer to win."
+
+    F12. SHORT PAY IS ONE PERSON'S, AT FULL WORK. In the Director's pick:
+    "One person's pay for a full period against the cost of one person's
+    needs. A household with people laid off is not short of pay while prices
+    are calm: its trouble is work, and what would end it is the demand for
+    work, which an organization asks (your answer 8). Layoffs alone start no
+    walkout over pay."
+
+    F13. THE BENEFIT'S DELAY IS BUILT IN PART TWO. In the Director's pick:
+    "In part one a person whose place is taken is laid off at once and draws
+    the benefit from the next period. That is exact when every place of the
+    stoppage is taken, because the fight is then over. Where others stay out
+    a period or two more, the benefit comes that much too early. Part two
+    builds the law's delay, with the contract and the end of a fight."
+
+    F14. THE STANDARD POINTS HERE. In the Director's pick: "One sentence
+    under W-A: ruled in July (ADR176, ruling 11), replaced as worded on 24
+    November by ADR323 (F4 and F9). Nothing else in the Standard changes."
+
     THE DESIGN. `docs/superpowers/specs/2026-11-24-the-pay-fight-design.md`,
-    rules PF1 to PF18, is the lead's, written from these ten rulings and the
-    four records above, checked once by a second reader before the approval
-    and once more for what F7 to F9 added. Two parts were written after the
-    approval and await the Director's reading: founding (PF18) and the
-    demand for work (PF6, PF12).
+    rules PF1 to PF18, is the lead's, written from the first ten rulings and
+    the four records above, checked once by a second reader before the
+    approval and once more for what F7 to F9 added. Two parts were written
+    after the approval and await the Director's reading: founding (PF18) and
+    the demand for work (PF6, PF12). F11 to F13 were ruled while the build
+    was planned; each confirms a call the lead had made in the design (its
+    calls 44, 41 and 45).
   amends:
     - >-
         The order of the build recorded on 23 November (ADR320, S2; ADR322):
@@ -210,14 +259,21 @@ ADR323_the_pay_fight:
         no organization weigh their own measure with no call put to them
         (PF5). This reading is the lead's.
     - >-
-        ADR302, the order of layoffs: where places are taken in a stoppage,
-        the people who stopped join the workplace's own laid off, for that
-        case only (PF13).
-    - >-
         ADR322 and the stored-hours design, the test that no group's hours
         back for work pass its hours on the clock: it holds for runs with no
         fight and is amended for runs with a win, where the count is shown
         (PF17).
+    - >-
+        ADR314, A16, "the employer gives way when the stoppage has cost it
+        more than the cut would save in a year": where several of one
+        employer's workplaces are struck in one period, that period's cost is
+        counted once and shared among them by what each had been paying it; a
+        workplace struck alone takes the whole of it (F11; PF7).
+    - >-
+        The Game Design Standard
+        (`docs/superpowers/specs/2026-07-29-game-design-standard-design.md`),
+        open question 13, W-A: one sentence is added that names ruling 11 of
+        ADR176 and points to this record (F14). Nothing else in it changes.
   lead_readings_for_the_director_to_check:
     - >-
         The player's decision, and a union's, is the call, what is asked and
@@ -322,14 +378,33 @@ ADR323_the_pay_fight:
         opening fund is a labelled figure of the scene. The scene is an
         administrative view and counts for no gameplay milestone; the
         decision screen of the real game is the Organizer Workspace.
+    - >-
+        Added while the build was planned, 24 November (the design's calls
+        35 to 47). The Director ruled on three of them that day (F11 to
+        F13). The rest are the lead's. A workplace's own laid off may take
+        its struck work when their household's people there did not stop.
+        Dues are a member's own payment from what is left after it has
+        bought, unless a contract has the employer collect them. Orders
+        about people are carried out on what the close leaves, and a place
+        counts as taken at the close of the period in which the struck work
+        was taken up. The first period of a won rate is paid from the money
+        the workplace has. The first part of the build has no organization
+        in the scene, and ends with a counted run that includes one
+        measuring run, no rule of the game, in which every ask is offered at
+        once.
   consequences:
     - >-
         The engine gains five material acts, taken as orders of a period and
         as canonical input of it: a rate that changes at a boundary; hours
         withheld on a household's place at a workplace; withheld hours filled
         above the rolls; named people taken on, with a floor on the rolls;
-        payments to and from a fund. It decides none of them. A world that
-        does not ask keeps its bytes, and so do the bench's reference runs.
+        payments to and from a fund. It decides none of them and keeps
+        nothing of an order after its period. The orders are bound by a
+        digest of their own; what they change is in the state's digest; the
+        stored form takes them with the bridge. Dues, paying in, strike pay
+        and relief use the engine's existing mutual-aid payment, so the
+        stored layout does not change. A world that does not ask keeps its
+        bytes, and so do the bench's reference runs.
     - >-
         The small worlds' runner gains organizations, each household's
         weighing, the employer's rule, the contract and their records, as the
@@ -423,7 +498,6 @@ ADR323_the_pay_fight:
     - ADR232_neel_integration_program_architecture
     - ADR234_practice_intent_v2
     - ADR237_strike_proposal_v2
-    - ADR302_household_roster_and_counting
     - ADR314_how_the_economy_adjusts
     - ADR315_homes_rent_and_nation
     - ADR317_field_and_particles

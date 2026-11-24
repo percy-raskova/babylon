@@ -1,12 +1,15 @@
 # The Pay Fight: Design
 
 Date: 2026-11-24. Decision record: ADR323. Status: approved by the Director on 24 November, to be
-built after stored hours and before the bridge. The Director's ten answers of that day are below,
-word for word. The rest is the lead's, written once and checked once by a second reader, whose
+built after stored hours and before the bridge. The Director's fourteen answers of that day are
+below, word for word: ten up to the approval, four while the build was planned. The rest is the
+lead's, written once and checked once by a second reader, whose
 findings are folded in. Two parts were written after the approval, from answers 7 and 8, and
 await the Director's reading: founding (PF18) and the demand for work (PF6, PF12). They were
 checked once, and that check is folded in too. The lead's calls are listed for the Director to
-check. Corrections are small amendments while the build runs.
+check; calls 35 to 47 were added while the build was planned, and the Director ruled on three of
+them that afternoon (answers 11 to 13: calls 44, 41 and 45). Corrections are small amendments
+while the build runs.
 
 ## What was asked
 
@@ -125,6 +128,38 @@ each text is the dialog's own.
     stored hours and before the bridge. The scene gets its first decision sooner, and the bridge
     then carries a fight that already plays. The payer needs stored hours, which is built first
     anyway. Your answers above go in as small amendments."
+
+**The Director's four answers while the build was planned**, the same day, in a fourth dialog.
+
+11. How the owners count what a walkout at all their workplaces of a place costs them. Asked
+    because, with no organization, the people of all four workplaces of a place walk out in the
+    same period: they have the same pay and the same cost of needs. **"Share it by takings
+    (Recommended)".** "The period's loss is shared among the struck workplaces by what each had
+    been paying the owners. The owners give way first where the money is (in the later slump, the
+    shop) and hold out elsewhere, where the struck work is then offered to people who look for
+    work. A stoppage at one workplace alone still counts the whole loss, so the people of a
+    utility can win by stopping the power. A walkout of a whole place asks for more and takes
+    longer to win." The sketch picked with it, in the figures of the plan's test world: the owners
+    lose $1,400; the shop "had paid $1,050", "asked $1,040 a year", "GIVES WAY"; the utility
+    ($350 against $3,120), the farm and the clinic ($0 against $1,040) hold; "Period 32: the shop
+    pays $12 an hour. The other three are still out. Their hours are offered to people who look
+    for work."
+12. When a household counts as short of pay, so that it may stop work with no call, where some of
+    its people are laid off. **"One person, full work (Recommended)".** "One person's pay for a
+    full period against the cost of one person's needs. A household with people laid off is not
+    short of pay while prices are calm: its trouble is work, and what would end it is the demand
+    for work, which an organization asks (your answer 8). Layoffs alone start no walkout over
+    pay."
+13. When a person whose place is taken in a stoppage draws the unemployment benefit. **"Delay in
+    part two (Recommended)".** "In part one a person whose place is taken is laid off at once and
+    draws the benefit from the next period. That is exact when every place of the stoppage is
+    taken, because the fight is then over. Where others stay out a period or two more, the benefit
+    comes that much too early. Part two builds the law's delay, with the contract and the end of
+    a fight."
+14. Whether the Game Design Standard gets a line at its question W-A, which July's ruling 11
+    answered. **"Add the pointer (Recommended)".** "One sentence under W-A: ruled in July (ADR176,
+    ruling 11), replaced as worded on 24 November by ADR323 (F4 and F9). Nothing else in the
+    Standard changes."
 
 **Two faults of the lead's, recorded.** On 23 November the lead asked who pays for a win and
 offered "The bribe sets core pay" as one option without saying that it was the Director's own
@@ -276,9 +311,11 @@ decides.
 
 The engine learns five material acts: a rate that changes; hours withheld; withheld hours filled
 above the rolls; named people taken on, with a floor on the rolls; payments to and from a fund. It
-takes them as orders of a period, checks them and applies them. It decides none of them. Each
-order is canonical input of its period: it is in the state's digest and in the stored form, for a
-world that asks. The decisions are made outside the engine: in this build by the small worlds'
+takes them as orders of a period, checks them and applies them. It decides none of them, and it
+keeps nothing of an order after its period. Each order is canonical input of its period, bound by
+a digest of its own beside the state's; what an order changes (a rate, a balance, people moved) is
+in the state's digest. The stored form takes the orders with the bridge. The decisions are made
+outside the engine: in this build by the small worlds'
 runner, which is the scene's stand-in for the two resolvers that the August design gives to BSL,
 of participation and of founding, and later by the tick.
 
@@ -290,8 +327,8 @@ changes it for everyone who works there. Every rule that reads a rate (the bound
 stop rule, the order in which workplaces are served, the benefit of the laid off) reads the new
 one from that period.
 
-**PF2. Hours can be withheld, and withheld hours can be filled.** Each household's place at a
-workplace carries the share of its hours there that it withholds in a period, as the August
+**PF2. Hours can be withheld, and withheld hours can be filled.** An order of the period names a
+household's place at a workplace and the share of its hours there that it withholds, as the August
 design has it. Hours withheld are not on the clock, are not paid and make nothing. The people stay
 on the rolls. This is the only thing a stoppage writes: output, shortage, prices and profit follow
 in the circuit (A22). From the period after a stoppage begins the employer may fill withheld hours
@@ -300,13 +337,15 @@ a stopped one: the stop rule, the resting price and the owner's restart do not a
 are withheld.
 
 **PF3. Organizations hold money, and dues, strike pay and relief are payments of the circuit.** A
-world that asks for the fight opens, at its opening, an account for each organization it asks
-for and the accounts it keeps for organizations founded in play (PF18); none is made later.
-*Dues* are a share of a member household's pay, reckoned on its pay net of the tax to come, taken
-when wages are paid, and go to its organization's fund. *Strike pay* goes from a fund to a member
-household for hours it withholds. *Relief* goes from a fund to any household, for nothing in
-return. All of it is conserved money, drawn in gold like any payment and read by the hours ledger
-as support, never as pay for work (ADR322, H1). A world that does not ask keeps its bytes.
+world that asks for the fight opens, at its opening, an account for each organization it asks for
+and the accounts it keeps for organizations founded in play (PF18); none is made later. *Dues* are
+a share of a member household's pay, reckoned on its pay net of the tax to come. They are the
+member's own payment to its organization's fund: paid at the close, from what the household has
+left after it has bought, unless a contract has the employer collect them (PF12). *Strike pay*
+goes from a fund to a member household for hours it withholds. *Relief* goes from a fund to any
+household, for nothing in return. All of it is conserved money, drawn in gold like any payment and
+read by the hours ledger as support, never as pay for work (ADR322, H1). A world that does not ask
+keeps its bytes.
 
 **PF4. Employers move pay by A15, behind a switch of its own.** A cut when the workplace loses
 money and people who look for work could replace its own; a raise when it cannot fill its hours;
@@ -328,7 +367,8 @@ hold.
 1. *There is something to stop for.* An organization with members among the workers there has put
    a call to the people of that workplace and written what is asked. Or, with no call, the
    household's own measure holds (PF14, a or b), and then what is asked is what would end it: the
-   cut withdrawn, or the fewest steps of pay that make a period's pay cover its needs again.
+   cut withdrawn, or the fewest steps of pay that make one person's pay for a full period cover
+   that person's needs again (answer 12).
 2. *It can go without.* It has money of its own, or a fund pays it; A16 has a side give way "when
    its fund and its members' money run out". Or it goes without already, at full work: its pay no
    longer covers its needs.
@@ -364,9 +404,11 @@ than a year of what is asked for the workplace: the rise, on the hours the workp
 the period before the stoppage, and the pay of any people it is asked to take on. The cost of a
 struck period is read from its receipts: what all its workplaces paid it for a period, on the mean
 of the last thirteen periods in which no hours were withheld there (or of the periods there are),
-less what they pay it in the struck period, and never less than nothing. Giving way is an offer of
-all that is asked. Both counts, the employer's and each household's, run over the last year and
-start again when what is asked is won: an offer accepted, or the people gone back to one.
+less what they pay it in the struck period, and never less than nothing. Where several of its
+workplaces are struck in one period, that cost is shared among them by what each had been paying
+it; a workplace struck alone takes the whole of it (answer 11). Giving way is an offer of all that
+is asked. Both counts, the employer's and each household's, run over the last year and start again
+when what is asked is won: an offer accepted, or the people gone back to one.
 
 **What follows from PF5 to PF7.** A fight is a race between two sets of accounts. Each period out
 costs the people their pay, less what funds pay them, and costs the owners what the work earned
@@ -390,7 +432,9 @@ them. Whoever's loss, within a year, first passes a year of what is asked gives 
   to lose as well, and the people inside need strike pay to last. A card with nothing paid and
   nothing asked holds nobody who goes without.
 - The employer's count is over all its workplaces. A stoppage that leaves its other workplaces
-  without power or food costs it those too.
+  without power or food costs it those too. A walkout at several of its workplaces at once costs
+  it the same income once, not once for each: the workplace that had been paying it most gives way
+  first, and the others can hold out.
 - An employer that was paid nothing in the year before loses nothing by a stoppage and never gives
   way. So a cut made by a workplace that loses money cannot be answered by a stoppage in this
   economy, until a struck workplace has costs that run on: rent and interest, with the banks.
@@ -420,7 +464,8 @@ section 5). For a period N:
    (PF5); take struck work (PF6); join or leave (PF8); pay into a fund (PF18). No household reads
    another's decision of this step.
 4. *N+1 runs with these orders.* Funds pay at its start, as the benefit is paid. Withheld hours
-   are off the clock. Dues and payments into a fund are taken when wages are paid.
+   are off the clock. Payments into a fund, and dues that an employer collects, are taken when
+   wages are paid; other dues at the close.
 
 So an offer made at the close of N is weighed before N+1, and the new rate holds from N+1: no
 period is lost after an offer. And a stoppage has one period before anyone can take its places.
@@ -484,8 +529,9 @@ answer 8, whose floor on the rolls is the lead's (call 29). The Director strikes
 - *The laid off taken back first.* It is already how a workplace hires: it calls back its own
   before it takes others. Under a contract the people whose places were taken in a fight are its
   own (PF13).
-- *Dues collected by the employer.* The employer takes the dues of the organization's members from
-  their pay and pays them to its fund. It makes nobody a member.
+- *Dues collected by the employer.* While the contract runs, each member's dues are taken when
+  wages are paid, before the household buys, and the record names the employer. They are still
+  the member's own payment, and the term makes nobody a member.
 - *Work for the people who look for it.* The workplace takes on the people named, the
   organization's own who look for work in the place, at the contract's pay, from the period after
   it gives way. Until the contract's last period its rolls do not fall below the people on its
@@ -499,14 +545,17 @@ answer 8, whose floor on the rolls is the lead's (call 29). The Director strikes
 offered, or their places are taken. What follows is the law as it stands today: a row of law that
 struggle can change, as the homes design treats the law's steps. The people taken on keep the
 work. The people who stopped are not dismissed: those whose places are taken join the workplace's
-own laid off and are called back first as places open. Where fewer come than there are struck
-places, places are taken in the order in which the engine lays off (ADR302: first from the
-households with the most at work). For this case only, the people who stopped take the place of
-that order's choice of whom to lay off. While a fight lasts the people out draw no benefit
-(Michigan, MCL 421.29(8)). A person on the benefit may refuse struck work and keep it (26 U.S.C.
-3304(a)(5)). When the fight is over, those not taken back are laid off like anyone else. People
-named in a demand that is lost are still looking for work. Left out: a stoppage against an
-employer's unlawful act, where the law lets nobody's place be taken for good.
+own laid off and are called back first as places open. A place counts as taken at the close of
+the first period in which someone filled it. Where fewer come than there are struck places, the
+places taken are shared among the households that stopped in proportion to their people at work
+there, as the small worlds' staffing lays off today; ADR302's order comes with the bridge. While
+a fight lasts the people out draw no benefit (Michigan, MCL 421.29(8)). A person on the benefit
+may refuse struck work and keep it (26 U.S.C. 3304(a)(5)). When the fight is over, those not taken
+back are laid off like anyone else. In the first part of the build a person whose place is taken
+is laid off at that close and draws the benefit from the next period, which is exact when every
+place of the stoppage is taken; the delay while others stay out is built in the second part
+(answer 13). People named in a demand that is lost are still looking for work. Left out: a
+stoppage against an employer's unlawful act, where the law lets nobody's place be taken for good.
 
 ### Founding
 
@@ -519,9 +568,9 @@ made, as the scene's stand-in for August's founding resolver.
 - *Who.* The households that took part in a stoppage at a workplace, by withholding hours there or
   by holding out under its demand, and that belong to no organization when they pay.
 - *A function kept up.* From the period after the stoppage has ended, each of them may pay into a
-  fund in common, period by period, at the rate of dues. The fund has one rule, which is what it
-  is for: it pays the households that keep it strike pay when they are out and relief when they
-  are laid off, from its first period.
+  fund in common, period by period, at the rate of dues, taken when its wages are paid. The fund
+  has one rule, which is what it is for: it pays the households that keep it strike pay when they
+  are out and relief when they are laid off, from its first period.
 - *Accountability.* Every payment into the fund and out of it is a record that each of its payers
   can read.
 - *Resources committed.* What a household has paid in is the fund's, not its own.
@@ -560,15 +609,15 @@ periods.
 
 ### What is shown, and who decides
 
-**PF14. Four measures, read from receipts.** For the people of each workplace: (a) a period's pay
-against the cost of their own needs at posted prices; (b) a cut of their pay; (c) hours the
-workplace asked for and could not fill; (d) the employer's take growing while it lays people off
-or cuts pay. With them, what the period's work paid the owners and what it paid the people. No
-figure divides money by hours (ADR317, R1). A measure that begins is news. A measure does nothing
-by itself. Measures (a) and (b) are also a household's own grounds to stop with no call (PF5);
-measure (a) reads pay before dues. Measure (c) is news, and a union's occasion. Measure (d) is
-news and a nudge: what would end it is work for the people let go, which an organization's demand
-can ask (PF12).
+**PF14. Four measures, read from receipts.** For the people of each workplace: (a) one person's
+pay for a full period against the cost of one person's needs at posted prices (answer 12); (b) a
+cut of their pay; (c) hours the workplace asked for and could not fill; (d) the employer's take
+growing while it lays people off or cuts pay. With them, what the period's work paid the owners
+and what it paid the people. No figure divides money by hours (ADR317, R1). A measure that begins
+is news. A measure does nothing by itself. Measures (a) and (b) are also a household's own grounds
+to stop with no call (PF5); measure (a) reads pay before dues. Measure (c) is news, and a union's
+occasion. Measure (d) is news and a nudge: what would end it is work for the people let go, which
+an organization's demand can ask (PF12).
 
 **PF15. News, events and the forecast.** Every act of this design leaves a record with its cause
 (A23): a call, what is asked, each household's decision and what it weighed, hours withheld,
@@ -798,8 +847,10 @@ words, for the Director to check. Sources and lines are in the notes of the buil
 15. Where nobody negotiated, a win is a rate and no contract. After a win the people who stopped
     go back to their places; people taken on in the fight stay only while there are hours for
     them.
-16. Dues are a share of pay net of the tax to come, taken when wages are paid. On this bench,
-    where pay equals needs, a member's dues come out of a need. Measure (a) reads pay before dues.
+16. Dues are a share of pay net of the tax to come. A member pays them from what is left after it
+    has bought. Where a contract has the employer collect them they are taken when wages are paid,
+    and on this bench, where pay equals needs, they then come out of a need. So a fund fills
+    reliably only under such a contract. Measure (a) reads pay before dues.
 17. Strike pay is a flat sum far below pay, as the auto workers pay it ($500 a week in 2023).
     Dues are a share of pay (theirs: two and a half hours of pay a month). A contract's length,
     the date bargaining opens and the dates pay follows prices are set from the same union's
@@ -808,7 +859,8 @@ words, for the Director to check. Sources and lines are in the notes of the buil
     world.
 18. Pay follows prices upward only.
 19. A loss is by today's law of the state (PF13), as a row of law. Where fewer come than there
-    are struck places, places are taken in the engine's own order of layoffs.
+    are struck places, the places taken are shared in proportion to each household's people at
+    work there, as the small worlds' staffing lays off today.
 20. Measure (d), the owners' take growing while people are laid off, is news and a nudge. What
     would end it is work for the people let go, which an organization's demand can ask.
 21. A stoppage asks for pay, for terms of a contract and for work for its people. Political
@@ -818,7 +870,7 @@ words, for the Director to check. Sources and lines are in the notes of the buil
     scene is an administrative view; the decision screen of the real game is the Organizer
     Workspace, with the strike beside its collecting and its aid.
 23. In the scene a stoppage is called a stoppage. The button that strikes a shock gets another
-    word.
+    word (call 40).
 24. The payer is shown for six periods. Its hours are means for one person on the clock over the
     six periods before the stoppage and the six after the win. The stored-hours design's test
     that nothing passes the clock is amended for runs with a win.
@@ -848,6 +900,49 @@ words, for the Director to check. Sources and lines are in the notes of the buil
     rise which cuts profit at home builds power. "Give" is read as hours on the clock.
 33. In the country a household group of many households decides as one.
 34. On the bench "a local of the farm" is often one household (PF18).
+35. The first period of a won rate is paid from the money the workplace has. Its plan for that
+    period was made at the old rate. Where its money is short, hours go unpaid and the stop rule
+    may hold it. Part one counts how often this happens; if it does, the rows go to the Director
+    with ways to mend it.
+36. A person on the benefit who takes struck work still draws the benefit in that first period:
+    the benefit is paid from the last period's record.
+37. Where several households stop on asks of their own, the workplace's ask is the largest of
+    them, since one rate covers all.
+38. A step of pay is $1 an hour at the small figures and 250 basis points of the opening wage at
+    the national figures, as prices step (A15). Designed.
+39. All five acts are orders that hold for one period; whoever decides issues them again each
+    period. Dues, paying in, strike pay and relief use the engine's existing mutual-aid payment:
+    no new kind of payment, and the stored layout does not change.
+40. In the scene the button that brings a shock reads "Apply".
+41. Measure (a) is read for one person at full work: a period's pay at the workplace's rate,
+    after the tax to come, against the cost of one person's needs at posted prices. So a household
+    with people laid off does not read as short of pay while prices are calm, and what it asks does
+    not grow with its layoffs. Layoffs are measure (d)'s, and their remedy is work (PF12). Ruled
+    so by the Director (answer 12).
+42. The place's people who look for work include a workplace's own laid off. They may take its
+    struck work when their own household's people at work there did not stop. Their places are
+    then theirs again: they are called back, and as many of the people out are laid off.
+43. Part one of the build has no organization in the scene. Yours and its fund come with part
+    two's first task, with the commands that use them. Part one shows what people do with no
+    organization: they walk out on their own measure, and the place's people who look for work
+    take the struck hours or leave them.
+44. One employer has one loss. Where several of its workplaces are struck in one period, the
+    period's cost is shared among them by what each had been paying it; a workplace struck alone
+    takes the whole of it. On this bench the cost of needs is the same for every household of a
+    place, so with no organization the people of a whole place walk out together. Without this
+    rule one loss would count against each workplace, and three of four would win in one period.
+    Ruled so by the Director (answer 11).
+45. A person whose place is taken is laid off at that close and draws the benefit from the next
+    period. Where the rest of the stoppage goes on, the law holds that benefit back until it ends
+    (MCL 421.29(8)). Part one leaves that delay out; part two builds it. Ruled so by the Director
+    (answer 13).
+46. A place counts as taken at the close of the period in which the struck work was taken up,
+    whether or not the workplace could pay its hours. Orders about people are carried out on what
+    that close leaves: fewer move if the engine's own staffing has already called some back or
+    laid some off.
+47. Part one's count has a second run that is not a rule of the game: what the people of a
+    workplace would ask is offered at once, with no stoppage. It measures what rises that follow
+    needs do to the later slump, whoever would win them.
 
 ## Build order
 

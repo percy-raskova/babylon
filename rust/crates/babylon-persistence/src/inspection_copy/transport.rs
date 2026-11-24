@@ -171,7 +171,7 @@ pub fn copy_campaign(
     if occupied {
         return Err(InspectionCopyError::DestinationOccupied);
     }
-    let mut transfer = Transfer::new(&mut from, &mut to, campaign)?;
+    let mut transfer = Transfer::new(&mut from, &mut to, campaign, source_schema)?;
     transfer.foundation()?;
     for tick in 1..=tip {
         transfer.period(tick)?;

@@ -1,5 +1,5 @@
 //! Only predecessor-owned base rows cross the connection. All DDL and triggers are the target's.
-use super::InspectionCopyError;
+use super::{source, InspectionCopyError};
 use crate::identity::CampaignId;
 use postgres::{Error, Transaction};
 use std::collections::BTreeMap;
@@ -113,6 +113,7 @@ pub(super) struct Transfer<'a, 's, 't> {
     from: &'a mut Transaction<'s>,
     to: &'a mut Transaction<'t>,
     campaign: CampaignId,
+    marker: &'static str,
     columns: BTreeMap<String, String>,
 }
 
@@ -121,6 +122,7 @@ impl<'a, 's, 't> Transfer<'a, 's, 't> {
         from: &'a mut Transaction<'s>,
         to: &'a mut Transaction<'t>,
         campaign: CampaignId,
+        marker: &'static str,
     ) -> Result<Self, InspectionCopyError> {
         let tables: Vec<&str> = FOUNDATIONS
             .iter()
@@ -130,7 +132,13 @@ impl<'a, 's, 't> Transfer<'a, 's, 't> {
             .chain(HISTORY)
             .copied()
             .collect();
-        let mut input = columns(from, &tables).map_err(|_| InspectionCopyError::SourceSchema)?;
+        // The source's own layout decides which tables it must hold, never their absence alone.
+        let carried: Vec<&str> = tables
+            .iter()
+            .copied()
+            .filter(|table| source::carries(marker, table))
+            .collect();
+        let mut input = columns(from, &carried).map_err(|_| InspectionCopyError::SourceSchema)?;
         let mut target =
             columns(to, &tables).map_err(|_| InspectionCopyError::DestinationSchema)?;
         let mut columns = BTreeMap::new();
@@ -138,6 +146,10 @@ impl<'a, 's, 't> Transfer<'a, 's, 't> {
             let expected = target
                 .remove(table)
                 .ok_or(InspectionCopyError::TableColumns(table))?;
+            if !source::carries(marker, table) {
+                columns.insert(table.to_owned(), expected.writable);
+                continue;
+            }
             if input.remove(table).as_ref() != Some(&expected) {
                 return Err(InspectionCopyError::TableColumns(table));
             }
@@ -147,6 +159,7 @@ impl<'a, 's, 't> Transfer<'a, 's, 't> {
             from,
             to,
             campaign,
+            marker,
             columns,
         })
     }
@@ -192,6 +205,9 @@ impl<'a, 's, 't> Transfer<'a, 's, 't> {
         self.lookups(tick)?;
         let at = format!("AND t.resolve_tick={tick}");
         for &table in PERIODS {
+            if !source::carries(self.marker, table) {
+                continue;
+            }
             self.rows(table, &at)?;
         }
         self.to

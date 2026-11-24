@@ -670,3 +670,13 @@ membership slot is used); the `MembershipPayload` doc in `hypergraph_store.rs`; 
 - [ ] **Step 2:** Targeted Vale on the changed `.rst` and `.md` lines only; `yamllint -c .yamllint.yaml` on the
   decision record and the index.
 - [ ] **Commit** `docs(bsl): attributed membership is served (#653)`.
+
+## What the change left out (mended 24 November)
+
+The change moved the stored layout but did not tell the inspection copy about the layout it replaced: that layout
+was in no entry of `SOURCES`, the copy still demanded the new table from every source, and the live test rebuilt
+"the preceding layout" without undoing the new table and view. The live focus `money_journal` therefore failed at
+its phase `inspection_copy`, and its last phase, `financial_writer_concurrency`, did not run. The steps for a change
+of the stored layout now stand in the doc comment of `CURRENT_MARKER` in
+`rust/crates/babylon-persistence/src/inspection_copy/source.rs`, and two unit tests there fail until they are done.
+The live focus `money_journal` must be run for any change of the stored layout.

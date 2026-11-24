@@ -7,8 +7,8 @@
 mod accounts;
 mod adjustment;
 pub use adjustment::{
-    AdjustmentReceipt, AdjustmentRule, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StopHold,
-    StopReceipt, WorkplaceStanding, WorkplaceStandingRow,
+    AdjustmentReceipt, AdjustmentRule, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt,
+    RestingPriceReceipt, StopHold, StopReceipt, WorkplaceStanding, WorkplaceStandingRow,
 };
 mod agency_attendance;
 pub use agency_attendance::{

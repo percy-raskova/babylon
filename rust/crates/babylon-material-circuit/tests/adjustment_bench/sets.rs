@@ -22,6 +22,8 @@ const PC_BOUND_400: &str = include_str!("digests/pc-bound-400.txt");
 const PC_BOUND_NAT_400: &str = include_str!("digests/pc-bound-nat-400.txt");
 const PC_STOP_400: &str = include_str!("digests/pc-stop-400.txt");
 const PC_STOP_NAT_400: &str = include_str!("digests/pc-stop-nat-400.txt");
+const PC_REST_400: &str = include_str!("digests/pc-rest-400.txt");
+const PC_REST_NAT_400: &str = include_str!("digests/pc-rest-nat-400.txt");
 
 fn produce(form: Form, scale: Scale, periods: u64) -> Vec<(&'static str, String)> {
     runs::runs(form, scale)
@@ -126,6 +128,11 @@ fn the_quiet_world_with_the_stop_rule_is_still_for_34_periods() {
             assert_eq!(field(line, at), "0", "a quiet workplace is not stopped");
         }
     }
+}
+
+#[test]
+fn the_quiet_world_with_the_resting_price_is_still_for_34_periods() {
+    assert_quiet(Form::Rest);
 }
 
 #[test]
@@ -329,6 +336,20 @@ fn reproduces_pc_stop_nat_400() {
 
 #[test]
 #[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_rest_400() {
+    let produced = produce(Form::Rest, Scale::Small, PERIODS_LONG);
+    compare::assert_set("pc-rest-400", &produced, PC_REST_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_rest_nat_400() {
+    let produced = produce(Form::Rest, Scale::National, PERIODS_LONG);
+    compare::assert_set("pc-rest-nat-400", &produced, PC_REST_NAT_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
 fn reproduces_pc_bound_nat_400() {
     let produced = produce(Form::Bound, Scale::National, PERIODS_LONG);
     compare::assert_set("pc-bound-nat-400", &produced, PC_BOUND_NAT_400);
@@ -348,6 +369,8 @@ fn print_reference_digests() {
         ("pc-bound-nat-400", Form::Bound, Scale::National),
         ("pc-stop-400", Form::Stop, Scale::Small),
         ("pc-stop-nat-400", Form::Stop, Scale::National),
+        ("pc-rest-400", Form::Rest, Scale::Small),
+        ("pc-rest-nat-400", Form::Rest, Scale::National),
     ] {
         println!("== {set}");
         for run in runs::runs(form, scale) {

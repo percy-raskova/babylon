@@ -12,6 +12,7 @@ use super::ServiceOutputReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServiceStage;
 use super::UnitId;
+use crate::adjustment::RestingPriceReceipt;
 use crate::clearing::MarketTable;
 use crate::collection_funding::ServiceAdmissions;
 use crate::inventory;
@@ -35,6 +36,8 @@ pub(crate) struct ServiceClose {
     pub(crate) household: Vec<HouseholdServiceReceipt>,
     pub(crate) markets: Vec<ServiceMarketReceipt>,
     pub(crate) outputs: Vec<ServiceOutputReceipt>,
+    /// The service prices that rested at this close.
+    pub(crate) rests: Vec<RestingPriceReceipt>,
     households: BTreeMap<GrantKey, u64>,
     /// What households were granted of their wants, used at the grant and never a need's supply.
     wants_used: BTreeMap<GrantKey, u64>,
@@ -60,6 +63,7 @@ impl ServiceClose {
                 markets: super::market::capture(catalog, state)?,
                 performance: vec![],
                 outputs: vec![],
+                rests: vec![],
                 household: vec![],
                 households: BTreeMap::new(),
                 wants_used: BTreeMap::new(),
@@ -75,6 +79,7 @@ impl ServiceClose {
             markets: super::market::capture(catalog, state)?,
             performance,
             outputs: vec![],
+            rests: vec![],
             household: vec![],
             households: BTreeMap::new(),
             wants_used: BTreeMap::new(),
@@ -513,6 +518,7 @@ impl ServiceClose {
             (&self.performance, priced, &owed),
             &mut self.markets,
             next_period,
+            &mut self.rests,
         )
     }
 }
@@ -561,6 +567,7 @@ mod tests {
             household: vec![],
             markets: vec![],
             outputs: vec![],
+            rests: vec![],
             households: BTreeMap::from([(key, u64::MAX)]),
             wants_used: BTreeMap::from([(key, 1)]),
             requests: vec![],

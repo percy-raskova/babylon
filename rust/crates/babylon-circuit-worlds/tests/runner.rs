@@ -8,7 +8,9 @@ use babylon_material_circuit::AdjustmentRule::{
     self, GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace,
     StopWithoutPay,
 };
-use babylon_material_circuit::{AdjustmentReceipt, MaterialCircuitError, WorkplaceStanding};
+use babylon_material_circuit::{
+    AdjustmentReceipt, MaterialCircuitError, RestingPriceReceipt, WorkplaceStanding,
+};
 use std::error::Error;
 use std::time::Instant;
 
@@ -215,10 +217,11 @@ fn a_refusal_of_a_rule_is_worded_for_the_scene() {
 }
 
 /// The rules turned on in the middle of a run, each after this many steps. Tasks 4 to 8 add their rules.
-const LATE: [(u64, AdjustmentRule); 3] = [
+const LATE: [(u64, AdjustmentRule); 4] = [
     (20, SeekingInPlace),
     (24, HiringWithinMeans),
     (28, StopWithoutPay),
+    (32, RestingPrice),
 ];
 
 /// The scene's world with the harvest failing in both places, the `LATE` rules applied, and `steps` steps taken.
@@ -258,6 +261,10 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
             RuleOn {
                 rule: StopWithoutPay,
                 from: 29
+            },
+            RuleOn {
+                rule: RestingPrice,
+                from: 33
             }
         ]
     );
@@ -279,6 +286,55 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
         bounds(&one.history()[24]) > 0,
         "the bound's first close is period 25's"
     );
+    Ok(())
+}
+
+fn rests_of(result: &PeriodResult) -> Vec<&RestingPriceReceipt> {
+    result
+        .receipts
+        .adjustments
+        .iter()
+        .filter_map(|row| match row {
+            AdjustmentReceipt::RestingPrice(rest) => Some(rest),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn no_price_rests_before_the_rule_is_on() -> TestResult {
+    let runner = late_run(80)?;
+    for result in &runner.history()[..32] {
+        assert!(rests_of(result).is_empty(), "period {}", result.period);
+    }
+    Ok(())
+}
+
+#[test]
+fn a_workplace_left_without_hands_holds_its_price() -> TestResult {
+    // The slump of Place A's failed harvest with the seekers, the stop rule and the resting price, and no
+    // bound: a workplace the stop rule leaves with nobody offers nothing, and its price rests.
+    let mut runner = Runner::open()?;
+    for step in 0..80_u64 {
+        match step {
+            20 => runner.strike(Shock::HarvestFails, Places::A, Lasts::UntilLifted)?,
+            30 => runner.turn_on(SeekingInPlace)?,
+            31 => runner.turn_on(StopWithoutPay)?,
+            32 => runner.turn_on(RestingPrice)?,
+            _ => {}
+        }
+        runner.step()?;
+    }
+    for result in &runner.history()[..32] {
+        assert!(rests_of(result).is_empty(), "period {}", result.period);
+    }
+    let rested: Vec<_> = runner.history()[32..].iter().flat_map(rests_of).collect();
+    assert!(!rested.is_empty(), "a price rested");
+    for result in &runner.history()[32..] {
+        for rest in rests_of(result) {
+            assert_eq!(rest.period, result.period, "the closing period");
+        }
+    }
     Ok(())
 }
 

@@ -1,7 +1,9 @@
 //! What the rules of ADR314 did at one close.
 
 use super::standing::StopHold;
-use crate::{FinalDemandPrincipalId, SiteId, StaffingMemberId, StaffingPoolId, UnitId};
+use babylon_kernel::currency::Currency;
+
+use crate::{FinalDemandPrincipalId, GoodId, SiteId, StaffingMemberId, StaffingPoolId, UnitId};
 
 /// What the rules of ADR314 did at one close, in the order they acted.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -12,6 +14,23 @@ pub enum AdjustmentReceipt {
     PlaceMove(PlaceMoveReceipt),
     /// What the stop rule decided of one workplace at the close (A17).
     Stop(StopReceipt),
+    /// A workplace that employed nobody and offered nothing held a price at this close (A17, A19).
+    RestingPrice(RestingPriceReceipt),
+}
+
+/// One price held at a close because its seller employed nobody and offered nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RestingPriceReceipt {
+    /// The period that closed: the one in which the seller employed nobody and offered nothing.
+    pub period: u64,
+    /// The seller.
+    pub site_id: SiteId,
+    /// Its product.
+    pub good_id: GoodId,
+    /// The product's unit.
+    pub unit_id: UnitId,
+    /// The posted price, which stays.
+    pub price: Currency,
 }
 
 /// One workplace's test of the stop rule at one close: whether it could not pay, whether it is held back after

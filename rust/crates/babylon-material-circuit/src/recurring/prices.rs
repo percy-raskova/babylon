@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 
 use super::firms::{StockKey, Wanted};
+use crate::adjustment::{self, RestingPriceReceipt};
 use crate::valuation::CostClose;
 use crate::MaterialCatalog;
 use crate::SellerOffer;
@@ -115,9 +116,9 @@ pub(crate) fn update_prices(
     state: &mut MaterialCircuitState,
     wanted: Wanted<'_>,
     costs: &CostClose,
-) -> Result<Vec<PriceReceipt>> {
+) -> Result<(Vec<PriceReceipt>, Vec<RestingPriceReceipt>)> {
     if !matches!(&state.accounting, CircuitAccounting::Monetary(e) if e.recurring.is_some()) {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
     let mut unserved = BTreeMap::new();
     for row in wanted.demand {
@@ -151,13 +152,20 @@ pub(crate) fn update_prices(
         .iter()
         .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
         .collect();
+    // The sellers that rest at this close, read before the offers are borrowed for their quotes.
+    let resting = adjustment::resting_among(
+        catalog,
+        state,
+        state_offers(state).map(|key| (key, wanted.markets.offered(key.0, key.1, key.2))),
+    );
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     };
     let Some(recurring) = &mut economy.recurring else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     };
     let mut receipts = Vec::new();
+    let mut rests = Vec::new();
     for offer in &mut recurring.offers {
         if catalog.commodities.iter().any(|r| {
             (r.good_id, r.unit_id) == (offer.good_id, offer.unit_id)
@@ -171,7 +179,18 @@ pub(crate) fn update_prices(
         let old = offer.unit_price;
         let cost = costs.goods_price_cost(key)?;
         let cost_pressure = cost.unit_cost()?.is_some_and(|unit| unit > old);
-        let reason = quote(offer, waiting, stock, cost_pressure)?;
+        let reason = if resting.contains(&key) {
+            rests.push(RestingPriceReceipt {
+                period: state.period,
+                site_id: offer.site_id,
+                good_id: offer.good_id,
+                unit_id: offer.unit_id,
+                price: old,
+            });
+            PriceDecision::Hold
+        } else {
+            quote(offer, waiting, stock, cost_pressure)?
+        };
         receipts.push(PriceReceipt {
             period: state.period,
             site_id: offer.site_id,
@@ -185,7 +204,21 @@ pub(crate) fn update_prices(
             cost,
         });
     }
-    Ok(receipts)
+    Ok((receipts, rests))
+}
+
+/// The products the state's sellers offer, in the order of the offers.
+fn state_offers(state: &MaterialCircuitState) -> impl Iterator<Item = StockKey> + '_ {
+    let offers = match &state.accounting {
+        CircuitAccounting::Monetary(economy) => economy
+            .recurring
+            .as_ref()
+            .map_or(&[][..], |recurring| &recurring.offers[..]),
+        CircuitAccounting::PhysicalControl => &[],
+    };
+    offers
+        .iter()
+        .map(|offer| (offer.site_id, offer.good_id, offer.unit_id))
 }
 
 fn quote(

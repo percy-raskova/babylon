@@ -65,6 +65,8 @@ struct MarketRow {
     demand: Option<u64>,
     priced_out: u64,
     receipt: Option<MarketClearingReceipt>,
+    /// What the seller put on offer to new buyers at this market.
+    supply: u64,
 }
 
 /// The markets of one close, in the order they cleared.
@@ -138,8 +140,19 @@ impl MarketTable {
             demand: (bids > 0).then_some(outcome.demand_at_quote),
             priced_out,
             receipt,
+            supply,
         });
         Ok(())
+    }
+
+    /// What a seller offered of its product at its markets this period: the sum of `supply` over its rows;
+    /// 0 when it had no market.
+    pub(crate) fn offered(&self, site: SiteId, good: GoodId, unit: UnitId) -> u64 {
+        self.rows
+            .iter()
+            .filter(|row| (row.key.1, row.key.2, row.key.3) == (site, good, unit))
+            .map(|row| row.supply)
+            .fold(0_u64, u64::saturating_add)
     }
 
     /// What buyers could pay for at the posted price and did not get, at this seller's product.

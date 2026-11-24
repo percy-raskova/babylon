@@ -6,6 +6,7 @@ use super::ServiceMarketReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServicePriceDecision;
 use super::UnitId;
+use crate::adjustment::{self, RestingPriceReceipt};
 use crate::clearing::{MarketMoment, MarketTable};
 use crate::MaterialCatalog;
 use crate::SiteId;
@@ -86,8 +87,19 @@ pub(super) fn update(
     ),
     markets: &mut [ServiceMarketReceipt],
     next_period: u64,
+    rests: &mut Vec<RestingPriceReceipt>,
 ) -> Result<()> {
     let (performance, priced, owed) = closed;
+    // The providers that rest at this close, read before the offers are borrowed for their quotes.
+    let resting = adjustment::resting_among(
+        catalog,
+        state,
+        markets.iter().map(|market| {
+            let key = (market.site_id, market.good_id, market.unit_id);
+            (key, priced.offered(key.0, key.1, key.2))
+        }),
+    );
+    let closing = state.period;
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         return Ok(());
     };
@@ -153,7 +165,18 @@ pub(super) fn update(
                 .quantity_per_batch,
         );
         let priced_out = priced.priced_out(market.site_id, market.good_id, market.unit_id) > 0;
-        let (price, reason) = quote(market, &offer.pricing, priced_out)?;
+        let (price, reason) = if resting.contains(&key) {
+            rests.push(RestingPriceReceipt {
+                period: closing,
+                site_id: key.0,
+                good_id: key.1,
+                unit_id: key.2,
+                price: market.old_price,
+            });
+            (market.old_price, ServicePriceDecision::Hold)
+        } else {
+            quote(market, &offer.pricing, priced_out)?
+        };
         offer.unit_price = price;
         market.next_price = price;
         market.reason = reason;

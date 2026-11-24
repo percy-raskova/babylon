@@ -44,6 +44,7 @@ use crate::RecurringEconomy;
 use crate::SellerOffer;
 use crate::SiteId;
 use crate::SiteLogisticsNode;
+use crate::StaffingMemberId;
 use crate::StockCarryingValue;
 use crate::TaxBasis;
 use crate::UnitId;
@@ -866,4 +867,61 @@ fn the_tax_held_back_is_what_the_close_assesses_to_the_millionth() {
         .filter(|row| row.payer == AccountId::Household(h()))
         .all(|row| row.assessed.micro_units() > 0));
     assert!(opened.tax_ahead(h()).micro_units() > 0);
+}
+
+/// The fixture with a market policy that asks for the resting price, or not, and `hours` made available by the
+/// workplace's one member in period 1.
+fn resting_fixture(asks: bool, hours: u64) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening_with_a_want();
+    let mut definition = catalog.into_definition();
+    if asks {
+        definition
+            .market_clearing
+            .as_mut()
+            .expect("the fixture has a policy")
+            .adjustments = vec![crate::AdjustmentRule::RestingPrice];
+    }
+    economy(&mut state).member_labor[0].available_hours = hours;
+    fixture(definition, state)
+}
+
+#[test]
+fn a_workplace_with_hands_does_not_rest() {
+    let (catalog, state) = resting_fixture(true, 8);
+    assert!(!crate::adjustment::rests(&catalog, &state, s(), 0));
+}
+
+#[test]
+fn a_workplace_with_goods_on_offer_does_not_rest() {
+    let (catalog, state) = resting_fixture(true, 0);
+    assert!(!crate::adjustment::rests(&catalog, &state, s(), 3));
+}
+
+#[test]
+fn an_idle_workplace_rests() {
+    let (catalog, state) = resting_fixture(true, 0);
+    assert!(crate::adjustment::rests(&catalog, &state, s(), 0));
+    let (catalog, state) = resting_fixture(false, 0);
+    assert!(
+        !crate::adjustment::rests(&catalog, &state, s(), 0),
+        "a catalog that does not ask never rests"
+    );
+}
+
+#[test]
+fn only_the_closing_period_s_hours_count() {
+    let (catalog, mut state) = resting_fixture(true, 0);
+    economy(&mut state)
+        .member_labor
+        .push(crate::MemberLaborCapacityRow {
+            member_id: StaffingMemberId::from_bytes(s().as_bytes()),
+            period: 2,
+            available_hours: 8,
+        });
+    assert!(crate::adjustment::rests(&catalog, &state, s(), 0));
+    let other = SiteId::from_bytes([42; 32]);
+    assert!(
+        crate::adjustment::rests(&catalog, &state, other, 0),
+        "a site with no employment terms has no hands"
+    );
 }

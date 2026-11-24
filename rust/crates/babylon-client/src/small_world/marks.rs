@@ -79,7 +79,9 @@ pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt> {
         .iter()
         .filter_map(|receipt| match receipt {
             AdjustmentReceipt::PlaceMove(moved) => Some(moved),
-            AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::Stop(_) => None,
+            AdjustmentReceipt::HiringBound(_)
+            | AdjustmentReceipt::Stop(_)
+            | AdjustmentReceipt::RestingPrice(_) => None,
         })
 }
 
@@ -93,7 +95,8 @@ fn stop_of(result: &PeriodResult, w: Workplace) -> Option<&StopReceipt> {
             AdjustmentReceipt::Stop(stop) if stop.site_id == w.site_id() => Some(stop),
             AdjustmentReceipt::Stop(_)
             | AdjustmentReceipt::HiringBound(_)
-            | AdjustmentReceipt::PlaceMove(_) => None,
+            | AdjustmentReceipt::PlaceMove(_)
+            | AdjustmentReceipt::RestingPrice(_) => None,
         })
 }
 
@@ -160,7 +163,8 @@ fn bounds_of(result: &PeriodResult, w: Workplace) -> impl Iterator<Item = &Hirin
             AdjustmentReceipt::HiringBound(bound) if bound.site_id == w.site_id() => Some(bound),
             AdjustmentReceipt::HiringBound(_)
             | AdjustmentReceipt::PlaceMove(_)
-            | AdjustmentReceipt::Stop(_) => None,
+            | AdjustmentReceipt::Stop(_)
+            | AdjustmentReceipt::RestingPrice(_) => None,
         })
 }
 
@@ -693,7 +697,9 @@ mod tests {
                 .iter()
                 .filter_map(|receipt| match receipt {
                     AdjustmentReceipt::Stop(stop) => Some(stop),
-                    AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::PlaceMove(_) => None,
+                    AdjustmentReceipt::HiringBound(_)
+                    | AdjustmentReceipt::PlaceMove(_)
+                    | AdjustmentReceipt::RestingPrice(_) => None,
                 })
                 .collect();
             assert_eq!(stops.len(), 8, "period {}", result.period);

@@ -32,7 +32,7 @@ use crate::{
     UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
-use crate::adjustment::{HiringBound, StopRound};
+use crate::adjustment::{HiringBound, RestingPriceReceipt, StopRound};
 use crate::clearing::MarketTable;
 use crate::financial::FinancialClose;
 use crate::inventory;
@@ -1318,6 +1318,8 @@ pub(crate) struct ClosedWork<'a> {
 pub(crate) struct NextPlans {
     production: Vec<ProductionPlanReceipt>,
     prices: Vec<PriceReceipt>,
+    /// The goods prices that rested at this close.
+    rests: Vec<RestingPriceReceipt>,
     bound: Option<HiringBound>,
 }
 
@@ -1358,7 +1360,7 @@ pub(crate) fn next_plans(
         maintenance,
         next_period,
     )?;
-    let prices = crate::recurring::prices::update_prices(catalog, state, wanted, costs)?;
+    let (prices, rests) = crate::recurring::prices::update_prices(catalog, state, wanted, costs)?;
     let asks_bound = catalog.market_clearing.as_ref().is_some_and(|policy| {
         crate::adjustment::asks(&policy.adjustments, AdjustmentRule::HiringWithinMeans)
     });
@@ -1376,6 +1378,7 @@ pub(crate) fn next_plans(
     Ok(NextPlans {
         production: production_plans,
         prices,
+        rests,
         bound,
     })
 }
@@ -1962,14 +1965,25 @@ fn close_with_rules(
     )?;
     let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
     let tiers = close.funded.services.tier_receipts(close.state.period)?;
-    let adjustments = plans.bound.as_ref().map_or_else(Vec::new, |bound| {
-        bound
-            .rows
-            .iter()
-            .cloned()
-            .map(AdjustmentReceipt::HiringBound)
-            .collect()
-    });
+    // In the order they acted: the prices that rested (services, then goods), then the bound.
+    let mut adjustments: Vec<AdjustmentReceipt> = close
+        .funded
+        .services
+        .rests
+        .iter()
+        .chain(&plans.rests)
+        .copied()
+        .map(AdjustmentReceipt::RestingPrice)
+        .collect();
+    if let Some(bound) = &plans.bound {
+        adjustments.extend(
+            bound
+                .rows
+                .iter()
+                .cloned()
+                .map(AdjustmentReceipt::HiringBound),
+        );
+    }
     Ok(ClosedMaterialPeriod {
         next_period,
         hiring_bound: plans.bound,

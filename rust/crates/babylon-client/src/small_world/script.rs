@@ -5,6 +5,7 @@
 use super::frame::ParticleMode;
 use super::frame_time::{FrameTime, SceneFrameTimes};
 use super::panel::{self, ShockNotice};
+use super::rules::SceneRule;
 use super::scene::{SceneCommand, SceneRunner, SceneStatus};
 use babylon_circuit_worlds::{Lasts, PeriodResult, Place, Places, Shock, Workplace};
 use bevy::prelude::*;
@@ -22,7 +23,8 @@ pub const REPLIES_FILE: &str = "replies.jsonl";
 pub const REFUSAL_FILE: &str = "refusal.json";
 
 /// One line of a script. The names inside are `harvest_fails` or `power_cut`; `a`, `b` or
-/// `both`; `ten_periods` or `until_lifted`; `groups` or `people`.
+/// `both`; `ten_periods` or `until_lifted`; `groups` or `people`; and the six rules' names of
+/// `SceneRule::script_name`.
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ScriptCommand {
@@ -36,6 +38,7 @@ pub enum ScriptCommand {
         shock: String,
         place: String,
     },
+    Rule(String),
     Particles(String),
     Capture(String),
     Report(String),
@@ -128,6 +131,9 @@ fn check_names(command: &ScriptCommand) -> Result<(), String> {
             known(shock_named(shock), "shock", shock)?;
             known(place_named(place), "place", place)?;
         }
+        ScriptCommand::Rule(name) => {
+            known(SceneRule::named(name), "rule", name)?;
+        }
         ScriptCommand::Particles(name) => {
             known(mode_named(name), "particles", name)?;
         }
@@ -172,6 +178,8 @@ pub struct ScriptReport {
     pub hours_given: Vec<(String, Vec<u64>)>,
     pub made: Vec<(String, Vec<u64>)>,
     pub shocks: Vec<String>,
+    /// The rules on, in the order turned on: the script's name and the first period closed under it.
+    pub rules: Vec<(String, u64)>,
     pub frame: Option<FrameTime>,
     pub refusal: Option<String>,
 }
@@ -282,6 +290,12 @@ fn build_report(
         shocks: panel::shock_rows(scene.runner.shocks(), scene.runner.next_period())
             .into_iter()
             .map(|row| row.text)
+            .collect(),
+        rules: scene
+            .runner
+            .rules()
+            .iter()
+            .map(|on| (SceneRule::of(on.rule).script_name().to_owned(), on.from))
             .collect(),
         frame: times.last,
         refusal,
@@ -413,6 +427,12 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
         ScriptCommand::Lift { shock, place } => {
             if let (Some(shock), Some(place)) = (shock_named(&shock), place_named(&place)) {
                 world.presses.write(SceneCommand::Lift(shock, place));
+            }
+            run.state = State::Checking(0);
+        }
+        ScriptCommand::Rule(name) => {
+            if let Some(rule) = SceneRule::named(&name) {
+                world.presses.write(SceneCommand::TurnOn(rule));
             }
             run.state = State::Checking(0);
         }

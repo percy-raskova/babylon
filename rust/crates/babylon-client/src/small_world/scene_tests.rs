@@ -11,13 +11,16 @@ use crate::small_world::frame::ParticleMode;
 use crate::small_world::inspect::ScenePick;
 use crate::small_world::panel;
 use crate::small_world::panel::{
-    InspectorBody, InspectorPanel, PagerLabel, PanelButton, PanelView, ShockButton, ShockNotice,
-    TableBody, STORED_WORK_LINE, TO_THE_CENT_LINE,
+    InspectorBody, InspectorPanel, Lower, LowerBody, NoticeLine, PagerLabel, PanelButton,
+    PanelView, ShockButton, ShockNotice, TableBody, STORED_WORK_LINE, TO_THE_CENT_LINE,
+};
+use crate::small_world::rules::{
+    RuleButton, RulesBody, SceneRule, FROM_LINE, RULES_LINE, RULES_SHOWN, SHOWN_RULES,
 };
 use crate::small_world::scene::SceneShown;
 use crate::small_world::table::Grouping;
 use crate::small_world::{controls, scene};
-use babylon_circuit_worlds::{Kind, Place, Workplace};
+use babylon_circuit_worlds::{Kind, Place, Workplace, World as BabylonWorld};
 use bevy::asset::AssetPlugin;
 use bevy::camera::NormalizedRenderTarget;
 use bevy::image::ImagePlugin;
@@ -29,6 +32,7 @@ use bevy::text::TextPlugin;
 use bevy::time::TimeUpdateStrategy;
 use hypergraph_rs_bevy::Motion;
 use hypergraph_rs_bevy::{FieldFrame, FlowReport, MarkBatch, ParticleId, SetId};
+use serde_json::Value;
 use std::error::Error;
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -1035,5 +1039,221 @@ fn a_capture_is_saved_as_a_png() -> TestResult {
     let replies = std::fs::read_to_string(folder.0.join("replies.jsonl"))?;
     assert_eq!(replies.lines().count(), 1);
     assert!(replies.contains(r#""event":"done""#));
+    Ok(())
+}
+
+fn rule_button(app: &mut App, rule: SceneRule) -> Result<Entity, Box<dyn Error>> {
+    let world = app.world_mut();
+    world
+        .query::<(Entity, &RuleButton)>()
+        .iter(world)
+        .find_map(|(entity, candidate)| (candidate.0 == rule).then_some(entity))
+        .ok_or_else(|| format!("no rule button {rule:?}").into())
+}
+
+fn rules_on(app: &App) -> usize {
+    app.world().resource::<SceneRunner>().runner.rules().len()
+}
+
+fn count_of<C: Component>(app: &mut App) -> usize {
+    let world = app.world_mut();
+    world
+        .query_filtered::<Entity, With<C>>()
+        .iter(world)
+        .count()
+}
+
+/// The texts under an entity, in the order of the tree.
+fn texts_under(world: &World, entity: Entity, into: &mut Vec<String>) {
+    if let Some(text) = world.get::<Text>(entity) {
+        into.push(text.0.clone());
+    }
+    if let Some(children) = world.get::<Children>(entity) {
+        for child in children.iter() {
+            texts_under(world, child, into);
+        }
+    }
+}
+
+fn caption_of(app: &mut App, tab: Lower) -> Result<String, Box<dyn Error>> {
+    let world = app.world_mut();
+    let entity = world
+        .query::<(Entity, &PanelButton)>()
+        .iter(world)
+        .find_map(|(entity, kind)| (*kind == PanelButton::Lower(tab)).then_some(entity))
+        .ok_or("no lower tab")?;
+    let mut words = Vec::new();
+    texts_under(world, entity, &mut words);
+    Ok(words.concat())
+}
+
+#[test]
+fn the_rail_has_the_rules_tab_only_for_rules_shown() -> TestResult {
+    let mut app = scene_app(None)?;
+    updates(&mut app, 2);
+    let display = |app: &mut App, tab: Lower| {
+        let world = app.world_mut();
+        world
+            .query::<(&LowerBody, &Node)>()
+            .iter(world)
+            .find_map(|(body, node)| (body.0 == tab).then_some(node.display))
+    };
+    if !RULES_SHOWN {
+        assert!(count_of::<PanelButton>(&mut app) > 0);
+        let world = app.world_mut();
+        assert_eq!(
+            world
+                .query::<&PanelButton>()
+                .iter(world)
+                .filter(|kind| matches!(kind, PanelButton::Lower(_)))
+                .count(),
+            0
+        );
+        assert_eq!(count_of::<RulesBody>(&mut app), 0);
+        assert_eq!(texts(&mut app).iter().filter(|w| *w == "Shocks").count(), 1);
+        assert_eq!(count_of::<LowerBody>(&mut app), 1);
+        assert_eq!(display(&mut app, Lower::Shocks), Some(Display::Flex));
+        return Ok(());
+    }
+    assert_eq!(caption_of(&mut app, Lower::Shocks)?, "Shocks");
+    assert_eq!(caption_of(&mut app, Lower::Rules)?, "Rules");
+    assert_eq!(display(&mut app, Lower::Shocks), Some(Display::Flex));
+    assert_eq!(display(&mut app, Lower::Rules), Some(Display::None));
+    let tab = panel_button(&mut app, PanelButton::Lower(Lower::Rules))?;
+    click(&mut app, tab);
+    updates(&mut app, 2);
+    assert_eq!(app.world().resource::<PanelView>().lower, Lower::Rules);
+    assert_eq!(display(&mut app, Lower::Shocks), Some(Display::None));
+    assert_eq!(display(&mut app, Lower::Rules), Some(Display::Flex));
+    let world = app.world_mut();
+    let node = world.get::<Node>(tab).ok_or("tab has no node")?;
+    assert_eq!(node.border.left, px(3));
+    let body = world
+        .query_filtered::<Entity, With<RulesBody>>()
+        .single(world)?;
+    let mut inside = Vec::new();
+    texts_under(world, body, &mut inside);
+    assert_eq!(inside.first().map(String::as_str), Some(FROM_LINE));
+    let buttons = world.query::<&RuleButton>().iter(world).count();
+    assert_eq!(buttons, SHOWN_RULES.len());
+    let lowest = world
+        .query_filtered::<Entity, With<LowerBody>>()
+        .iter(world)
+        .count();
+    assert_eq!(lowest, 2);
+    let all = texts(&mut app);
+    let line = all
+        .iter()
+        .position(|w| w == RULES_LINE)
+        .ok_or("no rules line")?;
+    assert!(line > 0);
+    assert_eq!(count_of::<NoticeLine>(&mut app), 2);
+    Ok(())
+}
+
+#[test]
+fn a_rule_that_waits_is_refused_in_the_scene_s_words() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::TurnOn(SceneRule::StopWithoutPay));
+    updates(&mut app, 2);
+    assert!(texts(&mut app)
+        .contains(&"No money, no work waits for people look for work in their place".to_owned()));
+    assert_eq!(rules_on(&app), 0);
+    assert_eq!(history(&app), 0);
+    assert_eq!(app.world().resource::<PanelView>().lower, Lower::Rules);
+    Ok(())
+}
+
+#[test]
+fn a_rule_not_yet_built_is_refused_in_the_scene() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    send(&mut app, SceneCommand::TurnOn(SceneRule::GoodsStepDown));
+    updates(&mut app, 2);
+    let notice = app.world().resource::<ShockNotice>().text.clone();
+    assert!(
+        notice
+            .as_deref()
+            .is_some_and(|w| w.starts_with("The engine refused a goods price steps down: ")),
+        "{notice:?}"
+    );
+    assert_eq!(rules_on(&app), 0);
+    Ok(())
+}
+
+#[test]
+fn every_shown_rule_turns_on_from_the_next_period_and_holds() -> TestResult {
+    if !RULES_SHOWN {
+        return Ok(());
+    }
+    let mut app = scene_app(None)?;
+    for _ in 0..2 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+    }
+    for (k, rule) in SHOWN_RULES.iter().enumerate() {
+        let wanted = rule.rule(&BabylonWorld::scene());
+        let entity = rule_button(&mut app, *rule)?;
+        click(&mut app, entity);
+        updates(&mut app, 2);
+        let scene = app.world().resource::<SceneRunner>();
+        assert_eq!(
+            scene.runner.switch(wanted),
+            babylon_circuit_worlds::Switch::On { from: 3 }
+        );
+        let entity = rule_button(&mut app, *rule)?;
+        let world = app.world_mut();
+        let node = world.get::<Node>(entity).ok_or("no node")?;
+        assert_eq!(node.border.left, px(3));
+        let border = world.get::<BorderColor>(entity).ok_or("no border")?;
+        assert_eq!(border.left, crate::observer_theme::YELLOW);
+        let row = world.get::<ChildOf>(entity).ok_or("no row")?.parent();
+        let mut inside = Vec::new();
+        texts_under(world, row, &mut inside);
+        assert!(inside.contains(&"3".to_owned()), "{inside:?}");
+        assert_eq!(
+            caption_of(&mut app, Lower::Rules)?,
+            format!("Rules · {} on", k + 1)
+        );
+        let entity = rule_button(&mut app, *rule)?;
+        click(&mut app, entity);
+        updates(&mut app, 2);
+        let name = babylon_circuit_worlds::rule_name(wanted);
+        assert_eq!(
+            app.world().resource::<ShockNotice>().text,
+            Some(format!(
+                "{name} is on from period 3 and holds until you start over"
+            ))
+        );
+        assert_eq!(rules_on(&app), k + 1);
+    }
+    assert_eq!(rules_on(&app), SHOWN_RULES.len());
+    assert!(texts(&mut app).contains(&RULES_LINE.to_owned()));
+    send(&mut app, SceneCommand::StartOver);
+    updates(&mut app, 3);
+    assert_eq!(rules_on(&app), 0);
+    assert_eq!(caption_of(&mut app, Lower::Rules)?, "Rules");
+    Ok(())
+}
+
+#[test]
+fn a_refused_rule_ends_the_script_and_keeps_the_refusal() -> TestResult {
+    let folder = TestFolder::new()?;
+    let script = folder.0.join("run.jsonl");
+    std::fs::write(&script, "{\"step\":1}\n{\"rule\":\"stop_without_pay\"}\n")?;
+    let mut app = scene_app(Some(script))?;
+    updates(&mut app, 500);
+    let replies = std::fs::read_to_string(folder.0.join("replies.jsonl"))?;
+    let lines: Vec<&str> = replies.lines().collect();
+    assert_eq!(lines.len(), 2, "{replies}");
+    assert_eq!(lines[0], r#"{"event":"done","line":1}"#);
+    assert_eq!(
+        lines[1],
+        r#"{"event":"refused","line":2,"reason":"No money, no work waits for people look for work in their place"}"#
+    );
+    let kept = std::fs::read_to_string(folder.0.join("refusal.json"))?;
+    let value: Value = serde_json::from_str(&kept)?;
+    assert_eq!(value["rules"], serde_json::json!([]));
     Ok(())
 }

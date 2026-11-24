@@ -88,3 +88,46 @@ fn the_scene_times_its_frames_as_the_client_does() {
         }
     );
 }
+
+#[test]
+fn the_script_names_the_six_rules() {
+    for name in [
+        "hiring_within_means",
+        "seeking_in_place",
+        "stop_without_pay",
+        "resting_price",
+        "owner_restart",
+        "goods_step_down",
+    ] {
+        let line = format!("{{\"rule\":\"{name}\"}}");
+        assert_eq!(
+            script::parse_script(&line),
+            Ok(vec![ScriptCommand::Rule(name.into())])
+        );
+    }
+    assert!(matches!(
+        script::parse_script("{\"step\":1}\n{\"rule\":\"everything\"}"),
+        Err(ScriptError::Line { line: 2, .. })
+    ));
+}
+
+/// The proof script of Task 2c, run by the lead on the display.
+const PROOF_2C: &str = r#"{"step":2}
+{"report":"before-rules"}
+{"capture":"before-rules"}
+{"rule":"stop_without_pay"}
+"#;
+
+#[test]
+fn the_proof_script_of_task_2c_parses() {
+    let commands = script::parse_script(PROOF_2C);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(2),
+            ScriptCommand::Report("before-rules".into()),
+            ScriptCommand::Capture("before-rules".into()),
+            ScriptCommand::Rule("stop_without_pay".into()),
+        ])
+    );
+}

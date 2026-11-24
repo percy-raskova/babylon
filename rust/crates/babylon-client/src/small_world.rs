@@ -8,6 +8,7 @@ pub mod inspect;
 pub mod layout;
 pub mod panel;
 pub mod reading;
+pub mod rules;
 pub mod scene;
 pub mod script;
 pub mod table;

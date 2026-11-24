@@ -14,8 +14,9 @@ use super::inspect;
 use super::inspect::ScenePick;
 use super::layout::{FUND_AT, HOURS_RING_Y, MONEY_RING_Y, PLANE, TREASURY_AT, WORKPLACE_X};
 use super::panel;
-use super::panel::{PanelView, ShockChoices, ShockNotice};
+use super::panel::{Lower, PanelView, ShockChoices, ShockNotice};
 use super::reading::Party;
+use super::rules::{self, SceneRule};
 use super::script;
 use super::table::Grouping;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
@@ -103,6 +104,8 @@ pub enum SceneCommand {
     Marks(Motion),
     Strike(Shock, Places, Lasts),
     Lift(Shock, Place),
+    TurnOn(SceneRule),
+    Lower(Lower),
     Grouping(Grouping),
     TablePeriod(Option<u64>),
 }
@@ -271,6 +274,7 @@ impl Plugin for SmallWorldPlugin {
             .add_observer(ignore_picking)
             .add_observer(inspect::picked)
             .add_observer(panel::pressed)
+            .add_observer(rules::pressed)
             .add_observer(declare_surface)
             .add_systems(Startup, setup_scene)
             .add_systems(Update, fit_viewport.in_set(SceneSet::Input))
@@ -290,6 +294,8 @@ impl Plugin for SmallWorldPlugin {
                     panel::paint_inspector,
                     panel::paint_inspector_panel,
                     panel::paint_shocks,
+                    panel::paint_lower,
+                    rules::paint_rules,
                     panel::paint_choices,
                     panel::paint_notice,
                     panel::paint_not_drawn,
@@ -566,6 +572,16 @@ impl Stage<'_> {
         }
     }
 
+    /// Turn the rule on in the scene's world; a refusal is told in the runner's words. The rules' tab is
+    /// shown either way.
+    fn turn_on(&mut self, rule: SceneRule) {
+        let wanted = rule.rule(self.scene.runner.world());
+        if let Err(error) = self.scene.runner.turn_on(wanted) {
+            self.notice.say(rules::rule_refusal_words(&error));
+        }
+        self.view.lower = Lower::Rules;
+    }
+
     fn handle(&mut self, command: SceneCommand) {
         match command {
             SceneCommand::Step => self.step(),
@@ -588,6 +604,8 @@ impl Stage<'_> {
             SceneCommand::Marks(motion) => self.set_marks(motion),
             SceneCommand::Strike(shock, places, lasts) => self.strike(shock, places, lasts),
             SceneCommand::Lift(shock, place) => self.lift(shock, place),
+            SceneCommand::TurnOn(rule) => self.turn_on(rule),
+            SceneCommand::Lower(lower) => self.view.lower = lower,
             SceneCommand::Grouping(grouping) => self.view.grouping = grouping,
             SceneCommand::TablePeriod(period) => self.set_table_period(period),
         }

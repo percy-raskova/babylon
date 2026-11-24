@@ -6,6 +6,7 @@ use super::controls::{self, SceneButton};
 use super::frame::{self, Picture, STREAM_GOODS, STREAM_MONEY, STREAM_WORK};
 use super::inspect::{self, Pick, ScenePick};
 use super::reading;
+use super::rules::{self, RULES_SHOWN};
 use super::scene::{SceneCommand, SceneRunner, SceneShown, BAR_HEIGHT, HEADER_HEIGHT, RAIL_WIDTH};
 use super::table::{self, Grouping, Table};
 use crate::human_numbers;
@@ -44,11 +45,21 @@ const RAIL_PADDING: f32 = 12.0;
 const BUTTON_HEIGHT: f32 = 28.0;
 const SELECTED_EDGE: f32 = 3.0;
 
+/// What the lower part of the rail shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lower {
+    #[default]
+    Shocks,
+    Rules,
+}
+
 /// How the table is grouped and which period it and the inspector read; `None` is the latest.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
 pub struct PanelView {
     pub grouping: Grouping,
     pub period: Option<u64>,
+    /// The tab of the rail's lower part.
+    pub lower: Lower,
 }
 
 impl Default for PanelView {
@@ -56,6 +67,7 @@ impl Default for PanelView {
         Self {
             grouping: Grouping::Workplace,
             period: None,
+            lower: Lower::Shocks,
         }
     }
 }
@@ -67,7 +79,12 @@ pub enum PanelButton {
     Previous,
     Next,
     Latest,
+    Lower(Lower),
 }
+
+/// A body of the rail's lower part, shown while the view's `lower` is its own.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LowerBody(pub Lower);
 
 /// A button of the shock controls.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,7 +145,12 @@ pub struct ShockNotice {
 impl ShockNotice {
     /// Show the words of a refusal for `NOTICE_SECONDS`.
     pub fn refuse(&mut self, error: ShockError) {
-        self.text = Some(refusal_words(error));
+        self.say(refusal_words(error));
+    }
+
+    /// Show these words for `NOTICE_SECONDS`.
+    pub fn say(&mut self, words: String) {
+        self.text = Some(words);
         self.left = NOTICE_SECONDS;
     }
 }
@@ -421,30 +443,68 @@ pub fn spawn_rail(commands: &mut Commands) {
                 margin: UiRect::top(px(14)),
                 ..default()
             })
-            .with_children(|section| {
-                section
-                    .spawn(Node {
-                        margin: UiRect::bottom(px(4)),
-                        ..default()
-                    })
-                    .with_child(controls::text(
-                        "Shocks",
-                        16.0,
-                        theme::YELLOW,
-                        ObserverFontRole::Display,
-                    ));
-                spawn_shock_controls(section);
-                section.spawn((
-                    ShocksBody,
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        row_gap: px(2),
-                        margin: UiRect::top(px(8)),
-                        ..default()
-                    },
-                ));
-            });
+            .with_children(spawn_lower);
         });
+}
+
+/// The rail's lower part: the shocks, and the rules behind a second tab while any rule is shown.
+fn spawn_lower(section: &mut ChildSpawnerCommands) {
+    if RULES_SHOWN {
+        section
+            .spawn(Node {
+                column_gap: px(4),
+                margin: UiRect::bottom(px(4)),
+                ..default()
+            })
+            .with_children(|tabs| {
+                spawn_pressed(tabs, PanelButton::Lower(Lower::Shocks), "Shocks", 13.0);
+                spawn_pressed(tabs, PanelButton::Lower(Lower::Rules), "Rules", 13.0);
+            });
+    } else {
+        section
+            .spawn(Node {
+                margin: UiRect::bottom(px(4)),
+                ..default()
+            })
+            .with_child(controls::text(
+                "Shocks",
+                16.0,
+                theme::YELLOW,
+                ObserverFontRole::Display,
+            ));
+    }
+    section
+        .spawn((
+            LowerBody(Lower::Shocks),
+            Node {
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+        ))
+        .with_children(|body| {
+            spawn_shock_controls(body);
+            body.spawn((
+                ShocksBody,
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(2),
+                    margin: UiRect::top(px(8)),
+                    ..default()
+                },
+            ));
+        });
+    if RULES_SHOWN {
+        section
+            .spawn((
+                LowerBody(Lower::Rules),
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    display: Display::None,
+                    ..default()
+                },
+            ))
+            .with_children(rules::spawn_rules_tab);
+    }
 }
 
 /// The inspector: a panel over the viewport's top right, shown only while something is picked.
@@ -828,8 +888,65 @@ pub fn paint_shocks(
     });
 }
 
+/// A tab's caption: "Shocks" or "Shocks · {count} holding"; "Rules" or "Rules · {count} on". The count is left
+/// out when it is 0.
+#[must_use]
+pub fn lower_caption(lower: Lower, count: usize) -> String {
+    let (name, word) = match lower {
+        Lower::Shocks => ("Shocks", "holding"),
+        Lower::Rules => ("Rules", "on"),
+    };
+    if count == 0 {
+        name.to_owned()
+    } else {
+        format!("{name} · {count} {word}")
+    }
+}
+
+/// Show the body of the chosen tab and write the two tabs' captions.
+pub fn paint_lower(
+    view: Res<PanelView>,
+    scene: Res<SceneRunner>,
+    mut bodies: Query<(&LowerBody, &mut Node)>,
+    tabs: Query<(&PanelButton, &Children)>,
+    mut captions: Query<&mut Text>,
+) {
+    for (body, mut node) in &mut bodies {
+        let display = if !RULES_SHOWN || body.0 == view.lower {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+    let holding = shock_rows(scene.runner.shocks(), scene.runner.next_period())
+        .iter()
+        .filter(|row| row.holding)
+        .count();
+    let on = scene.runner.rules().len();
+    for (button, children) in &tabs {
+        let PanelButton::Lower(lower) = button else {
+            continue;
+        };
+        let words = lower_caption(
+            *lower,
+            match lower {
+                Lower::Shocks => holding,
+                Lower::Rules => on,
+            },
+        );
+        for child in children {
+            if let Ok(mut text) = captions.get_mut(*child) {
+                text.set_if_neq(Text::new(words.clone()));
+            }
+        }
+    }
+}
+
 /// The border of a chosen button is marked on its left side, 3 px of yellow.
-fn mark(node: &mut Node, border: &mut BorderColor, selected: bool) {
+pub(super) fn mark(node: &mut Node, border: &mut BorderColor, selected: bool) {
     let edge = px(if selected { SELECTED_EDGE } else { 1.0 });
     if node.border.left != edge {
         node.border.left = edge;
@@ -865,6 +982,7 @@ fn chosen(
         (Some(SceneButton::Particles(mode)), _, _) => Some(*mode == scene.mode),
         (Some(SceneButton::Marks(wanted)), _, _) => Some(*wanted == motion),
         (_, Some(PanelButton::Tab(grouping)), _) => Some(*grouping == view.grouping),
+        (_, Some(PanelButton::Lower(lower)), _) => Some(*lower == view.lower),
         (_, _, Some(ShockButton::Place(shock, places))) => {
             Some(choices.of(*shock).places == *places)
         }
@@ -954,6 +1072,9 @@ fn press_panel(
         PanelButton::Latest => {
             commands.write(SceneCommand::TablePeriod(None));
         }
+        PanelButton::Lower(lower) => {
+            commands.write(SceneCommand::Lower(lower));
+        }
         PanelButton::Previous | PanelButton::Next => {}
     }
 }
@@ -1017,6 +1138,14 @@ mod tests {
     }
     use babylon_circuit_worlds::Runner;
     use std::error::Error;
+
+    #[test]
+    fn the_lower_tabs_count_what_holds() {
+        assert_eq!(lower_caption(Lower::Rules, 0), "Rules");
+        assert_eq!(lower_caption(Lower::Rules, 2), "Rules · 2 on");
+        assert_eq!(lower_caption(Lower::Shocks, 0), "Shocks");
+        assert_eq!(lower_caption(Lower::Shocks, 3), "Shocks · 3 holding");
+    }
 
     #[test]
     fn shock_rows_tell_what_was_struck_and_when() -> Result<(), Box<dyn Error>> {

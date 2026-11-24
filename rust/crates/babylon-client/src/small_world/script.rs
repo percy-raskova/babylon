@@ -482,7 +482,7 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
         }
         ScriptCommand::Pick(id) => {
             if let Some(pick) = inspect::pick_named(&id) {
-                *world.pick = pick;
+                world.pick.set_if_neq(pick);
             }
             run.state = State::Checking(0);
         }

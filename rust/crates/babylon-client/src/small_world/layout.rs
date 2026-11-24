@@ -5,7 +5,7 @@
 //! only (dollars as `f64`): no hour enters a position.
 
 use super::reading::{Party, PaymentKind};
-use babylon_circuit_worlds::{Household, Place, Workplace};
+use babylon_circuit_worlds::{Household, Place};
 use hypergraph_rs::geometry;
 use hypergraph_rs::geometry::GeometryError;
 use hypergraph_rs::geometry::Point;
@@ -34,6 +34,14 @@ pub const FUND_ANCHOR: Point = (2.2, 8.3);
 pub const BENEFIT_LEAN: [f64; 2] = [-1.0, 1.0];
 /// How far behind its workplace's wage anchor a workers' group paid by nobody stands (plan units, up).
 pub const UNPAID_BEHIND: f64 = 1.6;
+/// The middle of each place's four workplaces across the plane, by `Place::index`: where its owners'
+/// group stands on the profit row when nobody pays it.
+pub const OWNER_HOME_X: [f64; 2] = [-6.8, 6.8];
+/// Where a worker household's persons who are out of work and paid no benefits stand in the people
+/// view, by `Place::index`: their place's idle ground. It is clear of a workforce of sixteen persons
+/// with its outline; a home right behind a workplace's people would end inside a tall workforce's
+/// outline.
+pub const IDLE_GROUND: [Point; 2] = [(-7.0, 6.0), (7.0, 6.0)];
 /// The least distance between two groups, and the steps of the spread.
 pub const GROUP_SPREAD: (f64, u32) = (1.6, 8);
 /// The least distance between two persons, and the steps of the spread.
@@ -92,15 +100,7 @@ pub fn anchor(kind: PaymentKind, payer: Party, place: Place) -> Option<Point> {
 pub fn home_of(h: Household) -> Point {
     match h {
         Household::Workers(w) => (WORKPLACE_X[w.index()], WAGE_ANCHOR_Y + UNPAID_BEHIND),
-        Household::Owner(place) => {
-            let of_place: Vec<f64> = Workplace::ALL
-                .into_iter()
-                .filter(|w| w.place == place)
-                .map(|w| WORKPLACE_X[w.index()])
-                .collect();
-            let n = f64::from(u8::try_from(of_place.len()).unwrap_or(u8::MAX));
-            (of_place.iter().sum::<f64>() / n, PROFIT_ANCHOR_Y)
-        }
+        Household::Owner(place) => (OWNER_HOME_X[place.index()], PROFIT_ANCHOR_Y),
         Household::Supported(place) => (FUND_ANCHOR.0 + BENEFIT_LEAN[place.index()], FUND_ANCHOR.1),
     }
 }
@@ -203,6 +203,19 @@ mod tests {
         assert!(near(home_of(Household::Owner(Place::B)), (6.8, -2.4)));
         assert!(near(home_of(Household::Supported(Place::A)), (1.2, 8.3)));
         assert!(near(home_of(Household::Supported(Place::B)), (3.2, 8.3)));
+        for place in Place::ALL {
+            let of_place: Vec<f64> = Workplace::ALL
+                .into_iter()
+                .filter(|w| w.place == place)
+                .map(|w| WORKPLACE_X[w.index()])
+                .collect();
+            assert_eq!(of_place.len(), 4);
+            let middle = of_place.iter().sum::<f64>() / 4.0;
+            assert!((OWNER_HOME_X[place.index()] - middle).abs() < 1e-12);
+            // Sixteen persons stand four rows deep; the idle ground is above them and their outline.
+            let top = WAGE_ANCHOR_Y + 3.0 * PERSON_STEP + OUTLINE[0].0;
+            assert!(IDLE_GROUND[place.index()].1 > top);
+        }
         for (k, a) in Household::ALL.into_iter().enumerate() {
             assert_eq!(stand_at(home_of(a), &[]), Ok(home_of(a)));
             for b in Household::ALL.into_iter().skip(k + 1) {

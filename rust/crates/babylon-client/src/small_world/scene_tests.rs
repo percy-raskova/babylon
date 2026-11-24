@@ -1416,6 +1416,39 @@ fn a_scripted_pick_is_a_click_s_pick() -> TestResult {
         400,
     )?;
     assert_eq!(app.world().resource::<ScenePick>().0, None);
+
+    // A click on the same two entities leaves the same picks.
+    let mut clicked = scene_app(None)?;
+    send(&mut clicked, SceneCommand::Step);
+    updates(&mut clicked, 3);
+    let group = {
+        let world = clicked.world_mut();
+        world
+            .query::<(Entity, &ParticleId)>()
+            .iter(world)
+            .find_map(|(entity, id)| (id.0 == "household:15").then_some(entity))
+            .ok_or("no particle household:15")?
+    };
+    click(&mut clicked, group);
+    updates(&mut clicked, 2);
+    assert_eq!(
+        clicked.world().resource::<ScenePick>().0,
+        Some(Pick::Particle("household:15".to_owned()))
+    );
+    let plate = {
+        let world = clicked.world_mut();
+        world
+            .query::<(Entity, &SceneBody)>()
+            .iter(world)
+            .find_map(|(entity, body)| (body.0 == Party::Workplace(farm)).then_some(entity))
+            .ok_or("no plate of farm A")?
+    };
+    click(&mut clicked, plate);
+    updates(&mut clicked, 2);
+    assert_eq!(
+        clicked.world().resource::<ScenePick>().0,
+        Some(Pick::Body(Party::Workplace(farm)))
+    );
     Ok(())
 }
 

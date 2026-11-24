@@ -504,6 +504,14 @@ fn stand_of(paid: &Paid, h: Household) -> Result<Point, FrameError> {
     Ok(layout::stand_at(layout::home_of(h), anchors)?)
 }
 
+/// Where a worker household's persons out of work stand: the point its benefits give, or its
+/// place's idle ground when it is paid none.
+fn idle_of(benefits: &Paid, h: Household) -> Result<Point, FrameError> {
+    let anchors = benefits.get(&h).map_or(&[][..], Vec::as_slice);
+    let ground = layout::IDLE_GROUND[h.place().index()];
+    Ok(layout::stand_at(ground, anchors)?)
+}
+
 fn group_style(persons: usize) -> u16 {
     match persons {
         0..=4 => 0,
@@ -589,7 +597,7 @@ fn stand_people(
                     points.extend(layout::cluster(anchor, range.len()));
                 }
                 let employed = rest_of(&ranges).min(n);
-                points.extend(layout::cluster(stand_of(benefits, h)?, n - employed));
+                points.extend(layout::cluster(idle_of(benefits, h)?, n - employed));
                 points
             }
             Household::Owner(_) | Household::Supported(_) => {

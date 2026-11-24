@@ -182,19 +182,17 @@ fn the_script_names_tabs_picks_and_beats() {
             ScriptCommand::BeatMillis(60),
         ])
     );
-    for bad in [
-        r#"{"lower":"table"}"#,
-        r#"{"pick":"household:19"}"#,
-        r#"{"pick":"workplace:c:farm"}"#,
-        r#"{"beat_millis":5}"#,
-        r#"{"beat_millis":5000}"#,
+    for (bad, word) in [
+        (r#"{"lower":"table"}"#, "table"),
+        (r#"{"pick":"household:19"}"#, "household:19"),
+        (r#"{"pick":"workplace:c:farm"}"#, "workplace:c:farm"),
+        (r#"{"beat_millis":5}"#, "5"),
+        (r#"{"beat_millis":5000}"#, "5000"),
     ] {
+        let refused = script::parse_script(&format!("{{\"step\":1}}\n{bad}"));
         assert!(
-            matches!(
-                script::parse_script(&format!("{{\"step\":1}}\n{bad}")),
-                Err(ScriptError::Line { line: 2, .. })
-            ),
-            "{bad} must be refused at its line"
+            matches!(&refused, Err(ScriptError::Line { line: 2, reason }) if reason.contains(word)),
+            "{bad} must be refused at its line, in words that name {word}: {refused:?}"
         );
     }
 }
@@ -223,9 +221,33 @@ const PROOF_3D: &str = r#"{"beat_millis":60}
 
 #[test]
 fn the_proof_script_of_task_3d_parses() {
-    let commands = script::parse_script(PROOF_3D).expect("the proof script parses");
-    assert_eq!(commands.len(), 19);
-    assert_eq!(commands[0], ScriptCommand::BeatMillis(60));
-    assert_eq!(commands[8], ScriptCommand::Pick("household:15".into()));
-    assert_eq!(commands[18], ScriptCommand::Quit);
+    let commands = script::parse_script(PROOF_3D);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::BeatMillis(60),
+            ScriptCommand::Step(20),
+            ScriptCommand::Strike {
+                shock: "harvest_fails".into(),
+                places: "a".into(),
+                lasts: "until_lifted".into(),
+            },
+            ScriptCommand::Step(10),
+            ScriptCommand::Rule("seeking_in_place".into()),
+            ScriptCommand::Step(20),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("slump-groups".into()),
+            ScriptCommand::Pick("household:15".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("slump-clinic-workers".into()),
+            ScriptCommand::Pick("workplace:a:farm".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("slump-farm".into()),
+            ScriptCommand::Particles("people".into()),
+            ScriptCommand::WaitFrames(60),
+            ScriptCommand::Capture("slump-people".into()),
+            ScriptCommand::Report("slump".into()),
+            ScriptCommand::Quit,
+        ])
+    );
 }

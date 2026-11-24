@@ -175,7 +175,7 @@ Nothing is bent to match.
   adds tests to the crate (Tasks 4, 6 and 7) does not.
   The rest of the client is compiled by the clippy leg. If a task changes anything under `tools/`, `.mise.toml` or
   `.github/`, also the Python unit tests that read it (no task here does).
-  **The companion's gate** (Tasks 2c to 8c, which change only the client's scene), one leg at a time from `rust/`:
+  **The companion's gate** (Tasks 2c to 8c and 3d, the client's scene only), one leg at a time from `rust/`:
   the fmt and clippy legs above; `mise run rust:test:q -- -p babylon-client -E 'test(small_world)'`;
   `mise run check:bsl-sentinels`. Not the engine's, the tick's or the small worlds' legs, and not the long tests.
   A companion's proof script is run by the lead on the real display, never by the builder; the client's own
@@ -1469,6 +1469,130 @@ fn person_ranges(pop: &Population, h: Household) -> Vec<(Workplace, Range<usize>
   tune, and the Director is shown it before the other switches follow. Whether anyone moved is read from the
   people view and the lead's pick.
 - [ ] **Run the companion's gate. Commit** `feat(client): people look for work, switched on in the small world`.
+
+### Task 3d: Mends from the lead's look at the first switch (the client)
+
+A companion task: it changes only the client's scene and runs the companion's gate. Commit
+`feat(client): a home for each unpaid group, and a script that opens tabs and picks`.
+
+**Why.** The lead ran Task 3c's proof on the display on 24 November. The list of switches stands as the Director
+picked it. Three things of the scene itself did not:
+
+- With the harvest failed in Place A from period 21 and the seekers turned on from period 31, the farm, the
+  clinic and the shop of Place A give no hours by period 50. Three groups are then paid by nobody: the workers
+  of the clinic, the workers of the shop, and the owners of Place A (counted from the period's reading; the
+  farm's workers are paid by the utility, where some of them work). A group paid by nobody stands at its
+  place's one `HOME` point, so the three stood there together and the owner's outline, drawn round the owners'
+  group, was drawn round unpaid workers too. An outline round a dot says the dot belongs to the set. (With no
+  rule on, the same shock leaves every group paid at period 50, and the picture is sound.)
+- The panel of a household group said "At work 4" beside "Hours given 0": the four are on the rolls of
+  workplaces that give no hours.
+- A script could not open the rules' tab or pick a body, so the look needed a patch that is never committed;
+  and fifty periods at the scene's own beat keep a window open for two and a half minutes.
+
+**Files:**
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `layout.rs` (`home_of`, `stand_at`; `HOME` goes);
+  `frame.rs` (`stand_of`); `inspect.rs` (the word; `workplace_of` becomes `pub(super)`); `script.rs` (three
+  commands); `script_tests.rs`; `scene_tests.rs`.
+
+**Interfaces:**
+
+```rust
+// src/small_world/layout.rs  (the constant HOME is removed)
+/// How far behind its workplace's wage anchor a workers' group paid by nobody stands (plan units, up).
+pub const UNPAID_BEHIND: f64 = 1.6;
+/// Where a group paid by nobody this period stands. A workers' group: behind its own workplace's people,
+/// `(WORKPLACE_X[w.index()], WAGE_ANCHOR_Y + UNPAID_BEHIND)`. An owners' group: on the profit row under the
+/// middle of its place's four workplaces, `(-6.8, PROFIT_ANCHOR_Y)` for Place A and `(6.8, PROFIT_ANCHOR_Y)` for
+/// Place B (the mean of their `WORKPLACE_X`). A supported group: at the fund's anchor on its own side,
+/// `(FUND_ANCHOR.0 + BENEFIT_LEAN[place.index()], FUND_ANCHOR.1)`.
+#[must_use] pub fn home_of(h: Household) -> Point;
+/// The weighted mean of the anchors that paid a household, or `home` when nobody did.
+pub fn stand_at(home: Point, paid: &[(Point, f64)]) -> Result<Point, GeometryError>;
+
+// src/small_world/script.rs: ScriptCommand gains three variants (one JSON value a line, as the others)
+/// `{"lower":"shocks"}` or `{"lower":"rules"}`: what a click on that tab of the rail's lower part does.
+Lower(String),
+/// `{"pick":"<id>"}`: what a click on that body or particle picks. `household:N` or `person:N:k` (N is 11 to 18
+/// for the workers of utility A, utility B, farm A, farm B, clinic A, clinic B, shop A, shop B; 20 and 21 the
+/// owners of A and B; 22 and 23 the supported of A and B), a workplace's id (`workplace:a:farm`), `treasury`,
+/// `fund`, or `none` (a click on empty space).
+Pick(String),
+/// `{"beat_millis":N}`: from now on every beat lasts N milliseconds (20 to 1000; the scene's own is 1000).
+BeatMillis(u32),
+```
+
+**Decisions:**
+1. **A home for each household.** `stand_of` in `frame.rs` calls `layout::stand_at(layout::home_of(h), anchors)`.
+   No hour enters a position: a home is a constant of the household. A workers' group paid by nobody stands
+   one row behind its own workplace's people, outside the workforce's outline and far from the owner's; the
+   owners' group paid by nobody stands under its own place; a supported group paid by nobody stands where the
+   fund would have put it. `UNPAID_BEHIND` is the lead's to tune at the look.
+2. **The people view follows with no other change.** A worker household's persons who are out of work and paid
+   no benefits already cluster at `stand_of(benefits, h)`: that is now `home_of(h)`, one row behind their
+   workplace's people. Owners' and supported persons cluster at their group's point, as today.
+3. **The word.** The panel of a household group says "Employed" where it said "At work". The figure is the
+   same: its persons on a workplace's rolls at the period's opening. A workplace that gives no hours keeps its
+   rolls, and the row "Hours given" beside it says what they gave.
+4. **The script presses what a player presses.** `lower` writes `SceneCommand::Lower`; an unknown name is refused
+   when the script is read. `pick` sets `ScenePick` to exactly what `inspect::picked` sets for a click on that
+   entity: `Pick::Body` for a workplace, the treasury or the fund; `Pick::Particle(id)` for an id `household_of`
+   knows; `None` for `none`. An id that none of these knows is refused when the script is read, with the id in
+   the words. A person's number is not checked against the group's size (the inspector answers for the group).
+   After a pick the script goes on only when the scene rests, as after every press.
+5. **Fast beats are for proofs.** `beat_millis` sets every length of `FieldConfig::beats` to that many
+   milliseconds; outside 20 to 1000 it is refused when the script is read. A picture is taken only while no
+   beat plays, so a fast script's pictures are the same pictures. Nothing but a script can set it: the scene
+   has no control for it and its own beat stays 1,000 ms.
+6. **The later proofs.** From this task on the lead may add `lower`, `pick`, `wait_frames` and `beat_millis`
+   lines to a companion's proof script when running it. The proof scripts of Tasks 4c to 8c stay as written.
+
+- [ ] **Step 1: Write the failing tests.**
+  - In `layout.rs`, `a_group_paid_by_nobody_stands_at_its_own_home` (it replaces
+    `a_group_paid_by_nobody_stands_at_home_and_one_paid_leans_to_the_larger_share`, keeping that test's two
+    assertions on a paid group with a home passed in): each to within 1e-12, `home_of` of clinic A's workers is
+    `(-5.4, 4.9)`; of the owners of A `(-6.8, -2.4)` and of B `(6.8, -2.4)`; of the supported of A `(1.2, 8.3)`
+    and of B `(3.2, 8.3)`; the twelve homes of `Household::ALL` are twelve points, no two nearer than
+    `GROUP_SPREAD.0`; `stand_at(home_of(h), &[])` is `home_of(h)`.
+  - In `scene_tests.rs`, `groups_paid_by_nobody_stand_at_their_own_homes`: with `scene_app(None)`: 20 steps;
+    strike `HarvestFails` in `Places::A`, `Lasts::UntilLifted`; 10 steps; `TurnOn(SeekingInPlace)`; 20 steps
+    (period 50). First the test shows that it bites: among the households that the reading of period 50 shows
+    paid by nobody (no payment that `layout::anchor` places) are the owners of Place A and at least one workers'
+    group of Place A; else it fails with the list. (The lead counted the list on 24 November: the workers of
+    clinic A, the workers of shop A, the owners of A.) Then, in the frame of period 50 in
+    `ParticleMode::Groups`: every household paid by nobody stands within `GROUP_SPREAD.0` of its `home_of`; and
+    no two particles stand nearer than `GROUP_SPREAD.0`.
+  - In `inspect.rs`, the test that reads the row "At work" reads "Employed" (same value); a row "At work" is
+    in no panel.
+  - In `script_tests.rs`, `the_script_names_tabs_picks_and_beats`: `{"lower":"rules"}`,
+    `{"pick":"household:15"}`, `{"pick":"workplace:a:farm"}`, `{"pick":"treasury"}`, `{"pick":"none"}` and
+    `{"beat_millis":60}` parse to their variants; `{"lower":"table"}`, `{"pick":"household:19"}`,
+    `{"pick":"workplace:c:farm"}`, `{"beat_millis":5}` and `{"beat_millis":5000}` are each refused with the
+    line's number.
+  - In `scene_tests.rs` or `script_tests.rs`, with the app of `scene_app` and a script given as text:
+    `a_scripted_pick_is_a_click_s_pick` (after `{"pick":"household:15"}` the `ScenePick` is
+    `Some(Pick::Particle("household:15"))`; after `{"pick":"workplace:a:farm"}` it is
+    `Some(Pick::Body(Party::Workplace(..)))` of farm A; after `{"pick":"none"}` it is `None`);
+    `a_scripted_tab_is_a_click_s_tab` (after `{"lower":"rules"}` `PanelView.lower` is `Lower::Rules`; after
+    `{"lower":"shocks"}`, `Lower::Shocks`); `fast_beats_change_no_frame` (two apps, the same script but for one
+    `{"beat_millis":40}` at its head: after the same three steps both hold period 3 and equal frames, compared
+    as the frame tests compare them).
+  - `the_proof_script_of_task_3d_parses` (19 commands).
+- [ ] **Step 2: Run them and see them fail.** **Step 3: Implement.**
+- [ ] **Step 4: Run** the client's scene tests. Expected: all pass. A pinned frame of a period in which a group
+  is paid by nobody may move: report each such test with the period and the group; a pinned frame of any other
+  period that moves is a stop.
+- [ ] **Step 5: The proof script for the lead** (`PROOF_3D`, as Task 2c's Step 5), one command a line:
+  `{"beat_millis":60}`, `{"step":20}`,
+  `{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}`, `{"step":10}`,
+  `{"rule":"seeking_in_place"}`, `{"step":20}`, `{"wait_frames":30}`, `{"capture":"slump-groups"}`,
+  `{"pick":"household:15"}`, `{"wait_frames":30}`, `{"capture":"slump-clinic-workers"}`,
+  `{"pick":"workplace:a:farm"}`, `{"wait_frames":30}`, `{"capture":"slump-farm"}`, `{"particles":"people"}`,
+  `{"wait_frames":60}`, `{"capture":"slump-people"}`, `{"report":"slump"}`, `"quit"` (19). The check: in
+  `slump-groups.png` the workers' groups of clinic A and shop A each stand above their own workplace, outside
+  every outline, and the owners' group of A stands under its place; the panel of clinic A's workers says
+  "Employed"; `slump.json` has `"rules": [["seeking_in_place", 31]]`.
+- [ ] **Run the companion's gate. Commit** the subject above.
 
 ### Task 4: A bound on hiring (`pc-bound`)
 

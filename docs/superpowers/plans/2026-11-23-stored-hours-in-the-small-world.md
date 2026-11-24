@@ -445,16 +445,16 @@ pub use babylon_recorded_labor::{LaborBasis, LaborDisposition, LaborEdge, LaborI
 
 ### Task 3: The runner folds, both runs
 
-The code as built binds: the lead reads this task again against the runner after the closest form's Tasks 2 to
-8 (`Runner::turn_on`, `rules`, `PeriodResult.rules`, `PeriodReceipts.adjustments`, the path through
-`staff_in_places` and `finish_with_place_staffing`) before it starts. Commit
+The lead read this task against the runner as built on 24 November (`Runner::turn_on`, `rules_at`,
+`PeriodResult.rules`, `PeriodReceipts.adjustments`, both paths of the close); the text below is amended. Commit
 `feat(circuit-worlds): the runner folds the hours of each period, twice`.
 
 **Files:**
 - Create: `rust/crates/babylon-circuit-worlds/src/runner/hours.rs`; `rust/crates/babylon-circuit-worlds/tests/hours.rs`.
 - Modify: `babylon-circuit-worlds/Cargo.toml` (`babylon-recorded-labor`); `rust/Cargo.lock`; `src/runner.rs`
-  (`mod hours; pub use`); `src/lib.rs` (exports); `src/runner/run.rs` (`open_world_with_hours`, the fold in
-  `advance`, the ledger kept by `step`); `src/runner/result.rs` (`PeriodResult.hours`); `src/runner/error.rs`
+  (`pub mod hours;` beside its four modules, and the `pub use` of the hours' types); `src/lib.rs` (the same names
+  in its `pub use runner::{..}`); `src/runner/run.rs` (`open_world_with_hours`, the fold in `advance`, the ledger
+  in `Stepped` and kept by `step`); `src/runner/result.rs` (`PeriodResult.hours`); `src/runner/error.rs`
   (the refusals); `rust/crates/babylon-material-circuit/tests/adjustment_bench/sets.rs` (the long test).
 
 **Interfaces:**
@@ -539,13 +539,20 @@ HoursUnplaced { period: u64, what: String },
 1. **Asked for at the opening.** `open_world` does not change, and the bench's `rows` and every reference test
    keep calling it: they never fold, so their rows and their time stay. `open_world_with_hours` is `open_world`
    (rules turned on, pushes struck) and then `HoursLedger::open` with the catalog of the next period's figures
-   and rules and the opening state. `Runner::open()` keeps opening without hours, so no pinned test of the crate
+   and rules and the opening state. That catalog is in the runner's own `catalogs` under `CatalogKey { figures:
+   book.figures(state.period), rules: rules_at(state.period) }`: `open_world` has made it, and
+   `Runner::catalog()` is still `None` before the first step. `Runner::open()` keeps opening without hours, so no
+   pinned test of the crate
    moves; the scene opens with hours (Task 5), which names the client's pins that move. The runner's field is
    `hours: Option<HoursLedger>`.
-2. **Inside the step.** In `advance`, after the runner's checks of money and persons and before the receipts are
-   taken out of the transition, when `hours` is `Some`: `ledger.fold(&self.world, catalog, &self.state,
-   &transition)`. The new ledger goes into `Stepped` and is kept by `step` with the state, so a refused period
-   changes nothing. The fold reads the whole transition, not `PeriodReceipts` (which leave out aid, collections,
+2. **Inside the step.** In `advance`, right after `check_conserved(..)?` and before
+   `material_circuit_state_digest`, when `hours` is `Some`: `ledger.fold(&self.world, catalog, &self.state,
+   &transition)?`. `catalog` is `advance`'s own local one, of this period's figures and rules, the one the close
+   used: a rule turned on in the middle of a run, or a push, is folded under its own period's catalog. Both paths
+   of the close reach this point (with the seekers, `staff_in_places` and `finish_with_place_staffing`; without,
+   `staff` and `finish_with_staffing`). The new ledger goes into `Stepped`, beside `standing`, and is kept by
+   `step` with the state, so a refused period changes nothing. The stop rule's standing is not read by the fold.
+   The fold reads the whole transition, not `PeriodReceipts` (which leave out aid, collections,
    agency, household time, installation, equipment wear, maintenance, dispatches, arrivals and losses).
 3. **The view of the transition:** `period` is `before.period`, `before` is the runner's state, `after` is
    `transition.state`, each list the transition's own; `agency` is empty. A transition with a row of
@@ -573,8 +580,11 @@ HoursUnplaced { period: u64, what: String },
    ledger cannot place {what}". The scene shows a refusal in the runner's words, as it shows every refusal.
 7. **The long test** goes in the bench's `sets.rs`, beside the `reproduces_` tests, `#[ignore]`, and is not named
    `reproduces_` so the long tests' filter does not take it: `hours_fold_every_reference_run`. For each of
-   `Form::ALL` and both scales, each run of `runs(form, scale)`, opened with `Runner::open_world_with_hours(&run.world)`
-   and struck as `rows` strikes, stepped `PERIODS_LONG` times: every step is `Ok`, and every period keeps both
+   `Form::ALL` and both scales (seven forms: 350 runs of 400 periods, each period folded twice), each run of
+   `runs(form, scale)`, opened with `Runner::open_world_with_hours(&run.world)`
+   and struck as `rows` strikes (`TurnedOn::AtOpening`; a rule turned on later is the crate's own test,
+   `rules_turned_on_late_keep_the_ledger`), stepped `PERIODS_LONG` times: every step is `Ok`, and every period
+   keeps both
    ledgers' law (`opening + direct == closing + released`), `hours.direct` equals 1,000,000 times the sum of
    `given`, and each place's identity holds (decision 8). On a failure it names the form, the scale, the run and
    the period. Its command: `mise run rust:test:q -- -p babylon-material-circuit --test adjustment_bench -E
@@ -609,13 +619,19 @@ HoursUnplaced { period: u64, what: String },
     `made_micro_hours * 9 == made_units * 20_000_000` in periods 1 to 3.
   - `the_power_cut_makes_power_of_ten_ninths`: the cut struck in A: utility A's `made_micro_hours * 9 ==
     made_units * 10_000_000` in periods 1 to 3.
-  - `given_follows_the_household_that_works_elsewhere`: the run of the closest form's Task 3c
-    (`a_move_is_read_from_its_receipts`): the scene's world with the seekers among its rules, harvest struck in
-    Both before step 1, opened with hours; in the first period after a move, the home household's `given` equals
+  - `given_follows_the_household_that_works_elsewhere`: the run of `fund_p2` in the client's `marks.rs` (the
+    scene's world with the seekers as its one rule, `World::switches_at(Scale::Small)[1]`; harvest struck in
+    Both after the opening and before step 1; the first move is in period 16), opened with hours; in the first
+    period after a move, the home household's `given` equals
     the sum of its member receipts' given hours at every site, the host's `given` the sum at its site, and they
     differ from the hours of the host's own household.
-  - `every_rule_on_keeps_the_ledger_for_60_periods`: the scene's world with all six of `World::switches()` turned
-    on before step 1, harvest in Both: 60 steps `Ok`, the laws as above.
+  - `every_rule_on_keeps_the_ledger_for_60_periods`: the scene's world with all six rules (`World { rules:
+    World::switches_at(Scale::Small).to_vec(), ..World::scene() }`), harvest in Both: 60 steps `Ok`, the laws as
+    above.
+  - `rules_turned_on_late_keep_the_ledger`: the run of `late_run` in the crate's `tests/runner.rs` (harvest in
+    Both, the six rules of `LATE` turned on in the middle of the run, on from periods 21 to 41), opened with
+    `open_world_with_hours`, for 60 steps: every step `Ok`, the laws as above. A rule turned on changes the next
+    period's catalog; this is the test that a fold takes each period under its own.
   - `a_runner_opened_without_hours_keeps_no_record`: 34 steps of `open_world(&World::scene())` and of
     `open_world_with_hours(&World::scene())`: equal `state_digest` every period; `hours` is `None` and `Some`.
   - In `src/runner/hours.rs` tests: `the_two_runs_hand_over_the_same_moves` (a real period of the scene: the two
@@ -742,7 +758,13 @@ crate.
    runner checks it anyway (`ClaimsNotBack`).
 5. **The order of the money.** `transition.money_transfers` is followed in its own order, as the moves of money
    in the period. The check found wages paid at the period's opening, before any buying, benefits at the opening
-   of the finance close, and profit shared out last; this task's first test confirms the list is in that order.
+   of the finance close, and profit shared out last; this task's first test confirms the list is in that order,
+   on periods with no restart. Read from the close itself on 24 November, the list runs: delivery settlements,
+   benefits, wages, household orders and their reserves, services, taxes and collections, profit, then
+   equipment investment. That puts benefits before wages, where the first check had wages first: the first
+   test settles it, and the purse follows the list as it is. Under the closest form's restart an owner's
+   `Cash(CapitalContribution)` to the workplace it restarts comes last of all; decision 2 draws it out of the
+   owner's purse, and no household's hours back change by it.
    If `an_owner_s_back_is_by_owning_from_period_two` fails because a later move is listed before an earlier one,
    stop and report: the purse would mix money that had not yet arrived.
 6. **The checks, every period, in this order** after the fold: `follow` (`ClaimRefused`), `check` against
@@ -811,7 +833,7 @@ before it starts. Commit `feat(client): goods squares fill as their hours are me
   hours); `reading.rs` (`GoodsMove.opening`, `PeriodReading.opening_per_hundred`); `frame.rs` (a goods move as two
   flows); `controls.rs` (`GOODS_HOLLOW_LINE`'s words, the standing line, `PEOPLE_LINE_AT` becomes 5);
   `panel.rs` (`STORED_WORK_LINE` goes); `table.rs` (`NOT_MEASURED` goes); `../small_world.rs` (exports);
-  `scene_tests.rs`; `script_tests.rs` (`PROOF_5`).
+  `scene_tests.rs`; `script_tests.rs` (`PROOF_SH5`).
 
 **Interfaces:**
 
@@ -846,7 +868,7 @@ pub fn paint_opening_line(shown: Res<SceneShown>, scene: Res<SceneRunner>, view:
 const PEOPLE_LINE_AT: usize = 5;
 // src/small_world/script_tests.rs
 /// The proof script of Task 5, one JSON command a line (Step 5); the lead runs it, never the builder.
-const PROOF_5: &str;
+const PROOF_SH5: &str;
 ```
 
 **Decisions:**
@@ -854,7 +876,8 @@ const PROOF_5: &str;
    Every test that goes through `scene_app` now draws goods part full. Every other test of the client that opens
    `Runner::open()` keeps a runner without hours and draws as today: the frame's pin
    `each_stream_draws_and_counts_exactly_its_own_total` (all goods hollow) stays as it is.
-2. **A move's opening units** are read in `read_goods` by its receipt list and index (`MovedBy`), before sorting,
+2. **A move's opening units** are read in `read_goods` by its receipt list and index (`MovedBy`) while the moves
+   are pushed, before the empty moves are dropped and before sorting,
    from `result.hours`: `opening = (opening_micro_units + 500_000) / 1_000_000`, at most `quantity`. A move that
    has no `MoveHours` while `hours` is `Some` is `ReadingError::UnknownParty` with the move's receipt.
 3. **Drawn part full, part hollow** (S10). `goods_flows` writes, for a move with `opening: Some(n)`, a full flow of
@@ -866,7 +889,8 @@ const PROOF_5: &str;
    `opening_per_hundred = (100 * sum(opening_micro_units) + half) / (sum(quantity) * 1_000_000)` with half equal
    to half the divisor, so 12.5 shows 13. Built in `read_period` from `result.hours.moves`. Its text entity sits
    in the standing column where `GOODS_HOLLOW_LINE` stands, right under it, built by `controls::text` like its
-   neighbours; `paint_opening_line` writes it for the period the scene shows. The key now has five fixed lines,
+   neighbours; `paint_opening_line` writes it for the period the scene shows, and is registered in the plugin
+   beside `controls::paint_people_line` and `panel::paint_not_drawn`. The key now has five fixed lines,
    so `PEOPLE_LINE_AT` becomes 5 (the people line still stands after the key, before the "not drawn" line).
 5. **The words** (S11): `GOODS_HOLLOW_LINE` gets the new words above. `STORED_WORK_LINE` goes from the rail and
    from the code, and with it the table's `NOT_MEASURED` and its `pub use`. `TO_THE_CENT_LINE` stays.
@@ -886,19 +910,20 @@ const PROOF_5: &str;
   - `the_goods_line_says_a_hollow_part_is_opening_stock`: `GOODS_HOLLOW_LINE` on screen once with the words
     above; no text on screen contains "not measured".
   - In `the_table_switches_its_grouping_and_period`, the three lines that name the line go: the import of
-    `STORED_WORK_LINE` (near `scene_tests.rs:15`), `all.contains` of "Stored work got back: not measured yet."
-    (near `:712`) and its `assert_eq!` (near `:716`); in their place one assertion: no text on screen starts
-    "Stored work got back". `panel.rs`'s `the_stored_work_line_is_built_from_the_not_measured_words` goes with
-    the line (S11).
-  - In `not_drawn_line_prints_the_report` (near `scene_tests.rs:922`): "food 8" becomes "food 4"; the rest of
+    `STORED_WORK_LINE` (it shares its `use` line with `TO_THE_CENT_LINE`: take out the one name), `all.contains`
+    of "Stored work got back: not measured yet." and its `assert_eq!`; in their place one assertion: no text on
+    screen starts "Stored work got back". `panel.rs`'s `the_stored_work_line_is_built_from_the_not_measured_words`
+    goes with the line (S11), and with it that test's `use` of `NOT_MEASURED` and the `pub use` of it in
+    `small_world.rs`.
+  - In `not_drawn_line_prints_the_report`: "food 8" becomes "food 4"; the rest of
     the line is unchanged (power 12, care 4). The opening's food is drawn hollow and the farm's new food full,
     each set to 95 % on its own. These are the pinned assertions this task moves.
-  - In `script_tests.rs`: `the_proof_script_of_task_5_parses` (8 commands).
+  - In `script_tests.rs`: `the_proof_script_of_stored_hours_task_5_parses` (8 commands).
 - [ ] **Step 2: Run them and see them fail:** `mise run rust:test:q -- -p babylon-client -E 'test(small_world)'`.
   Expected: does not compile, no `open_runner`.
 - [ ] **Step 3: Implement** the opening, the reading, the two flows, the line and the words.
 - [ ] **Step 4: Run them.** Expected: all pass; no pinned value of the client changed but those Step 1 names.
-- [ ] **Step 5: The proof script for the lead** (`PROOF_5` in `script_tests.rs`). Hand the lead the command
+- [ ] **Step 5: The proof script for the lead** (`PROOF_SH5` in `script_tests.rs`). Hand the lead the command
   `mise exec -- cargo run -p babylon-client -- --small-world --small-world-script <folder>/proof.jsonl` (from
   `rust/`, a folder made by `mktemp -d`) and the script; do not run it: `{"step":1}`, `{"capture":"hours-1"}`,
   `{"step":1}`, `{"capture":"hours-2"}`, `{"step":2}`, `{"capture":"hours-4"}`, `{"step":8}`,
@@ -909,18 +934,18 @@ const PROOF_5: &str;
 
 ### Task 6: The scene, second part: the table's switch and the details panel
 
-The code as built binds: the lead reads this task again against `panel.rs` and `inspect.rs` after Task 5 and the
-closest form's Tasks 3c to 8c (the panel's `rows_for` with `marks::rule_rows`) before it starts. Commit
+The lead read this task against `panel.rs`, `inspect.rs` and `script.rs` as built on 24 November; the text below
+is amended. It is read once more after Task 5, which changes the same files. Commit
 `feat(client): the table's stored hours and the details of a pick`.
 
 **Files:**
 - Modify (under `rust/crates/babylon-client/src/`): `small_world/table.rs` (`HoursRow`, `HoursTable`,
   `hours_table`); `small_world/panel.rs` (`Columns`, `PanelView.columns`, `PanelButton::Columns`, the switch at
   the right end of the pager's row, the second set of columns, `TO_THE_HOUR_LINE`); `small_world/scene.rs`
-  (`SceneCommand::Columns`); `small_world/inspect.rs` (the rows of hours; `household_of` and `workplace_of`
-  become `pub(super)`); `small_world/script.rs`
-  (`ScriptCommand::Columns`, `ScriptCommand::Pick`); `human_numbers.rs` (`micro_hours`, `micro_hours_to_hour`);
-  `small_world/scene_tests.rs`; `small_world/script_tests.rs`.
+  (`SceneCommand::Columns`); `small_world/inspect.rs` (the rows of hours); `small_world/script.rs`
+  (`ScriptCommand::Columns`, `columns_named`); `human_numbers.rs` (`micro_hours`, `micro_hours_to_hour`);
+  `money_map/rail.rs` (`labor_hours` calls `micro_hours`); `small_world/scene_tests.rs`;
+  `small_world/script_tests.rs`.
 
 **Interfaces:**
 
@@ -940,7 +965,7 @@ pub fn hours_table(result: &PeriodResult, grouping: Grouping) -> Result<Option<H
 /// Which set of columns the table shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Columns { #[default] Money, Hours }
-// PanelView gains (its Default gives Columns::Money):
+// PanelView gains (its hand-written `impl Default` gives `Columns::Money`):
 pub columns: Columns,
 // PanelButton gains:
 Columns,
@@ -954,38 +979,41 @@ pub const TO_THE_HOUR_LINE: &str = "Hours in the table are rounded to the hour. 
 // src/small_world/scene.rs, SceneCommand gains:
 Columns(Columns),
 // src/small_world/script.rs, ScriptCommand gains:
-/// `{"columns":"money"}` or `{"columns":"hours"}`.
+/// `{"columns":"money"}` or `{"columns":"hours"}`. (`Pick` is built: the closest form's Task 3d.)
 Columns(String),
-/// `{"pick":"<id>"}`: what a click on that body or particle picks (`household:N`, a workplace's id, `treasury`).
-Pick(String),
 // src/human_numbers.rs
 /// Micro-hours as an exact decimal of hours, trailing zeros dropped: 239_921_875 is "239.921875".
 pub(crate) fn micro_hours(value: u128) -> String;
 /// Micro-hours to the nearest whole hour, half up, grouped as `grouped` groups.
 pub(crate) fn micro_hours_to_hour(value: u128) -> String;
-// src/small_world/inspect.rs: `household_of(id: &str) -> Option<(Household, Option<usize>)>` and
-// `workplace_of(id: &str) -> Option<Workplace>` become `pub(super)`, bodies unchanged.
 // src/small_world/script_tests.rs
-/// The proof script of Task 6 (Step 5); the lead runs it.
-const PROOF_6: &str;
+/// The proof script of this plan's Task 6 (Step 5); the lead runs it.
+const PROOF_SH6: &str;
 ```
 
 **Decisions:**
 1. **The switch** (P6). One button, `PanelButton::Columns`, captioned `COLUMNS_SWITCH`, built by `spawn_pressed`
    as the pager's buttons are, at the right end of the pager's row: a node with `flex_grow: 1.0` stands before
    it. The rail is 400 wide; there is no room for a row of its own. A press writes `SceneCommand::Columns` with
-   the other set; the stage sets `view.columns`. `chosen` marks it (`panel::mark(.., true)`) while
-   `Columns::Hours` shows. "Start over" keeps the set, as it keeps the tab.
+   the other set; the stage sets `view.columns`, where it sets the tab for `SceneCommand::Lower`. `chosen` marks
+   it (`panel::mark(.., true)`) while `Columns::Hours` shows: it gains the arm `(_, Some(PanelButton::Columns),
+   _) => Some(view.columns == Columns::Hours)`, and `press_panel`, which matches `PanelButton` exhaustively,
+   gains the button's arm. "Start over" keeps the set, as it keeps the tab.
 2. **The second set** (S10): by workplace, `given` is the workplace's `given`, the other four `None`. By class and
    by place, every figure is the sum of the group's households' own (`HouseholdHours.given`,
    `back_micro_hours`, `claims.work`, `claims.owning`, `claims.support`); the shared row "Shared: treasury and
    fund" is all `None`. No column for "not recorded" (calls list 5): while it lasts the three claims add up to
-   less than back, and the panel shows the rest.
+   less than back, and the panel shows the rest. The first set's rows by place take their hours from the
+   workplaces; this set sums households. The two agree while nobody works outside their place, and the seekers
+   move within one place only. An owner's capital put into a workplace is in the money columns only.
 3. **Cells.** Hours to the hour (`micro_hours_to_hour`; given with `grouped`), a dash for `None`; bars in `BONE`
    on one scale, `HoursTable.scale`. Under the table `TO_THE_HOUR_LINE` shows while the second set does, and
-   `TO_THE_CENT_LINE` while the first does. The headers and widths of the first set do not change. Without a
+   `TO_THE_CENT_LINE` while the first does (the lines under the table are spawned once today: the one that
+   changes with the set gets a marker component and a paint system, as the "not drawn" line has). The headers
+   and widths of the first set do not change. Without a
    record (`None`) the second set shows one line, "No hours were measured for this period.", in `GRAY`.
-4. **The details panel** (S10, What the player sees). A household group, after "Hours given": "Hours back"
+4. **The details panel** (S10, What the player sees). Its rows of hours stand before the money rows. A household
+   group, after "Hours given": "Hours back"
    (`micro_hours`), "For work", "By owning", "Support", "Not recorded", "Units from the opening stock" (its
    `opening_micro_units` as an exact decimal of units, by `micro_hours`'s writing). A workplace, after "Made":
    "Hours in a unit handed over, to the millionth" (`handed_micro_hours / handed_units`, floored to the
@@ -993,13 +1021,14 @@ const PROOF_6: &str;
    every 100 units", rounded as the standing line), both only when `handed_units > 0`. Hours a unit is a
    quotient of the record's two figures, so the panel also shows "Hours handed over" and "Units handed over"
    exactly. The rows stand before the rules' rows of `marks.rs`. A period without a record shows none of them.
-5. **The script's two commands.** `columns` takes "money" or "hours" and writes `SceneCommand::Columns`; `pick`
-   takes an id that `inspect::household_of` or `inspect::workplace_of` knows, or `treasury`, and sets the pick as
-   a click would; `check_names` refuses any other name before the window opens. `inspect::label_of` cannot do
-   this: it never refuses (it returns the id itself when it knows none), so `household_of` and `workplace_of`
-   become `pub(super)`.
+5. **The script's command.** `columns` takes "money" or "hours" (`columns_named`, beside `lower_named`) and
+   writes `SceneCommand::Columns`, as `lower` writes its own; `check_names` refuses any other name before the
+   window opens. `pick` is built already (`inspect::pick_named`, the closest form's Task 3d), and
+   `household_of` and `workplace_of` are `pub(super)`.
 6. **Words.** The column names are the design's; "Hours back" names the switch by the figure it brings.
-   `micro_hours` never rounds; a rounded figure says so (`TO_THE_HOUR_LINE`).
+   `micro_hours` never rounds; a rounded figure says so (`TO_THE_HOUR_LINE`). `micro_hours` is the number part
+   of `money_map/rail.rs`'s `labor_hours`, which then calls it and writes the same bytes as today (run the
+   `money_map` tests).
 
 - [ ] **Step 1: Write the failing tests** (`open_runner()` runs; place A):
   - `the_hours_table_is_the_record_s` (in `table.rs`): period 2 of the quiet world, each grouping: every `back`,
@@ -1017,15 +1046,18 @@ const PROOF_6: &str;
     equal to "Hours back".
   - `a_workplace_s_panel_shows_the_hours_in_a_unit`: period 1, pick place A's shop: "Hours in a unit handed over,
     to the millionth" "1", "From the opening stock" "100 of every 100 units"; utility "1", clinic "2".
-  - In `script_tests.rs`: `the_script_names_columns_and_picks` (`{"columns":"hours"}`, `{"pick":"household:22"}`,
-    and an unknown name refused on its line) and `the_proof_script_of_task_6_parses` (7 commands).
+  - In `script_tests.rs`: `the_script_names_columns` (`{"columns":"money"}`, `{"columns":"hours"}`, and
+    `{"columns":"table"}` refused on its line) and `the_proof_script_of_stored_hours_task_6_parses` (11
+    commands).
 - [ ] **Step 2: Run them and see them fail** (`-E 'test(small_world) | test(human_numbers)'`). Expected: does not
   compile, no `hours_table`.
 - [ ] **Step 3: Implement** the table's second set, the switch, the panel's rows and the script's commands.
 - [ ] **Step 4: Run them.** Expected: all pass; no pinned value of the client changed.
-- [ ] **Step 5: The proof script for the lead** (`PROOF_6`, as Task 5's Step 5): `{"step":2}`,
-  `{"columns":"hours"}`, `{"capture":"table-hours"}`, `{"pick":"household:22"}`, `{"capture":"panel-supported"}`,
-  `{"pick":"workplace:a:shop"}`, `{"capture":"panel-shop"}`. The check: the switch at the right end of the
+- [ ] **Step 5: The proof script for the lead** (`PROOF_SH6`, as Task 5's Step 5): `{"step":2}`,
+  `{"columns":"hours"}`, `{"wait_frames":30}`, `{"capture":"table-hours"}`, `{"pick":"household:22"}`,
+  `{"wait_frames":30}`, `{"capture":"panel-supported"}`, `{"pick":"workplace:a:shop"}`, `{"wait_frames":30}`,
+  `{"capture":"panel-shop"}`, `"quit"` (a tab or a pick is drawn some frames after its command, so each capture
+  waits). The check: the switch at the right end of the
   pager's row, the five columns with dashes where decision 2 puts them, the panels' rows as decision 4.
 - [ ] **Run the companion's gate. Commit** the subject above.
 
@@ -1037,14 +1069,14 @@ shows the Director (ADR322, H3: "show you the first window"). Commit
 `feat(client): the script reports the stored hours for the lead's look`.
 
 **Files:**
-- Modify (under `rust/crates/babylon-client/src/small_world/`): `script.rs` (`ScriptReport.hours`);
-  `script_tests.rs` (`PROOF_7`); `scene_tests.rs`.
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `script.rs` (`ScriptReport.stored_hours`);
+  `script_tests.rs` (`PROOF_SH7`); `scene_tests.rs`.
 
 **Interfaces:**
 
 ```rust
 // src/small_world/script.rs
-/// The hours of the period a report is written for, as the scene shows them.
+/// The stored hours of the last period of the run (the report's `period`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ReportHours {
     /// The standing line's figure.
@@ -1054,20 +1086,24 @@ pub struct ReportHours {
     /// Each household group's label and its back, for work, by owning, support and not recorded, exact.
     pub households: Vec<(String, [String; 5])>,
 }
-// ScriptReport gains (None without a record):
-pub hours: Option<ReportHours>,
+// ScriptReport gains (None without a record). Its three series `hours_on_the_clock`, `hours_given` and
+// `hours_idle` keep their names: "the hours" of a report are `hours_given`. It stays `PartialEq` only.
+pub stored_hours: Option<ReportHours>,
 // src/small_world/script_tests.rs
-/// The proof script of Task 7 (decision 2); the lead runs it.
-const PROOF_7: &str;
+/// The proof script of this plan's Task 7 (decision 2); the lead runs it.
+const PROOF_SH7: &str;
 ```
 
 **Decisions:**
-1. **What the report writes** is read from `result.hours` of the period shown, with `micro_hours`: the lead checks
-   the pinned figures in the report's file, not by eye.
-2. **The script** (`PROOF_7`): `{"step":1}`, `{"capture":"stored-1"}`, `{"report":"stored-1"}`, `{"step":1}`,
-   `{"report":"stored-2"}`, `{"step":10}`, `{"columns":"hours"}`, `{"capture":"stored-12-table"}`,
-   `{"pick":"household:22"}`, `{"capture":"stored-12-panel"}`, `{"report":"stored-12"}`. Twelve periods, as the
-   design asks; the pictures are kept for the Director.
+1. **What the report writes** is read from `result.hours` of the last period of the history (`build_report`
+   reads the whole run, whatever period the scene shows), with `micro_hours`: the lead checks the pinned figures
+   in the report's file, not by eye. A record that cannot be read is `build_report`'s `Err`, and the script
+   refuses in those words.
+2. **The script** (`PROOF_SH7`): `{"step":1}`, `{"capture":"stored-1"}`, `{"report":"stored-1"}`, `{"step":1}`,
+   `{"report":"stored-2"}`, `{"step":10}`, `{"columns":"hours"}`, `{"wait_frames":30}`,
+   `{"capture":"stored-12-table"}`, `{"pick":"household:22"}`, `{"wait_frames":30}`,
+   `{"capture":"stored-12-panel"}`, `{"report":"stored-12"}`, `"quit"`. Twelve periods, as the design asks; the
+   pictures are kept for the Director.
 3. **The lead's check.** `stored-1.json`: `opening_per_hundred` 25; place A's back "160". `stored-2.json`: 13 and
    "200". `stored-12.json`: place A's back below "240" and above "239.9"; every worker group's for work equal to
    its back; owners all by owning. The pictures: squares filling, the standing line, the table's second set, a
@@ -1075,12 +1111,12 @@ const PROOF_7: &str;
    player sees.
 
 - [ ] **Step 1: Write the failing tests:** `the_report_carries_the_hours_of_its_period` (in `scene_tests.rs`: script
-  `{"step":2}`, `{"report":"h"}`; `h.json`'s `hours.opening_per_hundred` is 13 and place A's back "200");
-  `the_proof_script_of_task_7_parses` (11 commands, in `script_tests.rs`).
+  `{"step":2}`, `{"report":"h"}`; `h.json`'s `stored_hours.opening_per_hundred` is 13 and place A's back "200");
+  `the_proof_script_of_stored_hours_task_7_parses` (14 commands, in `script_tests.rs`).
 - [ ] **Step 2: Run them and see them fail** (`-E 'test(small_world)'`).
 - [ ] **Step 3: Implement** the report's field.
 - [ ] **Step 4: Run them.** Expected: all pass.
-- [ ] **Step 5: Hand the lead** the command of Task 5's Step 5 and `PROOF_7`; do not run it.
+- [ ] **Step 5: Hand the lead** the command of Task 5's Step 5 and `PROOF_SH7`; do not run it.
 - [ ] **Run the companion's gate. Commit** the subject above.
 
 ## Self-review notes
@@ -1123,9 +1159,29 @@ const PROOF_7: &str;
 | Every reference run folded, no refusal, the law | `hours_fold_every_reference_run` | 3, 4 |
 | The bench's reference tests step without the ledger | `a_runner_opened_without_hours_keeps_no_record`; `reproduces_` | 3 |
 | The stored records' formats, refusals and order | `the_stored_forms_...`, `the_refusals_keep_their_order`; live tests | 1, 2 |
-| Twelve periods by script, a picture kept | `PROOF_7` | 7 |
+| Twelve periods by script, a picture kept | `PROOF_SH7` | 7 |
 | Period 1 by group: 48, 16, 16, 16, 32, 32 (the check's figures) | `the_quiet_world_climbs_as_pinned` | 3 |
 
 **Names agree between tasks:** the view (Task 1, public in 2); `Carry`, `Handed`, `FoldedPeriod`, `fold_period`
 (2, read in 3); `PeriodHours` and its parts, `open_world_with_hours` (3, read in 4 to 7); `ClaimHours` (4, read
 in 6 and 7); `open_runner`, `GoodsMove.opening` (5, read in 6); `micro_hours` (6, read in 7).
+
+## What the reading of 24 November changed
+
+The closest form's six rules were built between this plan's writing and its first task. One reader compared the
+plan with the code twice, after that plan's Task 5c and after its Task 8c, and the lead amended Tasks 3 to 7
+above from what it found. Tasks 1 and 2 needed nothing: no file they lean on had changed.
+
+- **Task 3:** where the fold sits in `advance` and under which catalog; how `open_world_with_hours` finds its
+  catalog; the exports; two tests of rules (all six at the opening; the six of `LATE` turned on in the middle of
+  a run); the client's `fund_p2` named as the run of the seekers' test; the long test's count.
+- **Task 4:** the order of the money as the close writes it, with an owner's capital last.
+- **Task 5:** the pinned lines named by their tests; `read_goods` reads the opening share before it drops empty
+  moves; where the new paint system is registered; the proof's name.
+- **Task 6:** `pick` is built already and is taken out; `columns_named`; the hand-written `Default`,
+  `press_panel` and `chosen`; a paint system for the line under the table; the rows of hours stand before the
+  money rows; `micro_hours` shared with `labor_hours`; the proof waits before each capture and quits.
+- **Task 7:** the report's field is `stored_hours`, of the last period of the run; the proof waits and quits.
+- **Not checked by reading** (the tasks' own tests show them): the pinned figures; whether the fold accepts the
+  seekers' path, a restart's capital and a rule turned on in the middle of a run; the order of the money inside
+  the support close; whether the pager's row has room for one more button (the lead's look).

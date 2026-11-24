@@ -1491,9 +1491,9 @@ picked it. Three things of the scene itself did not:
   and fifty periods at the scene's own beat keep a window open for two and a half minutes.
 
 **Files:**
-- Modify (under `rust/crates/babylon-client/src/small_world/`): `layout.rs` (`home_of`, `stand_at`; `HOME` goes);
-  `frame.rs` (`stand_of`); `inspect.rs` (the word; `workplace_of` becomes `pub(super)`); `script.rs` (three
-  commands); `script_tests.rs`; `scene_tests.rs`.
+- Modify (under `rust/crates/babylon-client/src/small_world/`): `layout.rs` (`home_of`, `stand_at`; `HOME`
+  becomes `IDLE_GROUND`, for persons only); `frame.rs` (`stand_of`, `idle_of`); `inspect.rs` (the word;
+  `workplace_of` becomes `pub(super)`); `script.rs` (three commands); `script_tests.rs`; `scene_tests.rs`.
 
 **Interfaces:**
 
@@ -1501,6 +1501,11 @@ picked it. Three things of the scene itself did not:
 // src/small_world/layout.rs  (the constant HOME is removed)
 /// How far behind its workplace's wage anchor a workers' group paid by nobody stands (plan units, up).
 pub const UNPAID_BEHIND: f64 = 1.6;
+/// The middle of each place's four workplaces across the plane, by `Place::index`.
+pub const OWNER_HOME_X: [f64; 2] = [-6.8, 6.8];
+/// Where a worker household's persons who are out of work and paid no benefits stand in the people view, by
+/// `Place::index`: their place's idle ground (the point `HOME` was).
+pub const IDLE_GROUND: [Point; 2] = [(-7.0, 6.0), (7.0, 6.0)];
 /// Where a group paid by nobody this period stands. A workers' group: behind its own workplace's people,
 /// `(WORKPLACE_X[w.index()], WAGE_ANCHOR_Y + UNPAID_BEHIND)`. An owners' group: on the profit row under the
 /// middle of its place's four workplaces, `(-6.8, PROFIT_ANCHOR_Y)` for Place A and `(6.8, PROFIT_ANCHOR_Y)` for
@@ -1528,9 +1533,12 @@ BeatMillis(u32),
    one row behind its own workplace's people, outside the workforce's outline and far from the owner's; the
    owners' group paid by nobody stands under its own place; a supported group paid by nobody stands where the
    fund would have put it. `UNPAID_BEHIND` is the lead's to tune at the look.
-2. **The people view follows with no other change.** A worker household's persons who are out of work and paid
-   no benefits already cluster at `stand_of(benefits, h)`: that is now `home_of(h)`, one row behind their
-   workplace's people. Owners' and supported persons cluster at their group's point, as today.
+2. **The people view keeps an idle ground.** A worker household's persons who are out of work and paid no
+   benefits cluster at their place's idle ground (`layout::IDLE_GROUND`, through `idle_of` in `frame.rs`), where
+   they stood before this task. A workplace's people at work can stand many rows deep, and a home right behind
+   them would end inside their outline (the second reader's note; the first build of this task had put them
+   there). Owners' and supported persons cluster at their group's point, as today, which for a group paid by
+   nobody is now its `home_of`.
 3. **The word.** The panel of a household group says "Employed" where it said "At work". The figure is the
    same: its persons on a workplace's rolls at the period's opening. A workplace that gives no hours keeps its
    rolls, and the row "Hours given" beside it says what they gave.
@@ -2535,3 +2543,57 @@ later task builds on the code as it stands, which differs from the text above in
   the recurring production; in the runner a pool with no staffing receipt would lose its members without a
   word of its own (`run.rs`, `kept`; the check of each place's people would then refuse the period); the
   projection drops every empty line; the row writer takes its header from period 1 and adds unchecked.
+
+## What Tasks 2 to 3d built (24 November 2026)
+
+All five are built and reviewed (`81990a0b5`; `64769b5d6` with `ec98bdab1`; `38219854e`; `d0d8d2e24`;
+`08ffecbb7` with `060353238`). The bench reproduces `pc-seek-400` and `pc-seek-nat-400`, 25 runs of 25 each,
+beside the two sets with no new rule; the lead ran the four long tests again. A later task builds on the code
+as it stands, which differs from the text above in these points:
+
+- **The client matches the engine's rule receipts in one place:** `moves()` in `small_world/marks.rs` maps
+  `AdjustmentReceipt` with one arm. An engine task that adds a variant breaks the workspace's build until that
+  match answers it. **The one change an engine task makes in the client:** `moves()` skips the new variant, with
+  an explicit arm for it and no wildcard. Its companion task draws the variant.
+- **The runner's rules** are exported from the crate's root (`rule_name`, `RuleError`, `RuleOn`, `Switch`).
+  `RuleError::Waits` and `Switch::Waits` carry only the needed rules that are not on, in the order of
+  `AdjustmentRule`; `RuleError::AlreadyOn` carries the rule that is on. `AdjustmentRule::needs` of the owner's
+  restart is the direct list (the bound, the stop rule, the resting price); the seekers follow through the stop
+  rule's own need. The engine's error has no `Display`, so `Refused` prints it with `{:?}`.
+- **The bench** has `rows_and_digests(run, periods, TurnedOn)`, a two-variant enum, and `rows` calls it. The
+  quick test of a form compares state digests and projected rows over 34 periods for four runs at both scales.
+  `the_old_finish_refuses_a_catalog_that_asks_for_seekers` stands in `sets.rs`.
+- **The seekers in the engine:** `staffing/place.rs` holds `staff_places` and `PlaceRules` (the algorithm, so
+  that unit tests build pools directly) and `ClosedMaterialPeriod::staff_in_places` wraps them. `PlaceStaffing`
+  has two more `pub(crate)` fields, `record_receipts` and `records`, and `finish_with_place_staffing` checks the
+  engine's kept record of layoffs against them (`PublicProgramInvariant`). `financial/layoffs.rs` has
+  `program_window`. A pool in no place is `StaffingError::PopulationInvariant`, in two places `DuplicatePool`.
+  The contract has the key `ADR314_seeking`.
+- **The runner** has `Stage::StaffInPlaces`, rebuilds its pool bindings after each step, and
+  `check_conserved` takes `(employed, reserve)` and whether the seekers are on: each place's people are checked
+  always, each workplace's only in periods without the seekers.
+- **The client:** `inspect::household_of` is `pub(super)`. `frame.rs` has `given_by(reading, household,
+  workplace)`, `put_persons`, `person_ranges`, `rest_of(ranges)` and `Population::at_work_at`. A household's
+  count of persons on rolls sums every member, capped at its persons. `rule_rows` in `marks.rs` answers a
+  picked particle with its household's rows. In the scene's world, with the harvest failed in both places
+  until lifted, the first move is in period 16.
+- **Task 3d, the mends from the lead's look:** a group paid by nobody stands at `layout::home_of(h)`
+  (`stand_at(home, paid)`). In the people view a worker household's persons out of work and paid no benefits
+  stand at `layout::IDLE_GROUND`, the point `HOME` was (`idle_of` in `frame.rs`). In a period with a group paid
+  by nobody the spread may move a paid neighbour too. A household's panel says "Employed" where it said "At
+  work". The script has `lower`, `pick` and `beat_millis`; `inspect::pick_named(id)` gives what a click on that
+  entity leaves picked, and `scene_tests.rs` has `scripted(text, frames)`, which runs a script in the test app.
+  In the proof's slump (the harvest failed in Place A from period 21, the seekers on from period 31) the
+  households paid by nobody in period 50 are the workers of clinic A, the workers of shop A and the owners of
+  Place A; the farm's workers are paid by the utility. A proof script may open with `{"beat_millis":60}`.
+- **In the tests of Task 2c** `every_shown_rule_turns_on_from_the_next_period_and_holds` checks after a start
+  over that no text of a rule's row parses as a number: a rule name with a numeral would trip it.
+- **Reviewers' notes kept for one later task** (none blocks a rule): two lines over 100 columns in `sets.rs`,
+  which rustfmt never sees; a name filter in `opening_with_a_form_is_turning_its_rules_on_first` that would pass
+  with no run matched; unchecked arithmetic in `staffing/place.rs` (bounded by a pool's own persons) and a
+  conversion there that would turn a covered person into an uncovered one without a word; two bool parameters
+  that draw a sentinel warning; the contract's text on the seekers does not say that a newcomer is written as a
+  hire from its member's reserve; `person_ranges` saturates where no decision names it; the fix commit
+  `ec98bdab1` carries the engine's scope for a change in the client's tests; unpaid owners stand under their
+  place's middle, so their outline can pass over a dead workplace of theirs (they could stand under the
+  workplaces that still hold their capital instead).

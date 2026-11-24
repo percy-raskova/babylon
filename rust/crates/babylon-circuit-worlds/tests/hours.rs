@@ -147,48 +147,64 @@ fn the_quiet_world_climbs_as_pinned() -> TestResult {
 #[test]
 fn a_unit_holds_its_recipe_s_hours() -> TestResult {
     let mut runner = scene_with_hours()?;
-    runner.step()?;
-    let hours = hours_of(&runner.history()[0])?;
-    let at = |kind: Kind| -> Result<_, Box<dyn Error>> {
-        hours
-            .workplace(workplace(Place::A, kind))
-            .copied()
-            .ok_or_else(|| "no workplace".into())
-    };
-    let utility = at(Kind::Utility)?;
-    assert!(utility.handed_units > 0);
-    assert_eq!(
-        utility.handed_micro_hours,
-        u128::from(utility.handed_units) * MICROS
-    );
-    let clinic = at(Kind::Clinic)?;
-    assert!(clinic.handed_units > 0);
-    assert_eq!(
-        clinic.handed_micro_hours,
-        u128::from(clinic.handed_units) * 2 * MICROS
-    );
-    let farm = at(Kind::Farm)?;
-    assert!(farm.made_units > 0);
-    assert_eq!(
-        farm.made_micro_hours,
-        u128::from(farm.made_units) * 2 * MICROS
-    );
-    let shop = at(Kind::Shop)?;
-    assert!(shop.handed_units > 0);
-    assert_eq!(
-        shop.handed_micro_hours,
-        u128::from(shop.handed_units) * MICROS
-    );
-    assert_eq!(
-        shop.handed_opening_micro_units,
-        u128::from(shop.handed_units) * MICROS
-    );
+    for _ in 0..12 {
+        runner.step()?;
+    }
+    for (index, result) in runner.history().iter().enumerate() {
+        let hours = hours_of(result)?;
+        let at = |kind: Kind| -> Result<_, Box<dyn Error>> {
+            hours
+                .workplace(workplace(Place::A, kind))
+                .copied()
+                .ok_or_else(|| "no workplace".into())
+        };
+        let utility = at(Kind::Utility)?;
+        assert!(
+            utility.handed_units > 0,
+            "utility, period {}",
+            result.period
+        );
+        assert_eq!(
+            utility.handed_micro_hours,
+            u128::from(utility.handed_units) * MICROS
+        );
+        let clinic = at(Kind::Clinic)?;
+        assert!(clinic.handed_units > 0, "clinic, period {}", result.period);
+        assert_eq!(
+            clinic.handed_micro_hours,
+            u128::from(clinic.handed_units) * 2 * MICROS
+        );
+        let farm = at(Kind::Farm)?;
+        assert!(farm.made_units > 0, "farm, period {}", result.period);
+        assert_eq!(
+            farm.made_micro_hours,
+            u128::from(farm.made_units) * 2 * MICROS
+        );
+        if index == 0 {
+            let shop = at(Kind::Shop)?;
+            assert!(shop.handed_units > 0);
+            assert_eq!(
+                shop.handed_micro_hours,
+                u128::from(shop.handed_units) * MICROS
+            );
+            assert_eq!(
+                shop.handed_opening_micro_units,
+                u128::from(shop.handed_units) * MICROS
+            );
+        }
+    }
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum Counted {
+    HomesOfA,
+    SitesOfA,
+}
+
 /// Place A's moves of the period: the quantity, and the micro-units from the opening, of each move that
-/// reaches a home of place A (`homes_only`) or that leaves a site of place A.
-fn opening_share(result: &PeriodResult, homes_only: bool) -> Result<(u128, u128), Box<dyn Error>> {
+/// reaches a home of place A (`Counted::HomesOfA`) or that leaves a site of place A (`Counted::SitesOfA`).
+fn opening_share(result: &PeriodResult, counted: Counted) -> Result<(u128, u128), Box<dyn Error>> {
     let hours = hours_of(result)?;
     let receipts = &result.receipts;
     let mut quantity = 0_u128;
@@ -219,10 +235,9 @@ fn opening_share(result: &PeriodResult, homes_only: bool) -> Result<(u128, u128)
                     .provider_site_id,
             ),
         };
-        let counts = if homes_only {
-            home.is_some_and(|h| h.place() == Place::A)
-        } else {
-            Workplace::from_site(site).is_some_and(|w| w.place == Place::A)
+        let counts = match counted {
+            Counted::HomesOfA => home.is_some_and(|h| h.place() == Place::A),
+            Counted::SitesOfA => Workplace::from_site(site).is_some_and(|w| w.place == Place::A),
         };
         if counts {
             quantity += u128::from(m.quantity);
@@ -241,7 +256,7 @@ fn the_opening_share_halves() -> TestResult {
     let homes = [1_u128, 2, 4, 8];
     let all = [4_u128, 8, 16, 32];
     for (index, result) in runner.history().iter().enumerate() {
-        let (quantity, opening) = opening_share(result, true)?;
+        let (quantity, opening) = opening_share(result, Counted::HomesOfA)?;
         assert!(quantity > 0);
         assert_eq!(
             opening * homes[index],
@@ -249,7 +264,7 @@ fn the_opening_share_halves() -> TestResult {
             "homes, period {}",
             result.period
         );
-        let (quantity, opening) = opening_share(result, false)?;
+        let (quantity, opening) = opening_share(result, Counted::SitesOfA)?;
         assert!(quantity > 0);
         assert_eq!(
             opening * all[index],
@@ -279,6 +294,16 @@ fn a_want_of_food_is_used_where_it_is_bought() -> TestResult {
     for _ in 0..8 {
         check_period(runner.step()?)?;
     }
+    // The pin is only a pin if period 6 holds a want that bought something.
+    let period_six = runner.history().get(5).ok_or("no period 6")?;
+    assert!(
+        period_six
+            .receipts
+            .household_wants
+            .iter()
+            .any(|want| want.bought_quantity > 0),
+        "period 6 no longer holds a bought want"
+    );
     Ok(())
 }
 

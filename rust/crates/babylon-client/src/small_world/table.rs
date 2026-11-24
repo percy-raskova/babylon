@@ -4,7 +4,10 @@
 //! columns with separate scales and are never added or compared.
 
 use super::reading::{Party, PeriodReading, ReadingError};
-use babylon_circuit_worlds::{Household, Place, Workplace};
+use babylon_circuit_worlds::{Household, PeriodHours, PeriodResult, Place, Workplace};
+
+/// Micro-hours in one hour.
+const MICRO_HOURS: u128 = 1_000_000;
 
 const SHARED_LABEL: &str = "Shared: treasury and fund";
 const OWNERS_WHO_EARN: &str = "Owners who earn";
@@ -201,9 +204,156 @@ pub fn table(reading: &PeriodReading, grouping: Grouping) -> Result<Table, Readi
     })
 }
 
+/// One row of the table's second set. `None` is a dash.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoursRow {
+    pub label: String,
+    /// Hours given.
+    pub given: Option<u64>,
+    /// Micro-hours in what reached the group's homes.
+    pub back: Option<u128>,
+    /// Of `back`, micro-hours that came through wages.
+    pub for_work: Option<u128>,
+    /// Of `back`, micro-hours that came through profit.
+    pub by_owning: Option<u128>,
+    /// Of `back`, micro-hours that came through benefits and public payments.
+    pub support: Option<u128>,
+}
+
+/// The period's second set of columns. `scale`: the largest figure of the rows shown, in micro-hours (given
+/// counted as micro-hours for the bars).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoursTable {
+    pub grouping: Grouping,
+    pub period: u64,
+    pub rows: Vec<HoursRow>,
+    pub scale: u128,
+}
+
+fn add_micro(a: u128, b: u128) -> Result<u128, ReadingError> {
+    a.checked_add(b).ok_or(ReadingError::Arithmetic)
+}
+
+fn unknown(what: impl std::fmt::Debug) -> ReadingError {
+    ReadingError::UnknownParty(format!("{what:?} in the record of hours"))
+}
+
+fn hours_row(hours: &PeriodHours, group: &Group) -> Result<HoursRow, ReadingError> {
+    let mut row = HoursRow {
+        label: group.label.clone(),
+        given: None,
+        back: None,
+        for_work: None,
+        by_owning: None,
+        support: None,
+    };
+    if group
+        .parties
+        .iter()
+        .any(|party| matches!(party, Party::Treasury | Party::Fund))
+    {
+        return Ok(row);
+    }
+    let workplaces: Vec<Workplace> = group
+        .parties
+        .iter()
+        .filter_map(|party| match party {
+            Party::Workplace(w) => Some(*w),
+            _ => None,
+        })
+        .collect();
+    let households: Vec<Household> = group
+        .parties
+        .iter()
+        .filter_map(|party| match party {
+            Party::Household(h) => Some(*h),
+            _ => None,
+        })
+        .collect();
+    if households.is_empty() && !workplaces.is_empty() {
+        let mut given = 0_u64;
+        for workplace in workplaces {
+            let held = hours
+                .workplace(workplace)
+                .ok_or_else(|| unknown(workplace))?;
+            given = add_hours(given, held.given)?;
+        }
+        row.given = Some(given);
+        return Ok(row);
+    }
+    let (mut given, mut back, mut work, mut owning, mut support) = (0_u64, 0, 0, 0, 0);
+    for household in households {
+        let held = hours
+            .household(household)
+            .ok_or_else(|| unknown(household))?;
+        given = add_hours(given, held.given)?;
+        back = add_micro(back, held.back_micro_hours)?;
+        work = add_micro(work, held.claims.work)?;
+        owning = add_micro(owning, held.claims.owning)?;
+        support = add_micro(support, held.claims.support)?;
+    }
+    row.given = Some(given);
+    row.back = Some(back);
+    row.for_work = Some(work);
+    row.by_owning = Some(owning);
+    row.support = Some(support);
+    Ok(row)
+}
+
+fn hours_scale_of(rows: &[HoursRow]) -> Result<u128, ReadingError> {
+    let mut scale = 0_u128;
+    for row in rows {
+        let given = row
+            .given
+            .map(|g| {
+                u128::from(g)
+                    .checked_mul(MICRO_HOURS)
+                    .ok_or(ReadingError::Arithmetic)
+            })
+            .transpose()?;
+        for figure in [given, row.back, row.for_work, row.by_owning, row.support]
+            .into_iter()
+            .flatten()
+        {
+            scale = scale.max(figure);
+        }
+    }
+    Ok(scale)
+}
+
+/// The second set of the period, grouped as the table's tabs; `None` without a record of hours.
+///
+/// # Errors
+/// `ReadingError::Arithmetic` when a sum overflows; `ReadingError::UnknownParty` for a household or workplace
+/// the record does not hold.
+pub fn hours_table(
+    result: &PeriodResult,
+    grouping: Grouping,
+) -> Result<Option<HoursTable>, ReadingError> {
+    let Some(hours) = &result.hours else {
+        return Ok(None);
+    };
+    let groups = match grouping {
+        Grouping::Workplace => workplace_groups(),
+        Grouping::Class => class_groups(),
+        Grouping::Place => place_groups(),
+    };
+    let rows = groups
+        .iter()
+        .map(|group| hours_row(hours, group))
+        .collect::<Result<Vec<HoursRow>, ReadingError>>()?;
+    let scale = hours_scale_of(&rows)?;
+    Ok(Some(HoursTable {
+        grouping,
+        period: result.period,
+        rows,
+        scale,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::reading;
+    use super::super::{reading, scene};
     use super::*;
     use babylon_circuit_worlds::Runner;
     use std::error::Error;
@@ -290,6 +440,119 @@ mod tests {
             (shared.money_in, shared.money_out),
             (1_280 * DOLLAR, 1_280 * DOLLAR)
         );
+        Ok(())
+    }
+
+    fn hours_of_period(period: usize, grouping: Grouping) -> Result<HoursTable, Box<dyn Error>> {
+        let mut runner = scene::open_runner()?;
+        for _ in 0..period {
+            runner.step()?;
+        }
+        let result = runner.history()[period - 1].clone();
+        hours_table(&result, grouping)?.ok_or_else(|| "no record of hours".into())
+    }
+
+    fn hours_row<'a>(table: &'a HoursTable, label: &str) -> Result<&'a HoursRow, Box<dyn Error>> {
+        table
+            .rows
+            .iter()
+            .find(|r| r.label == label)
+            .ok_or_else(|| format!("no row {label}").into())
+    }
+
+    #[test]
+    fn the_hours_table_is_the_record_s() -> TestResult {
+        let mut runner = scene::open_runner()?;
+        for _ in 0..2 {
+            runner.step()?;
+        }
+        let result = runner.history()[1].clone();
+        let record = result.hours.clone().ok_or("no record of hours")?;
+        let sum_of = |keep: fn(Household) -> bool| -> Result<HoursRow, Box<dyn Error>> {
+            let mut row = HoursRow {
+                label: String::new(),
+                given: Some(0),
+                back: Some(0),
+                for_work: Some(0),
+                by_owning: Some(0),
+                support: Some(0),
+            };
+            for (household, hours) in record.households.iter().filter(|(h, _)| keep(*h)) {
+                let _ = household;
+                row.given = row.given.map(|g| g + hours.given);
+                row.back = row.back.map(|b| b + hours.back_micro_hours);
+                row.for_work = row.for_work.map(|b| b + hours.claims.work);
+                row.by_owning = row.by_owning.map(|b| b + hours.claims.owning);
+                row.support = row.support.map(|b| b + hours.claims.support);
+            }
+            Ok(row)
+        };
+        let class = hours_table(&result, Grouping::Class)?.ok_or("no table")?;
+        assert_eq!(class.period, 2);
+        for (label, keep) in [
+            (
+                OWNERS_WHO_DO_NOT,
+                (|h| matches!(h, Household::Owner(_))) as fn(Household) -> bool,
+            ),
+            (EARNERS, |h| matches!(h, Household::Workers(_))),
+            (NEITHER, |h| matches!(h, Household::Supported(_))),
+        ] {
+            let mut expected = sum_of(keep)?;
+            expected.label = label.to_owned();
+            assert_eq!(hours_row(&class, label)?, &expected, "{label}");
+        }
+        let workplaces = hours_table(&result, Grouping::Workplace)?.ok_or("no table")?;
+        for workplace in Workplace::ALL {
+            let row = hours_row(&workplaces, &workplace.label())?;
+            let given = record.workplace(workplace).ok_or("no workplace")?.given;
+            assert_eq!(row.given, Some(given));
+            assert_eq!(
+                (row.back, row.for_work, row.by_owning, row.support),
+                (None, None, None, None)
+            );
+        }
+        let places = hours_table(&result, Grouping::Place)?.ok_or("no table")?;
+        let shared = hours_row(&places, SHARED_LABEL)?;
+        assert_eq!(
+            (
+                shared.given,
+                shared.back,
+                shared.for_work,
+                shared.by_owning,
+                shared.support
+            ),
+            (None, None, None, None, None)
+        );
+        let place_a = hours_row(&places, "Place A")?;
+        assert_eq!(
+            (place_a.given, place_a.back),
+            (Some(240), Some(200_000_000))
+        );
+        let largest = places
+            .rows
+            .iter()
+            .flat_map(|r| [r.given.map(|g| u128::from(g) * 1_000_000), r.back])
+            .flatten()
+            .max()
+            .unwrap_or(0);
+        assert_eq!(places.scale, largest);
+        Ok(())
+    }
+
+    #[test]
+    fn the_second_set_has_no_column_for_not_recorded() -> TestResult {
+        let classes = hours_of_period(1, Grouping::Class)?;
+        let owners = hours_row(&classes, OWNERS_WHO_DO_NOT)?;
+        assert_eq!(owners.by_owning, Some(0));
+        assert_eq!(owners.back, Some(64_000_000));
+        Ok(())
+    }
+
+    #[test]
+    fn a_period_without_a_record_has_no_second_set() -> TestResult {
+        let mut runner = Runner::open()?;
+        let result = runner.step()?.clone();
+        assert_eq!(hours_table(&result, Grouping::Class)?, None);
         Ok(())
     }
 

@@ -210,20 +210,24 @@ fn opening_per_hundred(result: &PeriodResult) -> Result<Option<u64>, ReadingErro
             .checked_add(u128::from(record.quantity))
             .ok_or(ReadingError::Arithmetic)?;
     }
+    Ok(Some(share_of_hundred(opening, quantity)?))
+}
+
+/// Of every 100 units moved, how many come from the opening stock (half up): `opening` in micro-units of the
+/// opening stock, `quantity` in whole units; 0 when nothing moved.
+pub(super) fn share_of_hundred(opening: u128, quantity: u128) -> Result<u64, ReadingError> {
     let divisor = quantity
         .checked_mul(MICRO_UNITS)
         .ok_or(ReadingError::Arithmetic)?;
     if divisor == 0 {
-        return Ok(Some(0));
+        return Ok(0);
     }
     let share = opening
         .checked_mul(100)
         .and_then(|n| n.checked_add(divisor / 2))
         .ok_or(ReadingError::Arithmetic)?
         / divisor;
-    Ok(Some(
-        u64::try_from(share).map_err(|_| ReadingError::Arithmetic)?,
-    ))
+    u64::try_from(share).map_err(|_| ReadingError::Arithmetic)
 }
 
 fn read_work(result: &PeriodResult) -> Result<Vec<WorkFlow>, ReadingError> {

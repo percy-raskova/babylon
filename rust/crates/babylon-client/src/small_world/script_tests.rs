@@ -461,6 +461,56 @@ fn the_proof_script_of_stored_hours_task_5_parses() {
     );
 }
 
+#[test]
+fn the_script_names_columns() {
+    assert_eq!(
+        script::parse_script("{\"columns\":\"money\"}\n{\"columns\":\"hours\"}"),
+        Ok(vec![
+            ScriptCommand::Columns("money".into()),
+            ScriptCommand::Columns("hours".into()),
+        ])
+    );
+    assert!(matches!(
+        script::parse_script("{\"step\":1}\n{\"columns\":\"table\"}"),
+        Err(ScriptError::Line { line: 2, .. })
+    ));
+}
+
+/// The proof script of Task 6 of stored hours, run by the lead on the display.
+const PROOF_SH6: &str = r#"{"step":2}
+{"columns":"hours"}
+{"wait_frames":30}
+{"capture":"table-hours"}
+{"pick":"household:22"}
+{"wait_frames":30}
+{"capture":"panel-supported"}
+{"pick":"workplace:a:shop"}
+{"wait_frames":30}
+{"capture":"panel-shop"}
+"quit"
+"#;
+
+#[test]
+fn the_proof_script_of_stored_hours_task_6_parses() {
+    let commands = script::parse_script(PROOF_SH6);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(2),
+            ScriptCommand::Columns("hours".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("table-hours".into()),
+            ScriptCommand::Pick("household:22".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("panel-supported".into()),
+            ScriptCommand::Pick("workplace:a:shop".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("panel-shop".into()),
+            ScriptCommand::Quit,
+        ])
+    );
+}
+
 /// The proof script of Task 8c, run by the lead on the display.
 const PROOF_8C: &str = r#"{"step":1}
 {"strike":{"shock":"harvest_fails","places":"both","lasts":"until_lifted"}}

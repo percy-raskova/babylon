@@ -2,8 +2,9 @@
 //! the period shown. Every figure is read from the period's result and its reading; hours and
 //! money are printed apart and never added together.
 
+use super::controls::PER_HUNDRED;
 use super::frame::{self, FrameError, Picture};
-use super::reading::{Party, PaymentKind};
+use super::reading::{self, Party, PaymentKind};
 use super::scene::SceneBody;
 use crate::human_numbers;
 use babylon_circuit_worlds::{Good, Household, PeriodResult, Place, Workplace};
@@ -177,6 +178,74 @@ fn cash_row(result: &PeriodResult, party: Party, rows: &mut Rows) -> Result<(), 
     Ok(())
 }
 
+/// A household group's rows of stored hours: what reached its home, by the claim it came through, and the units
+/// of it from the opening stock. None for a period without a record of hours.
+fn household_hours_rows(result: &PeriodResult, h: Household) -> Result<Rows, FrameError> {
+    let Some(hours) = &result.hours else {
+        return Ok(Vec::new());
+    };
+    let held = hours
+        .household(h)
+        .ok_or_else(|| missing(&format!("no hours for {}", h.label())))?;
+    Ok(vec![
+        row(
+            "Hours back",
+            human_numbers::micro_hours(held.back_micro_hours),
+        ),
+        row("For work", human_numbers::micro_hours(held.claims.work)),
+        row("By owning", human_numbers::micro_hours(held.claims.owning)),
+        row("Support", human_numbers::micro_hours(held.claims.support)),
+        row(
+            "Not recorded",
+            human_numbers::micro_hours(held.claims.not_recorded),
+        ),
+        row(
+            "Units from the opening stock",
+            human_numbers::micro_hours(held.opening_micro_units),
+        ),
+    ])
+}
+
+/// A workplace's rows of stored hours: the hours in a unit it handed over and the share of them from the
+/// opening stock, only when it handed units over. None for a period without a record of hours.
+fn workplace_hours_rows(result: &PeriodResult, w: Workplace) -> Result<Rows, FrameError> {
+    let Some(hours) = &result.hours else {
+        return Ok(Vec::new());
+    };
+    let held = hours
+        .workplace(w)
+        .ok_or_else(|| missing(&format!("no hours for {}", w.label())))?;
+    let Some(per_unit) = held
+        .handed_micro_hours
+        .checked_div(u128::from(held.handed_units))
+    else {
+        return Ok(Vec::new());
+    };
+    let share = reading::share_of_hundred(
+        held.handed_opening_micro_units,
+        u128::from(held.handed_units),
+    )
+    .map_err(|_| FrameError::Arithmetic)?;
+    Ok(vec![
+        row(
+            "Hours in a unit handed over, to the millionth",
+            human_numbers::micro_hours(per_unit),
+        ),
+        row(
+            "From the opening stock",
+            format!("{share} of every {PER_HUNDRED} units"),
+        ),
+        row(
+            "Hours handed over",
+            human_numbers::micro_hours(held.handed_micro_hours),
+        ),
+        row(
+            "Units handed over",
+            human_numbers::grouped(u128::from(held.handed_units)),
+        ),
+    ])
+}
+
 fn hours_of_workplace(picture: &Picture, w: Workplace) -> Result<(u64, u64), FrameError> {
     let mut given = 0_u64;
     let mut idle = 0_u64;
@@ -203,6 +272,7 @@ fn workplace_rows(
         row("Workers in reserve", hours_text(result.closing.reserve[at])),
         row("Made", hours_text(result.summary.made[at])),
     ];
+    rows.extend(workplace_hours_rows(result, w)?);
     money_rows(picture, Party::Workplace(w), &mut rows)?;
     cash_row(result, Party::Workplace(w), &mut rows)?;
     for (site, good, price) in &result.summary.prices {
@@ -258,6 +328,7 @@ fn household_rows(
         row("Employed", human_numbers::grouped(at_work)),
         row("Hours given", hours_text(given)),
     ];
+    rows.extend(household_hours_rows(result, h)?);
     money_rows(picture, Party::Household(h), &mut rows)?;
     cash_row(result, Party::Household(h), &mut rows)?;
     Ok(rows)

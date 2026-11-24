@@ -14,7 +14,7 @@ use super::inspect;
 use super::inspect::ScenePick;
 use super::layout::{FUND_AT, HOURS_RING_Y, MONEY_RING_Y, PLANE, TREASURY_AT, WORKPLACE_X};
 use super::panel;
-use super::panel::{Lower, PanelView, ShockChoices, ShockNotice};
+use super::panel::{Columns, Lower, PanelView, ShockChoices, ShockNotice};
 use super::reading::Party;
 use super::rules::{self, SceneRule};
 use super::script;
@@ -106,6 +106,8 @@ pub enum SceneCommand {
     Lift(Shock, Place),
     TurnOn(SceneRule),
     Lower(Lower),
+    /// Which set of columns the table shows.
+    Columns(Columns),
     Grouping(Grouping),
     TablePeriod(Option<u64>),
 }
@@ -314,6 +316,7 @@ impl Plugin for SmallWorldPlugin {
                     panel::paint_choices,
                     panel::paint_notice,
                     panel::paint_not_drawn,
+                    panel::paint_under_table_line,
                 )
                     .chain()
                     .in_set(SceneSet::Paint),
@@ -623,6 +626,7 @@ impl Stage<'_> {
             SceneCommand::Lift(shock, place) => self.lift(shock, place),
             SceneCommand::TurnOn(rule) => self.turn_on(rule),
             SceneCommand::Lower(lower) => self.view.lower = lower,
+            SceneCommand::Columns(columns) => self.view.columns = columns,
             SceneCommand::Grouping(grouping) => self.view.grouping = grouping,
             SceneCommand::TablePeriod(period) => self.set_table_period(period),
         }

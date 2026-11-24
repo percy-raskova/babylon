@@ -5,7 +5,7 @@
 use super::frame::ParticleMode;
 use super::frame_time::{FrameTime, SceneFrameTimes};
 use super::inspect::{self, ScenePick};
-use super::panel::{self, Lower, ShockNotice};
+use super::panel::{self, Columns, Lower, ShockNotice};
 use super::reading;
 use super::rules::SceneRule;
 use super::scene::{SceneCommand, SceneRunner, SceneStatus};
@@ -54,6 +54,8 @@ pub enum ScriptCommand {
     WaitFrames(u32),
     /// `{"lower":"shocks"}` or `{"lower":"rules"}`: what a click on that tab of the rail's lower part does.
     Lower(String),
+    /// `{"columns":"money"}` or `{"columns":"hours"}`: what a click on the table's switch shows.
+    Columns(String),
     /// `{"pick":"<id>"}`: what a click on that body or particle picks. `household:N` or `person:N:k`
     /// (N is 11 to 18 for the workers of utility A, utility B, farm A, farm B, clinic A, clinic B,
     /// shop A, shop B; 20 and 21 the owners of A and B; 22 and 23 the supported of A and B), a
@@ -133,6 +135,14 @@ fn lower_named(name: &str) -> Option<Lower> {
     }
 }
 
+fn columns_named(name: &str) -> Option<Columns> {
+    match name {
+        "money" => Some(Columns::Money),
+        "hours" => Some(Columns::Hours),
+        _ => None,
+    }
+}
+
 /// A file's stem is letters, digits, `-` and `_` and nothing else: no folder, no dot.
 fn stem_is_plain(name: &str) -> bool {
     !name.is_empty()
@@ -169,6 +179,9 @@ fn check_names(command: &ScriptCommand) -> Result<(), String> {
         }
         ScriptCommand::Lower(name) => {
             known(lower_named(name), "tab", name)?;
+        }
+        ScriptCommand::Columns(name) => {
+            known(columns_named(name), "columns", name)?;
         }
         ScriptCommand::Pick(id) => {
             known(inspect::pick_named(id), "body, group or person", id)?;
@@ -558,6 +571,12 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
         ScriptCommand::Lower(name) => {
             if let Some(lower) = lower_named(&name) {
                 world.presses.write(SceneCommand::Lower(lower));
+            }
+            run.state = State::Checking(0);
+        }
+        ScriptCommand::Columns(name) => {
+            if let Some(columns) = columns_named(&name) {
+                world.presses.write(SceneCommand::Columns(columns));
             }
             run.state = State::Checking(0);
         }

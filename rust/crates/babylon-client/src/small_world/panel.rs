@@ -9,13 +9,13 @@ use super::marks;
 use super::reading;
 use super::rules::{self, RULES_SHOWN};
 use super::scene::{SceneCommand, SceneRunner, SceneShown, BAR_HEIGHT, HEADER_HEIGHT, RAIL_WIDTH};
-use super::table::{self, Grouping, Table};
+use super::table::{self, Grouping, HoursTable, Table};
 use crate::human_numbers;
 use crate::observer_theme as theme;
 use crate::observer_ui::ObserverFontRole;
 use crate::palette::{BONE, GOLD};
 use crate::ui;
-use babylon_circuit_worlds::{Lasts, Place, Places, Shock, ShockBook, ShockError};
+use babylon_circuit_worlds::{Lasts, PeriodResult, Place, Places, Shock, ShockBook, ShockError};
 use bevy::ecs::system::SystemParam;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
@@ -31,6 +31,20 @@ pub const POWER_CUT_LINE: &str =
 /// Under the table: why its money differs from the inspector's.
 pub const TO_THE_CENT_LINE: &str =
     "Money in the table is rounded to the cent. Click a body for exact figures.";
+
+/// Under the table while the second set shows.
+pub const TO_THE_HOUR_LINE: &str =
+    "Hours in the table are rounded to the hour. Click a body for exact figures.";
+/// The switch's caption.
+pub const COLUMNS_SWITCH: &str = "Hours back";
+/// Where the second set has nothing to show.
+const NO_HOURS_LINE: &str = "No hours were measured for this period.";
+
+const HOURS_COLUMNS: [&str; 5] = ["Given", "Back", "For work", "By owning", "Support"];
+/// The cells' widths of the second set, the lead's to tune.
+const HOURS_CELL_WIDTHS: [f32; 5] = [40.0, 44.0, 48.0, 52.0, 48.0];
+/// What a cell with no figure shows.
+const DASH: &str = "—";
 
 const TABLE_COLUMNS: [&str; 4] = ["Work given", "Paid, not used", "Money in", "Money out"];
 const LABEL_WIDTH: f32 = 140.0;
@@ -52,6 +66,27 @@ pub enum Lower {
     Rules,
 }
 
+/// Which set of columns the table shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Columns {
+    /// Hours worked and money.
+    #[default]
+    Money,
+    /// The hours stored in goods, split by the claim.
+    Hours,
+}
+
+impl Columns {
+    /// The other set.
+    #[must_use]
+    pub const fn other(self) -> Self {
+        match self {
+            Self::Money => Self::Hours,
+            Self::Hours => Self::Money,
+        }
+    }
+}
+
 /// How the table is grouped and which period it and the inspector read; `None` is the latest.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
 pub struct PanelView {
@@ -59,6 +94,8 @@ pub struct PanelView {
     pub period: Option<u64>,
     /// The tab of the rail's lower part.
     pub lower: Lower,
+    /// The set of columns the table shows.
+    pub columns: Columns,
 }
 
 impl Default for PanelView {
@@ -67,6 +104,7 @@ impl Default for PanelView {
             grouping: Grouping::Workplace,
             period: None,
             lower: Lower::Shocks,
+            columns: Columns::Money,
         }
     }
 }
@@ -79,6 +117,8 @@ pub enum PanelButton {
     Next,
     Latest,
     Lower(Lower),
+    /// The switch between the table's two sets of columns.
+    Columns,
 }
 
 /// A body of the rail's lower part, shown while the view's `lower` is its own.
@@ -274,6 +314,9 @@ pub struct ShocksBody;
 pub struct NoticeLine;
 #[derive(Component)]
 pub struct NotDrawnLine;
+/// The line under the table that says how its figures are rounded.
+#[derive(Component)]
+pub struct UnderTableLine;
 
 /// A bordered button with a caption; the border is repainted by the paint systems.
 pub(super) fn spawn_pressed<B: Bundle>(
@@ -437,11 +480,9 @@ pub fn spawn_rail(commands: &mut Commands) {
                         ..default()
                     },
                 ));
-                section.spawn(controls::text(
-                    TO_THE_CENT_LINE,
-                    11.0,
-                    theme::GRAY,
-                    ObserverFontRole::Body,
+                section.spawn((
+                    controls::text(TO_THE_CENT_LINE, 11.0, theme::GRAY, ObserverFontRole::Body),
+                    UnderTableLine,
                 ));
             });
             rail.spawn(Node {
@@ -578,6 +619,11 @@ fn spawn_tabs_and_pager(section: &mut ChildSpawnerCommands) {
             ));
             spawn_pressed(pager, PanelButton::Next, "›", 13.0);
             spawn_pressed(pager, PanelButton::Latest, "Latest", 13.0);
+            pager.spawn(Node {
+                flex_grow: 1.0,
+                ..default()
+            });
+            spawn_pressed(pager, PanelButton::Columns, COLUMNS_SWITCH, 13.0);
         });
 }
 
@@ -699,6 +745,99 @@ fn spawn_table(body: &mut ChildSpawnerCommands, table: &Table) {
     }
 }
 
+fn spawn_hours_table(body: &mut ChildSpawnerCommands, table: &HoursTable) {
+    body.spawn(Node {
+        align_items: AlignItems::FlexEnd,
+        ..default()
+    })
+    .with_children(|header| {
+        header.spawn(Node {
+            width: px(LABEL_WIDTH),
+            ..default()
+        });
+        for (name, width) in HOURS_COLUMNS.into_iter().zip(HOURS_CELL_WIDTHS) {
+            header
+                .spawn(Node {
+                    width: px(width),
+                    ..default()
+                })
+                .with_child(controls::text(
+                    name,
+                    11.0,
+                    theme::GRAY,
+                    ObserverFontRole::Body,
+                ));
+        }
+    });
+    for line in &table.rows {
+        body.spawn(Node {
+            height: px(ROW_HEIGHT),
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn(Node {
+                width: px(LABEL_WIDTH),
+                overflow: Overflow::clip(),
+                ..default()
+            })
+            .with_child(controls::text(
+                &line.label,
+                13.0,
+                theme::PAPER,
+                ObserverFontRole::Body,
+            ));
+            let micro = |value: Option<u128>| {
+                value.map_or_else(
+                    || (DASH.to_owned(), None),
+                    |v| {
+                        (
+                            human_numbers::micro_hours_to_hour(v),
+                            Some((percent_of(v, table.scale), BONE)),
+                        )
+                    },
+                )
+            };
+            let given = line.given.map_or_else(
+                || (DASH.to_owned(), None),
+                |g| {
+                    let figure = u128::from(g);
+                    (
+                        human_numbers::grouped(figure),
+                        Some((
+                            percent_of(figure.saturating_mul(1_000_000), table.scale),
+                            BONE,
+                        )),
+                    )
+                },
+            );
+            let cells = [
+                given,
+                micro(line.back),
+                micro(line.for_work),
+                micro(line.by_owning),
+                micro(line.support),
+            ];
+            for ((figure, bar), width) in cells.into_iter().zip(HOURS_CELL_WIDTHS) {
+                spawn_cell(row, width, &figure, bar);
+            }
+        });
+    }
+}
+
+/// Write the line under the table: how the shown set of columns is rounded.
+pub fn paint_under_table_line(
+    view: Res<PanelView>,
+    mut line: Query<&mut Text, With<UnderTableLine>>,
+) {
+    let words = match view.columns {
+        Columns::Money => TO_THE_CENT_LINE,
+        Columns::Hours => TO_THE_HOUR_LINE,
+    };
+    for mut text in &mut line {
+        text.set_if_neq(Text::new(words));
+    }
+}
+
 /// Repaint the table and the pager's label when the view, the history or the picture changes.
 pub fn paint_table(
     mut commands: Commands,
@@ -723,9 +862,18 @@ pub fn paint_table(
     let Ok(body) = body.single() else {
         return;
     };
+    commands.entity(body).despawn_related::<Children>();
+    if view.columns == Columns::Hours {
+        paint_hours_table(
+            &mut commands,
+            body,
+            index.map(|i| &history[i]),
+            view.grouping,
+        );
+        return;
+    }
     let built = index
         .map(|i| reading::read_period(&history[i]).and_then(|r| table::table(&r, view.grouping)));
-    commands.entity(body).despawn_related::<Children>();
     match built {
         Some(Ok(built)) => {
             commands
@@ -741,6 +889,41 @@ pub fn paint_table(
             ));
         }
         None => {}
+    }
+}
+
+/// The table's second set for the period, or the words that say why there is none.
+fn paint_hours_table(
+    commands: &mut Commands,
+    body: Entity,
+    result: Option<&PeriodResult>,
+    grouping: Grouping,
+) {
+    let Some(result) = result else {
+        return;
+    };
+    match table::hours_table(result, grouping) {
+        Ok(Some(built)) => {
+            commands
+                .entity(body)
+                .with_children(|rows| spawn_hours_table(rows, &built));
+        }
+        Ok(None) => {
+            commands.entity(body).with_child(controls::text(
+                NO_HOURS_LINE,
+                13.0,
+                theme::GRAY,
+                ObserverFontRole::Body,
+            ));
+        }
+        Err(error) => {
+            commands.entity(body).with_child(controls::text(
+                format!("The table cannot be built: {error}"),
+                13.0,
+                theme::RED,
+                ObserverFontRole::Body,
+            ));
+        }
     }
 }
 
@@ -991,6 +1174,7 @@ fn chosen(
         (Some(SceneButton::Marks(wanted)), _, _) => Some(*wanted == motion),
         (_, Some(PanelButton::Tab(grouping)), _) => Some(*grouping == view.grouping),
         (_, Some(PanelButton::Lower(lower)), _) => Some(*lower == view.lower),
+        (_, Some(PanelButton::Columns), _) => Some(view.columns == Columns::Hours),
         (_, _, Some(ShockButton::Place(shock, places))) => {
             Some(choices.of(*shock).places == *places)
         }
@@ -1082,6 +1266,9 @@ fn press_panel(
         }
         PanelButton::Lower(lower) => {
             commands.write(SceneCommand::Lower(lower));
+        }
+        PanelButton::Columns => {
+            commands.write(SceneCommand::Columns(view.columns.other()));
         }
         PanelButton::Previous | PanelButton::Next => {}
     }

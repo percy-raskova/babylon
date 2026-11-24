@@ -11,8 +11,8 @@ use crate::small_world::frame::ParticleMode;
 use crate::small_world::inspect::ScenePick;
 use crate::small_world::panel;
 use crate::small_world::panel::{
-    InspectorBody, InspectorPanel, Lower, LowerBody, NoticeLine, PagerLabel, PanelButton,
-    PanelView, ShockButton, ShockNotice, TableBody, TO_THE_CENT_LINE,
+    Columns, InspectorBody, InspectorPanel, Lower, LowerBody, NoticeLine, PagerLabel, PanelButton,
+    PanelView, ShockButton, ShockNotice, TableBody, TO_THE_CENT_LINE, TO_THE_HOUR_LINE,
 };
 use crate::small_world::rules::{
     RuleButton, RulesBody, SceneRule, FROM_LINE, RULES_LINE, RULES_SHOWN, SHOWN_RULES,
@@ -568,6 +568,15 @@ fn table_row(app: &mut App, label: &str) -> Result<Vec<String>, String> {
         .ok_or_else(|| format!("no table row {label}"))
 }
 
+fn particle(app: &mut App, id: &str) -> Result<Entity, Box<dyn Error>> {
+    let world = app.world_mut();
+    world
+        .query::<(Entity, &ParticleId)>()
+        .iter(world)
+        .find_map(|(entity, found)| (found.0 == id).then_some(entity))
+        .ok_or_else(|| format!("no particle {id}").into())
+}
+
 fn row_value(rows: &[(String, String)], label: &str) -> Option<String> {
     rows.iter()
         .find(|(l, _)| l == label)
@@ -727,6 +736,136 @@ fn the_table_switches_its_grouping_and_period() -> TestResult {
     click(&mut app, latest);
     updates(&mut app, 2);
     assert_eq!(app.world().resource::<PanelView>().period, None);
+    Ok(())
+}
+
+#[test]
+fn the_switch_stands_at_the_end_of_the_pager_s_row() -> TestResult {
+    let mut app = scene_app(None)?;
+    for _ in 0..2 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+    }
+    let switch = panel_button(&mut app, PanelButton::Columns)?;
+    let next = panel_button(&mut app, PanelButton::Latest)?;
+    let row = app
+        .world()
+        .get::<ChildOf>(switch)
+        .ok_or("the switch has no row")?
+        .parent();
+    assert_eq!(
+        app.world().get::<ChildOf>(next).map(ChildOf::parent),
+        Some(row)
+    );
+    let last = app
+        .world()
+        .get::<Children>(row)
+        .and_then(|children| children.last().copied());
+    assert_eq!(last, Some(switch));
+    assert_eq!(app.world().resource::<PanelView>().columns, Columns::Money);
+    let names = ["Given", "Back", "For work", "By owning", "Support"].map(str::to_owned);
+    for hours_shown in [true, false] {
+        click(&mut app, switch);
+        updates(&mut app, 2);
+        let columns = if hours_shown {
+            Columns::Hours
+        } else {
+            Columns::Money
+        };
+        assert_eq!(app.world().resource::<PanelView>().columns, columns);
+        let edge = app
+            .world()
+            .get::<Node>(switch)
+            .map(|node| node.border.left)
+            .ok_or("no switch node")?;
+        assert_eq!(edge, if hours_shown { px(3) } else { px(1) });
+        let all = texts(&mut app);
+        assert_eq!(all.contains(&TO_THE_HOUR_LINE.to_owned()), hours_shown);
+        assert_eq!(all.contains(&TO_THE_CENT_LINE.to_owned()), !hours_shown);
+        let header = table_rows(&mut app).into_iter().next().unwrap_or_default();
+        if hours_shown {
+            assert_eq!(header, names.to_vec());
+            assert_eq!(
+                table_row(&mut app, "Place A utility")?,
+                ["120", "—", "—", "—", "—"].map(str::to_owned).to_vec()
+            );
+        } else {
+            assert_eq!(header.len(), 4);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn a_household_s_panel_shows_its_hours_by_claim() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    // Period 1: place A's owners hold their back under the opening.
+    let owners = particle(&mut app, "household:20")?;
+    click(&mut app, owners);
+    updates(&mut app, 2);
+    let rows = inspector_rows(&mut app);
+    assert_eq!(row_value(&rows, "Hours back").as_deref(), Some("32"));
+    assert_eq!(
+        row_value(&rows, "Not recorded"),
+        row_value(&rows, "Hours back")
+    );
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let supported = particle(&mut app, "household:22")?;
+    click(&mut app, supported);
+    updates(&mut app, 2);
+    let rows = inspector_rows(&mut app);
+    let (back, support) = (row_value(&rows, "Hours back"), row_value(&rows, "Support"));
+    assert!(back.is_some());
+    assert_eq!(back, support);
+    assert_eq!(row_value(&rows, "For work").as_deref(), Some("0"));
+    let at = |label: &str| rows.iter().position(|(l, _)| l.starts_with(label));
+    assert!(at("Hours given") < at("Hours back"));
+    assert!(at("Hours back") < at("Money in"));
+    Ok(())
+}
+
+#[test]
+fn a_workplace_s_panel_shows_the_hours_in_a_unit() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    for (kind, hours, opening) in [
+        (Kind::Shop, "1", Some("100 of every 100 units")),
+        (Kind::Utility, "1", None),
+        (Kind::Clinic, "2", None),
+    ] {
+        let workplace = Workplace {
+            place: Place::A,
+            kind,
+        };
+        let plate = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &SceneBody)>()
+                .iter(world)
+                .find_map(|(entity, body)| {
+                    (body.0 == Party::Workplace(workplace)).then_some(entity)
+                })
+                .ok_or("no plate")?
+        };
+        click(&mut app, plate);
+        updates(&mut app, 2);
+        let rows = inspector_rows(&mut app);
+        assert_eq!(
+            row_value(&rows, "Hours in a unit handed over, to the millionth").as_deref(),
+            Some(hours),
+            "{kind:?}"
+        );
+        if let Some(opening) = opening {
+            assert_eq!(
+                row_value(&rows, "From the opening stock").as_deref(),
+                Some(opening)
+            );
+        }
+    }
     Ok(())
 }
 

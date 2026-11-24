@@ -2597,3 +2597,50 @@ as it stands, which differs from the text above in these points:
   `ec98bdab1` carries the engine's scope for a change in the client's tests; unpaid owners stand under their
   place's middle, so their outline can pass over a dead workplace of theirs (they could stand under the
   workplaces that still hold their capital instead).
+
+## What Tasks 4 to 5c built (24 November 2026)
+
+All four are built and reviewed (`68df19e5b`, `d9b4217f8`, `d4ac7dc0d`, `516d2180f`; then the lead's `f5e8a8a95`).
+The bench reproduces `pc-bound` and `pc-stop`, 25 runs of 25 at both figures, beside the earlier sets; the lead
+ran the eight long tests again. A later task builds on the code as it stands, which differs from the text above
+in these points:
+
+- **The client matches `AdjustmentReceipt` exhaustively in three functions of `marks.rs`** (`moves`, `stop_of`,
+  `bounds_of`) and in one test of that file. An engine task that adds a variant gives EACH of them an explicit
+  arm for the new variant (no wildcard), changes nothing else in the client, and reports it. `is_held` in
+  `frame.rs` uses `matches!` and needs nothing.
+- **Task 4, the bound:** `next_plans` takes `closed: ClosedWork<'_>` (`maintenance`, `performance`) where it took
+  the two apart, and returns `NextPlans` with `bound: Option<HiringBound>`. In `src/adjustment/bound.rs`:
+  `bound_hiring(catalog, state, performance, maintenance, next_period) -> Result<HiringBound>`, with the pure
+  `provider_first` and `batches_within` beside it. `recurring::spare_money::wages` is `pub(crate)` and gives the
+  largest `Wage` rate for each (site, unit): Task 7's `rate` reads it. `finish_with_place_staffing` EXTENDS
+  `adjustments`: the bound's receipts first, then the stop receipts, then the moves.
+  `HiringBoundReceipt.period` is the period whose hours it cuts, the NEXT period. No bank's loan term is built.
+  Contract key `ADR314_bound`.
+- **Task 5, the stop rule:** the judgement is the pure `adjustment::judge(previous, &SiteTest)` in
+  `src/adjustment/standing.rs`. `PlaceStaffing` carries `pub standing` and the crate's own `stops`.
+  `close_material_period_with_standing(catalog, opening, &standing)` and the older entries all go through
+  `close_with_rules(.., standing: Option<&WorkplaceStanding>)`; `close_material_period_with_portfolios` refuses
+  a catalog that asks for the stop rule, and the entry with standing does not refuse one that does not ask.
+  `StopReceipt.period` is the CLOSING period, unlike the bound's. `StopReceipt` and `StopHold` are `Copy`;
+  `could_not_pay` is a `bool`; a wage rate of 0 gives no limit. `Runner::standing()` reads the standing;
+  `asks_for(catalog, rule)` is in `transition/state.rs`. Contract key `ADR314_stop`. `NOT_YET_BUILT` lists the
+  three rules left.
+- **Task 4c:** `rule_rows(history, index, pick)` has one guard for each rule: the seekers' rows, then the bound's
+  for a picked workplace while `holds(result, HiringWithinMeans)`. `bound_rows`, `bounds_of`, `limit_words`.
+- **Task 5c:** `BodyPicture.held`, the `BodyCore` component, `SceneMaterials.dim` and the system `paint_cores`: a
+  held workplace's core is drawn dim. `held_since(history, index, w)`, `stop_rows(history, index, w, rows)`,
+  `stop_of`, `is_held_in`. A held workplace's rows stand in this order: "No money, no work", "Most it may
+  employ", "Hours it could not pay".
+- **The script's report** (`f5e8a8a95`): `ScriptReport` holds `hours_on_the_clock` (the summary's hours
+  attended), `hours_given` and `hours_idle` (the table's two columns). `build_report` is `pub(super)` and returns
+  a `Result`. Where a proof's check speaks of "the hours" of a report, it means `hours_given`, and says so.
+- **A proof script must not leave in its first two seconds.** The client crashes at exit when it leaves while
+  the engine still builds its drawing pipelines (in the engine's teardown, not in the scene): a `"quit"` or a
+  refusal within about two seconds of the start. A script with a slow first step, as every proof of this plan
+  has, is safe. After `{"beat_millis":60}`, put `{"wait_frames":120}` before a refusal that comes early.
+- **What the lead's look counted** (the slump of Task 3d's proof, run to period 80, from the scripts' own
+  reports): the first rule alone stops the clinic, the farm and the shop of Place A (nobody on their clocks from
+  periods 37, 44 and 50); with the bound on from the same period all four work to period 80; the stop rule
+  changes no figure of the report while the bound is on, and without the bound the farm's panel reads "held
+  since period 43".

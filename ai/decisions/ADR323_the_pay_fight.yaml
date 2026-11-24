@@ -1,0 +1,432 @@
+ADR323_the_pay_fight:
+  title: The pay fight; real wins, the payer shown; measures only nudge; a call commands nobody; a win is a contract
+  date: '2026-11-24'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-24, in the question dialog, asked what starts a
+        fight for pay in a squeeze where prices rise, pay stands still and
+        people look for work. No option was picked. The Director's note:
+        "if the owners share grows while workers get laid off or wages
+        slashed that can trigger it too but ultimately the decision on
+        whether or not to trigger is a player decision, these are just the
+        metrics in which the player could be nudged thru an event or
+        something".
+    - >-
+        Director, 2026-11-24, in the same dialog, asked who may start a fight
+        where no union stands: all four ticked, "A union moves in
+        (Recommended)", "The workers themselves (Recommended)", "Other
+        organizations", "The player's organization".
+    - >-
+        Director, 2026-11-24, in the same dialog, asked whether a person
+        looking for work crosses the line: "Whoever organizes the seekers
+        (Recommended)".
+    - >-
+        Director, 2026-11-24, in a second dialog, asked how ruling 11 of
+        ADR176 stands with the rulings of November, both named: "Real wins,
+        payer shown (Recommended)".
+    - >-
+        Director, 2026-11-24, in that second dialog, asked what the others do
+        when the player does nothing: "Others act, yours waits
+        (Recommended)".
+    - >-
+        Director, 2026-11-24, in that second dialog, asked what a win leaves
+        behind: "A contract with an end (Recommended)".
+    - >-
+        Director, 2026-11-24, in a third dialog with the checked design,
+        asked whether one stoppage founds an organization, with the answer
+        of that morning and the design of 25 August both named: "Design
+        founding now".
+    - >-
+        Director, 2026-11-24, in that third dialog, asked whether a stoppage
+        may ask for something for the people who look for work, since a card
+        with nothing paid holds nobody on the bench: "Ask for work for them
+        (Recommended)".
+    - >-
+        Director, 2026-11-24, in that third dialog, asked what line the
+        screen draws under a win, since the hours ledger cannot tell a rise
+        paid from abroad from one that cuts profit at home for workers who
+        already get back more hours than they give: "By the winners' hours
+        (Recommended)".
+    - >-
+        Director, 2026-11-24, in that third dialog, asked to approve the
+        design and say when it is built: "Approve; before the bridge
+        (Recommended)".
+  context: |
+    ADR319 (J5) ruled that a slump which begins years after a failed harvest
+    has returned is play, ended by struggle: "It lasts until workers win
+    pay." How that fight looks was reserved to the Director. ADR320 (S6) left
+    an organized group out of the small world until it was ruled.
+
+    Four earlier records bear on it. ADR314's rule A16 has a union with a
+    fund answer a cut with a stoppage that the accounts end. The design of
+    25 August (ADR232, ADR234, ADR237) makes a strike a proposal that never
+    commands: every affected group of workers decides for itself each
+    period, co-participation mints no tie, and one episode founds no
+    organization; the code holds the proposal's admission and nothing after
+    it. ADR176 (11 to 14) makes the strike the player's verb, leaves
+    organization as its product, and said in ruling 11 that a won strike in
+    the core gains no pay while the flow from abroad holds. The homes design
+    (H16, H18) gives every fight its form: a household joins when what the
+    action offers it within a year is more than what joining puts at risk,
+    and two sets of accounts race.
+
+    On 23 November the lead asked who pays for a win and offered ruling 11
+    of ADR176 as a nameless option. The Director picked "Show the payer",
+    recorded in ADR322 as a direction. The lead also wrote both dialogs of
+    24 November before reading the design of August. Both faults are the
+    lead's.
+
+    Counted on 24 November, on the closest form's reference sets on today's
+    engine (25 runs of 400 periods at each set of figures; a workplace's take
+    worked out from the rows' sales, prices and hours): in 14 of 25 runs at
+    the small figures and 13 of 25 at the national ones no workplace ever
+    pays its owners more than its payroll while its people are short of a
+    need. In the others it happens in 6,558 and 7,920 of 80,000
+    workplace-periods: at the shop (4,409 and 5,959), the farm (1,781 and
+    1,289), a clinic (365 and 672) and almost never the utility (3 and 0),
+    whose people are short in 5,803 and 6,180. People look for work in the
+    place in 5,899 and 5,873 of them.
+  decision: |
+    F1. THE MEASURES ONLY NUDGE. No measure starts a fight. Each is read from
+    receipts and raises news; where the player's organization could act it
+    is an event. The measures: a period's pay against the cost of a
+    household's own needs at posted prices; a cut of pay; hours a workplace
+    asked for and could not fill; and, in the Director's words, "the owners
+    share grows while workers get laid off or wages slashed". In the
+    Director's words, "ultimately the decision on whether or not to trigger
+    is a player decision".
+
+    F2. ALL FOUR MAY START A FIGHT: a union that moves in, the workers
+    themselves, other organizations, the player's organization.
+
+    F3. WHOEVER ORGANIZES THE SEEKERS. In the Director's pick: "A seeker
+    takes struck work when their household goes without and nobody offers
+    anything else. A union, or any organization, holds them back only by
+    what it gives: relief from its fund, or a card and the same demand. So
+    in a slump a strike is won by whoever organizes the people looking for
+    work. Cost: the seekers of a place become a body that can be organized,
+    which is new machinery."
+
+    F4. REAL WINS, PAYER SHOWN. In the Director's pick: "A strike can win pay
+    anywhere, the core included. What the employer did next is read from its
+    receipts and shown. A rise paid from abroad is more bribe: the hours
+    ledger measures it (hours back for work beyond the clock), and by your
+    July rulings on outlook the bribe pulls its winners toward the nation,
+    not the class. A rise that cuts profit or rent at home builds power.
+    This replaces July's ruling 11 as worded, with a decision record. July's
+    other rulings stay: the strike is your verb, and what it leaves behind
+    is organization."
+
+    F5. OTHERS ACT, YOURS WAITS. In the Director's pick: "Unions and rival
+    organizations call fights by their own accounts and lines, as approved
+    in rule A16 (you ruled 'unions pushing' as one of the things that moves
+    the economy). Workers with no organization can walk out too: small, with
+    no fund, and a local is born in it. Each raises an event for you: back
+    it, widen it, or let it be. The world moves without you. It seldom wins
+    without organization."
+
+    F6. A WIN IS A CONTRACT WITH AN END. In the Director's pick: "The win is
+    written down: the pay, any other terms, and a last period. Until then
+    the union does not stop work and the employer does not cut. When it runs
+    out it is renewed or fought again, so fights come on a calendar you can
+    see. If prices run ahead inside the term, workers can only walk out
+    against their own contract: a wildcat, and an opening for you. Terms
+    beyond pay that I would write in: pay that follows prices, the laid-off
+    taken back first, dues collected by the employer. You strike or add
+    terms when you read the design."
+
+    F7. FOUNDING IS DESIGNED NOW. In the Director's pick: "A local of its own
+    forms some periods after a fight, when its people keep a fund together
+    and hold something in common, each household deciding for itself, by
+    August's four conditions. About four more tasks, and a second design to
+    write and check." With it the Director picked the sketch: "One walkout
+    is still not enough: something must be kept up after it."
+
+    F8. A STOPPAGE MAY ASK FOR WORK FOR THE PEOPLE WHO LOOK FOR IT. In the
+    Director's pick: "A call may ask the workplace to take on the
+    organization's people who look for work, at the contract's pay, for its
+    term. Then they have the same thing to win as the people inside, and
+    refuse struck work by their own weighing, with no relief. It costs the
+    employer a year of their pay more, so the fight is long and the people
+    inside need strike pay. About three more tasks. It gives two ways to
+    win, and it is the demand a union that defends only its own members
+    never makes."
+
+    F9. A WIN IS JUDGED BY THE WINNERS' HOURS. In the Director's pick: "The
+    line reads the winners' side. Where they get back fewer hours than they
+    give, the win took back part of what they give. Where they already get
+    back more, the bribe grew, whoever paid. Who paid is shown beside it as
+    a fact: the owners' profit, the buyers, or work moved abroad."
+
+    F10. APPROVED; BUILT BEFORE THE BRIDGE. In the Director's pick: "Build it
+    after stored hours and before the bridge. The scene gets its first
+    decision sooner, and the bridge then carries a fight that already plays.
+    The payer needs stored hours, which is built first anyway. Your answers
+    above go in as small amendments." The order of the build is now: the
+    scene, the six rules, stored hours, the pay fight, the bridge, the world
+    on the tick's records.
+
+    THE DESIGN. `docs/superpowers/specs/2026-11-24-the-pay-fight-design.md`,
+    rules PF1 to PF18, is the lead's, written from these ten rulings and the
+    four records above, checked once by a second reader before the approval
+    and once more for what F7 to F9 added. Two parts were written after the
+    approval and await the Director's reading: founding (PF18) and the
+    demand for work (PF6, PF12).
+  amends:
+    - >-
+        The order of the build recorded on 23 November (ADR320, S2; ADR322):
+        the pay fight is built after stored hours and before the bridge
+        (F10).
+    - >-
+        F4 of this record, the sentence "A rise that cuts profit or rent at
+        home builds power": for workers who already get back more hours than
+        they give, F9 replaces it. F5 of this record, the words "a local is
+        born in it": F7 replaces them.
+    - >-
+        ADR176, ruling 11 ("THE BRIBE, NOT THE FIGHT, SETS THE CORE WAGE ...
+        zero wage gain while Phi holds"): replaced as worded by F4. No rule
+        says where a strike can win. Of what ruling 11 named: organization
+        stays, by ruling 13; "tension" is no longer written by a strike;
+        "Narrator + decision-zone legibility required" is carried by the
+        design's news, events and the payer (PF15, PF17). Rulings 12, 13 and
+        14 of ADR176 stand.
+    - >-
+        ADR322, "Show the payer", recorded there as a direction and not a
+        design: it is a ruling now (F4), and the design builds it (PF17).
+    - >-
+        ADR319 (J5) and ADR320 (S6): the fight they reserved to the Director
+        is ruled here.
+    - >-
+        ADR314, A16, read with the design of 25 August: a union's stoppage is
+        a call, and each household of workers decides for itself each period
+        (PF5). A16's start test is read with its own ending, and a household
+        has a test of its own that mirrors the employer's. These readings are
+        the lead's.
+    - >-
+        The design of 25 August, section 9, and ADR237: by F5, workers with
+        no organization weigh their own measure with no call put to them
+        (PF5). This reading is the lead's.
+    - >-
+        ADR302, the order of layoffs: where places are taken in a stoppage,
+        the people who stopped join the workplace's own laid off, for that
+        case only (PF13).
+    - >-
+        ADR322 and the stored-hours design, the test that no group's hours
+        back for work pass its hours on the clock: it holds for runs with no
+        fight and is amended for runs with a win, where the count is shown
+        (PF17).
+  lead_readings_for_the_director_to_check:
+    - >-
+        The player's decision, and a union's, is the call, what is asked and
+        what the fund pays. Whether a household stops, goes back, takes
+        struck work or joins is its own, decided each period from its own
+        amounts, with one year as the horizon.
+    - >-
+        A fight is a race between two sets of accounts. A household goes back
+        when stoppages there have cost it, within the last year, more than a
+        year of what is asked on its own hours; the employer gives way when
+        they have cost it more than a year of what is asked for the
+        workplace. Both counts start again when what is asked is won. So,
+        over a year, a side gives way only if a period out costs it more than
+        a period of what is asked.
+    - >-
+        The employer's cost is read from its receipts over all its
+        workplaces. A workplace that loses money cannot be hurt by a stoppage
+        in this economy, so its cut cannot be answered by one, until a struck
+        workplace has costs that run on.
+    - >-
+        People with no organization stop on their own accounts and know
+        nothing of the owners' accounts or of who will take their places. So
+        a stoppage can be broken. A household that already goes without at
+        full work may stop with no money.
+    - >-
+        A household takes struck work when it goes without and the work would
+        leave it more to live on. A card with nothing paid and nothing asked
+        holds nobody who goes without. The second means of F3 is the demand
+        for work of F8.
+    - >-
+        The demand for work (F8): the people named are the organization's own
+        who look for work in the place, and an invitation may offer a
+        household a place in the demand. A household so named is in the fight
+        and decides as the people inside do. The employer has their pay to
+        lose as well before it gives way. The floor on the rolls is the
+        lead's: it holds the people on the rolls when the workplace gave way
+        and the people named, until the contract ends, and gives way to the
+        stop rule. A workplace with no work for the people named runs at a
+        loss and can stop. Only the player's organization asks it.
+    - >-
+        An organization calls only where it has members (ADR237). A union
+        that moves in, other organizations and the player's begin by paying
+        and inviting. This narrows F2.
+    - >-
+        Founding (F7). What is kept up is one act: the households that took
+        part in a stoppage, and belong to no organization, pay into a fund in
+        common at the rate of dues, for three periods running. August's four
+        conditions are read from that one act; a second reader found this
+        thin against August, and the lead keeps it because it is the sketch
+        the Director picked. A household pays in when what such a fund would
+        have paid it in the last year is more than a year of paying in. The
+        households that paid in each period have founded an organization,
+        which decides for itself by A16 and is not the player's. A period in
+        which nobody pays in sends everything back. A tie runs from each
+        payer to the fund, not between payers. In the scene a founded
+        organization acts at once; August's step by which its people commit
+        who may propose for it comes with the bridge. A world keeps accounts
+        for founding, twice its workplaces; one fund more is a fault of the
+        build. On the bench a local is often one household.
+    - >-
+        The line under a win (F9) is split at the clock, and a win that
+        crosses it gets both sentences. Its hours are means for one person on
+        the clock over the six periods before the stoppage and the six after
+        the win. "Give" is read as hours on the clock (ADR322, H4). For
+        workers beyond the clock it replaces F4's sentence that a rise which
+        cuts profit at home builds power.
+    - >-
+        Membership: a household joins when what the organization would bring
+        it within a year is more than a year of its dues, and leaves when a
+        year of its dues is more than what the organization has brought it
+        within the last year: what its fund paid the household, the rise of a
+        contract it negotiated, a place named for it.
+    - >-
+        Where an organization negotiated, a win is a contract that covers the
+        workplace; where nobody did, it is a rate. Terms beyond pay as the
+        Director saw them: pay follows prices, upward only; the laid off
+        taken back first; dues collected by the employer, which makes nobody
+        a member.
+    - >-
+        A loss is by today's law of the state, as a row of law: the people
+        taken on keep the work; the people who stopped are called back first.
+        Strikers draw no benefit; a person on the benefit may refuse struck
+        work and keep it.
+    - >-
+        A union calls on A16's two occasions and at the end of a contract,
+        only when its members would outlast the employer on the accounts it
+        can read, and pays only its own. It moves in by rank order under its
+        fund.
+    - >-
+        Strike pay, dues, a contract's length and its dates are Designed
+        figures set from one union's published figures (the auto workers,
+        2023), and labelled figures of the bench in the small world. The
+        payer is shown for six periods.
+    - >-
+        A stoppage asks for pay and for terms of a contract only. Political
+        demands come with the country.
+    - >-
+        Employers moving pay by A15 is a switch of its own, built last and
+        measured again on today's engine. Round eight measured it mixed.
+    - >-
+        In the scene the person at the window plays one organization, whose
+        opening fund is a labelled figure of the scene. The scene is an
+        administrative view and counts for no gameplay milestone; the
+        decision screen of the real game is the Organizer Workspace.
+  consequences:
+    - >-
+        The engine gains five material acts, taken as orders of a period and
+        as canonical input of it: a rate that changes at a boundary; hours
+        withheld on a household's place at a workplace; withheld hours filled
+        above the rolls; named people taken on, with a floor on the rolls;
+        payments to and from a fund. It decides none of them. A world that
+        does not ask keeps its bytes, and so do the bench's reference runs.
+    - >-
+        The small worlds' runner gains organizations, each household's
+        weighing, the employer's rule, the contract and their records, as the
+        scene's stand-in for the participation resolver that the August
+        design gives to BSL. The bridge later carries them into the tick,
+        where the strike proposal's admission already waits.
+    - >-
+        The scene gains its first decision: news, an event with a forecast,
+        and what the person's organization proposes and pays.
+    - >-
+        About thirty-two tasks, built after stored hours and before the
+        bridge. The bridge's plan is revised after it, since it then carries
+        organizations, withheld hours and contracts as well.
+    - >-
+        Whether won rises end the later slump on today's engine is not known.
+        It is counted on 400 periods at both sets of figures; if they do
+        not, the rows go to the Director before more is built on it.
+  alternatives_rejected:
+    - >-
+        "The basket outruns pay (Recommended)", "The owners' share grows" and
+        "Only as written": offered for what starts a fight. None was picked;
+        the Director's note made every measure a nudge.
+    - >-
+        "Need alone" and "Force at the gate": offered for the people looking
+        for work, not picked.
+    - >-
+        "July stands in the core" and "Rule it with the country": offered for
+        ruling 11 of ADR176, not picked.
+    - >-
+        "Only organizations act" and "Nothing without you": offered for what
+        the others do, not picked.
+    - >-
+        "A new rate, nothing more": offered for what a win leaves, not picked.
+    - >-
+        "Join who paid them (Recommended)" and "Born at once": offered for
+        founding, not picked.
+    - >-
+        "Relief only" and "Later, with the country": offered for the people
+        who look for work, not picked.
+    - >-
+        "By who paid" and "Two facts, no line": offered for the line under a
+        win, not picked.
+    - >-
+        "Approve; after the bridge", "I will read it first" and "Not yet:
+        changes": offered at the approval, not picked.
+    - >-
+        A stoppage as a labelled shock of the scene. Nobody decides in it and
+        no accounts end it. Not offered.
+    - >-
+        The fight in the tick first. The tick refuses this economy until the
+        bridge is built, and the scene could not show it. Not offered.
+    - >-
+        Households that forecast how long the employer can hold and who will
+        take their places. The first draft had it. A check showed that no
+        stoppage would then ever be broken, and that who stops would turn on
+        the size of what is asked. Not offered.
+  open_questions:
+    - >-
+        The lines of other organizations, the unions' own line and what
+        their money does to them (ADR176, 14 and 38; ADR180, R8). With the
+        country.
+    - >-
+        What a win or a loss does to how people see the world. With the
+        design of outlook.
+    - >-
+        Whether the labour aristocracy strikes longer (the Standard's W-D).
+        No ruling was found; this design writes no rule for it.
+    - >-
+        The state's answer to a stoppage, and where the people who look for
+        work come from in the country. With their own designs.
+  verification: |
+    Money and people are exact every period of every run with funds, dues,
+    strike pay and relief. With every new switch off, the bench's fourteen
+    long tests are equal byte for byte. For each weighing the design names
+    the member, the amounts compared, the population and what differs
+    between members; a test on a world with three households of unlike money
+    at one workplace removes the difference and must change the response; a
+    test plants a fixed cut-off and must fail. Founding has four tests: a
+    stoppage alone founds nothing; three periods of paying in found an
+    organization of exactly the households that paid in each; a period in
+    which nobody pays in ends it and pays back every dollar; one fund more
+    than the world's kept accounts is refused. Three comparisons are counted
+    on 400 periods at both sets of figures, from reports and receipts: the
+    reserve army (hands short; people looking for work whom nobody pays;
+    people paid; work asked for them), the later slump (no organization; a union that pays only
+    its own; the people who look for work paid), and the payer after each
+    win, with the buyers and the hours ledger. The lead looks at every new
+    window and shows the Director.
+  related:
+    - ADR176_director_rulings_batch_gds_dispositions
+    - ADR232_neel_integration_program_architecture
+    - ADR234_practice_intent_v2
+    - ADR237_strike_proposal_v2
+    - ADR302_household_roster_and_counting
+    - ADR314_how_the_economy_adjusts
+    - ADR315_homes_rent_and_nation
+    - ADR317_field_and_particles
+    - ADR319_a_shock_is_not_a_failure
+    - ADR320_screen_first_the_small_world_in_the_client
+    - ADR322_whose_hours

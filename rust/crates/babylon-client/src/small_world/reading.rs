@@ -46,7 +46,7 @@ impl Party {
     }
 }
 
-/// The five kinds of payment the world makes.
+/// The six kinds of payment the world makes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PaymentKind {
     Wages,
@@ -54,15 +54,18 @@ pub enum PaymentKind {
     Taxes,
     Benefits,
     Profit,
+    /// An owner's money put into a workplace it owns (`CashTransferPurpose::CapitalContribution`).
+    Capital,
 }
 
 impl PaymentKind {
-    pub const ALL: [PaymentKind; 5] = [
+    pub const ALL: [PaymentKind; 6] = [
         PaymentKind::Wages,
         PaymentKind::Purchases,
         PaymentKind::Taxes,
         PaymentKind::Benefits,
         PaymentKind::Profit,
+        PaymentKind::Capital,
     ];
 
     #[must_use]
@@ -73,6 +76,7 @@ impl PaymentKind {
             Self::Taxes => "taxes",
             Self::Benefits => "benefits",
             Self::Profit => "profit",
+            Self::Capital => "capital",
         }
     }
 }
@@ -290,8 +294,8 @@ fn read_payments(transfers: &[MoneyTransferReceipt]) -> Result<Vec<Payment>, Rea
                     CashTransferPurpose::Tax => PaymentKind::Taxes,
                     CashTransferPurpose::PublicTransfer => PaymentKind::Benefits,
                     CashTransferPurpose::OwnershipDistribution => PaymentKind::Profit,
+                    CashTransferPurpose::CapitalContribution => PaymentKind::Capital,
                     CashTransferPurpose::HouseholdTransfer
-                    | CashTransferPurpose::CapitalContribution
                     | CashTransferPurpose::TransportService
                     | CashTransferPurpose::MutualAid => {
                         return Err(ReadingError::UnexpectedPayment(format!("{transfer:?}")));
@@ -350,6 +354,55 @@ mod tests {
         assert_eq!(total(&reading, PaymentKind::Taxes), 1_280_000_000);
         assert_eq!(total(&reading, PaymentKind::Benefits), 1_280_000_000);
         assert_eq!(total(&reading, PaymentKind::Profit), 1_280_000_000);
+        Ok(())
+    }
+
+    #[test]
+    fn a_capital_contribution_is_read_as_capital() -> TestResult {
+        let mut result = first_period()?;
+        let transfer = result
+            .receipts
+            .money_transfers
+            .iter_mut()
+            .find(|t| {
+                t.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::OwnershipDistribution)
+            })
+            .ok_or("a profit transfer")?;
+        let amount = transfer.credit.delta.micro_units();
+        transfer.purpose = MoneyTransferPurpose::Cash(CashTransferPurpose::CapitalContribution);
+        std::mem::swap(&mut transfer.debit.location, &mut transfer.credit.location);
+        let party = |location: MoneyLocation| match location {
+            MoneyLocation::Cash(account) => Party::from_account(account),
+            MoneyLocation::PurchaseReserve(_) | MoneyLocation::PayrollReserve(_) => None,
+        };
+        let from = party(transfer.debit.location).ok_or("the owner")?;
+        let to = party(transfer.credit.location).ok_or("the site")?;
+        assert!(matches!(from, Party::Household(_)));
+        assert!(matches!(to, Party::Workplace(_)));
+        let before = read_period(&first_period()?)?;
+        let reading = read_period(&result)?;
+        let capital: Vec<&Payment> = reading
+            .payments
+            .iter()
+            .filter(|p| p.kind == PaymentKind::Capital)
+            .collect();
+        assert_eq!(capital.len(), 1);
+        assert_eq!(
+            (capital[0].payer, capital[0].payee, capital[0].amount),
+            (from, to, amount)
+        );
+        assert_eq!(
+            total(&reading, PaymentKind::Profit),
+            total(&before, PaymentKind::Profit) - amount
+        );
+        for kind in [
+            PaymentKind::Wages,
+            PaymentKind::Purchases,
+            PaymentKind::Taxes,
+            PaymentKind::Benefits,
+        ] {
+            assert_eq!(total(&reading, kind), total(&before, kind));
+        }
         Ok(())
     }
 

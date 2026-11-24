@@ -235,8 +235,17 @@ pub fn not_drawn_line(report: &FlowReport) -> String {
             .and_then(|v| i128::try_from(v).ok())
             .map_or_else(too_large, human_numbers::currency_to_cent)
     };
+    let capital_total = report
+        .streams
+        .iter()
+        .filter(|s| s.stream == STREAM_MONEY[5])
+        .try_fold(0_u128, |sum, s| sum.checked_add(s.total));
+    let capital = match capital_total {
+        Some(0) => String::new(),
+        _ => format!(", capital {}", dollars(STREAM_MONEY[5])),
+    };
     format!(
-        "Not drawn: {} hours; food {}, power {}, care {} units; wages {}, purchases {}, taxes {}, benefits {}, profit {}",
+        "Not drawn: {} hours; food {}, power {}, care {} units; wages {}, purchases {}, taxes {}, benefits {}, profit {}{capital}",
         units(STREAM_WORK),
         units(STREAM_GOODS[0]),
         units(STREAM_GOODS[1]),

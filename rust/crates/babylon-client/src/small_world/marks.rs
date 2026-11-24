@@ -8,8 +8,8 @@ use super::rules::SceneRule;
 use crate::human_numbers;
 use babylon_circuit_worlds::{Good, Household, PeriodResult, Workplace};
 use babylon_material_circuit::{
-    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StaffingPoolId, StopHold,
-    StopReceipt,
+    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, OwnerSpareReceipt, PlaceMoveReceipt,
+    RestartReceipt, RestartTest, StaffingPoolId, StopHold, StopReceipt, RESTART_QUIET_PERIODS,
 };
 use std::collections::BTreeMap;
 
@@ -64,7 +64,100 @@ pub fn rule_rows(history: &[PeriodResult], index: usize, pick: &Pick) -> Result<
             resting_rows(result, *w, &mut rows)?;
         }
     }
+    if holds(result, SceneRule::OwnerRestart) {
+        match pick {
+            Pick::Body(Party::Workplace(w)) => restart_rows(result, *w, &mut rows),
+            Pick::Body(Party::Household(h)) => owner_rows(result, *h, &mut rows),
+            Pick::Particle(id) => {
+                if let Some((h, _)) = inspect::household_of(id) {
+                    owner_rows(result, h, &mut rows);
+                }
+            }
+            Pick::Body(Party::Treasury | Party::Fund) | Pick::Set(_) => {}
+        }
+    }
     Ok(rows)
+}
+
+/// "not tested", "tested, failed", "tested, no owner's money", "restarted".
+#[must_use]
+pub const fn test_words(test: RestartTest) -> &'static str {
+    match test {
+        RestartTest::NotTested => "not tested",
+        RestartTest::Failed => "tested, failed",
+        RestartTest::NoBuyer => "tested, no owner's money",
+        RestartTest::Restarted => "restarted",
+    }
+}
+
+/// The restart's rows of a workplace: its `RestartReceipt` and `RestingPriceToCostReceipt`s of its site, and
+/// the words that say when a workplace is tested.
+fn restart_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) {
+    for receipt in &result.receipts.adjustments {
+        match receipt {
+            AdjustmentReceipt::Restart(restart) if restart.site_id == w.site_id() => {
+                restart_receipt_rows(restart, rows);
+            }
+            AdjustmentReceipt::RestingPriceToCost(raised) if raised.site_id == w.site_id() => {
+                rows.push((
+                    "Resting price raised to cost".to_owned(),
+                    format!(
+                        "{} to {}",
+                        human_numbers::currency(raised.old.micro_units()),
+                        human_numbers::currency(raised.raised.micro_units())
+                    ),
+                ));
+            }
+            AdjustmentReceipt::Restart(_)
+            | AdjustmentReceipt::RestingPriceToCost(_)
+            | AdjustmentReceipt::HiringBound(_)
+            | AdjustmentReceipt::PlaceMove(_)
+            | AdjustmentReceipt::Stop(_)
+            | AdjustmentReceipt::RestingPrice(_)
+            | AdjustmentReceipt::OwnerSpare(_) => {}
+        }
+    }
+    rows.push((
+        "Tested after".to_owned(),
+        format!("{RESTART_QUIET_PERIODS} quiet periods under the rule"),
+    ));
+}
+
+fn restart_receipt_rows(restart: &RestartReceipt, rows: &mut Rows) {
+    rows.push((
+        "Owner's restart".to_owned(),
+        test_words(restart.test).to_owned(),
+    ));
+    if restart.test != RestartTest::NotTested {
+        rows.push(("Turned away".to_owned(), grouped(restart.turned)));
+        rows.push((
+            "One batch costs".to_owned(),
+            human_numbers::currency(restart.batch_cost.micro_units()),
+        ));
+    }
+    if restart.test == RestartTest::Restarted {
+        rows.push((
+            "Owner put in".to_owned(),
+            human_numbers::currency(restart.money.micro_units()),
+        ));
+    }
+    if restart.inputs_short {
+        rows.push(("Inputs short".to_owned(), "yes".to_owned()));
+    }
+}
+
+/// An owner household's spare for a restart, from its `OwnerSpareReceipt`s.
+fn owner_rows(result: &PeriodResult, h: Household, rows: &mut Rows) {
+    for receipt in &result.receipts.adjustments {
+        if let AdjustmentReceipt::OwnerSpare(OwnerSpareReceipt { owner, spare, .. }) = receipt {
+            if Party::from_account(*owner) == Some(Party::Household(h)) {
+                rows.push((
+                    "Spare for a restart".to_owned(),
+                    human_numbers::currency(spare.micro_units()),
+                ));
+            }
+        }
+    }
 }
 
 /// A row for each price the workplace's site held at this close, from its `RestingPriceReceipt`s.
@@ -338,12 +431,17 @@ mod tests {
     use crate::small_world::frame::{self, ParticleMode};
     use crate::small_world::inspect::Pick;
     use crate::small_world::reading::Party;
+    use crate::small_world::reading::PaymentKind;
+    use crate::small_world::table::{self, Grouping, Table};
     use babylon_circuit_worlds::doubled::HOURS_PER_PERSON;
     use babylon_circuit_worlds::{
         Household, Kind, Lasts, Place, Places, Runner, Scale, Shock, Workplace, World,
     };
     use babylon_kernel::currency::Currency;
-    use babylon_material_circuit::{AdjustmentRule, RestingPriceReceipt, StopHold, StopReceipt};
+    use babylon_material_circuit::{
+        AccountId, AdjustmentRule, RestingPriceReceipt, RestingPriceToCostReceipt, StopHold,
+        StopReceipt,
+    };
     use std::error::Error;
 
     type TestResult = Result<(), Box<dyn Error>>;
@@ -812,6 +910,194 @@ mod tests {
                 );
             }
         }
+        Ok(())
+    }
+
+    /// The quiet period with its first profit transfer made the owner's money into a workplace.
+    fn capital_period() -> Result<PeriodResult, Box<dyn Error>> {
+        use babylon_material_circuit::{CashTransferPurpose, MoneyTransferPurpose};
+        let mut result = Runner::open()?.step()?.clone();
+        let transfer = result
+            .receipts
+            .money_transfers
+            .iter_mut()
+            .find(|t| {
+                t.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::OwnershipDistribution)
+            })
+            .ok_or("a profit transfer")?;
+        transfer.purpose = MoneyTransferPurpose::Cash(CashTransferPurpose::CapitalContribution);
+        std::mem::swap(&mut transfer.debit.location, &mut transfer.credit.location);
+        Ok(result)
+    }
+
+    #[test]
+    fn the_panel_lists_the_owner_s_money() -> TestResult {
+        let result = capital_period()?;
+        let picture = frame::build_picture(&result, ParticleMode::Groups)?;
+        let payment = picture
+            .reading
+            .payments
+            .iter()
+            .find(|p| p.kind == PaymentKind::Capital)
+            .ok_or("a capital payment")?
+            .clone();
+        let (Party::Household(owner), Party::Workplace(site)) = (payment.payer, payment.payee)
+        else {
+            return Err("the owner pays a workplace".into());
+        };
+        let shown = human_numbers::currency(payment.amount);
+        let site_rows = inspect::inspect(&picture, &result, &Pick::Body(Party::Workplace(site)))?;
+        assert_eq!(
+            row_of(&site_rows, "Money in \u{b7} capital"),
+            Some(shown.clone())
+        );
+        let owner_rows = inspect::inspect(&picture, &result, &Pick::Body(Party::Household(owner)))?;
+        assert_eq!(row_of(&owner_rows, "Money out \u{b7} capital"), Some(shown));
+        let table = table::table(&picture.reading, Grouping::Workplace)?;
+        let before = table::table(
+            &frame::build_picture(&Runner::open()?.step()?.clone(), ParticleMode::Groups)?.reading,
+            Grouping::Workplace,
+        )?;
+        let money_in = |table: &Table| {
+            table
+                .rows
+                .iter()
+                .find(|r| r.label == site.label())
+                .map(|r| r.money_in)
+        };
+        assert_eq!(
+            money_in(&table),
+            money_in(&before).map(|was| was + payment.amount)
+        );
+        Ok(())
+    }
+
+    fn farm_a() -> Workplace {
+        Workplace {
+            place: Place::A,
+            kind: Kind::Farm,
+        }
+    }
+
+    fn dollars(n: i128) -> Currency {
+        Currency::from_micro_units(n * 1_000_000)
+    }
+
+    fn restart_of(period: u64, test: RestartTest) -> RestartReceipt {
+        RestartReceipt {
+            period,
+            site_id: farm_a().site_id(),
+            test,
+            inputs_short: false,
+            owner: Some(AccountId::Household(Household::Owner(Place::A).principal())),
+            money: dollars(40),
+            batch_cost: dollars(23),
+            turned: 3,
+        }
+    }
+
+    #[test]
+    fn each_restart_test_has_its_words_and_rows() -> TestResult {
+        let farm = farm_a();
+        let pick = Pick::Body(Party::Workplace(farm));
+        let mut result = Runner::open()?.step()?.clone();
+        result.rules = vec![AdjustmentRule::OwnerRestart { outlay_periods: 1 }];
+        let words = [
+            (RestartTest::NotTested, "not tested"),
+            (RestartTest::Failed, "tested, failed"),
+            (RestartTest::NoBuyer, "tested, no owner's money"),
+            (RestartTest::Restarted, "restarted"),
+        ];
+        for (test, said) in words {
+            assert_eq!(test_words(test), said);
+            let mut one = result.clone();
+            one.receipts.adjustments = vec![AdjustmentReceipt::Restart(restart_of(1, test))];
+            let rows = rule_rows(&[one], 0, &pick)?;
+            assert_eq!(row_of(&rows, "Owner's restart"), Some(said.to_owned()));
+            assert_eq!(
+                row_of(&rows, "Turned away").is_some(),
+                test != RestartTest::NotTested
+            );
+            assert_eq!(
+                row_of(&rows, "Owner put in").is_some(),
+                test == RestartTest::Restarted
+            );
+        }
+        let mut failed = restart_of(1, RestartTest::Failed);
+        failed.inputs_short = true;
+        result.receipts.adjustments = vec![
+            AdjustmentReceipt::Restart(failed),
+            AdjustmentReceipt::RestingPriceToCost(RestingPriceToCostReceipt {
+                period: 1,
+                site_id: farm.site_id(),
+                old: dollars(12),
+                raised: dollars(23),
+            }),
+        ];
+        let rows = rule_rows(&[result], 0, &pick)?;
+        assert_eq!(row_of(&rows, "Inputs short"), Some("yes".to_owned()));
+        assert_eq!(
+            row_of(&rows, "Resting price raised to cost"),
+            Some("$12.00 to $23.00".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_restart_s_rows_are_its_receipt_s() -> TestResult {
+        let farm = farm_a();
+        let owner = Household::Owner(Place::A);
+        let mut result = Runner::open()?.step()?.clone();
+        let pick = Pick::Body(Party::Workplace(farm));
+        result
+            .receipts
+            .adjustments
+            .push(AdjustmentReceipt::Restart(restart_of(
+                result.period,
+                RestartTest::Restarted,
+            )));
+        result
+            .receipts
+            .adjustments
+            .push(AdjustmentReceipt::OwnerSpare(OwnerSpareReceipt {
+                period: result.period,
+                owner: AccountId::Household(owner.principal()),
+                spare: dollars(50),
+            }));
+        // Without the rule asked: nothing.
+        assert_eq!(rule_rows(&[result.clone()], 0, &pick)?, Rows::new());
+        result.rules = vec![AdjustmentRule::OwnerRestart { outlay_periods: 1 }];
+        let rows = rule_rows(&[result.clone()], 0, &pick)?;
+        assert_eq!(
+            rows,
+            vec![
+                ("Owner's restart".to_owned(), "restarted".to_owned()),
+                ("Turned away".to_owned(), "3".to_owned()),
+                ("One batch costs".to_owned(), "$23.00".to_owned()),
+                ("Owner put in".to_owned(), "$40.00".to_owned()),
+                (
+                    "Tested after".to_owned(),
+                    "3 quiet periods under the rule".to_owned()
+                ),
+            ]
+        );
+        // Every workplace's panel says when it is tested; only the farm has a receipt.
+        for w in Workplace::ALL {
+            if w != farm {
+                assert_eq!(
+                    rule_rows(&[result.clone()], 0, &Pick::Body(Party::Workplace(w)))?,
+                    vec![(
+                        "Tested after".to_owned(),
+                        "3 quiet periods under the rule".to_owned()
+                    )]
+                );
+            }
+        }
+        let owner_rows = rule_rows(&[result.clone()], 0, &Pick::Body(Party::Household(owner)))?;
+        assert_eq!(
+            owner_rows,
+            vec![("Spare for a restart".to_owned(), "$50.00".to_owned())]
+        );
         Ok(())
     }
 }

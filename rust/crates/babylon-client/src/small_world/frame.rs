@@ -34,8 +34,8 @@ use std::time::Duration;
 pub const STREAM_WORK: u16 = 0;
 /// The streams of food, power and care.
 pub const STREAM_GOODS: [u16; 3] = [1, 2, 3];
-/// The streams of wages, purchases, taxes, benefits and profit.
-pub const STREAM_MONEY: [u16; 5] = [4, 5, 6, 7, 8];
+/// The streams of wages, purchases, taxes, benefits, profit and capital.
+pub const STREAM_MONEY: [u16; 6] = [4, 5, 6, 7, 8, 9];
 /// Hours one mark of the work stream stands for.
 pub const HOURS_PER_MARK: u64 = 2;
 /// Units one mark of a goods stream stands for.
@@ -213,7 +213,7 @@ fn set_style(
     }
 }
 
-/// The styles: four particles, three kinds of set, nine streams.
+/// The styles: four particles, three kinds of set, ten streams.
 #[must_use]
 pub fn field_styles() -> FieldStyles {
     let particle = |size: f32| ParticleStyle {
@@ -981,6 +981,7 @@ fn payment_stream(kind: PaymentKind) -> u16 {
         PaymentKind::Taxes => STREAM_MONEY[2],
         PaymentKind::Benefits => STREAM_MONEY[3],
         PaymentKind::Profit => STREAM_MONEY[4],
+        PaymentKind::Capital => STREAM_MONEY[5],
     }
 }
 
@@ -1088,6 +1089,7 @@ pub fn build_picture(result: &PeriodResult, mode: ParticleMode) -> Result<Pictur
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::small_world::reading::Payment;
     use babylon_circuit_worlds::{Lasts, Places, Runner, Scale, Shock, World};
     use bevy::prelude::*;
     use bevy::time::TimeUpdateStrategy;
@@ -1314,6 +1316,64 @@ mod tests {
         Ok(())
     }
 
+    /// The quiet period with its first profit transfer made the owner's money into a workplace.
+    fn capital_period() -> Result<PeriodResult, Box<dyn Error>> {
+        use babylon_material_circuit::{CashTransferPurpose, MoneyTransferPurpose};
+        let mut result = first_result()?;
+        let transfer = result
+            .receipts
+            .money_transfers
+            .iter_mut()
+            .find(|t| {
+                t.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::OwnershipDistribution)
+            })
+            .ok_or("a profit transfer")?;
+        transfer.purpose = MoneyTransferPurpose::Cash(CashTransferPurpose::CapitalContribution);
+        std::mem::swap(&mut transfer.debit.location, &mut transfer.credit.location);
+        Ok(result)
+    }
+
+    #[test]
+    fn the_owner_s_money_is_a_sixth_gold_stream() -> TestResult {
+        let result = capital_period()?;
+        let picture = build_picture(&result, ParticleMode::Groups)?;
+        let capital: Vec<&Payment> = picture
+            .reading
+            .payments
+            .iter()
+            .filter(|p| p.kind == PaymentKind::Capital)
+            .collect();
+        assert_eq!(capital.len(), 1);
+        let (Party::Household(owner), Party::Workplace(site)) =
+            (capital[0].payer, capital[0].payee)
+        else {
+            return Err("the owner pays a workplace".into());
+        };
+        let flows: Vec<&Flow> = picture
+            .frame
+            .flows
+            .iter()
+            .filter(|f| f.stream == 9)
+            .collect();
+        assert_eq!(flows.len(), 1);
+        let drawn = flows[0];
+        assert_eq!(u128::from(drawn.amount), u128::try_from(capital[0].amount)?);
+        assert!(!drawn.hollow);
+        let group = particle_of(&picture, &household_id(owner))?;
+        assert!((drawn.from.x - group.at.x).abs() < 1e-5);
+        assert!((drawn.from.z - group.at.z).abs() < 1e-5);
+        let want = hypergraph_rs_bevy::plan_to_scene((WORKPLACE_X[site.index()], 0.0), MARK_Y);
+        assert!(near(drawn.to, want));
+        let (_, report) =
+            hypergraph_rs_bevy::select_flows(&picture.frame.flows, &field_styles().streams)?;
+        for r in &report.streams {
+            assert_eq!(r.drawn + r.not_drawn, r.total, "{r:?}");
+        }
+        let stream = report_of(&report, STREAM_MONEY[5], false)?;
+        assert_eq!(stream.total, u128::try_from(capital[0].amount)?);
+        Ok(())
+    }
+
     #[test]
     fn people_stand_in_their_membranes() -> TestResult {
         let picture = quiet(ParticleMode::People)?;
@@ -1492,7 +1552,7 @@ mod tests {
     #[test]
     fn the_styles_name_the_plans_units() {
         let styles = field_styles();
-        assert_eq!(styles.streams.len(), 9);
+        assert_eq!(styles.streams.len(), 10);
         assert_eq!(styles.streams[0].unit.get(), HOURS_PER_MARK);
         assert!(STREAM_GOODS
             .iter()

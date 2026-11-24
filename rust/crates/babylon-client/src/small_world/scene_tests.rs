@@ -937,6 +937,32 @@ fn not_drawn_line_prints_the_report() -> TestResult {
 }
 
 #[test]
+fn the_not_drawn_line_names_capital_only_when_there_is_some() -> TestResult {
+    let mut app = scene_app(None)?;
+    send(&mut app, SceneCommand::Step);
+    updates(&mut app, 3);
+    let mut report = app.world().resource::<FlowReport>().clone();
+    let quiet = panel::not_drawn_line(&report);
+    assert!(!quiet.contains("capital"));
+    let mut capital = report
+        .streams
+        .first()
+        .copied()
+        .ok_or("a stream in the report")?;
+    capital.stream = crate::small_world::frame::STREAM_MONEY[5];
+    capital.hollow = false;
+    capital.total = 40_000_000;
+    capital.drawn = 0;
+    capital.not_drawn = 40_000_000;
+    report.streams.push(capital);
+    assert_eq!(
+        panel::not_drawn_line(&report),
+        format!("{quiet}, capital $40.00")
+    );
+    Ok(())
+}
+
+#[test]
 fn the_units_line_is_built_from_the_marks_constants() {
     assert_eq!(
         controls::units_line(),

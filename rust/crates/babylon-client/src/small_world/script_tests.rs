@@ -380,3 +380,54 @@ fn the_proof_script_of_task_6c_parses() {
         ])
     );
 }
+
+/// The proof script of Task 7c, run by the lead on the display.
+const PROOF_7C: &str = r#"{"step":20}
+{"strike":{"shock":"harvest_fails","places":"a","lasts":"until_lifted"}}
+{"step":10}
+{"rule":"seeking_in_place"}
+{"step":5}
+{"rule":"hiring_within_means"}
+{"step":5}
+{"rule":"stop_without_pay"}
+{"step":5}
+{"rule":"resting_price"}
+{"step":5}
+{"rule":"owner_restart"}
+{"step":20}
+{"capture":"restart-on"}
+{"particles":"people"}
+{"capture":"restart-people"}
+{"report":"restart-on"}
+"#;
+
+#[test]
+fn the_proof_script_of_task_7c_parses() {
+    let commands = script::parse_script(PROOF_7C);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(20),
+            ScriptCommand::Strike {
+                shock: "harvest_fails".into(),
+                places: "a".into(),
+                lasts: "until_lifted".into(),
+            },
+            ScriptCommand::Step(10),
+            ScriptCommand::Rule("seeking_in_place".into()),
+            ScriptCommand::Step(5),
+            ScriptCommand::Rule("hiring_within_means".into()),
+            ScriptCommand::Step(5),
+            ScriptCommand::Rule("stop_without_pay".into()),
+            ScriptCommand::Step(5),
+            ScriptCommand::Rule("resting_price".into()),
+            ScriptCommand::Step(5),
+            ScriptCommand::Rule("owner_restart".into()),
+            ScriptCommand::Step(20),
+            ScriptCommand::Capture("restart-on".into()),
+            ScriptCommand::Particles("people".into()),
+            ScriptCommand::Capture("restart-people".into()),
+            ScriptCommand::Report("restart-on".into()),
+        ])
+    );
+}

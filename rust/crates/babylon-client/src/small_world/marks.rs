@@ -7,7 +7,9 @@ use super::reading::Party;
 use super::rules::SceneRule;
 use crate::human_numbers;
 use babylon_circuit_worlds::{Household, PeriodResult, Workplace};
-use babylon_material_circuit::{AdjustmentReceipt, PlaceMoveReceipt, StaffingPoolId};
+use babylon_material_circuit::{
+    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, PlaceMoveReceipt, StaffingPoolId,
+};
 use std::collections::BTreeMap;
 
 type Rows = Vec<(String, String)>;
@@ -34,18 +36,22 @@ pub fn rule_rows(history: &[PeriodResult], index: usize, pick: &Pick) -> Result<
         .get(index)
         .ok_or_else(|| missing("no such period in the history"))?;
     let mut rows = Vec::new();
-    if !holds(result, SceneRule::SeekingInPlace) {
-        return Ok(rows);
-    }
-    match pick {
-        Pick::Body(Party::Workplace(w)) => seeker_rows_of_workplace(result, *w, &mut rows)?,
-        Pick::Body(Party::Household(h)) => seeker_rows_of_household(result, *h, &mut rows)?,
-        Pick::Particle(id) => {
-            if let Some((h, _)) = inspect::household_of(id) {
-                seeker_rows_of_household(result, h, &mut rows)?;
+    if holds(result, SceneRule::SeekingInPlace) {
+        match pick {
+            Pick::Body(Party::Workplace(w)) => seeker_rows_of_workplace(result, *w, &mut rows)?,
+            Pick::Body(Party::Household(h)) => seeker_rows_of_household(result, *h, &mut rows)?,
+            Pick::Particle(id) => {
+                if let Some((h, _)) = inspect::household_of(id) {
+                    seeker_rows_of_household(result, h, &mut rows)?;
+                }
             }
+            Pick::Body(Party::Treasury | Party::Fund) | Pick::Set(_) => {}
         }
-        Pick::Body(Party::Treasury | Party::Fund) | Pick::Set(_) => {}
+    }
+    if holds(result, SceneRule::HiringWithinMeans) {
+        if let Pick::Body(Party::Workplace(w)) = pick {
+            bound_rows(result, *w, &mut rows)?;
+        }
     }
     Ok(rows)
 }
@@ -69,6 +75,66 @@ pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt> {
             AdjustmentReceipt::PlaceMove(moved) => Some(moved),
             AdjustmentReceipt::HiringBound(_) => None,
         })
+}
+
+/// The period's bound receipts of a workplace's site, in receipt order.
+fn bounds_of(result: &PeriodResult, w: Workplace) -> impl Iterator<Item = &HiringBoundReceipt> {
+    result
+        .receipts
+        .adjustments
+        .iter()
+        .filter_map(move |receipt| match receipt {
+            AdjustmentReceipt::HiringBound(bound) if bound.site_id == w.site_id() => Some(bound),
+            AdjustmentReceipt::HiringBound(_) | AdjustmentReceipt::PlaceMove(_) => None,
+        })
+}
+
+/// "nothing", "its capacity", "its inputs", "its money", "another limit".
+#[must_use]
+pub const fn limit_words(limit: HiringLimit) -> &'static str {
+    match limit {
+        HiringLimit::None => "nothing",
+        HiringLimit::Capacity => "its capacity",
+        HiringLimit::Inputs => "its inputs",
+        HiringLimit::Money => "its money",
+        HiringLimit::Other => "another limit",
+    }
+}
+
+/// 0 to 4 in the order of `HiringLimit`, as the bench writes `bound_by_` (Task 4, decision 4).
+const fn limit_code(limit: HiringLimit) -> u8 {
+    match limit {
+        HiringLimit::None => 0,
+        HiringLimit::Capacity => 1,
+        HiringLimit::Inputs => 2,
+        HiringLimit::Money => 3,
+        HiringLimit::Other => 4,
+    }
+}
+
+/// The bound's rows of a workplace from the period's `HiringBound` receipts of its site. They are for the next
+/// period: the bound of a close cuts the attendance of the period that opens after it.
+fn bound_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError> {
+    let mut asked = 0_u64;
+    let mut allowed = 0_u64;
+    let mut limit: Option<HiringLimit> = None;
+    for bound in bounds_of(result, w) {
+        asked = add(asked, bound.asked_hours)?;
+        allowed = add(allowed, bound.bound_hours)?;
+        if limit.is_none_or(|held| limit_code(bound.limit) > limit_code(held)) {
+            limit = Some(bound.limit);
+        }
+    }
+    let Some(limit) = limit else {
+        return Ok(());
+    };
+    rows.push(("Hours asked for the next period".to_owned(), grouped(asked)));
+    rows.push((
+        "Hours its money and inputs allow".to_owned(),
+        grouped(allowed),
+    ));
+    rows.push(("Bound by".to_owned(), limit_words(limit).to_owned()));
+    Ok(())
 }
 
 fn workplace_of_pool(pool: StaffingPoolId) -> Result<Workplace, FrameError> {
@@ -164,8 +230,9 @@ mod tests {
     use crate::small_world::reading::Party;
     use babylon_circuit_worlds::doubled::HOURS_PER_PERSON;
     use babylon_circuit_worlds::{
-        Household, Lasts, Places, Runner, Scale, Shock, Workplace, World,
+        Household, Kind, Lasts, Place, Places, Runner, Scale, Shock, Workplace, World,
     };
+    use babylon_material_circuit::AdjustmentRule;
     use std::error::Error;
 
     type TestResult = Result<(), Box<dyn Error>>;
@@ -305,6 +372,142 @@ mod tests {
         let by_particle = rule_rows(history, next, &Pick::Particle(frame::household_id(home)))?;
         assert_eq!(by_particle, home_rows);
         the_host_s_workforce_holds_the_movers(after, home, host, working)?;
+        Ok(())
+    }
+
+    /// The first period of `fund-P2` of the bound's set (`pc-bound-400`) whose close cuts some workplace by a
+    /// limit other than none: farm A, by its inputs (`Inputs`, code 2). The bench's `bound_by_farm_a` of that run
+    /// (`pc-bound-400/fund-P2.tsv`) is 2 from period 1 on, checked by hand once.
+    const FIRST_CUT: u64 = 1;
+
+    /// The bench's `fund-P2` of the bound's form: the bound and the seekers on, the harvest failing in both
+    /// places until lifted.
+    fn bound_fund_p2() -> Result<Runner, Box<dyn Error>> {
+        let switches = World::switches_at(Scale::Small);
+        let mut runner = Runner::open_world(&World {
+            rules: vec![switches[0], switches[1]],
+            ..World::scene()
+        })?;
+        runner.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+        Ok(runner)
+    }
+
+    fn bound_of(result: &PeriodResult, w: Workplace) -> (u64, u64, Option<HiringLimit>) {
+        let mut asked = 0_u64;
+        let mut allowed = 0_u64;
+        let mut limit: Option<HiringLimit> = None;
+        for bound in bounds_of(result, w) {
+            asked += bound.asked_hours;
+            allowed += bound.bound_hours;
+            if limit.is_none_or(|held| limit_code(bound.limit) > limit_code(held)) {
+                limit = Some(bound.limit);
+            }
+        }
+        (asked, allowed, limit)
+    }
+
+    #[test]
+    fn the_bound_s_rows_are_its_receipt_s() -> TestResult {
+        let farm = Workplace {
+            place: Place::A,
+            kind: Kind::Farm,
+        };
+        let mut result = Runner::open()?.step()?.clone();
+        let pick = Pick::Body(Party::Workplace(farm));
+        assert_eq!(rule_rows(&[result.clone()], 0, &pick)?, Rows::new());
+        result.rules = vec![AdjustmentRule::HiringWithinMeans];
+        // No receipt of the site, no row.
+        assert_eq!(rule_rows(&[result.clone()], 0, &pick)?, Rows::new());
+        let unit_id = result.members.first().ok_or("a member")?.unit_id;
+        let words = [
+            (HiringLimit::None, "nothing"),
+            (HiringLimit::Capacity, "its capacity"),
+            (HiringLimit::Inputs, "its inputs"),
+            (HiringLimit::Money, "its money"),
+            (HiringLimit::Other, "another limit"),
+        ];
+        for (limit, said) in words {
+            assert_eq!(limit_words(limit), said);
+        }
+        let mut codes: Vec<u8> = words.iter().map(|(limit, _)| limit_code(*limit)).collect();
+        codes.sort_unstable();
+        assert_eq!(codes, vec![0, 1, 2, 3, 4]);
+        for (limit, said) in words {
+            let mut held = result.clone();
+            held.receipts
+                .adjustments
+                .push(AdjustmentReceipt::HiringBound(HiringBoundReceipt {
+                    period: held.period + 1,
+                    site_id: farm.site_id(),
+                    unit_id,
+                    asked_hours: 40,
+                    bound_hours: 30,
+                    limit,
+                }));
+            let rows = rule_rows(&[held], 0, &pick)?;
+            assert_eq!(
+                rows,
+                vec![
+                    (
+                        "Hours asked for the next period".to_owned(),
+                        "40".to_owned()
+                    ),
+                    (
+                        "Hours its money and inputs allow".to_owned(),
+                        "30".to_owned()
+                    ),
+                    ("Bound by".to_owned(), said.to_owned()),
+                ]
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_bound_reads_as_the_bench_counts_it() -> TestResult {
+        let mut runner = bound_fund_p2()?;
+        while runner
+            .history()
+            .last()
+            .is_none_or(|r| r.period < FIRST_CUT + 1)
+        {
+            runner.step()?;
+        }
+        let history = runner.history();
+        let cut_at = usize::try_from(FIRST_CUT)? - 1;
+        let first_cut = |result: &PeriodResult| {
+            Workplace::ALL
+                .into_iter()
+                .find(|w| bounds_of(result, *w).any(|bound| bound.limit != HiringLimit::None))
+        };
+        assert!(history[..cut_at].iter().all(|r| first_cut(r).is_none()));
+        let site = first_cut(&history[cut_at]).ok_or("no cut in the pinned period")?;
+        let rows = rule_rows(history, cut_at, &Pick::Body(Party::Workplace(site)))?;
+        assert_ne!(row_of(&rows, "Bound by"), Some("nothing".to_owned()));
+        assert!(row_of(&rows, "Bound by").is_some());
+        for (index, result) in history[..=cut_at].iter().enumerate() {
+            for w in Workplace::ALL {
+                let rows = rule_rows(history, index, &Pick::Body(Party::Workplace(w)))?;
+                let (asked, allowed, limit) = bound_of(result, w);
+                match limit {
+                    None => assert!(row_of(&rows, "Bound by").is_none()),
+                    Some(limit) => {
+                        assert_eq!(
+                            row_of(&rows, "Hours asked for the next period"),
+                            Some(human_numbers::grouped(u128::from(asked)))
+                        );
+                        assert_eq!(
+                            row_of(&rows, "Hours its money and inputs allow"),
+                            Some(human_numbers::grouped(u128::from(allowed)))
+                        );
+                        assert_eq!(
+                            row_of(&rows, "Bound by"),
+                            Some(limit_words(limit).to_owned())
+                        );
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

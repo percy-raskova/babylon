@@ -103,7 +103,7 @@ impl SceneRule {
 
 /// The rules whose switches the scene shows: the first of `SceneRule::LISTED`, as far as they are built. Each
 /// rule's companion task appends its own; nothing else does.
-pub const SHOWN_RULES: &[SceneRule] = &[SceneRule::SeekingInPlace];
+pub const SHOWN_RULES: &[SceneRule] = &[SceneRule::SeekingInPlace, SceneRule::HiringWithinMeans];
 /// Whether the rail has the rules' tab: every other place reads this, not `SHOWN_RULES.is_empty()`.
 #[allow(clippy::const_is_empty, reason = "the list grows task by task")]
 pub const RULES_SHOWN: bool = !SHOWN_RULES.is_empty();

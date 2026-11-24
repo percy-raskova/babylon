@@ -497,19 +497,51 @@ fn line(runner: &Runner, result: &PeriodResult) -> Line {
 /// One run of `periods` periods through `Runner`, reduced to its projected rows (header and one line a
 /// period).
 pub(crate) fn rows(run: &BenchRun, periods: u64) -> String {
-    let mut runner = Runner::open_world(&run.world)
-        .unwrap_or_else(|error| panic!("{} opens: {error:?}", run.name));
+    rows_and_digests(run, periods, TurnedOn::AtOpening).0
+}
+
+/// When a run's rules are turned on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TurnedOn {
+    /// With the world, as `Runner::open_world` does.
+    AtOpening,
+    /// After the strikes, before the first step.
+    AfterStrikes,
+}
+
+/// As `rows`, with the state's digest after each period. With `AfterStrikes`, the world opens with no rule, the
+/// strikes follow, and then each rule of the world is turned on, all before the first step.
+pub(crate) fn rows_and_digests(
+    run: &BenchRun,
+    periods: u64,
+    turned: TurnedOn,
+) -> (String, Vec<[u8; 32]>) {
+    let mut world = run.world.clone();
+    let rules = if turned == TurnedOn::AfterStrikes {
+        std::mem::take(&mut world.rules)
+    } else {
+        Vec::new()
+    };
+    let mut runner =
+        Runner::open_world(&world).unwrap_or_else(|error| panic!("{} opens: {error:?}", run.name));
     for (shock, places, lasts) in &run.strikes {
         runner
             .strike(*shock, *places, *lasts)
             .unwrap_or_else(|error| panic!("{} strikes: {error:?}", run.name));
     }
+    for rule in rules {
+        runner
+            .turn_on(rule)
+            .unwrap_or_else(|error| panic!("{} turns on {rule:?}: {error}", run.name));
+    }
+    let mut digests = Vec::new();
     let mut text = String::new();
     for index in 0..periods {
         let result = runner
             .step()
             .unwrap_or_else(|error| panic!("{} steps period {}: {error:?}", run.name, index + 1))
             .clone();
+        digests.push(result.state_digest);
         let row = line(&runner, &result);
         if index == 0 {
             let header: Vec<&str> = row.columns.iter().map(|(name, _)| name.as_str()).collect();
@@ -527,7 +559,7 @@ pub(crate) fn rows(run: &BenchRun, periods: u64) -> String {
             .collect();
         let _ = writeln!(text, "{}", values.join("\t"));
     }
-    compare::project(&text)
+    (compare::project(&text), digests)
 }
 
 #[cfg(test)]

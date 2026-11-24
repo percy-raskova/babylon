@@ -375,6 +375,7 @@ impl MaterialCatalogDefinition {
         let Some(policy) = &self.market_clearing else {
             return Ok(());
         };
+        crate::adjustment::admit(&policy.adjustments)?;
         let declared: BTreeMap<(GoodId, UnitId), bool> = self
             .commodities
             .iter()
@@ -483,7 +484,8 @@ impl MaterialCatalogDefinition {
 mod tests {
     use super::*;
     use crate::{
-        FinalDemandPrincipalId, HouseholdNeedBasis, HouseholdWant, MarketClearingPolicy, WantTier,
+        adjustment, AdjustmentRule, FinalDemandPrincipalId, HouseholdNeedBasis, HouseholdWant,
+        MarketClearingPolicy, WantTier,
     };
 
     const PINNED_BASE_DIGEST: [u8; 32] = [
@@ -548,6 +550,7 @@ mod tests {
             paying_order: order.iter().map(|&n| (good(n), unit(n))).collect(),
             household_wants: vec![],
             plans_from_spare_money: false,
+            adjustments: Vec::new(),
         }
     }
 
@@ -594,6 +597,231 @@ mod tests {
             tail.extend_from_slice(&[n; 32]);
         }
         assert_eq!(&bytes[head + 4 + body.len()..], tail.as_slice());
+    }
+
+    fn asking(rules: &[AdjustmentRule]) -> MaterialCatalogDefinition {
+        let mut definition = base();
+        let mut order = policy(&[1, 2]);
+        order.adjustments = rules.to_vec();
+        definition.market_clearing = Some(order);
+        definition
+    }
+
+    #[test]
+    fn adjustments_write_version_nine_before_the_bytes_without_them() {
+        use crate::AdjustmentRule::HiringWithinMeans;
+        let asking = asking(&[HiringWithinMeans]);
+        let mut quiet = asking.clone();
+        quiet
+            .market_clearing
+            .as_mut()
+            .expect("a policy")
+            .adjustments = vec![];
+        let bytes = crate::wire::catalog_bytes(&asking).expect("bytes");
+        let plain = crate::wire::catalog_bytes(&quiet).expect("bytes");
+        let head = crate::wire::MATERIAL_CATALOG_DOMAIN_BYTES.len() + 1;
+        assert_eq!(bytes[head..head + 2], 9_u16.to_be_bytes());
+        assert_eq!(bytes[head + 2..head + 4], 1_u16.to_be_bytes());
+        assert_eq!(bytes[head + 4], 1_u8);
+        assert_eq!(&bytes[head + 5..], &plain[head..]);
+        // Without A6's flag the list sits where A6's version would; with it, the list is first of the two.
+        let mut spare = asking;
+        spare
+            .market_clearing
+            .as_mut()
+            .expect("a policy")
+            .plans_from_spare_money = true;
+        let bytes = crate::wire::catalog_bytes(&spare).expect("bytes");
+        assert_eq!(bytes[head..head + 2], 9_u16.to_be_bytes());
+        assert_eq!(bytes[head + 5..head + 7], 8_u16.to_be_bytes());
+    }
+
+    #[test]
+    fn a_restart_writes_its_periods() {
+        use crate::AdjustmentRule::{
+            HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+        };
+        let rules = [
+            HiringWithinMeans,
+            SeekingInPlace,
+            StopWithoutPay,
+            RestingPrice,
+            OwnerRestart { outlay_periods: 2 },
+        ];
+        let bytes = crate::wire::catalog_bytes(&asking(&rules)).expect("bytes");
+        let head = crate::wire::MATERIAL_CATALOG_DOMAIN_BYTES.len() + 1;
+        assert_eq!(bytes[head + 2..head + 4], 5_u16.to_be_bytes());
+        // Four tags of one byte, then the fifth tag and its periods.
+        assert_eq!(bytes[head + 4..head + 8], [1_u8, 2, 3, 4]);
+        assert_eq!(bytes[head + 8], 5_u8);
+        assert_eq!(bytes[head + 9..head + 17], 2_u64.to_be_bytes());
+    }
+
+    #[test]
+    fn adjustments_change_the_digest() {
+        use crate::AdjustmentRule::HiringWithinMeans;
+        for spare in [false, true] {
+            let mut plain = asking(&[]);
+            let mut with = asking(&[HiringWithinMeans]);
+            for definition in [&mut plain, &mut with] {
+                definition
+                    .market_clearing
+                    .as_mut()
+                    .expect("a policy")
+                    .plans_from_spare_money = spare;
+            }
+            assert_ne!(
+                digest(&plain).expect("digest"),
+                digest(&with).expect("digest")
+            );
+        }
+    }
+
+    #[test]
+    fn admission_refuses_a_list_out_of_order_or_twice() {
+        use crate::AdjustmentRule::{HiringWithinMeans, RestingPrice, SeekingInPlace};
+        assert!(adjustment::refuse_combinations(&[SeekingInPlace, HiringWithinMeans]).is_err());
+        assert!(adjustment::refuse_combinations(&[HiringWithinMeans, HiringWithinMeans]).is_err());
+        assert!(adjustment::refuse_combinations(&[RestingPrice, HiringWithinMeans]).is_err());
+        assert!(adjustment::refuse_combinations(&[
+            HiringWithinMeans,
+            SeekingInPlace,
+            RestingPrice
+        ])
+        .is_ok());
+        assert!(adjustment::refuse_combinations(&[]).is_ok());
+    }
+
+    #[test]
+    fn admission_refuses_the_stop_rule_without_seekers() {
+        use crate::AdjustmentRule::{SeekingInPlace, StopWithoutPay};
+        assert!(adjustment::refuse_combinations(&[StopWithoutPay]).is_err());
+        assert!(adjustment::refuse_combinations(&[SeekingInPlace, StopWithoutPay]).is_ok());
+    }
+
+    #[test]
+    fn admission_refuses_a_restart_without_its_rules() {
+        use crate::AdjustmentRule::{
+            HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+        };
+        let restart = OwnerRestart { outlay_periods: 1 };
+        assert!(adjustment::refuse_combinations(&[restart]).is_err());
+        assert!(adjustment::refuse_combinations(&[
+            SeekingInPlace,
+            StopWithoutPay,
+            RestingPrice,
+            restart
+        ])
+        .is_err());
+        assert!(adjustment::refuse_combinations(&[
+            HiringWithinMeans,
+            SeekingInPlace,
+            StopWithoutPay,
+            restart
+        ])
+        .is_err());
+        assert!(adjustment::refuse_combinations(&[
+            HiringWithinMeans,
+            SeekingInPlace,
+            RestingPrice,
+            restart
+        ])
+        .is_err());
+        assert!(adjustment::refuse_combinations(&[
+            HiringWithinMeans,
+            SeekingInPlace,
+            StopWithoutPay,
+            RestingPrice,
+            restart
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn admission_refuses_a_restart_of_zero_periods() {
+        use crate::AdjustmentRule::{
+            HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+        };
+        let with = |outlay_periods| {
+            [
+                HiringWithinMeans,
+                SeekingInPlace,
+                StopWithoutPay,
+                RestingPrice,
+                OwnerRestart { outlay_periods },
+            ]
+        };
+        assert!(adjustment::refuse_combinations(&with(0)).is_err());
+        assert!(adjustment::refuse_combinations(&with(1)).is_ok());
+    }
+
+    #[test]
+    fn needs_is_the_table_of_the_refusals() {
+        use crate::AdjustmentRule::{
+            GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace,
+            StopWithoutPay,
+        };
+        let all = [
+            HiringWithinMeans,
+            SeekingInPlace,
+            StopWithoutPay,
+            RestingPrice,
+            OwnerRestart { outlay_periods: 1 },
+            GoodsStepDown,
+        ];
+        for rule in all {
+            assert_eq!(
+                adjustment::refuse_combinations(&[rule]).is_err(),
+                !rule.needs().is_empty(),
+                "{rule:?} alone"
+            );
+            // The rule with every rule it needs, and those rules' needs, in the order of the rules.
+            let mut list = vec![rule];
+            let mut index = 0;
+            while index < list.len() {
+                let needs = list[index].needs();
+                for need in needs {
+                    if !crate::adjustment::asks(&list, *need) {
+                        list.push(*need);
+                    }
+                }
+                index += 1;
+            }
+            list.sort();
+            assert!(
+                adjustment::refuse_combinations(&list).is_ok(),
+                "{rule:?} with its needs"
+            );
+        }
+    }
+
+    #[test]
+    fn admission_refuses_a_rule_not_yet_built() {
+        use crate::adjustment::NOT_YET_BUILT;
+        use crate::AdjustmentRule::{
+            HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+        };
+        for kind in NOT_YET_BUILT {
+            let mut list = vec![*kind];
+            for need in [
+                HiringWithinMeans,
+                SeekingInPlace,
+                StopWithoutPay,
+                RestingPrice,
+            ] {
+                let needed = kind.needs().contains(&need)
+                    || (matches!(kind, OwnerRestart { .. }) && need == SeekingInPlace);
+                if needed && !crate::adjustment::asks(&list, need) {
+                    list.push(need);
+                }
+            }
+            list.sort();
+            assert!(
+                adjustment::refuse_combinations(&list).is_ok(),
+                "{kind:?} passes"
+            );
+            assert!(refused(asking(&list)), "{kind:?} is refused as not built");
+        }
     }
 
     #[test]

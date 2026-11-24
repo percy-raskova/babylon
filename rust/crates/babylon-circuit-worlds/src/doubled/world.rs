@@ -5,6 +5,7 @@
 
 use crate::doubled::figures::Figures;
 use crate::{Household, Kind, Place, Places};
+use babylon_material_circuit::AdjustmentRule;
 
 /// Which of the bench's two worlds: no public account, or a treasury and a fund.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +62,8 @@ pub struct World {
     pub scale: Scale,
     /// The change to the opening, if any.
     pub pushed: Option<Pushed>,
+    /// The rules the world opens with: `Runner::open_world` turns each on, in order, before the first step.
+    pub rules: Vec<AdjustmentRule>,
 }
 
 /// Whether a choice of places includes the place.
@@ -79,7 +82,32 @@ impl World {
             economy: Economy::Fund,
             scale: Scale::Small,
             pushed: None,
+            rules: Vec::new(),
         }
+    }
+
+    /// The six rules in the order of `AdjustmentRule`, the restart with the periods of outlay of `scale`
+    /// (1 period of outlay at the small figures, 2 at the national).
+    #[must_use]
+    pub const fn switches_at(scale: Scale) -> [AdjustmentRule; 6] {
+        let outlay_periods = match scale {
+            Scale::Small => 1,
+            Scale::National => 2,
+        };
+        [
+            AdjustmentRule::HiringWithinMeans,
+            AdjustmentRule::SeekingInPlace,
+            AdjustmentRule::StopWithoutPay,
+            AdjustmentRule::RestingPrice,
+            AdjustmentRule::OwnerRestart { outlay_periods },
+            AdjustmentRule::GoodsStepDown,
+        ]
+    }
+
+    /// `switches_at(self.scale)`: the six rules of this world.
+    #[must_use]
+    pub const fn switches(&self) -> [AdjustmentRule; 6] {
+        Self::switches_at(self.scale)
     }
 
     /// The household accounts, in the engine's principal order: `Household::ALL` with the fund, the same

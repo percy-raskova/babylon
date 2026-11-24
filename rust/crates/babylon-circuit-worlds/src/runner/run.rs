@@ -1,15 +1,18 @@
 //! The runner: one period is the engine's own, in the order of the game's staffed run.
 
+use std::mem;
+
 use crate::doubled::{self, Figures, World, HORIZON};
 use crate::runner::error::{RunnerError, Stage};
 use crate::runner::result::{Closing, PeriodReceipts, PeriodResult, PeriodSummary};
+use crate::runner::rules::{RuleError, RuleOn, Switch};
 use crate::shocks::{Lasts, Places, Shock, ShockBook, ShockError};
 use crate::{Kind, OpeningPush, Place, Pushed, Workplace, WorldError};
 use babylon_material_circuit::{
-    self as engine, CircuitAccounting, LaborCapacityRow, MaterialCatalog, MaterialCircuitError,
-    MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MonetaryCircuit,
-    SiteId, StaffingError, StaffingMemberReceipt, StaffingMemberState, StaffingPoolBinding,
-    StaffingState, StaffingWorkRequest,
+    self as engine, AdjustmentRule, CircuitAccounting, LaborCapacityRow, MaterialCatalog,
+    MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow,
+    MonetaryCircuit, SiteId, StaffingError, StaffingMemberReceipt, StaffingMemberState,
+    StaffingPoolBinding, StaffingState, StaffingWorkRequest,
 };
 
 /// What one successful period hands back to the runner.
@@ -40,6 +43,13 @@ struct Opening {
     workers: [u64; 8],
 }
 
+/// What a catalog of the cache was built from: the figures of production and the rules it asks for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CatalogKey {
+    figures: Figures,
+    rules: Vec<AdjustmentRule>,
+}
+
 /// The doubled world, stepped one period at a time. The runner keeps every period's result and
 /// never the state; a refusal stops it, and starting over is a new runner.
 pub struct Runner {
@@ -49,7 +59,8 @@ pub struct Runner {
     staffing: StaffingState,
     members: Vec<Vec<StaffingMemberState>>,
     bindings: Vec<StaffingPoolBinding>,
-    catalogs: Vec<(Figures, MaterialCatalog)>,
+    catalogs: Vec<(CatalogKey, MaterialCatalog)>,
+    rules: Vec<RuleOn>,
     book: ShockBook,
     history: Vec<PeriodResult>,
     stopped: Option<RunnerError>,
@@ -91,12 +102,16 @@ impl Runner {
             members,
             bindings,
             catalogs: Vec::new(),
+            rules: Vec::new(),
             book,
             history: Vec::new(),
             stopped: None,
         };
         let figures = runner.book.figures(runner.state.period);
-        runner.ensure_catalog(&figures)?;
+        runner.ensure_catalog(&figures, &[])?;
+        for rule in &world.rules {
+            runner.turn_on(*rule)?;
+        }
         Ok(runner)
     }
 
@@ -115,10 +130,14 @@ impl Runner {
     /// The catalog the last step closed under; `None` before the first step.
     #[must_use]
     pub fn catalog(&self) -> Option<&MaterialCatalog> {
-        let figures = self.history.last()?.figures;
+        let last = self.history.last()?;
+        let key = CatalogKey {
+            figures: last.figures,
+            rules: last.rules.clone(),
+        };
         self.catalogs
             .iter()
-            .find(|(known, _)| *known == figures)
+            .find(|(known, _)| *known == key)
             .map(|(_, catalog)| catalog)
     }
 
@@ -193,10 +212,95 @@ impl Runner {
         self.book.lift(shock, place, self.state.period)
     }
 
-    fn ensure_catalog(&mut self, figures: &Figures) -> Result<(), WorldError> {
-        if !self.catalogs.iter().any(|(known, _)| known == figures) {
-            self.catalogs
-                .push((*figures, doubled::catalog_of(&self.world, figures)?));
+    /// Turn a rule on from the next period (`next_period()`, the `from` a strike gets). It holds until the run is
+    /// started over.
+    ///
+    /// # Errors
+    /// `RuleError`, in this order: `Stopped`; `AlreadyOn` (the same kind, any `outlay_periods`); `Waits` (a rule of
+    /// `needs` is not on); `Refused` (the catalog of the next period's figures with the rule added). Nothing
+    /// changes then.
+    pub fn turn_on(&mut self, rule: AdjustmentRule) -> Result<(), RuleError> {
+        if self.stopped.is_some() {
+            return Err(RuleError::Stopped);
+        }
+        if let Some(on) = self.rules.iter().find(|on| same_kind(on.rule, rule)) {
+            return Err(RuleError::AlreadyOn {
+                rule: on.rule,
+                from: on.from,
+            });
+        }
+        let missing = self.missing_needs(rule);
+        if !missing.is_empty() {
+            return Err(RuleError::Waits {
+                rule,
+                needs: missing,
+            });
+        }
+        let from = self.state.period;
+        let mut with = self.rules_at(from);
+        with.push(rule);
+        with.sort();
+        let figures = self.book.figures(from);
+        self.ensure_catalog(&figures, &with)
+            .map_err(|error| RuleError::Refused { rule, error })?;
+        self.rules.push(RuleOn { rule, from });
+        Ok(())
+    }
+
+    /// The rules on, in the order turned on.
+    #[must_use]
+    pub fn rules(&self) -> &[RuleOn] {
+        &self.rules
+    }
+
+    /// The rules the catalog of `period` asks for, in the order of `AdjustmentRule`.
+    #[must_use]
+    pub fn rules_at(&self, period: u64) -> Vec<AdjustmentRule> {
+        let mut rules: Vec<AdjustmentRule> = self
+            .rules
+            .iter()
+            .filter(|on| on.from <= period)
+            .map(|on| on.rule)
+            .collect();
+        rules.sort();
+        rules
+    }
+
+    /// Where the switch of a rule of this kind stands.
+    #[must_use]
+    pub fn switch(&self, rule: AdjustmentRule) -> Switch {
+        if let Some(on) = self.rules.iter().find(|on| same_kind(on.rule, rule)) {
+            return Switch::On { from: on.from };
+        }
+        let needs = self.missing_needs(rule);
+        if needs.is_empty() {
+            Switch::Ready
+        } else {
+            Switch::Waits { needs }
+        }
+    }
+
+    /// The rules this one needs that are not on, in the order of `AdjustmentRule`.
+    fn missing_needs(&self, rule: AdjustmentRule) -> Vec<AdjustmentRule> {
+        rule.needs()
+            .iter()
+            .copied()
+            .filter(|need| !self.rules.iter().any(|on| same_kind(on.rule, *need)))
+            .collect()
+    }
+
+    fn ensure_catalog(
+        &mut self,
+        figures: &Figures,
+        rules: &[AdjustmentRule],
+    ) -> Result<(), WorldError> {
+        let key = CatalogKey {
+            figures: *figures,
+            rules: rules.to_vec(),
+        };
+        if !self.catalogs.iter().any(|(known, _)| *known == key) {
+            let catalog = doubled::catalog_of(&self.world, figures, rules)?;
+            self.catalogs.push((key, catalog));
         }
         Ok(())
     }
@@ -208,11 +312,16 @@ impl Runner {
             return Err(RunnerError::PastHorizon { period });
         }
         let figures = self.book.figures(period);
-        self.ensure_catalog(&figures)?;
+        let rules = self.rules_at(period);
+        self.ensure_catalog(&figures, &rules)?;
+        let key = CatalogKey {
+            figures,
+            rules: rules.clone(),
+        };
         let catalog = self
             .catalogs
             .iter()
-            .find(|(known, _)| *known == figures)
+            .find(|(known, _)| *known == key)
             .map(|(_, catalog)| catalog)
             .ok_or(RunnerError::World(WorldError::Arithmetic))?;
         let closed = engine::close_material_period(catalog, &self.state)
@@ -248,6 +357,7 @@ impl Runner {
         let result = PeriodResult {
             period,
             figures,
+            rules,
             members: staffed.members,
             closing,
             summary,
@@ -262,6 +372,11 @@ impl Runner {
             members: staffed.kept,
         })
     }
+}
+
+/// Whether two rules are of one kind: the restart with any periods of outlay is one kind.
+fn same_kind(a: AdjustmentRule, b: AdjustmentRule) -> bool {
+    mem::discriminant(&a) == mem::discriminant(&b)
 }
 
 fn engine_error(period: u64, stage: Stage, error: MaterialCircuitError) -> RunnerError {

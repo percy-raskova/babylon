@@ -75,7 +75,9 @@ encoding:
     u16; without a market policy 2, 3, 4 or 5 as before; with one 6, followed by the u16 version the same
     catalog writes without the policy, the body exactly as that version writes it, and the market tail; with
     household wants 7 where 6 is written, and the wants tail after the market tail;
-    a market policy that plans from spare money writes 8 first, then the bytes the same catalog writes without it
+    a market policy that plans from spare money writes 8 first, then the bytes the same catalog writes without it;
+    a market policy that asks for adjustments writes 9 first, then its rules, then the bytes the same catalog
+    writes without them
 
 state_field_order:
   - period
@@ -129,6 +131,8 @@ catalog_row_field_order:
   household_wants: [count_u32, rows of principal_id, tier_u8, good_id, unit_id, need_basis_u8, units_per_basis]
   # A market policy that plans from spare money adds no tail: it writes u16 8 before every other byte of the
   # catalog (catalog version 8), then the bytes the same catalog writes without it.
+  # A market policy that asks for adjustments adds no tail either: it writes u16 9, the count as u16 and each
+  # rule's tag as u8 (a restart then its periods of outlay as u64) before every other byte (catalog version 9).
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -191,18 +195,29 @@ market_clearing:
     a product left out of the order of paying, a catalog without an order, and a world without money share in
     proportion as before; a product in the order has no seller with a fixed price
   P13_asking: >-
-    a catalog gets the rule only by naming an order of paying, and A6 only by setting plans_from_spare_money
+    a catalog gets the rule only by naming an order of paying, A6 only by setting plans_from_spare_money, and the
+    rules of ADR314 only by naming them in adjustments
   A6_spare_money: >-
     a workplace that holds more money than one period of what it pays out plans for what was asked of it and
     not paid for at its posted price, as far as that spare money carries; what a period pays out is the wages of
     its planned hours, the inputs of its planned batches and a merchant's restocking; a raise stops at nameplate
     and takes no stocked input that a paid-for plan needs; a workplace without spare money, and a catalog that
     does not set plans_from_spare_money, plan as before
+  ADR314_adjustments: >-
+    the rules of ADR314 measured in rounds eight to ten, named in adjustments, in this order and each once: a bound
+    on hiring (tag 1), people look for work in their place (2), no money no work (3), a resting price (4), the
+    owner restarts a stopped workplace (5, with its periods of outlay as u64), a goods price steps down (6); the
+    list is written as the u16 9, the count as u16, then each tag as u8; the stop rule needs the seekers, the
+    restart needs the bound, the stop rule and the resting price, and a restart has at least one period of outlay;
+    every other combination is admitted; a rule not yet built is refused; empty keeps today's bytes
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out
     - a household want has a positive units per basis, names a product in the order, and no key twice
     - a market policy has at most 262144 household wants
+    - adjustments are in the order of their tags, name no kind twice, include the rules each one needs, and give a
+      restart a positive number of periods of outlay
+    - adjustments name no rule that is not yet built
     - a refusal is MarketClearingInvariant
     - a market policy requires no company portfolio
     - under a market policy every offer of a product in the order is responsive

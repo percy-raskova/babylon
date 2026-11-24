@@ -429,6 +429,7 @@ impl World {
         MaterialCatalogDefinition {
             market_clearing: self.market.then(|| MarketClearingPolicy {
                 plans_from_spare_money: self.spare_money,
+                adjustments: Vec::new(),
                 paying_order: [FOOD, POWER, CARE]
                     .into_iter()
                     .map(|g| (good(g), units()))

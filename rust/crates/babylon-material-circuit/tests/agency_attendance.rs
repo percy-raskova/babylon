@@ -835,6 +835,7 @@ fn taxed_opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
     let mut definition = catalog.into_definition();
     definition.market_clearing = Some(MarketClearingPolicy {
         plans_from_spare_money: false,
+        adjustments: Vec::new(),
         paying_order: vec![
             (
                 control::good(control::MATERIALS),

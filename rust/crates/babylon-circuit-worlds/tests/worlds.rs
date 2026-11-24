@@ -31,6 +31,7 @@ fn world(economy: Economy, scale: Scale) -> World {
         economy,
         scale,
         pushed: None,
+        rules: Vec::new(),
     }
 }
 
@@ -39,6 +40,7 @@ fn pushed(economy: Economy, push: OpeningPush, places: Places) -> World {
         economy,
         scale: Scale::Small,
         pushed: Some(Pushed { push, places }),
+        rules: Vec::new(),
     }
 }
 
@@ -132,7 +134,7 @@ fn the_plain_world_opens_with_10320_dollars_and_eighty_people() -> TestResult {
             .index()] = row.available;
     }
     assert_eq!(hours, [120, 40, 40, 40, 120, 40, 40, 40]);
-    let catalog = doubled::catalog_of(&plain, &Figures::OPENING)?;
+    let catalog = doubled::catalog_of(&plain, &Figures::OPENING, &[])?;
     assert_eq!(catalog.household_needs.len(), 30);
     let policy = catalog.market_clearing.as_ref().ok_or("no market")?;
     assert_eq!(policy.household_wants.len(), 30);
@@ -573,5 +575,14 @@ fn every_world_and_push_steps_with_money_and_people_kept() -> TestResult {
         }
         assert!(runner.catalog().is_some());
     }
+    Ok(())
+}
+
+#[test]
+fn the_scene_asks_for_no_rule() -> TestResult {
+    assert_eq!(World::scene().rules.len(), 0);
+    let catalog = doubled::catalog(&Figures::OPENING)?;
+    let policy = catalog.market_clearing.as_ref().ok_or("no market")?;
+    assert_eq!(policy.adjustments.len(), 0);
     Ok(())
 }

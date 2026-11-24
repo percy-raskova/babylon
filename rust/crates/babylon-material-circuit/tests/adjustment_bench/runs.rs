@@ -1,12 +1,27 @@
 //! The 25 runs of a set: the doubled worlds of the restoring-forces rounds, each pushed one way.
 
 use babylon_circuit_worlds::{Economy, Lasts, OpeningPush, Places, Pushed, Scale, Shock, World};
+use babylon_material_circuit::AdjustmentRule;
 
 /// The rules a set runs with. Task 1b has one; each rule task adds the next.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Form {
     /// Rule A6 only: the engine as built, no new rule.
     A6,
+}
+
+impl Form {
+    /// The forms built so far.
+    pub(crate) const ALL: [Self; 1] = [Self::A6];
+
+    /// The rules the form turns on, in the order of `AdjustmentRule`, taken from `World::switches_at(scale)`
+    /// as each rule task adds its form. `A6` asks for none.
+    pub(crate) fn rules(self, scale: Scale) -> Vec<AdjustmentRule> {
+        let switches = World::switches_at(scale);
+        match self {
+            Self::A6 => switches.iter().take(0).copied().collect(),
+        }
+    }
 }
 
 /// One of the 25 runs: its file name, its world, and the shocks struck through `Runner::strike`
@@ -24,7 +39,13 @@ enum Push {
     Harvest(Places, Lasts),
 }
 
-fn run(name: &'static str, economy: Economy, scale: Scale, push: Option<Push>) -> BenchRun {
+fn run(
+    name: &'static str,
+    economy: Economy,
+    scale: Scale,
+    rules: &[AdjustmentRule],
+    push: Option<Push>,
+) -> BenchRun {
     let (pushed, strikes) = match push {
         None => (None, Vec::new()),
         Some(Push::Opening(push, places)) => (Some(Pushed { push, places }), Vec::new()),
@@ -36,6 +57,7 @@ fn run(name: &'static str, economy: Economy, scale: Scale, push: Option<Push>) -
             economy,
             scale,
             pushed,
+            rules: rules.to_vec(),
         },
         strikes,
     }
@@ -110,26 +132,27 @@ fn one_place() -> [(&'static str, &'static str, Push); 4] {
 /// The 25 runs in the prototype's order: plain quiet, P1, P2, P3, P4, P6, P7, P8, P2a, P4a, P6a, P8a, then
 /// fund quiet, P1, P2, P3, P4, P6, P7, P8, P5, P2a, P4a, P6a, P8a.
 pub(crate) fn runs(form: Form, scale: Scale) -> Vec<BenchRun> {
-    let Form::A6 = form;
-    let mut out = vec![run("plain-quiet", Economy::Plain, scale, None)];
+    let rules = form.rules(scale);
+    let mut out = vec![run("plain-quiet", Economy::Plain, scale, &rules, None)];
     for (plain, _, push) in pushes() {
-        out.push(run(plain, Economy::Plain, scale, Some(push)));
+        out.push(run(plain, Economy::Plain, scale, &rules, Some(push)));
     }
     for (plain, _, push) in one_place() {
-        out.push(run(plain, Economy::Plain, scale, Some(push)));
+        out.push(run(plain, Economy::Plain, scale, &rules, Some(push)));
     }
-    out.push(run("fund-quiet", Economy::Fund, scale, None));
+    out.push(run("fund-quiet", Economy::Fund, scale, &rules, None));
     for (_, fund, push) in pushes() {
-        out.push(run(fund, Economy::Fund, scale, Some(push)));
+        out.push(run(fund, Economy::Fund, scale, &rules, Some(push)));
     }
     out.push(run(
         "fund-P5",
         Economy::Fund,
         scale,
+        &rules,
         Some(Push::Opening(OpeningPush::LowerFundTaxes, Places::Both)),
     ));
     for (_, fund, push) in one_place() {
-        out.push(run(fund, Economy::Fund, scale, Some(push)));
+        out.push(run(fund, Economy::Fund, scale, &rules, Some(push)));
     }
     out
 }

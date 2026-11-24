@@ -648,6 +648,7 @@ mod opening_tests {
         };
         let policy = MarketClearingPolicy {
             plans_from_spare_money: false,
+            adjustments: Vec::new(),
             paying_order: vec![(limit_fixture::good(1), limit_fixture::units())],
             household_wants: vec![],
         };

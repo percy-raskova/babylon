@@ -6,11 +6,11 @@ use crate::ids;
 use crate::{Good, Kind, Place, Workplace, WorldError};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    CapacitySupply, CommodityDefinition, CommodityKind, HouseholdNeed, HouseholdNeedBasis,
-    HouseholdWant, InputOutputCoefficient, LaborCoefficient, LogisticsNodeId, MarketClearingPolicy,
-    MaterialCatalog, MaterialCatalogDefinition, MerchantHandling, MerchantHandlingCoefficient,
-    MerchantRole, ProcessOutput, ServiceInputPolicy, ServiceStage, SiteLogisticsNode,
-    SupplierRoute, SupplierTransport, WantTier,
+    AdjustmentRule, CapacitySupply, CommodityDefinition, CommodityKind, HouseholdNeed,
+    HouseholdNeedBasis, HouseholdWant, InputOutputCoefficient, LaborCoefficient, LogisticsNodeId,
+    MarketClearingPolicy, MaterialCatalog, MaterialCatalogDefinition, MerchantHandling,
+    MerchantHandlingCoefficient, MerchantRole, ProcessOutput, ServiceInputPolicy, ServiceStage,
+    SiteLogisticsNode, SupplierRoute, SupplierTransport, WantTier,
 };
 
 /// Units of power a farm batch takes, and the farm's hours a batch.
@@ -24,16 +24,22 @@ pub(crate) const FARM_OPENING_BATCHES: u64 = 4;
 /// # Errors
 /// As `catalog_of`.
 pub fn catalog(figures: &Figures) -> Result<MaterialCatalog, WorldError> {
-    catalog_of(&World::scene(), figures)
+    catalog_of(&World::scene(), figures, &[])
 }
 
-/// The catalog of a world, with the given figures of production.
+/// The catalog of a world, with the given figures of production and the rules its market policy asks for.
 ///
 /// # Errors
-/// `WorldError::Engine` when the engine refuses the catalog, `WorldError::Location` when the
+/// `WorldError::Engine` when the engine refuses the catalog or its rules, `WorldError::Location` when the
 /// place does not parse, `WorldError::Arithmetic` when a figure overflows.
-pub fn catalog_of(world: &World, figures: &Figures) -> Result<MaterialCatalog, WorldError> {
-    Ok(MaterialCatalog::try_new(definition(world, figures)?)?)
+pub fn catalog_of(
+    world: &World,
+    figures: &Figures,
+    rules: &[AdjustmentRule],
+) -> Result<MaterialCatalog, WorldError> {
+    Ok(MaterialCatalog::try_new(definition(
+        world, figures, rules,
+    )?)?)
 }
 
 fn commodities() -> Vec<CommodityDefinition> {
@@ -173,7 +179,7 @@ fn household_wants(world: &World) -> Vec<HouseholdWant> {
     rows
 }
 
-fn market_clearing(world: &World) -> MarketClearingPolicy {
+fn market_clearing(world: &World, rules: &[AdjustmentRule]) -> MarketClearingPolicy {
     MarketClearingPolicy {
         paying_order: Good::ALL
             .iter()
@@ -181,6 +187,7 @@ fn market_clearing(world: &World) -> MarketClearingPolicy {
             .collect(),
         household_wants: household_wants(world),
         plans_from_spare_money: true,
+        adjustments: rules.to_vec(),
     }
 }
 
@@ -249,9 +256,13 @@ fn service_inputs(world: &World) -> Result<Vec<ServiceInputPolicy>, WorldError> 
     Ok(rows)
 }
 
-fn definition(world: &World, figures: &Figures) -> Result<MaterialCatalogDefinition, WorldError> {
+fn definition(
+    world: &World,
+    figures: &Figures,
+    rules: &[AdjustmentRule],
+) -> Result<MaterialCatalogDefinition, WorldError> {
     Ok(MaterialCatalogDefinition {
-        market_clearing: Some(market_clearing(world)),
+        market_clearing: Some(market_clearing(world, rules)),
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: Workplace::ALL
             .iter()

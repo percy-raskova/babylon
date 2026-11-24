@@ -3,7 +3,7 @@
 use crate::doubled::Figures;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CapitalAccount, DistributionReceipt, GoodId, HouseholdCohort,
+    AccountId, AdjustmentRule, CapitalAccount, DistributionReceipt, GoodId, HouseholdCohort,
     HouseholdConsumptionReceipt, HouseholdDemandReceipt, HouseholdServiceReceipt,
     HouseholdTierReceipt, HouseholdWantReceipt, IncomeReceipt, LaborUseReceipt,
     LocalRetailFulfillmentReceipt, LocalTransferReceipt, MarketClearingReceipt,
@@ -20,6 +20,8 @@ pub struct PeriodResult {
     pub period: u64,
     /// The catalog's figures this period closed under.
     pub figures: Figures,
+    /// The rules its catalog asked for, in the order of `AdjustmentRule`.
+    pub rules: Vec<AdjustmentRule>,
     /// The receipts the scene reads.
     pub receipts: PeriodReceipts,
     /// The member receipts of the staffing; the transition's own list is empty.

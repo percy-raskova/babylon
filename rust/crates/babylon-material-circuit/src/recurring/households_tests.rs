@@ -690,6 +690,7 @@ fn opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
         });
     catalog.market_clearing = Some(crate::MarketClearingPolicy {
         plans_from_spare_money: false,
+        adjustments: Vec::new(),
         paying_order: vec![(g(), u()), (other, u())],
         household_wants: vec![crate::HouseholdWant {
             principal_id: h(),

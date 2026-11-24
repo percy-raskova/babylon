@@ -260,6 +260,7 @@ impl ServiceFixture {
                 .as_ref()
                 .map(|order| MarketClearingPolicy {
                     plans_from_spare_money: false,
+                    adjustments: Vec::new(),
                     paying_order: order
                         .iter()
                         .map(|&g| (support::good(g), support::units()))

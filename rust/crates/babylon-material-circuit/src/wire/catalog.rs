@@ -1,5 +1,6 @@
 //! Canonical immutable-catalog bytes; the digest travels with every state.
 
+use crate::AdjustmentRule;
 use crate::MaintenanceBinding;
 use crate::{
     AidMandate, AidTransport, HouseholdNeed, HouseholdTimeCommitment, HouseholdTimePolicy,
@@ -21,6 +22,29 @@ const MARKET_TIERS_CATALOG_SCHEMA_VERSION: u16 = 7;
 /// A market policy that plans from spare money writes this version first, then every byte the same
 /// catalog writes without it.
 const SPARE_MONEY_CATALOG_SCHEMA_VERSION: u16 = 8;
+
+/// A market policy that asks for adjustments writes this version first, then its rules, then every byte the
+/// same catalog writes without them.
+const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
+
+fn append_adjustments(
+    out: &mut Vec<u8>,
+    rules: &[AdjustmentRule],
+) -> Result<(), MaterialCircuitError> {
+    if rules.is_empty() {
+        return Ok(());
+    }
+    out.extend_from_slice(&ADJUSTMENT_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    let count = u16::try_from(rules.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
+    out.extend_from_slice(&count.to_be_bytes());
+    for rule in rules {
+        out.push(rule.tag());
+        if let AdjustmentRule::OwnerRestart { outlay_periods } = rule {
+            out.extend_from_slice(&outlay_periods.to_be_bytes());
+        }
+    }
+    Ok(())
+}
 
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
@@ -180,6 +204,9 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);
+    if let Some(policy) = &catalog.market_clearing {
+        append_adjustments(&mut out, &policy.adjustments)?;
+    }
     if catalog
         .market_clearing
         .as_ref()

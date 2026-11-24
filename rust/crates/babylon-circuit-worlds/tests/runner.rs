@@ -1,6 +1,11 @@
 //! The runner: the quiet doubled world stays still, byte for byte, and stops where it must.
 
-use babylon_circuit_worlds::{PeriodResult, Runner, RunnerError, Stage, Workplace};
+use babylon_circuit_worlds::{
+    PeriodResult, RuleError, Runner, RunnerError, Stage, Switch, Workplace, WorldError,
+};
+use babylon_material_circuit::AdjustmentRule::{
+    GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+};
 use babylon_material_circuit::MaterialCircuitError;
 use std::error::Error;
 use std::time::Instant;
@@ -92,6 +97,7 @@ fn the_run_stops_at_its_horizon() -> TestResult {
     assert_eq!(runner.step().err(), Some(RunnerError::Stopped));
     assert_eq!(runner.history().len(), 998);
     assert_eq!(runner.stopped(), Some(&refusal));
+    assert_eq!(runner.turn_on(HiringWithinMeans), Err(RuleError::Stopped));
     Ok(())
 }
 
@@ -105,5 +111,103 @@ fn a_refusal_is_worded_as_the_engine_words_it() {
     assert_eq!(
         error.to_string(),
         "Period 7: the engine refused the close: PublicProgramInvariant (code 39)"
+    );
+}
+
+#[test]
+fn a_rule_not_yet_built_is_refused_by_turn_on() -> TestResult {
+    let mut asked = Runner::open()?;
+    let mut twin = Runner::open()?;
+    for runner in [&mut asked, &mut twin] {
+        runner.step()?;
+        runner.step()?;
+    }
+    let refusal = asked.turn_on(GoodsStepDown);
+    assert!(
+        matches!(
+            refusal,
+            Err(RuleError::Refused {
+                rule: GoodsStepDown,
+                error: WorldError::Engine(MaterialCircuitError::MarketClearingInvariant)
+            })
+        ),
+        "{refusal:?}"
+    );
+    assert_eq!(asked.rules(), []);
+    assert_eq!(asked.switch(GoodsStepDown), Switch::Ready);
+    for _ in 0..5 {
+        asked.step()?;
+        twin.step()?;
+    }
+    assert_eq!(asked.history(), twin.history());
+    Ok(())
+}
+
+#[test]
+fn a_switch_says_what_it_waits_for() -> TestResult {
+    let mut runner = Runner::open()?;
+    assert_eq!(
+        runner.switch(StopWithoutPay),
+        Switch::Waits {
+            needs: vec![SeekingInPlace]
+        }
+    );
+    assert_eq!(
+        runner.turn_on(StopWithoutPay),
+        Err(RuleError::Waits {
+            rule: StopWithoutPay,
+            needs: vec![SeekingInPlace]
+        })
+    );
+    assert_eq!(
+        runner.switch(OwnerRestart { outlay_periods: 1 }),
+        Switch::Waits {
+            needs: vec![HiringWithinMeans, StopWithoutPay, RestingPrice]
+        }
+    );
+    assert_eq!(runner.switch(HiringWithinMeans), Switch::Ready);
+    Ok(())
+}
+
+#[test]
+fn each_period_says_its_rules() -> TestResult {
+    let runner = run(3)?;
+    assert_eq!(runner.history().len(), 3);
+    for result in runner.history() {
+        assert!(result.rules.is_empty(), "period {}", result.period);
+    }
+    Ok(())
+}
+
+#[test]
+fn a_refusal_of_a_rule_is_worded_for_the_scene() {
+    assert_eq!(RuleError::Stopped.to_string(), "the run is stopped");
+    assert_eq!(
+        RuleError::AlreadyOn {
+            rule: RestingPrice,
+            from: 4
+        }
+        .to_string(),
+        "A resting price is on from period 4 and holds until you start over"
+    );
+    assert_eq!(
+        RuleError::Waits {
+            rule: OwnerRestart { outlay_periods: 1 },
+            needs: vec![HiringWithinMeans, StopWithoutPay]
+        }
+        .to_string(),
+        "The owner restarts a stopped workplace waits for a bound on hiring and no money, no work"
+    );
+    assert_eq!(
+        RuleError::Refused {
+            rule: GoodsStepDown,
+            error: WorldError::Engine(MaterialCircuitError::MarketClearingInvariant)
+        }
+        .to_string(),
+        "the engine refused a goods price steps down: MarketClearingInvariant"
+    );
+    assert_eq!(
+        RunnerError::Rule(RuleError::Stopped).to_string(),
+        "the world's rules: the run is stopped"
     );
 }

@@ -778,6 +778,7 @@ fn want_opening() -> (MaterialCatalog, MaterialCircuitState) {
     let mut definition = catalog.into_definition();
     definition.market_clearing = Some(MarketClearingPolicy {
         plans_from_spare_money: false,
+        adjustments: Vec::new(),
         paying_order: vec![(crate::good(2), crate::units())],
         household_wants: vec![HouseholdWant {
             principal_id: crate::household(),

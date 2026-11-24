@@ -2,6 +2,7 @@
 // into the root of the test binary, so the tests keep their bare names (`reproduces_*`).
 
 use babylon_circuit_worlds::Scale;
+use rows::TurnedOn;
 use runs::Form;
 
 /// Periods of a long test.
@@ -51,6 +52,30 @@ fn the_doubled_quiet_world_is_still_for_34_periods() {
                     index + 1
                 );
                 assert_eq!(field(line, column), "480", "{} {scale:?}: hours", run.name);
+            }
+        }
+    }
+}
+
+#[test]
+fn opening_with_a_form_is_turning_its_rules_on_first() {
+    for form in Form::ALL {
+        for scale in [Scale::Small, Scale::National] {
+            for run in runs::runs(form, scale).iter().filter(|run| {
+                ["fund-quiet", "fund-P2", "fund-P6", "plain-P2"].contains(&run.name)
+            }) {
+                let (opened, opened_digests) = rows::rows_and_digests(run, PERIODS_QUICK, TurnedOn::AtOpening);
+                let (late, late_digests) = rows::rows_and_digests(run, PERIODS_QUICK, TurnedOn::AfterStrikes);
+                assert_eq!(
+                    opened_digests, late_digests,
+                    "{form:?} {} {scale:?}: state digests",
+                    run.name
+                );
+                assert_eq!(
+                    opened, late,
+                    "{form:?} {} {scale:?}: projected rows",
+                    run.name
+                );
             }
         }
     }

@@ -4,7 +4,9 @@
 //! rises to the first level at which the two are equal, every buyer pays that price, and the seller
 //! keeps the difference. The rule is one pure function over exact integers.
 
-use crate::{FinalDemandPrincipalId, GoodId, HouseholdWant, MaterialCircuitError, UnitId};
+use crate::{
+    AdjustmentRule, FinalDemandPrincipalId, GoodId, HouseholdWant, MaterialCircuitError, UnitId,
+};
 use babylon_kernel::currency::Currency;
 
 /// The products that clear by price, in the order in which a buyer's purse reaches them.
@@ -16,6 +18,9 @@ pub struct MarketClearingPolicy {
     /// Rule A6 (ADR314): a workplace with more money than one period of what it pays out plans for
     /// what was asked of it, as far as that money carries. `false` keeps today's plans and bytes.
     pub plans_from_spare_money: bool,
+    /// The rules of ADR314 this policy asks for, in the order of `AdjustmentRule`, each once.
+    /// Empty keeps today's behaviour and bytes.
+    pub adjustments: Vec<AdjustmentRule>,
 }
 
 impl MarketClearingPolicy {

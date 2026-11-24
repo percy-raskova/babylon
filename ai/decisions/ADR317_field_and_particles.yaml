@@ -358,3 +358,4 @@ ADR317_field_and_particles:
     - ADR171_national_question_rulings
     - ADR189_amendment_ag_attributed_membership_lattice_instances
     - ADR193_hypergraph_storage_swap
+    - ADR322_whose_hours

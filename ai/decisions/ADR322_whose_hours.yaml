@@ -1,0 +1,271 @@
+ADR322_whose_hours:
+  title: Hours back by claim; the bribe against the clock; lending, rent, guarding store nothing; stored hours next
+  date: '2026-11-23'
+  status: accepted
+  issue: PER-371
+  evidence_class: Designed
+  authority:
+    - >-
+        Director, 2026-11-23, in the brainstorm's question dialog, asked how a
+        group's hours back are read when a worker gives 10 hours and gets 6
+        back in goods, an owner gives none and gets 6, and so does a person the
+        fund pays: "By the claim (Recommended)".
+    - >-
+        Director, 2026-11-23, in the same dialog, asked whether the hours of
+        banks, landlords' companies and police go into goods when they are
+        built: "No: they store nothing (Recommended)".
+    - >-
+        Director, 2026-11-23, in the same dialog, asked when the scene gets
+        the hours stored in goods: "After the six rules (Recommended)".
+    - >-
+        Director, 2026-11-23, in the same brainstorm, two directions that are
+        not designs: "Show the payer (Recommended)" and "The nearest hand
+        (Recommended)".
+    - >-
+        Director, 2026-11-23, about an hour later, told that the work is
+        about seven tasks and that the bridge shares only a proof with it,
+        asked whether the order stands: "Yes, after the six rules
+        (Recommended)".
+    - >-
+        Director, 2026-11-23, in that second dialog, asked against what the
+        bribe is read: "Hours on the clock (Recommended)", with a note in
+        their own words: "the bribe is in a combination of inflated wages
+        and commodities imbued with third world labor consumed by the first
+        world".
+  context: |
+    The small world runs in the client (ADR320). It draws hours of work,
+    goods and money as three streams with no rate between them (ADR317).
+    Every goods square is hollow, and the scene says that the hours stored
+    in goods are not measured. The ledger that follows hours through goods
+    lives in the stored records and reads only the tick's register, and the
+    tick refuses this economy until the bridge is built.
+
+    The lead's brief worked the ledger's rules by hand over the quiet world,
+    and every sum closed. Whether the ledger accepts the engine's real
+    periods is proven in the build. In one place of the quiet world a unit
+    of power holds 1 hour, care 2, farm food 2 as made, and food as the shop
+    sells it nears 3. Each worker gives 10 hours. Each person's hours back
+    climb towards 6, and a place's towards the 240 it gives.
+
+    By hours alone an owner and a pensioner look the same: each gives none
+    and gets close to 6. The question was how the scene tells them apart
+    without a rate between hours and money.
+  decision: |
+    H1. BY THE CLAIM. In the Director's pick: "Split each group's hours back
+    by its own kinds of money: hours that came for work (wages), by owning
+    (profit, rent, interest), and as support (benefits, kin). No national
+    rate, only the group's own sums. Three things are then seen and never
+    mixed: who is fed for working, who takes by owning, who is supported.
+    The bribe is hours that come through wages beyond the hours given."
+
+    H2. LENDING, RENTING OUT AND GUARDING STORE NOTHING. In the Director's
+    pick: "Hours spent lending, collecting rent or guarding are drawn as
+    hours given that store nothing. They are fed from the hours of those
+    who make, carry and care. The screen shows how many hours a place spends
+    on them, and that number grows when the fight sharpens. On your line,
+    which already speaks of productive-sector workers. You rule a short list
+    of which trades these are; a shop keeps its hours in the food, since it
+    carries it." Read by the lead: this binds the designs of banks,
+    landlords' companies and police. Nothing changes in the small world:
+    the shop carries the food.
+
+    H3. STORED HOURS IN THE SCENE AFTER THE SIX RULES. In the Director's
+    pick: "About five tasks, between the six rules and the bridge. The scene
+    runs the ledger's own sums with no database. Two of the five are work
+    the bridge needs anyway. The bridge starts about five tasks later. I
+    write a short design and plan first, one draft and one check, and show
+    you the first window." The order now: (1) the scene, done; (2) the six
+    rules of the closest form, each a switch in the scene; (3) stored hours
+    in the scene; (4) the bridge; (5) the world on the tick's records. The
+    lead's first figures were wrong: the check sized the work at about
+    seven tasks and found that the bridge shares only the proof that the
+    ledger accepts this economy's periods. Told this, the Director kept the
+    order: "Yes, after the six rules (Recommended)".
+
+    H4. THE BRIBE IS READ AGAINST HOURS ON THE CLOCK. In the Director's
+    pick: "The bribe is hours back for work beyond the hours the worker was
+    on the clock, worked or idle. A worker paid to stand idle gave the time;
+    the owner failed to use it, and that is the owner's loss, not a bribe.
+    In the small world the bribe is then never above nothing, so nothing is
+    drawn there. It shows when the country has a core and a periphery." The
+    Director's note with it, word for word: "the bribe is in a combination
+    of inflated wages and commodities imbued with third world labor consumed
+    by the first world". Read by the lead: the one figure, hours back for
+    work beyond hours on the clock, holds both sources. The country's design
+    must show them apart: the place where the hours in a group's goods were
+    given, and what its hours on the clock are paid.
+
+    DIRECTIONS, NOT DESIGNS. Two picks of the same brainstorm are recorded
+    as directions only. Nothing of them is built by this record.
+
+    "Show the payer (Recommended)": when organizing wins something, the
+    player is shown what the owner did next, from its receipts: profit cut,
+    hours cut, a price raised on poorer buyers, work moved abroad. No rule
+    says a strike in the core cannot win; the accounts decide who pays.
+
+    "The nearest hand (Recommended)": a hurt household sees who acted on
+    it. The engine knows the whole chain; organizing shows the chain, and
+    reaction names the nearest hand. It must come from receipts and ties,
+    never from a script.
+  amends:
+    - >-
+        ADR320, S2, the order of the one build machine: stored hours in the
+        scene come between the six rules and the bridge (H3).
+    - >-
+        ADR317, ruling 18 ("Goods with unmeasured hours are drawn hollow,
+        never as zero, and a standing line counts them"): a good that mixes
+        measured hours with opening stock is drawn part full and part hollow,
+        and the line counts the share that comes from the opening. This
+        reading is the lead's, for the Director to check.
+    - >-
+        ADR320, the lead's reading that goods are drawn hollow in the scene's
+        first build: it holds until stored hours reach the scene, not until
+        the bridge.
+  lead_readings_for_the_director_to_check:
+    - >-
+        The road is reuse. The fold of the existing ledger, the step that
+        carries hours through one period, moves into a crate that needs only
+        the engine. The stored records keep their register checks, checkpoint
+        codec, check of attendance and binding to one catalog; their stored
+        formats, their refusals and the order of the refusals do not change.
+        The new entry takes one period with the states before and after it
+        and that period's catalog, since a shock or a rule changes the
+        catalog in the scene.
+    - >-
+        The runner opens the ledger from its opening state, every stock not
+        measured, and folds each period and keeps its record of hours. A
+        period the ledger refuses is refused by the runner with an error that
+        says so, and the run stops: it refuses rather than lies.
+    - >-
+        The unknown share is followed by a second run of the same fold, in
+        which each opening unit carries one unit, counted in millionths like
+        hours, and work adds none. The stored type does not change. In the
+        small world no opening stock goes into a recipe, so the count is a
+        true share of units.
+    - 'The stock rule is the ledger''s own, the pooled average.'
+    - >-
+        Back is the recorded hours in the goods and services that reached a
+        household group in the period, as ADR317 has it, not what it used up.
+        From the real opening a place's back is 160, 200, 220, 230, 235 and on.
+    - >-
+        Given is ruling 17: hours that went into goods and services, by the
+        household that gave them; idle hours apart. A good holds its recipe's
+        hours.
+    - >-
+        By the claim, read: a group's purse is followed by kind of money as a
+        mix, by the average rule of a stock. The kinds are for work (wages),
+        by owning (profit; later rent and interest), support (benefits and
+        the treasury's payments; later kin and aid), and "not recorded" for
+        money held at the opening. A purchase draws the mix of the money that
+        paid for it, and the hours it brings are split by that mix. Taxes and
+        other payments out draw the mix too. Exact whole numbers, floor
+        shares, the last carries the rest. It lives with the runner, so the
+        tests of the small worlds can check it against the engine's cash.
+    - >-
+        Where the cut of H2 will enter the ledger: as direct work posted to
+        an end of its own, the way the ledger already sends an organizer's
+        and an agency's hours, never into a good.
+    - >-
+        What the player sees: goods squares part full and part hollow; the
+        standing line of ruling 18; a switch at the right end of the table's
+        pager between today's columns and Given, Back, For work, By owning,
+        Support; and in the details panel a group's given, back, split by
+        claim and opening units received, or a workplace's measured hours in
+        a unit of what it handed over this period, with the share from the
+        opening beside it.
+    - >-
+        The bribe is not drawn in the small world. It is counted over the run
+        so far, not period by period, since wages paid for one period's hours
+        can be spent in a later one. That it does not arise in the small
+        world is reasoned from the quiet world (about 6 hours back for 10 on
+        the clock) and not yet counted: tests count it in every run tested
+        before the scene is shown. The running scene does not check it.
+    - >-
+        The ledger is asked for when a runner is opened. The scene asks for
+        it; the reference tests of the closest form's bench do not; one long
+        test folds every reference run of every form built.
+  consequences:
+    - >-
+        The design is `docs/superpowers/specs/2026-11-23-stored-hours-in-the-small-world-design.md`.
+        About seven tasks; the lead first told the Director about five, and
+        the Director kept the order at seven (H3). One part, the proof that
+        the ledger accepts this economy's periods, is work the bridge needs
+        anyway. The split and the catalog of each period serve
+        the scene until the small world moves onto the tick's records.
+    - >-
+        The stored records keep refusing a changed catalog for saved
+        campaigns. How a shock enters a saved campaign stays open (ADR320).
+    - >-
+        Hours change no decision of the engine, and the bench's reference
+        tests step the runner without the ledger, so the reference rows of
+        the closest form, their digests and their time are not changed. One
+        long test proves the ledger on every period the rules produce.
+    - >-
+        A movement the ledger has never seen now stops the scene. The first
+        task with the runner proves a period of the scene's real catalog,
+        with market rules, before more is built on it.
+  alternatives_rejected:
+    - >-
+        "By class, from elsewhere": offered in the dialog, not picked.
+    - >-
+        "Leave out who does not work": offered in the dialog, not picked.
+    - >-
+        "Yes: every hour alike": what the ledger does today. Offered in the
+        dialog, not picked.
+    - >-
+        "Both: count all, mark the kind": offered in the dialog, not picked.
+    - >-
+        "As ordered, after the bridge": offered in the dialog, not picked; and
+        "After the bridge", offered again at seven tasks, not picked.
+    - >-
+        "Hours into goods, as worded" and "Decide with the country": offered
+        for the reading of the bribe, not picked.
+    - >-
+        A second sum of hours in the client. Two laws for one quantity, which
+        drift. Not offered.
+    - >-
+        Hours carried inside the engine. Ten to fourteen tasks, and every
+        stored format, digest and golden changes. Not offered.
+  open_questions:
+    - >-
+        How the bribe's two sources are shown in the country (H4): the place
+        where the hours in a group's goods were given, and what its hours on
+        the clock are paid, with no rate between hours and money. With the
+        country's design.
+    - >-
+        The short list of trades whose hours store nothing (H2). Ruled by the
+        Director when banks, landlords' companies and police are designed.
+    - >-
+        The balance that the rules of outlook read: whether a group's outlook
+        reads its hours given against its hours back, split by the claim, and
+        how. Not decided here.
+    - >-
+        Hours by place of origin abroad, which ADR317's height needs for the
+        whole world. Its own design, with the country.
+  verification: |
+    One place of the quiet world, from the real opening: a unit of power
+    holds 1 hour and care 2 from period 1, and farm food 2 as made; food as
+    the shop sells it nears 3; each worker gives 10; a place's back in
+    period p is 240 - 80 / 2^(p-1): 160, 200, 220, 230, 235, 237.5, exact to
+    the millionth through period 11, with 6 a person and 240 a place as the
+    limit. In every period back, plus the change in the hours held at
+    workplaces, plus the hours that left unsold or lost, equals the hours
+    given. A unit of farm food made under the failed harvest holds 20/9
+    hours; a unit of power made under the power cut holds 10/9. Given
+    follows the household for people who work at another workplace. By the
+    claim, a worker's back is all for work and a supported person's all
+    support from period 1, and an owner's all by owning from period 2; the
+    splits add up to back, and the kinds of each purse, with those held for
+    its open orders, add up to its cash and its reserves, every period. In
+    every run tested, counted from the opening up to each period, no group's
+    hours back for work pass its hours on the clock. The
+    stored records keep their formats, refusals and order; the tests through
+    the ledger's public entry and the live database tests pass unchanged.
+    The lead looks at the real window and shows the Director.
+  related:
+    - ADR314_how_the_economy_adjusts
+    - ADR317_field_and_particles
+    - ADR319_a_shock_is_not_a_failure
+    - ADR320_screen_first_the_small_world_in_the_client
+    - ADR321_the_six_rules_as_measured
+    - ADR204_worldview_ternary_unification

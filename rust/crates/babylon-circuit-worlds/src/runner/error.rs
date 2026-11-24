@@ -3,6 +3,7 @@
 use crate::runner::rules::RuleError;
 use crate::{ShockError, WorldError};
 use babylon_material_circuit::{MaterialCircuitError, StaffingError};
+use babylon_recorded_labor::RecordedLaborError;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
@@ -42,6 +43,15 @@ impl Stage {
             Self::Read => "the reading",
         }
     }
+}
+
+/// Which of the two folds refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoursRun {
+    /// The fold in hours of work.
+    Hours,
+    /// The fold in units of opening stock.
+    OpeningUnits,
 }
 
 /// A refusal of a step. The first one stops the run.
@@ -89,6 +99,27 @@ pub enum RunnerError {
         /// Persons after the period.
         closing: u64,
     },
+    /// The hours ledger refused the period: a movement it has never seen, or closing stocks that differ.
+    HoursRefused {
+        /// The period being closed.
+        period: u64,
+        /// Which of the two folds refused.
+        run: HoursRun,
+        /// The ledger's refusal.
+        error: RecordedLaborError,
+    },
+    /// The two runs of the hours ledger handed over different moves.
+    HoursRunsDiffer {
+        /// The period being closed.
+        period: u64,
+    },
+    /// A receipt the hours record cannot place: an agency row, or an account or site of no party of the world.
+    HoursUnplaced {
+        /// The period being closed.
+        period: u64,
+        /// What could not be placed.
+        what: String,
+    },
     /// The test economy has no rows past its horizon.
     PastHorizon {
         /// The period that was asked for.
@@ -131,6 +162,20 @@ impl Display for RunnerError {
                 f,
                 "Period {period}: persons are not conserved: {opening} at the opening, {closing} now"
             ),
+            Self::HoursRefused { period, run, error } => match run {
+                HoursRun::Hours => write!(f, "Period {period}: the hours ledger refused it: {error}"),
+                HoursRun::OpeningUnits => write!(
+                    f,
+                    "Period {period}: the hours ledger refused it (opening units): {error}"
+                ),
+            },
+            Self::HoursRunsDiffer { period } => write!(
+                f,
+                "Period {period}: the two runs of the hours ledger handed over different moves"
+            ),
+            Self::HoursUnplaced { period, what } => {
+                write!(f, "Period {period}: the hours ledger cannot place {what}")
+            }
             Self::PastHorizon { period } => {
                 write!(f, "Period {period}: this test economy is built for 998 periods")
             }

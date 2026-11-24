@@ -476,6 +476,7 @@ version = "0.1.0"
 dependencies = [
  "babylon-kernel",
  "babylon-material-circuit",
+ "babylon-recorded-labor",
 ]
 
 [[package]]

@@ -13,3 +13,4 @@ workspace = true
 [dependencies]
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-material-circuit = { path = "../babylon-material-circuit" }
+babylon-recorded-labor = { path = "../babylon-recorded-labor" }

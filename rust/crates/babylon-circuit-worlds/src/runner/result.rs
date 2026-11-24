@@ -1,6 +1,7 @@
 //! What one closed period returns.
 
 use crate::doubled::Figures;
+use crate::runner::hours::PeriodHours;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, AdjustmentReceipt, AdjustmentRule, CapitalAccount, DistributionReceipt, GoodId,
@@ -35,6 +36,8 @@ pub struct PeriodResult {
     pub summary: PeriodSummary,
     /// `material_circuit_state_digest` of the catalog this period closed under and the next state.
     pub state_digest: [u8; 32],
+    /// The hours of the period; `None` for a runner opened without hours.
+    pub hours: Option<PeriodHours>,
 }
 
 /// The receipts the scene reads, moved out of the engine's transition.

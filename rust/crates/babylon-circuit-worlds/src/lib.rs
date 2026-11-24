@@ -17,7 +17,8 @@ pub use ids::{
     Place, Workplace,
 };
 pub use runner::{
-    rule_name, Closing, PeriodReceipts, PeriodResult, PeriodSummary, RuleError, RuleOn, Runner,
-    RunnerError, Stage, Switch,
+    rule_name, Closing, HoursRun, HouseholdHours, LedgerTotals, MoveHours, MovedBy, PeriodHours,
+    PeriodReceipts, PeriodResult, PeriodSummary, PlaceHours, RuleError, RuleOn, Runner,
+    RunnerError, Stage, Switch, WorkplaceHours,
 };
 pub use shocks::{Lasts, Places, Shock, ShockBook, ShockError, Strike};

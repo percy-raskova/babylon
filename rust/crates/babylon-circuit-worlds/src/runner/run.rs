@@ -4,6 +4,7 @@ use std::mem;
 
 use crate::doubled::{self, Figures, World, HORIZON};
 use crate::runner::error::{RunnerError, Stage};
+use crate::runner::hours::{HoursLedger, PeriodHours};
 use crate::runner::result::{Closing, PeriodReceipts, PeriodResult, PeriodSummary};
 use crate::runner::rules::{RuleError, RuleOn, Switch};
 use crate::shocks::{Lasts, Places, Shock, ShockBook, ShockError};
@@ -23,6 +24,7 @@ struct Stepped {
     staffing: StaffingState,
     members: Vec<PoolMembers>,
     standing: WorkplaceStanding,
+    hours: Option<HoursLedger>,
 }
 
 /// What the staffing of one period decided.
@@ -69,6 +71,8 @@ pub struct Runner {
     book: ShockBook,
     history: Vec<PeriodResult>,
     stopped: Option<RunnerError>,
+    /// The hours ledger, when the runner was opened with hours.
+    hours: Option<HoursLedger>,
 }
 
 impl Runner {
@@ -112,12 +116,34 @@ impl Runner {
             book,
             history: Vec::new(),
             stopped: None,
+            hours: None,
         };
         let figures = runner.book.figures(runner.state.period);
         runner.ensure_catalog(&figures, &[])?;
         for rule in &world.rules {
             runner.turn_on(*rule)?;
         }
+        Ok(runner)
+    }
+
+    /// As `open_world`, with the hours ledger: each period is folded twice and its record kept in
+    /// `PeriodResult.hours`. The scene opens with it; the bench's reference tests open with `open_world`.
+    ///
+    /// # Errors
+    /// As `open_world`; `RunnerError::HoursRefused` when the ledger refuses the opening.
+    pub fn open_world_with_hours(world: &World) -> Result<Self, RunnerError> {
+        let mut runner = Self::open_world(world)?;
+        let key = CatalogKey {
+            figures: runner.book.figures(runner.state.period),
+            rules: runner.rules_at(runner.state.period),
+        };
+        let catalog = runner
+            .catalogs
+            .iter()
+            .find(|(known, _)| *known == key)
+            .map(|(_, catalog)| catalog)
+            .ok_or(RunnerError::World(WorldError::Arithmetic))?;
+        runner.hours = Some(HoursLedger::open(catalog, &runner.state)?);
         Ok(runner)
     }
 
@@ -204,6 +230,7 @@ impl Runner {
                 self.staffing = stepped.staffing;
                 self.members = stepped.members;
                 self.standing = stepped.standing;
+                self.hours = stepped.hours;
                 self.history.push(stepped.result);
                 self.history.last().ok_or(RunnerError::Stopped)
             }
@@ -336,6 +363,21 @@ impl Runner {
         Ok(())
     }
 
+    /// The hours ledger after the period and the period's record; both `None` for a runner opened without hours.
+    fn fold_hours(
+        &self,
+        catalog: &MaterialCatalog,
+        transition: &MaterialCircuitTransition,
+    ) -> Result<(Option<HoursLedger>, Option<PeriodHours>), RunnerError> {
+        match &self.hours {
+            Some(ledger) => {
+                let (next, record) = ledger.fold(&self.world, catalog, &self.state, transition)?;
+                Ok((Some(next), Some(record)))
+            }
+            None => Ok((None, None)),
+        }
+    }
+
     fn advance(&mut self) -> Result<Stepped, RunnerError> {
         let period = self.state.period;
         let past = period.checked_add(2).is_none_or(|last| last > HORIZON);
@@ -398,6 +440,7 @@ impl Runner {
             (&staffed.employed, &staffed.reserve),
             seeking,
         )?;
+        let (hours, record) = self.fold_hours(catalog, &transition)?;
         let state_digest = engine::material_circuit_state_digest(catalog, &transition.state)
             .map_err(|error| engine_error(period, Stage::Digest, error))?;
         let (closing, summary) = read_closing(
@@ -417,6 +460,7 @@ impl Runner {
             state_digest,
             asked: staffed.asked,
             receipts: take_receipts(&transition),
+            hours: record,
         };
         Ok(Stepped {
             result,
@@ -424,6 +468,7 @@ impl Runner {
             staffing: staffed.staffing,
             members: staffed.kept,
             standing: staffed.standing,
+            hours,
         })
     }
 }

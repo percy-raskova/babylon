@@ -1,7 +1,7 @@
 // The sets of the bench: the quick test, the long tests and the helper that makes the fixtures. Included
 // into the root of the test binary, so the tests keep their bare names (`reproduces_*`).
 
-use babylon_circuit_worlds::{doubled, Runner, Scale, World};
+use babylon_circuit_worlds::{doubled, PeriodHours, Runner, Scale, World};
 use babylon_material_circuit::{
     self as engine, MaterialCircuitError, PlaceStaffingError, WorkplaceStanding,
 };
@@ -465,6 +465,59 @@ fn the_restart_waits_for_its_rules() {
 fn reproduces_pc_bound_nat_400() {
     let produced = produce(Form::Bound, Scale::National, PERIODS_LONG);
     compare::assert_set("pc-bound-nat-400", &produced, PC_BOUND_NAT_400);
+}
+
+/// The laws of one period's hours, as the hours test of the runner keeps them: both ledgers close,
+/// `direct` is a million times what the households gave, and each place's identity holds.
+fn assert_hours_laws(hours: &PeriodHours) -> Result<(), String> {
+    for (name, totals) in [("hours", &hours.hours), ("opening units", &hours.opening_units)] {
+        if totals.opening + totals.direct != totals.closing + totals.released {
+            return Err(format!("the {name} ledger does not close: {totals:?}"));
+        }
+    }
+    let given: u128 = hours.households.iter().map(|(_, h)| u128::from(h.given)).sum();
+    if hours.hours.direct != 1_000_000 * given {
+        return Err(format!("direct {} is not 1,000,000 x given {given}", hours.hours.direct));
+    }
+    for (place, p) in &hours.places {
+        if p.back_micro_hours + p.held_closing + p.left_micro_hours
+            != p.given_micro_hours + p.held_opening
+        {
+            return Err(format!("the identity of place {place:?} fails: {p:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// Every reference run of every form and both scales, folded twice a period for 400 periods: every step is
+/// `Ok` and every period keeps the laws. Not a `reproduces_` test: the bench's rows never fold.
+#[test]
+#[ignore = "350 runs of 400 periods, each folded twice; run in the background"]
+fn hours_fold_every_reference_run() {
+    for form in Form::ALL {
+        for scale in [Scale::Small, Scale::National] {
+            for run in runs::runs(form, scale) {
+                let mut runner = Runner::open_world_with_hours(&run.world)
+                    .unwrap_or_else(|error| panic!("{form:?} {scale:?} {} opens: {error}", run.name));
+                for (shock, places, lasts) in &run.strikes {
+                    runner.strike(*shock, *places, *lasts).unwrap_or_else(|error| {
+                        panic!("{form:?} {scale:?} {} strikes: {error}", run.name)
+                    });
+                }
+                for period in 1..=PERIODS_LONG {
+                    let result = runner.step().unwrap_or_else(|error| {
+                        panic!("{form:?} {scale:?} {} period {period}: {error}", run.name)
+                    });
+                    let hours = result.hours.as_ref().unwrap_or_else(|| {
+                        panic!("{form:?} {scale:?} {} period {period}: no hours", run.name)
+                    });
+                    if let Err(law) = assert_hours_laws(hours) {
+                        panic!("{form:?} {scale:?} {} period {period}: {law}", run.name);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Prints the fixture lines of every set from the reference rows on the bench's drive. Run once with

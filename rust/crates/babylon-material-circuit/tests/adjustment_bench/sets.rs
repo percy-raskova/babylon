@@ -26,6 +26,8 @@ const PC_REST_400: &str = include_str!("digests/pc-rest-400.txt");
 const PC_REST_NAT_400: &str = include_str!("digests/pc-rest-nat-400.txt");
 const PC_RESTART_400: &str = include_str!("digests/pc-restart-400.txt");
 const PC_RESTART_NAT_400: &str = include_str!("digests/pc-restart-nat-400.txt");
+const PC_DOWN_400: &str = include_str!("digests/pc-down-400.txt");
+const PC_DOWN_NAT_400: &str = include_str!("digests/pc-down-nat-400.txt");
 
 fn produce(form: Form, scale: Scale, periods: u64) -> Vec<(&'static str, String)> {
     runs::runs(form, scale)
@@ -392,6 +394,47 @@ fn reproduces_pc_restart_nat_400() {
 }
 
 #[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_down_400() {
+    let produced = produce(Form::Down, Scale::Small, PERIODS_LONG);
+    compare::assert_set("pc-down-400", &produced, PC_DOWN_400);
+}
+
+#[test]
+#[ignore = "25 runs of 400 periods; run in the background"]
+fn reproduces_pc_down_nat_400() {
+    let produced = produce(Form::Down, Scale::National, PERIODS_LONG);
+    compare::assert_set("pc-down-nat-400", &produced, PC_DOWN_NAT_400);
+}
+
+#[test]
+fn the_quiet_world_with_the_step_down_is_still_for_34_periods() {
+    assert_quiet(Form::Down);
+    let runs = runs::runs(Form::Down, Scale::Small);
+    let run = runs
+        .iter()
+        .find(|run| run.name == "fund-quiet")
+        .expect("the fund world's quiet run");
+    let text = rows::rows(run, 2);
+    let header: Vec<&str> = text.lines().next().unwrap_or("").split('\t').collect();
+    let names = [
+        "unsold_farm_a",
+        "turned_payers_farm_a",
+        "unsold_shop_a",
+        "turned_payers_shop_a",
+        "unsold_farm_b",
+        "turned_payers_farm_b",
+        "unsold_shop_b",
+        "turned_payers_shop_b",
+    ];
+    assert_eq!(
+        &header[header.len() - names.len()..],
+        &names,
+        "the step down's columns come last, farms and shops by copy"
+    );
+}
+
+#[test]
 fn the_restart_waits_for_its_rules() {
     use engine::AdjustmentRule::{
         HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
@@ -442,6 +485,8 @@ fn print_reference_digests() {
         ("pc-rest-nat-400", Form::Rest, Scale::National),
         ("pc-restart-400", Form::Restart, Scale::Small),
         ("pc-restart-nat-400", Form::Restart, Scale::National),
+        ("pc-down-400", Form::Down, Scale::Small),
+        ("pc-down-nat-400", Form::Down, Scale::National),
     ] {
         println!("== {set}");
         for run in runs::runs(form, scale) {

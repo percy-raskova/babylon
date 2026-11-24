@@ -9,7 +9,8 @@ use babylon_material_circuit::AdjustmentRule::{
     StopWithoutPay,
 };
 use babylon_material_circuit::{
-    AdjustmentReceipt, MaterialCircuitError, RestingPriceReceipt, WorkplaceStanding,
+    AdjustmentReceipt, GoodsOfferReceipt, MaterialCircuitError, RestingPriceReceipt,
+    WorkplaceStanding,
 };
 use std::error::Error;
 use std::time::Instant;
@@ -119,35 +120,6 @@ fn a_refusal_is_worded_as_the_engine_words_it() {
 }
 
 #[test]
-fn a_rule_not_yet_built_is_refused_by_turn_on() -> TestResult {
-    let mut asked = Runner::open()?;
-    let mut twin = Runner::open()?;
-    for runner in [&mut asked, &mut twin] {
-        runner.step()?;
-        runner.step()?;
-    }
-    let refusal = asked.turn_on(GoodsStepDown);
-    assert!(
-        matches!(
-            refusal,
-            Err(RuleError::Refused {
-                rule: GoodsStepDown,
-                error: WorldError::Engine(MaterialCircuitError::MarketClearingInvariant)
-            })
-        ),
-        "{refusal:?}"
-    );
-    assert_eq!(asked.rules(), []);
-    assert_eq!(asked.switch(GoodsStepDown), Switch::Ready);
-    for _ in 0..5 {
-        asked.step()?;
-        twin.step()?;
-    }
-    assert_eq!(asked.history(), twin.history());
-    Ok(())
-}
-
-#[test]
 fn a_switch_says_what_it_waits_for() -> TestResult {
     let mut runner = Runner::open()?;
     assert_eq!(
@@ -216,13 +188,14 @@ fn a_refusal_of_a_rule_is_worded_for_the_scene() {
     );
 }
 
-/// The rules turned on in the middle of a run, each after this many steps. Tasks 4 to 8 add their rules.
-const LATE: [(u64, AdjustmentRule); 5] = [
+/// The rules turned on in the middle of a run, each after this many steps.
+const LATE: [(u64, AdjustmentRule); 6] = [
     (20, SeekingInPlace),
     (24, HiringWithinMeans),
     (28, StopWithoutPay),
     (32, RestingPrice),
     (36, OwnerRestart { outlay_periods: 1 }),
+    (40, GoodsStepDown),
 ];
 
 /// The scene's world with the harvest failing in both places, the `LATE` rules applied, and `steps` steps taken.
@@ -270,6 +243,10 @@ fn a_late_turn_on_gives_the_same_bytes_twice() -> TestResult {
             RuleOn {
                 rule: OwnerRestart { outlay_periods: 1 },
                 from: 37
+            },
+            RuleOn {
+                rule: GoodsStepDown,
+                from: 41
             }
         ]
     );
@@ -324,6 +301,58 @@ fn no_restart_is_tested_before_the_rule_is_on() -> TestResult {
         .rows()
         .iter()
         .all(|row| (row.periods_since_work, row.quiet_periods) == (0, 0)));
+    Ok(())
+}
+
+fn offers_of(result: &PeriodResult) -> Vec<&GoodsOfferReceipt> {
+    result
+        .receipts
+        .adjustments
+        .iter()
+        .filter_map(|row| match row {
+            AdjustmentReceipt::GoodsOffer(offer) => Some(offer),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn no_goods_offer_is_read_before_the_rule_is_on() -> TestResult {
+    let runner = late_run(60)?;
+    for result in &runner.history()[..40] {
+        assert!(offers_of(result).is_empty(), "period {}", result.period);
+    }
+    let first = offers_of(&runner.history()[40]);
+    assert!(
+        !first.is_empty(),
+        "the first close under the rule reads the goods markets"
+    );
+    for offer in first {
+        assert_eq!(offer.period, 41, "the closing period");
+        assert!(offer.sold <= offer.offered, "{offer:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn the_step_down_asks_for_no_other_rule() -> TestResult {
+    let mut runner = Runner::open()?;
+    assert_eq!(runner.switch(GoodsStepDown), Switch::Ready);
+    runner.turn_on(GoodsStepDown)?;
+    assert_eq!(
+        runner.rules(),
+        [RuleOn {
+            rule: GoodsStepDown,
+            from: 1
+        }]
+    );
+    for _ in 0..5 {
+        runner.step()?;
+    }
+    for result in runner.history() {
+        assert!(!offers_of(result).is_empty(), "period {}", result.period);
+        assert_eq!(result.rules, [GoodsStepDown]);
+    }
     Ok(())
 }
 

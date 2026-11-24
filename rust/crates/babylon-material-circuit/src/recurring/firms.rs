@@ -356,6 +356,7 @@ fn restock_at_market_price(
         supply,
         bids.len(),
         &outcome,
+        crate::clearing::one_rung(&bids),
     )?;
     let mut sold = vec![0_u64; members.len()];
     for (&slot, &quantity) in bidders.iter().zip(&outcome.quantities) {
@@ -504,6 +505,7 @@ pub(crate) struct Wanted<'a> {
 fn unshipped_quantities(
     state: &MaterialCircuitState,
     wanted: Wanted<'_>,
+    gains: &StockLedger,
 ) -> Result<StockLedger, MaterialCircuitError> {
     let Wanted {
         demand, markets, ..
@@ -535,6 +537,10 @@ fn unshipped_quantities(
     for (key, quantity) in markets.priced_out_goods() {
         add(&mut unshipped, key, quantity)?;
     }
+    // A seller whose price stepped down plans for what its buyers could pay for at the new price (A1).
+    for (&key, &quantity) in gains {
+        add(&mut unshipped, key, quantity)?;
+    }
     Ok(unshipped)
 }
 
@@ -544,6 +550,7 @@ pub(crate) fn plan_production(
     dispatches: &[RoutedDispatchReceipt],
     sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
     wanted: Wanted<'_>,
+    gains: &StockLedger,
     next_period: u64,
 ) -> Result<Vec<ProductionPlanReceipt>, MaterialCircuitError> {
     if !active(state) {
@@ -576,7 +583,7 @@ pub(crate) fn plan_production(
             row.quantity,
         )?;
     }
-    let unshipped = unshipped_quantities(state, wanted)?;
+    let unshipped = unshipped_quantities(state, wanted, gains)?;
     let inventory: BTreeMap<_, _> = state
         .inventory
         .iter()
@@ -634,6 +641,7 @@ fn handling_quantities(
     wanted: Wanted<'_>,
     dispatches: &[RoutedDispatchReceipt],
     sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
+    gains: &StockLedger,
 ) -> Result<StockLedger, MaterialCircuitError> {
     let (local, retail) = sold;
     let Wanted {
@@ -693,6 +701,9 @@ fn handling_quantities(
     for (key, quantity) in markets.priced_out_goods() {
         add(&mut merchandise, key, quantity)?;
     }
+    for (&key, &quantity) in gains {
+        add(&mut merchandise, key, quantity)?;
+    }
     Ok(merchandise)
 }
 
@@ -702,6 +713,7 @@ pub(crate) fn plan_attendance(
     dispatches: &[RoutedDispatchReceipt],
     sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
     maintenance: Option<&MaintenanceReceipt>,
+    gains: &StockLedger,
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
@@ -715,6 +727,7 @@ pub(crate) fn plan_attendance(
         dispatches,
         sold,
         maintenance,
+        gains,
         next_period,
     )?;
     if catalog
@@ -731,6 +744,7 @@ pub(crate) fn plan_attendance(
                 dispatches,
                 sold,
                 maintenance,
+                gains,
                 next_period,
             )?;
         }
@@ -743,6 +757,10 @@ pub(crate) fn plan_attendance(
 
 /// Today's hours: production through `derive_shared_labor_requests`, equipment work, merchant
 /// handling and maintenance.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the closed period's moves and the step down's gains are read beside the plans"
+)]
 fn planned_hours(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
@@ -750,6 +768,7 @@ fn planned_hours(
     dispatches: &[RoutedDispatchReceipt],
     sold: (&[LocalTransferReceipt], &[LocalRetailFulfillmentReceipt]),
     maintenance: Option<&MaintenanceReceipt>,
+    gains: &StockLedger,
     next_period: u64,
 ) -> Result<BTreeMap<(SiteId, UnitId), u64>, MaterialCircuitError> {
     let production = crate::production::derive_shared_labor_requests(catalog, state, next_period)?;
@@ -770,7 +789,7 @@ fn planned_hours(
         .iter()
         .map(|row| ((row.site_id, row.good_id, row.unit_id), row.hours_per_unit))
         .collect();
-    let merchandise = handling_quantities(state, wanted, dispatches, sold)?;
+    let merchandise = handling_quantities(state, wanted, dispatches, sold, gains)?;
     for (key, quantity) in merchandise {
         let Some(merchant) = merchants.get(&key.0) else {
             continue;

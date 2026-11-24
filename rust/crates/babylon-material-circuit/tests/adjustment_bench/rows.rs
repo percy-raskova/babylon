@@ -653,6 +653,31 @@ fn put_restart(line: &mut Line, runner: &Runner, result: &PeriodResult) {
     }
 }
 
+/// Round ten's step P, when a goods price steps down for unsold goods: for each farm and shop, in the order of
+/// copies, what its goods markets offered and did not sell (without the buffer) and what its buyers who could
+/// pay the posted price were turned away from.
+fn put_down(line: &mut Line, result: &PeriodResult) {
+    let mut unsold = [0_u64; 8];
+    let mut turned = [0_u64; 8];
+    for receipt in &result.receipts.adjustments {
+        if let AdjustmentReceipt::GoodsOffer(row) = receipt {
+            unsold[index_of(row.site_id)] += row.offered.saturating_sub(row.sold);
+        }
+    }
+    for row in &result.receipts.prices {
+        turned[index_of(row.site_id)] += row.unserved_quantity;
+    }
+    for place in Place::ALL {
+        for kind in [Kind::Farm, Kind::Shop] {
+            let workplace = Workplace { kind, place };
+            let name = site_name(workplace);
+            let i = workplace.index();
+            line.put(format!("unsold_{name}"), unsold[i]);
+            line.put(format!("turned_payers_{name}"), turned[i]);
+        }
+    }
+}
+
 /// One period's line, in column order.
 fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line {
     let catalog = runner
@@ -680,6 +705,9 @@ fn line(runner: &Runner, result: &PeriodResult, opening: &StaffingState) -> Line
     }
     if result.rules.contains(&AdjustmentRule::HiringWithinMeans) {
         put_bound(&mut line, result);
+    }
+    if result.rules.contains(&AdjustmentRule::GoodsStepDown) {
+        put_down(&mut line, result);
     }
     line
 }

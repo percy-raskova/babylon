@@ -114,7 +114,8 @@ fn restart_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) {
             | AdjustmentReceipt::PlaceMove(_)
             | AdjustmentReceipt::Stop(_)
             | AdjustmentReceipt::RestingPrice(_)
-            | AdjustmentReceipt::OwnerSpare(_) => {}
+            | AdjustmentReceipt::OwnerSpare(_)
+            | AdjustmentReceipt::GoodsOffer(_) => {}
         }
     }
     rows.push((
@@ -199,7 +200,8 @@ pub fn moves(result: &PeriodResult) -> impl Iterator<Item = &PlaceMoveReceipt> {
             | AdjustmentReceipt::RestingPrice(_)
             | AdjustmentReceipt::RestingPriceToCost(_)
             | AdjustmentReceipt::Restart(_)
-            | AdjustmentReceipt::OwnerSpare(_) => None,
+            | AdjustmentReceipt::OwnerSpare(_)
+            | AdjustmentReceipt::GoodsOffer(_) => None,
         })
 }
 
@@ -217,7 +219,8 @@ fn stop_of(result: &PeriodResult, w: Workplace) -> Option<&StopReceipt> {
             | AdjustmentReceipt::RestingPrice(_)
             | AdjustmentReceipt::RestingPriceToCost(_)
             | AdjustmentReceipt::Restart(_)
-            | AdjustmentReceipt::OwnerSpare(_) => None,
+            | AdjustmentReceipt::OwnerSpare(_)
+            | AdjustmentReceipt::GoodsOffer(_) => None,
         })
 }
 
@@ -288,7 +291,8 @@ fn bounds_of(result: &PeriodResult, w: Workplace) -> impl Iterator<Item = &Hirin
             | AdjustmentReceipt::RestingPrice(_)
             | AdjustmentReceipt::RestingPriceToCost(_)
             | AdjustmentReceipt::Restart(_)
-            | AdjustmentReceipt::OwnerSpare(_) => None,
+            | AdjustmentReceipt::OwnerSpare(_)
+            | AdjustmentReceipt::GoodsOffer(_) => None,
         })
 }
 
@@ -832,7 +836,8 @@ mod tests {
                     | AdjustmentReceipt::RestingPrice(_)
                     | AdjustmentReceipt::RestingPriceToCost(_)
                     | AdjustmentReceipt::Restart(_)
-                    | AdjustmentReceipt::OwnerSpare(_) => None,
+                    | AdjustmentReceipt::OwnerSpare(_)
+                    | AdjustmentReceipt::GoodsOffer(_) => None,
                 })
                 .collect();
             assert_eq!(stops.len(), 8, "period {}", result.period);

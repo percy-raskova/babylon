@@ -190,6 +190,37 @@ fn share_step(
         .collect())
 }
 
+/// What these bids, read against `quote`, could pay for at another price `p`.
+///
+/// # Errors
+/// `MarketClearingInvariant` for a price that is not positive or bids that cannot be read; `Arithmetic` on
+/// overflow.
+pub(crate) fn demand_at_price(
+    quote: Currency,
+    bids: &[LadderBid],
+    p: Currency,
+) -> Result<u64, MaterialCircuitError> {
+    if p.micro_units() <= 0 {
+        return Err(MaterialCircuitError::MarketClearingInvariant);
+    }
+    let readings = read_bids(quote.micro_units(), bids)?;
+    u64::try_from(demand(&readings, p.micro_units())?).map_err(|_| MaterialCircuitError::Arithmetic)
+}
+
+/// Flat bids as one-rung ladder bids with no reserve, as `clear_market` reads them.
+pub(crate) fn one_rung(bids: &[rule::MarketBid]) -> Vec<LadderBid> {
+    bids.iter()
+        .map(|bid| LadderBid {
+            rungs: vec![BidRung {
+                wanted: bid.wanted,
+                reserve: Currency::from_micro_units(0),
+            }],
+            purse: bid.purse,
+            limit: bid.limit,
+        })
+        .collect()
+}
+
 /// Finds the price of one market of bids with rungs, and each rung's quantity.
 ///
 /// The price is `clear_market`'s on the bids' totals. Reserves that never fall along a bid make

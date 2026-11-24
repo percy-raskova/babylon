@@ -576,6 +576,7 @@ fn price_needs(
         supply,
         bids.len(),
         &outcome,
+        clearing::one_rung(&bids),
     )?;
     let sold = bidders
         .iter()
@@ -634,6 +635,7 @@ fn price_rungs(
         supply,
         bids.len(),
         &outcome.totals()?,
+        bids.clone(),
     )?;
     let mut priced = Priced {
         price: outcome.price,

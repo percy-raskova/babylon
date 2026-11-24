@@ -796,32 +796,24 @@ mod tests {
     }
 
     #[test]
-    fn admission_refuses_a_rule_not_yet_built() {
-        use crate::adjustment::NOT_YET_BUILT;
+    fn admission_admits_all_six_rules_together() {
         use crate::AdjustmentRule::{
-            HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace, StopWithoutPay,
+            GoodsStepDown, HiringWithinMeans, OwnerRestart, RestingPrice, SeekingInPlace,
+            StopWithoutPay,
         };
-        for kind in NOT_YET_BUILT {
-            let mut list = vec![*kind];
-            for need in [
-                HiringWithinMeans,
-                SeekingInPlace,
-                StopWithoutPay,
-                RestingPrice,
-            ] {
-                let needed = kind.needs().contains(&need)
-                    || (matches!(kind, OwnerRestart { .. }) && need == SeekingInPlace);
-                if needed && !crate::adjustment::asks(&list, need) {
-                    list.push(need);
-                }
-            }
-            list.sort();
-            assert!(
-                adjustment::refuse_combinations(&list).is_ok(),
-                "{kind:?} passes"
-            );
-            assert!(refused(asking(&list)), "{kind:?} is refused as not built");
-        }
+        let all = [
+            HiringWithinMeans,
+            SeekingInPlace,
+            StopWithoutPay,
+            RestingPrice,
+            OwnerRestart { outlay_periods: 1 },
+            GoodsStepDown,
+        ];
+        assert!(!refused(asking(&all)), "every rule is built");
+        assert!(
+            !refused(asking(&[GoodsStepDown])),
+            "the step down asks for no other rule"
+        );
     }
 
     #[test]

@@ -925,3 +925,25 @@ fn only_the_closing_period_s_hours_count() {
         "a site with no employment terms has no hands"
     );
 }
+
+#[test]
+fn only_a_catalog_that_asks_quotes_goods_before_the_plans() {
+    use crate::AdjustmentRule;
+    let ask = |rules: Vec<AdjustmentRule>| {
+        let (catalog, state) = opening_with_a_want();
+        let mut definition = catalog.into_definition();
+        definition
+            .market_clearing
+            .as_mut()
+            .expect("the fixture has a policy")
+            .adjustments = rules;
+        fixture(definition, state).0
+    };
+    assert!(!crate::recurring::prices::asks_step_down(&ask(vec![])));
+    assert!(!crate::recurring::prices::asks_step_down(&ask(vec![
+        AdjustmentRule::RestingPrice
+    ])));
+    assert!(crate::recurring::prices::asks_step_down(&ask(vec![
+        AdjustmentRule::GoodsStepDown
+    ])));
+}

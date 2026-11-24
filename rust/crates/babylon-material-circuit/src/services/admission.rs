@@ -593,6 +593,7 @@ fn price_stage_market(
         supply,
         bids.len(),
         &outcome,
+        Vec::new(),
     )?;
     let mut quantities = vec![0; members.len()];
     for (&index, &quantity) in bidders.iter().zip(&outcome.quantities) {

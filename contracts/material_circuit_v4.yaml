@@ -186,7 +186,9 @@ market_clearing:
   P8_accepted_order: >-
     money set aside keeps its price and quantity; a good a household buys is handed over at the purchase; a
     business's goods sold and not yet moved are owed
-  P9_posted_price: keeps its rule of one step a period inside its bounds
+  P9_posted_price: >-
+    keeps its rule of one step a period inside its bounds; a catalog that asks for GoodsStepDown adds one more
+    reason for a goods price to step down, goods beyond the buffer that went unsold (ADR314_down)
   P10_record: >-
     a short market leaves one receipt of seller, product, moment, posted price, price paid, on offer, demand at
     the posted price, sold, and buyers bid and served
@@ -274,6 +276,20 @@ market_clearing:
     periods go to 0. Then the bound of the next period is reckoned again, so that a restarted workplace may hire at
     once: what the first bound cut is put back and the bound runs again, replacing the bound and its receipts. Each
     tested workplace has a receipt (Restart), each owner one (OwnerSpare)
+  ADR314_down: >-
+    when a catalog asks for GoodsStepDown (it needs no other rule) the goods are quoted before the plans, and a goods
+    price steps down one step, to no less than the price policy's minimum and never to a floor at cost, when nobody
+    who could pay the posted price was turned away (nothing waiting: no paid household purchase unfilled, no
+    restock order unshipped, no final-demand order unfilled, nothing that bids could pay for in a short market and
+    did not get) and either the stock stands over its target or the seller's goods markets (household goods and
+    restocking) sold, with the buffer its production policy keeps added to it, less than they offered; the order of
+    the tests is: a fixed price holds, a resting seller holds, a step up as before, else the step down, else hold;
+    a step down of unsold goods records the reason ExcessStock. A seller whose price steps down plans for what its
+    buyers could pay for at the new price beyond what they could pay for at the old one (summed over its goods
+    markets), added to what its buyers asked and did not get (a maker) or to its merchandise (a merchant's handling
+    hours); services are not quoted before their plans and keep their rule. The rule keeps nothing from one close
+    to the next. Each goods seller with a goods market has a receipt (GoodsOffer) with what it offered, sold and
+    kept and the gain it planned for
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out
@@ -281,7 +297,6 @@ market_clearing:
     - a market policy has at most 262144 household wants
     - adjustments are in the order of their tags, name no kind twice, include the rules each one needs, and give a
       restart a positive number of periods of outlay
-    - adjustments name no rule that is not yet built
     - a refusal is MarketClearingInvariant
     - a market policy requires no company portfolio
     - under a market policy every offer of a product in the order is responsive

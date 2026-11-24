@@ -79,10 +79,6 @@ pub(crate) fn restart_outlay_periods(rules: &[AdjustmentRule]) -> Option<u64> {
     })
 }
 
-/// The rules no task has built yet. Admission refuses a list that asks for one of these kinds, so that no
-/// catalog can ask for a rule that does nothing. Each rule's task removes its own kind.
-pub(crate) const NOT_YET_BUILT: &[AdjustmentRule] = &[AdjustmentRule::GoodsStepDown];
-
 /// The refusals of a list of rules that hold whatever is built: the list is in the order of
 /// `AdjustmentRule`, no kind twice, every rule has the rules it needs, and the restart has a period of outlay.
 ///
@@ -99,14 +95,10 @@ pub(crate) fn refuse_combinations(rules: &[AdjustmentRule]) -> Result<(), Materi
     Ok(())
 }
 
-/// Admission's last word on the rules: the combinations, then the rules not yet built.
+/// Admission's last word on the rules: the combinations. Every rule is built.
 ///
 /// # Errors
 /// `MarketClearingInvariant`.
 pub(crate) fn admit(rules: &[AdjustmentRule]) -> Result<(), MaterialCircuitError> {
-    refuse_combinations(rules)?;
-    if NOT_YET_BUILT.iter().any(|rule| asks(rules, *rule)) {
-        return Err(MaterialCircuitError::MarketClearingInvariant);
-    }
-    Ok(())
+    refuse_combinations(rules)
 }

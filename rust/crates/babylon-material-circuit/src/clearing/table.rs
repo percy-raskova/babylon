@@ -1,5 +1,6 @@
 //! The moments at which a market is priced, the market's receipt, and the period's table of markets.
 
+use super::ladder::{self, LadderBid};
 use super::rule::MarketOutcome;
 use crate::{GoodId, MaterialCircuitError, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
@@ -57,6 +58,9 @@ impl MarketClearingReceipt {
 
 type MarketKey = (MarketMoment, SiteId, GoodId, UnitId);
 
+/// One seller's product: the site, the good and the unit.
+type Product = (SiteId, GoodId, UnitId);
+
 #[derive(Debug)]
 struct MarketRow {
     key: MarketKey,
@@ -67,6 +71,13 @@ struct MarketRow {
     receipt: Option<MarketClearingReceipt>,
     /// What the seller put on offer to new buyers at this market.
     supply: u64,
+    /// The posted price the market opened at.
+    quote: Currency,
+    /// What the market sold.
+    sold: u64,
+    /// The bids, as rungs, so that what they could pay for at another price can be read; empty for a
+    /// market no rule reads that way.
+    bids: Vec<LadderBid>,
 }
 
 /// The markets of one close, in the order they cleared.
@@ -94,6 +105,7 @@ impl MarketTable {
         supply: u64,
         bids: usize,
         outcome: &MarketOutcome,
+        bid_rows: Vec<LadderBid>,
     ) -> Result<(), MaterialCircuitError> {
         let key = (moment, seller.0, seller.1, seller.2);
         if self.has_row(moment, seller.0, seller.1, seller.2) {
@@ -141,8 +153,81 @@ impl MarketTable {
             priced_out,
             receipt,
             supply,
+            quote,
+            sold,
+            bids: bid_rows,
         });
         Ok(())
+    }
+
+    /// The goods markets of one seller's product (`HouseholdGoods` and `Restocking` rows).
+    fn goods_rows(&self, key: Product) -> impl Iterator<Item = &MarketRow> + '_ {
+        self.rows.iter().filter(move |row| {
+            matches!(
+                row.key.0,
+                MarketMoment::HouseholdGoods | MarketMoment::Restocking
+            ) && (row.key.1, row.key.2, row.key.3) == key
+        })
+    }
+
+    /// What its goods markets offered and sold this period; `None` when it has no goods market row.
+    pub(crate) fn goods_offered_sold(&self, key: Product) -> Option<(u64, u64)> {
+        let mut seen = false;
+        let (mut supply, mut sold) = (0_u64, 0_u64);
+        for row in self.goods_rows(key) {
+            seen = true;
+            supply = supply.saturating_add(row.supply);
+            sold = sold.saturating_add(row.sold);
+        }
+        seen.then_some((supply, sold))
+    }
+
+    /// Whether a seller's goods markets sold less than they offered beyond `kept`: `sold + kept < supply`.
+    /// A seller with no goods market row has sold nothing it offered.
+    ///
+    /// # Errors
+    /// `Arithmetic` when the sums overflow.
+    pub(crate) fn goods_unsold(
+        &self,
+        key: Product,
+        kept: u64,
+    ) -> Result<bool, MaterialCircuitError> {
+        let (mut supply, mut sold) = (0_u128, 0_u128);
+        for row in self.goods_rows(key) {
+            supply = supply
+                .checked_add(u128::from(row.supply))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            sold = sold
+                .checked_add(u128::from(row.sold))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+        let covered = sold
+            .checked_add(u128::from(kept))
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        Ok(covered < supply)
+    }
+
+    /// What its bids could pay for at `price` beyond what they could pay for at the posted price
+    /// (`demand_at_price` less `demand_at_quote`, summed over its goods markets in which anyone bid).
+    ///
+    /// # Errors
+    /// `MarketClearingInvariant` for a price that is not positive; `Arithmetic` on overflow.
+    pub(crate) fn goods_gain_at(
+        &self,
+        key: Product,
+        price: Currency,
+    ) -> Result<u64, MaterialCircuitError> {
+        let mut gain = 0_u64;
+        for row in self.goods_rows(key) {
+            let Some(at_quote) = row.demand else {
+                continue;
+            };
+            let below = ladder::demand_at_price(row.quote, &row.bids, price)?;
+            gain = gain
+                .checked_add(below.saturating_sub(at_quote))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+        Ok(gain)
     }
 
     /// What a seller offered of its product at its markets this period: the sum of `supply` over its rows;

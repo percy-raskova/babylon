@@ -9,13 +9,14 @@ mod standing;
 
 pub(crate) use bound::{bound_hiring, HiringBound};
 
+#[cfg(test)]
+pub(crate) use policy::refuse_combinations;
 pub use policy::AdjustmentRule;
 pub(crate) use policy::{admit, asks};
-#[cfg(test)]
-pub(crate) use policy::{refuse_combinations, NOT_YET_BUILT};
 pub use receipts::{
-    AdjustmentReceipt, HiringBoundReceipt, HiringLimit, OwnerSpareReceipt, PlaceMoveReceipt,
-    RestartReceipt, RestartTest, RestingPriceReceipt, RestingPriceToCostReceipt, StopReceipt,
+    AdjustmentReceipt, GoodsOfferReceipt, HiringBoundReceipt, HiringLimit, OwnerSpareReceipt,
+    PlaceMoveReceipt, RestartReceipt, RestartTest, RestingPriceReceipt, RestingPriceToCostReceipt,
+    StopReceipt,
 };
 pub(crate) use rest::resting_among;
 #[cfg(test)]

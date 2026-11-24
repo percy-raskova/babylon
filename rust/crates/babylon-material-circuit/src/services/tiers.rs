@@ -202,6 +202,7 @@ fn clear_seats(
         supply,
         bids.len(),
         &outcome.totals()?,
+        Vec::new(),
     )?;
     let mut quantities: Vec<Vec<u64>> = seats.iter().map(|s| vec![0; s.orders.len()]).collect();
     for (&i, got) in bidding.iter().zip(outcome.quantities) {

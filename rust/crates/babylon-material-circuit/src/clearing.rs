@@ -10,6 +10,7 @@ mod rule;
 mod supply;
 mod table;
 
+pub(crate) use ladder::one_rung;
 pub use ladder::{clear_ladder_market, BidRung, LadderBid, LadderOutcome};
 pub(crate) use limit::limit_price;
 #[cfg(test)]

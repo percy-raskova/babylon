@@ -7,9 +7,10 @@
 mod accounts;
 mod adjustment;
 pub use adjustment::{
-    AdjustmentReceipt, AdjustmentRule, HiringBoundReceipt, HiringLimit, OwnerSpareReceipt,
-    PlaceMoveReceipt, RestartReceipt, RestartTest, RestingPriceReceipt, RestingPriceToCostReceipt,
-    StopHold, StopReceipt, WorkplaceStanding, WorkplaceStandingRow, RESTART_QUIET_PERIODS,
+    AdjustmentReceipt, AdjustmentRule, GoodsOfferReceipt, HiringBoundReceipt, HiringLimit,
+    OwnerSpareReceipt, PlaceMoveReceipt, RestartReceipt, RestartTest, RestingPriceReceipt,
+    RestingPriceToCostReceipt, StopHold, StopReceipt, WorkplaceStanding, WorkplaceStandingRow,
+    RESTART_QUIET_PERIODS,
 };
 mod agency_attendance;
 pub use agency_attendance::{

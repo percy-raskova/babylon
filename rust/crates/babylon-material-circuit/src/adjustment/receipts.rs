@@ -24,6 +24,31 @@ pub enum AdjustmentReceipt {
     Restart(RestartReceipt),
     /// What an owner has beyond one period of its own need: the money a restart may use.
     OwnerSpare(OwnerSpareReceipt),
+    /// What a goods seller offered and sold at its markets, and the plan it made for the price it posted (A1).
+    GoodsOffer(GoodsOfferReceipt),
+}
+
+/// What one goods seller offered and sold of a product at its goods markets in the period that closed, when a
+/// catalog that asks for the step down quotes goods before plans. A seller with no goods market has no receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GoodsOfferReceipt {
+    /// The period that closed.
+    pub period: u64,
+    /// The seller.
+    pub site_id: SiteId,
+    /// Its product.
+    pub good_id: GoodId,
+    /// The product's unit.
+    pub unit_id: UnitId,
+    /// What its goods markets offered to new buyers.
+    pub offered: u64,
+    /// What they sold.
+    pub sold: u64,
+    /// What its production policy keeps as a buffer; goods beyond it that were not sold are unsold.
+    pub kept: u64,
+    /// What its buyers could pay for at the price it posted for the next period, beyond what they could pay
+    /// for at the old one; 0 unless the price stepped down. The seller's plan adds it.
+    pub planned_gain: u64,
 }
 
 /// A resting price raised to the cost of one unit.

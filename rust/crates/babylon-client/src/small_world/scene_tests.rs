@@ -1211,24 +1211,6 @@ fn a_rule_that_waits_is_refused_in_the_scene_s_words() -> TestResult {
 }
 
 #[test]
-fn a_rule_not_yet_built_is_refused_in_the_scene() -> TestResult {
-    let mut app = scene_app(None)?;
-    send(&mut app, SceneCommand::Step);
-    updates(&mut app, 3);
-    send(&mut app, SceneCommand::TurnOn(SceneRule::GoodsStepDown));
-    updates(&mut app, 2);
-    let notice = app.world().resource::<ShockNotice>().text.clone();
-    assert!(
-        notice
-            .as_deref()
-            .is_some_and(|w| w.starts_with("The engine refused a goods price steps down: ")),
-        "{notice:?}"
-    );
-    assert_eq!(rules_on(&app), 0);
-    Ok(())
-}
-
-#[test]
 fn every_shown_rule_turns_on_from_the_next_period_and_holds() -> TestResult {
     if !RULES_SHOWN {
         return Ok(());

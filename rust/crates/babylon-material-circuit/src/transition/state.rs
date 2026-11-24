@@ -32,7 +32,7 @@ use crate::{
     UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
-use crate::adjustment::{HiringBound, RestingPriceReceipt, StopRound};
+use crate::adjustment::{GoodsOfferReceipt, HiringBound, RestingPriceReceipt, StopRound};
 use crate::clearing::MarketTable;
 use crate::financial::FinancialClose;
 use crate::inventory;
@@ -40,6 +40,7 @@ use crate::inventory::InventoryLedger;
 use crate::production;
 use crate::production::ServiceStageBooks;
 use crate::recurring::firms::Wanted;
+use crate::recurring::prices::Quoted;
 use crate::services::ServiceClose;
 use crate::staffing::PlaceRules;
 use crate::tiers::HouseholdLists;
@@ -1320,6 +1321,8 @@ pub(crate) struct NextPlans {
     prices: Vec<PriceReceipt>,
     /// The goods prices that rested at this close.
     rests: Vec<RestingPriceReceipt>,
+    /// What the goods sellers offered and sold, when the catalog asks for the step down.
+    offers: Vec<GoodsOfferReceipt>,
     bound: Option<HiringBound>,
 }
 
@@ -1341,12 +1344,23 @@ pub(crate) fn next_plans(
         &outbound.local_transfers[..],
         &outbound.local_fulfillments[..],
     );
+    // A catalog that asks for the step down quotes goods first, so that a seller whose price steps down
+    // plans for its buyers at the new price; otherwise the quotes follow the plans, as before.
+    let early = if crate::recurring::prices::asks_step_down(catalog) {
+        Some(crate::recurring::prices::update_prices(
+            catalog, state, wanted, costs,
+        )?)
+    } else {
+        None
+    };
+    let gains = early.as_ref().map(Quoted::gains).unwrap_or_default();
     let production_plans = crate::recurring::firms::plan_production(
         catalog,
         state,
         dispatches,
         sold,
         wanted,
+        &gains,
         next_period,
     )?;
     crate::recurring::firms::plan_attendance(
@@ -1358,9 +1372,13 @@ pub(crate) fn next_plans(
         dispatches,
         sold,
         maintenance,
+        &gains,
         next_period,
     )?;
-    let (prices, rests) = crate::recurring::prices::update_prices(catalog, state, wanted, costs)?;
+    let quoted = match early {
+        Some(quoted) => quoted,
+        None => crate::recurring::prices::update_prices(catalog, state, wanted, costs)?,
+    };
     let asks_bound = catalog.market_clearing.as_ref().is_some_and(|policy| {
         crate::adjustment::asks(&policy.adjustments, AdjustmentRule::HiringWithinMeans)
     });
@@ -1377,8 +1395,9 @@ pub(crate) fn next_plans(
     };
     Ok(NextPlans {
         production: production_plans,
-        prices,
-        rests,
+        prices: quoted.prices,
+        rests: quoted.rests,
+        offers: quoted.offers,
         bound,
     })
 }
@@ -1966,7 +1985,7 @@ fn close_with_rules(
     let household_lifecycle = crate::household_lifecycle::close(catalog, &mut close.state)?;
     let tiers = close.funded.services.tier_receipts(close.state.period)?;
     let mut bound = plans.bound;
-    // In the order they acted: the prices that rested (services, then goods), then the bound.
+    // In the order they acted: the prices that rested (services, then goods), the goods offers, then the bound.
     let mut adjustments: Vec<AdjustmentReceipt> = close
         .funded
         .services
@@ -1976,6 +1995,13 @@ fn close_with_rules(
         .copied()
         .map(AdjustmentReceipt::RestingPrice)
         .collect();
+    adjustments.extend(
+        plans
+            .offers
+            .iter()
+            .copied()
+            .map(AdjustmentReceipt::GoodsOffer),
+    );
     if let Some(bound) = &bound {
         adjustments.extend(
             bound

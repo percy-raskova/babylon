@@ -4,8 +4,6 @@
 
 use super::frame::{BodyPicture, ParticleMode, HOURS_PER_MARK, MONEY_PER_MARK, UNITS_PER_MARK};
 use super::panel;
-use super::panel::PanelView;
-use super::reading;
 use super::reading::Party;
 use super::scene;
 use super::scene::{
@@ -56,20 +54,16 @@ pub fn opening_line(per_hundred: Option<u64>) -> String {
 #[derive(Component)]
 pub struct OpeningLine;
 
-/// Write the standing line when the picture changes: the share of the period the table reads.
-pub fn paint_opening_line(
-    shown: Res<SceneShown>,
-    scene: Res<SceneRunner>,
-    view: Res<PanelView>,
-    mut line: Query<&mut Text, With<OpeningLine>>,
-) {
-    if !(shown.is_changed() || scene.is_changed() || view.is_changed()) {
+/// Write the standing line when the picture changes: the share of the period the picture shows,
+/// never the table pager's period (the line stands in the picture's key).
+pub fn paint_opening_line(shown: Res<SceneShown>, mut line: Query<&mut Text, With<OpeningLine>>) {
+    if !shown.is_changed() {
         return;
     }
-    let history = scene.runner.history();
-    let per_hundred = panel::view_index(&view, history.len())
-        .and_then(|i| reading::read_period(&history[i]).ok())
-        .and_then(|read| read.opening_per_hundred);
+    let per_hundred = shown
+        .0
+        .as_ref()
+        .and_then(|picture| picture.reading.opening_per_hundred);
     let words = opening_line(per_hundred);
     for mut text in &mut line {
         text.set_if_neq(Text::new(words.clone()));

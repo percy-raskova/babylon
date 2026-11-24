@@ -282,7 +282,8 @@ const SMALL_WORLD_SIGNALS: &[&str] = &[
     "the work, goods and payments of the period shown",
     "the shocks struck and when",
 ];
-const SMALL_WORLD_UNCERTAINTY: &[&str] = &["the hours stored in goods are not measured here"];
+const SMALL_WORLD_UNCERTAINTY: &[&str] =
+    &["the hours of goods from the opening stock were never measured"];
 
 /// The Investigate action's honest unavailability reason. Spelled identically
 /// in `ui::dossier_compose::INVESTIGATE_UNAVAILABLE_REASON` (the R6

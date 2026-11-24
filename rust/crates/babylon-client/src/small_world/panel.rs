@@ -582,7 +582,7 @@ fn spawn_tabs_and_pager(section: &mut ChildSpawnerCommands) {
 }
 
 /// The index of the history the view reads, or none while nothing has been closed.
-pub(super) fn view_index(view: &PanelView, closed: usize) -> Option<usize> {
+fn view_index(view: &PanelView, closed: usize) -> Option<usize> {
     let last = closed.checked_sub(1)?;
     match view.period.and_then(|p| usize::try_from(p).ok()) {
         Some(p) if (1..=closed).contains(&p) => p.checked_sub(1),

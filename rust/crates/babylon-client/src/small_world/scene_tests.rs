@@ -1737,6 +1737,26 @@ fn the_standing_line_counts_the_opening_share() -> TestResult {
 }
 
 #[test]
+fn the_standing_line_follows_the_picture_not_the_table_pager() -> TestResult {
+    let mut app = scene_app(None)?;
+    for _ in 0..4 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+    }
+    send(&mut app, SceneCommand::TablePeriod(Some(1)));
+    updates(&mut app, 3);
+    let line = "Of every 100 units moved this period, 3 come from the opening stock.".to_owned();
+    assert_eq!(
+        texts(&mut app)
+            .iter()
+            .filter(|t| t.starts_with("Of every 100 units"))
+            .collect::<Vec<_>>(),
+        [&line]
+    );
+    Ok(())
+}
+
+#[test]
 fn the_goods_line_says_a_hollow_part_is_opening_stock() -> TestResult {
     let mut app = scene_app(None)?;
     send(&mut app, SceneCommand::Step);

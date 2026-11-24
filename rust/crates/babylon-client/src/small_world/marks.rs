@@ -9,7 +9,8 @@ use crate::human_numbers;
 use babylon_circuit_worlds::{Good, Household, PeriodResult, Workplace};
 use babylon_material_circuit::{
     AdjustmentReceipt, HiringBoundReceipt, HiringLimit, OwnerSpareReceipt, PlaceMoveReceipt,
-    RestartReceipt, RestartTest, StaffingPoolId, StopHold, StopReceipt, RESTART_QUIET_PERIODS,
+    PriceDecision, RestartReceipt, RestartTest, StaffingPoolId, StopHold, StopReceipt,
+    RESTART_QUIET_PERIODS,
 };
 use std::collections::BTreeMap;
 
@@ -62,6 +63,11 @@ pub fn rule_rows(history: &[PeriodResult], index: usize, pick: &Pick) -> Result<
     if holds(result, SceneRule::RestingPrice) {
         if let Pick::Body(Party::Workplace(w)) = pick {
             resting_rows(result, *w, &mut rows)?;
+        }
+    }
+    if holds(result, SceneRule::GoodsStepDown) {
+        if let Pick::Body(Party::Workplace(w)) = pick {
+            offer_rows(result, *w, &mut rows)?;
         }
     }
     if holds(result, SceneRule::OwnerRestart) {
@@ -171,6 +177,45 @@ fn resting_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<
                 rows.push((
                     format!("Price rests \u{b7} {}", inspect::good_name(good)),
                     human_numbers::currency(rest.price.micro_units()),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The rows of each good the workplace's site offered at this close, from its `GoodsOfferReceipt`s: what was
+/// offered, sold and kept as a buffer, and, when the good's `PriceReceipt` stepped down for excess stock, the
+/// step.
+fn offer_rows(result: &PeriodResult, w: Workplace, rows: &mut Rows) -> Result<(), FrameError> {
+    for receipt in &result.receipts.adjustments {
+        if let AdjustmentReceipt::GoodsOffer(offer) = receipt {
+            if offer.site_id != w.site_id() {
+                continue;
+            }
+            let good = Good::from_good(offer.good_id)
+                .ok_or_else(|| missing("a goods offer of a good of no world"))?;
+            let name = inspect::good_name(good);
+            rows.push((format!("Offered \u{b7} {name}"), grouped(offer.offered)));
+            rows.push((format!("Sold \u{b7} {name}"), grouped(offer.sold)));
+            rows.push((
+                format!("Kept as a buffer \u{b7} {name}"),
+                grouped(offer.kept),
+            ));
+            let stepped = result.receipts.prices.iter().find(|price| {
+                price.site_id == offer.site_id
+                    && price.good_id == offer.good_id
+                    && price.reason == PriceDecision::ExcessStock
+                    && price.next_price < price.old_price
+            });
+            if let Some(price) = stepped {
+                rows.push((
+                    format!("Price stepped down \u{b7} {name}"),
+                    format!(
+                        "{} to {}",
+                        human_numbers::currency(price.old_price.micro_units()),
+                        human_numbers::currency(price.next_price.micro_units())
+                    ),
                 ));
             }
         }
@@ -443,8 +488,8 @@ mod tests {
     };
     use babylon_kernel::currency::Currency;
     use babylon_material_circuit::{
-        AccountId, AdjustmentRule, RestingPriceReceipt, RestingPriceToCostReceipt, StopHold,
-        StopReceipt,
+        AccountId, AdjustmentRule, GoodsOfferReceipt, PriceDecision, RestingPriceReceipt,
+        RestingPriceToCostReceipt, StopHold, StopReceipt,
     };
     use std::error::Error;
 
@@ -1102,6 +1147,136 @@ mod tests {
         assert_eq!(
             owner_rows,
             vec![("Spare for a restart".to_owned(), "$50.00".to_owned())]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_offer_s_rows_are_its_receipt_s() -> TestResult {
+        let farm = farm_a();
+        let pick = Pick::Body(Party::Workplace(farm));
+        let mut result = Runner::open()?.step()?.clone();
+        let unit_id = result.members.first().ok_or("a member")?.unit_id;
+        result
+            .receipts
+            .adjustments
+            .push(AdjustmentReceipt::GoodsOffer(GoodsOfferReceipt {
+                period: result.period,
+                site_id: farm.site_id(),
+                good_id: Good::Food.good_id(),
+                unit_id,
+                offered: 40,
+                sold: 30,
+                kept: 4,
+                planned_gain: 7,
+            }));
+        let mut price = result
+            .receipts
+            .prices
+            .first()
+            .ok_or("a price receipt")?
+            .clone();
+        price.site_id = farm.site_id();
+        price.good_id = Good::Food.good_id();
+        price.old_price = dollars(25);
+        price.next_price = dollars(24);
+        price.reason = PriceDecision::ExcessStock;
+        result.receipts.prices = vec![price];
+        // Without the rule asked: nothing.
+        assert_eq!(rule_rows(&[result.clone()], 0, &pick)?, Rows::new());
+        result.rules = vec![AdjustmentRule::GoodsStepDown];
+        let expected = vec![
+            ("Offered \u{b7} food".to_owned(), "40".to_owned()),
+            ("Sold \u{b7} food".to_owned(), "30".to_owned()),
+            ("Kept as a buffer \u{b7} food".to_owned(), "4".to_owned()),
+            (
+                "Price stepped down \u{b7} food".to_owned(),
+                "$25.00 to $24.00".to_owned(),
+            ),
+        ];
+        assert_eq!(rule_rows(&[result.clone()], 0, &pick)?, expected);
+        for w in Workplace::ALL {
+            if w != farm {
+                assert_eq!(
+                    rule_rows(&[result.clone()], 0, &Pick::Body(Party::Workplace(w)))?,
+                    Rows::new()
+                );
+            }
+        }
+        // A price that rose for unserved demand has no "stepped down" row.
+        result.receipts.prices[0].reason = PriceDecision::UnservedDemand;
+        result.receipts.prices[0].next_price = dollars(26);
+        assert_eq!(
+            rule_rows(&[result.clone()], 0, &pick)?,
+            expected[..3].to_vec()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn every_offer_reads_as_its_receipt() -> TestResult {
+        let mut runner = Runner::open_world(&World {
+            rules: World::switches_at(Scale::Small).to_vec(),
+            ..World::scene()
+        })?;
+        runner.strike(Shock::HarvestFails, Places::Both, Lasts::UntilLifted)?;
+        for _ in 0..40 {
+            runner.step()?;
+        }
+        let history = runner.history();
+        let mut offers = 0_usize;
+        for (index, result) in history.iter().enumerate() {
+            for w in Workplace::ALL {
+                let rows = rule_rows(history, index, &Pick::Body(Party::Workplace(w)))?;
+                let mine: Vec<&GoodsOfferReceipt> = result
+                    .receipts
+                    .adjustments
+                    .iter()
+                    .filter_map(|receipt| match receipt {
+                        AdjustmentReceipt::GoodsOffer(offer) if offer.site_id == w.site_id() => {
+                            Some(offer)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                offers += mine.len();
+                let offered: Vec<&(String, String)> = rows
+                    .iter()
+                    .filter(|(label, _)| label.starts_with("Offered \u{b7} "))
+                    .collect();
+                assert_eq!(
+                    offered.len(),
+                    mine.len(),
+                    "{w:?} in period {}",
+                    result.period
+                );
+                for offer in mine {
+                    let good = Good::from_good(offer.good_id).ok_or("a good of the world")?;
+                    let name = inspect::good_name(good);
+                    let said = |what: &str| row_of(&rows, &format!("{what} \u{b7} {name}"));
+                    assert_eq!(said("Offered"), Some(grouped(offer.offered)));
+                    assert_eq!(said("Sold"), Some(grouped(offer.sold)));
+                    assert_eq!(said("Kept as a buffer"), Some(grouped(offer.kept)));
+                    let stepped = result.receipts.prices.iter().find(|price| {
+                        price.site_id == offer.site_id
+                            && price.good_id == offer.good_id
+                            && price.reason == PriceDecision::ExcessStock
+                            && price.next_price < price.old_price
+                    });
+                    assert_eq!(
+                        said("Price stepped down"),
+                        stepped.map(|price| format!(
+                            "{} to {}",
+                            human_numbers::currency(price.old_price.micro_units()),
+                            human_numbers::currency(price.next_price.micro_units())
+                        ))
+                    );
+                }
+            }
+        }
+        assert!(
+            offers > 0,
+            "the six rules in 40 periods leave no goods offer"
         );
         Ok(())
     }

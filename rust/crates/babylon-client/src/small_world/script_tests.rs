@@ -431,3 +431,44 @@ fn the_proof_script_of_task_7c_parses() {
         ])
     );
 }
+
+/// The proof script of Task 8c, run by the lead on the display.
+const PROOF_8C: &str = r#"{"step":1}
+{"strike":{"shock":"harvest_fails","places":"both","lasts":"until_lifted"}}
+{"step":20}
+{"rule":"seeking_in_place"}
+{"rule":"hiring_within_means"}
+{"rule":"stop_without_pay"}
+{"rule":"resting_price"}
+{"rule":"owner_restart"}
+{"rule":"goods_step_down"}
+{"step":40}
+{"capture":"all-six"}
+{"report":"all-six"}
+"#;
+
+#[test]
+fn the_proof_script_of_task_8c_parses() {
+    let commands = script::parse_script(PROOF_8C);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(1),
+            ScriptCommand::Strike {
+                shock: "harvest_fails".into(),
+                places: "both".into(),
+                lasts: "until_lifted".into(),
+            },
+            ScriptCommand::Step(20),
+            ScriptCommand::Rule("seeking_in_place".into()),
+            ScriptCommand::Rule("hiring_within_means".into()),
+            ScriptCommand::Rule("stop_without_pay".into()),
+            ScriptCommand::Rule("resting_price".into()),
+            ScriptCommand::Rule("owner_restart".into()),
+            ScriptCommand::Rule("goods_step_down".into()),
+            ScriptCommand::Step(40),
+            ScriptCommand::Capture("all-six".into()),
+            ScriptCommand::Report("all-six".into()),
+        ])
+    );
+}

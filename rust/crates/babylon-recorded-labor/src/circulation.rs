@@ -228,13 +228,23 @@ pub fn outbound(frame: &mut Frame, catalog: &MaterialCatalog, view: &PeriodView<
             );
         }
     }
+    let wants = view.bought_wants()?;
     for (i, row) in view.receipts.local_fulfillments.iter().enumerate() {
         let source = LaborNode::site(row.retailer_site_id, row.good_id, row.unit_id);
         let target = LaborNode::household(row.demand_principal_id, row.good_id, row.unit_id);
         let receipt = ReceiptRef::new(LaborReceiptFamily::LocalFulfillments, i);
-        let tracked = pantry.contains(&target);
+        // A want's units are used where they are bought: the engine does not add them to the
+        // household's stock, so they leave the ledger as consumption, not into the pantry.
+        let wanted = wants.get(&row.order_id).is_some_and(|want| {
+            (want.principal_id, want.good_id, want.unit_id)
+                == (row.demand_principal_id, row.good_id, row.unit_id)
+                && want.bought_quantity == row.quantity
+        });
+        let tracked = pantry.contains(&target) && !wanted;
         let dest = if tracked {
             target
+        } else if wanted {
+            LaborNode::sink(LaborDisposition::HouseholdConsumption)
         } else {
             LaborNode::sink(LaborDisposition::FinalDemandOutlay)
         };

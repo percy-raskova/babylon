@@ -2,3 +2,6 @@
 mod close;
 
 pub use close::{finish, handoff};
+
+#[cfg(test)]
+mod tests;

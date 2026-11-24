@@ -38,6 +38,9 @@ pub(crate) fn receipt_view<'a>(
         service_outputs: &receipts.service_outputs,
         service_performance: &receipts.service_performance,
         household_services: &receipts.household_services,
+        // The stored records do not read wants yet: the bridge decides it. Until then they pass
+        // none, so their behaviour is what it was, byte for byte and refusal for refusal.
+        household_wants: &[],
         household_consumption: &receipts.household_consumption,
     }
 }

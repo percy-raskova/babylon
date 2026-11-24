@@ -6,7 +6,8 @@ use crate::model::{
 use crate::production;
 use crate::view::PeriodView;
 use babylon_material_circuit::{
-    AccountId, MaterialCatalog, ServicePerformanceReceipt, ServiceStage,
+    AccountId, HouseholdWantReceipt, MaterialCatalog, OrderId, ServicePerformanceReceipt,
+    ServiceStage,
 };
 use std::collections::BTreeMap;
 
@@ -105,18 +106,48 @@ struct GrantTotals {
     performed: u64,
     used: u64,
     unused: u64,
+    /// Performed beyond the need: the rows of wants, which the need's receipt does not count.
+    wanted: u64,
+}
+
+/// The want a performance row is the purchase of: its order, household, good and unit.
+fn wants_row<'a>(
+    row: &ServicePerformanceReceipt,
+    wants: &BTreeMap<OrderId, &'a HouseholdWantReceipt>,
+) -> Option<&'a HouseholdWantReceipt> {
+    wants.get(&row.order_id).copied().filter(|want| {
+        row.buyer == AccountId::Household(want.principal_id)
+            && (row.good_id, row.unit_id) == (want.good_id, want.unit_id)
+    })
 }
 
 /// Storable production has already withdrawn its performed intermediate inputs.
-/// Household needs consume their pooled service grants, then unused grants expire.
+/// Household needs consume their pooled service grants, then unused grants expire. A household's
+/// want (what it bought beyond its need, by tier) is used before the need reads its own: its row is
+/// left out of the need's totals, must be wholly used and must be what was bought, and its hours
+/// leave the household with the need's.
 ///
 /// # Errors
 /// A receipt that does not match the stock, or an arithmetic overflow: `RecordedLaborError`.
 pub fn finish(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     let mismatch = RecordedLaborError::ReceiptMismatch("service use");
+    let wants = view.bought_wants()?;
     let mut totals = BTreeMap::<LaborNode, GrantTotals>::new();
     for row in view.receipts.service_performance {
         let total = totals.entry(buyer(row)?).or_default();
+        if let Some(want) = wants_row(row, &wants) {
+            if row.used_quantity != row.performed_quantity
+                || row.unused_quantity != 0
+                || row.performed_quantity != want.bought_quantity
+            {
+                return Err(mismatch);
+            }
+            total.wanted = total
+                .wanted
+                .checked_add(row.performed_quantity)
+                .ok_or(RecordedLaborError::Arithmetic)?;
+            continue;
+        }
         total.performed = total
             .performed
             .checked_add(row.performed_quantity)
@@ -145,7 +176,10 @@ pub fn finish(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     }
     for (&node, total) in &totals {
         let remaining = match node {
-            LaborNode::HouseholdStock { .. } => total.performed,
+            LaborNode::HouseholdStock { .. } => total
+                .performed
+                .checked_add(total.wanted)
+                .ok_or(RecordedLaborError::Arithmetic)?,
             LaborNode::SiteStock { .. } => total.unused,
             _ => return Err(mismatch),
         };
@@ -164,7 +198,9 @@ pub fn finish(frame: &mut Frame, view: &PeriodView<'_>) -> Result<()> {
     for (ordinal, row) in view.receipts.service_performance.iter().enumerate() {
         let node = buyer(row)?;
         let reference = ReceiptRef::new(LaborReceiptFamily::ServicePerformance, ordinal);
-        if matches!(row.buyer, AccountId::Household(_)) && !controlled.contains_key(&node) {
+        if matches!(row.buyer, AccountId::Household(_))
+            && (!controlled.contains_key(&node) || wants_row(row, &wants).is_some())
+        {
             if row.unused_quantity != 0 {
                 return Err(mismatch);
             }

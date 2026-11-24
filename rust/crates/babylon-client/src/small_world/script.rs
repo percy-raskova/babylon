@@ -10,6 +10,7 @@ use super::reading;
 use super::rules::SceneRule;
 use super::scene::{SceneCommand, SceneRunner, SceneStatus};
 use super::table::{self, Grouping, Table, TableRow};
+use crate::human_numbers;
 use babylon_circuit_worlds::{Lasts, PeriodResult, Place, Places, Shock, Workplace};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
@@ -243,8 +244,65 @@ pub struct ScriptReport {
     pub shocks: Vec<String>,
     /// The rules on, in the order turned on: the script's name and the first period closed under it.
     pub rules: Vec<(String, u64)>,
+    /// The hours stored in goods, of the last period; `None` without a record of hours.
+    pub stored_hours: Option<ReportHours>,
     pub frame: Option<FrameTime>,
     pub refusal: Option<String>,
+}
+
+/// The stored hours of the last period of the run (the report's `period`), every figure exact
+/// (`micro_hours`) and the record's own.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ReportHours {
+    /// The standing line's figure.
+    pub opening_per_hundred: u64,
+    /// Each place's label and its back.
+    pub back_by_place: Vec<(String, String)>,
+    /// Each household group's label and its figures: its back for work, by owning, as support, not
+    /// recorded, and its back whole.
+    pub households: Vec<(String, [String; 5])>,
+}
+
+/// The report's hours, read from the last period kept; `None` when the run has no record of hours.
+fn report_hours(history: &[PeriodResult]) -> Result<Option<ReportHours>, String> {
+    let Some(last) = history.last() else {
+        return Ok(None);
+    };
+    let Some(hours) = &last.hours else {
+        return Ok(None);
+    };
+    let reading = reading::read_period(last).map_err(|error| error.to_string())?;
+    let opening_per_hundred = reading.opening_per_hundred.ok_or_else(|| {
+        format!(
+            "period {} has a record of hours and no share of the opening",
+            last.period
+        )
+    })?;
+    let exact = human_numbers::micro_hours;
+    Ok(Some(ReportHours {
+        opening_per_hundred,
+        back_by_place: hours
+            .places
+            .iter()
+            .map(|(place, sums)| (place.label().to_owned(), exact(sums.back_micro_hours)))
+            .collect(),
+        households: hours
+            .households
+            .iter()
+            .map(|(household, record)| {
+                (
+                    household.label(),
+                    [
+                        exact(record.claims.work),
+                        exact(record.claims.owning),
+                        exact(record.claims.support),
+                        exact(record.claims.not_recorded),
+                        exact(record.back_micro_hours),
+                    ],
+                )
+            })
+            .collect(),
+    }))
 }
 
 /// Where a script's run stands.
@@ -402,6 +460,7 @@ pub(super) fn build_report(
             .iter()
             .map(|on| (SceneRule::of(on.rule).script_name().to_owned(), on.from))
             .collect(),
+        stored_hours: report_hours(history)?,
         frame: times.last,
         refusal,
     })

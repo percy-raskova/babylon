@@ -511,6 +511,47 @@ fn the_proof_script_of_stored_hours_task_6_parses() {
     );
 }
 
+/// The proof script of this plan's Task 7 (decision 2); the lead runs it.
+const PROOF_SH7: &str = r#"{"step":1}
+{"capture":"stored-1"}
+{"report":"stored-1"}
+{"step":1}
+{"report":"stored-2"}
+{"step":10}
+{"columns":"hours"}
+{"wait_frames":30}
+{"capture":"stored-12-table"}
+{"pick":"household:22"}
+{"wait_frames":30}
+{"capture":"stored-12-panel"}
+{"report":"stored-12"}
+"quit"
+"#;
+
+#[test]
+fn the_proof_script_of_stored_hours_task_7_parses() {
+    let commands = script::parse_script(PROOF_SH7);
+    assert_eq!(
+        commands,
+        Ok(vec![
+            ScriptCommand::Step(1),
+            ScriptCommand::Capture("stored-1".into()),
+            ScriptCommand::Report("stored-1".into()),
+            ScriptCommand::Step(1),
+            ScriptCommand::Report("stored-2".into()),
+            ScriptCommand::Step(10),
+            ScriptCommand::Columns("hours".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("stored-12-table".into()),
+            ScriptCommand::Pick("household:22".into()),
+            ScriptCommand::WaitFrames(30),
+            ScriptCommand::Capture("stored-12-panel".into()),
+            ScriptCommand::Report("stored-12".into()),
+            ScriptCommand::Quit,
+        ])
+    );
+}
+
 /// The proof script of Task 8c, run by the lead on the display.
 const PROOF_8C: &str = r#"{"step":1}
 {"strike":{"shock":"harvest_fails","places":"both","lasts":"until_lifted"}}

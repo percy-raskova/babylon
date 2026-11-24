@@ -1487,6 +1487,27 @@ fn a_script_turns_a_rule_on() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn the_report_carries_the_hours_of_its_period() -> TestResult {
+    let (_app, folder) = scripted("{\"step\":2}\n{\"report\":\"h\"}\n", 1_500)?;
+    let kept = std::fs::read_to_string(folder.0.join("h.json"))?;
+    let value: Value = serde_json::from_str(&kept)?;
+    let hours = &value["stored_hours"];
+    assert_eq!(hours["opening_per_hundred"], 13, "{kept}");
+    assert_eq!(
+        hours["back_by_place"][0],
+        serde_json::json!(["Place A", "200"]),
+        "{kept}"
+    );
+    let households = hours["households"].as_array().ok_or("no households")?;
+    assert_eq!(households.len(), 12, "{kept}");
+    for entry in households {
+        let parts = entry[1].as_array().ok_or("no figures")?;
+        assert_eq!(parts.len(), 5, "{entry}");
+    }
+    Ok(())
+}
+
 /// The scene run by a script given as text, for `updates` frames, in a folder of its own.
 fn scripted(text: &str, frames: usize) -> Result<(App, TestFolder), Box<dyn Error>> {
     let folder = TestFolder::new()?;

@@ -106,6 +106,10 @@ pub(in crate::national_economy) struct ActorContext {
 
 pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) policy: &'a NationalGamePolicy,
+    /// The pay table: `Some` exactly under `GameWages::Observed`.
+    pub(in crate::national_economy) pay: Option<&'a NationalTradePayReference>,
+    /// The wage of each domestic site under `GameWages::Observed`; empty under `Single`.
+    pub(in crate::national_economy) workplace_wages: BTreeMap<SiteId, Currency>,
     pub(in crate::national_economy) endowments: BTreeMap<SiteId, OpeningProductiveEndowment>,
     pub(in crate::national_economy) financial_domains: BTreeMap<AccountId, FinancialDomainId>,
     pub(in crate::national_economy) aid: NationalAidCapture,
@@ -181,9 +185,10 @@ pub fn build_national_opening(
         &household_budgets,
         &leaf_roster,
         policy,
+        pay,
     )
     .map_err(NationalOpeningError::Workforce)?;
-    let mut builder = Builder::new(policy, transport, support_claimant)?;
+    let mut builder = Builder::new(policy, pay, transport, support_claimant)?;
     aid::prepare(
         &mut builder,
         &household_budgets,
@@ -240,6 +245,7 @@ impl<'a> Builder<'a> {
             builder.support_claimant.as_ref(),
             policy,
             &membership,
+            builder.pay,
         )
         .map_err(NationalOpeningError::Grain)?;
         let companies = policy
@@ -258,6 +264,7 @@ impl<'a> Builder<'a> {
             .transpose()
             .map_err(NationalOpeningError::Companies)?;
         builder.endowments = roster.workplace_endowments;
+        builder.workplace_wages = roster.workplace_wages;
         builder.financial_domains = roster.financial_domains;
         actors::domestic(
             &mut builder,
@@ -326,6 +333,7 @@ impl<'a> Builder<'a> {
     }
     pub(super) fn new(
         policy: &'a NationalGamePolicy,
+        pay: Option<&'a NationalTradePayReference>,
         transport: &'a NationalTransportReference,
         support_claimant: Option<NationalSupportClaimant>,
     ) -> Result<Self> {
@@ -336,6 +344,8 @@ impl<'a> Builder<'a> {
             templates::compile(policy, labor_unit)?;
         Ok(Self {
             policy,
+            pay,
+            workplace_wages: BTreeMap::new(),
             endowments: BTreeMap::new(),
             financial_domains: BTreeMap::new(),
             aid: NationalAidCapture::default(),

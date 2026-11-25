@@ -1,15 +1,25 @@
 //! The twelve-trade national scenario (policy schema 8): its sources, its compiler and, in later tasks, its world.
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+use babylon_kernel::geography::CountyGeoid;
+use babylon_material_circuit::{AccountId, LaborCompensation, SiteId};
+use babylon_persistence::economic_catalog::EconomicSiteSeed;
 use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind as Kind,
 };
-use babylon_persistence::national_economy::NationalGamePolicy;
+use babylon_persistence::national_cohorts::CohortKey;
+use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWorkplaceSource};
+use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
 use babylon_persistence::national_household_allocation::{self, NationalHouseholdAllocation};
 use babylon_persistence::national_household_refinement::{self, NationalHouseholdLeafRoster};
 use babylon_persistence::{
     national_cohorts, national_counties, national_household_time_allocation, national_households,
     national_resident_allocation, national_resident_workforce, national_trade_pay,
 };
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 const SHIPPED: &[u8] = include_bytes!("../../../../content/scenarios/national/defines.toml");
 const FIXTURE: &[u8] = include_bytes!("fixtures/national_twelve_trades.defines.toml");
@@ -145,6 +155,7 @@ fn the_twelve_trade_source_allocation_fits_its_bounds() {
         &budgets,
         &empty_leaves(&budgets),
         &policy,
+        Some(national_trade_pay::national_trade_pay_reference().expect("pay table")),
     )
     .expect("the twelve-trade source allocation fits its own bounds");
     let members: usize = allocation.workplaces.iter().map(|w| w.members.len()).sum();
@@ -152,4 +163,292 @@ fn the_twelve_trade_source_allocation_fits_its_bounds() {
     assert!(members <= 262_144);
     assert_eq!(allocation.workplaces.len(), 68_281);
     assert_eq!(members, 111_265);
+}
+
+/// The fixture, captured once: every test below reads this one catalog.
+fn captured() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        let input =
+            economic_catalog::national_catalog_input_for(FIXTURE).expect("the fixture parses");
+        CapturedEconomicCatalog::capture(input, None).expect("the fixture captures")
+    })
+}
+
+fn county(code: &str) -> EconomicLocation {
+    EconomicLocation::domestic_county(CountyGeoid::try_from(code).expect("county"))
+        .expect("a domestic county")
+}
+
+fn site_named<'a>(catalog: &'a CapturedEconomicCatalog, name: &str) -> &'a EconomicSiteSeed {
+    catalog
+        .opening()
+        .sites
+        .iter()
+        .find(|site| {
+            matches!(&site.subject,
+                babylon_graph::stable_element::StableElementKey::Node { local_name, .. }
+                    if local_name == name)
+        })
+        .expect("the site exists")
+}
+
+/// The wage every employee of a site is paid; the figure must be one for all of them.
+fn site_wage(catalog: &CapturedEconomicCatalog, site: SiteId) -> Option<Currency> {
+    let mut wages = catalog
+        .opening()
+        .employment
+        .iter()
+        .filter(|term| term.site_id == site)
+        .filter_map(|term| match term.compensation {
+            LaborCompensation::Wage(wage) => Some(wage),
+            _ => None,
+        });
+    let first = wages.next()?;
+    assert!(wages.all(|w| w == first), "one wage for one site");
+    Some(first)
+}
+
+#[test]
+fn twelve_trades_open() {
+    let catalog = captured();
+    let opening = catalog.opening();
+    for function in TradeSet::Twelve.functions() {
+        assert!(
+            opening
+                .sites
+                .iter()
+                .any(|s| s.function == *function
+                    && matches!(s.location, EconomicLocation::County(_))),
+            "{function:?} has a domestic site"
+        );
+    }
+    for function in [
+        EconomicFunction::ConsumerGoods,
+        EconomicFunction::LeisureHospitality,
+    ] {
+        assert!(
+            opening
+                .sites
+                .iter()
+                .any(|s| s.function == function && s.location == county("26163")),
+            "{function:?} has a site in Wayne"
+        );
+    }
+    assert_eq!(opening.recipes.len(), 11);
+    assert_eq!(opening.commodities.len(), 12);
+    assert_eq!(catalog.compiler_version(), "national-world-v13");
+}
+
+#[test]
+fn wayne_car_plants_pay_their_observed_wage() {
+    let catalog = captured();
+    let site = site_named(catalog, "site-26163-consumer-goods-5");
+    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
+    let row = pay
+        .row(CohortKey {
+            county: CountyGeoid::try_from("26163").expect("county"),
+            function: Some(EconomicFunction::ConsumerGoods),
+            ownership: QcewOwnership::Private,
+        })
+        .expect("Wayne's private consumer goods row");
+    let terms: Vec<_> = catalog
+        .opening()
+        .employment
+        .iter()
+        .filter(|term| term.site_id == site.site_id)
+        .collect();
+    assert_ne!(terms.len(), 0, "Wayne's plant employs people");
+    for term in terms {
+        assert_eq!(
+            term.compensation,
+            LaborCompensation::Wage(row.hourly_wage().expect("a wage")),
+            "every employment term pays the row's wage"
+        );
+    }
+}
+
+/// A site's ownership claims as first authored: the company layer keeps them as its sources.
+fn claims(catalog: &CapturedEconomicCatalog, site: SiteId) -> Vec<(AccountId, u64)> {
+    let sourced: Vec<_> = catalog
+        .national_company_finances()
+        .map(|finances| {
+            finances
+                .sources
+                .iter()
+                .filter(|source| source.site == site)
+                .map(|source| (source.beneficiary, source.original_shares))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !sourced.is_empty() {
+        return sourced;
+    }
+    catalog
+        .opening()
+        .institutions
+        .ownership
+        .iter()
+        .filter(|claim| claim.issuer_site_id == site)
+        .map(|claim| (claim.beneficiary, claim.shares))
+        .collect()
+}
+
+fn claim_shares(catalog: &CapturedEconomicCatalog, site: SiteId, beneficiary: AccountId) -> u64 {
+    claims(catalog, site)
+        .into_iter()
+        .filter(|(who, _)| *who == beneficiary)
+        .map(|(_, shares)| shares)
+        .sum()
+}
+
+fn pooled(location: EconomicLocation) -> AccountId {
+    AccountId::Household(national_economy::household_principal(
+        location,
+        HouseholdBudgetKey::PooledExternal,
+    ))
+}
+
+fn all_shares(catalog: &CapturedEconomicCatalog, site: SiteId) -> u64 {
+    claims(catalog, site)
+        .into_iter()
+        .map(|(_, shares)| shares)
+        .sum()
+}
+
+#[test]
+fn wayne_car_plants_carry_the_two_claims() {
+    let catalog = captured();
+    let japan = pooled(EconomicLocation::Foreign(ForeignCounterpart::Japan));
+    let canada = pooled(EconomicLocation::Foreign(ForeignCounterpart::Canada));
+    let wayne = site_named(catalog, "site-26163-consumer-goods-5");
+    assert_eq!(claim_shares(catalog, wayne.site_id, japan), 2_000);
+    assert_eq!(all_shares(catalog, wayne.site_id), 10_000);
+    let canadian = catalog
+        .opening()
+        .sites
+        .iter()
+        .find(|s| {
+            s.function == EconomicFunction::ConsumerGoods
+                && s.location == EconomicLocation::Foreign(ForeignCounterpart::Canada)
+        })
+        .expect("Canada's consumer goods site");
+    assert_eq!(claim_shares(catalog, canadian.site_id, canada), 8_000);
+    assert_eq!(all_shares(catalog, canadian.site_id), 10_000);
+    for site in catalog.opening().sites.iter().filter(|s| {
+        s.function == EconomicFunction::CapitalGoods
+            && (s.location == county("26163")
+                || s.location == EconomicLocation::Foreign(ForeignCounterpart::Canada))
+    }) {
+        assert_eq!(claim_shares(catalog, site.site_id, japan), 0);
+        if site.location == EconomicLocation::Foreign(ForeignCounterpart::Canada) {
+            assert_eq!(claim_shares(catalog, site.site_id, canada), 10_000);
+        }
+    }
+}
+
+#[test]
+fn a_place_pays_its_counties_pay_over_jobs() {
+    let catalog = captured();
+    let witness = catalog.national_generation().expect("the witness");
+    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
+    let mut by_site = BTreeMap::<SiteId, Vec<CohortKey>>::new();
+    for incidence in &witness.source_incidence {
+        if let ResidentWorkplaceSource::Qcew(key) = incidence.source {
+            by_site
+                .entry(incidence.destination_site)
+                .or_default()
+                .push(key);
+        }
+    }
+    let (site, keys) = by_site
+        .iter()
+        .find(|(site, keys)| keys.len() >= 2 && site_wage(catalog, **site).is_some())
+        .expect("a coarsened site of two or more source counties pays wages");
+    let (payroll, jobs) = keys.iter().fold((0_u128, 0_u128), |(p, j), key| {
+        let row = pay.row(*key).expect("the pay row");
+        (p + u128::from(row.payroll_usd), j + u128::from(row.jobs))
+    });
+    assert!(jobs > 0);
+    let expected = i128::try_from(payroll * 1_000_000 / (jobs * 2_080)).expect("fits");
+    assert_eq!(
+        site_wage(catalog, *site).expect("a wage").micro_units(),
+        expected
+    );
+}
+
+#[test]
+fn a_fallback_workplace_pays_the_place_average() {
+    let catalog = captured();
+    let witness = catalog.national_generation().expect("the witness");
+    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
+    let place_of = |county: CountyGeoid| {
+        witness
+            .counties
+            .iter()
+            .find(|c| c.controls.county == county)
+            .expect("the county contributes")
+            .destination
+    };
+    let mut checked = 0;
+    for incidence in witness.source_incidence.iter().filter(|i| {
+        matches!(i.source, ResidentWorkplaceSource::ResidentEmployerFallback)
+            && site_wage(catalog, i.destination_site).is_some()
+    }) {
+        let place = place_of(incidence.source_county);
+        let counties: Vec<CountyGeoid> = witness
+            .counties
+            .iter()
+            .filter(|c| c.destination == place)
+            .map(|c| c.controls.county)
+            .collect();
+        let rows: Vec<_> = counties
+            .iter()
+            .flat_map(|county| pay.county_rows(*county))
+            .collect();
+        let jobs: u128 = rows.iter().map(|r| u128::from(r.jobs)).sum();
+        let payroll: u128 = rows.iter().map(|r| u128::from(r.payroll_usd)).sum();
+        let expected = if counties.len() == 1 {
+            pay.county_average(counties[0]).micro_units()
+        } else if rows.is_empty() || jobs == 0 {
+            continue;
+        } else {
+            i128::try_from(payroll * 1_000_000 / (jobs * 2_080)).expect("fits")
+        };
+        assert_eq!(
+            site_wage(catalog, incidence.destination_site)
+                .expect("a wage")
+                .micro_units(),
+            expected,
+            "a fallback site of {counties:?} pays its place's average"
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "some fallback site was checked");
+}
+
+#[test]
+fn foreign_plants_pay_a_fraction() {
+    let catalog = captured();
+    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
+    let site = catalog
+        .opening()
+        .sites
+        .iter()
+        .find(|s| {
+            s.function == EconomicFunction::ConsumerGoods
+                && s.location == EconomicLocation::Foreign(ForeignCounterpart::Canada)
+        })
+        .expect("Canada's consumer goods site");
+    let expected = pay
+        .national_wage(EconomicFunction::ConsumerGoods)
+        .micro_units()
+        * 8_333
+        / 10_000;
+    assert_eq!(
+        site_wage(catalog, site.site_id)
+            .expect("a wage")
+            .micro_units(),
+        expected
+    );
 }

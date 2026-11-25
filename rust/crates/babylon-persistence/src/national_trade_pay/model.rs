@@ -208,6 +208,14 @@ impl NationalTradePayReference {
             .map(|index| &self.rows[index])
     }
 
+    /// A county's own rows, in key order; empty for a county with no cohort group.
+    #[must_use]
+    pub fn county_rows(&self, county: CountyGeoid) -> &[TradePayRow] {
+        let start = self.rows.partition_point(|row| row.key.county < county);
+        let end = self.rows.partition_point(|row| row.key.county <= county);
+        &self.rows[start..end]
+    }
+
     /// All of a county's rows, all trades and ownerships:
     /// `sum(payroll_usd) x 1_000_000 / (sum(jobs) x 2_080)`. A county whose rows hold no jobs takes
     /// its state's figure over all its counties, then the nation's.

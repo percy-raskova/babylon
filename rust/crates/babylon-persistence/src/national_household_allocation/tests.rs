@@ -280,6 +280,7 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
         )
         .expect("the fixture household refinement succeeds"),
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     let mut actual = BTreeMap::new();

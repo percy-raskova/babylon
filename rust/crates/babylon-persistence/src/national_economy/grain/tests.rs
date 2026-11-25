@@ -191,6 +191,7 @@ fn productive_floors_are_summed_before_folding() {
             target,
             weight: None,
             members: vec![member],
+            county_wage: None,
         };
         endowment
             .accumulate(&OpeningProductiveEndowment::source(&row, &policy).expect("source"))
@@ -208,6 +209,85 @@ fn productive_floors_are_summed_before_folding() {
         2 * policy.work_hours_per_person / 300,
         1,
         "floor after sum creates a free batch"
+    );
+}
+#[test]
+fn place_wage_sums_pay_over_jobs() {
+    let wage = super::place_wage(&[
+        (
+            100_000,
+            8_320_000_000,
+            Currency::from_micro_units(40_000_000),
+        ),
+        (
+            20_000,
+            1_248_000_000,
+            Currency::from_micro_units(30_000_000),
+        ),
+    ])
+    .expect("two rows with jobs");
+    assert_eq!(wage, Currency::from_micro_units(38_333_333));
+}
+#[test]
+fn place_wage_without_jobs_is_the_plain_mean() {
+    let wage = super::place_wage(&[
+        (0, 0, Currency::from_micro_units(48_076_923)),
+        (0, 0, Currency::from_micro_units(25_000_000)),
+    ])
+    .expect("two rows without jobs");
+    assert_eq!(wage, Currency::from_micro_units(36_538_461));
+    assert_eq!(super::place_wage(&[]), Err(NationalGrainError::Arithmetic));
+}
+#[test]
+fn cash_after_folding_covers_the_place_payroll() {
+    let policy = NationalGamePolicy::parse(include_str!(
+        "../../../tests/fixtures/national_twelve_trades.defines.toml"
+    ))
+    .expect("the twelve-trade fixture admits");
+    let mut folded = OpeningProductiveEndowment::default();
+    let mut inputs = 0_i128;
+    for (county, persons) in [("26001", 3_u64), ("26003", 1)] {
+        let location =
+            EconomicLocation::domestic_county(CountyGeoid::try_from(county).expect("county"))
+                .expect("location");
+        let target = super::super::source_workplace_target(
+            location,
+            EconomicFunction::Food,
+            QcewOwnership::Private,
+            1,
+        )
+        .expect("target");
+        let member = national_resident_allocation::member(
+            &target,
+            ResidentAttendanceMode::Employee,
+            super::super::household_principal(location, HouseholdBudgetKey::EarningNonowner),
+            persons,
+            0,
+        )
+        .expect("member");
+        let row = AssignedResidentWorkplace {
+            target,
+            weight: None,
+            members: vec![member],
+            county_wage: Some(Currency::from_micro_units(31_000_000)),
+        };
+        let batches = persons * policy.work_hours_per_person
+            / policy.recipes[&EconomicFunction::Food].labor_hours_per_batch;
+        for (key, coefficient) in &policy.recipes[&EconomicFunction::Food].inputs {
+            inputs += policy.commodities[key].price.as_ref().map_or(0, |p| {
+                p.opening.micro_units() * i128::from(batches * coefficient)
+            });
+        }
+        folded
+            .accumulate(&OpeningProductiveEndowment::source(&row, &policy).expect("source"))
+            .expect("sum");
+    }
+    let wage = Currency::from_micro_units(38_333_333);
+    folded.at_place_wage(&policy, wage).expect("refold");
+    assert_eq!(
+        folded.opening_cash_micros,
+        i128::from(policy.working_capital_periods)
+            * ((3 + 1) * i128::from(policy.work_hours_per_person) * wage.micro_units() + inputs)
     );
 }
 #[test]

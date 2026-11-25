@@ -3,6 +3,7 @@ use crate::economic_catalog::{CommodityAmount, OpeningCommodityStock};
 use crate::national_counties::{CountyReference, NationalCountyReference};
 use crate::national_economy::GameCommodity;
 use crate::national_economy::GameRecipe;
+use crate::national_economy::GameWages;
 use crate::national_economy::{
     self, NationalAidCapture, NationalGamePolicy, NationalSupportClaimant, ResidentWorkplaceSource,
 };
@@ -17,6 +18,7 @@ use crate::national_resident_allocation::{
     self, AssignedResidentWorkplace, ResidentAttendanceMode, ResidentCountyAllocation,
     ResidentWorkplaceAllocation, WorkforceAllocationWeight,
 };
+use crate::national_trade_pay::{NationalTradePayReference, TradePayRow};
 use crate::national_transport::{
     CargoClass, NationalTransportReference, TransportMode, TransportNodeKind,
 };
@@ -162,6 +164,10 @@ pub struct OpeningProductiveEndowment {
     pub batches: u64,
     pub opening_stock: Vec<OpeningCommodityStock>,
     pub opening_cash_micros: i128,
+    /// Employee persons, kept apart so cash can follow the wage of the place that folds them.
+    pub employee_persons: u64,
+    /// One period's cost of the inputs, in millionths of a dollar, kept apart for the same reason.
+    pub inputs_cost_micros: i128,
     pub equipment_units: u64,
     pub workforce_equipment_units: u64,
     pub equipment_service_batches: u64,
@@ -225,6 +231,8 @@ pub struct NationalOpeningRoster {
     pub workplaces: ResidentWorkplaceAllocation,
     pub households: Vec<OpeningHouseholdAllocation>,
     pub workplace_endowments: BTreeMap<SiteId, OpeningProductiveEndowment>,
+    /// Empty under `GameWages::Single`; one entry per domestic live site under `Observed`.
+    pub workplace_wages: BTreeMap<SiteId, Currency>,
     pub financial_domains: BTreeMap<AccountId, FinancialDomainId>,
     pub representation: NationalGenerationWitness,
 }
@@ -240,8 +248,10 @@ pub enum NationalGrainError {
     TimeMargin(CountyGeoid),
     UnsupportedGeneration,
     UnsupportedEssentialFoodRecipe,
-    /// The scenario's wages are observed by trade and place; this reader needs one wage.
+    /// The scenario's wages are observed, and a source workplace carries no wage of its own.
     ObservedWagesUnread,
+    /// A pay row, or the pay table itself, is missing where the observed wage is read.
+    MissingPay,
     CatchmentIdentityCollision,
     MissingOwnerBudget(FinancialDomainId),
     MissingFinancialDomain(AccountId),
@@ -744,19 +754,22 @@ impl OpeningProductiveEndowment {
             .iter()
             .filter(|m| m.mode == ResidentAttendanceMode::Employee)
             .try_fold(0, |n, m| add(n, m.seed.employed))?;
-        let single_wage = policy
-            .wages
-            .single()
-            .ok_or(NationalGrainError::ObservedWagesUnread)?;
+        let wage = match policy.wages {
+            GameWages::Single(wage) => wage,
+            GameWages::Observed => row
+                .county_wage
+                .ok_or(NationalGrainError::ObservedWagesUnread)?,
+        };
         let wages = i128::from(employee_persons)
             .checked_mul(i128::from(policy.work_hours_per_person))
-            .and_then(|hours| hours.checked_mul(single_wage.micro_units()))
+            .and_then(|hours| hours.checked_mul(wage.micro_units()))
             .ok_or(NationalGrainError::Arithmetic)?;
         if row.target.function == EconomicFunction::DistributionTransport {
             return Ok(Self {
                 opening_cash_micros: wages
                     .checked_mul(i128::from(policy.working_capital_periods))
                     .ok_or(NationalGrainError::Arithmetic)?,
+                employee_persons,
                 ..Self::default()
             });
         }
@@ -815,17 +828,39 @@ impl OpeningProductiveEndowment {
             batches,
             opening_stock,
             opening_cash_micros,
+            employee_persons,
+            inputs_cost_micros: inputs_cost,
             equipment_units: units,
             workforce_equipment_units,
             equipment_service_batches: remaining,
             equipment_carrying_micros: carrying,
         })
     }
+    /// After folding under observed wages: the site holds the working capital of its whole payroll
+    /// at its place's wage, `periods x (employee persons x hours x wage + inputs)`.
+    pub(crate) fn at_place_wage(
+        &mut self,
+        policy: &NationalGamePolicy,
+        wage: Currency,
+    ) -> Result<()> {
+        self.opening_cash_micros = i128::from(self.employee_persons)
+            .checked_mul(i128::from(policy.work_hours_per_person))
+            .and_then(|hours| hours.checked_mul(wage.micro_units()))
+            .and_then(|payroll| payroll.checked_add(self.inputs_cost_micros))
+            .and_then(|period| period.checked_mul(i128::from(policy.working_capital_periods)))
+            .ok_or(NationalGrainError::Arithmetic)?;
+        Ok(())
+    }
     pub(super) fn accumulate(&mut self, source: &Self) -> Result<()> {
         self.batches = add(self.batches, source.batches)?;
         self.opening_cash_micros = self
             .opening_cash_micros
             .checked_add(source.opening_cash_micros)
+            .ok_or(NationalGrainError::Arithmetic)?;
+        self.employee_persons = add(self.employee_persons, source.employee_persons)?;
+        self.inputs_cost_micros = self
+            .inputs_cost_micros
+            .checked_add(source.inputs_cost_micros)
             .ok_or(NationalGrainError::Arithmetic)?;
         for stock in &source.opening_stock {
             if let Some(existing) = self.opening_stock.iter_mut().find(|s| {
@@ -970,12 +1005,113 @@ fn domain(
         representative,
     })
 }
+/// Hours in a working year, as the pay table counts a wage.
+const HOURS_PER_YEAR: u128 = 2_080;
+/// A place's wage for one trade and ownership, over the place's pay rows for them, each
+/// `(jobs, payroll_usd, own wage)`: `floor(sum(payroll_usd) x 1_000_000 / (sum(jobs) x 2_080))`;
+/// when the rows hold no jobs, `floor(sum(own wage) / rows)`.
+/// # Errors
+/// `Arithmetic` for no rows, an overflow, or a wage that rounds to zero.
+pub(crate) fn place_wage(rows: &[(u64, u64, Currency)]) -> Result<Currency> {
+    if rows.is_empty() {
+        return Err(NationalGrainError::Arithmetic);
+    }
+    let (payroll, jobs) = rows.iter().fold((0_u128, 0_u128), |(payroll, jobs), row| {
+        (payroll + u128::from(row.1), jobs + u128::from(row.0))
+    });
+    let micro = if jobs > 0 {
+        i128::try_from(
+            payroll
+                .checked_mul(1_000_000)
+                .and_then(|scaled| scaled.checked_div(jobs.checked_mul(HOURS_PER_YEAR)?))
+                .ok_or(NationalGrainError::Arithmetic)?,
+        )
+        .map_err(|_| NationalGrainError::Arithmetic)?
+    } else {
+        let sum = rows
+            .iter()
+            .try_fold(0_i128, |n, row| n.checked_add(row.2.micro_units()))
+            .ok_or(NationalGrainError::Arithmetic)?;
+        sum / i128::try_from(rows.len()).map_err(|_| NationalGrainError::Arithmetic)?
+    };
+    if micro <= 0 {
+        return Err(NationalGrainError::Arithmetic);
+    }
+    Ok(Currency::from_micro_units(micro))
+}
+/// Each live place's source counties, in county order.
+fn place_counties(
+    destinations: &BTreeMap<CountyGeoid, ContributionDestination>,
+    membership: &CapturedNationalMembership,
+) -> Result<BTreeMap<FinancialDomainId, Vec<CountyGeoid>>> {
+    let mut places = BTreeMap::<_, Vec<_>>::new();
+    for (county, destination) in destinations {
+        places
+            .entry(domain(*destination, membership)?)
+            .or_default()
+            .push(*county);
+    }
+    Ok(places)
+}
+/// The place's average over every pay row of its counties; the one county's own average for a
+/// place of one county, and the first county's (then its state's, then the nation's) for a place
+/// whose counties have no row.
+fn place_average(pay: &NationalTradePayReference, counties: &[CountyGeoid]) -> Result<Currency> {
+    let first = *counties.first().ok_or(NationalGrainError::MissingPay)?;
+    if counties.len() == 1 {
+        return Ok(pay.county_average(first));
+    }
+    let rows = counties
+        .iter()
+        .flat_map(|county| pay.county_rows(*county))
+        .map(|row: &TradePayRow| {
+            row.hourly_wage()
+                .map(|wage| (row.jobs, row.payroll_usd, wage))
+                .map_err(|_| NationalGrainError::MissingPay)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if rows.is_empty() {
+        Ok(pay.county_average(first))
+    } else {
+        place_wage(&rows)
+    }
+}
+/// The wage each live site pays (rule O2): a site of one source workplace pays that workplace's
+/// own wage; a site of several pays `place_wage` over their pay rows; a fallback or a household
+/// enterprise pays its place's average.
+fn site_wages(
+    pay: &NationalTradePayReference,
+    sites: &BTreeMap<SiteId, AssignedResidentWorkplace>,
+    qcew_rows: &BTreeMap<SiteId, Vec<(u64, u64, Currency)>>,
+    domains: &BTreeMap<AccountId, FinancialDomainId>,
+    places: &BTreeMap<FinancialDomainId, Vec<CountyGeoid>>,
+) -> Result<BTreeMap<SiteId, Currency>> {
+    let mut wages = BTreeMap::new();
+    for site in sites.keys() {
+        let wage = match qcew_rows.get(site).map(Vec::as_slice) {
+            Some([(_, _, own)]) => *own,
+            Some(rows) if !rows.is_empty() => place_wage(rows)?,
+            _ => {
+                let domain = domains.get(&AccountId::Site(*site)).ok_or(
+                    NationalGrainError::MissingFinancialDomain(AccountId::Site(*site)),
+                )?;
+                place_average(
+                    pay,
+                    places.get(domain).ok_or(NationalGrainError::MissingPay)?,
+                )?
+            }
+        };
+        wages.insert(*site, wage);
+    }
+    Ok(wages)
+}
 /// Fold each source seed immediately; no fine `EconomicOpening` or site vector is built.
 /// # Errors
 /// Refuses lost county/payee membership, contradictory protected closure and checked overflow.
 #[allow(
     clippy::too_many_lines,
-    reason = "This sole source-to-live transaction checks both household and staffing pushforwards before returning any roster"
+    clippy::too_many_arguments,
+    reason = "This sole source-to-live transaction checks both household and staffing pushforwards before returning any roster, from each source it reads"
 )]
 pub(crate) fn coarsen_source_allocation(
     mut source: ResidentWorkplaceAllocation,
@@ -985,7 +1121,13 @@ pub(crate) fn coarsen_source_allocation(
     claimant: Option<&NationalSupportClaimant>,
     policy: &NationalGamePolicy,
     membership: &CapturedNationalMembership,
+    pay: Option<&NationalTradePayReference>,
 ) -> Result<NationalOpeningRoster> {
+    let observed = matches!(policy.wages, GameWages::Observed);
+    if observed != pay.is_some() {
+        return Err(NationalGrainError::MissingPay);
+    }
+    let mut qcew_rows = BTreeMap::<SiteId, Vec<(u64, u64, Currency)>>::new();
     let mut witness = membership.witness.clone();
     let destinations: BTreeMap<_, _> = witness
         .counties
@@ -1105,6 +1247,14 @@ pub(crate) fn coarsen_source_allocation(
             row.target.clone()
         };
         domains.insert(AccountId::Site(target.site_id), domain);
+        if let (Some(pay), ResidentWorkplaceSource::Qcew(key)) = (pay, &row.target.source) {
+            let pay_row = pay.row(*key).ok_or(NationalGrainError::MissingPay)?;
+            qcew_rows.entry(target.site_id).or_default().push((
+                pay_row.jobs,
+                pay_row.payroll_usd,
+                row.county_wage.ok_or(NationalGrainError::MissingPay)?,
+            ));
+        }
         witness
             .source_incidence
             .push(SourceRepresentativeIncidence {
@@ -1140,6 +1290,7 @@ pub(crate) fn coarsen_source_allocation(
             target,
             weight: None,
             members: Vec::new(),
+            county_wage: None,
         });
         for m in row.members {
             let principal = *principal_map
@@ -1186,6 +1337,18 @@ pub(crate) fn coarsen_source_allocation(
     for site in sites.values_mut() {
         site.members.sort_by_key(|m| m.seed.member.member_id());
     }
+    let workplace_wages = match pay {
+        Some(pay) => {
+            let places = place_counties(&destinations, membership)?;
+            let wages = site_wages(pay, &sites, &qcew_rows, &domains, &places)?;
+            for (site, endowment) in &mut endowments {
+                let wage = wages.get(site).ok_or(NationalGrainError::MissingPay)?;
+                endowment.at_place_wage(policy, *wage)?;
+            }
+            wages
+        }
+        None => BTreeMap::new(),
+    };
     source.workplaces = sites.into_values().collect();
     witness.household_incidence.sort_by_key(|i| i.source);
     witness.source_incidence.sort_by_key(|i| i.source_site);
@@ -1218,6 +1381,7 @@ pub(crate) fn coarsen_source_allocation(
         workplaces: source,
         households: household_rows.into_values().collect(),
         workplace_endowments: endowments,
+        workplace_wages,
         financial_domains: domains,
         representation: witness,
     })

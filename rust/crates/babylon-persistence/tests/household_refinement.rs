@@ -142,6 +142,7 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         &budgets,
         &empty,
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     let refined = national_resident_allocation::allocate_home_county(
@@ -151,6 +152,7 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         &budgets,
         &leaves,
         &policy,
+        None,
     )
     .expect("the fixture home county allocation fits");
     let other_budgets = national_household_allocation::allocate_households(
@@ -171,7 +173,8 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
             workforce,
             &other_budgets,
             &leaves,
-            &other_policy
+            &other_policy,
+            None,
         ),
         Err(babylon_persistence::national_resident_allocation::AllocationError::SourceScope)
     );

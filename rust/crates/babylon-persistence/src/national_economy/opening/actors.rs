@@ -6,7 +6,7 @@ use crate::economic_catalog::{
 };
 use crate::national_counties::NationalCountyReference;
 use crate::national_economy::grain::OpeningHouseholdAllocation;
-use crate::national_economy::ResidentWorkplaceSource;
+use crate::national_economy::{GameWages, ResidentWorkplaceSource};
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation};
 
@@ -24,7 +24,7 @@ use babylon_kernel::content_digest;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{
     CommodityKind, CorridorId, EmploymentTerms, HouseholdKind, HouseholdNeedBasis,
-    LaborCompensation, LogisticsNodeId, MerchantRole, ProcessId, StaffingPolicy,
+    LaborCompensation, LogisticsNodeId, MerchantRole, ProcessId, SiteId, StaffingPolicy,
     StaffingWorkSource,
 };
 use std::collections::BTreeMap;
@@ -106,7 +106,7 @@ pub(super) fn domestic(
             employed,
             employee_persons,
             force,
-            wage: single_wage(builder)?,
+            wage: site_wage(builder, target.site_id)?,
             price_scale_bps: 10_000,
             planned_batches: 0,
             process_id: None,
@@ -137,17 +137,25 @@ pub(super) fn domestic(
     Ok(())
 }
 
-/// The one wage of a scenario of schema 7 or earlier; the observed wages are read from Task 7 on.
-fn single_wage(builder: &Builder<'_>) -> Result<Currency> {
-    builder
-        .policy
-        .wages
-        .single()
-        .ok_or(NationalOpeningError::Policy)
+/// The wage a domestic site pays: the scenario's one wage (schema 7 and earlier), or the observed
+/// wage of its trade and place.
+fn site_wage(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
+    match builder.policy.wages {
+        GameWages::Single(wage) => Ok(wage),
+        GameWages::Observed => builder
+            .workplace_wages
+            .get(&site)
+            .copied()
+            .ok_or(NationalOpeningError::Policy),
+    }
 }
 
 fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) -> Result<()> {
-    let wage = single_wage(builder)?;
+    let wage = builder
+        .actors
+        .get(&row.target.site_id)
+        .ok_or(NationalOpeningError::Identity)?
+        .wage;
     for member in &row.members {
         let compensation = match member.mode {
             ResidentAttendanceMode::Employee => LaborCompensation::Wage(wage),

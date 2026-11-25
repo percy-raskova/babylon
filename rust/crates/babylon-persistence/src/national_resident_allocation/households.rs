@@ -36,6 +36,7 @@ pub(super) fn partition(
             target: row.target.clone(),
             weight: row.weight.clone(),
             members: vec![],
+            county_wage: row.county_wage,
         })
         .collect();
     let mut rows: Vec<_> = pending

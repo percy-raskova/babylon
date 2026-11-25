@@ -8,6 +8,8 @@ use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::world_reference::WorldReference;
 
 use babylon_graph::stable_element::StableElementKey;
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
 
 use crate::national_economy;
@@ -75,9 +77,6 @@ fn add(
     if weights.len() != functions.len() {
         return Err(NationalOpeningError::Policy);
     }
-    let GameProfileWage::PerHour(wage) = profile.wage else {
-        return Err(NationalOpeningError::Policy);
-    };
     let employed = partition(counts.employed, weights)?;
     let reserve = partition(counts.reserve, weights)?;
     for (index, function) in functions.iter().copied().enumerate() {
@@ -88,6 +87,7 @@ fn add(
         let workforce = employed[index]
             .checked_add(reserve[index])
             .ok_or(NationalOpeningError::Arithmetic)?;
+        let wage = foreign_wage(builder, profile, function)?;
         let context = ActorContext {
             site_id,
             function,
@@ -115,6 +115,33 @@ fn add(
         staffing(builder, site_id, subject, employed[index], reserve[index])?;
     }
     Ok(())
+}
+
+/// A foreign region or dependency pays a designed wage per hour (schema 7 and earlier), or, in
+/// trade `f`, `floor(national_wage(f) x bps / 10_000)` (schema 8); a result of 0 is refused.
+fn foreign_wage(
+    builder: &Builder<'_>,
+    profile: &GameProfile,
+    function: EconomicFunction,
+) -> Result<Currency> {
+    match profile.wage {
+        GameProfileWage::PerHour(wage) => Ok(wage),
+        GameProfileWage::FractionOfUnitedStates { bps } => {
+            let national = builder
+                .pay
+                .ok_or(NationalOpeningError::Policy)?
+                .national_wage(function);
+            let micro = national
+                .micro_units()
+                .checked_mul(i128::from(bps))
+                .ok_or(NationalOpeningError::Arithmetic)?
+                / 10_000;
+            if micro <= 0 {
+                return Err(NationalOpeningError::Policy);
+            }
+            Ok(Currency::from_micro_units(micro))
+        }
+    }
 }
 
 fn staffing(

@@ -1,5 +1,5 @@
 //! The national fund of the country bench, added to the opening in memory (benefits plan B, items 1 to
-//! 5): one public account that takes half of every domestic tax rate and pays two programs, `no_earner`
+//! 5): one public account (opening with no cash) that takes half of every domestic tax rate and pays two programs, `no_earner`
 //! and `laid_off`. Nothing here pays anyone at the opening, gives a foreign region a program or makes
 //! money.
 use super::country_bench::{BenchError, BenchPeriod};
@@ -25,8 +25,6 @@ const FUND_COUNTY: &str = "11001";
 /// Half periods of the `laid_off` program, and the share of the lost pay it pays, in basis points.
 const LAID_OFF_HALF_PERIODS: u16 = 13;
 const LAID_OFF_SHARE_BPS: u16 = 5_000;
-/// Periods of its payments the fund opens with.
-const RESERVE_PERIODS: i128 = 2;
 
 fn refused(what: &'static str) -> BenchError {
     BenchError::Opening(EconomicCatalogError::Opening(what))
@@ -207,19 +205,27 @@ pub fn no_earner_per_person(
     Ok(Currency::from_micro_units(share))
 }
 
-/// The fund's opening cash: two periods of its payments to the `no_earner` recipients.
-fn fund_cash(opening: &EconomicOpening, per_person: Currency) -> Result<i128, BenchError> {
+/// What one period of the `no_earner` benefit costs: the amount times the persons of its recipients at the
+/// opening. The fund opens with none of it; it pays from its half of the taxes as they come in.
+///
+/// # Errors
+/// `BenchError::Arithmetic` when the product overflows.
+pub fn no_earner_due_a_period(
+    opening: &EconomicOpening,
+    per_person: Currency,
+) -> Result<i128, BenchError> {
     let persons = no_earner_persons(opening)?;
     per_person
         .micro_units()
         .checked_mul(i128::from(persons))
-        .and_then(|paid| paid.checked_mul(RESERVE_PERIODS))
         .ok_or_else(overflow)
 }
 
-/// Moves `needed` out of the domestic places' bodies, each giving its share of their cash rounded down,
-/// the remainder from the body with the most cash. No money is made.
-fn take_reserve(opening: &mut EconomicOpening, needed: i128) -> Result<(), BenchError> {
+/// The cash the domestic public bodies hold between them at the opening.
+///
+/// # Errors
+/// `BenchError::Arithmetic` when the sum overflows.
+pub fn public_bodies_cash(opening: &EconomicOpening) -> Result<i128, BenchError> {
     let domestic_bodies: BTreeSet<AccountId> = opening
         .institutions
         .locations
@@ -227,63 +233,18 @@ fn take_reserve(opening: &mut EconomicOpening, needed: i128) -> Result<(), Bench
         .filter(|row| matches!(row.account, AccountId::Public(_)) && is_domestic(row.location))
         .map(|row| row.account)
         .collect();
-    let held: Vec<(usize, i128)> = opening
+    opening
         .institutional_cash
         .iter()
-        .enumerate()
-        .filter(|(_, row)| domestic_bodies.contains(&row.id))
-        .map(|(at, row)| (at, row.cash.micro_units()))
-        .collect();
-    let total = held
-        .iter()
-        .try_fold(0_i128, |sum, (_, cash)| sum.checked_add(*cash))
-        .ok_or_else(overflow)?;
-    if total < needed {
-        return Err(refused(
-            "the domestic public bodies hold less cash than the fund needs",
-        ));
-    }
-    let mut taken = Vec::with_capacity(held.len());
-    let mut given = 0_i128;
-    for (at, cash) in &held {
-        let share = if total == 0 {
-            0
-        } else {
-            cash.checked_mul(needed).ok_or_else(overflow)? / total
-        };
-        given = given.checked_add(share).ok_or_else(overflow)?;
-        taken.push((*at, share));
-    }
-    let remainder = needed.checked_sub(given).ok_or_else(overflow)?;
-    let richest = held
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, (_, cash))| *cash)
-        .map(|(slot, _)| slot)
-        .ok_or_else(|| refused("the opening has no domestic public body"))?;
-    taken[richest].1 = taken[richest]
-        .1
-        .checked_add(remainder)
-        .ok_or_else(overflow)?;
-    for (at, share) in taken {
-        let row = &mut opening.institutional_cash[at];
-        let left = row
-            .cash
-            .micro_units()
-            .checked_sub(share)
-            .ok_or_else(overflow)?;
-        if left < 0 {
-            return Err(refused("a public body gave more cash than it held"));
-        }
-        row.cash = Currency::from_micro_units(left);
-    }
-    Ok(())
+        .filter(|row| domestic_bodies.contains(&row.id))
+        .try_fold(0_i128, |sum, row| sum.checked_add(row.cash.micro_units()))
+        .ok_or_else(overflow)
 }
 
 /// The opening with the fund (benefits plan B items 1 to 5). `per_person` is the `no_earner` amount.
 ///
 /// # Errors
-/// `BenchError::Opening` when the bodies hold less than the fund needs or the arithmetic overflows.
+/// `BenchError::Opening` when a program key is refused or the arithmetic overflows.
 pub fn with_fund(
     opening: &EconomicOpening,
     per_person: Currency,
@@ -291,11 +252,9 @@ pub fn with_fund(
     let fund = fund_account();
     let mut funded = opening.clone();
     funded.institutions.taxes = split_taxes(opening, fund)?;
-    let cash = fund_cash(opening, per_person)?;
-    take_reserve(&mut funded, cash)?;
     funded.institutional_cash.push(CashAccount {
         id: AccountId::Public(fund),
-        cash: Currency::from_micro_units(cash),
+        cash: Currency::from_micro_units(0),
     });
     funded.institutional_cash.sort_unstable_by_key(|row| row.id);
     funded.institutions.locations.push(InstitutionLocation {

@@ -1143,9 +1143,26 @@ fn bench_report(set: RuleSet, periods: u64) -> Value {
     head.insert("panel".to_owned(), json!(panel));
     head.insert("periods".to_owned(), json!(rows));
     if let Some(amount) = bench.no_earner_per_person() {
+        let opening = catalog.opening();
         head.insert(
             "no_earner_per_person_micros".to_owned(),
             json!(amount.micro_units().to_string()),
+        );
+        head.insert(
+            "fund_reserve".to_owned(),
+            json!("none: one period of the no-earner benefit is more than the country's public bodies hold between them"),
+        );
+        head.insert(
+            "no_earner_due_a_period_micros".to_owned(),
+            json!(country_fund::no_earner_due_a_period(opening, amount)
+                .expect("the due figure")
+                .to_string()),
+        );
+        head.insert(
+            "public_bodies_cash_micros".to_owned(),
+            json!(country_fund::public_bodies_cash(opening)
+                .expect("the bodies' cash")
+                .to_string()),
         );
     }
     record
@@ -1488,38 +1505,33 @@ fn opening_money(opening: &EconomicOpening) -> i128 {
     institutions + sites + households
 }
 
-/// The fund adds no money: the opening's total is the same, and the fund holds two periods of its
-/// `no_earner` payments.
+/// The fund adds no money and takes none: the opening's total is the same, every domestic public body
+/// keeps the cash it held, and the fund opens with none.
 #[test]
 fn the_fund_keeps_the_opening_s_money() {
     let catalog = pooled_catalog();
     let before = catalog.opening();
     let after = with_test_fund(before);
     assert_eq!(opening_money(&after), opening_money(before));
-    let fund = after
-        .institutional_cash
-        .iter()
-        .find(|row| row.id == AccountId::Public(country_fund::fund_account()))
-        .expect("the fund holds cash");
-    // Computed here from the staffing, not by the helper the fund itself uses.
-    let mut employed: BTreeMap<FinalDemandPrincipalId, u64> = BTreeMap::new();
-    for member in before.staffing.iter().flat_map(|pool| &pool.members) {
-        *employed.entry(member.member.household_id()).or_default() += member.employed;
-    }
-    let persons: u64 = before
-        .households
-        .iter()
-        .filter(|household| household.location.to_string().starts_with("county:"))
-        .filter(|household| employed.get(&household.principal_id).copied().unwrap_or(0) == 0)
-        .map(|household| household.persons)
-        .sum();
+    let fund_id = AccountId::Public(country_fund::fund_account());
+    let cash_of = |opening: &EconomicOpening| -> BTreeMap<AccountId, i128> {
+        opening
+            .institutional_cash
+            .iter()
+            .map(|row| (row.id, row.cash.micro_units()))
+            .collect()
+    };
+    let held_before = cash_of(before);
+    let mut held_after = cash_of(&after);
+    let fund_cash = held_after.remove(&fund_id).expect("the fund has a row");
+    assert_eq!(fund_cash, 0, "the fund opens with no cash");
     assert_eq!(
-        fund.cash.micro_units(),
-        2 * TEST_PER_PERSON_MICROS * i128::from(persons)
+        held_after, held_before,
+        "every body keeps exactly the cash it held"
     );
     println!(
-        "the fund opens with {} micros for {persons} persons",
-        fund.cash.micro_units()
+        "{} bodies keep their cash; the fund opens with 0",
+        held_after.len()
     );
 }
 

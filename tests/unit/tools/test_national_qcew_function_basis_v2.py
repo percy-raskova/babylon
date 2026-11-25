@@ -18,6 +18,7 @@ import make_national_cohort_reference_v2 as cohort_v2  # type: ignore[import-not
 import make_national_county_reference as county  # type: ignore[import-not-found]  # noqa: E402
 import make_national_qcew_function_basis as basis  # type: ignore[import-not-found]  # noqa: E402
 import make_national_qcew_function_basis_v2 as v2  # type: ignore[import-not-found]  # noqa: E402
+import make_national_trade_accounts as trade_accounts  # type: ignore[import-not-found]  # noqa: E402
 import make_national_trade_pay as trade_pay  # type: ignore[import-not-found]  # noqa: E402
 
 
@@ -102,6 +103,7 @@ def test_version_1_files_keep_their_digests() -> None:
     assert cohort_v2.METADATA_OUT != cohort.METADATA_OUT
     assert trade_pay.ARTIFACT_OUT not in (cohort.ARTIFACT_OUT, cohort_v2.ARTIFACT_OUT)
     assert trade_pay.METADATA_OUT not in (cohort.METADATA_OUT, cohort_v2.METADATA_OUT)
+    assert trade_accounts.ACCOUNTS_MAPPING not in (basis.MAPPING_PATH, v2.MAPPING_V2_PATH)
 
 
 def source(

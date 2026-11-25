@@ -1,0 +1,508 @@
+{
+  "contract": "NationalAccountsTradeMappingV1",
+  "issue": "PER-371",
+  "evidence_class": "Designed",
+  "source_vintage": 2024,
+  "description": "Folds the 71 industries of the BEA 2024 summary use table into the twelve trades of NationalQcewFunctionMappingV2. A whole industry goes to one trade; a split industry is divided by national QCEW jobs of the named NAICS leaves.",
+  "industry_codes": [
+    "111CA",
+    "113FF",
+    "211",
+    "212",
+    "213",
+    "22",
+    "23",
+    "321",
+    "327",
+    "331",
+    "332",
+    "333",
+    "334",
+    "335",
+    "3361MV",
+    "3364OT",
+    "337",
+    "339",
+    "311FT",
+    "313TT",
+    "315AL",
+    "322",
+    "323",
+    "324",
+    "325",
+    "326",
+    "42",
+    "441",
+    "445",
+    "452",
+    "4A0",
+    "481",
+    "482",
+    "483",
+    "484",
+    "485",
+    "486",
+    "487OS",
+    "493",
+    "511",
+    "512",
+    "513",
+    "514",
+    "521CI",
+    "523",
+    "524",
+    "525",
+    "HS",
+    "ORE",
+    "532RL",
+    "5411",
+    "5415",
+    "5412OP",
+    "55",
+    "561",
+    "562",
+    "61",
+    "621",
+    "622",
+    "623",
+    "624",
+    "711AS",
+    "713",
+    "721",
+    "722",
+    "81",
+    "GFGD",
+    "GFGN",
+    "GFE",
+    "GSLG",
+    "GSLE"
+  ],
+  "whole": [
+    {
+      "code": "111CA",
+      "trade": "food"
+    },
+    {
+      "code": "211",
+      "trade": "extraction"
+    },
+    {
+      "code": "212",
+      "trade": "extraction"
+    },
+    {
+      "code": "213",
+      "trade": "extraction"
+    },
+    {
+      "code": "22",
+      "trade": "energy_utilities"
+    },
+    {
+      "code": "23",
+      "trade": "construction_housing"
+    },
+    {
+      "code": "321",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "327",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "331",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "332",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "333",
+      "trade": "capital_goods"
+    },
+    {
+      "code": "3361MV",
+      "trade": "consumer_goods"
+    },
+    {
+      "code": "3364OT",
+      "trade": "capital_goods"
+    },
+    {
+      "code": "337",
+      "trade": "consumer_goods"
+    },
+    {
+      "code": "339",
+      "trade": "consumer_goods"
+    },
+    {
+      "code": "315AL",
+      "trade": "consumer_goods"
+    },
+    {
+      "code": "322",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "323",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "324",
+      "trade": "energy_utilities"
+    },
+    {
+      "code": "325",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "326",
+      "trade": "manufacturing"
+    },
+    {
+      "code": "42",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "441",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "445",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "452",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "4A0",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "481",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "482",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "483",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "484",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "485",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "486",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "487OS",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "493",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "511",
+      "trade": "business_services"
+    },
+    {
+      "code": "512",
+      "trade": "business_services"
+    },
+    {
+      "code": "513",
+      "trade": "business_services"
+    },
+    {
+      "code": "514",
+      "trade": "business_services"
+    },
+    {
+      "code": "521CI",
+      "trade": "business_services"
+    },
+    {
+      "code": "523",
+      "trade": "business_services"
+    },
+    {
+      "code": "524",
+      "trade": "business_services"
+    },
+    {
+      "code": "525",
+      "trade": "business_services"
+    },
+    {
+      "code": "HS",
+      "trade": "construction_housing",
+      "owner_occupied": true
+    },
+    {
+      "code": "ORE",
+      "trade": "construction_housing"
+    },
+    {
+      "code": "532RL",
+      "trade": "business_services"
+    },
+    {
+      "code": "5411",
+      "trade": "business_services"
+    },
+    {
+      "code": "5415",
+      "trade": "business_services"
+    },
+    {
+      "code": "5412OP",
+      "trade": "business_services"
+    },
+    {
+      "code": "55",
+      "trade": "business_services"
+    },
+    {
+      "code": "561",
+      "trade": "business_services"
+    },
+    {
+      "code": "562",
+      "trade": "business_services"
+    },
+    {
+      "code": "61",
+      "trade": "household_services"
+    },
+    {
+      "code": "621",
+      "trade": "household_services"
+    },
+    {
+      "code": "622",
+      "trade": "household_services"
+    },
+    {
+      "code": "623",
+      "trade": "household_services"
+    },
+    {
+      "code": "624",
+      "trade": "household_services"
+    },
+    {
+      "code": "711AS",
+      "trade": "leisure_hospitality"
+    },
+    {
+      "code": "713",
+      "trade": "leisure_hospitality"
+    },
+    {
+      "code": "721",
+      "trade": "leisure_hospitality"
+    },
+    {
+      "code": "722",
+      "trade": "leisure_hospitality"
+    },
+    {
+      "code": "81",
+      "trade": "household_services"
+    },
+    {
+      "code": "GFGD",
+      "trade": "public_provisioning"
+    },
+    {
+      "code": "GFGN",
+      "trade": "public_provisioning"
+    },
+    {
+      "code": "GFE",
+      "trade": "distribution_transport"
+    },
+    {
+      "code": "GSLG",
+      "trade": "public_provisioning"
+    },
+    {
+      "code": "GSLE",
+      "trade": "public_provisioning"
+    }
+  ],
+  "splits": [
+    {
+      "code": "113FF",
+      "under": [
+        "113",
+        "114",
+        "115"
+      ],
+      "parts": {
+        "extraction": [
+          "113",
+          "1153"
+        ],
+        "food": [
+          "114",
+          "1151",
+          "1152"
+        ]
+      }
+    },
+    {
+      "code": "311FT",
+      "under": [
+        "311",
+        "312"
+      ],
+      "parts": {
+        "food": [
+          "311",
+          "3121"
+        ],
+        "manufacturing": [
+          "3122"
+        ]
+      }
+    },
+    {
+      "code": "313TT",
+      "under": [
+        "313",
+        "314"
+      ],
+      "parts": {
+        "manufacturing": [
+          "313"
+        ],
+        "consumer_goods": [
+          "314"
+        ]
+      }
+    },
+    {
+      "code": "334",
+      "under": [
+        "334"
+      ],
+      "parts": {
+        "consumer_goods": [
+          "3343"
+        ],
+        "capital_goods": [
+          "3341",
+          "3342",
+          "3344",
+          "3345",
+          "3346"
+        ]
+      }
+    },
+    {
+      "code": "335",
+      "under": [
+        "335"
+      ],
+      "parts": {
+        "consumer_goods": [
+          "3352"
+        ],
+        "capital_goods": [
+          "3351",
+          "3353",
+          "3359"
+        ]
+      }
+    }
+  ],
+  "residual_rows": {
+    "Used": "scrap_used",
+    "Other": "noncomparable"
+  },
+  "owner_occupied_basis": {
+    "vintage": 2017,
+    "sources": [
+      "use_detail",
+      "supply_detail"
+    ],
+    "unit": "USD millions",
+    "note": "Each share is [owner-occupied, owner-occupied plus tenant-occupied] of BEA detail industry 531HSO of 531HSO and 531HST (or the matching product row); the 2024 summary HS cell is split by it.",
+    "shares": {
+      "intermediate_inputs": {
+        "sheet": "use_detail",
+        "row": "T005",
+        "column_owner": "531HSO",
+        "column_tenant": "531HST",
+        "figures": [
+          212560,
+          238323
+        ]
+      },
+      "compensation": {
+        "sheet": "use_detail",
+        "row": "V00100",
+        "column_owner": "531HSO",
+        "column_tenant": "531HST",
+        "figures": [
+          0,
+          18920
+        ]
+      },
+      "production_taxes": {
+        "sheet": "use_detail",
+        "row": "T00OTOP",
+        "column_owner": "531HSO",
+        "column_tenant": "531HST",
+        "figures": [
+          178599,
+          254103
+        ]
+      },
+      "gross_operating_surplus": {
+        "sheet": "use_detail",
+        "row": "V00300",
+        "column_owner": "531HSO",
+        "column_tenant": "531HST",
+        "figures": [
+          1164524,
+          1541039
+        ]
+      },
+      "households": {
+        "sheet": "use_detail",
+        "row_owner": "531HSO",
+        "row_tenant": "531HST",
+        "column": "F01000",
+        "figures": [
+          1553178,
+          2020853
+        ]
+      },
+      "product_subsidies": {
+        "sheet": "supply_detail",
+        "row_owner": "531HSO",
+        "row_tenant": "531HST",
+        "column": "SUB",
+        "figures": [
+          -2441,
+          -38219
+        ]
+      }
+    }
+  }
+}

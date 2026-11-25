@@ -1,0 +1,99 @@
+[rust:test:q] $ python3 tools/rust_test_report.py run --profile ci -- -p babylon-persistence -E 'binary(national_household_units) & test(record_country_bench_sets)' --run-ignored only --no-capture
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.62s
+────────────
+ Nextest run ID a7c9b757-d935-41de-bed6-8662e4a160c3 with nextest profile: ci
+    Starting 1 test across 1 binary (30 tests and 76 binaries skipped)
+       START [         ] babylon-persistence::national_household_units record_country_bench_sets
+
+running 1 test
+the no_earner amount: 1595033714 micros a person (534212677644000000 micros over 334922499 persons)
+the fund's split: 9065 tax rows became 17932
+        SLOW [> 60.000s] babylon-persistence::national_household_units record_country_bench_sets
+test record_country_bench_sets has been running for over 60 seconds
+        SLOW [>120.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>180.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>240.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>300.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>360.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>420.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>480.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>540.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>600.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>660.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>720.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>780.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>840.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>900.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>960.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1020.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1080.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1140.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1200.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1260.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1320.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1380.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1440.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1500.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1560.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1620.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1680.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1740.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1800.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1860.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1920.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>1980.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2040.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2100.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2160.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2220.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2280.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2340.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2400.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2460.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2520.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2580.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2640.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2700.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2760.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2820.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2880.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>2940.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3000.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3060.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3120.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3180.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3240.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3300.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3360.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3420.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3480.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3540.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3600.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3660.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3720.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3780.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3840.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3900.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>3960.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4020.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4080.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4140.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4200.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4260.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4320.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4380.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4440.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4500.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4560.000s] babylon-persistence::national_household_units record_country_bench_sets
+        SLOW [>4620.000s] babylon-persistence::national_household_units record_country_bench_sets
+all-six-with-benefits: 34 rows
+test record_country_bench_sets ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 30 filtered out; finished in 4627.29s
+
+        PASS [4627.313s] babylon-persistence::national_household_units record_country_bench_sets
+────────────
+     Summary [4627.313s] 1 test run: 1 passed (1 slow), 30 skipped
+        SLOW [4627.313s] babylon-persistence::national_household_units record_country_bench_sets
+Rust test report: reports/test-results/rust/50166554e52f/20261125T094224Z-3366771
+END all-six-with-benefits status=0

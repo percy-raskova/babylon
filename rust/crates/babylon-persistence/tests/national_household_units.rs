@@ -604,8 +604,8 @@ fn health_report(name: &str, edits: &[(&str, &str)], periods: u64) -> Value {
     })
 }
 
-/// Writes a record one period to a line, with a trailing newline, under 1 MiB.
-fn write_compact(report: &Value, path: &Path) {
+/// Writes a record one period to a line, with a trailing newline, and returns the file's size.
+fn write_compact_unbounded(report: &Value, path: &Path) -> usize {
     let mut head = report.clone();
     let periods = head
         .as_object_mut()
@@ -626,6 +626,12 @@ fn write_compact(report: &Value, path: &Path) {
     let size = text.len();
     std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
     std::fs::write(path, text).expect("the record is written");
+    size
+}
+
+/// Writes a record one period to a line, with a trailing newline, under 1 MiB.
+fn write_compact(report: &Value, path: &Path) {
+    let size = write_compact_unbounded(report, path);
     assert!(size < 1_048_576, "the record is {size} bytes");
 }
 
@@ -1128,22 +1134,32 @@ fn bench_row(
     row
 }
 
-/// Plays `periods` closes of the bench under one rule set and returns its health record.
-fn bench_report(set: RuleSet, periods: u64) -> Value {
+/// Plays up to `periods` closes of the bench under one rule set and returns its record (head,
+/// columns, panel, periods) and its refusal, if any. A refusal is written into the record, not
+/// thrown: the record keeps the periods that closed, the error in the engine's words and the full row
+/// of the period before it.
+fn bench_report(set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
     let input = economic_catalog::national_catalog_input();
     let wage = default_wage(&input);
     let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
         .expect("the national campaign");
     let census = Census::new(catalog.opening(), wage);
     let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
-    let mut rows = Vec::new();
+    let mut rows: Vec<Value> = Vec::new();
+    let mut refusal = None;
+    let mut total_nanos = 0_u128;
     for _ in 0..periods {
         let open = Opening::read(&census, bench.catalog(), bench.state());
-        let stepped = bench
-            .step()
-            .unwrap_or_else(|error| panic!("the period is refused: {error}"));
+        let stepped = match bench.step() {
+            Ok(stepped) => stepped,
+            Err(error) => {
+                refusal = Some(error);
+                break;
+            }
+        };
         let mut row = bench_row(&census, &open, &stepped, &bench);
         assert_eq!(row["period"], json!(stepped.period));
+        total_nanos += stepped.elapsed.as_nanos();
         let elapsed_ms = u64::try_from(stepped.elapsed.as_millis()).expect("a short time");
         row.as_object_mut()
             .expect("a period row is an object")
@@ -1183,7 +1199,55 @@ fn bench_report(set: RuleSet, periods: u64) -> Value {
                 .to_string()),
         );
     }
-    record
+    head.insert("total_ms".to_owned(), json!(total_nanos / 1_000_000));
+    head.insert("slowest_period".to_owned(), slowest_period(&rows));
+    let acted_lists = acted(&record);
+    let head = record.as_object_mut().expect("the header is an object");
+    head.insert("acted".to_owned(), acted_lists);
+    if let Some(error) = &refusal {
+        let before = rows.last().cloned().unwrap_or(Value::Null);
+        head.insert(
+            "refused".to_owned(),
+            json!({
+                "period": rows.len() + 1,
+                "error": format!("{error:?}"),
+                "row_before": before,
+            }),
+        );
+    }
+    (record, refusal)
+}
+
+/// The period with the greatest `elapsed_ms` (the first, on a tie) and that time.
+fn slowest_period(rows: &[Value]) -> Value {
+    let mut slowest: Option<(&Value, u64)> = None;
+    for row in rows {
+        let elapsed = row["elapsed_ms"].as_u64().expect("a timed row");
+        if slowest.is_none_or(|(_, best)| elapsed > best) {
+            slowest = Some((&row["period"], elapsed));
+        }
+    }
+    slowest.map_or(
+        Value::Null,
+        |(period, elapsed_ms)| json!({"period": period, "elapsed_ms": elapsed_ms}),
+    )
+}
+
+/// For each kind of the `rules` column, the periods in which its first count was not zero.
+fn acted(record: &Value) -> Value {
+    let mut lists: Map<String, Value> = Map::new();
+    for row in record["periods"].as_array().expect("periods are a list") {
+        for (kind, count) in row["rules"].as_object().expect("a rules column") {
+            let first = count.as_array().map_or(count, |counts| &counts[0]);
+            let list = lists.entry(kind.clone()).or_insert_with(|| json!([]));
+            if first.as_u64().expect("a count") != 0 {
+                list.as_array_mut()
+                    .expect("a list")
+                    .push(row["period"].clone());
+            }
+        }
+    }
+    Value::Object(lists)
 }
 
 fn bench_report_path(name: &str) -> PathBuf {
@@ -1192,22 +1256,115 @@ fn bench_report_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-#[test]
-#[ignore = "writes reports/country-bench-2026-11-24/baseline.json"]
-fn record_country_bench_baseline() {
-    let record = bench_report(RuleSet::None, 34);
-    write_compact(&record, &bench_report_path("baseline.json"));
+/// The rule sets, the baseline first, named by `COUNTRY_BENCH_SET` or all of them.
+fn chosen_sets() -> Vec<RuleSet> {
+    let all = [
+        RuleSet::None,
+        RuleSet::Market,
+        RuleSet::NoSeekers,
+        RuleSet::AllSix,
+        RuleSet::AllSixWithBenefits,
+    ];
+    match std::env::var("COUNTRY_BENCH_SET") {
+        Ok(name) => {
+            let chosen: Vec<RuleSet> = all.into_iter().filter(|set| set.name() == name).collect();
+            assert!(!chosen.is_empty(), "no rule set is named {name}");
+            chosen
+        }
+        Err(_) => all.to_vec(),
+    }
+}
+
+/// Every money total of a record's rows is equal: the bench's own check, seen again in the record.
+fn assert_money_totals_equal(record: &Value) {
     let totals: Vec<&Value> = record["periods"]
         .as_array()
         .expect("periods")
         .iter()
         .map(|row| &row["money"]["total"])
         .collect();
-    assert_eq!(totals.len(), 34);
     assert!(
         totals.iter().all(|total| *total == totals[0]),
         "the money total of every row is equal"
     );
+}
+
+#[test]
+#[ignore = "writes the sets' records under reports/country-bench-2026-11-24/; COUNTRY_BENCH_SET=<name> plays one"]
+fn record_country_bench_sets() {
+    for set in chosen_sets() {
+        let (record, refusal) = bench_report(set, 34);
+        write_compact(&record, &bench_report_path(&format!("{}.json", set.name())));
+        println!(
+            "{}: {} rows",
+            set.name(),
+            record["periods"].as_array().map_or(0, Vec::len)
+        );
+        match refusal {
+            Some(error) => println!("{}: refused: {error}", set.name()),
+            None => assert_eq!(record["periods"].as_array().map(Vec::len), Some(34)),
+        }
+        assert_money_totals_equal(&record);
+    }
+}
+
+/// The periods a long run's summary keeps: those of this list that exist, and the last.
+const LONG_SUMMARY_PERIODS: [u64; 10] = [1, 2, 3, 4, 5, 13, 34, 100, 200, 400];
+
+/// A record's head and `acted` with only the rows of the summary's periods.
+fn long_summary(record: &Value) -> Value {
+    let rows = record["periods"].as_array().expect("periods are a list");
+    let last = rows.last().map(|row| row["period"].clone());
+    let kept: Vec<Value> = rows
+        .iter()
+        .filter(|row| {
+            row["period"]
+                .as_u64()
+                .is_some_and(|period| LONG_SUMMARY_PERIODS.contains(&period))
+                || Some(&row["period"]) == last.as_ref()
+        })
+        .cloned()
+        .collect();
+    let mut summary = record.clone();
+    summary
+        .as_object_mut()
+        .expect("a record is an object")
+        .insert("periods".to_owned(), json!(kept));
+    summary
+}
+
+/// 400 periods (`COUNTRY_BENCH_LONG_PERIODS` sets the number) for the baseline and the set with
+/// benefits. The whole records go under the target's tmp and are not committed; the summaries are.
+#[test]
+#[ignore = "400 periods; writes summaries under reports/country-bench-2026-11-24/"]
+fn record_country_bench_long() {
+    let periods: u64 = std::env::var("COUNTRY_BENCH_LONG_PERIODS")
+        .map_or(400, |text| text.parse().expect("a number of periods"));
+    for set in [RuleSet::None, RuleSet::AllSixWithBenefits] {
+        let (record, refusal) = bench_report(set, periods);
+        let whole = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("country-bench/long-{}.json", set.name()));
+        let size = write_compact_unbounded(&record, &whole);
+        let written: Value = serde_json::from_str(
+            &std::fs::read_to_string(&whole).expect("the whole record is read back"),
+        )
+        .expect("the whole record is JSON");
+        println!(
+            "{}: whole record {} ({size} bytes, {} rows)",
+            set.name(),
+            whole.display(),
+            written["periods"].as_array().map_or(0, Vec::len)
+        );
+        assert_eq!(written["periods"], record["periods"]);
+        write_compact(
+            &long_summary(&record),
+            &bench_report_path(&format!("long-{}-summary.json", set.name())),
+        );
+        if let Some(error) = refusal {
+            println!("{}: refused: {error}", set.name());
+        }
+        assert_money_totals_equal(&record);
+    }
 }
 
 fn open_census(set: RuleSet) -> (CapturedEconomicCatalog, Census, CountryBench) {

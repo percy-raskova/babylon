@@ -6,6 +6,7 @@ import csv
 import gzip
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -73,9 +74,7 @@ def test_restaurants_join_leisure() -> None:
     rows = builder.county_observations((source_row("72"), source_row("71")))
     (group,) = builder.capture_cohorts_v2(rows, {"26163"}, mapping)
     assert group.function_id == "leisure_hospitality"
-    assert ";".join(m for m in cohort.fields(group)[-1].split(";")).startswith("71~P")
-    assert cohort.fields(group)[-1].count(";") == 1
-    assert cohort.fields(group)[-1].split(";")[1].startswith("72~P")
+    assert re.fullmatch(r"71~P[^;]*;72~P[^;]*", cohort.fields(group)[-1])
 
 
 def test_the_committed_v2_cohorts() -> None:
@@ -117,6 +116,12 @@ def test_the_committed_v2_cohorts() -> None:
     assert coverage["source_members"] == members
     assert coverage["mapped_groups"] == sum(1 for r in rows if r[1])
     assert coverage["admitted_groups"] == sum(1 for r in rows if r[3] == "1")
+    assert coverage["unclassified_groups"] == sum(1 for r in rows if not r[1])
+    assert coverage["known_totals"] == {
+        "establishments": sum(int(r[5] or 0) for r in rows),
+        "jobs": sum(int(r[7] or 0) for r in rows),
+        "payroll": sum(int(r[9] or 0) for r in rows),
+    }
     assert (
         metadata["sources"]["leaf_basis"]["sha256"]
         == hashlib.sha256(v2.ARTIFACT_OUT.read_bytes()).hexdigest()

@@ -241,6 +241,24 @@ def _fields(row: TradePay) -> tuple[str, ...]:
     )
 
 
+def admitted_keys(path: Path) -> list[tuple[str, str, str]]:
+    """The (county, function, ownership) keys of the cohort table's admitted groups, by header name."""
+    with gzip.open(path, "rt", newline="") as stream:
+        reader = csv.reader(stream)
+        header = next(reader, [])
+        if "admitted" not in header:
+            raise ReferenceBuildError("cohort_header: no admitted column")
+        at = {
+            name: header.index(name)
+            for name in ("admitted", "county_geoid", "function_id", "ownership_code")
+        }
+        return [
+            (r[at["county_geoid"]], r[at["function_id"]], r[at["ownership_code"]])
+            for r in reader
+            if r[at["admitted"]] == "1"
+        ]
+
+
 def build(
     *, artifact_out: Path = ARTIFACT_OUT, metadata_out: Path = METADATA_OUT
 ) -> dict[str, Any]:
@@ -263,10 +281,7 @@ def build(
     mapping = v2.load_mapping_v2()
     basis_rows = v2.read_basis_v2()
     rows = pay_rows(basis_rows, mapping)
-    with gzip.open(cohort_v2.ARTIFACT_OUT, "rt", newline="") as stream:
-        reader = csv.reader(stream)
-        next(reader)
-        admitted = [(r[0], r[1], r[2]) for r in reader if r[3] == "1"]
+    admitted = admitted_keys(cohort_v2.ARTIFACT_OUT)
     if admitted != [(r.county_geoid, r.function_id, r.ownership_code) for r in rows]:
         raise ReferenceBuildError("cohort_keys_differ")
     buffer = io.StringIO(newline="")
@@ -318,6 +333,7 @@ def build(
             "group_totals": "A group's jobs and payroll are its published members plus its placed members. partial groups leave out their unplaced members. The pair sets pay and nothing else; where residents work is decided by the cohort table's weights.",
             "wage": "wage_rule county when the group is not partial and has positive jobs and payroll; else the published state leaf rows of the county's state for the same trade and ownership; else the national rows of the same trade and ownership; else the national rows of the trade over ownerships 1, 2, 3 and 5. The hourly wage is wage_payroll_usd / (wage_jobs x 2080), computed by the reader and not stored.",
             "rows": "One row for each admitted group of the version 2 cohort table, in its order. Suppression stays unknown outside the placed amounts, which are derived shares and never observations.",
+            "jobs_placed_in_all": "Counts every job placed under a published parent, including jobs placed into leaves of groups that are not admitted and into code 99, so it can exceed the jobs the rows of this table hold from placement.",
             "limits": "No person, household allocation, recipe or capacity follows from this table. The stage 2 native reader is not built yet.",
         },
         "native_readers": [],

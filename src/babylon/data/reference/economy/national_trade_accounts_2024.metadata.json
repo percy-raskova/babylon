@@ -229,6 +229,18 @@
     "value_added": 1
   },
   "contract": "NationalTradeAccounts2024V1",
+  "coverage": {
+    "block_rows": {
+      "industry": 78,
+      "jobs": 48,
+      "make": 195,
+      "split": 10,
+      "supply": 120,
+      "use": 360
+    },
+    "jobs_in_all": 154736293,
+    "rows_in_all": 811
+  },
   "gdp": {
     "final_uses_usd_millions": 32979552,
     "gap_usd_millions": -2,
@@ -243,7 +255,8 @@
       "V001": 0,
       "V003": 0
     },
-    "owner_intermediate_gap_usd_thousands": -892
+    "owner_intermediate_gap_usd_thousands": -892,
+    "owner_make_less_gross_output_usd_thousands": 5702525
   },
   "issue": "PER-371",
   "native_readers": [],
@@ -252,7 +265,7 @@
   "semantics": {
     "blocks": "use: product rows by industry and final-use columns. supply: product rows by supply column. make: what each industry makes of each product. industry: output, inputs and value added by industry. jobs: national published QCEW jobs and payroll by trade. split: the jobs that share each split industry.",
     "government": "General government and government enterprises are public provisioning. Federal (F06, F07) and state and local (F10) final uses stay apart by level.",
-    "housing": "Owner-occupied housing is cut from BEA industry and product HS with the 2017 detail shares of the mapping contract (rent that home owners are counted as paying themselves). The owner's intermediate inputs are HS's total split by its share; the HS column's cells are each split by the same share, so their sum differs from it by rounding (housing.owner_intermediate_gap_usd_thousands). The owner makes only its own product; the rest of HS stays with construction and housing.",
+    "housing": "Owner-occupied housing is cut from BEA industry and product HS with the 2017 detail shares of the mapping contract (rent that home owners are counted as paying themselves). The owner's intermediate inputs are HS's total split by its share; the HS column's cells are each split by the same share, so their sum differs from it by rounding (housing.owner_intermediate_gap_usd_thousands). The owner makes only its own product; the rest of HS stays with construction and housing. The owner's row of make is its commodity output, which is not its gross output: housing.owner_make_less_gross_output_usd_thousands is the difference, construction and housing carries the opposite difference, and the pair adds up to the source.",
     "inventory": "Change in private inventories (F030) is a final use, signed as the source gives it.",
     "judgments": [
       "GFE, mostly the postal service, is distribution and transport.",
@@ -309,10 +322,10 @@
     ],
     "function_mapping": {
       "path": "contracts/national_qcew_function_mapping_v2.json",
-      "sha256": "216123363336f60bf66926fbd52e83b7910d43ee48db0d3c5ebc68adb63519c0"
+      "sha256": "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
     },
     "leaf_basis": {
-      "metadata_sha256": "85416af5635122040bc9b7d7d2484cc7d9df4ced3fd362b56f9bff50bbefd35a",
+      "metadata_sha256": "9ef0204f4093af6934539620cb34702fcfbb991e26326e8af02235c3fce22a69",
       "path": "src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet",
       "sha256": "ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12"
     }

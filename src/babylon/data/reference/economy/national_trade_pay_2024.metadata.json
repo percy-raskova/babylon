@@ -56,6 +56,7 @@
   "runtime_consumers": [],
   "semantics": {
     "group_totals": "A group's jobs and payroll are its published members plus its placed members. partial groups leave out their unplaced members. The pair sets pay and nothing else; where residents work is decided by the cohort table's weights.",
+    "jobs_placed_in_all": "Counts every job placed under a published parent, including jobs placed into leaves of groups that are not admitted and into code 99, so it can exceed the jobs the rows of this table hold from placement.",
     "limits": "No person, household allocation, recipe or capacity follows from this table. The stage 2 native reader is not built yet.",
     "placement": "Rule O2. At each published parent in the order 115, 312, 334, 335, 336, 11, 31-33, 53, 10, the jobs and payroll the parent holds beyond its published and already placed leaves are shared over its still withheld leaves by establishments, largest remainder, ties by code. A withheld parent is skipped and its leaves move up. The one clamp is zero when a rounded parent falls below its children. Leaves still withheld after the county total stay unplaced.",
     "rows": "One row for each admitted group of the version 2 cohort table, in its order. Suppression stays unknown outside the placed amounts, which are derived shares and never observations.",
@@ -63,16 +64,16 @@
   },
   "sources": {
     "cohort_table": {
-      "metadata_sha256": "4cb6f70df9bbcfe758fc84c06166fb51add0235c50e796b9f9a2a66db5127690",
+      "metadata_sha256": "833e42023d2cc3b78ca79071542a8df4014ee18bcbbde5daa4ef75b57c6a573a",
       "path": "src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz",
       "sha256": "09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12"
     },
     "function_mapping": {
       "path": "contracts/national_qcew_function_mapping_v2.json",
-      "sha256": "216123363336f60bf66926fbd52e83b7910d43ee48db0d3c5ebc68adb63519c0"
+      "sha256": "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
     },
     "leaf_basis": {
-      "metadata_sha256": "85416af5635122040bc9b7d7d2484cc7d9df4ced3fd362b56f9bff50bbefd35a",
+      "metadata_sha256": "9ef0204f4093af6934539620cb34702fcfbb991e26326e8af02235c3fce22a69",
       "path": "src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet",
       "sha256": "ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12"
     }

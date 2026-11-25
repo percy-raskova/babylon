@@ -11763,7 +11763,7 @@
   "function_mapping": {
     "evidence_class": "Designed",
     "path": "contracts/national_qcew_function_mapping_v2.json",
-    "sha256": "216123363336f60bf66926fbd52e83b7910d43ee48db0d3c5ebc68adb63519c0"
+    "sha256": "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
   },
   "issue": "PER-371",
   "regeneration": "UV_PROJECT_ENVIRONMENT=.venv mise exec -- uv run --frozen python tools/make_national_qcew_function_basis_v2.py --source-root /media/user/data/babylon-data",

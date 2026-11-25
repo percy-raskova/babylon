@@ -46,10 +46,10 @@
     },
     "function_mapping": {
       "path": "contracts/national_qcew_function_mapping_v2.json",
-      "sha256": "216123363336f60bf66926fbd52e83b7910d43ee48db0d3c5ebc68adb63519c0"
+      "sha256": "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
     },
     "leaf_basis": {
-      "metadata_sha256": "85416af5635122040bc9b7d7d2484cc7d9df4ced3fd362b56f9bff50bbefd35a",
+      "metadata_sha256": "9ef0204f4093af6934539620cb34702fcfbb991e26326e8af02235c3fce22a69",
       "path": "src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet",
       "sha256": "ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12"
     }

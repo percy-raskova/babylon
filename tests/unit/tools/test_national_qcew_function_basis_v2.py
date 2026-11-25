@@ -96,24 +96,27 @@ def test_version_1_files_keep_their_digests() -> None:
     assert digest(economy / "national_cohort_reference_2024.csv.gz") == (
         "1c963f6b709c31f798253e41662619a32ad31d4532022931392cf2fbd78eb497"
     )
-    assert v2.MAPPING_V2_PATH != basis.MAPPING_PATH
-    assert economy / "national_qcew_function_basis_2024.parquet" != v2.ARTIFACT_OUT
-    assert v2.METADATA_OUT != basis.METADATA_OUT
-    assert cohort_v2.ARTIFACT_OUT != cohort.ARTIFACT_OUT
-    assert cohort_v2.METADATA_OUT != cohort.METADATA_OUT
-    assert trade_pay.ARTIFACT_OUT not in (cohort.ARTIFACT_OUT, cohort_v2.ARTIFACT_OUT)
-    assert trade_pay.METADATA_OUT not in (cohort.METADATA_OUT, cohort_v2.METADATA_OUT)
-    assert trade_accounts.ACCOUNTS_MAPPING not in (basis.MAPPING_PATH, v2.MAPPING_V2_PATH)
-    assert trade_accounts.ARTIFACT_OUT not in (
+    version_1 = (
+        basis.MAPPING_PATH,
+        basis.ARTIFACT_OUT,
+        basis.METADATA_OUT,
         cohort.ARTIFACT_OUT,
-        cohort_v2.ARTIFACT_OUT,
-        trade_pay.ARTIFACT_OUT,
-    )
-    assert trade_accounts.METADATA_OUT not in (
         cohort.METADATA_OUT,
-        cohort_v2.METADATA_OUT,
-        trade_pay.METADATA_OUT,
     )
+    version_2 = (
+        v2.MAPPING_V2_PATH,
+        v2.ARTIFACT_OUT,
+        v2.METADATA_OUT,
+        cohort_v2.ARTIFACT_OUT,
+        cohort_v2.METADATA_OUT,
+        trade_pay.ARTIFACT_OUT,
+        trade_pay.METADATA_OUT,
+        trade_accounts.ARTIFACT_OUT,
+        trade_accounts.METADATA_OUT,
+        trade_accounts.ACCOUNTS_MAPPING,
+    )
+    assert set(version_1).isdisjoint(version_2)
+    assert len(set(version_2)) == len(version_2)
 
 
 def source(

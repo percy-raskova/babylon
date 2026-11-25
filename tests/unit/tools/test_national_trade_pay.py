@@ -188,6 +188,26 @@ def test_no_wage_anywhere_is_refused() -> None:
         pay.pay_rows(rows, v2.load_mapping_v2())
 
 
+def test_a_cohort_table_without_the_admitted_column_is_refused(tmp_path: Path) -> None:
+    table = tmp_path / "cohorts.csv.gz"
+    with gzip.open(table, "wt", newline="") as stream:
+        stream.write(
+            "county_geoid,function_id,ownership_code,member_count\n26163,leisure_hospitality,5,1\n"
+        )
+    with pytest.raises(county.ReferenceBuildError, match=r"cohort_header"):
+        pay.admitted_keys(table)
+
+
+def test_the_admitted_keys_are_read_by_the_header_name(tmp_path: Path) -> None:
+    table = tmp_path / "cohorts.csv.gz"
+    with gzip.open(table, "wt", newline="") as stream:
+        stream.write(
+            "member_count,admitted,ownership_code,function_id,county_geoid\n"
+            "1,1,5,leisure_hospitality,26163\n2,0,5,capital_goods,26163\n"
+        )
+    assert pay.admitted_keys(table) == [("26163", "leisure_hospitality", "5")]
+
+
 def test_the_committed_pay_table() -> None:
     path, meta_path = pay.ARTIFACT_OUT, pay.METADATA_OUT
     with gzip.open(path, "rt", newline="") as stream:

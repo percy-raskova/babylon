@@ -137,7 +137,11 @@ def verify_accounts_sources(source_root: Path, manifest: Path = SOURCES) -> dict
         if relative.is_absolute() or ".." in relative.parts or identity in found:
             raise ReferenceBuildError("source_manifest_path_or_duplicate")
         source = source_root / relative
-        if source.stat().st_size != entry["bytes"] or sha256(source) != entry["sha256"]:
+        if (
+            not source.is_file()
+            or source.stat().st_size != entry["bytes"]
+            or sha256(source) != entry["sha256"]
+        ):
             raise ReferenceBuildError(f"source_digest: {identity}")
         found[identity] = source
     if set(found) != set(SOURCE_IDS):
@@ -201,7 +205,14 @@ def _documented_figures(document: dict[str, Any]) -> dict[str, tuple[int, int]]:
         raise ReferenceBuildError("accounts_mapping_owner_shares")
     figures: dict[str, tuple[int, int]] = {}
     for name in SHARE_NAMES:
-        owner, total = shares[name]["figures"]
+        pair = shares[name].get("figures") if isinstance(shares[name], dict) else None
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or not all(isinstance(v, int) and not isinstance(v, bool) for v in pair)
+        ):
+            raise ReferenceBuildError(f"accounts_mapping_owner_shares: {name}")
+        owner, total = pair
         if total == 0:
             raise ReferenceBuildError(f"accounts_mapping_owner_shares: {name}")
         figures[name] = (owner, total)
@@ -293,13 +304,16 @@ def owner_occupied_shares(use_detail: BeaSheet, supply_detail: BeaSheet) -> dict
     sheets = {"use_detail": use_detail, "supply_detail": supply_detail}
     found: dict[str, Fraction] = {}
     for name, spec in document["owner_occupied_basis"]["shares"].items():
-        sheet = sheets[spec["sheet"]]
-        if "row" in spec:
-            owner = sheet.get(spec["row"], spec["column_owner"])
-            tenant = sheet.get(spec["row"], spec["column_tenant"])
-        else:
-            owner = sheet.get(spec["row_owner"], spec["column"])
-            tenant = sheet.get(spec["row_tenant"], spec["column"])
+        try:
+            sheet = sheets[spec["sheet"]]
+            if "row" in spec:
+                owner = sheet.get(spec["row"], spec["column_owner"])
+                tenant = sheet.get(spec["row"], spec["column_tenant"])
+            else:
+                owner = sheet.get(spec["row_owner"], spec["column"])
+                tenant = sheet.get(spec["row_tenant"], spec["column"])
+        except (KeyError, TypeError) as error:
+            raise ReferenceBuildError(f"accounts_mapping_owner_shares: {name}") from error
         figure = (owner, owner + tenant)
         if figure != documented[name]:
             raise ReferenceBuildError(f"owner_occupied_share: {name}")
@@ -794,6 +808,8 @@ def build(
     by_key = {(c.block, c.row_key, c.column_key): c.value for c in cells}
     owner_use_sum = sum(by_key[("use", p, OWNER)] for p in PRODUCTS)
     owner_gap = owner_use_sum - by_key[("industry", OWNER, "intermediate_inputs")]
+    owner_make = sum(by_key[("make", OWNER, p)] for p in PRODUCTS)
+    owner_make_less_output = owner_make - by_key[("industry", OWNER, "gross_output")]
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(COLUMNS)
@@ -863,12 +879,18 @@ def build(
             },
             "leaf_basis": pinned_input(v2.ARTIFACT_OUT, v2.METADATA_OUT),
         },
+        "coverage": {
+            "block_rows": counts,
+            "rows_in_all": len(cells),
+            "jobs_in_all": sum(by_key[("jobs", trade, "jobs")] for trade in TRADES),
+        },
         "checks": verified["checks"],
         "check_bound_usd_millions": GAP_BOUND_MILLIONS,
         "source_controls": verified["source_controls"],
         "gdp": verified["gdp"],
         "housing": {
             "owner_intermediate_gap_usd_thousands": owner_gap,
+            "owner_make_less_gross_output_usd_thousands": owner_make_less_output,
             "owner_2017_summary_vs_detail_gaps_usd_millions": owner_gaps,
         },
         "semantics": {
@@ -876,7 +898,7 @@ def build(
             "price_basis": "Product rows are at purchasers' prices: trade and transport margins and product taxes sit in the goods rows (the margin columns are positive for goods and negative for the distribution and transport trades' own products). Industry figures are at basic prices. Imports are the positive supply columns MCIF plus MADJ.",
             "blocks": "use: product rows by industry and final-use columns. supply: product rows by supply column. make: what each industry makes of each product. industry: output, inputs and value added by industry. jobs: national published QCEW jobs and payroll by trade. split: the jobs that share each split industry.",
             "splits": "A split industry's cell is shared by national published jobs of its NAICS leaves, over ownerships 1, 2, 3 and 5, by largest remainder on the absolute value. A product row is split first, then each part by the column split.",
-            "housing": "Owner-occupied housing is cut from BEA industry and product HS with the 2017 detail shares of the mapping contract (rent that home owners are counted as paying themselves). The owner's intermediate inputs are HS's total split by its share; the HS column's cells are each split by the same share, so their sum differs from it by rounding (housing.owner_intermediate_gap_usd_thousands). The owner makes only its own product; the rest of HS stays with construction and housing.",
+            "housing": "Owner-occupied housing is cut from BEA industry and product HS with the 2017 detail shares of the mapping contract (rent that home owners are counted as paying themselves). The owner's intermediate inputs are HS's total split by its share; the HS column's cells are each split by the same share, so their sum differs from it by rounding (housing.owner_intermediate_gap_usd_thousands). The owner makes only its own product; the rest of HS stays with construction and housing. The owner's row of make is its commodity output, which is not its gross output: housing.owner_make_less_gross_output_usd_thousands is the difference, construction and housing carries the opposite difference, and the pair adds up to the source.",
             "government": "General government and government enterprises are public provisioning. Federal (F06, F07) and state and local (F10) final uses stay apart by level.",
             "residual_rows": "Used (scrap_used) and Other (noncomparable) are product rows only.",
             "inventory": "Change in private inventories (F030) is a final use, signed as the source gives it.",

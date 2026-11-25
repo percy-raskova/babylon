@@ -211,6 +211,30 @@ def test_changed_accounts_sources_are_refused(tmp_path: Path) -> None:
         accounts.verify_accounts_sources(tmp_path)
 
 
+def test_a_missing_accounts_workbook_is_a_digest_refusal(tmp_path: Path) -> None:
+    with pytest.raises(county.ReferenceBuildError, match="source_digest: use_summary"):
+        accounts.verify_accounts_sources(tmp_path)
+
+
+def test_a_malformed_owner_share_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for bad in ([212_560], [212_560, "238323"], [1.5, 2], "x", None):
+        doc = document()
+        doc["owner_occupied_basis"]["shares"]["compensation"]["figures"] = bad
+        with pytest.raises(county.ReferenceBuildError, match="accounts_mapping_owner_shares"):
+            accounts._documented_figures(doc)
+    use, supply = detail_pair(tmp_path)
+    for key in ("sheet", "column_owner", "column_tenant", "row"):
+        doc = document()
+        del doc["owner_occupied_basis"]["shares"]["intermediate_inputs"][key]
+        target = tmp_path / f"mapping_{key}.json"
+        target.write_text(json.dumps(doc))
+        monkeypatch.setattr(accounts, "ACCOUNTS_MAPPING", target)
+        with pytest.raises(county.ReferenceBuildError, match="accounts_mapping_owner_shares"):
+            accounts.owner_occupied_shares(use, supply)
+
+
 def test_the_sources_manifest_pins_the_four_workbooks() -> None:
     manifest = json.loads(accounts.SOURCES.read_bytes())
     assert manifest["contract"] == "NationalTradeAccounts2024SourcesV1"
@@ -279,7 +303,7 @@ def housing_fixture(tmp_path: Path) -> tuple[Any, Any]:
         ["HS", "T001", "F010"],
         [
             ["521CI", "x", 200_000, 0, 0],
-            ["5412OP", "x", 38_323, 0, 0],
+            ["23", "x", 38_323, 0, 0],
             ["HS", "x", 0, 0, 2_020_853],
             ["T005", "x", 238_323, 0, 0],
             ["V001", "x", 18_920, 0, 0],
@@ -332,8 +356,21 @@ def test_owner_and_tenant_housing_add_up(tmp_path: Path) -> None:
     ):
         both = got[("industry", owner, measure)] + got[("industry", home, measure)]
         assert both == 1000 * source, measure
-    both_use = got[("use", "business_services", owner)] + got[("use", "business_services", home)]
+    rows = ("business_services", "construction_housing")
+    both_use = sum(got[("use", row, column)] for row in rows for column in (owner, home))
     assert both_use == 238_323_000
+    # Each product row splits by the same share (212,560 of 238,323), largest remainder.
+    assert (got[("use", "business_services", owner)], got[("use", "business_services", home)]) == (
+        178_379_762,
+        21_620_238,
+    )
+    assert (
+        got[("use", "construction_housing", owner)],
+        got[("use", "construction_housing", home)],
+    ) == (
+        34_180_238,
+        4_142_762,
+    )
     assert got[("use", owner, "households")] + got[("use", home, "households")] == 2_020_853_000
     expected = {
         "commodity_output": 3_162_745_000,
@@ -519,6 +556,15 @@ def test_the_committed_accounts() -> None:
         "public_provisioning": (7_846_751, 662_040_421_314),
     }
     assert sum(jobs_pair[0] for jobs_pair in jobs.values()) == 154_736_293
+    assert metadata["coverage"] == {
+        "block_rows": counts,
+        "rows_in_all": 811,
+        "jobs_in_all": 154_736_293,
+    }
+    owner = accounts.OWNER
+    made = sum(cells[("make", owner, p)][1] for p in accounts.PRODUCTS)
+    assert made - cells[("industry", owner, "gross_output")][1] == 5_702_525
+    assert metadata["housing"]["owner_make_less_gross_output_usd_thousands"] == 5_702_525
     housing = sum(
         cells[("use", row, "households")][1]
         for row in ("owner_occupied_housing", "construction_housing")

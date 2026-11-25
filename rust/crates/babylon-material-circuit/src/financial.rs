@@ -18,7 +18,7 @@ mod validation;
 pub(crate) use close::FinancialClose;
 
 pub(crate) use layoffs::{
-    advance_layoffs, advance_records, holds_after_layoff_program, program_window,
+    advance_layoffs, advance_records, holds_after_layoff_program, program_window, record_holders,
 };
 
 pub use model::*;

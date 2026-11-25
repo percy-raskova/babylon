@@ -856,8 +856,9 @@ impl ClosedMaterialPeriod {
             .collect();
         let requests = self.staffing_requests(catalog, &bindings)?;
         let no_recipients = BTreeSet::new();
+        let no_holders = BTreeSet::new();
         let mut wages = BTreeMap::new();
-        let (recipients, window, records) = match &self.transition.state.accounting {
+        let (recipients, holders, window, records) = match &self.transition.state.accounting {
             CircuitAccounting::Monetary(economy) => {
                 for term in &economy.employment {
                     if let LaborCompensation::Wage(rate) = term.compensation {
@@ -866,14 +867,21 @@ impl ClosedMaterialPeriod {
                     }
                 }
                 let (recipients, window) = crate::financial::program_window(economy);
-                (recipients, window, economy.financial.layoffs.as_slice())
+                let holders = crate::financial::record_holders(economy);
+                (
+                    recipients,
+                    holders,
+                    window,
+                    economy.financial.layoffs.as_slice(),
+                )
             }
-            CircuitAccounting::PhysicalControl => (no_recipients, 0, &[][..]),
+            CircuitAccounting::PhysicalControl => (no_recipients, no_holders, 0, &[][..]),
         };
         let stop = self.stop_round(catalog, opening, &wages)?;
         let no_limits = BTreeMap::new();
         let rules = PlaceRules {
             recipients: &recipients,
+            holders: &holders,
             window,
             records,
             wages: &wages,

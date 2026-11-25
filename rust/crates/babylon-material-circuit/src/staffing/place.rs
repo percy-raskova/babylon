@@ -82,6 +82,8 @@ impl From<StaffingError> for PlaceStaffingError {
 pub(crate) struct PlaceRules<'a> {
     /// The households that a program pays after a layoff.
     pub(crate) recipients: &'a BTreeSet<FinalDemandPrincipalId>,
+    /// The members that can hold a record of layoffs: paid a wage by a recipient household.
+    pub(crate) holders: &'a BTreeSet<StaffingMemberId>,
     /// The periods a record of layoffs keeps; 0 when no program pays after a layoff.
     pub(crate) window: usize,
     /// The records of layoffs at the close.
@@ -157,17 +159,16 @@ fn slots_of(
     let rows = super::distribute_staffing_members(receipt, members)?;
     let mut slots = Vec::with_capacity(rows.len());
     for engine in rows {
-        let covered =
-            if rules.window > 0 && rules.recipients.contains(&engine.member.household_id()) {
-                let held = rules
-                    .records
-                    .iter()
-                    .find(|record| record.member_id == engine.member.member_id())
-                    .map_or(&[][..], |record| record.cohorts.as_slice());
-                crate::financial::advance_layoffs(held, rules.window, &engine)?
-            } else {
-                Vec::new()
-            };
+        let covered = if rules.window > 0 && rules.holders.contains(&engine.member.member_id()) {
+            let held = rules
+                .records
+                .iter()
+                .find(|record| record.member_id == engine.member.member_id())
+                .map_or(&[][..], |record| record.cohorts.as_slice());
+            crate::financial::advance_layoffs(held, rules.window, &engine)?
+        } else {
+            Vec::new()
+        };
         let looking_covered = covered.iter().try_fold(0_u64, |n, c| {
             n.checked_add(*c).ok_or(StaffingError::Arithmetic)
         })?;
@@ -688,8 +689,17 @@ mod tests {
     }
 
     fn run(case: &Case) -> Result<PlaceStaffing, PlaceStaffingError> {
+        // Every member of a recipient household is paid a wage here.
+        let holders: BTreeSet<StaffingMemberId> = case
+            .members
+            .iter()
+            .flat_map(|pool| pool.members.iter())
+            .filter(|m| case.recipients.contains(&m.binding().household_id()))
+            .map(|m| m.binding().member_id())
+            .collect();
         let rules = PlaceRules {
             recipients: &case.recipients,
+            holders: &holders,
             window: if case.recipients.is_empty() { 0 } else { 7 },
             records: &case.records,
             wages: &case.wages,

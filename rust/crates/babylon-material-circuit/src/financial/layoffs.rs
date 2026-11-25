@@ -33,6 +33,18 @@ pub(crate) fn program_window(
     (recipients, window.min(MAX_LAYOFF_PERIODS))
 }
 
+/// The members that can hold a record of layoffs: those whose employment term is a wage paid to a recipient
+/// of an after-layoff program. A member with no wage has no pay for the benefit to be half of.
+pub(crate) fn record_holders(economy: &MonetaryCircuit) -> BTreeSet<StaffingMemberId> {
+    let (recipients, _) = program_window(economy);
+    economy
+        .employment
+        .iter()
+        .filter(|term| can_have_record(term.compensation, term.payee, &recipients))
+        .map(|term| term.member_id)
+        .collect()
+}
+
 /// Advance every record of layoffs from the member receipts of the closing period.
 ///
 /// Records whose member is no longer paid a wage to a recipient of an after-layoff program are

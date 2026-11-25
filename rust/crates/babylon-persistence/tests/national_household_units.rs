@@ -1638,6 +1638,47 @@ fn one_period_with_benefits_closes() {
     );
 }
 
+/// The set with benefits closes the country's first three periods. Each period prints, for each of the two
+/// programs, the rows, the sum due, the sum paid and the sum unfunded, and the fund's cash at that close.
+#[test]
+#[ignore = "three national periods with all six rules and benefits: about two minutes"]
+fn three_periods_with_benefits_close() {
+    let (_catalog, _census, mut bench) = open_census(RuleSet::AllSixWithBenefits);
+    for period in 1..=3_u64 {
+        let stepped = bench
+            .step()
+            .unwrap_or_else(|error| panic!("period {period} is refused: {error}"));
+        assert_eq!(stepped.receipts.resolve_tick, period);
+        let mut programs: BTreeMap<String, (usize, i128, i128, i128)> = BTreeMap::new();
+        for row in &stepped.public_programs {
+            let total = programs.entry(row.program.as_str().to_owned()).or_default();
+            total.0 += 1;
+            total.1 = total
+                .1
+                .checked_add(row.due.micro_units())
+                .expect("the sum due fits");
+            total.2 = total
+                .2
+                .checked_add(row.paid.micro_units())
+                .expect("the sum paid fits");
+            total.3 = total
+                .3
+                .checked_add(row.unfunded.micro_units())
+                .expect("the sum unfunded fits");
+        }
+        let fund_cash = economy_health::economy(bench.state())
+            .book
+            .cash(AccountId::Public(country_fund::fund_account()))
+            .map_or(0, Currency::micro_units);
+        for (program, (rows, due, paid, unfunded)) in &programs {
+            println!(
+                "period {period} {program}: rows {rows}, due {due}, paid {paid}, unfunded {unfunded} micros"
+            );
+        }
+        println!("period {period} fund cash at the close: {fund_cash} micros");
+    }
+}
+
 /// One period of each set built so far, timed, beside the baseline's.
 #[test]
 #[ignore = "writes reports/country-bench-2026-11-24/timings.json"]

@@ -6,7 +6,7 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
     self as engine, AccountId, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState,
-    RestartTest, StopHold, TaxBasis, TaxPolicy,
+    RestartTest, StaffingMemberState, StopHold, TaxBasis, TaxPolicy,
 };
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
@@ -1107,6 +1107,24 @@ fn bench_row(
         "jobs_after_moves".to_owned(),
         economy_health::jobs_after_moves(census, beside.closing_members, bench.staffing()),
     );
+    object.insert(
+        "public".to_owned(),
+        economy_health::public_record(open.providers(), &beside, bench.state(), bench.staffing()),
+    );
+    let fund_cash = bench.no_earner_per_person().map(|_| {
+        economy_health::economy(bench.state())
+            .book
+            .cash(AccountId::Public(country_fund::fund_account()))
+            .map_or(0, Currency::micro_units)
+    });
+    object.insert(
+        "benefits".to_owned(),
+        economy_health::benefits_record(
+            &beside,
+            &[country_fund::NO_EARNER, country_fund::LAID_OFF],
+            fund_cash,
+        ),
+    );
     row
 }
 
@@ -1726,4 +1744,149 @@ fn record_country_bench_timings() {
     std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
     let text = serde_json::to_string_pretty(&record).expect("the record serializes");
     std::fs::write(path, text + "\n").expect("the record is written");
+}
+
+/// The sites of public provisioning at the opening, by scope: all, and those funded by a grant.
+/// The lead measured 977 (976 with a grant): 959 domestic (958), 6 in dependencies, 12 foreign.
+#[test]
+fn the_country_s_public_providers() {
+    let (_catalog, census, bench) = open_census(RuleSet::None);
+    let providers = economy_health::public_providers(&census, bench.state());
+    let count = |scope: &str, granted: bool| {
+        providers
+            .values()
+            .filter(|p| (scope.is_empty() || p.scope == scope) && (!granted || p.grant))
+            .count()
+    };
+    let figures = [
+        count("", false),
+        count("", true),
+        count("domestic", false),
+        count("domestic", true),
+        count("dependency", false),
+        count("foreign", false),
+    ];
+    println!("public providers [all, granted, domestic, domestic granted, dependency, foreign]: {figures:?}");
+    assert_eq!(figures, [977, 976, 959, 958, 6, 12]);
+}
+
+/// In the first period with all six rules, the `public` column holds every public-provider receipt of
+/// each kind, split in two, and the persons at work at their pools.
+#[test]
+fn the_public_column_adds_back() {
+    let (_catalog, census, mut bench) = open_census(RuleSet::AllSix);
+    let open = Opening::read(&census, bench.catalog(), bench.state());
+    let stepped = bench.step().expect("the first period closes");
+    let row = bench_row(&census, &open, &stepped, &bench);
+    let public = &row["public"];
+    let providers = open.providers();
+    let sum = |key: &str| -> u64 {
+        public[key]
+            .as_array()
+            .expect("a pair")
+            .iter()
+            .map(|cell| cell.as_u64().expect("a count"))
+            .sum()
+    };
+    let mut want = [0_u64; 7];
+    for receipt in &stepped.adjustments {
+        match receipt {
+            AdjustmentReceipt::Stop(r) if providers.contains_key(&r.site_id) => {
+                want[0] += 1;
+                want[1] += u64::from(r.hold == StopHold::Held);
+            }
+            AdjustmentReceipt::HiringBound(r)
+                if providers.contains_key(&r.site_id) && r.bound_hours < r.asked_hours =>
+            {
+                want[2] += 1;
+            }
+            AdjustmentReceipt::RestingPrice(r) if providers.contains_key(&r.site_id) => {
+                want[3] += 1;
+            }
+            AdjustmentReceipt::RestingPriceToCost(r) if providers.contains_key(&r.site_id) => {
+                want[4] += 1;
+            }
+            AdjustmentReceipt::Restart(r)
+                if providers.contains_key(&r.site_id) && r.test != RestartTest::NotTested =>
+            {
+                want[5] += 1;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(sum("stops"), want[0], "stop rows");
+    assert_eq!(sum("stops_held"), want[1], "held stop rows");
+    assert_eq!(
+        sum("hiring_bound_below"),
+        want[2],
+        "hiring bound rows below asked"
+    );
+    assert_eq!(sum("resting"), want[3], "resting price rows");
+    assert_eq!(sum("raised"), want[4], "resting price to cost rows");
+    let restarts: u64 = public["restarts"]
+        .as_array()
+        .expect("a pair")
+        .iter()
+        .flat_map(|side| side.as_array().expect("three counts"))
+        .map(|cell| cell.as_u64().expect("a count"))
+        .sum();
+    assert_eq!(restarts, want[5], "tested restart rows");
+    let sites: BTreeMap<_, _> = bench
+        .staffing()
+        .pools()
+        .iter()
+        .map(|pool| (pool.binding().pool_id(), pool.binding().site_id()))
+        .collect();
+    let employed: u64 = stepped
+        .closing_members
+        .iter()
+        .filter(|held| providers.contains_key(&sites[&held.pool_id]))
+        .flat_map(|held| &held.members)
+        .map(StaffingMemberState::employed)
+        .sum();
+    assert_eq!(sum("at_work"), employed, "persons at work");
+    println!("AllSix period 1: public {public}");
+}
+
+/// In the first period with benefits, the `benefits` column holds every program receipt.
+#[test]
+fn the_benefits_column_adds_back() {
+    let (_catalog, census, mut bench) = open_census(RuleSet::AllSixWithBenefits);
+    let open = Opening::read(&census, bench.catalog(), bench.state());
+    let stepped = bench.step().expect("the first period closes");
+    let row = bench_row(&census, &open, &stepped, &bench);
+    let benefits = &row["benefits"];
+    let keys = [country_fund::NO_EARNER, country_fund::LAID_OFF];
+    let total = |at: usize| -> i128 {
+        keys.iter()
+            .map(|key| {
+                let cell = &benefits[*key][at];
+                cell.as_str().map_or_else(
+                    || i128::from(cell.as_u64().expect("a count")),
+                    |text| text.parse::<i128>().expect("a money figure"),
+                )
+            })
+            .sum()
+    };
+    assert_eq!(
+        total(0),
+        i128::try_from(stepped.public_programs.len()).expect("few rows")
+    );
+    let rules = &row["rules"]["programs"];
+    let figure = |cell: &Value| {
+        cell.as_str()
+            .expect("money")
+            .parse::<i128>()
+            .expect("micros")
+    };
+    assert_eq!(total(2), figure(&rules[1]), "paid");
+    assert_eq!(total(3), figure(&rules[2]), "unfunded");
+    for key in keys {
+        let cell = &benefits[key];
+        let part = |at: usize| figure(&cell[at]);
+        assert_eq!(part(1), part(2) + part(3), "{key}: due = paid + unfunded");
+    }
+    assert!(benefits["fund_cash_micros"].is_string());
+    println!("AllSixWithBenefits period 1: public {}", row["public"]);
+    println!("AllSixWithBenefits period 1: benefits {benefits}");
 }

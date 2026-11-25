@@ -7,8 +7,9 @@ use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{
     AccountId, AdjustmentReceipt, CapacitySupply, CircuitAccounting, CommodityKind, CorridorId,
     FinalDemandPrincipalId, GoodId, MarketClearingReceipt, MaterialCatalog, MaterialCircuitState,
-    MonetaryCircuit, OrderId, OutboundOrderId, PoolMembers, PublicProgramReceipt, RestartTest,
-    RouteId, SiteId, StaffingPoolId, StaffingState, StopHold, UnitId,
+    MonetaryCircuit, OrderId, OutboundOrderId, PoolMembers, PublicProgramReceipt,
+    PublicTransferTreatment, RestartTest, RouteId, SiteId, StaffingMemberState, StaffingPoolId,
+    StaffingState, StopHold, UnitId,
 };
 use babylon_persistence::economic_catalog::EconomicOpening;
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -329,6 +330,46 @@ pub struct Opening {
     orders: BTreeMap<OrderId, Order>,
     stock: BTreeMap<(SiteId, Key), u64>,
     available: BTreeMap<(u64, CorridorId), u64>,
+    providers: BTreeMap<SiteId, Provider>,
+}
+
+/// A site of public provisioning: whether a public allocation of the state names it as the recipient
+/// of an operating grant, and the scope of its place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Provider {
+    pub grant: bool,
+    pub scope: &'static str,
+}
+
+/// The sites whose function is public provisioning, each with whether the state funds it by a
+/// provider operating grant.
+pub fn public_providers(
+    census: &Census,
+    state: &MaterialCircuitState,
+) -> BTreeMap<SiteId, Provider> {
+    let granted: BTreeSet<SiteId> = economy(state)
+        .financial
+        .public_allocations
+        .iter()
+        .filter(|row| row.treatment == PublicTransferTreatment::ProviderOperatingGrant)
+        .filter_map(|row| match row.recipient {
+            AccountId::Site(site) => Some(site),
+            _ => None,
+        })
+        .collect();
+    let public = function_name(EconomicFunction::PublicProvisioning);
+    census
+        .sites
+        .iter()
+        .filter(|(_, facts)| facts.function == public)
+        .map(|(site, facts)| {
+            let provider = Provider {
+                grant: granted.contains(site),
+                scope: facts.scope,
+            };
+            (*site, provider)
+        })
+        .collect()
 }
 
 pub fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
@@ -425,7 +466,13 @@ impl Opening {
             orders,
             stock,
             available,
+            providers: public_providers(census, state),
         }
+    }
+
+    /// The public providers at the open of the period.
+    pub const fn providers(&self) -> &BTreeMap<SiteId, Provider> {
+        &self.providers
     }
 }
 
@@ -1458,6 +1505,143 @@ pub fn rules_record(bench: &BenchReceipts<'_>) -> Value {
     })
 }
 
+/// The side of a public provider in a pair: 0 with a grant, 1 without one; `None` for any other site.
+fn side(providers: &BTreeMap<SiteId, Provider>, site: SiteId) -> Option<usize> {
+    providers
+        .get(&site)
+        .map(|provider| usize::from(!provider.grant))
+}
+
+/// What the rules did to the public providers in the period, each figure a pair
+/// `[with a grant, without a grant]` summed over them. Every key is present, with zeros where nothing
+/// acted. `price` is the lowest and the highest unit price among their offers at the close, in
+/// micro-units written as money is written elsewhere (`null` for a side with no offer).
+pub fn public_record(
+    providers: &BTreeMap<SiteId, Provider>,
+    bench: &BenchReceipts<'_>,
+    state: &MaterialCircuitState,
+    staffing: &StaffingState,
+) -> Value {
+    let mut at_work = [0_u64; 2];
+    let mut stops = [0_u64; 2];
+    let mut stops_held = [0_u64; 2];
+    let mut hiring_bound_below = [0_u64; 2];
+    let mut resting = [0_u64; 2];
+    let mut raised = [0_u64; 2];
+    // [failed, no buyer, restarted] on each side.
+    let mut restarts = [[0_u64; 3]; 2];
+    let mut prices: [Option<(i128, i128)>; 2] = [None, None];
+    let pool_sites: BTreeMap<StaffingPoolId, SiteId> = staffing
+        .pools()
+        .iter()
+        .map(|pool| (pool.binding().pool_id(), pool.binding().site_id()))
+        .collect();
+    for held in bench.closing_members {
+        let site = pool_sites
+            .get(&held.pool_id)
+            .expect("every pool has a site");
+        if let Some(at) = side(providers, *site) {
+            at_work[at] += held
+                .members
+                .iter()
+                .map(StaffingMemberState::employed)
+                .sum::<u64>();
+        }
+    }
+    for row in bench.adjustments {
+        match row {
+            AdjustmentReceipt::HiringBound(r) => {
+                if let (Some(at), true) =
+                    (side(providers, r.site_id), r.bound_hours < r.asked_hours)
+                {
+                    hiring_bound_below[at] += 1;
+                }
+            }
+            AdjustmentReceipt::Stop(r) => {
+                if let Some(at) = side(providers, r.site_id) {
+                    stops[at] += 1;
+                    stops_held[at] += u64::from(r.hold == StopHold::Held);
+                }
+            }
+            AdjustmentReceipt::RestingPrice(r) => {
+                if let Some(at) = side(providers, r.site_id) {
+                    resting[at] += 1;
+                }
+            }
+            AdjustmentReceipt::RestingPriceToCost(r) => {
+                if let Some(at) = side(providers, r.site_id) {
+                    raised[at] += 1;
+                }
+            }
+            AdjustmentReceipt::Restart(r) => {
+                if let Some(at) = side(providers, r.site_id) {
+                    match r.test {
+                        RestartTest::Failed => restarts[at][0] += 1,
+                        RestartTest::NoBuyer => restarts[at][1] += 1,
+                        RestartTest::Restarted => restarts[at][2] += 1,
+                        RestartTest::NotTested => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for offer in &economy(state).recurring.as_ref().expect("recurring").offers {
+        if let Some(at) = side(providers, offer.site_id) {
+            let price = offer.unit_price.micro_units();
+            prices[at] = Some(prices[at].map_or((price, price), |(low, high)| {
+                (low.min(price), high.max(price))
+            }));
+        }
+    }
+    let price =
+        |at: usize| prices[at].map_or(Value::Null, |(low, high)| json!([money(low), money(high)]));
+    json!({
+        "at_work": at_work,
+        "stops": stops,
+        "stops_held": stops_held,
+        "hiring_bound_below": hiring_bound_below,
+        "resting": resting,
+        "raised": raised,
+        "restarts": restarts,
+        "price": [price(0), price(1)],
+    })
+}
+
+/// What each public program paid in the period, by its key: `[rows, due_micros, paid_micros,
+/// unfunded_micros]` summed over the period's program receipts (zeros where the program paid nothing),
+/// and the fund's cash at the close (`null` where the set has no fund).
+pub fn benefits_record(
+    bench: &BenchReceipts<'_>,
+    programs: &[&str],
+    fund_cash: Option<i128>,
+) -> Value {
+    let mut out = Map::new();
+    for key in programs {
+        let mut rows = 0_u64;
+        let (mut due, mut paid, mut unfunded) = (0_i128, 0_i128, 0_i128);
+        for row in bench
+            .public_programs
+            .iter()
+            .filter(|row| row.program.as_str() == *key)
+        {
+            rows += 1;
+            due += row.due.micro_units();
+            paid += row.paid.micro_units();
+            unfunded += row.unfunded.micro_units();
+        }
+        out.insert(
+            (*key).to_owned(),
+            json!([rows, money(due), money(paid), money(unfunded)]),
+        );
+    }
+    out.insert(
+        "fund_cash_micros".to_owned(),
+        fund_cash.map_or(Value::Null, money),
+    );
+    Value::Object(out)
+}
+
 /// People at work and looking for work after the period's moves, by scope of the pool's site:
 /// `[at_work, looking]`, summed over the closing members.
 pub fn jobs_after_moves(
@@ -1515,6 +1699,28 @@ pub fn bench_columns() -> Value {
     object.insert(
         "jobs_after_moves".to_owned(),
         json!({"scope": ["at_work", "looking"]}),
+    );
+    object.insert(
+        "public".to_owned(),
+        json!({
+            "note": "every figure is a pair [with a grant, without a grant] over the sites of public provisioning",
+            "at_work": "persons employed at the close",
+            "stops": "stop rows",
+            "stops_held": "stop rows held",
+            "hiring_bound_below": "hiring bound rows with bound_hours < asked_hours",
+            "resting": "resting price rows",
+            "raised": "resting price to cost rows",
+            "restarts": ["failed", "no_buyer", "restarted"],
+            "price": "[lowest, highest] unit price of their offers at the close in micros, null when none",
+        }),
+    );
+    object.insert(
+        "benefits".to_owned(),
+        json!({
+            "no_earner": ["rows", "due_micros", "paid_micros", "unfunded_micros"],
+            "laid_off": ["rows", "due_micros", "paid_micros", "unfunded_micros"],
+            "fund_cash_micros": "the fund's cash at the close, null where the set has no fund",
+        }),
     );
     legend
 }

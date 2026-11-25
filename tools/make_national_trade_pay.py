@@ -334,9 +334,9 @@ def build(
             "wage": "wage_rule county when the group is not partial and has positive jobs and payroll; else the published state leaf rows of the county's state for the same trade and ownership; else the national rows of the same trade and ownership; else the national rows of the trade over ownerships 1, 2, 3 and 5. The hourly wage is wage_payroll_usd / (wage_jobs x 2080), computed by the reader and not stored.",
             "rows": "One row for each admitted group of the version 2 cohort table, in its order. Suppression stays unknown outside the placed amounts, which are derived shares and never observations.",
             "jobs_placed_in_all": "Counts every job placed under a published parent, including jobs placed into leaves of groups that are not admitted and into code 99, so it can exceed the jobs the rows of this table hold from placement.",
-            "limits": "No person, household allocation, recipe or capacity follows from this table. The stage 2 native reader is not built yet.",
+            "limits": "No person, household allocation, recipe or capacity follows from this table.",
         },
-        "native_readers": [],
+        "native_readers": ["babylon-persistence::national_trade_pay"],
         "runtime_consumers": [],
     }
     metadata_out.parent.mkdir(parents=True, exist_ok=True)

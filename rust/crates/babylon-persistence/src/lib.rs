@@ -46,6 +46,7 @@ pub mod national_household_time_allocation;
 pub mod national_households;
 pub mod national_resident_allocation;
 pub mod national_resident_workforce;
+pub mod national_trade_pay;
 pub mod national_transport;
 pub(crate) mod observer_material;
 pub mod observer_reader;

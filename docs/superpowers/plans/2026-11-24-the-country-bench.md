@@ -579,8 +579,11 @@ pub fn jobs_after_moves(census: &Census, closing_members: &[PoolMembers], staffi
    Read the exact field names from `adjustment/receipts.rs` and `financial/model.rs` (`PublicProgramReceipt`).
    Every key is present in every period, with zeros when nothing acted.
 6. **`spare_money_raised`.** Rule A6 writes no receipt (`recurring/spare_money.rs:498-499`). The bench counts the
-   production policies of the closing state whose `planned_batches` exceeds the `planned_batches` of the period's
-   `ProductionPlanReceipt` for the same process. It uses one map by process, not a scan.
+   production policies of the closing state whose `planned_batches` exceeds the plan the close made before A6
+   ran: for goods, the `planned_batches` of the period's `ProductionPlanReceipt` for the same process; for a
+   service, which has no plan receipt, the plan the service market writes at every close
+   (`planned_quantity.div_ceil(quantity_per_batch)` of its `ServiceMarketReceipt`, `services/market.rs:153-166`).
+   It uses one map by process, not a scan.
 7. **`jobs_after_moves`**, by scope of the pool's site: `[at_work, looking]`, summed over the closing members'
    `employed()` and `reserve()`. With no seekers it equals the record's `jobs` at the close; Task 4's test checks
    that.
@@ -745,13 +748,15 @@ pub fn no_earner_per_person(opening: &EconomicOpening, first: &BenchPeriod) -> R
 3. **The places' bodies** keep their capped budgets, allocations and rows: provision, relief list, City PD.
 4. **The programs**, both `rank: 0`, `payer: fund_account()`, sorted by key:
    - `no_earner`: `PerPerson { amount_per_person: per_person }`. Its recipients are every domestic household
-     account whose principal is the household of no member of `opening.staffing`. This covers collective
+     account with no earner at the opening: none of the members of `opening.staffing` whose household is its
+     principal has anyone employed. An account with no member at all is among them; this covers collective
      residences with no job. Sort them.
-   - `laid_off`: `AfterLayoff { wage_share_bps: 5_000, half_periods: 13 }`. Its recipients are every domestic
-     household account whose principal is the household of a member. Sort them.
-   - So an account whose members are all looking for work at the opening has no earner and is on `laid_off`'s
-     list only. It is paid neither benefit at the opening and keeps the county's support, as the design's call 16
-     has it (Calls of the lead, 15). Count such accounts and their persons at the opening.
+   - `laid_off`: `AfterLayoff { wage_share_bps: 5_000, half_periods: 13 }`. Its recipients are every other
+     domestic household account: those with at least one member who has someone employed. Sort them.
+   - So each domestic account is in exactly one program. (As first built, `no_earner` went only to accounts with
+     no member: 7 accounts with 47 persons, while 628 accounts with 60,474,079 persons had no earner and were
+     paid nothing. That was the lead's wrong call when the check was folded in: the design's O12 pays a household
+     with no earner, and its sentence about people already looking for work is about the laid-off benefit.)
 5. **The `no_earner` amount.** "At the opening's prices, for the needs of tier 1." This is one national figure
    and two sums divided. Over the domestic accounts in the baseline's first period, take the sum of
    `required_quantity x unit_price` of their `HouseholdDemandReceipt` rows (the need; `requested_quantity` adds the
@@ -901,8 +906,8 @@ fn acted(record: &Value) -> Value;
    the rows of periods 1, 2, 3, 4, 5, 13, 34, 100, 200 and 400.
 5. **Time.** Every record's head has `"total_ms"` and the slowest period with its `elapsed_ms`.
 
-- [ ] **Step 1: Re-time** with `record_country_bench_timings`. If a set's ratio still passes ten times and Task 7
-  was not built, stop and report: the lead decides.
+- [ ] **Step 1: Re-time** with `record_country_bench_timings` and report the table. The lead has decided that the
+  runs go ahead before Task 7 (Calls of the lead, 5).
 - [ ] **Step 2: Write** `record_country_bench_sets` with `#[ignore = "writes the sets' records under
   reports/country-bench-2026-11-24/"]`, and `record_country_bench_long` with `#[ignore = "400 periods; writes
   summaries under reports/country-bench-2026-11-24/"]`.
@@ -933,8 +938,10 @@ of 20 November.
    the count by place.
 4. The reader before the runner, proven by the tick recorder's first three periods writing the same JSON. Then the
    runner with no rules. Every run is judged against the bench's own baseline.
-5. One period is timed before any long run. The squares task (Task 7) comes before the 34-period runs of any set
-   whose one period takes more than ten times the baseline's, with a size test first.
+5. One period is timed before any long run. The squares task (Task 7) was to come before the 34-period runs of
+   any set whose one period takes more than ten times the baseline's. Measured: the slowest set takes about 28
+   seconds a period, so 34 periods cost a quarter of an hour. The lead changed the order on that figure: Task 8's
+   runs come first, and Task 7 follows them (see the last section).
 6. The sets, each beside the baseline: (i) the market price; (ii) with spare money and the rules that need no
    seekers; (iii) all six; (iv) all six with benefits. Each record says whether each rule ever acted. 34 periods
    for every set; 400 for the baseline and the set with benefits, in the background. A refusal is a finding.
@@ -957,9 +964,10 @@ of 20 November.
     - it sits at county 11001;
     - it takes half of each domestic tax rate, rounded down, so no payer's total rate changes;
     - `no_earner` pays the baseline's first-period spend on needs per domestic person;
-    - `no_earner` recipients are the domestic accounts with no member, and `laid_off` recipients those with one.
-      So an account whose members are all looking for work at the opening is paid neither benefit at the opening;
-      it keeps the county's support (the design's call 16). Task 6 counts such accounts and their persons;
+    - `no_earner` recipients are the domestic accounts with no earner at the opening (no member with anyone
+      employed), and `laid_off` recipients are the others. An account that had no earner at the opening is not on
+      `laid_off`'s list, so a job it wins and loses in play brings no laid-off benefit: a simplification of this
+      stand-in;
     - its two periods of reserve are moved from the places' bodies in proportion to their cash, so no money is made.
 16. *(Mine.)* The restart puts in two periods of a batch's cost (the closest form's national figure).
 17. *(Mine.)* Every set without seekers finishes with `finish_with_staffing`. It equals the tick's
@@ -1047,3 +1055,37 @@ size tests' own builders; one form of `--run-ignored`; where each kind of comman
 - Whether the hiring bound or the fund's attendance do anything unexpected with members of no hours: Task 5,
   Step 4.
 - The line anchors of the table of walls. They are hints and steer no build.
+
+## What the build of Tasks 1 to 6 found (24 and 25 November)
+
+- **The sizes** (Task 1): 187 places with households; 7,463 workplaces (7,283 domestic, 120 foreign, 60 in
+  dependencies) and one pool each; 1,584 domestic household accounts; 21,062 members. With the seekers' rows the
+  members come to 67,509 against the bound of 131,072: they fit.
+- **The baseline** (Task 3): 34 periods close on the engine's own period with no rule on. Money is equal in every
+  row and every person and worker is explained. A period takes about 1.3 seconds. The opening's collapse is
+  there: 111,176,838 domestic layoffs in period 2.
+- **Speed, one period** (timings.json): baseline about 1.5 seconds; the market price 7 to 9; the rules without
+  seekers 13 to 14; all six 28 to 30; all six with benefits 28. So the sets with seekers take fifteen to
+  nineteen times the baseline.
+- **The engine refused the country's first period with all six rules on** (`ServiceInvariant` at the finish).
+  The cause, shown by two instrumented runs of the lead: step (b) of the owner's restart raises a rested price
+  to one unit's cost, and it did so for a seller of public provision in Jefferson County, Texas, from its token
+  1,000,000 micros to 25,361,719, above its offer's ceiling of 4,000,000. That site is dormant at the opening:
+  nobody works there and it has no operating grant. The other 976 of the 977 public provisioning sites have a
+  grant, and none of them rested in period 1. The small worlds have no public provider, so no earlier test
+  reached this.
+- **The mend** (`7b953cded`, an engine change by the lead's order, outside this plan's tasks): a raise never
+  leaves its offer's own range, and a provider that a public body funds by an operating grant is skipped. Every
+  engine test, the small worlds' tests and the fifteen long tests pass with no expected value changed. With it
+  the country closes period 1 under all six rules; the dormant site's price goes to its ceiling. The seven other
+  raises of period 1 are four manufacturers (120,000,000 to 121,031,250) and three sellers of business services
+  (100,000,000 to 253,617,188). Whether a public provider with no grant should be left alone too is open: the
+  Director's ruling that public provision does not clear by price (ADR312, P12) bears on it, and Task 8's
+  records count what the rules do to public providers before anything more is changed.
+- **In period 1 with all six rules:** no person moves; 7,463 stop rows, none held; 7,463 hiring bounds; 22
+  resting prices; 8 raises; no restart is tested; 1,083 rows of owners' spare money; 1,388 goods offers. In the
+  set without seekers, 465 of the 7,463 bounds are below what was asked, spare money raises 259 plans and 728
+  markets are short.
+- **The fund** (Task 6): the `no_earner` amount is 1,595,033,714 micros a person a period; 9,065 tax rows become
+  17,932; the engine admits the fund's place, the split and both programs.
+- **The order changed** (call 5): Task 8's runs come before Task 7.

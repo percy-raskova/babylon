@@ -2,21 +2,18 @@
 //! and receipts: supply to the households of every county and foreign region, jobs, businesses,
 //! products, trade and money. Nothing here is a model of them. Every figure is a sum (a share is
 //! computed from two sums, in basis points, never averaged) and money is millionths.
-use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{
     AccountId, CapacitySupply, CircuitAccounting, CommodityKind, CorridorId,
-    FinalDemandPrincipalId, GoodId, MaterialCircuitState, MonetaryCircuit, OrderId,
-    OutboundOrderId, RouteId, SiteId, UnitId,
+    FinalDemandPrincipalId, GoodId, MaterialCatalog, MaterialCircuitState, MonetaryCircuit,
+    OrderId, OutboundOrderId, RouteId, SiteId, UnitId,
 };
 use babylon_persistence::economic_catalog::EconomicOpening;
-use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub type Session = MaterialReplaySession<HypergraphStore>;
 type Key = (GoodId, UnitId);
 
 /// The six needs of a household, by commodity key.
@@ -333,8 +330,8 @@ pub struct Opening {
     available: BTreeMap<(u64, CorridorId), u64>,
 }
 
-pub fn economy(session: &Session) -> &MonetaryCircuit {
-    let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {
+pub fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
         panic!("the national campaign accounts in money")
     };
     economy
@@ -342,13 +339,13 @@ pub fn economy(session: &Session) -> &MonetaryCircuit {
 
 /// Grams a corridor can still carry in `period`, read the way the engine reads it.
 fn corridor_available(
-    session: &Session,
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     period: u64,
     corridor: CorridorId,
 ) -> u64 {
     if period > state.period {
-        if let CapacitySupply::Rolling(rows) = &session.catalog().capacity_policy {
+        if let CapacitySupply::Rolling(rows) = &catalog.capacity_policy {
             let gross = rows
                 .shared
                 .binary_search_by_key(&corridor, |r| r.corridor_id)
@@ -370,9 +367,8 @@ fn corridor_available(
 }
 
 impl Opening {
-    pub fn read(census: &Census, session: &Session) -> Self {
-        let state = session.material().state();
-        let recurring = economy(session).recurring.as_ref().expect("recurring");
+    pub fn read(census: &Census, catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Self {
+        let recurring = economy(state).recurring.as_ref().expect("recurring");
         let offers = recurring
             .offers
             .iter()
@@ -417,7 +413,7 @@ impl Opening {
         let available = keys
             .into_iter()
             .map(|(period, corridor)| {
-                let grams = corridor_available(session, state, period, corridor);
+                let grams = corridor_available(catalog, state, period, corridor);
                 ((period, corridor), grams)
             })
             .collect();
@@ -680,7 +676,7 @@ fn businesses(
     census: &Census,
     open: &Opening,
     receipts: &MaterialTickReceipts,
-    after: &Session,
+    after: &MaterialCircuitState,
 ) -> Value {
     let economy = economy(after);
     let recurring = economy.recurring.as_ref().expect("recurring");
@@ -1169,12 +1165,12 @@ fn trade(
     census: &Census,
     open: &Opening,
     receipts: &MaterialTickReceipts,
-    after: &Session,
+    after: &MaterialCircuitState,
     watch: &str,
 ) -> Value {
     let orders = known_orders(open, receipts);
     let used = corridor_use(census, open, &orders, receipts);
-    let state = after.material().state();
+    let state = after;
     let mut bound = BTreeSet::new();
     let mut render = |flows: BTreeMap<(String, String), Flow>| {
         let mut out = BTreeMap::<String, Map<String, Value>>::new();
@@ -1205,7 +1201,7 @@ fn trade(
 }
 
 /// Cash by kind of account after the close, with money held in escrow and wages owed.
-pub fn money_record(census: &Census, after: &Session) -> Value {
+pub fn money_record(census: &Census, after: &MaterialCircuitState) -> Value {
     let book = economy(after).book.snapshot();
     let mut kinds = BTreeMap::<String, i128>::new();
     for row in &book.accounts {
@@ -1246,7 +1242,8 @@ pub fn period_record(
     census: &Census,
     open: &Opening,
     receipts: &MaterialTickReceipts,
-    after: &Session,
+    _catalog: &MaterialCatalog,
+    after: &MaterialCircuitState,
 ) -> Value {
     let sums = need_sums(census, receipts);
     let panel: Vec<String> = census
@@ -1289,8 +1286,8 @@ pub fn columns() -> Value {
 pub type Counts = BTreeMap<&'static str, [u64; 2]>;
 
 /// Households and persons of the session's cohorts, by scope.
-pub fn session_counts(census: &Census, session: &Session) -> Counts {
-    let recurring = economy(session).recurring.as_ref().expect("recurring");
+pub fn session_counts(census: &Census, state: &MaterialCircuitState) -> Counts {
+    let recurring = economy(state).recurring.as_ref().expect("recurring");
     let mut counts = Counts::new();
     for row in &recurring.households {
         let entry = counts

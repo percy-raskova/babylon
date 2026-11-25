@@ -17,6 +17,7 @@ use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -559,13 +560,17 @@ fn health_report(name: &str, edits: &[(&str, &str)], periods: u64) -> Value {
     let mut session = opened_session(catalog, "economy-health");
     let mut rows = Vec::new();
     for period in 1..=periods {
-        let open = Opening::read(&census, &session);
+        let open = Opening::read(&census, session.catalog(), session.material().state());
         let receipts = close_period_with(&mut session, period, |_, candidate| {
             material_world::decode_material_receipts(candidate.material().receipt_bytes())
                 .expect("canonical material receipts")
         });
         rows.push(economy_health::period_record(
-            &census, &open, &receipts, &session,
+            &census,
+            &open,
+            &receipts,
+            session.catalog(),
+            session.material().state(),
         ));
     }
     let panel: Vec<Value> = census
@@ -622,7 +627,10 @@ fn the_health_reader_adds_back_at_the_opening() {
     let seeded = economy_health::opening_counts(catalog.opening());
     let sites = catalog.opening().sites.len();
     let session = opened_session(catalog, "economy-health-opening");
-    assert_eq!(economy_health::session_counts(&census, &session), seeded);
+    assert_eq!(
+        economy_health::session_counts(&census, session.material().state()),
+        seeded
+    );
     assert!(
         seeded["domestic"][0] > 100_000_000,
         "the nation's households"
@@ -634,8 +642,8 @@ fn the_health_reader_adds_back_at_the_opening() {
     let geoids: Vec<&str> = census.panel.iter().map(|c| c.geoid.as_str()).collect();
     assert_eq!(geoids.len(), 6);
     assert_eq!(geoids[..4], ["26163", "17031", "06037", "48201"]);
-    let money = economy_health::money_record(&census, &session);
-    let book: i128 = economy_health::economy(&session)
+    let money = economy_health::money_record(&census, session.material().state());
+    let book: i128 = economy_health::economy(session.material().state())
         .book
         .snapshot()
         .accounts
@@ -643,6 +651,23 @@ fn the_health_reader_adds_back_at_the_opening() {
         .map(|row| row.cash.micro_units())
         .sum();
     assert_eq!(money["cash_total"], json!(book.to_string()));
+}
+
+/// The lowercase hex of the shipped campaign's three-period health record, as the tick's reader
+/// writes it. Filled in once, from the first run, and never edited after.
+const THREE_PERIOD_RECORD_DIGEST: &str =
+    "4976714827bc7c65e2b822b94a684828f3110b933f3ad2bbcae1def4898515b7";
+
+#[test]
+#[ignore = "three national periods through the tick; run by Task 2's gate"]
+fn the_reader_writes_the_same_record_for_three_periods() {
+    let record = health_report("shipped", &[], 3);
+    let bytes = serde_json::to_vec(&record).expect("the record serializes");
+    let mut digest = String::new();
+    for byte in babylon_kernel::content_digest::sha256_of(&bytes) {
+        write!(digest, "{byte:02x}").expect("a string takes text");
+    }
+    assert_eq!(digest, THREE_PERIOD_RECORD_DIGEST);
 }
 
 /// The periods the summaries and the README read.

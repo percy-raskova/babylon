@@ -1098,3 +1098,18 @@ size tests' own builders; one form of `--run-ignored`; where each kind of comman
   million between them. So the design's two periods of reserve cannot be carved out of the shipped opening, and
   the fund opens with no cash (Task 6, decision 7).
 - **The order changed** (call 5): Task 8's runs come before Task 7.
+- **The engine refused the country's second period with benefits on** (`PublicProgramInvariant` at the finish).
+  The cause, counted by two instrumented runs of the lead: where people look for work in their place, the engine
+  keeps two counts of who holds a record of layoffs, and the finish requires them to agree. The staffing in
+  places (`staffing/place.rs`, `slots_of`) gives a record to every member of a household on the laid-off list.
+  The record's keeper (`financial/layoffs.rs`, `advance_records`) gives one only to a member paid a wage. The
+  country has 66,832 members paid a wage, 316 owners who work in their own business and 361 unpaid family
+  members. At the close of period 2, 311 working owners (16,045,004 persons) and 356 unpaid family members
+  (301,543 persons) had lost their work, and the two counts differed by exactly those 667 members: 12,015
+  records against 11,348, none differing otherwise. The small worlds pay every member a wage, so no earlier test
+  reached this.
+- **The second mend** (an engine change by the lead's order, outside this plan's tasks): one rule for both
+  counts. A record of layoffs is held by a member paid a wage by a household on the list, as the keeper already
+  had it and as the design's O12 means it (half the pay of the job lost). So in these runs an owner who works
+  in their own business, or an unpaid family member, who loses that work is paid no laid-off benefit. What a
+  ruined small owner is paid, if anything, is for the Director when the rebuilt opening sets its benefits.

@@ -476,6 +476,24 @@ fn the_script_names_columns() {
     ));
 }
 
+#[test]
+fn the_script_names_groupings() {
+    assert_eq!(
+        script::parse_script(
+            "{\"grouping\":\"workplace\"}\n{\"grouping\":\"class\"}\n{\"grouping\":\"place\"}"
+        ),
+        Ok(vec![
+            ScriptCommand::Grouping("workplace".into()),
+            ScriptCommand::Grouping("class".into()),
+            ScriptCommand::Grouping("place".into()),
+        ])
+    );
+    assert!(matches!(
+        script::parse_script("{\"step\":1}\n{\"grouping\":\"band\"}"),
+        Err(ScriptError::Line { line: 2, .. })
+    ));
+}
+
 /// The proof script of Task 6 of stored hours, run by the lead on the display.
 const PROOF_SH6: &str = r#"{"step":2}
 {"columns":"hours"}

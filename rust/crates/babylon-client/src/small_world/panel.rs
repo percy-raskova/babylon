@@ -43,8 +43,9 @@ const NO_HOURS_LINE: &str = "No hours were measured for this period.";
 const HOURS_COLUMNS: [&str; 5] = ["Given", "Back", "For work", "By owning", "Support"];
 /// The cells' widths of the second set, the lead's to tune.
 const HOURS_CELL_WIDTHS: [f32; 5] = [40.0, 44.0, 48.0, 52.0, 48.0];
-/// What a cell with no figure shows.
-const DASH: &str = "—";
+/// What a cell with no figure shows. A plain hyphen: the figures' face (Bevy's bundled Fira Mono) holds
+/// ASCII only, and a sign it lacks is drawn as an empty box.
+const DASH: &str = "-";
 
 const TABLE_COLUMNS: [&str; 4] = ["Work given", "Paid, not used", "Money in", "Money out"];
 const LABEL_WIDTH: f32 = 140.0;

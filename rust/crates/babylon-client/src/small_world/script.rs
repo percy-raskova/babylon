@@ -57,6 +57,9 @@ pub enum ScriptCommand {
     Lower(String),
     /// `{"columns":"money"}` or `{"columns":"hours"}`: what a click on the table's switch shows.
     Columns(String),
+    /// `{"grouping":"workplace"}`, `{"grouping":"class"}` or `{"grouping":"place"}`: what a click on that
+    /// tab of the table does.
+    Grouping(String),
     /// `{"pick":"<id>"}`: what a click on that body or particle picks. `household:N` or `person:N:k`
     /// (N is 11 to 18 for the workers of utility A, utility B, farm A, farm B, clinic A, clinic B,
     /// shop A, shop B; 20 and 21 the owners of A and B; 22 and 23 the supported of A and B), a
@@ -144,6 +147,15 @@ fn columns_named(name: &str) -> Option<Columns> {
     }
 }
 
+fn grouping_named(name: &str) -> Option<Grouping> {
+    match name {
+        "workplace" => Some(Grouping::Workplace),
+        "class" => Some(Grouping::Class),
+        "place" => Some(Grouping::Place),
+        _ => None,
+    }
+}
+
 /// A file's stem is letters, digits, `-` and `_` and nothing else: no folder, no dot.
 fn stem_is_plain(name: &str) -> bool {
     !name.is_empty()
@@ -183,6 +195,9 @@ fn check_names(command: &ScriptCommand) -> Result<(), String> {
         }
         ScriptCommand::Columns(name) => {
             known(columns_named(name), "columns", name)?;
+        }
+        ScriptCommand::Grouping(name) => {
+            known(grouping_named(name), "grouping", name)?;
         }
         ScriptCommand::Pick(id) => {
             known(inspect::pick_named(id), "body, group or person", id)?;
@@ -587,6 +602,20 @@ fn done(run: &mut ScriptRun, world: &mut ScriptWorld) {
     }
 }
 
+/// The scene's own command that a script's line names by one name: a rule, a tab of the rail's lower
+/// part, the table's set of columns or its grouping, or the particles' mode. `None` for every other
+/// line, and for a name the scene does not have.
+fn named_press(command: &ScriptCommand) -> Option<SceneCommand> {
+    match command {
+        ScriptCommand::Rule(name) => SceneRule::named(name).map(SceneCommand::TurnOn),
+        ScriptCommand::Lower(name) => lower_named(name).map(SceneCommand::Lower),
+        ScriptCommand::Columns(name) => columns_named(name).map(SceneCommand::Columns),
+        ScriptCommand::Grouping(name) => grouping_named(name).map(SceneCommand::Grouping),
+        ScriptCommand::Particles(name) => mode_named(name).map(SceneCommand::Particles),
+        _ => None,
+    }
+}
+
 /// Press the next command, or finish a command that needs no press.
 fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) {
     let Some(command) = run.commands.get(run.next).cloned() else {
@@ -621,21 +650,13 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
             }
             run.state = State::Checking(0);
         }
-        ScriptCommand::Rule(name) => {
-            if let Some(rule) = SceneRule::named(&name) {
-                world.presses.write(SceneCommand::TurnOn(rule));
-            }
-            run.state = State::Checking(0);
-        }
-        ScriptCommand::Lower(name) => {
-            if let Some(lower) = lower_named(&name) {
-                world.presses.write(SceneCommand::Lower(lower));
-            }
-            run.state = State::Checking(0);
-        }
-        ScriptCommand::Columns(name) => {
-            if let Some(columns) = columns_named(&name) {
-                world.presses.write(SceneCommand::Columns(columns));
+        ScriptCommand::Rule(_)
+        | ScriptCommand::Lower(_)
+        | ScriptCommand::Columns(_)
+        | ScriptCommand::Grouping(_)
+        | ScriptCommand::Particles(_) => {
+            if let Some(press) = named_press(&command) {
+                world.presses.write(press);
             }
             run.state = State::Checking(0);
         }
@@ -653,12 +674,6 @@ fn begin(run: &mut ScriptRun, world: &mut ScriptWorld, commands: &mut Commands) 
                 .iter_mut()
                 .for_each(|length| *length = beat);
             done(run, world);
-        }
-        ScriptCommand::Particles(name) => {
-            if let Some(mode) = mode_named(&name) {
-                world.presses.write(SceneCommand::Particles(mode));
-            }
-            run.state = State::Checking(0);
         }
         ScriptCommand::Capture(name) => match start_capture(run, &name, commands) {
             Ok(()) => run.state = State::Capturing,

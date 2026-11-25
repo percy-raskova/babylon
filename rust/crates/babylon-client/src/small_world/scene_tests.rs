@@ -787,7 +787,7 @@ fn the_switch_stands_at_the_end_of_the_pager_s_row() -> TestResult {
             assert_eq!(header, names.to_vec());
             assert_eq!(
                 table_row(&mut app, "Place A utility")?,
-                ["120", "—", "—", "—", "—"].map(str::to_owned).to_vec()
+                ["120", "-", "-", "-", "-"].map(str::to_owned).to_vec()
             );
         } else {
             assert_eq!(header.len(), 4);
@@ -1754,6 +1754,56 @@ fn a_scripted_pick_is_a_click_s_pick() -> TestResult {
     assert_eq!(
         clicked.world().resource::<ScenePick>().0,
         Some(Pick::Body(Party::Workplace(farm)))
+    );
+    Ok(())
+}
+
+/// The figures' face holds ASCII only: a sign outside it is drawn as an empty box. So every figure of
+/// the table, in both sets of columns and all three groupings, is written in ASCII.
+#[test]
+fn every_figure_of_the_table_is_a_sign_its_face_holds() -> TestResult {
+    use crate::observer_ui::ObserverFontRole;
+
+    let mut app = scene_app(None)?;
+    for _ in 0..2 {
+        send(&mut app, SceneCommand::Step);
+        updates(&mut app, 3);
+    }
+    let mut seen = 0_usize;
+    for columns in [Columns::Money, Columns::Hours] {
+        for grouping in [Grouping::Workplace, Grouping::Class, Grouping::Place] {
+            send(&mut app, SceneCommand::Columns(columns));
+            send(&mut app, SceneCommand::Grouping(grouping));
+            updates(&mut app, 3);
+            let world = app.world_mut();
+            let figures: Vec<String> = world
+                .query::<(&Text, &ObserverFontRole)>()
+                .iter(world)
+                .filter(|(_, role)| matches!(role, ObserverFontRole::Exact))
+                .map(|(text, _)| text.0.clone())
+                .collect();
+            assert!(!figures.is_empty(), "{columns:?} {grouping:?}: no figure");
+            for figure in &figures {
+                assert!(figure.is_ascii(), "{columns:?} {grouping:?}: {figure:?}");
+            }
+            seen += figures.len();
+        }
+    }
+    assert!(seen > 0);
+    Ok(())
+}
+
+#[test]
+fn a_scripted_grouping_is_a_click_s_grouping() -> TestResult {
+    let (app, _folder) = scripted("{\"grouping\":\"class\"}\n", 50)?;
+    assert_eq!(
+        app.world().resource::<PanelView>().grouping,
+        Grouping::Class
+    );
+    let (app, _folder) = scripted("{\"grouping\":\"class\"}\n{\"grouping\":\"place\"}\n", 50)?;
+    assert_eq!(
+        app.world().resource::<PanelView>().grouping,
+        Grouping::Place
     );
     Ok(())
 }

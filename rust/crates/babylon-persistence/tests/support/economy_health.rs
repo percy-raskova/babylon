@@ -79,7 +79,7 @@ pub struct Census {
 }
 
 /// Where an account operates, in the record's three scopes.
-fn scope(location: &str) -> &'static str {
+pub fn scope(location: &str) -> &'static str {
     if location.starts_with("county:") {
         "domestic"
     } else if location.starts_with("foreign:") {

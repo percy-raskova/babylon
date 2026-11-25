@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+#[path = "support/country_sizes.rs"]
+mod country_sizes;
 #[path = "support/economy_health.rs"]
 mod economy_health;
 #[path = "support/household_accounts.rs"]
@@ -27,6 +29,7 @@ mod household_accounts;
 #[path = "support/supply_chain.rs"]
 mod supply_chain;
 
+use country_sizes::{CountrySizes, PlaceKey, PlaceSizes, SEEKER_BOUND};
 use economy_health::{Census, Opening};
 use household_accounts::{AccountReading, AccountSpec, PeriodReading, Session, TopTenth};
 use supply_chain::{ChainSite, Names};
@@ -903,4 +906,67 @@ fn record_wayne_supply_chain_of_a_candidate() {
     let path =
         Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("economy-repair/chain-{name}.json"));
     write_report(&chain_report(catalog, 10), &path);
+}
+
+/// The twenty places with the most new seeker rows, from the most, then by place.
+fn busiest_places(sizes: &CountrySizes) -> Vec<(&PlaceKey, &PlaceSizes)> {
+    let mut places: Vec<_> = sizes.by_place.iter().collect();
+    places.sort_by(|a, b| b.1.new_rows.cmp(&a.1.new_rows).then(a.0.cmp(b.0)));
+    places.truncate(20);
+    places
+}
+
+/// A sum of sizes, failing with words rather than wrapping.
+fn sum(mut values: impl Iterator<Item = u64>) -> u64 {
+    values
+        .try_fold(0_u64, u64::checked_add)
+        .expect("a sum of sizes overflowed u64")
+}
+
+#[test]
+fn the_country_s_sizes() {
+    let catalog = pooled_catalog();
+    let opening = catalog.opening();
+    let compiled = opening.compile().expect("the shipped opening compiles");
+    let sizes = country_sizes::country_sizes(opening, &compiled);
+    println!(
+        "members_with_seekers {} against SEEKER_BOUND {SEEKER_BOUND}: {}",
+        sizes.members_with_seekers,
+        if sizes.members_with_seekers <= SEEKER_BOUND {
+            "fits"
+        } else {
+            "does not fit"
+        }
+    );
+    for (key, place) in busiest_places(&sizes) {
+        println!("{} {place:?}", key.0);
+    }
+    println!("{sizes:#?}");
+    assert_eq!(
+        sum(sizes.workplaces_by_scope.values().copied()),
+        u64::try_from(opening.sites.len()).expect("a count")
+    );
+    assert_eq!(
+        sizes.seeker_rows,
+        sum(sizes.by_place.values().map(|p| p.seeker_rows))
+    );
+    assert_eq!(sizes.places_with_households, 187);
+    assert_eq!(
+        sizes.workplaces_by_scope,
+        BTreeMap::from([("dependency", 60), ("domestic", 7283), ("foreign", 120)])
+    );
+    assert_eq!(
+        sizes.household_accounts_by_scope,
+        BTreeMap::from([("dependency", 6), ("domestic", 1584), ("foreign", 12)])
+    );
+    assert_eq!(sizes.pools, 7463);
+    assert_eq!(sizes.members, 21062);
+    assert_eq!(sizes.employment_terms, 21062);
+    assert_eq!(sizes.member_labor_rows, 21062);
+    assert_eq!(sizes.offers_goods, 2123);
+    assert_eq!(sizes.offers_services, 4999);
+    assert_eq!(sizes.market_rows_at_most, 9245);
+    assert_eq!(sizes.members_outside_their_place, 0);
+    assert_eq!(sizes.seeker_rows, 67461);
+    assert_eq!(sizes.members_with_seekers, 67509);
 }

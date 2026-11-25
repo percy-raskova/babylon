@@ -15,25 +15,36 @@ pub(crate) type Product = (SiteId, GoodId, UnitId);
 /// The hours are read from the members' labor rows of the closing period, which the last staffing wrote as
 /// each member's persons employed times the hours of a person, and the employment terms that name the
 /// workplace. They stay as the staffing wrote them through the whole close.
+#[cfg(test)]
 pub(crate) fn rests(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     site: SiteId,
     offered: u64,
 ) -> bool {
-    if offered > 0
-        || !catalog
-            .market_clearing
-            .as_ref()
-            .is_some_and(|order| policy::asks(&order.adjustments, AdjustmentRule::RestingPrice))
-    {
+    rests_with(catalog, offered, || made_hours(state, site))
+}
+
+/// `rests`, with the test of the workplace's hours left to `made`, which is asked only when the catalog asks
+/// and nothing was offered.
+fn rests_with(catalog: &MaterialCatalog, offered: u64, made: impl FnOnce() -> bool) -> bool {
+    if offered > 0 || !asks_resting(catalog) {
         return false;
     }
-    !made_hours(state, site)
+    !made()
+}
+
+/// Whether the catalog asks for the resting price.
+fn asks_resting(catalog: &MaterialCatalog) -> bool {
+    catalog
+        .market_clearing
+        .as_ref()
+        .is_some_and(|order| policy::asks(&order.adjustments, AdjustmentRule::RestingPrice))
 }
 
 /// Whether a workplace's people made available any hours in the closing period: the members' labor rows of
 /// that period, through the employment terms that name the workplace.
+#[cfg(test)]
 pub(crate) fn made_hours(state: &MaterialCircuitState, site: SiteId) -> bool {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return false;
@@ -75,8 +86,16 @@ pub(crate) fn resting_among(
     state: &MaterialCircuitState,
     products: impl Iterator<Item = (Product, u64)>,
 ) -> BTreeSet<Product> {
+    // The sites with hours are found once, and only when a seller that offered nothing is asked of.
+    let mut with_hours: Option<BTreeSet<SiteId>> = None;
     products
-        .filter(|((site, _, _), offered)| rests(catalog, state, *site, *offered))
+        .filter(|((site, _, _), offered)| {
+            rests_with(catalog, *offered, || {
+                with_hours
+                    .get_or_insert_with(|| sites_with_hours(state))
+                    .contains(site)
+            })
+        })
         .map(|(product, _)| product)
         .collect()
 }

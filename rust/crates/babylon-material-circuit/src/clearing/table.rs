@@ -88,6 +88,10 @@ pub(crate) struct MarketTable {
     by_key: BTreeMap<MarketKey, usize>,
     /// What buyers were priced out of at each seller's product, over every moment.
     priced_out_by_product: BTreeMap<(SiteId, GoodId, UnitId), u64>,
+    /// The places in `rows`, in row order, of each seller's product's markets, over every moment.
+    by_product: BTreeMap<Product, Vec<usize>>,
+    /// The same, for its goods markets only (`HouseholdGoods` and `Restocking`).
+    goods_by_product: BTreeMap<Product, Vec<usize>>,
 }
 
 impl MarketTable {
@@ -145,7 +149,16 @@ impl MarketTable {
         *total = total
             .checked_add(priced_out)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        self.by_key.insert(key, self.rows.len());
+        let at = self.rows.len();
+        self.by_key.insert(key, at);
+        let product = (seller.0, seller.1, seller.2);
+        self.by_product.entry(product).or_default().push(at);
+        if matches!(
+            moment,
+            MarketMoment::HouseholdGoods | MarketMoment::Restocking
+        ) {
+            self.goods_by_product.entry(product).or_default().push(at);
+        }
         self.rows.push(MarketRow {
             key,
             price: outcome.price,
@@ -162,12 +175,11 @@ impl MarketTable {
 
     /// The goods markets of one seller's product (`HouseholdGoods` and `Restocking` rows).
     fn goods_rows(&self, key: Product) -> impl Iterator<Item = &MarketRow> + '_ {
-        self.rows.iter().filter(move |row| {
-            matches!(
-                row.key.0,
-                MarketMoment::HouseholdGoods | MarketMoment::Restocking
-            ) && (row.key.1, row.key.2, row.key.3) == key
-        })
+        self.goods_by_product
+            .get(&key)
+            .into_iter()
+            .flatten()
+            .map(move |&at| &self.rows[at])
     }
 
     /// What its goods markets offered and sold this period; `None` when it has no goods market row.
@@ -233,10 +245,11 @@ impl MarketTable {
     /// What a seller offered of its product at its markets this period: the sum of `supply` over its rows;
     /// 0 when it had no market.
     pub(crate) fn offered(&self, site: SiteId, good: GoodId, unit: UnitId) -> u64 {
-        self.rows
-            .iter()
-            .filter(|row| (row.key.1, row.key.2, row.key.3) == (site, good, unit))
-            .map(|row| row.supply)
+        self.by_product
+            .get(&(site, good, unit))
+            .into_iter()
+            .flatten()
+            .map(|&at| self.rows[at].supply)
             .fold(0_u64, u64::saturating_add)
     }
 

@@ -18,9 +18,13 @@ use crate::production::ProcessLaborRequest;
 use crate::services::ServiceInputPolicy;
 use crate::{
     AccountId, CircuitAccounting, GoodId, InputOutputCoefficient, MaintenanceReceipt,
-    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MonetaryCircuit, ProcessId,
-    RecurringEconomy, ServicePerformanceReceipt, SiteId, UnitId,
+    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MerchantHandlingCoefficient,
+    MonetaryCircuit, ProcessId, ProcessOutput, RecurringEconomy, ServicePerformanceReceipt, SiteId,
+    UnitId,
 };
+
+/// One seller's product: the site, the good and the unit.
+type Product = (SiteId, GoodId, UnitId);
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
 
@@ -64,17 +68,41 @@ pub(crate) fn batches_within(most: u64, per: i128, spent: i128, cash: i128) -> R
 /// The processes in the order they are reckoned: every provider of a service input before its buyers, ties and
 /// cycles by process id. `depends` maps each process to the processes that provide its service inputs.
 pub(crate) fn provider_first(depends: &BTreeMap<ProcessId, BTreeSet<ProcessId>>) -> Vec<ProcessId> {
+    // How many providers of each process are still to be reckoned, and which processes wait for each provider.
+    // A provider that is not itself a key is never left, and a process is no provider of itself.
+    let mut waiting: BTreeMap<ProcessId, usize> = BTreeMap::new();
+    let mut waiters: BTreeMap<ProcessId, Vec<ProcessId>> = BTreeMap::new();
+    for (&process, providers) in depends {
+        let mut count = 0_usize;
+        for &provider in providers {
+            if provider != process && depends.contains_key(&provider) {
+                count += 1;
+                waiters.entry(provider).or_default().push(process);
+            }
+        }
+        waiting.insert(process, count);
+    }
     let mut left: BTreeSet<ProcessId> = depends.keys().copied().collect();
+    let mut ready: BTreeSet<ProcessId> = waiting
+        .iter()
+        .filter(|(_, count)| **count == 0)
+        .map(|(process, _)| *process)
+        .collect();
     let mut order = Vec::with_capacity(left.len());
     while let Some(first) = left.iter().next().copied() {
-        let ready = left.iter().copied().find(|process| {
-            depends[process]
-                .iter()
-                .all(|provider| *provider == *process || !left.contains(provider))
-        });
-        let next = ready.unwrap_or(first);
+        // The first of the processes left whose providers are all reckoned, else the first left.
+        let next = ready.iter().next().copied().unwrap_or(first);
         left.remove(&next);
+        ready.remove(&next);
         order.push(next);
+        for waiter in waiters.get(&next).into_iter().flatten() {
+            if let Some(count) = waiting.get_mut(waiter).filter(|_| left.contains(waiter)) {
+                *count -= 1;
+                if *count == 0 {
+                    ready.insert(*waiter);
+                }
+            }
+        }
     }
     order
 }
@@ -118,10 +146,111 @@ struct Reading<'a> {
     catalog: &'a MaterialCatalog,
     state: &'a MaterialCircuitState,
     economy: &'a MonetaryCircuit,
-    recurring: &'a RecurringEconomy,
-    performance: &'a [ServicePerformanceReceipt],
     wages: BTreeMap<(SiteId, UnitId), i128>,
     next_period: u64,
+    tables: Tables<'a>,
+}
+
+/// The rows the reckoning looks up by key, found once for the call in place of one scan of a long list for each
+/// request. Each keeps the first row of a key where the scan took the first, and every row of a key in row order
+/// where it summed or collected.
+struct Tables<'a> {
+    /// The labor of a batch of each process, by labor unit, one entry for each coefficient.
+    labor: BTreeMap<(ProcessId, UnitId), Vec<u64>>,
+    /// The posted price of each seller's product.
+    price: BTreeMap<Product, i128>,
+    /// The batches each process plans.
+    planned_batches: BTreeMap<ProcessId, u64>,
+    /// The inputs of each process.
+    inputs_of: BTreeMap<ProcessId, Vec<&'a InputOutputCoefficient>>,
+    /// The policy of each service input, by buyer and product.
+    policy: BTreeMap<Product, &'a ServiceInputPolicy>,
+    /// The processes that make each product.
+    outputs: BTreeMap<Product, Vec<&'a ProcessOutput>>,
+    /// What each provider performed of each product in the closed period.
+    performed: BTreeMap<Product, Vec<&'a ServicePerformanceReceipt>>,
+    /// The hours each workplace plans for the next period.
+    planned: BTreeMap<(SiteId, UnitId), u64>,
+    /// The handling coefficients of each merchant.
+    handling: BTreeMap<SiteId, Vec<&'a MerchantHandlingCoefficient>>,
+}
+
+impl<'a> Tables<'a> {
+    fn of(
+        catalog: &'a MaterialCatalog,
+        recurring: &RecurringEconomy,
+        performance: &'a [ServicePerformanceReceipt],
+        next_period: u64,
+    ) -> Self {
+        let mut labor: BTreeMap<(ProcessId, UnitId), Vec<u64>> = BTreeMap::new();
+        for row in &catalog.labor_coefficients {
+            labor
+                .entry((row.process_id, row.unit_id))
+                .or_default()
+                .push(row.quantity_per_batch);
+        }
+        let mut price = BTreeMap::new();
+        for row in &recurring.offers {
+            price
+                .entry((row.site_id, row.good_id, row.unit_id))
+                .or_insert(row.unit_price.micro_units());
+        }
+        let mut planned_batches = BTreeMap::new();
+        for row in &recurring.production {
+            planned_batches
+                .entry(row.process_id)
+                .or_insert(row.planned_batches);
+        }
+        let mut inputs_of: BTreeMap<ProcessId, Vec<&InputOutputCoefficient>> = BTreeMap::new();
+        for row in &catalog.input_coefficients {
+            inputs_of.entry(row.process_id).or_default().push(row);
+        }
+        let mut policy = BTreeMap::new();
+        for row in &catalog.service_inputs {
+            policy
+                .entry((row.buyer_site_id, row.good_id, row.unit_id))
+                .or_insert(row);
+        }
+        let mut outputs: BTreeMap<Product, Vec<&ProcessOutput>> = BTreeMap::new();
+        for row in &catalog.process_outputs {
+            outputs
+                .entry((row.site_id, row.good_id, row.unit_id))
+                .or_default()
+                .push(row);
+        }
+        let mut performed: BTreeMap<Product, Vec<&ServicePerformanceReceipt>> = BTreeMap::new();
+        for row in performance {
+            performed
+                .entry((row.provider_site_id, row.good_id, row.unit_id))
+                .or_default()
+                .push(row);
+        }
+        let mut planned = BTreeMap::new();
+        for row in recurring
+            .attendance
+            .iter()
+            .filter(|row| row.period == next_period)
+        {
+            planned
+                .entry((row.site_id, row.unit_id))
+                .or_insert(row.planned_hours);
+        }
+        let mut handling: BTreeMap<SiteId, Vec<&MerchantHandlingCoefficient>> = BTreeMap::new();
+        for row in &catalog.handling_coefficients {
+            handling.entry(row.site_id).or_default().push(row);
+        }
+        Self {
+            labor,
+            price,
+            planned_batches,
+            inputs_of,
+            policy,
+            outputs,
+            performed,
+            planned,
+            handling,
+        }
+    }
 }
 
 /// What one maker's request comes to.
@@ -134,28 +263,25 @@ struct Maker {
 
 impl Reading<'_> {
     fn labor_per_batch(&self, process: ProcessId, unit: UnitId) -> u64 {
-        self.catalog
-            .labor_coefficients
-            .iter()
-            .filter(|row| row.process_id == process && row.unit_id == unit)
-            .map(|row| row.quantity_per_batch)
+        self.tables
+            .labor
+            .get(&(process, unit))
+            .into_iter()
+            .flatten()
+            .copied()
             .sum()
     }
 
     fn price(&self, site: SiteId, good: GoodId, unit: UnitId) -> Option<i128> {
-        self.recurring
-            .offers
-            .iter()
-            .find(|row| row.site_id == site && row.good_id == good && row.unit_id == unit)
-            .map(|row| row.unit_price.micro_units())
+        self.tables.price.get(&(site, good, unit)).copied()
     }
 
     fn planned_batches(&self, process: ProcessId) -> u64 {
-        self.recurring
-            .production
-            .iter()
-            .find(|row| row.process_id == process)
-            .map_or(0, |row| row.planned_batches)
+        self.tables
+            .planned_batches
+            .get(&process)
+            .copied()
+            .unwrap_or(0)
     }
 
     fn cash(&self, site: SiteId) -> Result<i128> {
@@ -168,21 +294,19 @@ impl Reading<'_> {
         process: ProcessId,
         site: SiteId,
     ) -> impl Iterator<Item = (&InputOutputCoefficient, &ServiceInputPolicy)> {
-        self.catalog
-            .input_coefficients
-            .iter()
-            .filter(move |row| row.process_id == process && row.quantity_per_batch > 0)
+        self.tables
+            .inputs_of
+            .get(&process)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(move |row| row.quantity_per_batch > 0)
             .filter(|row| crate::services::is_service(self.catalog, row.good_id, row.unit_id))
             .filter_map(move |row| {
-                self.catalog
-                    .service_inputs
-                    .iter()
-                    .find(|policy| {
-                        policy.buyer_site_id == site
-                            && policy.good_id == row.good_id
-                            && policy.unit_id == row.unit_id
-                    })
-                    .map(|policy| (row, policy))
+                self.tables
+                    .policy
+                    .get(&(site, row.good_id, row.unit_id))
+                    .map(|&policy| (row, policy))
             })
     }
 
@@ -196,14 +320,11 @@ impl Reading<'_> {
             let providers = depends.entry(request.process_id).or_default();
             for (input, policy) in self.service_inputs(request.process_id, request.site_id) {
                 providers.extend(
-                    self.catalog
-                        .process_outputs
-                        .iter()
-                        .filter(|out| {
-                            out.site_id == policy.provider_site_id
-                                && out.good_id == input.good_id
-                                && out.unit_id == input.unit_id
-                        })
+                    self.tables
+                        .outputs
+                        .get(&(policy.provider_site_id, input.good_id, input.unit_id))
+                        .into_iter()
+                        .flatten()
                         .map(|out| out.process_id),
                 );
             }
@@ -220,9 +341,13 @@ impl Reading<'_> {
         bound: &BTreeMap<ProcessId, (u64, u64)>,
     ) -> Result<u64> {
         let mut made = 0_u64;
-        for out in self.catalog.process_outputs.iter().filter(|out| {
-            out.site_id == provider && out.good_id == input.good_id && out.unit_id == input.unit_id
-        }) {
+        for out in self
+            .tables
+            .outputs
+            .get(&(provider, input.good_id, input.unit_id))
+            .into_iter()
+            .flatten()
+        {
             let nameplate = crate::capacity::process_available(
                 self.catalog,
                 self.state,
@@ -246,14 +371,12 @@ impl Reading<'_> {
 
     /// What the provider performed in the closed period for buyers other than this site.
     fn others(&self, provider: SiteId, input: &InputOutputCoefficient, site: SiteId) -> u64 {
-        self.performance
-            .iter()
-            .filter(|row| {
-                row.provider_site_id == provider
-                    && row.good_id == input.good_id
-                    && row.unit_id == input.unit_id
-                    && row.buyer != AccountId::Site(site)
-            })
+        self.tables
+            .performed
+            .get(&(provider, input.good_id, input.unit_id))
+            .into_iter()
+            .flatten()
+            .filter(|row| row.buyer != AccountId::Site(site))
             .map(|row| row.performed_quantity)
             .fold(0_u64, u64::saturating_add)
     }
@@ -337,8 +460,12 @@ impl Reading<'_> {
         notes: &mut Notes,
     ) -> Result<BTreeMap<SiteId, i128>> {
         let mut spent: BTreeMap<SiteId, i128> = BTreeMap::new();
+        let mut asked: BTreeMap<ProcessId, Vec<&ProcessLaborRequest>> = BTreeMap::new();
+        for request in requests {
+            asked.entry(request.process_id).or_default().push(request);
+        }
         for process in provider_first(&self.dependencies(requests)) {
-            for request in requests.iter().filter(|row| row.process_id == process) {
+            for &request in asked.get(&process).into_iter().flatten() {
                 let key = (request.site_id, request.unit_id);
                 notes.ask(key, request.hours)?;
                 let per_batch_labor = self.labor_per_batch(process, request.unit_id);
@@ -362,11 +489,7 @@ impl Reading<'_> {
 
     /// The planned attendance hours of a workplace for the next period.
     fn planned(&self, key: (SiteId, UnitId)) -> u64 {
-        self.recurring
-            .attendance
-            .iter()
-            .find(|row| (row.site_id, row.unit_id) == key && row.period == self.next_period)
-            .map_or(0, |row| row.planned_hours)
+        self.tables.planned.get(&key).copied().unwrap_or(0)
     }
 
     /// The merchants: handling the sale needs, at what their money pays.
@@ -411,10 +534,11 @@ impl Reading<'_> {
             notes.ask(key, handling)?;
             let mut to_handle = 0_u64;
             for row in self
-                .catalog
-                .handling_coefficients
-                .iter()
-                .filter(|row| row.site_id == merchant.site_id)
+                .tables
+                .handling
+                .get(&merchant.site_id)
+                .into_iter()
+                .flatten()
             {
                 let held = planning
                     .get(&(row.site_id, row.good_id, row.unit_id))
@@ -476,10 +600,9 @@ pub(crate) fn bound_hiring(
             catalog,
             state,
             economy,
-            recurring,
-            performance,
             wages: crate::recurring::spare_money::wages(economy),
             next_period,
+            tables: Tables::of(catalog, recurring, performance, next_period),
         };
         let requests =
             crate::production::derive_shared_labor_requests(catalog, state, next_period)?;

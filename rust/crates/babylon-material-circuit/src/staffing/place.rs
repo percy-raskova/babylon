@@ -117,6 +117,8 @@ struct PoolWork {
     place: usize,
     position: usize,
     slots: Vec<Slot>,
+    /// The place in `slots` of the first slot of each household.
+    by_household: BTreeMap<FinalDemandPrincipalId, usize>,
     /// How many persons it lacks for the hours it asked for.
     need: u64,
 }
@@ -155,15 +157,14 @@ fn slots_of(
     receipt: &StaffingReceipt,
     members: &[StaffingMemberState],
     rules: &PlaceRules<'_>,
+    records: &BTreeMap<StaffingMemberId, &LayoffRecord>,
 ) -> Result<Vec<Slot>, PlaceStaffingError> {
     let rows = super::distribute_staffing_members(receipt, members)?;
     let mut slots = Vec::with_capacity(rows.len());
     for engine in rows {
         let covered = if rules.window > 0 && rules.holders.contains(&engine.member.member_id()) {
-            let held = rules
-                .records
-                .iter()
-                .find(|record| record.member_id == engine.member.member_id())
+            let held = records
+                .get(&engine.member.member_id())
                 .map_or(&[][..], |record| record.cohorts.as_slice());
             crate::financial::advance_layoffs(held, rules.window, &engine)?
         } else {
@@ -199,11 +200,19 @@ fn pools_decided(
         return Err(refuse(StaffingError::PopulationInvariant));
     }
     let mut pools = Vec::with_capacity(decided.len());
+    // The first row of each pool and the first record of each member, found once for the call.
+    let mut rows_of: BTreeMap<StaffingPoolId, &PoolMembers> = BTreeMap::new();
+    for row in members {
+        rows_of.entry(row.pool_id).or_insert(row);
+    }
+    let mut records: BTreeMap<StaffingMemberId, &LayoffRecord> = BTreeMap::new();
+    for record in rules.records {
+        records.entry(record.member_id).or_insert(record);
+    }
     for receipt in decided {
         let binding = receipt.binding();
-        let row = members
-            .iter()
-            .find(|row| row.pool_id == binding.pool_id())
+        let row = rows_of
+            .get(&binding.pool_id())
             .ok_or_else(|| refuse(StaffingError::PopulationInvariant))?;
         let (place, position) = *at
             .get(&binding.pool_id())
@@ -216,24 +225,35 @@ fn pools_decided(
         if let Some(limit) = rules.limits.get(&binding.site_id()) {
             people = people.min(limit.saturating_sub(receipt.closing_employed()));
         }
+        let slots = slots_of(receipt, &row.members, rules, &records)?;
+        let mut by_household = BTreeMap::new();
+        for (at, slot) in slots.iter().enumerate() {
+            by_household
+                .entry(slot.engine.member.household_id())
+                .or_insert(at);
+        }
         pools.push(PoolWork {
             receipt: receipt.clone(),
             place,
             position,
-            slots: slots_of(receipt, &row.members, rules)?,
+            slots,
+            by_household,
             need: people,
         });
     }
     Ok(pools)
 }
 
-/// The pools of one place, in site order, as indices of `pools`.
-fn place_pools(pools: &[PoolWork], place: usize) -> Vec<usize> {
-    let mut row: Vec<usize> = (0..pools.len())
-        .filter(|&index| pools[index].place == place)
-        .collect();
-    row.sort_by_key(|&index| pools[index].position);
-    row
+/// The pools of each place, in site order, as indices of `pools`.
+fn place_pools(pools: &[PoolWork]) -> BTreeMap<usize, Vec<usize>> {
+    let mut rows: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (index, pool) in pools.iter().enumerate() {
+        rows.entry(pool.place).or_default().push(index);
+    }
+    for row in rows.values_mut() {
+        row.sort_by_key(|&index| pools[index].position);
+    }
+    rows
 }
 
 /// What one host took, and from whom.
@@ -267,11 +287,12 @@ impl Taking<'_> {
             }
         }
         let host = &mut pools[self.host];
-        let slot = host
-            .slots
-            .iter_mut()
-            .find(|slot| slot.engine.member.household_id() == household)
+        let at = host
+            .by_household
+            .get(&household)
+            .copied()
             .ok_or_else(|| refuse(StaffingError::PopulationInvariant))?;
+        let slot = &mut host.slots[at];
         slot.gained += persons;
         Ok(PlaceMoveReceipt {
             period: self.period,
@@ -294,30 +315,37 @@ impl Taking<'_> {
     ) -> Result<Vec<PlaceMoveReceipt>, PlaceStaffingError> {
         let mut left = pools[self.host].need;
         let mut moves = Vec::new();
-        let sources: Vec<(usize, usize)> = self
-            .host_pools
-            .iter()
-            .filter(|&&pool| pool != self.host)
-            .flat_map(|&pool| (0..pools[pool].slots.len()).map(move |slot| (pool, slot)))
-            .collect();
-        for &(pool, slot) in &sources {
-            let persons = left.min(pools[pool].slots[slot].uncovered);
-            if persons > 0 {
-                moves.push(self.take(pools, (pool, slot), persons, None)?);
-                left -= persons;
+        // The sources are the other pools of the place, slot by slot; the host's lack is filled when it is 0,
+        // and nothing is taken from there on.
+        let others = || self.host_pools.iter().filter(|&&pool| pool != self.host);
+        'uncovered: for &pool in others() {
+            for slot in 0..pools[pool].slots.len() {
+                if left == 0 {
+                    break 'uncovered;
+                }
+                let persons = left.min(pools[pool].slots[slot].uncovered);
+                if persons > 0 {
+                    moves.push(self.take(pools, (pool, slot), persons, None)?);
+                    left -= persons;
+                }
             }
         }
-        for age in 0..window {
-            for &(pool, slot) in &sources {
-                let held = pools[pool].slots[slot]
-                    .covered
-                    .get(age)
-                    .copied()
-                    .unwrap_or(0);
-                let persons = left.min(held);
-                if persons > 0 {
-                    moves.push(self.take(pools, (pool, slot), persons, Some(age))?);
-                    left -= persons;
+        'covered: for age in 0..window {
+            for &pool in others() {
+                for slot in 0..pools[pool].slots.len() {
+                    if left == 0 {
+                        break 'covered;
+                    }
+                    let held = pools[pool].slots[slot]
+                        .covered
+                        .get(age)
+                        .copied()
+                        .unwrap_or(0);
+                    let persons = left.min(held);
+                    if persons > 0 {
+                        moves.push(self.take(pools, (pool, slot), persons, Some(age))?);
+                        left -= persons;
+                    }
                 }
             }
         }
@@ -441,6 +469,7 @@ pub(crate) fn staff_places(
             .copied()
             .unwrap_or(0)
     };
+    let by_place = place_pools(&pools);
     hosts.sort_by_key(|&i| {
         (
             std::cmp::Reverse(wage(&pools[i])),
@@ -454,11 +483,12 @@ pub(crate) fn staff_places(
         if pools[host].receipt.closing_reserve() != 0 {
             return Err(refuse(StaffingError::PopulationInvariant));
         }
-        let row = place_pools(&pools, pools[host].place);
         let taking = Taking {
             period: opening.period(),
             host,
-            host_pools: &row,
+            host_pools: by_place
+                .get(&pools[host].place)
+                .map_or(&[][..], Vec::as_slice),
         };
         moves.extend(taking.fill(&mut pools, rules.window)?);
     }
@@ -952,5 +982,135 @@ mod tests {
         };
         let verdict = adjustment::judge(StopHold::Held, &test).expect("a verdict");
         assert_eq!(verdict.limit, Some(5));
+    }
+
+    /// The size test of the staffing in places. Its pools and members are numbered from a `u32`.
+    mod size {
+        use super::*;
+
+        const POOLS: u32 = 2_000;
+        const HOUSEHOLDS: u8 = 20;
+
+        /// An id of a kind, made from two numbers; big-endian, so that ids sort as the numbers do.
+        fn bytes(kind: u8, first: u32, second: u32) -> [u8; 32] {
+            let mut bytes = [kind; 32];
+            bytes[..4].copy_from_slice(&first.to_be_bytes());
+            bytes[4..8].copy_from_slice(&second.to_be_bytes());
+            bytes
+        }
+
+        fn big_site(pool: u32) -> SiteId {
+            SiteId::from_bytes(bytes(1, pool, 0))
+        }
+
+        fn big_pool_id(pool: u32) -> StaffingPoolId {
+            StaffingPoolId::from_bytes(bytes(2, pool, 0))
+        }
+
+        fn big_member_id(pool: u32, household: u8) -> StaffingMemberId {
+            StaffingMemberId::from_bytes(bytes(3, pool, u32::from(household)))
+        }
+
+        fn member_of(
+            pool: u32,
+            household_number: u8,
+            employed: u64,
+            reserve: u64,
+        ) -> StaffingMemberState {
+            let binding = StaffingMemberBinding::from_living_force(
+                big_member_id(pool, household_number),
+                household(household_number),
+                "county:26163".parse().expect("a county"),
+                employed + reserve,
+            );
+            StaffingMemberState::try_new(binding, employed, reserve).expect("a member")
+        }
+
+        /// A pool whose people are one member for each household: all at work (a host, which asks for
+        /// three more persons than it has) or all looking (a source, which asks for nothing).
+        fn big_pool(
+            pool: u32,
+            host: bool,
+        ) -> (StaffingPoolState, PoolMembers, StaffingWorkRequest) {
+            let (employed, reserve, asked, previous) =
+                if host { (1, 0, 230, 200) } else { (0, 1, 0, 0) };
+            let rows: Vec<StaffingMemberState> = (0..HOUSEHOLDS)
+                .map(|number| member_of(pool, number, employed, reserve))
+                .collect();
+            let force = u64::from(HOUSEHOLDS) * (employed + reserve);
+            let binding = StaffingPoolBinding::try_new(
+                big_pool_id(pool),
+                big_site(pool),
+                UnitId::from_bytes([200; 32]),
+                force,
+                StaffingPolicy::one_period(HPP).expect("a schedule"),
+                vec![StaffingWorkSource::MerchantHandling(big_site(pool))],
+            )
+            .expect("a binding");
+            let state = StaffingPoolState::try_new(
+                binding,
+                u64::from(HOUSEHOLDS) * employed,
+                u64::from(HOUSEHOLDS) * reserve,
+                previous,
+            )
+            .expect("a pool");
+            let request = StaffingWorkRequest::new(
+                PERIOD,
+                big_pool_id(pool),
+                StaffingWorkSource::MerchantHandling(big_site(pool)),
+                big_site(pool),
+                UnitId::from_bytes([200; 32]),
+                asked,
+            );
+            (
+                state,
+                PoolMembers {
+                    pool_id: big_pool_id(pool),
+                    members: rows,
+                },
+                request,
+            )
+        }
+
+        /// A guard against a square coming back: 2,000 pools of one place, half of them hosts that lack
+        /// three persons and half of them holding people who look for work, with a record of layoffs for each
+        /// of the people who look. It times nothing; it sees that the place staffs and every person is kept.
+        #[test]
+        fn many_pools_of_one_place_staff_in_place() {
+            let mut states = Vec::new();
+            let mut members = Vec::new();
+            let mut requests = Vec::new();
+            let mut records = Vec::new();
+            for pool in 0..POOLS {
+                let host = pool % 2 == 0;
+                let (state, pool_members, request) = big_pool(pool, host);
+                if !host {
+                    records.extend(pool_members.members.iter().map(|m| LayoffRecord {
+                        member_id: m.binding().member_id(),
+                        hours_per_person: HPP,
+                        cohorts: vec![1],
+                    }));
+                }
+                states.push(state);
+                members.push(pool_members);
+                requests.push(request);
+            }
+            let case = Case {
+                state: StaffingState::try_new(PERIOD, states).expect("a state"),
+                members,
+                requests,
+                places: vec![StaffingPlace {
+                    pools: (0..POOLS).map(big_pool_id).collect(),
+                }],
+                recipients: (0..HOUSEHOLDS).map(household).collect(),
+                wages: BTreeMap::new(),
+                limits: BTreeMap::new(),
+                records,
+            };
+            let placed = run(&case).expect("the place staffs");
+            let taken: u64 = placed.moves.iter().map(|m| m.persons).sum();
+            assert_eq!(taken, u64::from(POOLS / 2) * 3, "every host takes three");
+            assert_kept(&case, &placed);
+        }
     }
 }

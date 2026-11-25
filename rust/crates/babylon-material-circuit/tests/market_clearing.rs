@@ -32,3 +32,6 @@ mod service_wants;
 
 #[path = "market_clearing/unreached_wants.rs"]
 mod unreached_wants;
+
+#[path = "market_clearing/many_sellers.rs"]
+mod many_sellers;

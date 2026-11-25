@@ -1583,6 +1583,25 @@ artifacts:
       county roster. Kalawao has residents but no invented workplace group.
       This capture allocates no persons, households, firms, physical recipes,
       capacities, operating inventories or money and initializes no campaign.
+  - name: national_qcew_function_basis_v2_2024
+    format: parquet
+    source_table: null
+    generator: tools/make_national_qcew_function_basis_v2.py
+    mode: register
+    rows: 188966
+    sha256: ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12
+    home: src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet
+    material_relation: >-
+      Part of PER-371: the twelve-trade 2024 QCEW basis of the country's
+      rebuilt opening. County leaf rows (151199) keep the county, NAICS and
+      ownership cells of contracts/national_qcew_function_mapping_v2.json;
+      county parent rows (32482) are kept, published or withheld, so a
+      withheld child can be placed under its parent; state leaf rows (5119)
+      and national leaf rows (166) give the wage fallbacks. Suppressed
+      measures remain null. Parent rows are placement controls and never
+      additive output. Domestic xx999 jobs remain unallocated. Source pins
+      reuse tools/national_county_reference_2024_sources.json. This table
+      grants no worker or site allocation and no runtime hydration.
   - name: national_transport_reference_2024
     format: json.gz
     source_table: null

@@ -9,7 +9,7 @@ use crate::national_economy::grain::NationalGrainGeneration;
 use crate::national_economy::grain::NationalGrainPolicy;
 use crate::national_transport::CargoClass;
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_material_circuit::{CompanyConditionOrder, CompanyPortfolioPolicy};
 
@@ -795,7 +795,9 @@ fn recipes(
     }
     raw.into_iter()
         .map(|(key, row)| {
-            let function = EconomicFunction::from_source_key(&key)
+            // Until the policy carries its own set (Task 4), recipes are the ten of schema 7.
+            let function = TradeSet::Ten
+                .from_source_key(&key)
                 .ok_or_else(|| Error::Recipe(key.clone()))?;
             if function == EconomicFunction::DistributionTransport {
                 return Err(Error::Recipe(key));

@@ -324,6 +324,16 @@ fn authored_funding_and_equipment_controls_refuse_unaccounted_requirements() {
 }
 
 #[test]
+fn a_schema_7_recipe_for_a_new_trade_is_refused() {
+    let changed = SOURCE.replace("[process.capital_goods]", "[process.consumer_goods]");
+    assert_ne!(changed, SOURCE);
+    assert_eq!(
+        NationalGamePolicy::parse(&changed),
+        Err(NationalGamePolicyError::Recipe("consumer_goods".to_owned()))
+    );
+}
+
+#[test]
 fn cargo_eligibility_is_captured_and_cannot_be_inferred_from_mass() {
     use babylon_persistence::national_transport::CargoClass;
     let policy = NationalGamePolicy::parse(SOURCE)

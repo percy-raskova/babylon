@@ -5,6 +5,8 @@
 > checkbox (`- [ ]`) syntax for tracking.
 
 Checked once against the code and the data by a second reader on 20 November 2026; its findings are in the tasks.
+Read again against the code of 25 November 2026 (commit `4143657fd`) by another reader: the national compiler had not
+moved, and what that reading changed is in the tasks and in the last section.
 
 **Goal:** A national scenario of `schema_version = 8` compiles as `national-world-v13` with twelve trades, each
 workplace paying the observed wage of its trade in its place, and three earning accounts in every place; the shipped
@@ -27,11 +29,13 @@ section 9 calls 3, 12 and 15, section 10 stage 2. Decision record:
 (its last section lists what the Rust reader checks), and the price rule's plan
 (`docs/superpowers/plans/2026-11-20-price-of-a-short-market.md`).
 
-**Build order:** Tasks 0 to 10 in order. Built before Task 0: stage 1 (the v2 mapping, the v2 cohort table and the pay
-table, with their metadata), the price rule's Tasks 1 to 6c, the tiers plan (stage 3) and the benefits plan (stage 4).
+**Build order:** Tasks 0 to 10 in order, with Task 8b after Task 8 and Task 10b after Task 10. Built before Task 0:
+stage 1 (the v2 mapping, the v2 cohort table and the pay table, with their metadata), the price rule's Tasks 1 to 6c,
+the tiers plan (stage 3) and the benefits plan (stage 4).
 The price rule's Task 7 is not a prerequisite: carrying the market's receipt, the wants and the programs into the
-register and the stored records is one later plan. So this plan's schema 8 fixture is compiled and inspected, never
-played through the tick.
+register and the stored records is one later plan. So this plan's schema 8 fixture is compiled, inspected and counted
+on the country bench (`tests/national_household_units.rs`), which goes around the tick (ADR324: the opening is "counted
+on that bench as it is built"). It is never played through the tick. Tasks 8b and 10b are the bench's.
 
 **From the price rule's plan.** This plan takes its Task 8's decision 1 (refusals of an order of paying), the name
 `national-world-v13` (chosen by schema 8, not by the key) and `market_clearing` from the policy. Stage 5 keeps decisions
@@ -65,7 +69,10 @@ this fixture takes them then. Nothing this plan builds needs reopening for it: e
   clippy::cognitive_complexity`; the test binaries the task names with `mise run rust:test:q -- -p <crate> -E
   'binary(<name>)'`; `mise run rust:test:q -- -p <crate>` once for each crate the task changed; `mise run
   check:bsl-sentinels`. A task that touches Python adds `mise run test:q -- <its test files>`. The lead alone runs `mise
-  run rust:check-no-docs`, after Task 6 and after Task 10.
+  run rust:check-no-docs`, after Task 6 and after Task 10. Every task that changes `babylon-kernel` or
+  `babylon-persistence` also runs `binary(national_household_units)` of `babylon-persistence`: it holds the country
+  bench's pins of the shipped world (`the_country_s_sizes`, `the_country_s_public_providers`, the seekers' rows), which
+  a schema 7 path must keep.
 - Commit one unit of work at a time: `git add <files>` then `PYTHONPATH=src mise exec -- git commit -q -F <message
   file>`; check that `git log --oneline -1` moved. The body ends with `Part of PER-371` and a `Co-Authored-By` line
   naming the model that wrote the commit. Never commit `uv.lock`.
@@ -138,7 +145,8 @@ though Tasks 4 and 6 touch their paths. The values are printed once, after the b
   - `the_shipped_foundations_keep_their_digests`: the foundation digest of that catalog, and of
     `capture_national_campaign(national_catalog_input(), CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7036)))`,
     each made as `captured_economic_catalog.rs` makes it, equal their literals; so do
-    `sha256(encode_county_review_config(config))` and `sha256(encode_city_pd_config(config))` of that campaign (the
+    `sha256(encode_county_review_config(config))` and `sha256(encode_city_pd_config(config))` of that campaign (both
+    encoders are made by the `codec!` macro in `babylon-practice-contract/src/state_opponent_codec.rs`; the
     configs' own `content_digest` fields hash designed inputs only, `county_review.rs:357-385`, and are not enough).
   - `earlier_compilers_keep_their_digests`: the foundation digest of the shipped defines rewritten to
     `schema_version = 6` with its `[city_pd]` and `[county_review]` sections removed (compiler `national-world-v11`),
@@ -153,7 +161,7 @@ though Tasks 4 and 6 touch their paths. The values are printed once, after the b
 **Files:**
 - Modify: `rust/crates/babylon-kernel/src/economic_identity.rs`; `rust/crates/babylon-client/src/money_map/grouping.rs`
   (`industry_color`, exhaustive today at 104-118);
-  `rust/crates/babylon-persistence/src/national_economy/policy/admission.rs` (`recipes` at 792: the schema 7 guard)
+  `rust/crates/babylon-persistence/src/national_economy/policy/admission.rs` (`recipes` at 789, its guard at 798)
 - Test: the kernel's `economic_identity.rs` tests; `grouping.rs` tests; `tests/national_game_policy.rs`
 
 **Interfaces:**
@@ -228,8 +236,8 @@ impl NationalCohortReference {   // decode_pinned and decode_captured keep their
     pub fn decode_captured_for(bytes: &[u8], mapping_bytes: &[u8], counties: &NationalCountyReference,
         set: TradeSet) -> Result<Self, NationalCohortReferenceError>;
     #[must_use] pub const fn trades(&self) -> TradeSet;
-    #[must_use] pub const fn artifact_sha256(&self) -> [u8; 32];          // the decoded table's pin
-    #[must_use] pub const fn function_mapping_sha256(&self) -> [u8; 32];  // the decoded mapping's pin
+    #[must_use] pub const fn artifact_sha256(&self) -> [u8; 32];          // exists today; the decoded table's pin
+    #[must_use] pub const fn function_mapping_sha256(&self) -> [u8; 32];  // exists today; the mapping's pin
 }
 /// The embedded twelve-trade table, decoded once.
 pub fn national_cohort_reference_v2() -> Result<&'static NationalCohortReference, NationalCohortReferenceError>;
@@ -249,7 +257,7 @@ pub(crate) const MAPPING_V2: &[u8];         // include_bytes! of contracts/natio
    1,848,908 for version 2), both mappings, and from Task 3 the pay table.
 
 - [ ] **Step 1: Write the failing tests.**
-  - Keep `economic_function_display_labels_match_pinned_mapping` (tests.rs:140-160) for `Ten` against version 1, as it
+  - Keep `economic_function_display_labels_match_pinned_mapping` (tests.rs:138-160) for `Ten` against version 1, as it
     is; add `twelve_trade_labels_match_the_v2_mapping`: 12 functions, each id known to `TradeSet::Twelve`, each
     `label()` and `source_key()` equal to the v2 contract's label and id.
   - `the_v2_table_decodes_with_its_own_pins` (`tests/national_cohorts.rs`): `trades() == Twelve`; groups equal the v2
@@ -452,6 +460,9 @@ pub fn national_catalog_input_for(defines: &[u8]) -> Result<EconomicCatalogInput
    v12 and v13. `NationalGraph::from_compiler` lists v13 as `Companies`.
 3. `compile.rs` has no policy in hand (`empty_catalog`, line 74), so the national opening sets
    `EconomicOpening.market_clearing` from the policy and `compile.rs` copies it where `empty_catalog` writes `None`.
+   The engine's `MarketClearingPolicy` has three more fields than `paying_order` since the six rules were built
+   (`babylon-material-circuit/src/clearing/rule.rs`). The policy of schema 8 leaves them empty and false: no wants
+   (stage 5), no plans from spare money, no adjustment rule. The country bench turns rules on itself (Task 8b).
 4. The contract says: kind 37 is the pay table, captured only under schema 8; the compilers list gains v13; the county
    review footer is written "under national-world-v12 and v13".
 
@@ -478,7 +489,7 @@ pub fn national_catalog_input_for(defines: &[u8]) -> Result<EconomicCatalogInput
 **Files:**
 - Modify: `rust/crates/babylon-persistence/src/national_economy/opening/build.rs` (remove `FUNCTIONS`);
   `opening/templates.rs` (`recipe_id`); `opening/external.rs` (`partition` over a slice); `companies/capture.rs:71`;
-  `opening/financial.rs` (`foreign_claim` at 270-289); `national_resident_allocation/allocation.rs:242` (source bounds)
+  `opening/financial.rs` (`foreign_claim` at 285-298); `national_resident_allocation/allocation.rs:242` (source bounds)
 - Test: `national_twelve_trades.rs`; crate tests of `templates.rs` and `financial.rs`; `tests/resident_allocation.rs`
 
 **Interfaces:**
@@ -562,7 +573,7 @@ pub(crate) fn place_wage(rows: &[(u64, u64, Currency)]) -> Result<Currency, Nati
    under `Observed` `source` keeps employee persons and inputs' cash apart, and after folding the site's cash is
    `working_capital_periods x (employee persons x work_hours_per_person x place wage + inputs cost)`: payroll covered.
 4. Each employee member's `LaborCompensation::Wage` is its site's `ActorContext.wage` (`actors.rs:144`); every payroll,
-   cash floor and grant that reads it follows (`financial.rs:373`, `markets.rs:759`, `equipment.rs:308`). The
+   cash floor and grant that reads it follows (`financial.rs:343` and `:386`, `markets.rs:759`, `equipment.rs:308`). The
    county-level wage lives only on the allocation's rows (`county_wage`), to rank jobs (Task 10).
 5. A foreign region or dependency pays, in trade `f`, `floor(national_wage(f) x bps / 10_000)`; a result of 0 is
    `NationalOpeningError::Policy`.
@@ -602,7 +613,7 @@ pub(crate) fn place_wage(rows: &[(u64, u64, Currency)]) -> Result<Currency, Nati
 
 **Files:**
 - Modify: `rust/crates/babylon-persistence/src/national_economy/county_review.rs` (370 and 508);
-  `national_economy/city_pd.rs` (`Books::of` at 226-249; `payroll_site` at 283)
+  `national_economy/city_pd.rs` (`Books::of` at 230; `payroll_site` at 284)
 - Test: `national_twelve_trades.rs`; `tests/national_county_review.rs` and `tests/national_city_pd_live.rs` unchanged
 
 **Interfaces:**
@@ -634,7 +645,62 @@ pub(crate) fn place_wage(rows: &[(u64, u64, Currency)]) -> Result<Currency, Nati
   `binary(captured_national_organizer)`, `binary(shipped_world_bytes)`, the crate, `-p babylon-practice-contract`.
 - [ ] **Step 5: Gate and commit** `feat(economy): give the county review and the City PD their own pay`.
 
+### Task 8b: The country bench opens the twelve trades
+
+Commit `test(persistence): the country bench opens the twelve-trade scenario`. Test code only.
+
+**Why here.** After Task 8 the fixture captures the bench's own way (`capture_national_campaign`): before it the City
+PD and the County Review refuse a policy with no default wage.
+
+**Files:**
+- Modify: `rust/crates/babylon-persistence/tests/national_household_units.rs` and its `tests/support/` files
+  (`country_bench.rs`, `country_rules.rs`, `country_seekers.rs`, `country_sizes.rs`, `economy_health.rs`,
+  `country_fund.rs`)
+- Create: records and logs under `reports/country-opening-2026-11/`
+
+**Decisions:**
+1. **Which scenario.** A bench names its scenario: the shipped one (`economic_catalog::national_catalog_input()`, as
+   today) or the twelve trades (`national_catalog_input_for` with this plan's fixture, included by `include_bytes!`).
+   Both are captured by `capture_national_campaign(input, campaign())`. Every test and recorder that exists keeps the
+   shipped scenario and every value it pins.
+2. **Sizes first.** `the_twelve_trades_sizes` counts for the fixture what `the_country_s_sizes` counts for the shipped
+   opening, filled from its first failing run, with the seekers' rows against `SEEKER_BOUND` (131,072). If the
+   members with seekers do not fit, stop and report: nothing else of this task is built.
+3. **The wage a seeker is offered.** As today, the highest wage among the pool's members paid a wage. A pool with none
+   (working owners or unpaid family only) offers, for the twelve trades, its place's average wage: the sum of wage
+   times employed persons over the place's members paid a wage, divided by the sum of those persons, rounded down.
+   For the shipped scenario it stays $24.
+4. **The cost of a batch's labor in the record.** For the shipped scenario, the default wage, as today. For the twelve
+   trades, for each process: the sum of wage times employed persons over the members paid a wage at the process's
+   sites, divided by the sum of those persons, rounded down. The record's legend says which it is.
+5. **The order of paying** is the scenario's own when its opening carries one (`opening.market_clearing`), and the
+   bench's seven products otherwise. For the twelve trades the baseline is the scenario as it ships, its own policy
+   untouched; the `market` set would be the same run and is not recorded; the other sets add what they add today.
+6. **The fund** is the bench's stand-in, as its plan's call 15 has it. Its head figures are computed for this
+   opening, and the sentence about the reserve is written only when the two sums say so.
+7. **The records.** One timed period of each set. Then 34 periods of the baseline, of all six rules and of all six
+   with benefits, as `twelve-trades-<set>.json` with their logs. A refusal is written into its record and reported,
+   never worked around. No conclusions: the lead reads the records.
+8. **Nothing shipped moves:** not `the_country_s_sizes`, `the_country_s_public_providers`, the tick's three-period
+   digest, nor the committed records of `reports/country-bench-2026-11-24/`.
+
+- [ ] **Step 1: Write** `the_twelve_trades_sizes` with empty literals and `the_twelve_trades_open_on_the_bench` (the
+  baseline closes one period; money, persons and the labor force are checked by the bench, as for the shipped
+  scenario).
+- [ ] **Step 2: Run them and see them fail.** Fill the sizes from what the failure prints. Check the seekers' fit.
+- [ ] **Step 3: Implement** decisions 1 and 3 to 6.
+- [ ] **Step 4: Run** one period of each set and write its time in the hand-off.
+- [ ] **Step 5: Record** the three sets of 34 periods, in the background, one log each.
+- [ ] **Step 6: Gate and commit** with the records and the logs. Hand over to the lead: the sizes, the times, every
+  refusal (period, stage and the engine's words) and each record's first and last row of jobs.
+
 ### Task 9: Three earning accounts in every county (rule O17)
+
+**Built here, with three earning accounts.** The homes design of 21 November (ADR315) amends rule O17 to tenant and
+owner groups in each band, and its build order holds "the two held tasks of the twelve trades plan" for its own first
+step. The Director's ruling of 24 November (ADR324) is later: it orders the opening whole, these two tasks in it, and
+puts no housing step before the pay fight. So Tasks 9 and 10 are built as written, and the homes plan's first step
+later splits each band by tenure. This is the lead's reading of the two records, told to the Director on 25 November.
 
 **Files:**
 - Modify: `rust/crates/babylon-persistence/src/national_household_allocation/{model.rs, allocation.rs, source.rs}`;
@@ -659,7 +725,7 @@ pub(super) fn allocate_county(c: HouseholdCountyControls, owner_bps: u16, next_f
 1. **Keys and bytes.** `HouseholdBudgetKey` is `#[repr(u8)]` and `as u8` names a principal (`identity.rs:57`, `:212`),
    so today's six keep 1 to 6 and the new keys are 7 and 8, sorting last; they never occur under schema 7. Under schema
    8 the earning accounts are the two new keys and `EarningOwner`; `EarningNonowner` is not made. `EarningOwner` keeps
-   its principal rule and its business shares (`financial.rs:297` gives shares to `owner_exposure()` keys). How shares
+   its principal rule and its business shares (`financial.rs:307` gives shares to `owner_exposure()` keys). How shares
    are divided between bands is the Director's open question.
 2. **Households, in each county.** With earning households `H`: `owners = ceil(H x owner_bps / 10_000)` (today's
    rule); `upper = ceil(H x (owner_bps + next_forty_bps) / 10_000)`; better-paid forty `= upper - owners`; lower-paid
@@ -724,7 +790,8 @@ pub(super) fn allocate_county(c: HouseholdCountyControls, owner_bps: u16, next_f
    each before the next; a row meeting a quota's end splits into one member row per band. Reserve follows today's rule.
 3. **Bounds.** At most six domestic budgets a county; dealing splits at most one row at each band's edge, as today's
    key order does. Task 6's allocation test pins the member count again. The 79,489 accounts, 90,794 claims and 87,960
-   needs of `material_circuit_v4.yaml:528` are the county-level census of 2 October, before folding, each under 131,072;
+   needs of `material_circuit_v4.yaml:693-695` are the county-level census of 2 October, before folding, each under
+   131,072;
    the live opening is far smaller. Stage 5's wants will meet the needs bound and must count it.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -753,6 +820,30 @@ pub(super) fn allocate_county(c: HouseholdCountyControls, owner_bps: u16, next_f
 
 The lead then runs `mise run rust:check-no-docs` and `mise run check`, and plays the shipped world in Wayne.
 
+### Task 10b: The bench's records with the bands
+
+Commit `test(persistence): the country bench's records of the twelve trades with bands`. Test code only.
+
+Tasks 9 and 10 change the household accounts, who holds which job, and so the seekers' rows and the fund's
+recipients. `the_twelve_trades_sizes` is pinned again from a failing run, the seekers' fit first (decision 2 of Task
+8b binds here too). One period of each set is timed, and the three sets of 34 periods are recorded again as
+`bands-<set>.json` beside the three of Task 8b, which stay. Gate, commit, and hand over as in Task 8b.
+
 **A note for the lead, not a change here.** The paused household-units plan still says a schema 7 optional section
 compiles as v13 and stands on the shipped policy "with its `paying_order`" (its lines 309-310 and 1108). This plan
 refuses that key under schema 7; that plan is corrected when it resumes.
+
+## What the re-reading of 25 November changed
+
+- **The bench.** This plan was written before the Director ruled that the country's opening is counted on the country
+  bench as it is built (ADR324). Tasks 8b and 10b are new, and every task that changes the kernel or the persistence
+  crate also runs the bench's binary.
+- **Tasks 9 and 10 are built here.** The homes design had held them for tenure; the later ruling orders the opening
+  whole (the note at Task 9).
+- **The market policy** has three fields this plan did not know. Schema 8 leaves them empty and false (Task 5,
+  decision 3).
+- **Moved lines:** `opening/financial.rs` (285-298, 307, 343 and 386), `material_circuit_v4.yaml` (693-695),
+  `admission.rs` (789 and 798), `city_pd.rs` (230 and 284), the cohort reader's test (138).
+- **Silent, and left so:** what a working owner or an unpaid family member is paid (Task 7 pays employees only; they
+  keep no wage, as ADR267 has it), the public provider with no worker and no grant, and the opening's own collapse in
+  period 2 (stage 5 rebuilds the numbers). The bench's records of Tasks 8b and 10b will show each.

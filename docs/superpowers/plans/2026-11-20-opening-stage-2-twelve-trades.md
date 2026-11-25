@@ -656,7 +656,8 @@ PD and the County Review refuse a policy with no default wage.
 - Modify: `rust/crates/babylon-persistence/tests/national_household_units.rs` and its `tests/support/` files
   (`country_bench.rs`, `country_rules.rs`, `country_seekers.rs`, `country_sizes.rs`, `economy_health.rs`,
   `country_fund.rs`)
-- Create: records and logs under `reports/country-opening-2026-11/`
+- Create: records under `reports/country-opening-2026-11/`. No log is committed: the repository ignores log files
+  and its hygiene gate refuses a tracked file that it ignores.
 
 **Decisions:**
 1. **Which scenario.** A bench names its scenario: the shipped one (`economic_catalog::national_catalog_input()`, as
@@ -679,8 +680,11 @@ PD and the County Review refuse a policy with no default wage.
 6. **The fund** is the bench's stand-in, as its plan's call 15 has it. Its head figures are computed for this
    opening, and the sentence about the reserve is written only when the two sums say so.
 7. **The records.** One timed period of each set. Then 34 periods of the baseline, of all six rules and of all six
-   with benefits, as `twelve-trades-<set>.json` with their logs. A refusal is written into its record and reported,
-   never worked around. No conclusions: the lead reads the records.
+   with benefits, as `twelve-trades-<set>.json`. A refusal is written into its record and reported, never worked
+   around. No conclusions: the lead reads the records. A committed file holds at most 1,048,576 bytes (the hygiene
+   gate's budget; a record of 34 periods of the shipped opening holds about 870,000). A record over that is written
+   whole to the build's temporary folder, as the long recorder writes its own, and its rows of periods 1, 2, 3, 4,
+   5, 13 and 34 are committed as `twelve-trades-<set>-summary.json`.
 8. **Nothing shipped moves:** not `the_country_s_sizes`, `the_country_s_public_providers`, the tick's three-period
    digest, nor the committed records of `reports/country-bench-2026-11-24/`.
 
@@ -690,9 +694,10 @@ PD and the County Review refuse a policy with no default wage.
 - [ ] **Step 2: Run them and see them fail.** Fill the sizes from what the failure prints. Check the seekers' fit.
 - [ ] **Step 3: Implement** decisions 1 and 3 to 6.
 - [ ] **Step 4: Run** one period of each set and write its time in the hand-off.
-- [ ] **Step 5: Record** the three sets of 34 periods, in the background, one log each.
-- [ ] **Step 6: Gate and commit** with the records and the logs. Hand over to the lead: the sizes, the times, every
-  refusal (period, stage and the engine's words) and each record's first and last row of jobs.
+- [ ] **Step 5: Record** the three sets of 34 periods, in the background, one log each, outside the repository.
+- [ ] **Step 6: Gate, run `mise run check:hygiene`, and commit** with the records. Hand over to the lead: the sizes,
+  the times, each record's size in bytes, every refusal (period, stage and the engine's words) and each record's
+  first and last row of jobs.
 
 ### Task 9: Three earning accounts in every county (rule O17)
 
@@ -844,6 +849,8 @@ refuses that key under schema 7; that plan is corrected when it resumes.
   decision 3).
 - **Moved lines:** `opening/financial.rs` (285-298, 307, 343 and 386), `material_circuit_v4.yaml` (693-695),
   `admission.rs` (789 and 798), `city_pd.rs` (230 and 284), the cohort reader's test (138).
+- **No log is committed, and a record keeps to the size budget** (Task 8b, decision 7; added after GitHub's hygiene
+  check refused the country bench's logs on 25 November).
 - **Silent, and left so:** what a working owner or an unpaid family member is paid (Task 7 pays employees only; they
   keep no wage, as ADR267 has it), the public provider with no worker and no grant, and the opening's own collapse in
   period 2 (stage 5 rebuilds the numbers). The bench's records of Tasks 8b and 10b will show each.

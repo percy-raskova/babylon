@@ -765,10 +765,14 @@ pub fn no_earner_per_person(opening: &EconomicOpening, first: &BenchPeriod) -> R
    `services/model.rs:59-84`). Divide it by the sum of those accounts' persons at the opening, rounding down. It
    is a stand-in figure of the bench: the rebuilt opening's builder will set the real one.
 6. **No one is covered at the opening:** no layoff record (`layoffs` stays empty).
-7. **The fund's opening cash** is two periods of its payments: `2 x per_person x` the persons of the `no_earner`
-   recipients. It is moved from the domestic places' public bodies' `institutional_cash`, each giving
-   `floor(its cash x fund cash / their total cash)`. The remainder comes from the body with the most cash. No money
-   is made: the opening's total is unchanged. If the bodies hold less than the fund needs, stop and report.
+7. **The fund opens with no cash.** The design gives it two periods of its payments in reserve (O13). On the
+   shipped opening that cannot be had: one period of the `no_earner` benefit is 96,458,269,794,683,964 micros
+   (60,474,126 persons at 1,595,033,714 micros), and the 316 domestic public bodies hold
+   77,131,469,400,000,000 micros between them, which is 0.80 of one period. So nothing is carved out of the
+   bodies: their cash is as the opening has it, the fund's `institutional_cash` is 0, and it pays from its half
+   of the taxes as they come in, cut in proportion when it is short (`CashInProportion`). No money is made. Every
+   record of the set says so in its head. (As first written, the fund took two periods of its payments from the
+   bodies' cash and the builder was to stop if they held less. The builder stopped, and this is what it found.)
 8. **The order of opening.** For the set with benefits, `CountryBench::open` first opens a baseline bench, steps
    one period to read decision 5, then builds `with_fund(opening, per_person)`, compiles it, and opens on it as
    its twin opens: with the seekers (Task 5) and `rules_of(AllSix)` for `AllSixWithBenefits`; with
@@ -781,7 +785,7 @@ pub fn no_earner_per_person(opening: &EconomicOpening, first: &BenchPeriod) -> R
 
 - [ ] **Step 1: Write the tests:**
   - `the_fund_keeps_the_opening_s_money`: the sum of `institutional_cash` and of every seed's cash is equal before
-    and after `with_fund`. The fund's cash equals decision 7's figure.
+    and after `with_fund`; every domestic public body holds the cash it held; the fund's cash is 0.
   - `the_split_taxes_keep_each_rate`: for every payer and basis, the rates of its rows after the split sum to its
     rate before.
   - `every_domestic_account_is_in_one_program`: each domestic household account is a recipient of exactly one of
@@ -968,7 +972,8 @@ of 20 November.
       employed), and `laid_off` recipients are the others. An account that had no earner at the opening is not on
       `laid_off`'s list, so a job it wins and loses in play brings no laid-off benefit: a simplification of this
       stand-in;
-    - its two periods of reserve are moved from the places' bodies in proportion to their cash, so no money is made.
+    - it opens with no cash: the bodies hold 0.80 of one period of its payments, so the two periods of reserve
+      that the design gives it cannot be carved out of them (Task 6, decision 7).
 16. *(Mine.)* The restart puts in two periods of a batch's cost (the closest form's national figure).
 17. *(Mine.)* Every set without seekers finishes with `finish_with_staffing`. It equals the tick's
     `finish_with_workforce` when there is no after-layoff program.
@@ -1087,5 +1092,9 @@ size tests' own builders; one form of `--run-ignored`; where each kind of comman
   set without seekers, 465 of the 7,463 bounds are below what was asked, spare money raises 259 plans and 728
   markets are short.
 - **The fund** (Task 6): the `no_earner` amount is 1,595,033,714 micros a person a period; 9,065 tax rows become
-  17,932; the engine admits the fund's place, the split and both programs.
+  17,932; the engine admits the fund's place, the split and both programs. With the recipients as the design has
+  them (635 accounts, 60,474,126 persons with no earner; 949 accounts on the laid-off list), one period of the
+  benefit is about 96.5 thousand million dollars, and the country's 316 public bodies hold about 77.1 thousand
+  million between them. So the design's two periods of reserve cannot be carved out of the shipped opening, and
+  the fund opens with no cash (Task 6, decision 7).
 - **The order changed** (call 5): Task 8's runs come before Task 7.

@@ -3,7 +3,9 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_material_circuit::{self as engine, FinalDemandPrincipalId, MaterialCircuitState};
+use babylon_material_circuit::{
+    self as engine, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState,
+};
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, CommodityLabel, EconomicCatalogInput, EconomicOpening, SourceArtifact,
@@ -23,6 +25,8 @@ use uuid::Uuid;
 
 #[path = "support/country_bench.rs"]
 mod country_bench;
+#[path = "support/country_rules.rs"]
+mod country_rules;
 #[path = "support/country_sizes.rs"]
 mod country_sizes;
 #[path = "support/economy_health.rs"]
@@ -32,9 +36,9 @@ mod household_accounts;
 #[path = "support/supply_chain.rs"]
 mod supply_chain;
 
-use country_bench::{BenchError, CountryBench, RuleSet};
+use country_bench::{BenchError, BenchPeriod, CountryBench, RuleSet};
 use country_sizes::{CountrySizes, PlaceKey, PlaceSizes, SEEKER_BOUND};
-use economy_health::{Census, Opening};
+use economy_health::{BenchReceipts, Census, Opening};
 use household_accounts::{AccountReading, AccountSpec, PeriodReading, Session, TopTenth};
 use supply_chain::{ChainSite, Names};
 
@@ -1061,6 +1065,45 @@ fn the_three_checks_refuse_a_difference_of_one() {
     }
 }
 
+/// What the bench's period holds beside the tick's receipts, as the reader takes it.
+fn bench_receipts(stepped: &BenchPeriod) -> BenchReceipts<'_> {
+    BenchReceipts {
+        market_clearings: &stepped.market_clearings,
+        adjustments: &stepped.adjustments,
+        public_programs: &stepped.public_programs,
+        closing_members: &stepped.closing_members,
+        spare_money_raised: stepped.spare_money_raised,
+    }
+}
+
+/// One bench period's row: the tick's reader with the market, the rules and the jobs after the moves.
+fn bench_row(
+    census: &Census,
+    open: &Opening,
+    stepped: &BenchPeriod,
+    bench: &CountryBench,
+) -> Value {
+    let mut row = economy_health::period_record(
+        census,
+        open,
+        &stepped.receipts,
+        bench.catalog(),
+        bench.state(),
+    );
+    let beside = bench_receipts(stepped);
+    let object = row.as_object_mut().expect("a period row is an object");
+    object.insert(
+        "markets".to_owned(),
+        economy_health::markets_record(census, &beside),
+    );
+    object.insert("rules".to_owned(), economy_health::rules_record(&beside));
+    object.insert(
+        "jobs_after_moves".to_owned(),
+        economy_health::jobs_after_moves(census, beside.closing_members, bench.staffing()),
+    );
+    row
+}
+
 /// Plays `periods` closes of the bench under one rule set and returns its health record.
 fn bench_report(set: RuleSet, periods: u64) -> Value {
     let input = economic_catalog::national_catalog_input();
@@ -1075,13 +1118,7 @@ fn bench_report(set: RuleSet, periods: u64) -> Value {
         let stepped = bench
             .step()
             .unwrap_or_else(|error| panic!("the period is refused: {error}"));
-        let mut row = economy_health::period_record(
-            &census,
-            &open,
-            &stepped.receipts,
-            bench.catalog(),
-            bench.state(),
-        );
+        let mut row = bench_row(&census, &open, &stepped, &bench);
         assert_eq!(row["period"], json!(stepped.period));
         let elapsed_ms = u64::try_from(stepped.elapsed.as_millis()).expect("a short time");
         row.as_object_mut()
@@ -1096,7 +1133,7 @@ fn bench_report(set: RuleSet, periods: u64) -> Value {
         .collect();
     let mut record = country_bench::bench_header(set);
     let head = record.as_object_mut().expect("the header is an object");
-    head.insert("columns".to_owned(), economy_health::columns());
+    head.insert("columns".to_owned(), economy_health::bench_columns());
     head.insert("panel".to_owned(), json!(panel));
     head.insert("periods".to_owned(), json!(rows));
     record
@@ -1124,4 +1161,171 @@ fn record_country_bench_baseline() {
         totals.iter().all(|total| *total == totals[0]),
         "the money total of every row is equal"
     );
+}
+
+fn open_census(set: RuleSet) -> (CapturedEconomicCatalog, Census, CountryBench) {
+    let input = economic_catalog::national_catalog_input();
+    let wage = default_wage(&input);
+    let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
+        .expect("the national campaign");
+    let census = Census::new(catalog.opening(), wage);
+    let bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
+    (catalog, census, bench)
+}
+
+#[test]
+fn a_market_policy_names_every_storable_need() {
+    let catalog = pooled_catalog();
+    let policy = country_rules::market_policy(catalog.opening(), RuleSet::Market)
+        .expect("the labels are in the opening")
+        .expect("the market set has a policy");
+    assert_eq!(policy.paying_order.len(), 7);
+    assert_eq!(policy.paying_order.len(), country_rules::PAYING_ORDER.len());
+    assert!(!policy.plans_from_spare_money);
+    assert_eq!(policy.adjustments.len(), 0);
+    assert!(
+        country_rules::market_policy(catalog.opening(), RuleSet::None)
+            .expect("the baseline has no policy")
+            .is_none()
+    );
+    let bench = CountryBench::open(catalog.opening(), RuleSet::Market)
+        .expect("the catalog admits the policy");
+    assert_eq!(
+        bench
+            .catalog()
+            .market_clearing
+            .as_ref()
+            .map(|p| p.paying_order.len()),
+        Some(7)
+    );
+}
+
+/// The count of adjustment rows of each kind, in the order of the `rules` column's keys.
+fn counted(period: &BenchPeriod) -> [u64; 8] {
+    let mut counts = [0_u64; 8];
+    for row in &period.adjustments {
+        let at = match row {
+            AdjustmentReceipt::HiringBound(_) => 0,
+            AdjustmentReceipt::PlaceMove(_) => 1,
+            AdjustmentReceipt::Stop(_) => 2,
+            AdjustmentReceipt::RestingPrice(_) => 3,
+            AdjustmentReceipt::RestingPriceToCost(_) => 4,
+            AdjustmentReceipt::Restart(_) => 5,
+            AdjustmentReceipt::OwnerSpare(_) => 6,
+            AdjustmentReceipt::GoodsOffer(_) => 7,
+        };
+        counts[at] += 1;
+    }
+    counts
+}
+
+/// Pins the columns' arithmetic only: it passes when every rule does nothing.
+#[test]
+fn the_rule_columns_add_back() {
+    let (_catalog, census, mut bench) = open_census(RuleSet::NoSeekers);
+    let open = Opening::read(&census, bench.catalog(), bench.state());
+    let stepped = bench.step().expect("the first period closes");
+    let row = bench_row(&census, &open, &stepped, &bench);
+    let counts = counted(&stepped);
+    let rules = &row["rules"];
+    let first = |key: &str| rules[key][0].as_u64().or_else(|| rules[key].as_u64());
+    assert_eq!(first("hiring_bound"), Some(counts[0]));
+    assert_eq!(first("moves"), Some(counts[1]));
+    assert_eq!(first("stops"), Some(counts[2]));
+    assert_eq!(first("resting_prices"), Some(counts[3]));
+    assert_eq!(first("resting_to_cost"), Some(counts[4]));
+    let restarts: u64 = (0..3)
+        .map(|at| rules["restarts"][at].as_u64().expect("a count"))
+        .sum();
+    assert!(
+        restarts <= counts[5],
+        "a restart row not tested is in no count"
+    );
+    assert_eq!(first("owner_spare"), Some(counts[6]));
+    assert_eq!(first("goods_offers"), Some(counts[7]));
+    assert_eq!(
+        rules["spare_money_raised"].as_u64(),
+        Some(stepped.spare_money_raised)
+    );
+    let short: u64 = row["markets"]
+        .as_object()
+        .expect("markets are an object")
+        .values()
+        .flat_map(|scopes| scopes.as_object().expect("scopes are an object").values())
+        .map(|cell| cell[0].as_u64().expect("a count"))
+        .sum();
+    assert_eq!(
+        short,
+        u64::try_from(stepped.market_clearings.len()).expect("few rows")
+    );
+    for (scope, cells) in row["jobs_after_moves"].as_object().expect("jobs by scope") {
+        let close = &row["jobs"][scope]["all"];
+        assert_eq!(cells[0], close[2], "at work, {scope}");
+        assert_eq!(cells[1], close[3], "looking, {scope}");
+    }
+    println!(
+        "NoSeekers period 1: rules {rules}; short markets {short}; spare money raised {}; took {:?}",
+        stepped.spare_money_raised, stepped.elapsed
+    );
+}
+
+#[test]
+fn one_period_of_each_set_without_seekers_closes() {
+    for set in [RuleSet::Market, RuleSet::NoSeekers] {
+        let catalog = pooled_catalog();
+        let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
+        let opening_money = economy_health::economy(bench.state())
+            .book
+            .total_cash_and_reserves()
+            .expect("the book totals");
+        let period = bench
+            .step()
+            .unwrap_or_else(|error| panic!("{}: {error}", set.name()));
+        assert_eq!(period.receipts.resolve_tick, 1);
+        let closing_money = economy_health::economy(bench.state())
+            .book
+            .total_cash_and_reserves()
+            .expect("the book totals");
+        assert_eq!(closing_money, opening_money, "{}", set.name());
+        println!("{} period 1 took {:?}", set.name(), period.elapsed);
+    }
+}
+
+/// One period of each set built so far, timed, beside the baseline's.
+#[test]
+#[ignore = "writes reports/country-bench-2026-11-24/timings.json"]
+fn record_country_bench_timings() {
+    let mut rows = Vec::new();
+    let mut baseline = 0_u128;
+    for set in [RuleSet::None, RuleSet::Market, RuleSet::NoSeekers] {
+        let catalog = pooled_catalog();
+        let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
+        let period = bench
+            .step()
+            .unwrap_or_else(|error| panic!("{}: {error}", set.name()));
+        let nanos = period.elapsed.as_nanos();
+        if matches!(set, RuleSet::None) {
+            baseline = nanos;
+        }
+        let ratio = nanos * 10_000 / baseline.max(1);
+        let elapsed_ms = u64::try_from(period.elapsed.as_millis()).expect("a short time");
+        println!(
+            "{:<12} {elapsed_ms:>8} ms {ratio:>8} bps of the baseline",
+            set.name()
+        );
+        rows.push(json!({
+            "set": set.name(),
+            "elapsed_ms": elapsed_ms,
+            "ratio_to_baseline_bps": u64::try_from(ratio).expect("a small ratio"),
+        }));
+    }
+    let record = json!({
+        "bench": "country-bench-2026-11-24",
+        "periods_timed": 1,
+        "sets": rows,
+    });
+    let path = bench_report_path("timings.json");
+    std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
+    let text = serde_json::to_string_pretty(&record).expect("the record serializes");
+    std::fs::write(path, text + "\n").expect("the record is written");
 }

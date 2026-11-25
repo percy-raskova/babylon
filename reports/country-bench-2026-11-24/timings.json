@@ -1,0 +1,21 @@
+{
+  "bench": "country-bench-2026-11-24",
+  "periods_timed": 1,
+  "sets": [
+    {
+      "elapsed_ms": 1568,
+      "ratio_to_baseline_bps": 10000,
+      "set": "baseline"
+    },
+    {
+      "elapsed_ms": 8214,
+      "ratio_to_baseline_bps": 52374,
+      "set": "market"
+    },
+    {
+      "elapsed_ms": 13527,
+      "ratio_to_baseline_bps": 86250,
+      "set": "no-seekers"
+    }
+  ]
+}

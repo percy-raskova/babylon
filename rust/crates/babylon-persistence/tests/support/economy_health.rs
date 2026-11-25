@@ -5,9 +5,10 @@
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{
-    AccountId, CapacitySupply, CircuitAccounting, CommodityKind, CorridorId,
-    FinalDemandPrincipalId, GoodId, MaterialCatalog, MaterialCircuitState, MonetaryCircuit,
-    OrderId, OutboundOrderId, RouteId, SiteId, UnitId,
+    AccountId, AdjustmentReceipt, CapacitySupply, CircuitAccounting, CommodityKind, CorridorId,
+    FinalDemandPrincipalId, GoodId, MarketClearingReceipt, MaterialCatalog, MaterialCircuitState,
+    MonetaryCircuit, OrderId, OutboundOrderId, PoolMembers, PublicProgramReceipt, RestartTest,
+    RouteId, SiteId, StaffingPoolId, StaffingState, StopHold, UnitId,
 };
 use babylon_persistence::economic_catalog::EconomicOpening;
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -1317,4 +1318,203 @@ pub fn site_counts(census: &Census) -> BTreeMap<&'static str, u64> {
         *counts.entry(facts.scope).or_default() += 1;
     }
     counts
+}
+
+/// What the bench has beside `MaterialTickReceipts`.
+pub struct BenchReceipts<'a> {
+    pub market_clearings: &'a [MarketClearingReceipt],
+    pub adjustments: &'a [AdjustmentReceipt],
+    pub public_programs: &'a [PublicProgramReceipt],
+    pub closing_members: &'a [PoolMembers],
+    /// Production policies whose planned batches after the close exceed the period's plan receipt.
+    pub spare_money_raised: u64,
+}
+
+/// One market product and scope: short markets, demand at the quote, sold, and the row with the
+/// highest clearing price (its price, its quote and the seller's place).
+#[derive(Default)]
+struct ShortMarkets {
+    short: u64,
+    demand_at_quote: u64,
+    sold: u64,
+    highest: Option<(i128, i128, String)>,
+}
+
+/// The short markets of the period by product label and by the seller's scope:
+/// `[short_markets, demand_at_quote, sold_quantity, highest clearing price, the quote of that row,
+/// county or region of that row]`. The highest is a maximum, never an average.
+pub fn markets_record(census: &Census, bench: &BenchReceipts<'_>) -> Value {
+    let mut by = BTreeMap::<(String, &'static str), ShortMarkets>::new();
+    for row in bench.market_clearings {
+        let facts = census.site(row.site_id);
+        let entry = by
+            .entry((
+                census.good((row.good_id, row.unit_id)).to_owned(),
+                facts.scope,
+            ))
+            .or_default();
+        entry.short += 1;
+        entry.demand_at_quote += row.demand_at_quote;
+        entry.sold += row.sold_quantity;
+        let price = row.clearing_price.micro_units();
+        if entry
+            .highest
+            .as_ref()
+            .is_none_or(|(best, _, _)| price > *best)
+        {
+            entry.highest = Some((price, row.quote_price.micro_units(), facts.location.clone()));
+        }
+    }
+    let mut out = BTreeMap::<String, Map<String, Value>>::new();
+    for ((product, scope), row) in by {
+        let (price, quote, place) = row
+            .highest
+            .map_or((Value::Null, Value::Null, Value::Null), |(p, q, l)| {
+                (money(p), money(q), json!(l))
+            });
+        out.entry(product).or_default().insert(
+            scope.to_owned(),
+            json!([
+                row.short,
+                row.demand_at_quote,
+                row.sold,
+                price,
+                quote,
+                place
+            ]),
+        );
+    }
+    json!(out)
+}
+
+/// Counts of what each adjustment rule did in the period. Every key is present, with zeros when
+/// nothing acted.
+pub fn rules_record(bench: &BenchReceipts<'_>) -> Value {
+    let mut hiring = [0_u64; 3];
+    let mut moves = [0_u64; 2];
+    let mut stops = [0_u64; 3];
+    let (mut resting, mut resting_to_cost, mut owner_spare) = (0_u64, 0_u64, 0_u64);
+    let mut restarts = [0_u64; 3];
+    let mut restart_money = 0_i128;
+    let mut offers = [0_u64; 2];
+    for row in bench.adjustments {
+        match row {
+            AdjustmentReceipt::HiringBound(r) => {
+                hiring[0] += 1;
+                if r.bound_hours < r.asked_hours {
+                    hiring[1] += 1;
+                    hiring[2] += r.asked_hours - r.bound_hours;
+                }
+            }
+            AdjustmentReceipt::PlaceMove(r) => {
+                moves[0] += 1;
+                moves[1] += r.persons;
+            }
+            AdjustmentReceipt::Stop(r) => {
+                stops[0] += 1;
+                stops[1] += u64::from(r.could_not_pay);
+                stops[2] += u64::from(r.hold == StopHold::Held);
+            }
+            AdjustmentReceipt::RestingPrice(_) => resting += 1,
+            AdjustmentReceipt::RestingPriceToCost(_) => resting_to_cost += 1,
+            AdjustmentReceipt::Restart(r) => {
+                match r.test {
+                    RestartTest::Restarted => restarts[0] += 1,
+                    RestartTest::Failed => restarts[1] += 1,
+                    RestartTest::NoBuyer => restarts[2] += 1,
+                    RestartTest::NotTested => {}
+                }
+                restart_money += r.money.micro_units();
+            }
+            AdjustmentReceipt::OwnerSpare(_) => owner_spare += 1,
+            AdjustmentReceipt::GoodsOffer(r) => {
+                offers[0] += 1;
+                offers[1] += u64::from(r.planned_gain > 0);
+            }
+        }
+    }
+    let rows = u64::try_from(bench.public_programs.len()).expect("few rows");
+    let paid: i128 = bench
+        .public_programs
+        .iter()
+        .map(|r| r.paid.micro_units())
+        .sum();
+    let unfunded: i128 = bench
+        .public_programs
+        .iter()
+        .map(|r| r.unfunded.micro_units())
+        .sum();
+    json!({
+        "hiring_bound": hiring,
+        "moves": moves,
+        "stops": stops,
+        "resting_prices": resting,
+        "resting_to_cost": resting_to_cost,
+        "restarts": [restarts[0], restarts[1], restarts[2], money(restart_money)],
+        "owner_spare": owner_spare,
+        "goods_offers": offers,
+        "spare_money_raised": bench.spare_money_raised,
+        "programs": [rows, money(paid), money(unfunded)],
+    })
+}
+
+/// People at work and looking for work after the period's moves, by scope of the pool's site:
+/// `[at_work, looking]`, summed over the closing members.
+pub fn jobs_after_moves(
+    census: &Census,
+    closing_members: &[PoolMembers],
+    staffing: &StaffingState,
+) -> Value {
+    let sites: BTreeMap<StaffingPoolId, SiteId> = staffing
+        .pools()
+        .iter()
+        .map(|pool| (pool.binding().pool_id(), pool.binding().site_id()))
+        .collect();
+    let mut by = BTreeMap::<&'static str, [u64; 2]>::new();
+    for held in closing_members {
+        let site = sites.get(&held.pool_id).expect("every pool has a site");
+        let entry = by.entry(census.site(*site).scope).or_default();
+        for member in &held.members {
+            entry[0] += member.employed();
+            entry[1] += member.reserve();
+        }
+    }
+    json!(by)
+}
+
+/// The record's legend with the bench's own columns beside the tick's.
+pub fn bench_columns() -> Value {
+    let mut legend = columns();
+    let object = legend.as_object_mut().expect("the legend is an object");
+    object.insert(
+        "market".to_owned(),
+        json!([
+            "short_markets",
+            "demand_at_quote",
+            "sold_quantity",
+            "highest_clearing_price_micros",
+            "quote_of_that_row_micros",
+            "county_or_region_of_that_row"
+        ]),
+    );
+    object.insert(
+        "rules".to_owned(),
+        json!({
+            "hiring_bound": ["rows", "rows_bound_below_asked", "sum_asked_less_bound_hours"],
+            "moves": ["rows", "persons"],
+            "stops": ["rows", "could_not_pay", "held"],
+            "resting_prices": "rows",
+            "resting_to_cost": "rows",
+            "restarts": ["restarted", "failed", "no_buyer", "money_micros"],
+            "owner_spare": "rows",
+            "goods_offers": ["rows", "rows_with_planned_gain"],
+            "spare_money_raised": "production policies raised above the period's plan",
+            "programs": ["rows", "paid_micros", "unfunded_micros"],
+        }),
+    );
+    object.insert(
+        "jobs_after_moves".to_owned(),
+        json!({"scope": ["at_work", "looking"]}),
+    );
+    legend
 }

@@ -2,15 +2,17 @@
 //! It closes each period with the engine's public entries, in the order of the tick's staffed run, and
 //! checks money, persons and the labor force every period. A refusal is returned typed and leaves the
 //! bench as it was.
+use super::country_rules;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
     self as engine, AdjustmentReceipt, CircuitAccounting, HouseholdLifecycleReceipt,
     LaborCapacityRow, MarketClearingReceipt, MaterialCatalog, MaterialCircuitError,
     MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MonetaryCircuit,
-    PlaceStaffingError, PoolMembers, PublicProgramReceipt, ResidentWorkforceAttrition, SiteId,
-    StaffingError, StaffingMemberId, StaffingMemberReceipt, StaffingMemberState, StaffingPlace,
-    StaffingPoolId, StaffingPoolState, StaffingState, StaffingWorkRequest, WorkplaceStanding,
+    PlaceStaffingError, PoolMembers, ProcessId, ProductionPlanReceipt, PublicProgramReceipt,
+    RecurringEconomy, ResidentWorkforceAttrition, SiteId, StaffingError, StaffingMemberId,
+    StaffingMemberReceipt, StaffingMemberState, StaffingPlace, StaffingPoolId, StaffingPoolState,
+    StaffingState, StaffingWorkRequest, WorkplaceStanding,
 };
 use babylon_persistence::economic_catalog::{EconomicCatalogError, EconomicOpening};
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -20,10 +22,14 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::mem;
 use std::time::{Duration, Instant};
 
-/// Which rules the bench turns on. Tasks 4 to 6 add variants; this task has `None` alone.
+/// Which rules the bench turns on. Tasks 5 and 6 add the sets with seekers and with benefits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuleSet {
     None,
+    /// (i) The price of a short market alone.
+    Market,
+    /// (ii) The market, spare money, the bound on hiring, the resting price and the step-down.
+    NoSeekers,
 }
 
 impl RuleSet {
@@ -31,6 +37,8 @@ impl RuleSet {
     pub const fn name(self) -> &'static str {
         match self {
             Self::None => "baseline",
+            Self::Market => "market",
+            Self::NoSeekers => "no-seekers",
         }
     }
 }
@@ -202,14 +210,13 @@ pub struct BenchPeriod {
     pub period: u64,
     /// Built from the transition, as the tick builds the committed family.
     pub receipts: MaterialTickReceipts,
-    #[allow(dead_code, reason = "read by the rule columns, built in Task 4")]
     pub market_clearings: Vec<MarketClearingReceipt>,
-    #[allow(dead_code, reason = "read by the rule columns, built in Task 4")]
     pub adjustments: Vec<AdjustmentReceipt>,
-    #[allow(dead_code, reason = "read by the rule columns, built in Task 4")]
     pub public_programs: Vec<PublicProgramReceipt>,
-    #[allow(dead_code, reason = "read by the seekers' tests, built in Task 5")]
     pub closing_members: Vec<PoolMembers>,
+    /// Production policies whose planned batches after the close exceed the period's plan receipt
+    /// (rule A6 writes no receipt of its own).
+    pub spare_money_raised: u64,
     /// The step alone, not the opening's compile.
     pub elapsed: Duration,
 }
@@ -224,7 +231,7 @@ pub struct CountryBench {
     places: Vec<StaffingPlace>,
     #[allow(dead_code, reason = "read by the stop rule, built in Task 5")]
     standing: WorkplaceStanding,
-    #[allow(dead_code, reason = "read by the rule sets, built in Task 4")]
+    #[allow(dead_code, reason = "read by the seekers' path, built in Task 5")]
     set: RuleSet,
     opening_money: i128,
 }
@@ -563,6 +570,47 @@ fn opening_places(opening: &EconomicOpening) -> Result<Vec<StaffingPlace>, Bench
         .collect())
 }
 
+/// The state's recurring economy.
+fn recurring_of(
+    period: u64,
+    state: &MaterialCircuitState,
+) -> Result<&RecurringEconomy, BenchError> {
+    monetary(period, state)?
+        .recurring
+        .as_deref()
+        .ok_or_else(|| {
+            engine_failed(period, BenchStage::Read)(MaterialCircuitError::MonetaryInvariant)
+        })
+}
+
+/// The production policies the close raised above the period's plan: the plan receipt's batches for
+/// the process, or, for a process with no receipt (a service), the batches it held at the open.
+fn spare_money_raised(
+    period: u64,
+    before: &MaterialCircuitState,
+    plans: &[ProductionPlanReceipt],
+    after: &MaterialCircuitState,
+) -> Result<u64, BenchError> {
+    let mut planned: BTreeMap<ProcessId, u64> = recurring_of(period, before)?
+        .production
+        .iter()
+        .map(|policy| (policy.process_id, policy.planned_batches))
+        .collect();
+    for plan in plans {
+        planned.insert(plan.process_id, plan.planned_batches);
+    }
+    let raised = recurring_of(period, after)?
+        .production
+        .iter()
+        .filter(|policy| {
+            planned
+                .get(&policy.process_id)
+                .is_some_and(|base| policy.planned_batches > *base)
+        })
+        .count();
+    u64::try_from(raised).map_err(|_| BenchError::Arithmetic { period })
+}
+
 /// The receipts of the transition, in the family the reader reads.
 fn tick_receipts(period: u64, transition: &mut MaterialCircuitTransition) -> MaterialTickReceipts {
     MaterialTickReceipts {
@@ -623,6 +671,7 @@ impl CountryBench {
         let period = state.period;
         let mut definition = compiled.catalog.into_definition();
         definition.company_portfolios = None;
+        definition.market_clearing = country_rules::market_policy(opening, set)?;
         let catalog = MaterialCatalog::try_new(definition)
             .map_err(engine_failed(period, BenchStage::Open))?;
         let (staffing, members) =
@@ -649,6 +698,11 @@ impl CountryBench {
         &self.state
     }
 
+    /// The staffing after the last period closed.
+    pub const fn staffing(&self) -> &StaffingState {
+        &self.staffing
+    }
+
     /// Close one period. A refusal leaves the bench as it was.
     ///
     /// # Errors
@@ -662,6 +716,12 @@ impl CountryBench {
             members,
         } = self.advance(period)?;
         let elapsed = started.elapsed();
+        let spare_money_raised = spare_money_raised(
+            period,
+            &self.state,
+            &transition.production_plans,
+            &transition.state,
+        )?;
         let receipts = tick_receipts(period, &mut transition);
         let period_row = BenchPeriod {
             period,
@@ -670,6 +730,7 @@ impl CountryBench {
             adjustments: mem::take(&mut transition.adjustments),
             public_programs: mem::take(&mut transition.public_programs),
             closing_members: members.clone(),
+            spare_money_raised,
             elapsed,
         };
         self.state = transition.state;

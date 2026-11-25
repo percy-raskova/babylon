@@ -244,7 +244,7 @@ pub fn public_bodies_cash(opening: &EconomicOpening) -> Result<i128, BenchError>
 /// The opening with the fund (benefits plan B items 1 to 5). `per_person` is the `no_earner` amount.
 ///
 /// # Errors
-/// `BenchError::Opening` when a program key is refused or the arithmetic overflows.
+/// `BenchError::Opening` when a program key is refused; `BenchError::Arithmetic` when the arithmetic overflows.
 pub fn with_fund(
     opening: &EconomicOpening,
     per_person: Currency,

@@ -1121,7 +1121,10 @@ fn bench_row(
         economy_health::economy(bench.state())
             .book
             .cash(AccountId::Public(country_fund::fund_account()))
-            .map_or(0, Currency::micro_units)
+            .map(Currency::micro_units)
+            .expect(
+                "the fund's account is held at the close: a missing account is a failure, not 0",
+            )
     });
     object.insert(
         "benefits".to_owned(),
@@ -1620,7 +1623,11 @@ fn one_period_with_all_six_rules_closes() {
     let mut restarts = [0_u64; 4];
     for row in &stepped.adjustments {
         match row {
-            AdjustmentReceipt::PlaceMove(m) => persons_moved += m.persons,
+            AdjustmentReceipt::PlaceMove(m) => {
+                persons_moved = persons_moved
+                    .checked_add(m.persons)
+                    .expect("the persons moved fit");
+            }
             AdjustmentReceipt::Stop(s) if s.hold == StopHold::Held => held += 1,
             AdjustmentReceipt::Restart(r) => match r.test {
                 RestartTest::NotTested => restarts[0] += 1,
@@ -1827,7 +1834,7 @@ fn three_periods_with_benefits_close() {
         let mut programs: BTreeMap<String, (usize, i128, i128, i128)> = BTreeMap::new();
         for row in &stepped.public_programs {
             let total = programs.entry(row.program.as_str().to_owned()).or_default();
-            total.0 += 1;
+            total.0 = total.0.checked_add(1).expect("the count of rows fits");
             total.1 = total
                 .1
                 .checked_add(row.due.micro_units())
@@ -1844,7 +1851,10 @@ fn three_periods_with_benefits_close() {
         let fund_cash = economy_health::economy(bench.state())
             .book
             .cash(AccountId::Public(country_fund::fund_account()))
-            .map_or(0, Currency::micro_units);
+            .map(Currency::micro_units)
+            .expect(
+                "the fund's account is held at the close: a missing account is a failure, not 0",
+            );
         for (program, (rows, due, paid, unfunded)) in &programs {
             println!(
                 "period {period} {program}: rows {rows}, due {due}, paid {paid}, unfunded {unfunded} micros"

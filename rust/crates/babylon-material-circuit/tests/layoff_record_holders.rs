@@ -13,8 +13,8 @@ use babylon_circuit_worlds::doubled::{self, Figures};
 use babylon_circuit_worlds::{Kind, Place, ShockBook, Workplace, World};
 use babylon_material_circuit::{
     self as engine, CircuitAccounting, LaborCompensation, MaterialCircuitError,
-    MaterialCircuitState, MaterialCircuitTransition, StaffingMemberId, StaffingPoolState,
-    StaffingState, WorkplaceStanding,
+    MaterialCircuitState, MaterialCircuitTransition, PlaceStaffing, StaffingMemberId,
+    StaffingPoolState, StaffingState, WorkplaceStanding,
 };
 
 fn workplace(place: Place, kind: Kind) -> Workplace {
@@ -24,12 +24,14 @@ fn workplace(place: Place, kind: Kind) -> Workplace {
 /// Open the doubled world with its six rules, lay off the people of the two clinics at the first
 /// close, give the clinic's own member `changed` as its compensation (when given), and close period 1 the
 /// way the runner does for a world whose people look for work in their place. Returns the clinic's own
-/// member, the control clinic's own member and the close.
+/// member, the control clinic's own member, the persons of the clinic's own member that the staffing
+/// separated from their work at the close, and the close.
 fn close_first_period(
     changed: Option<LaborCompensation>,
 ) -> (
     StaffingMemberId,
     StaffingMemberId,
+    u64,
     Result<MaterialCircuitTransition, MaterialCircuitError>,
 ) {
     let mut world = World::scene();
@@ -122,11 +124,24 @@ fn close_first_period(
     let placed = closed
         .staff_in_places(&catalog, &staffing, &pools, &doubled::places())
         .expect("staffing in places");
+    let clinic = laid_off[0].member_id();
+    let separated = separations_of(&placed, clinic);
     (
-        laid_off[0].member_id(),
+        clinic,
         laid_off[1].member_id(),
+        separated,
         closed.finish_with_place_staffing(&catalog, &placed),
     )
+}
+
+/// The persons of `member` that the staffing's own decision separated from their work at the close.
+fn separations_of(placed: &PlaceStaffing, member: StaffingMemberId) -> u64 {
+    placed
+        .member_receipts
+        .iter()
+        .filter(|row| row.member.member_id() == member)
+        .map(|row| row.separations)
+        .sum()
 }
 
 fn records(closed: &MaterialCircuitTransition) -> Vec<(StaffingMemberId, Vec<u64>)> {
@@ -143,9 +158,11 @@ fn records(closed: &MaterialCircuitTransition) -> Vec<(StaffingMemberId, Vec<u64
 
 #[test]
 fn a_working_owner_who_loses_their_work_holds_no_record() {
-    let (clinic, control, closed) = close_first_period(Some(LaborCompensation::WorkingOwner));
+    let (clinic, control, separated, closed) =
+        close_first_period(Some(LaborCompensation::WorkingOwner));
     let closed = closed.expect("the period closes");
     let all = records(&closed);
+    assert!(separated > 0, "the owner lost work at this close");
     assert!(
         all.iter().all(|(m, _)| *m != clinic),
         "no record for the owner"
@@ -158,9 +175,11 @@ fn a_working_owner_who_loses_their_work_holds_no_record() {
 
 #[test]
 fn an_unpaid_family_member_who_loses_their_work_holds_no_record() {
-    let (clinic, control, closed) = close_first_period(Some(LaborCompensation::UnpaidFamily));
+    let (clinic, control, separated, closed) =
+        close_first_period(Some(LaborCompensation::UnpaidFamily));
     let closed = closed.expect("the period closes");
     let all = records(&closed);
+    assert!(separated > 0, "the member lost work at this close");
     assert!(
         all.iter().all(|(m, _)| *m != clinic),
         "no record for the member"
@@ -173,8 +192,9 @@ fn an_unpaid_family_member_who_loses_their_work_holds_no_record() {
 
 #[test]
 fn a_wage_member_who_loses_their_work_holds_a_record_as_before() {
-    let (clinic, control, closed) = close_first_period(None);
+    let (clinic, control, separated, closed) = close_first_period(None);
     let closed = closed.expect("the period closes");
+    assert!(separated > 0, "the member lost work at this close");
     let all = records(&closed);
     assert_eq!(all, vec![(clinic, vec![2]), (control, vec![2])]);
 }

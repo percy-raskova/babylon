@@ -184,4 +184,14 @@ fn a_resting_price_under_its_ceiling_is_raised_to_cost_as_before() {
     assert_eq!(old, dollars(1));
     assert!(cost > dollars(2) && cost < dollars(1_000), "cost {cost:?}");
     assert_eq!(offer_price(&closed), cost);
+    let site = clinic();
+    let markets: Vec<_> = closed
+        .service_markets
+        .iter()
+        .filter(|r| r.site_id == site)
+        .collect();
+    assert!(!markets.is_empty(), "the clinic has a service market row");
+    for row in markets {
+        assert_eq!(row.next_price, cost);
+    }
 }

@@ -82,7 +82,8 @@ impl From<StaffingError> for PlaceStaffingError {
 pub(crate) struct PlaceRules<'a> {
     /// The households that a program pays after a layoff.
     pub(crate) recipients: &'a BTreeSet<FinalDemandPrincipalId>,
-    /// The members that can hold a record of layoffs: paid a wage by a recipient household.
+    /// The members that can hold a record of layoffs: those whose employment term is a wage and whose payee is
+    /// a recipient household of a program that pays after a layoff.
     pub(crate) holders: &'a BTreeSet<StaffingMemberId>,
     /// The periods a record of layoffs keeps; 0 when no program pays after a layoff.
     pub(crate) window: usize,

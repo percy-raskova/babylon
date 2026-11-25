@@ -64,8 +64,9 @@ Checked once against the code and the data by a second reader on 20 November 202
 - **Gate, run by every task before its last commit,** one leg at a time:
   `mise exec -- uv run --frozen ruff check <changed .py files>`;
   `mise exec -- uv run --frozen ruff format --check <changed .py files>`;
-  `mise exec -- uv run --frozen mypy --strict --follow-imports=silent <new tools/*.py files>` (new code is clean;
-  errors inside imported version 1 modules are not this plan's);
+  `MYPYPATH=tools mise exec -- uv run --frozen mypy --strict --follow-imports=silent <new tools/*.py files>` (new
+  code is clean; errors inside imported version 1 modules are not this plan's; without `MYPYPATH=tools` the sibling
+  tools are not found);
   then one `mise run test:q -- <paths>` whose paths are the two version 1 test files
   (`tests/unit/tools/test_national_qcew_function_basis.py`, `tests/unit/tools/test_national_cohort_reference.py`),
   the task's own test files and `tests/unit/reference/test_data_artifacts.py`.
@@ -547,11 +548,11 @@ def build(*, source_root: Path, artifact_out: Path = ARTIFACT_OUT,
 ```
 
 **Decisions:**
-1. Blocks, all dense, in this order: `use` (rows `PRODUCTS`; columns `INDUSTRIES` then `FINAL_USES`; 15 x 23 = 345
+1. Blocks, all dense, in this order: `use` (rows `PRODUCTS`; columns `INDUSTRIES` then `FINAL_USES`; 15 x 24 = 360
    cells), `supply` (rows `PRODUCTS`, columns `SUPPLY`; 120), `make` (rows `INDUSTRIES`, columns `PRODUCTS`: what
    each industry makes of each product, from the supply table's industry columns; 13 x 15 = 195), `industry` (rows
    `INDUSTRIES`, columns `INDUSTRY`; 78), `jobs` (rows `TRADES`, columns `JOBS`; 48), `split` (rows the five split
-   codes, columns their two trades; 10). 796 rows. Units: `usd_thousands` for `use`, `supply`, `make`, `industry`;
+   codes, columns their two trades; 10). 811 rows. Units: `usd_thousands` for `use`, `supply`, `make`, `industry`;
    `jobs` or `usd` in `jobs`; `jobs` in `split`. Values keep the source's sign (distribution margins and subsidies
    are negative). Government final uses stay apart by level, federal (F06, F07) and state and local (F10).
 2. Basis: product rows at purchasers' prices (margins and product taxes sit in the goods rows); industry figures at
@@ -601,7 +602,7 @@ def build(*, source_root: Path, artifact_out: Path = ARTIFACT_OUT,
     raises `accounts_identity: industry_output/111CA`; by 10 million it passes.
   - `the_owner_makes_only_housing`: a fixture supply `HS` column with `HS` 3,162,745 and `23` 29,504 gives the owner
     one `make` cell, its `commodity_output`, and construction and housing the rest of both cells.
-  - `the_committed_accounts` (reads the committed table): 796 rows in the block counts above; metadata `checks` holds
+  - `the_committed_accounts` (reads the committed table): 811 rows in the block counts above; metadata `checks` holds
     the largest gaps of decision 7 exactly (2, 6, 8, 2, 1, 1, 1, 4, 4, 0); the `split` block is
     113FF extraction 74,846 / food 375,931; 311FT food 2,090,409 / manufacturing 10,634; 313TT manufacturing 84,975 /
     consumer_goods 96,972; 334 consumer_goods 18,851 / capital_goods 1,001,166; 335 consumer_goods 60,010 /
@@ -648,3 +649,37 @@ For the stage 2 plan; nothing here changes in stage 1. `rust/crates/babylon-pers
 - `LEAF_BASIS_SHA256` means "the leaf basis" today; the v2 basis also holds parent, state and nation rows, so the pin
   needs a new meaning or a new name. `function_mapping_sha256()` (`artifact.rs:131`) exposes one mapping pin.
 - The pay table (Task 4) has no reader yet; stage 2 writes one.
+
+## What the build found (25 November)
+
+Tasks 1 to 6 are built, each reviewed by a second reader with no blocking finding (`9d32ec17f`, `0e4061691`,
+`e9e6324d0`, `20db92ffb`, `b52d5f849`, `3b9405348`). No version 1 file changed. Each table was built twice and came
+out byte for byte the same.
+
+- **The accounts table has 811 rows, not 796.** This plan counted the `use` block as 15 x 23. Its own lists give 13
+  industries and 11 final uses, so 24 columns and 360 cells. Task 6's text above is corrected. Every other pinned
+  figure of the plan came out as written.
+- **The jobs basis:** 188,966 rows (151,199 county leaves, 32,482 county parents, 5,119 state leaves, 166 national
+  leaves), 1,250,123 bytes.
+- **The cohort table:** 66,920 groups, 65,065 admitted, 151,199 members, 1,848,908 bytes. Its known jobs are
+  139,733,418 where version 1's are 140,452,919. The lead counted the 719,501 fewer from the two tables: all are in
+  the three industries cut finer, where more cells are withheld (transport equipment 477,239, electronics 143,891,
+  electrical equipment 98,371); every other cell is the same. The pay table places them.
+- **The pay table:** 65,065 rows, one for each admitted group, 848,538 bytes. Jobs published in 34,491 groups, placed
+  in 29,851, partly placed in 723. The wage is the county's own in 64,048 groups, the state's in 901, the nation's
+  in 110, and the nation's over all ownerships in 6. Its rows hold 148,902,211 jobs, 9,323,170 of them placed.
+- **The accounts:** gross output 49,726,225 and value added 28,287,688 million dollars; the ten identities hold
+  with the largest gaps this plan measured; final uses less imports meet the product-side value added within 2
+  million. The four workbooks' addresses are `null` in the manifest: the archive on the data drive has no record of
+  where it was fetched from.
+- **Two things for stage 5 in the accounts.** The owner's row of `make` (its commodity output) differs from its
+  gross output by 5,702,525 thousand dollars, and construction and housing carries the opposite gap: the pair adds
+  up to the source, each alone does not. And housing services are also made by state and local government
+  enterprises (43,457 million dollars); that stays with construction and housing.
+- **The gate's type check needs `MYPYPATH=tools`.** Without it the new tools' sibling imports are not found. The
+  Global Constraints above now say so.
+
+What the lead read in the pay table, every figure a job's yearly pay over 2,080 hours: the country's average is
+$35.66 an hour, from $16.15 in leisure and hospitality to $57.79 in extraction. Wayne's average is $36.77 over
+723,824 jobs, and its car plants pay $46.12 over 53,326 jobs. The median county pays $24.79. The shipped world pays
+every job $24.

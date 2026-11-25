@@ -900,6 +900,12 @@ fn profile_wage(key: &str, raw: &RawProfile, trades: TradeSet) -> Result<GamePro
         (TradeSet::Twelve, None, Some(bps)) if (1..=10_000).contains(&bps) => {
             Ok(GameProfileWage::FractionOfUnitedStates { bps })
         }
+        // A wage key of the other schema, or the schema's own key missing, is a
+        // shape fault; a present key with a bad value stays a profile fault.
+        (TradeSet::Ten, None, _)
+        | (TradeSet::Ten, _, Some(_))
+        | (TradeSet::Twelve, _, None)
+        | (TradeSet::Twelve, Some(_), _) => Err(Error::Shape),
         _ => Err(fail()),
     }
 }

@@ -625,12 +625,16 @@ fn schema_8_needs_all_its_keys() {
         "work_hours_per_person = 160\ndefault_wage_micros_per_hour = 24000000\n",
     ));
     shape_or_profile(&TWELVE.replace(
-        "function_weights_bps = [1200, 300, 1000, 150, 1200, 800, 1800, 800, 1350, 500, 600, 300]",
+        "function_weights_bps = [1200, 150, 1000, 150, 1200, 800, 1800, 800, 1500, 500, 600, 300]",
         "function_weights_bps = [1200, 300, 1000, 1200, 800, 1800, 800, 2000, 600, 300]",
     ));
-    shape_or_profile(&TWELVE.replace(
-        "wage_fraction_bps = 8333",
-        "wage_micros_per_hour = 20000000",
+    // A schema 7 wage key under schema 8 is a shape fault, not a profile fault.
+    assert!(matches!(
+        NationalGamePolicy::parse(&TWELVE.replace(
+            "wage_fraction_bps = 8333",
+            "wage_micros_per_hour = 20000000",
+        )),
+        Err(NationalGamePolicyError::Shape)
     ));
     shape_or_profile(&TWELVE.replace("wage_fraction_bps = 8333", "wage_fraction_bps = 10001"));
     shape_or_profile(&TWELVE.replace("wage_fraction_bps = 8333", "wage_fraction_bps = 0"));
@@ -684,4 +688,27 @@ fn bands_need_a_bottom_half() {
         NationalGamePolicy::parse(&changed),
         Err(NationalGamePolicyError::Profile(_))
     ));
+}
+
+#[test]
+fn schema_8_weights_split_consumer_goods_from_capital_and_leisure_from_services() {
+    let policy = NationalGamePolicy::parse(TWELVE).expect("the twelve-trade fixture parses");
+    // Ord order: capital 1, consumer goods 3, household services 8, leisure 9.
+    // Consumer goods took half of the old capital weight, leisure a quarter of the old
+    // household-services weight, each rounded down to 50.
+    let split = |w: &[u16]| {
+        let capital = u32::from(w[1] + w[3]);
+        let services = u32::from(w[8] + w[9]);
+        (
+            u32::from(w[3]) == capital / 2 / 50 * 50,
+            u32::from(w[9]) == services / 4 / 50 * 50,
+        )
+    };
+    for profile in policy.counterparts.values() {
+        assert_eq!(split(&profile.function_weights_bps), (true, true));
+    }
+    assert_eq!(
+        split(&policy.dependency.profile.function_weights_bps),
+        (true, true)
+    );
 }

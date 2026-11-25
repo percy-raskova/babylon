@@ -287,7 +287,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 8333
 price_scale_bps = 10000
-function_weights_bps = [1200, 300, 1000, 150, 1200, 800, 1800, 800, 1350, 500, 600, 300]
+function_weights_bps = [1200, 150, 1000, 150, 1200, 800, 1800, 800, 1500, 500, 600, 300]
 
 [counterpart."mexico"]
 participation_bps = 4500
@@ -295,7 +295,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 2916
 price_scale_bps = 4000
-function_weights_bps = [900, 500, 1000, 250, 1400, 400, 600, 1000, 1400, 550, 1700, 300]
+function_weights_bps = [900, 250, 1000, 250, 1400, 400, 600, 1000, 1650, 550, 1700, 300]
 
 [counterpart."china"]
 participation_bps = 4500
@@ -303,7 +303,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 4166
 price_scale_bps = 4500
-function_weights_bps = [800, 1300, 800, 650, 1100, 500, 700, 700, 500, 350, 2300, 300]
+function_weights_bps = [800, 650, 800, 650, 1100, 500, 700, 700, 1150, 350, 2300, 300]
 
 [counterpart."russia"]
 participation_bps = 4500
@@ -311,7 +311,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 4583
 price_scale_bps = 5500
-function_weights_bps = [900, 500, 900, 250, 1100, 1000, 1700, 800, 1050, 400, 1100, 300]
+function_weights_bps = [900, 250, 900, 250, 1100, 1000, 1700, 800, 1300, 400, 1100, 300]
 
 [counterpart."india"]
 participation_bps = 4500
@@ -319,7 +319,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 2083
 price_scale_bps = 2200
-function_weights_bps = [1200, 400, 900, 200, 1300, 400, 500, 1500, 1450, 550, 1300, 300]
+function_weights_bps = [1200, 200, 900, 200, 1300, 400, 500, 1500, 1650, 550, 1300, 300]
 
 [counterpart."japan"]
 participation_bps = 4500
@@ -327,7 +327,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 9166
 price_scale_bps = 10000
-function_weights_bps = [1300, 1100, 900, 550, 1300, 500, 300, 500, 1350, 600, 1300, 300]
+function_weights_bps = [1300, 550, 900, 550, 1300, 500, 300, 500, 1900, 600, 1300, 300]
 
 [counterpart."european_union"]
 participation_bps = 4500
@@ -335,7 +335,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 9166
 price_scale_bps = 9500
-function_weights_bps = [1300, 700, 1100, 350, 1200, 500, 400, 700, 1600, 650, 1200, 300]
+function_weights_bps = [1300, 350, 1100, 350, 1200, 500, 400, 700, 1950, 650, 1200, 300]
 
 [counterpart."remaining_europe"]
 participation_bps = 4500
@@ -343,7 +343,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 5833
 price_scale_bps = 7000
-function_weights_bps = [1000, 600, 1000, 300, 1200, 700, 900, 900, 1300, 500, 1300, 300]
+function_weights_bps = [1000, 300, 1000, 300, 1200, 700, 900, 900, 1600, 500, 1300, 300]
 
 [counterpart."latin_america_caribbean"]
 participation_bps = 4500
@@ -351,7 +351,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 2916
 price_scale_bps = 4000
-function_weights_bps = [900, 300, 1000, 150, 1300, 500, 1100, 1500, 1500, 550, 900, 300]
+function_weights_bps = [900, 150, 1000, 150, 1300, 500, 1100, 1500, 1650, 550, 900, 300]
 
 [counterpart."west_asia_north_africa"]
 participation_bps = 4500
@@ -359,7 +359,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 3333
 price_scale_bps = 4500
-function_weights_bps = [900, 300, 1100, 150, 1200, 1000, 2000, 700, 1300, 450, 600, 300]
+function_weights_bps = [900, 150, 1100, 150, 1200, 1000, 2000, 700, 1450, 450, 600, 300]
 
 [counterpart."sub_saharan_africa"]
 participation_bps = 4500
@@ -367,7 +367,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 1666
 price_scale_bps = 1800
-function_weights_bps = [800, 200, 800, 100, 1500, 500, 1500, 2000, 1350, 450, 500, 300]
+function_weights_bps = [800, 100, 800, 100, 1500, 500, 1500, 2000, 1450, 450, 500, 300]
 
 [counterpart."remaining_asia_pacific"]
 participation_bps = 4500
@@ -375,7 +375,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 3750
 price_scale_bps = 4500
-function_weights_bps = [1000, 600, 900, 300, 1200, 500, 1000, 1000, 1200, 500, 1500, 300]
+function_weights_bps = [1000, 300, 900, 300, 1200, 500, 1000, 1000, 1500, 500, 1500, 300]
 
 # Separate dependencies use source persons when available. The missing UM
 # observation stays missing; its 50 temporary game residents are Designed.
@@ -385,7 +385,7 @@ opening_employment_bps = 9000
 persons_per_household = 3
 wage_fraction_bps = 10000
 price_scale_bps = 10000
-function_weights_bps = [1000, 500, 1000, 250, 1500, 500, 500, 1500, 1250, 500, 1000, 500]
+function_weights_bps = [1000, 250, 1000, 250, 1500, 500, 500, 1500, 1500, 500, 1000, 500]
 missing_population_game_persons = 50
 
 # Designed terms captured in existing NationalGamePolicy artifact.

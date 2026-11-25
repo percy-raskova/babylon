@@ -6,6 +6,7 @@ use super::{mapping, parse};
 
 use crate::national_counties::{NationalCountyReference, NationalCountyReferenceError};
 
+use babylon_kernel::economic_identity::TradeSet;
 use babylon_kernel::geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster};
 
 use crate::national_counties;
@@ -21,6 +22,15 @@ pub(crate) const ARTIFACT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz"
 ));
+
+/// The twelve-trade table of stage 1, embedded.
+pub(crate) const ARTIFACT_V2: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz"
+));
+
+/// The twelve-trade mapping of stage 1, embedded.
+pub(crate) const MAPPING_V2: &[u8] = mapping::DOCUMENT_V2;
 
 pub(crate) const MAX_COMPRESSED_BYTES: usize = 2_097_152;
 
@@ -38,6 +48,42 @@ pub(crate) const ARTIFACT_SHA256: [u8; 32] = [
     41, 49, 57, 44, 242, 251, 215, 142, 180, 151,
 ];
 
+const ARTIFACT_V2_SHA256: [u8; 32] = [
+    9, 255, 137, 9, 116, 52, 40, 120, 169, 137, 41, 173, 204, 165, 222, 118, 111, 204, 122, 165,
+    74, 174, 134, 157, 153, 152, 39, 148, 14, 179, 77, 18,
+];
+
+/// Version 2's source Parquet basis digest: leaves, parents, states and nation, before grouping.
+pub const JOBS_BASIS_V2_SHA256: [u8; 32] = [
+    237, 20, 248, 185, 141, 30, 48, 253, 242, 50, 197, 8, 115, 52, 141, 126, 168, 48, 148, 67, 5,
+    80, 253, 212, 72, 145, 60, 36, 86, 192, 126, 18,
+];
+
+/// What one trade set pins of its table: digest, groups, members and admitted groups.
+#[derive(Clone, Copy)]
+pub(super) struct TablePins {
+    pub(super) sha256: [u8; 32],
+    pub(super) groups: usize,
+    pub(super) members: usize,
+    pub(super) admitted: usize,
+}
+pub(super) const fn table_pins(set: TradeSet) -> TablePins {
+    match set {
+        TradeSet::Ten => TablePins {
+            sha256: ARTIFACT_SHA256,
+            groups: GROUP_COUNT,
+            members: MEMBER_COUNT,
+            admitted: ADMITTED_COUNT,
+        },
+        TradeSet::Twelve => TablePins {
+            sha256: ARTIFACT_V2_SHA256,
+            groups: 66_920,
+            members: 151_199,
+            admitted: 65_065,
+        },
+    }
+}
+
 /// Exact source Parquet basis digest, before lossless compact grouping.
 pub const LEAF_BASIS_SHA256: [u8; 32] = [
     223, 123, 105, 55, 84, 10, 14, 106, 250, 179, 52, 222, 20, 108, 130, 41, 250, 196, 134, 88, 41,
@@ -48,9 +94,13 @@ pub(crate) static REFERENCE: OnceLock<
     Result<NationalCohortReference, NationalCohortReferenceError>,
 > = OnceLock::new();
 
+static REFERENCE_V2: OnceLock<Result<NationalCohortReference, NationalCohortReferenceError>> =
+    OnceLock::new();
+
 /// All admitted and context groups, sorted by county, optional function and ownership.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalCohortReference {
+    set: TradeSet,
     roster: NationalCountyRoster,
     groups: Box<[CohortReference]>,
 }
@@ -65,8 +115,9 @@ impl NationalCohortReference {
             .map_err(NationalCohortReferenceError::CountyReference)?;
         Self::decode_captured(bytes, mapping::DOCUMENT, counties)
     }
-    /// Admit supplied source and mapping bytes against the supplied checked county capture.
-    /// This path never reacquires policy or county evidence from compiled defaults.
+    /// Admit supplied source and mapping bytes of version 1 (the ten trades) against the supplied
+    /// checked county capture. This path never reacquires policy or county evidence from compiled
+    /// defaults.
     /// # Errors
     /// Refuses changed dependencies and all ordinary source-contract violations.
     pub fn decode_captured(
@@ -74,15 +125,29 @@ impl NationalCohortReference {
         mapping_bytes: &[u8],
         counties: &NationalCountyReference,
     ) -> Result<Self, NationalCohortReferenceError> {
+        Self::decode_captured_for(bytes, mapping_bytes, counties, TradeSet::Ten)
+    }
+    /// The table and mapping that `set` names, each checked against its own pins.
+    ///
+    /// # Errors
+    /// Refuses changed dependencies and all ordinary source-contract violations.
+    pub fn decode_captured_for(
+        bytes: &[u8],
+        mapping_bytes: &[u8],
+        counties: &NationalCountyReference,
+        set: TradeSet,
+    ) -> Result<Self, NationalCohortReferenceError> {
+        let pins = table_pins(set);
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(NationalCohortReferenceError::Bound);
         }
-        if content_digest::sha256_of(bytes) != ARTIFACT_SHA256 {
+        if content_digest::sha256_of(bytes) != pins.sha256 {
             return Err(NationalCohortReferenceError::ArtifactDigest);
         }
-        let mapping = FunctionMapping::decode_pinned(mapping_bytes)?;
-        let groups = parse::parse_csv(&decode_gzip(bytes)?, &mapping, counties)?;
+        let mapping = FunctionMapping::decode_pinned(mapping_bytes, set)?;
+        let groups = parse::parse_csv(&decode_gzip(bytes)?, &mapping, counties, pins)?;
         Ok(Self {
+            set,
             roster: counties.roster().clone(),
             groups: groups.into_boxed_slice(),
         })
@@ -124,12 +189,20 @@ impl NationalCohortReference {
     /// SHA-256 of the exact compact gzip bytes captured here.
     #[must_use]
     pub const fn artifact_sha256(&self) -> [u8; 32] {
-        ARTIFACT_SHA256
+        table_pins(self.set).sha256
     }
     /// SHA-256 of the Designed function mapping, separate from observed values.
     #[must_use]
     pub const fn function_mapping_sha256(&self) -> [u8; 32] {
-        mapping::MAPPING_SHA256
+        match self.set {
+            TradeSet::Ten => mapping::MAPPING_SHA256,
+            TradeSet::Twelve => mapping::MAPPING_V2_SHA256,
+        }
+    }
+    /// The trade list this table and its mapping were decoded for.
+    #[must_use]
+    pub const fn trades(&self) -> TradeSet {
+        self.set
     }
 }
 
@@ -194,6 +267,27 @@ pub fn national_cohort_reference(
 ) -> Result<&'static NationalCohortReference, NationalCohortReferenceError> {
     REFERENCE
         .get_or_init(|| NationalCohortReference::decode_pinned(ARTIFACT))
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// The embedded twelve-trade table, decoded once.
+///
+/// # Errors
+/// Returns the exact pinned-artifact or source-admission failure without a fallback.
+pub fn national_cohort_reference_v2(
+) -> Result<&'static NationalCohortReference, NationalCohortReferenceError> {
+    REFERENCE_V2
+        .get_or_init(|| {
+            let counties = national_counties::national_county_reference()
+                .map_err(NationalCohortReferenceError::CountyReference)?;
+            NationalCohortReference::decode_captured_for(
+                ARTIFACT_V2,
+                MAPPING_V2,
+                counties,
+                TradeSet::Twelve,
+            )
+        })
         .as_ref()
         .map_err(Clone::clone)
 }

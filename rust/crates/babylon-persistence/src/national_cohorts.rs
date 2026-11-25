@@ -26,7 +26,6 @@ mod artifact;
 #[cfg(test)]
 use artifact::{decode_gzip, ARTIFACT};
 pub use artifact::{
-    national_cohort_reference, NationalCohortReference, NationalCohortReferenceError,
-    LEAF_BASIS_SHA256,
+    national_cohort_reference, national_cohort_reference_v2, NationalCohortReference,
+    NationalCohortReferenceError, JOBS_BASIS_V2_SHA256, LEAF_BASIS_SHA256,
 };
-use artifact::{ADMITTED_COUNT, GROUP_COUNT, MEMBER_COUNT};

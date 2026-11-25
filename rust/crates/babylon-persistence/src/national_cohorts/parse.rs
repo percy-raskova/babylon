@@ -1,7 +1,8 @@
+use super::artifact::TablePins;
 use super::mapping::FunctionMapping;
 use super::{
     CohortKey, CohortReference, KnownSubtotal, NationalCohortReferenceError as Error,
-    QcewDisclosure, SourceMember, ADMITTED_COUNT, GROUP_COUNT, MEMBER_COUNT,
+    QcewDisclosure, SourceMember,
 };
 
 use crate::national_counties::NationalCountyReference;
@@ -16,6 +17,7 @@ pub(super) fn parse_csv(
     text: &str,
     mapping: &FunctionMapping,
     counties: &NationalCountyReference,
+    pins: TablePins,
 ) -> Result<Vec<CohortReference>, Error> {
     if !text.is_ascii() || !text.ends_with('\n') || text.contains('\r') {
         return Err(Error::Header);
@@ -24,10 +26,10 @@ pub(super) fn parse_csv(
     if lines.next() != Some(HEADER) {
         return Err(Error::Header);
     }
-    let mut groups: Vec<CohortReference> = Vec::with_capacity(GROUP_COUNT);
+    let mut groups: Vec<CohortReference> = Vec::with_capacity(pins.groups);
     let mut member_count = 0;
     for line in lines {
-        if groups.len() == GROUP_COUNT {
+        if groups.len() == pins.groups {
             return Err(Error::Bound);
         }
         let group = parse_group(line, mapping, counties)?;
@@ -38,14 +40,14 @@ pub(super) fn parse_csv(
             return Err(Error::GroupOrder);
         }
         member_count += group.members().len();
-        if member_count > MEMBER_COUNT {
+        if member_count > pins.members {
             return Err(Error::Bound);
         }
         groups.push(group);
     }
-    if groups.len() != GROUP_COUNT
-        || member_count != MEMBER_COUNT
-        || groups.iter().filter(|row| row.is_admitted()).count() != ADMITTED_COUNT
+    if groups.len() != pins.groups
+        || member_count != pins.members
+        || groups.iter().filter(|row| row.is_admitted()).count() != pins.admitted
     {
         return Err(Error::Coverage);
     }

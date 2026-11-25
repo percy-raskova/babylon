@@ -166,7 +166,7 @@ def build(
                 for name in ("establishments", "jobs", "payroll")
             },
         },
-        "native_readers": [],
+        "native_readers": ["babylon-persistence::national_cohorts"],
         "runtime_consumers": [],
         "semantics": {
             "admission": "A mapped group with any positive known establishments, workplace jobs or annual payroll is eligible for a later compiler; admission creates no worksite or person. Every other group remains source context.",
@@ -175,7 +175,7 @@ def build(
             "members": "Exact disjoint county leaf NAICS members of the twelve-trade cut, once each, sorted lexically; tuple naics~P/N~establishments~jobs~payroll~mean_weekly_wage separated by semicolons. Blank quantity is unknown, not zero. Parent, state and nation rows of the version 2 basis are never members.",
             "wages": "Published mean weekly wage is retained only per source member; means are never added or averaged into cohort wages.",
             "context": "Code 99 has no function and is never admitted. All 3,144 counties remain in the independent county roster; Kalawao's residents do not imply an observed workplace.",
-            "limits": "No jobs-to-persons conversion, household allocation, physical recipe, operating capacity, opening stock, current wage payment or game-state hydration follows from this capture. The stage 2 native reader is not built yet.",
+            "limits": "No jobs-to-persons conversion, household allocation, physical recipe, operating capacity, opening stock, current wage payment or game-state hydration follows from this capture.",
         },
     }
     metadata_out.parent.mkdir(parents=True, exist_ok=True)

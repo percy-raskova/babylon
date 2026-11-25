@@ -64,7 +64,7 @@
   },
   "sources": {
     "cohort_table": {
-      "metadata_sha256": "833e42023d2cc3b78ca79071542a8df4014ee18bcbbde5daa4ef75b57c6a573a",
+      "metadata_sha256": "822b763461cb5e8fcc5561c1914cb60282cf1be4288d02c78490cdeb3c372649",
       "path": "src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz",
       "sha256": "09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12"
     },

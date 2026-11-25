@@ -106,7 +106,7 @@ def test_the_committed_v2_cohorts() -> None:
     metadata = json.loads(meta_path.read_text())
     assert metadata["contract"] == "NationalCohortReference2024V2"
     assert metadata["issue"] == "PER-371"
-    assert metadata["native_readers"] == []
+    assert metadata["native_readers"] == ["babylon-persistence::national_cohorts"]
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     assert metadata["artifact"]["sha256"] == digest
     assert metadata["artifact"]["rows"] == len(rows)

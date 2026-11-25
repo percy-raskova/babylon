@@ -13,6 +13,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
+import make_national_cohort_reference as cohort  # type: ignore[import-not-found]  # noqa: E402
+import make_national_cohort_reference_v2 as cohort_v2  # type: ignore[import-not-found]  # noqa: E402
 import make_national_county_reference as county  # type: ignore[import-not-found]  # noqa: E402
 import make_national_qcew_function_basis as basis  # type: ignore[import-not-found]  # noqa: E402
 import make_national_qcew_function_basis_v2 as v2  # type: ignore[import-not-found]  # noqa: E402
@@ -95,6 +97,8 @@ def test_version_1_files_keep_their_digests() -> None:
     assert v2.MAPPING_V2_PATH != basis.MAPPING_PATH
     assert economy / "national_qcew_function_basis_2024.parquet" != v2.ARTIFACT_OUT
     assert v2.METADATA_OUT != basis.METADATA_OUT
+    assert cohort_v2.ARTIFACT_OUT != cohort.ARTIFACT_OUT
+    assert cohort_v2.METADATA_OUT != cohort.METADATA_OUT
 
 
 def source(

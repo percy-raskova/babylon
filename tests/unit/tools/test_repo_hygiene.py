@@ -105,6 +105,7 @@ class TestSyntheticViolations:
             "content/scenarios/michigan/statewide-physical.json.gz",
             "src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz",
             "src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet",
+            "src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz",
         ],
     )
     def test_named_runtime_assets_have_an_exact_two_mib_budget(self, path: str) -> None:

@@ -1602,6 +1602,22 @@ artifacts:
       additive output. Domestic xx999 jobs remain unallocated. Source pins
       reuse tools/national_county_reference_2024_sources.json. This table
       grants no worker or site allocation and no runtime hydration.
+  - name: national_cohort_reference_v2_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_cohort_reference_v2.py
+    mode: register
+    rows: 66920
+    sha256: 09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12
+    home: src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz
+    material_relation: >-
+      Part of PER-371: the twelve-trade county cohort groups that stage 2's
+      native reader will parse, in version 1's twelve columns. Members are the
+      151199 county leaf cells of the version 2 jobs basis, grouped by county,
+      trade and ownership; consumer goods and leisure and hospitality are
+      groups of their own. Suppressed measures stay unknown, never zero.
+      Admission allocates no workers, sites, recipes or money, and nothing
+      hydrates a campaign. Version 1's table is unchanged.
   - name: national_transport_reference_2024
     format: json.gz
     source_table: null

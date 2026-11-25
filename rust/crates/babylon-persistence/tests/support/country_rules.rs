@@ -50,13 +50,21 @@ pub fn market_policy(
 }
 
 /// The adjustment rules of a set, in the order of `AdjustmentRule`. The stop rule needs the seekers, so
-/// it waits for the set that has them.
+/// it is in the set that has them.
 pub fn rules_of(set: RuleSet) -> Vec<AdjustmentRule> {
     match set {
         RuleSet::None | RuleSet::Market => Vec::new(),
         RuleSet::NoSeekers => vec![
             AdjustmentRule::HiringWithinMeans,
             AdjustmentRule::RestingPrice,
+            AdjustmentRule::GoodsStepDown,
+        ],
+        RuleSet::AllSix => vec![
+            AdjustmentRule::HiringWithinMeans,
+            AdjustmentRule::SeekingInPlace,
+            AdjustmentRule::StopWithoutPay,
+            AdjustmentRule::RestingPrice,
+            AdjustmentRule::OwnerRestart { outlay_periods: 2 },
             AdjustmentRule::GoodsStepDown,
         ],
     }

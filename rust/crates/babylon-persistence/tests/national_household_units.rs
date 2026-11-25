@@ -27,6 +27,8 @@ use uuid::Uuid;
 mod country_bench;
 #[path = "support/country_rules.rs"]
 mod country_rules;
+#[path = "support/country_seekers.rs"]
+mod country_seekers;
 #[path = "support/country_sizes.rs"]
 mod country_sizes;
 #[path = "support/economy_health.rs"]
@@ -1318,6 +1320,108 @@ fn one_period_of_each_set_without_seekers_closes() {
         assert_eq!(closing_money, opening_money, "{}", set.name());
         println!("{} period 1 took {:?}", set.name(), period.elapsed);
     }
+}
+
+/// Persons of every household cohort of a state.
+fn state_persons(state: &MaterialCircuitState) -> u64 {
+    economy_health::economy(state)
+        .recurring
+        .as_deref()
+        .expect("the national opening has a recurring economy")
+        .households
+        .iter()
+        .map(|cohort| cohort.persons)
+        .sum()
+}
+
+/// Every pool of a place holds a member of every household of the place, and the opening's members
+/// grow to the count Task 1 found.
+#[test]
+fn every_pool_has_a_member_for_each_household_of_its_place() {
+    let catalog = pooled_catalog();
+    let bench = CountryBench::open(catalog.opening(), RuleSet::AllSix).expect("the bench opens");
+    let held: BTreeMap<_, _> = bench
+        .members()
+        .iter()
+        .map(|pool| (pool.pool_id, pool))
+        .collect();
+    let mut total = 0_usize;
+    for place in bench.places() {
+        let households: BTreeSet<_> = place
+            .pools
+            .iter()
+            .flat_map(|pool| held[pool].members.iter())
+            .map(|member| member.binding().household_id())
+            .collect();
+        for pool in &place.pools {
+            let in_pool: BTreeSet<_> = held[pool]
+                .members
+                .iter()
+                .map(|member| member.binding().household_id())
+                .collect();
+            assert_eq!(in_pool, households, "a pool lacks a household of its place");
+        }
+    }
+    for pool in bench.members() {
+        total += pool.members.len();
+    }
+    assert_eq!(total, 67_509);
+    let rows = country_seekers::seeker_rows(catalog.opening(), bench.places())
+        .expect("the seekers' rows build");
+    assert_eq!(rows.members.len(), 67_509 - 21_062);
+    assert_eq!(rows.terms.len(), rows.members.len());
+    assert_eq!(rows.hours.len(), rows.members.len());
+}
+
+/// The rows add no person, no labor force and no money, and the state with them encodes.
+#[test]
+fn the_seekers_rows_keep_every_person() {
+    let catalog = pooled_catalog();
+    let plain = CountryBench::open(catalog.opening(), RuleSet::None).expect("the bench opens");
+    let seekers = CountryBench::open(catalog.opening(), RuleSet::AllSix).expect("the bench opens");
+    assert_eq!(state_persons(seekers.state()), state_persons(plain.state()));
+    let money = |state: &MaterialCircuitState| {
+        economy_health::economy(state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the book totals")
+    };
+    assert_eq!(money(seekers.state()), money(plain.state()));
+    let force = |bench: &CountryBench| -> u64 {
+        bench
+            .staffing()
+            .pools()
+            .iter()
+            .map(|pool| pool.employed() + pool.reserve())
+            .sum()
+    };
+    assert_eq!(force(&seekers), force(&plain));
+    let held: u64 = seekers
+        .members()
+        .iter()
+        .flat_map(|pool| pool.members.iter())
+        .map(|member| member.employed() + member.reserve())
+        .sum();
+    assert_eq!(held, force(&seekers), "the members hold every person once");
+    engine::encode_material_circuit_state(seekers.catalog(), seekers.state())
+        .expect("the state with the seekers' rows encodes");
+}
+
+/// FINDING (24 November 2026): the engine refuses period 1 of this set with
+/// `Engine { period: 1, stage: Finish, error: ServiceInvariant }`. The set without the restart
+/// (hiring bound, seeking in place, stop, resting price, step-down) closes; adding `OwnerRestart` is what
+/// is refused. Left ignored, not mended: the lead decides (Global Constraints, "a refusal is a finding").
+#[test]
+#[ignore = "finding: the engine refuses period 1 of AllSix with ServiceInvariant at Finish, the owner's restart being the rule that brings it"]
+fn one_period_with_all_six_rules_closes() {
+    let (_catalog, _census, mut bench) = open_census(RuleSet::AllSix);
+    let stepped = bench.step().expect("the first period closes");
+    let counts = counted(&stepped);
+    println!(
+        "AllSix period 1: place moves {}, stops {}, took {:?}",
+        counts[1], counts[2], stepped.elapsed
+    );
+    assert_eq!(stepped.receipts.resolve_tick, 1);
 }
 
 /// One period of each set built so far, timed, beside the baseline's.

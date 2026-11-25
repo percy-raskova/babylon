@@ -3,16 +3,17 @@
 //! checks money, persons and the labor force every period. A refusal is returned typed and leaves the
 //! bench as it was.
 use super::country_rules;
+use super::country_seekers::{self, SeekerRows};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
-    self as engine, AdjustmentReceipt, CircuitAccounting, HouseholdLifecycleReceipt,
-    LaborCapacityRow, MarketClearingReceipt, MaterialCatalog, MaterialCircuitError,
-    MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MonetaryCircuit,
-    PlaceStaffingError, PoolMembers, ProcessId, PublicProgramReceipt, RecurringEconomy,
-    ResidentWorkforceAttrition, SiteId, StaffingError, StaffingMemberId, StaffingMemberReceipt,
-    StaffingMemberState, StaffingPlace, StaffingPoolId, StaffingPoolState, StaffingState,
-    StaffingWorkRequest, WorkplaceStanding,
+    self as engine, AdjustmentReceipt, CircuitAccounting, ClosedMaterialPeriod,
+    HouseholdLifecycleReceipt, LaborCapacityRow, MarketClearingReceipt, MaterialCatalog,
+    MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow,
+    MonetaryCircuit, PlaceStaffingError, PoolMembers, ProcessId, PublicProgramReceipt,
+    RecurringEconomy, ResidentWorkforceAttrition, SiteId, StaffingError, StaffingMemberId,
+    StaffingMemberReceipt, StaffingMemberState, StaffingPlace, StaffingPoolId, StaffingPoolState,
+    StaffingState, StaffingWorkRequest, WorkplaceStanding,
 };
 use babylon_persistence::economic_catalog::{EconomicCatalogError, EconomicOpening};
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -22,7 +23,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::mem;
 use std::time::{Duration, Instant};
 
-/// Which rules the bench turns on. Tasks 5 and 6 add the sets with seekers and with benefits.
+/// Which rules the bench turns on. Task 6 adds the set with benefits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuleSet {
     None,
@@ -30,6 +31,8 @@ pub enum RuleSet {
     Market,
     /// (ii) The market, spare money, the bound on hiring, the resting price and the step-down.
     NoSeekers,
+    /// (iii) All six rules, with spare money.
+    AllSix,
 }
 
 impl RuleSet {
@@ -39,7 +42,14 @@ impl RuleSet {
             Self::None => "baseline",
             Self::Market => "market",
             Self::NoSeekers => "no-seekers",
+            Self::AllSix => "all-six",
         }
+    }
+
+    /// Whether the set staffs by place: its members are the seekers' rows and its period is the
+    /// seekers' path.
+    pub const fn seeks_in_place(self) -> bool {
+        matches!(self, Self::AllSix)
     }
 }
 
@@ -52,7 +62,10 @@ pub enum BenchStage {
     StaffingRequests,
     AdvanceStaffing,
     Distribute,
-    #[allow(dead_code, reason = "named by the seekers' staffing, built in Task 5")]
+    #[allow(
+        dead_code,
+        reason = "the plan's stage list names it; a refusal of the places' staffing is typed BenchError::Place"
+    )]
     StaffInPlaces,
     Finish,
     Read,
@@ -71,7 +84,6 @@ pub enum BenchError {
         stage: BenchStage,
         error: StaffingError,
     },
-    #[allow(dead_code, reason = "raised by the seekers' staffing, built in Task 5")]
     Place {
         period: u64,
         error: PlaceStaffingError,
@@ -227,11 +239,8 @@ pub struct CountryBench {
     state: MaterialCircuitState,
     staffing: StaffingState,
     members: Vec<PoolMembers>,
-    #[allow(dead_code, reason = "read by the seekers' staffing, built in Task 5")]
     places: Vec<StaffingPlace>,
-    #[allow(dead_code, reason = "read by the stop rule, built in Task 5")]
     standing: WorkplaceStanding,
-    #[allow(dead_code, reason = "read by the seekers' path, built in Task 5")]
     set: RuleSet,
     opening_money: i128,
 }
@@ -241,6 +250,7 @@ struct Stepped {
     transition: MaterialCircuitTransition,
     staffing: StaffingState,
     members: Vec<PoolMembers>,
+    standing: WorkplaceStanding,
 }
 
 /// The staffing after the household lifecycle has taken its people out of the workforce.
@@ -538,6 +548,36 @@ fn opening_staffing(
     Ok((state, members))
 }
 
+/// The seekers' rows join the opening: their members after each pool's own, their terms and hours in the
+/// order the engine admits (terms by site, unit and member; hours by period and member).
+fn add_seekers(
+    period: u64,
+    state: &mut MaterialCircuitState,
+    members: &mut [PoolMembers],
+    rows: SeekerRows,
+) -> Result<(), BenchError> {
+    for (pool, member) in rows.members {
+        let at = members
+            .binary_search_by_key(&pool, |held| held.pool_id)
+            .map_err(|_| BenchError::Arithmetic { period })?;
+        members[at].members.push(member);
+    }
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        return Err(engine_failed(period, BenchStage::Open)(
+            MaterialCircuitError::MonetaryInvariant,
+        ));
+    };
+    economy.employment.extend(rows.terms);
+    economy
+        .employment
+        .sort_unstable_by_key(|row| (row.site_id, row.unit_id, row.member_id));
+    economy.member_labor.extend(rows.hours);
+    economy
+        .member_labor
+        .sort_unstable_by_key(|row| (row.period, row.member_id));
+    Ok(())
+}
+
 /// One place for each location that has a pool, places in location order, pools in site order.
 fn opening_places(opening: &EconomicOpening) -> Result<Vec<StaffingPlace>, BenchError> {
     let locations: BTreeMap<SiteId, EconomicLocation> = opening
@@ -683,16 +723,20 @@ impl CountryBench {
     /// with portfolios off is refused.
     pub fn open(opening: &EconomicOpening, set: RuleSet) -> Result<Self, BenchError> {
         let compiled = opening.compile().map_err(BenchError::Opening)?;
-        let state = compiled.state;
+        let mut state = compiled.state;
         let period = state.period;
         let mut definition = compiled.catalog.into_definition();
         definition.company_portfolios = None;
         definition.market_clearing = country_rules::market_policy(opening, set)?;
         let catalog = MaterialCatalog::try_new(definition)
             .map_err(engine_failed(period, BenchStage::Open))?;
-        let (staffing, members) =
+        let (staffing, mut members) =
             opening_staffing(opening, period).map_err(staffing_error(period, BenchStage::Open))?;
         let places = opening_places(opening)?;
+        if set.seeks_in_place() {
+            let rows = country_seekers::seeker_rows(opening, &places)?;
+            add_seekers(period, &mut state, &mut members, rows)?;
+        }
         let opening_money = total_money(period, &state)?;
         Ok(Self {
             catalog,
@@ -714,6 +758,16 @@ impl CountryBench {
         &self.state
     }
 
+    /// Every pool's members after the last period closed.
+    pub fn members(&self) -> &[PoolMembers] {
+        &self.members
+    }
+
+    /// The places: the pools whose people look for work at one another.
+    pub fn places(&self) -> &[StaffingPlace] {
+        &self.places
+    }
+
     /// The staffing after the last period closed.
     pub const fn staffing(&self) -> &StaffingState {
         &self.staffing
@@ -730,6 +784,7 @@ impl CountryBench {
             mut transition,
             staffing,
             members,
+            standing,
         } = self.advance(period)?;
         let elapsed = started.elapsed();
         let spare_money_raised =
@@ -748,13 +803,13 @@ impl CountryBench {
         self.state = transition.state;
         self.staffing = staffing;
         self.members = members;
+        self.standing = standing;
         Ok(period_row)
     }
 
     /// The period's close, staffing and checks, with nothing of the bench changed.
     fn advance(&self, period: u64) -> Result<Stepped, BenchError> {
-        let closed = engine::close_material_period(&self.catalog, &self.state)
-            .map_err(engine_failed(period, BenchStage::Close))?;
+        let closed = self.close(period)?;
         let before = labor_force(period, &self.staffing)?;
         let attrited = attrition(
             period,
@@ -765,6 +820,9 @@ impl CountryBench {
         let removed = removed_persons(period, &attrited.rows)?;
         let after_attrition = labor_force(period, &attrited.staffing)?;
         check_labor_force(period, before, removed, after_attrition)?;
+        if self.set.seeks_in_place() {
+            return self.finish_in_places(period, closed, attrited, after_attrition);
+        }
         let bindings: Vec<_> = attrited
             .staffing
             .pools()
@@ -796,6 +854,53 @@ impl CountryBench {
             transition,
             staffing: staffed.staffing,
             members: staffed.members,
+            standing: self.standing.clone(),
+        })
+    }
+
+    /// The close; a set with the stop rule closes with the standing the last period left.
+    fn close(&self, period: u64) -> Result<ClosedMaterialPeriod, BenchError> {
+        let closed = if self.set.seeks_in_place() {
+            engine::close_material_period_with_standing(&self.catalog, &self.state, &self.standing)
+        } else {
+            engine::close_material_period(&self.catalog, &self.state)
+        };
+        closed.map_err(engine_failed(period, BenchStage::Close))
+    }
+
+    /// The seekers' path: the engine's decision, then the moves and the stop rule's test, then the finish.
+    fn finish_in_places(
+        &self,
+        period: u64,
+        closed: ClosedMaterialPeriod,
+        attrited: Attrited,
+        after_attrition: u64,
+    ) -> Result<Stepped, BenchError> {
+        let placed = closed
+            .staff_in_places(
+                &self.catalog,
+                &attrited.staffing,
+                &attrited.members,
+                &self.places,
+            )
+            .map_err(|error| BenchError::Place { period, error })?;
+        check_labor_force(
+            period,
+            after_attrition,
+            0,
+            labor_force(period, &placed.state)?,
+        )?;
+        let mut transition = closed
+            .finish_with_place_staffing(&self.catalog, &placed)
+            .map_err(engine_failed(period, BenchStage::Finish))?;
+        transition.staffing_members = placed.member_receipts;
+        transition.resident_workforce_attrition = attrited.rows;
+        self.check_period(period, &transition)?;
+        Ok(Stepped {
+            transition,
+            staffing: placed.state,
+            members: placed.members,
+            standing: placed.standing,
         })
     }
 

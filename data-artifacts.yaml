@@ -1618,6 +1618,22 @@ artifacts:
       groups of their own. Suppressed measures stay unknown, never zero.
       Admission allocates no workers, sites, recipes or money, and nothing
       hydrates a campaign. Version 1's table is unchanged.
+  - name: national_trade_pay_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_trade_pay.py
+    mode: register
+    rows: 65065
+    sha256: c88289b106d37a723ab0756e5127b1f71fa665e2b92ba50873d3bc5ed0f03267
+    home: src/babylon/data/reference/economy/national_trade_pay_2024.csv.gz
+    material_relation: >-
+      Part of PER-371: rule O2 of the national opening. One row for each
+      admitted group of the version 2 cohort table, with its jobs and payroll
+      (published members plus withheld members placed under their published
+      parents) and the pair of jobs and payroll that names its wage, taken from
+      the county, its state, the nation, or the nation over all ownerships.
+      Placed values are derived shares, never observations. Nothing hydrates a
+      campaign and no reader exists yet.
   - name: national_transport_reference_2024
     format: json.gz
     source_table: null

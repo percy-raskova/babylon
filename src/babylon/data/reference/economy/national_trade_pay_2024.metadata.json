@@ -1,0 +1,81 @@
+{
+  "artifact": {
+    "bytes": 848538,
+    "columns": [
+      "county_geoid",
+      "function_id",
+      "ownership_code",
+      "jobs",
+      "payroll_usd",
+      "jobs_rule",
+      "wage_rule",
+      "wage_jobs",
+      "wage_payroll_usd"
+    ],
+    "decoded_bytes": 4294788,
+    "format": "csv.gz",
+    "ordering": [
+      "county_geoid",
+      "function_id",
+      "ownership_code"
+    ],
+    "path": "src/babylon/data/reference/economy/national_trade_pay_2024.csv.gz",
+    "rows": 65065,
+    "sha256": "c88289b106d37a723ab0756e5127b1f71fa665e2b92ba50873d3bc5ed0f03267",
+    "writer": {
+      "encoding": "ascii",
+      "gzip_level": 9,
+      "line_end": "\\n",
+      "mtime": 0
+    }
+  },
+  "contract": "NationalTradePay2024V1",
+  "coverage": {
+    "by_jobs_rule": {
+      "partial": 723,
+      "placed": 29851,
+      "published": 34491
+    },
+    "by_wage_rule": {
+      "county": 64048,
+      "nation": 110,
+      "nation_all_ownerships": 6,
+      "state": 901
+    },
+    "county_leaf_rows": 151199,
+    "groups": 65065,
+    "jobs_in_all": 148902211,
+    "jobs_placed_in_all": 9323170,
+    "payroll_usd_in_all": 11046012451705
+  },
+  "issue": "PER-371",
+  "native_readers": [],
+  "placed_values_evidence_class": "Derived",
+  "published_values_evidence_class": "Observed",
+  "regeneration": "UV_PROJECT_ENVIRONMENT=.venv mise exec -- uv run --frozen python tools/make_national_trade_pay.py",
+  "runtime_consumers": [],
+  "semantics": {
+    "group_totals": "A group's jobs and payroll are its published members plus its placed members. partial groups leave out their unplaced members. The pair sets pay and nothing else; where residents work is decided by the cohort table's weights.",
+    "limits": "No person, household allocation, recipe or capacity follows from this table. The stage 2 native reader is not built yet.",
+    "placement": "Rule O2. At each published parent in the order 115, 312, 334, 335, 336, 11, 31-33, 53, 10, the jobs and payroll the parent holds beyond its published and already placed leaves are shared over its still withheld leaves by establishments, largest remainder, ties by code. A withheld parent is skipped and its leaves move up. The one clamp is zero when a rounded parent falls below its children. Leaves still withheld after the county total stay unplaced.",
+    "rows": "One row for each admitted group of the version 2 cohort table, in its order. Suppression stays unknown outside the placed amounts, which are derived shares and never observations.",
+    "wage": "wage_rule county when the group is not partial and has positive jobs and payroll; else the published state leaf rows of the county's state for the same trade and ownership; else the national rows of the same trade and ownership; else the national rows of the trade over ownerships 1, 2, 3 and 5. The hourly wage is wage_payroll_usd / (wage_jobs x 2080), computed by the reader and not stored."
+  },
+  "sources": {
+    "cohort_table": {
+      "metadata_sha256": "4cb6f70df9bbcfe758fc84c06166fb51add0235c50e796b9f9a2a66db5127690",
+      "path": "src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz",
+      "sha256": "09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12"
+    },
+    "function_mapping": {
+      "path": "contracts/national_qcew_function_mapping_v2.json",
+      "sha256": "216123363336f60bf66926fbd52e83b7910d43ee48db0d3c5ebc68adb63519c0"
+    },
+    "leaf_basis": {
+      "metadata_sha256": "85416af5635122040bc9b7d7d2484cc7d9df4ced3fd362b56f9bff50bbefd35a",
+      "path": "src/babylon/data/reference/economy/national_qcew_function_basis_v2_2024.parquet",
+      "sha256": "ed14f8b98d1e30fdf232c50873348d7ea83094430550fdd448913c2456c07e12"
+    }
+  },
+  "year": 2024
+}

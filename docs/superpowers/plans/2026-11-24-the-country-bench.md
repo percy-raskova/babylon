@@ -808,9 +808,34 @@ pub fn no_earner_per_person(opening: &EconomicOpening, first: &BenchPeriod) -> R
 
 Commit `perf(material-circuit): the rules' reads at the size of the country, without squares`.
 
-**When.** It is built before Task 8 when any set's one-period ratio in `timings.json` passes ten times the
-baseline's (100,000 bps). If none does, the builder reports the ratios, and the lead decides whether to build it
-before the 400-period runs (Calls of the lead, 5).
+**When.** It is built after Task 8's records of 34 periods and before the 400-period runs (Calls of the lead, 5).
+
+**What the records measured (25 November). Where this block and the text below differ, this block binds.**
+- With all six rules a period takes 22 to 25 seconds in periods 1 and 2, 94 in period 3 and 125 to 153 after
+  (`all-six.json`, `elapsed_ms`). The slow periods follow the count of stopped workplaces that the owner's restart
+  tests at the close: none in periods 1 and 2, 1,435 in period 3, 4,030 in period 4, 5,263 in period 34. That is
+  about 25 thousandths of a second for each tested workplace.
+- So the first thing to mend is the test of one stopped workplace, `try_site` in `src/adjustment/restart.rs`, and
+  everything it calls: `batch_cost`, `output_of`, `inputs_can_be_had`, `supplier_of`, `planned_by`,
+  `taken_by_others`, `made_or_sold` and `rest::made_hours`. For each tested workplace they read from the start
+  the period's market clearings, the inventory, the production policies, the input, handling and service input
+  coefficients, the replenishment rows, the process outputs, the production receipts, the service performance
+  rows, the local transfers and the local fulfillments. The list under **Files** names four of those reads. All
+  of them are in this task.
+- **Step 0, before any change: profile.** Time one slow period (period 5 of `all-six`) by its parts, with
+  temporary prints that are never committed or with a profiler, and report where the seconds go. Mend what the
+  profile shows, by this task's one method: a table built once per close in place of a read per row. If the
+  profile shows a cost that this method cannot remove, stop and report it.
+- **The pin is longer than Step 2b says.** The restart tests nothing before period 3, so two periods cannot guard
+  it. For `all-six` and `all-six-with-benefits` the pin of Step 2b steps FIVE periods and pins the digest and the
+  two counts at each of the five; for the other sets two periods, as written.
+- **The records are the last guard.** After the change the five records of 34 periods are recorded again
+  (`record_country_bench_sets`). Each must equal its committed record in every figure but the times
+  (`elapsed_ms` of each row, `total_ms` and `slowest_period` of the head). A record that differs in anything else
+  means the change moved the country: revert it and report. The new records, with the new times, are committed.
+- **Decision 1 is widened by this block and by Step 0 only.** No rule's logic changes; no receipt, figure, order
+  of rows, bound or public signature changes.
+- Step 5 also reports the seconds of period 5 of `all-six` before and after.
 
 **Files** (each found by its text):
 - `rust/crates/babylon-material-circuit/src/recurring/prices.rs` (`update_prices`: `resting_among` with
@@ -1113,3 +1138,19 @@ size tests' own builders; one form of `--run-ignored`; where each kind of comman
   had it and as the design's O12 means it (half the pay of the job lost). So in these runs an owner who works
   in their own business, or an unpaid family member, who loses that work is paid no laid-off benefit. What a
   ruined small owner is paid, if anything, is for the Director when the rebuilt opening sets its benefits.
+
+## What the records of 34 periods found (25 November)
+
+Tasks 6c, 6d, 6e, 7p and 8 are built (`8c05e9e27`, `ad722d536`, `cf43785a6`, `50166554e`, `bdd870396`). The lead's
+reading of the five records, with every figure, is `reports/country-bench-2026-11-24/README.md`. In short:
+
+- All five sets close 34 periods with the money equal in every row and every person and worker explained.
+- The shipped opening starves under every set by period 5, as it does with no rule. So the records say that the
+  rules run at the country's size and how fast. They do not say whether any rule restores the country.
+- Two people move to look for work in 34 periods, and the stop without pay holds nobody. Each period the owner's
+  restart tests about 5,000 stopped workplaces and restarts about 15.
+- The fund pays 14 of every 100 dollars due over the run.
+- About 770 of the 976 funded public providers are tested for an owner's restart every period, and all fail.
+- With all six rules a period takes 25 seconds while the country stands and 150 once it has collapsed (Task 7).
+- The `acted` lists of the heads count rows, as decision 3 of Task 8 says. A rule whose rows stand every period is
+  listed in every period though it did nothing (the stop without pay). Read the figures, not the lists.

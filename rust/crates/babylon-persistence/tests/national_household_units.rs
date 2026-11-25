@@ -3,7 +3,7 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::{self as engine, FinalDemandPrincipalId, MaterialCircuitState};
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, CommodityLabel, EconomicCatalogInput, EconomicOpening, SourceArtifact,
@@ -21,6 +21,8 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+#[path = "support/country_bench.rs"]
+mod country_bench;
 #[path = "support/country_sizes.rs"]
 mod country_sizes;
 #[path = "support/economy_health.rs"]
@@ -30,6 +32,7 @@ mod household_accounts;
 #[path = "support/supply_chain.rs"]
 mod supply_chain;
 
+use country_bench::{BenchError, CountryBench, RuleSet};
 use country_sizes::{CountrySizes, PlaceKey, PlaceSizes, SEEKER_BOUND};
 use economy_health::{Census, Opening};
 use household_accounts::{AccountReading, AccountSpec, PeriodReading, Session, TopTenth};
@@ -994,4 +997,131 @@ fn the_country_s_sizes() {
     assert_eq!(sizes.members_outside_their_place, 0);
     assert_eq!(sizes.seeker_rows, 67461);
     assert_eq!(sizes.members_with_seekers, 67509);
+}
+
+/// The bench opens on the state the game's session opens with. Both states are digested under the
+/// session's catalog: the digest covers the catalog's own digest (`wire/state.rs:542-558`), and the
+/// bench's catalog differs from the session's by its portfolios setting (the bench leaves the
+/// companies' portfolio choice out), so a digest under each one's own catalog would differ.
+#[test]
+fn the_bench_opens_on_the_session_s_state() {
+    let catalog = pooled_catalog();
+    let bench = CountryBench::open(catalog.opening(), RuleSet::None).expect("the bench opens");
+    let session = opened_session(catalog, "country-bench-opening");
+    let of_session =
+        engine::material_circuit_state_digest(session.catalog(), session.material().state())
+            .expect("the session's state digests");
+    let of_bench = engine::material_circuit_state_digest(session.catalog(), bench.state())
+        .expect("the bench's state digests under the session's catalog");
+    assert_eq!(of_bench, of_session);
+}
+
+#[test]
+fn one_bench_period_conserves_money_and_persons() {
+    let catalog = pooled_catalog();
+    let mut bench = CountryBench::open(catalog.opening(), RuleSet::None).expect("the bench opens");
+    let money_of = |state: &MaterialCircuitState| {
+        economy_health::economy(state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the book totals")
+            .micro_units()
+    };
+    let opening_money = money_of(bench.state());
+    let period = bench.step().expect("the first period closes");
+    println!("one baseline period took {:?}", period.elapsed);
+    assert_eq!(period.receipts.resolve_tick, 1);
+    assert_eq!(money_of(bench.state()), opening_money);
+    assert_ne!(period.receipts.staffing_members.len(), 0);
+}
+
+/// Each check passes when its two sides are equal and refuses a difference of one either way.
+#[test]
+fn the_three_checks_refuse_a_difference_of_one() {
+    assert!(country_bench::check_money(7, 100, 100).is_ok());
+    for closing in [101, 99] {
+        assert!(matches!(
+            country_bench::check_money(7, 100, closing),
+            Err(BenchError::MoneyNotConserved { period: 7, opening: 100, closing: c }) if c == closing
+        ));
+    }
+    assert!(country_bench::check_persons(7, 100, 3, 2, 101).is_ok());
+    for closing in [100, 102] {
+        assert!(matches!(
+            country_bench::check_persons(7, 100, 3, 2, closing),
+            Err(BenchError::PersonsNotExplained { period: 7, expected: 101, closing: c }) if c == closing
+        ));
+    }
+    assert!(country_bench::check_labor_force(7, 50, 4, 46).is_ok());
+    for closing in [47, 45] {
+        assert!(matches!(
+            country_bench::check_labor_force(7, 50, 4, closing),
+            Err(BenchError::LaborForceNotExplained { period: 7, expected: 46, closing: c }) if c == closing
+        ));
+    }
+}
+
+/// Plays `periods` closes of the bench under one rule set and returns its health record.
+fn bench_report(set: RuleSet, periods: u64) -> Value {
+    let input = economic_catalog::national_catalog_input();
+    let wage = default_wage(&input);
+    let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
+        .expect("the national campaign");
+    let census = Census::new(catalog.opening(), wage);
+    let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
+    let mut rows = Vec::new();
+    for _ in 0..periods {
+        let open = Opening::read(&census, bench.catalog(), bench.state());
+        let stepped = bench
+            .step()
+            .unwrap_or_else(|error| panic!("the period is refused: {error}"));
+        let mut row = economy_health::period_record(
+            &census,
+            &open,
+            &stepped.receipts,
+            bench.catalog(),
+            bench.state(),
+        );
+        assert_eq!(row["period"], json!(stepped.period));
+        let elapsed_ms = u64::try_from(stepped.elapsed.as_millis()).expect("a short time");
+        row.as_object_mut()
+            .expect("a period row is an object")
+            .insert("elapsed_ms".to_owned(), json!(elapsed_ms));
+        rows.push(row);
+    }
+    let panel: Vec<Value> = census
+        .panel
+        .iter()
+        .map(|county| json!({"name": county.name, "geoid": county.geoid, "rule": county.rule}))
+        .collect();
+    let mut record = country_bench::bench_header(set);
+    let head = record.as_object_mut().expect("the header is an object");
+    head.insert("columns".to_owned(), economy_health::columns());
+    head.insert("panel".to_owned(), json!(panel));
+    head.insert("periods".to_owned(), json!(rows));
+    record
+}
+
+fn bench_report_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../reports/country-bench-2026-11-24")
+        .join(name)
+}
+
+#[test]
+#[ignore = "writes reports/country-bench-2026-11-24/baseline.json"]
+fn record_country_bench_baseline() {
+    let record = bench_report(RuleSet::None, 34);
+    write_compact(&record, &bench_report_path("baseline.json"));
+    let totals: Vec<&Value> = record["periods"]
+        .as_array()
+        .expect("periods")
+        .iter()
+        .map(|row| &row["money"]["total"])
+        .collect();
+    assert_eq!(totals.len(), 34);
+    assert!(
+        totals.iter().all(|total| *total == totals[0]),
+        "the money total of every row is equal"
+    );
 }

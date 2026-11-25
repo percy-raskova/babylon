@@ -16,15 +16,18 @@ yet ask for a rule. It ran five sets of rules for 34 periods each:
 | `all-six` | That, people who look for work in their place, the stop without pay and the owner's restart |
 | `all-six-with-benefits` | All six, and a national fund that pays a no-earner benefit and a laid-off benefit |
 
-Each record is one JSON file here, with its log. Every figure below is a sum of a record's own figures, or two such
-sums divided. `timings.json` holds one timed period of each set.
+Each record is one JSON file here. Every figure below is a sum of a record's own figures, or two such sums divided.
+`timings.json` holds one timed period of each set. The records were written three times: before the speed task,
+and again after each of its halves. The three recordings are equal in every figure but the times; the files here
+are the last. The runs' logs are not kept in the repository.
 
 ## What this is not
 
 **It is not a verdict on the rules.** The opening is the shipped one (schema 7). It collapses by itself, for causes
 on the supply side that were found before these rules were built, and the rebuilt opening (ADR313) is the repair.
-And 34 periods are too few to judge a rule: a verdict needs 400. These records answer three smaller questions: do
-the rules run at the country's size, how fast, and what breaks.
+The records of 34 periods answer three smaller questions: do the rules run at the country's size, how fast, and
+what breaks. The two runs of 400 periods ("Four hundred periods", below) settle one thing only: nothing brings the
+shipped country back.
 
 The bench leaves out the companies' choice of what to hold, City PD attendance, the County Review and the game's
 stored records. Each record's head lists what it leaves out.
@@ -76,6 +79,39 @@ Housing goes faster under the price rule. Housing unmet in period 5 is 67.82% wi
 price rule. Food comes first in the order of paying, and in a short market the price rises until what buyers can
 pay for equals what there is. In `market`, the dearest domestic food market clears at $91,523 a unit in period 3
 and at $4.3 million a unit in period 5, against posted prices of $304 and $311.
+
+## Four hundred periods
+
+Two runs of 400 periods were recorded after the speed task: no rule, and all six rules with benefits. Both close all
+400 periods with the money equal in every row. They took 8 and 25 minutes. `long-baseline-summary.json` and
+`long-all-six-with-benefits-summary.json` hold their rows of periods 1, 2, 3, 4, 5, 13, 34, 100, 200 and 400. The
+whole records (9.6 and 9.2 million bytes) are not committed.
+
+The shipped country does not come back in either.
+
+| Period | At work, no rule | At work, all six with benefits | Food unmet, no rule | Food unmet, with benefits |
+|---|---|---|---|---|
+| 34 | 47,992,819 | 2,560,281 | 99.55% | 99.78% |
+| 100 | 47,683,824 | 1,124,010 | 99.94% | 99.95% |
+| 200 | 47,552,780 | 472,721 | 99.96% | 99.97% |
+| 400 | 47,028,722 | 93,953 | 99.98% | 99.98% |
+
+At period 400 with the rules, 91,517 of the 93,953 people at work are in distribution and transport, and 2,020 in
+public provision. Over the 400 periods with all six rules and benefits:
+
+- 15 people move to look for work: 2 in period 3, and one in each of 13 periods between 116 and 172;
+- the stop without pay finds a workplace unable to pay 32 times, first in period 55, and holds 16 workplaces by the
+  end;
+- the owner's restart makes 2,286,262 tests that fail and 2,191 restarts, in 323 of the 400 periods, and owners put
+  in $59.1 thousand million;
+- the fund pays 4 of every 100 dollars due: $1,715 thousand million of $40,385 thousand million.
+
+The count of people is the same in both runs, though almost nobody is fed in either: food is required for 334.9
+million persons in period 1 and for 312.9 million in period 400. So in these runs births and deaths did not follow
+whether needs were met.
+
+That is a verdict on the shipped opening, and it was known: these rules cannot restore what the opening does not
+supply. It is not a verdict on the rules.
 
 ## What each rule did, by the counts
 
@@ -155,23 +191,30 @@ clear by price (ADR312, P12) bears on it.
 
 ## How fast
 
-Seconds for one period, on this machine:
+Seconds for one period on this machine, over the 34 periods of each record:
 
-| Set | Mean over 34 periods | Periods 1 and 2 | Slowest period |
-|---|---|---|---|
-| `baseline` | 1.4 | 1.4 and 1.3 | 1.6 |
-| `market` | 3.8 | 6 and 4 | 6.3 |
-| `no-seekers` | 8.2 | 12 and 9 | 12.2 |
-| `all-six` | 136.6 | 25 and 22 | 153.5 |
-| `all-six-with-benefits` | 135.8 | 24 and 23 | 151.8 |
+| Set | As first recorded: mean | slowest | After the speed task: mean | slowest |
+|---|---|---|---|---|
+| `baseline` | 1.4 | 1.6 | 1.3 | 1.8 |
+| `market` | 3.8 | 6.3 | 4.0 | 7.6 |
+| `no-seekers` | 8.2 | 12.2 | 3.9 | 6.8 |
+| `all-six` | 136.6 | 153.5 | 4.1 | 7.1 |
+| `all-six-with-benefits` | 135.8 | 151.8 | 4.4 | 7.3 |
 
-With all six rules a period takes about 25 seconds while the country stands, and about 150 once it has collapsed.
-The slow periods follow the count of stopped workplaces the owner's restart tests: 94 seconds with 1,435 tests,
-126 with 4,030, 153 with 5,263. Each test reads long lists of the whole country from the start. The plan's Task 7
-replaces those reads with tables built once a period. It is built next, before any 400-period run: at this speed
-400 periods of the slowest set would take fifteen hours.
+As first recorded, a period with all six rules took about 25 seconds while the country stood and about 150 once it
+had collapsed. The slow periods followed the count of stopped workplaces the owner's restart tests: 94 seconds with
+1,435 tests, 126 with 4,030, 153 with 5,263. A profile found the cause. For every workplace it tested, and for every
+resting price it raised, the engine made a table of every wage in the country anew. Timing one period of each set
+had hidden this, because nothing is stopped in period 1.
 
-A turn of the game is meant to take ten seconds. Only the first three sets fit that today.
+The plan's Task 7 mends it in two halves (`701bffc61`, `c2b13488f`): the restart, the market's tables, spare money,
+the hiring bound and the staffing in places each build their tables once a period. No rule's logic changed. The
+engine's tests, the small worlds' tests and the fifteen long tests keep every value, and the five records came out
+the same in every figure but the times. The slowest period of every set is now its first.
+
+A turn of the game is meant to take ten seconds. All five sets now fit that at the country's 187 pooled places. What
+is left of a period with the price rule on is mostly the market itself: workplaces restocking at the market's price
+(about 2 seconds) and households' buying (about 1). The speed task's list did not name those.
 
 ## What broke
 
@@ -191,7 +234,8 @@ changed.
 
 ## What cannot be concluded from these records
 
-- Whether any rule restores the country. The shipped opening leaves it nothing to restore.
+- Whether any rule restores a country that can stand. The shipped opening leaves the rules nothing to restore, in
+  34 periods and in 400.
 - Whether people who look for work in their place, or the owner's restart, do their work at the country's size.
   Both need workplaces that are hiring.
 - What the benefits do in a country that stands. Here the fund's taxes collapse with everything else.
@@ -207,7 +251,7 @@ changed.
 
 ## To record again
 
-From the checkout's root. The five sets take about two and three quarter hours at today's speed.
+From the checkout's root. The five sets take about ten minutes.
 
 ```
 mise run rust:test:q -- -p babylon-persistence \

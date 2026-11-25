@@ -1017,7 +1017,10 @@ pub(crate) fn place_wage(rows: &[(u64, u64, Currency)]) -> Result<Currency> {
         return Err(NationalGrainError::Arithmetic);
     }
     let (payroll, jobs) = rows.iter().fold((0_u128, 0_u128), |(payroll, jobs), row| {
-        (payroll + u128::from(row.1), jobs + u128::from(row.0))
+        (
+            payroll.saturating_add(u128::from(row.1)),
+            jobs.saturating_add(u128::from(row.0)),
+        )
     });
     let micro = if jobs > 0 {
         i128::try_from(
@@ -1070,14 +1073,14 @@ fn place_average(pay: &NationalTradePayReference, counties: &[CountyGeoid]) -> R
                 .map_err(|_| NationalGrainError::MissingPay)
         })
         .collect::<Result<Vec<_>>>()?;
-    if rows.is_empty() {
+    if rows.iter().all(|row| row.0 == 0) {
         Ok(pay.county_average(first))
     } else {
         place_wage(&rows)
     }
 }
 /// The wage each live site pays (rule O2): a site of one source workplace pays that workplace's
-/// own wage; a site of several pays `place_wage` over their pay rows; a fallback or a household
+/// own wage; a site of a place of several counties pays `place_wage` over its source rows; a fallback or a household
 /// enterprise pays its place's average.
 fn site_wages(
     pay: &NationalTradePayReference,
@@ -1087,19 +1090,22 @@ fn site_wages(
     places: &BTreeMap<FinancialDomainId, Vec<CountyGeoid>>,
 ) -> Result<BTreeMap<SiteId, Currency>> {
     let mut wages = BTreeMap::new();
-    for site in sites.keys() {
+    for (site, row) in sites {
+        let domain = domains.get(&AccountId::Site(*site)).ok_or(
+            NationalGrainError::MissingFinancialDomain(AccountId::Site(*site)),
+        )?;
         let wage = match qcew_rows.get(site).map(Vec::as_slice) {
-            Some([(_, _, own)]) => *own,
+            // A representative site always pays the place's wage, even over one source row.
             Some(rows) if !rows.is_empty() => place_wage(rows)?,
-            _ => {
-                let domain = domains.get(&AccountId::Site(*site)).ok_or(
-                    NationalGrainError::MissingFinancialDomain(AccountId::Site(*site)),
-                )?;
-                place_average(
-                    pay,
-                    places.get(domain).ok_or(NationalGrainError::MissingPay)?,
-                )?
+            _ if domain.representative.is_none()
+                && matches!(row.target.source, ResidentWorkplaceSource::Qcew(_)) =>
+            {
+                row.county_wage.ok_or(NationalGrainError::MissingPay)?
             }
+            _ => place_average(
+                pay,
+                places.get(domain).ok_or(NationalGrainError::MissingPay)?,
+            )?,
         };
         wages.insert(*site, wage);
     }
@@ -1247,7 +1253,9 @@ pub(crate) fn coarsen_source_allocation(
             row.target.clone()
         };
         domains.insert(AccountId::Site(target.site_id), domain);
-        if let (Some(pay), ResidentWorkplaceSource::Qcew(key)) = (pay, &row.target.source) {
+        if let (Some(pay), ResidentWorkplaceSource::Qcew(key), true) =
+            (pay, &row.target.source, domain.representative.is_some())
+        {
             let pay_row = pay.row(*key).ok_or(NationalGrainError::MissingPay)?;
             qcew_rows.entry(target.site_id).or_default().push((
                 pay_row.jobs,

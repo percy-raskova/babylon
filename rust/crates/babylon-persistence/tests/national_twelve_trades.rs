@@ -316,6 +316,26 @@ fn all_shares(catalog: &CapturedEconomicCatalog, site: SiteId) -> u64 {
         .sum()
 }
 
+/// Wayne's owner households: the principals of the budget keys that carry owner exposure.
+fn wayne_owners() -> Vec<AccountId> {
+    [
+        HouseholdBudgetKey::EarningOwner,
+        HouseholdBudgetKey::NoEarnerOwner,
+    ]
+    .into_iter()
+    .map(|key| AccountId::Household(national_economy::household_principal(county("26163"), key)))
+    .collect()
+}
+
+fn owners_shares(catalog: &CapturedEconomicCatalog, site: SiteId) -> u64 {
+    let owners = wayne_owners();
+    claims(catalog, site)
+        .into_iter()
+        .filter(|(who, _)| owners.contains(who))
+        .map(|(_, shares)| shares)
+        .sum()
+}
+
 #[test]
 fn wayne_car_plants_carry_the_two_claims() {
     let catalog = captured();
@@ -323,6 +343,7 @@ fn wayne_car_plants_carry_the_two_claims() {
     let canada = pooled(EconomicLocation::Foreign(ForeignCounterpart::Canada));
     let wayne = site_named(catalog, "site-26163-consumer-goods-5");
     assert_eq!(claim_shares(catalog, wayne.site_id, japan), 2_000);
+    assert_eq!(owners_shares(catalog, wayne.site_id), 8_000);
     assert_eq!(all_shares(catalog, wayne.site_id), 10_000);
     let canadian = catalog
         .opening()
@@ -334,7 +355,12 @@ fn wayne_car_plants_carry_the_two_claims() {
         })
         .expect("Canada's consumer goods site");
     assert_eq!(claim_shares(catalog, canadian.site_id, canada), 8_000);
+    assert_eq!(owners_shares(catalog, canadian.site_id), 2_000);
     assert_eq!(all_shares(catalog, canadian.site_id), 10_000);
+    let foreign: Vec<AccountId> = ForeignCounterpart::ALL
+        .into_iter()
+        .map(|c| pooled(EconomicLocation::Foreign(c)))
+        .collect();
     for site in catalog.opening().sites.iter().filter(|s| {
         s.function == EconomicFunction::CapitalGoods
             && (s.location == county("26163")
@@ -343,6 +369,13 @@ fn wayne_car_plants_carry_the_two_claims() {
         assert_eq!(claim_shares(catalog, site.site_id, japan), 0);
         if site.location == EconomicLocation::Foreign(ForeignCounterpart::Canada) {
             assert_eq!(claim_shares(catalog, site.site_id, canada), 10_000);
+        } else {
+            assert!(
+                claims(catalog, site.site_id)
+                    .iter()
+                    .all(|(who, _)| !foreign.contains(who)),
+                "Wayne's capital goods site has no foreign claimant"
+            );
         }
     }
 }
@@ -378,6 +411,41 @@ fn a_place_pays_its_counties_pay_over_jobs() {
 }
 
 #[test]
+fn a_representative_site_of_one_source_row_pays_the_place_wage() {
+    let catalog = captured();
+    let witness = catalog.national_generation().expect("the witness");
+    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
+    let mut by_site = BTreeMap::<SiteId, Vec<CohortKey>>::new();
+    for incidence in &witness.source_incidence {
+        if let ResidentWorkplaceSource::Qcew(key) = incidence.source {
+            if incidence.destination_site != incidence.source_site {
+                by_site
+                    .entry(incidence.destination_site)
+                    .or_default()
+                    .push(key);
+            }
+        }
+    }
+    let mut checked = 0;
+    for (site, keys) in by_site.iter().filter(|(_, keys)| keys.len() == 1) {
+        let Some(wage) = site_wage(catalog, *site) else {
+            continue;
+        };
+        let row = pay.row(keys[0]).expect("the pay row");
+        if row.jobs == 0 {
+            continue;
+        }
+        let expected = i128::try_from(
+            u128::from(row.payroll_usd) * 1_000_000 / (u128::from(row.jobs) * 2_080),
+        )
+        .expect("fits");
+        assert_eq!(wage.micro_units(), expected, "{keys:?}");
+        checked += 1;
+    }
+    assert!(checked > 0, "some one-row representative site was checked");
+}
+
+#[test]
 fn a_fallback_workplace_pays_the_place_average() {
     let catalog = captured();
     let witness = catalog.national_generation().expect("the witness");
@@ -391,6 +459,7 @@ fn a_fallback_workplace_pays_the_place_average() {
             .destination
     };
     let mut checked = 0;
+    let mut multi = 0;
     for incidence in witness.source_incidence.iter().filter(|i| {
         matches!(i.source, ResidentWorkplaceSource::ResidentEmployerFallback)
             && site_wage(catalog, i.destination_site).is_some()
@@ -408,10 +477,8 @@ fn a_fallback_workplace_pays_the_place_average() {
             .collect();
         let jobs: u128 = rows.iter().map(|r| u128::from(r.jobs)).sum();
         let payroll: u128 = rows.iter().map(|r| u128::from(r.payroll_usd)).sum();
-        let expected = if counties.len() == 1 {
+        let expected = if counties.len() == 1 || rows.is_empty() || jobs == 0 {
             pay.county_average(counties[0]).micro_units()
-        } else if rows.is_empty() || jobs == 0 {
-            continue;
         } else {
             i128::try_from(payroll * 1_000_000 / (jobs * 2_080)).expect("fits")
         };
@@ -423,8 +490,13 @@ fn a_fallback_workplace_pays_the_place_average() {
             "a fallback site of {counties:?} pays its place's average"
         );
         checked += 1;
+        multi += usize::from(counties.len() > 1);
     }
     assert!(checked > 0, "some fallback site was checked");
+    assert!(
+        multi > 0,
+        "a fallback site of a multi-county place was checked"
+    );
 }
 
 #[test]

@@ -3,7 +3,13 @@ use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind as Kind,
 };
-use babylon_persistence::{national_cohorts, national_trade_pay};
+use babylon_persistence::national_economy::NationalGamePolicy;
+use babylon_persistence::national_household_allocation::{self, NationalHouseholdAllocation};
+use babylon_persistence::national_household_refinement::{self, NationalHouseholdLeafRoster};
+use babylon_persistence::{
+    national_cohorts, national_counties, national_household_time_allocation, national_households,
+    national_resident_allocation, national_resident_workforce, national_trade_pay,
+};
 
 const SHIPPED: &[u8] = include_bytes!("../../../../content/scenarios/national/defines.toml");
 const FIXTURE: &[u8] = include_bytes!("fixtures/national_twelve_trades.defines.toml");
@@ -103,4 +109,47 @@ fn a_ten_trade_policy_refuses_the_pay_table() {
             Kind::NationalTradePay
         ))
     );
+}
+
+fn household_budgets() -> NationalHouseholdAllocation {
+    national_household_allocation::allocate_households(
+        national_counties::national_county_reference().expect("the county reference loads"),
+        national_households::national_household_reference().expect("the household reference loads"),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference loads"),
+        1_000,
+    )
+    .expect("the households fit the authored cohorts")
+}
+
+fn empty_leaves(budgets: &NationalHouseholdAllocation) -> NationalHouseholdLeafRoster {
+    let time = national_household_time_allocation::allocate_household_time(
+        national_counties::national_county_reference().expect("the county reference loads"),
+        budgets,
+    )
+    .expect("the household time fits the authored budget");
+    national_household_refinement::refine_households(budgets, &time, &[])
+        .expect("the household refinement succeeds")
+}
+
+#[test]
+fn the_twelve_trade_source_allocation_fits_its_bounds() {
+    let policy = NationalGamePolicy::parse(std::str::from_utf8(FIXTURE).expect("utf8"))
+        .expect("the fixture admits");
+    let budgets = household_budgets();
+    let allocation = national_resident_allocation::allocate_home_county(
+        national_counties::national_county_reference().expect("the county reference loads"),
+        national_cohorts::national_cohort_reference_v2().expect("v2 cohorts"),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference loads"),
+        &budgets,
+        &empty_leaves(&budgets),
+        &policy,
+    )
+    .expect("the twelve-trade source allocation fits its own bounds");
+    let members: usize = allocation.workplaces.iter().map(|w| w.members.len()).sum();
+    assert!(allocation.workplaces.len() <= 131_072);
+    assert!(members <= 262_144);
+    assert_eq!(allocation.workplaces.len(), 68_281);
+    assert_eq!(members, 111_265);
 }

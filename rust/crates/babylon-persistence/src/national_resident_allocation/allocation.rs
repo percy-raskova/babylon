@@ -22,7 +22,7 @@ use babylon_kernel::geography::CountyGeoid;
 
 use babylon_material_circuit::{
     StaffingMemberBinding, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
-    StaffingWorkSource, UnitId, MAX_MATERIAL_CIRCUIT_ROWS, MAX_STAFFING_MEMBERS,
+    StaffingWorkSource, UnitId,
 };
 
 use crate::national_counties::AcsEstimate;
@@ -155,6 +155,12 @@ impl ResidentWorkplaceAllocation {
     }
 }
 
+/// Bounds of the county-level source list, before places are coarsened. The list is never live: the
+/// engine's own bounds still check the folded sites. Twelve trades admit about 68,281 workplaces.
+pub(crate) const MAX_SOURCE_WORKPLACES: usize = 131_072;
+/// Bound of the source list's staffing members.
+pub(crate) const MAX_SOURCE_STAFFING_MEMBERS: usize = 262_144;
+
 /// Allocate ACS-controlled people; QCEW contributes placement weights only.
 /// # Errors
 /// Refuses missing controls, inconsistent source scope, arithmetic or sparse row bounds.
@@ -239,7 +245,8 @@ pub fn allocate_home_county(
         n.checked_add(r.members.len())
             .ok_or(AllocationError::Arithmetic)
     })?;
-    if result.workplaces.len() > MAX_MATERIAL_CIRCUIT_ROWS || member_count > MAX_STAFFING_MEMBERS {
+    if result.workplaces.len() > MAX_SOURCE_WORKPLACES || member_count > MAX_SOURCE_STAFFING_MEMBERS
+    {
         return Err(AllocationError::Bounds);
     }
     if result

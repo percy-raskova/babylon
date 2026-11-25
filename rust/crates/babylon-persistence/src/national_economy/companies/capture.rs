@@ -2,9 +2,9 @@
 use super::assign::{self, Site};
 use super::model::{CompanyCapture, CompanyCaptureError, EmploymentTargets};
 use crate::national_economy::grain::ResidentWorkplaceSourceKind;
-use crate::national_economy::{opening, ResidentWorkplaceSource, ResidentWorkplaceTarget};
+use crate::national_economy::{ResidentWorkplaceSource, ResidentWorkplaceTarget};
 use crate::national_resident_allocation::AssignedResidentWorkplace;
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 use std::collections::BTreeMap;
@@ -42,6 +42,7 @@ pub(super) fn eligible_county(
 
 /// Construct the captured foundation's membership only after workplace coarsening is complete.
 pub(in crate::national_economy) fn from_workplaces(
+    trades: TradeSet,
     workplaces: &[AssignedResidentWorkplace],
     targets: EmploymentTargets,
 ) -> Result<CompanyCapture, CompanyCaptureError> {
@@ -68,8 +69,10 @@ pub(in crate::national_economy) fn from_workplaces(
         members: vec![],
         cells: vec![],
     };
-    for function in opening::FUNCTIONS
-        .into_iter()
+    for function in trades
+        .functions()
+        .iter()
+        .copied()
         .filter(|f| *f != EconomicFunction::PublicProvisioning)
     {
         let sites = by_function.remove(&function).unwrap_or_default();

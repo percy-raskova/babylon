@@ -433,7 +433,7 @@ fn process(
     let stored_output = matches!(output.kind, CommodityKind::Storable { .. });
     let installation = ProcessInstallation {
         process_id,
-        recipe: templates::recipe_id(context.function)?,
+        recipe: templates::recipe_id(builder.policy.trades, context.function)?,
         planned_batches: context.planned_batches,
         output_buffer: if stored_output { output_units } else { 0 },
     };

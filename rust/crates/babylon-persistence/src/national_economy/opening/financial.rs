@@ -4,7 +4,7 @@ use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::NationalGamePolicy;
 use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_material_circuit::PublicSpendingRule;
 
@@ -207,7 +207,7 @@ fn ownership(
         .is_some_and(|owner| owner != QcewOwnership::Private)
         || (actor.source_ownership.is_none()
             && actor.function == EconomicFunction::PublicProvisioning);
-    let remote = foreign_claim(actor);
+    let remote = foreign_claim(builder.policy.trades, actor);
     let remote_share = if remote.is_some() {
         u64::from(builder.policy.financial.cross_border_ownership_bps)
     } else {
@@ -281,16 +281,25 @@ fn claim(builder: &mut Builder<'_>, actor: &ActorContext, beneficiary: AccountId
     });
 }
 
+/// The trade whose private plants in Wayne carry Japan's claim, and whose plants in Canada carry Wayne's.
+pub(super) const fn claimed_plants(trades: TradeSet) -> EconomicFunction {
+    match trades {
+        TradeSet::Ten => EconomicFunction::CapitalGoods,
+        TradeSet::Twelve => EconomicFunction::ConsumerGoods,
+    }
+}
+
 /// Two explicitly Designed reciprocal claims make location and remittance distinct.
-fn foreign_claim(actor: &ActorContext) -> Option<EconomicLocation> {
+fn foreign_claim(trades: TradeSet, actor: &ActorContext) -> Option<EconomicLocation> {
+    let plants = claimed_plants(trades);
     if matches!(actor.location, EconomicLocation::County(county) if county.geoid().as_bytes() == *b"26163")
-        && actor.function == EconomicFunction::CapitalGoods
+        && actor.function == plants
         && actor.source_ownership == Some(QcewOwnership::Private)
     {
         return Some(EconomicLocation::Foreign(ForeignCounterpart::Japan));
     }
     if actor.location == EconomicLocation::Foreign(ForeignCounterpart::Canada)
-        && actor.function == EconomicFunction::CapitalGoods
+        && actor.function == plants
     {
         return "county:26163".parse().ok();
     }
@@ -408,4 +417,22 @@ fn add_budget(
         .ok_or(NationalOpeningError::Identity)?;
     *value = super::sum_amount(*value, amount)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::claimed_plants;
+    use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
+
+    #[test]
+    fn the_car_plants_carry_the_claims() {
+        assert_eq!(
+            claimed_plants(TradeSet::Ten),
+            EconomicFunction::CapitalGoods
+        );
+        assert_eq!(
+            claimed_plants(TradeSet::Twelve),
+            EconomicFunction::ConsumerGoods
+        );
+    }
 }

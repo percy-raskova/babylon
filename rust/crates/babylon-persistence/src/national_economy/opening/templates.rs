@@ -1,11 +1,11 @@
 //! Compact shared recipes and household needs; no site gets its own template copy.
-use super::{NationalOpeningError, Result, FUNCTIONS};
+use super::{NationalOpeningError, Result};
 use crate::economic_catalog::{
     CommodityAmount, CommodityLabel, HouseholdNeedCoefficient, HouseholdTemplate,
     HouseholdTemplateId, LaborRequirement, RecipeTemplate, RecipeTemplateId,
 };
 use crate::national_economy::NationalGamePolicy;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::{CommodityDefinition, MarketClearingPolicy, UnitId};
 
@@ -16,8 +16,10 @@ type Templates = (
     Vec<HouseholdTemplate>,
 );
 
-pub(super) fn recipe_id(function: EconomicFunction) -> Result<RecipeTemplateId> {
-    let index = FUNCTIONS
+/// The recipe id of a trade is its position in the scenario's trade list, plus one.
+pub(super) fn recipe_id(trades: TradeSet, function: EconomicFunction) -> Result<RecipeTemplateId> {
+    let index = trades
+        .functions()
         .iter()
         .position(|f| *f == function)
         .ok_or(NationalOpeningError::Policy)?;
@@ -52,7 +54,7 @@ pub(super) fn compile(policy: &NationalGamePolicy, unit: UnitId) -> Result<Templ
         .iter()
         .map(|(function, recipe)| {
             Ok(RecipeTemplate {
-                id: recipe_id(*function)?,
+                id: recipe_id(policy.trades, *function)?,
                 output: commodity(policy, &recipe.output, recipe.output_units_per_batch)?,
                 inputs: recipe
                     .inputs
@@ -146,6 +148,7 @@ pub(super) fn market_clearing(policy: &NationalGamePolicy) -> Result<Option<Mark
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_kernel::economic_identity::TradeSet;
 
     const FIXTURE: &str =
         include_str!("../../../tests/fixtures/national_twelve_trades.defines.toml");
@@ -172,5 +175,20 @@ mod tests {
         assert_eq!(clearing.adjustments.len(), 0);
         let shipped = NationalGamePolicy::parse(SHIPPED).expect("the shipped policy admits");
         assert_eq!(market_clearing(&shipped), Ok(None));
+    }
+
+    #[test]
+    fn recipe_ids_follow_the_set() {
+        use EconomicFunction::*;
+        let id = |set, function| recipe_id(set, function).map(|id| id.0);
+        assert_eq!(id(TradeSet::Ten, DistributionTransport), Ok(4));
+        assert_eq!(id(TradeSet::Ten, PublicProvisioning), Ok(10));
+        assert_eq!(id(TradeSet::Twelve, ConsumerGoods), Ok(4));
+        assert_eq!(id(TradeSet::Twelve, DistributionTransport), Ok(5));
+        assert_eq!(id(TradeSet::Twelve, PublicProvisioning), Ok(12));
+        assert_eq!(
+            id(TradeSet::Ten, ConsumerGoods),
+            Err(NationalOpeningError::Policy)
+        );
     }
 }

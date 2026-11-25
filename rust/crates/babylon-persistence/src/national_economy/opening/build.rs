@@ -88,19 +88,6 @@ impl std::error::Error for NationalOpeningError {}
 
 pub(in crate::national_economy) type Result<T> = std::result::Result<T, NationalOpeningError>;
 
-pub(in crate::national_economy) const FUNCTIONS: [EconomicFunction; 10] = [
-    EconomicFunction::BusinessServices,
-    EconomicFunction::CapitalGoods,
-    EconomicFunction::ConstructionHousing,
-    EconomicFunction::DistributionTransport,
-    EconomicFunction::EnergyUtilities,
-    EconomicFunction::Extraction,
-    EconomicFunction::Food,
-    EconomicFunction::HouseholdServices,
-    EconomicFunction::Manufacturing,
-    EconomicFunction::PublicProvisioning,
-];
-
 /// Initialization-only facts. Durable people and plans belong to graph/material state.
 #[derive(Clone, Debug)]
 pub(in crate::national_economy) struct ActorContext {
@@ -258,8 +245,11 @@ impl<'a> Builder<'a> {
         let companies = policy
             .companies
             .map(|targets| {
-                let base =
-                    companies::from_workplaces(&roster.workplaces.workplaces, targets.employment)?;
+                let base = companies::from_workplaces(
+                    policy.trades,
+                    &roster.workplaces.workplaces,
+                    targets.employment,
+                )?;
                 match targets.experiment {
                     Some(population) => companies::partition(base, population),
                     None => Ok(base),

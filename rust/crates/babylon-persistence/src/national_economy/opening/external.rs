@@ -1,5 +1,5 @@
 //! Bounded world cohorts. Trade dollars create neither people nor capacity.
-use super::{actors, ActorContext, Builder, NationalOpeningError, Result, FUNCTIONS};
+use super::{actors, ActorContext, Builder, NationalOpeningError, Result};
 use crate::economic_catalog::{
     EconomicSiteSource, ResidentStaffingMemberSeed, ResidentStaffingPoolSeed,
 };
@@ -70,18 +70,17 @@ fn add(
         counts.households,
         profile.price_scale_bps,
     )?;
-    // Until the opening reads the trade set (Task 6), only the ten of schema 7 are laid out.
-    let weights: &[u16; 10] = profile
-        .function_weights_bps
-        .as_slice()
-        .try_into()
-        .map_err(|_| NationalOpeningError::Policy)?;
+    let functions = builder.policy.trades.functions();
+    let weights = profile.function_weights_bps.as_slice();
+    if weights.len() != functions.len() {
+        return Err(NationalOpeningError::Policy);
+    }
     let GameProfileWage::PerHour(wage) = profile.wage else {
         return Err(NationalOpeningError::Policy);
     };
     let employed = partition(counts.employed, weights)?;
     let reserve = partition(counts.reserve, weights)?;
-    for (index, function) in FUNCTIONS.into_iter().enumerate() {
+    for (index, function) in functions.iter().copied().enumerate() {
         let mut identity = b"NationalExternalSiteV1\0".to_vec();
         identity.extend_from_slice(&location.canonical_bytes());
         identity.extend_from_slice(function.source_key().as_bytes());
@@ -186,12 +185,12 @@ fn staffing(
     Ok(())
 }
 
-/// Exact ten-function apportionment. Remainder ties follow the captured source-key order.
-fn partition(persons: u64, weights: &[u16; 10]) -> Result<[u64; 10]> {
+/// Exact apportionment over any number of trades. Remainder ties follow the captured source-key order.
+fn partition(persons: u64, weights: &[u16]) -> Result<Vec<u64>> {
     if weights.iter().map(|w| u64::from(*w)).sum::<u64>() != 10_000 {
         return Err(NationalOpeningError::Policy);
     }
-    let mut allocated = [0_u64; 10];
+    let mut allocated = vec![0_u64; weights.len()];
     let mut residuals = Vec::with_capacity(10);
     let mut assigned = 0_u64;
     for (i, weight) in weights.iter().enumerate() {
@@ -217,4 +216,32 @@ fn partition(persons: u64, weights: &[u16; 10]) -> Result<[u64; 10]> {
             .ok_or(NationalOpeningError::Arithmetic)?;
     }
     Ok(allocated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::partition;
+
+    #[test]
+    fn partition_keeps_its_rule() {
+        let ten = [1200, 300, 1000, 1200, 800, 1800, 800, 2000, 600, 300];
+        assert_eq!(
+            partition(1000, &ten),
+            Ok(vec![120, 30, 100, 120, 80, 180, 80, 200, 60, 30])
+        );
+        // One person over: the largest remainder (2,000 of the eighth weight) takes it.
+        assert_eq!(
+            partition(1001, &ten),
+            Ok(vec![120, 30, 100, 120, 80, 180, 80, 201, 60, 30])
+        );
+        let twelve = [
+            1200, 300, 1000, 1000, 200, 800, 1800, 800, 1800, 600, 300, 200,
+        ];
+        for persons in [0_u64, 1, 7, 1000, 123_457] {
+            let parts = partition(persons, &twelve).expect("twelve weights sum to 10,000");
+            assert_eq!(parts.len(), 12);
+            assert_eq!(parts.iter().sum::<u64>(), persons);
+        }
+        assert!(partition(10, &[5_000, 4_000]).is_err());
+    }
 }

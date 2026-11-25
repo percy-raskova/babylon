@@ -26,7 +26,6 @@ mod build;
 
 mod detail;
 
-pub(super) use build::FUNCTIONS;
 use build::{amount, quantity, sum_amount, ActorContext, Builder, Result};
 pub use build::{
     build_national_opening, NationalOpening, NationalOpeningError, NationalOpeningPolicy,

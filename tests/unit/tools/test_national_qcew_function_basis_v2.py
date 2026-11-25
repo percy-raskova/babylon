@@ -104,6 +104,16 @@ def test_version_1_files_keep_their_digests() -> None:
     assert trade_pay.ARTIFACT_OUT not in (cohort.ARTIFACT_OUT, cohort_v2.ARTIFACT_OUT)
     assert trade_pay.METADATA_OUT not in (cohort.METADATA_OUT, cohort_v2.METADATA_OUT)
     assert trade_accounts.ACCOUNTS_MAPPING not in (basis.MAPPING_PATH, v2.MAPPING_V2_PATH)
+    assert trade_accounts.ARTIFACT_OUT not in (
+        cohort.ARTIFACT_OUT,
+        cohort_v2.ARTIFACT_OUT,
+        trade_pay.ARTIFACT_OUT,
+    )
+    assert trade_accounts.METADATA_OUT not in (
+        cohort.METADATA_OUT,
+        cohort_v2.METADATA_OUT,
+        trade_pay.METADATA_OUT,
+    )
 
 
 def source(

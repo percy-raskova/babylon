@@ -1634,6 +1634,23 @@ artifacts:
       the county, its state, the nation, or the nation over all ownerships.
       Placed values are derived shares, never observations. Nothing hydrates a
       campaign and no reader exists yet.
+  - name: national_trade_accounts_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_trade_accounts.py
+    mode: register
+    rows: 811
+    sha256: 398d48d346a5676413823559a6244c34faa34a5e050f34262872c4c8e0e503b3
+    home: src/babylon/data/reference/economy/national_trade_accounts_2024.csv.gz
+    material_relation: >-
+      Part of PER-371: the accounts of the twelve trades. The 2024 BEA summary
+      supply and use tables folded into the twelve trades, with the rent that
+      home owners are counted as paying themselves cut out as owner-occupied
+      housing by the 2017 detail shares, and the jobs and payroll of each trade
+      from the version 2 jobs basis. Dense blocks of use, supply, make,
+      industry, jobs and split, in whole USD thousands, jobs or USD. Split
+      industries share by national published jobs. No money or hour is
+      allocated to a household, site or recipe, and no reader exists yet.
   - name: national_transport_reference_2024
     format: json.gz
     source_table: null

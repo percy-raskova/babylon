@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import csv
+import gzip
 import json
 import sys
 from fractions import Fraction
@@ -11,6 +13,7 @@ from typing import Any
 
 import openpyxl
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -232,3 +235,317 @@ def test_the_sources_manifest_pins_the_four_workbooks() -> None:
     assert all(
         set(s) == {"id", "path", "url", "bytes", "sha256", "note"} for s in manifest["sources"]
     )
+
+
+def nation_row(naics: str, jobs: int | None, payroll: int | None, ownership: str = "5") -> Any:
+    return v2.SourceRow(
+        "nation_leaf",
+        v2.NATION_AREA,
+        ownership,
+        naics,
+        14,
+        "" if jobs is not None else "N",
+        1,
+        jobs,
+        payroll,
+        None,
+    )
+
+
+def even_shares(mapping: Any) -> dict[str, dict[str, Fraction]]:
+    return {
+        code: {trade: Fraction(1, len(parts)) for trade in parts}
+        for code, parts in mapping.splits.items()
+    }
+
+
+def test_split_cell_parts_add_up() -> None:
+    thirds = [("a", Fraction(1, 3)), ("b", Fraction(2, 3))]
+    assert accounts.split_cell(7000, thirds) == {"a": 2333, "b": 4667}
+    assert accounts.split_cell(-5000, thirds) == {"a": -1667, "b": -3333}
+    assert accounts.split_cell(0, thirds) == {"a": 0, "b": 0}
+    halves = [("y", Fraction(1, 2)), ("x", Fraction(1, 2))]
+    assert accounts.split_cell(3, halves) == {"x": 2, "y": 1}
+    with pytest.raises(county.ReferenceBuildError, match="accounts_split_shares"):
+        accounts.split_cell(1, [("a", Fraction(1, 3))])
+
+
+def housing_fixture(tmp_path: Path) -> tuple[Any, Any]:
+    use = tmp_path / "use24.xlsx"
+    supply = tmp_path / "supply24.xlsx"
+    write_sheet(
+        use,
+        "2024",
+        ["HS", "T001", "F010"],
+        [
+            ["521CI", "x", 200_000, 0, 0],
+            ["5412OP", "x", 38_323, 0, 0],
+            ["HS", "x", 0, 0, 2_020_853],
+            ["T005", "x", 238_323, 0, 0],
+            ["V001", "x", 18_920, 0, 0],
+            ["T00OTOP", "x", 254_103, 0, 0],
+            ["T00OSUB", "x", 0, 0, 0],
+            ["V003", "x", 1_541_039, 0, 0],
+            ["VABAS", "x", 1_814_062, 0, 0],
+            ["T018", "x", 2_052_385, 0, 0],
+        ],
+        first_row=7,
+    )
+    write_sheet(
+        supply,
+        "2024",
+        ["HS", "23", "T007", "SUB", "T016"],
+        [
+            ["HS", "x", 3_162_745, 0, 3_162_745, -62_510, 3_143_691],
+            ["23", "x", 29_504, 0, 0, 0, 0],
+        ],
+        first_row=7,
+    )
+    return (
+        accounts.read_sheet(use, "2024", code_row=5, first_row=7),
+        accounts.read_sheet(supply, "2024", code_row=5, first_row=7),
+    )
+
+
+def folded(tmp_path: Path) -> dict[tuple[str, str, str], int]:
+    mapping = accounts.load_accounts_mapping(accounts.ACCOUNTS_MAPPING, v2.load_mapping_v2())
+    use, supply = housing_fixture(tmp_path)
+    cells = accounts.fold(use, supply, mapping, even_shares(mapping))
+    return {(c.block, c.row_key, c.column_key): c.value for c in cells}
+
+
+def test_owner_and_tenant_housing_add_up(tmp_path: Path) -> None:
+    got = folded(tmp_path)
+    owner, home = accounts.OWNER, "construction_housing"
+    assert got[("industry", owner, "intermediate_inputs")] == 212_560_000
+    assert got[("industry", owner, "compensation")] == 0
+    assert got[("industry", owner, "production_taxes_less_subsidies")] == 178_599_000
+    assert got[("industry", owner, "gross_operating_surplus")] == 1_164_524_000
+    assert got[("use", owner, "households")] == 1_553_178_000
+    for measure, source in (
+        ("intermediate_inputs", 238_323),
+        ("compensation", 18_920),
+        ("production_taxes_less_subsidies", 254_103),
+        ("gross_operating_surplus", 1_541_039),
+        ("value_added_basic", 1_814_062),
+        ("gross_output", 2_052_385),
+    ):
+        both = got[("industry", owner, measure)] + got[("industry", home, measure)]
+        assert both == 1000 * source, measure
+    both_use = got[("use", "business_services", owner)] + got[("use", "business_services", home)]
+    assert both_use == 238_323_000
+    assert got[("use", owner, "households")] + got[("use", home, "households")] == 2_020_853_000
+    expected = {
+        "commodity_output": 3_162_745_000,
+        "total_supply": 3_143_691_000,
+        "product_subsidies": -62_510_000,
+    }
+    for column in accounts.SUPPLY:
+        both = got[("supply", owner, column)] + got[("supply", home, column)]
+        assert both == expected.get(column, 0), column
+    assert got[("supply", owner, "total_supply")] == got[("use", owner, "households")]
+    assert (
+        got[("supply", owner, "commodity_output")]
+        == got[("supply", owner, "total_supply")] - got[("supply", owner, "product_subsidies")]
+    )
+
+
+def test_the_owner_makes_only_housing(tmp_path: Path) -> None:
+    got = folded(tmp_path)
+    owner, home = accounts.OWNER, "construction_housing"
+    made = got[("supply", owner, "commodity_output")]
+    nonzero = [k for k, v in got.items() if k[0] == "make" and k[1] == owner and v]
+    assert nonzero == [("make", owner, owner)]
+    assert got[("make", owner, owner)] == made
+    assert got[("make", home, home)] == 3_162_745_000 + 29_504_000 - made
+
+
+def test_split_codes_follow_national_jobs() -> None:
+    functions = v2.load_mapping_v2()
+    mapping = accounts.load_accounts_mapping(accounts.ACCOUNTS_MAPPING, functions)
+    nation = [
+        nation_row("113", 74_846, 1),
+        nation_row("114", 375_931, 1),
+        *(nation_row(code, 2, 1) for code in ("311", "3122", "313", "314")),
+        *(nation_row(code, 2, 1) for code in ("3343", "3341", "3352", "3351")),
+    ]
+    shares = accounts.split_shares(nation, mapping)
+    assert shares["113FF"] == {
+        "extraction": Fraction(74_846, 450_777),
+        "food": Fraction(375_931, 450_777),
+    }
+    sheet = accounts.BeaSheet(("113FF",), ("111CA",), {("113FF", "111CA"): 450_777})
+    cells = accounts.fold(sheet, accounts.BeaSheet((), (), {}), mapping, shares)
+    got = {(c.block, c.row_key, c.column_key): c.value for c in cells}
+    assert got[("use", "extraction", "food")] == 74_846_000
+    assert got[("use", "food", "food")] == 375_931_000
+    assert accounts.split_cells(nation, mapping)[0] == accounts.AccountCell(
+        "split", "113FF", "extraction", "jobs", 74_846
+    )
+    with pytest.raises(county.ReferenceBuildError, match="accounts_split_jobs: 113FF"):
+        accounts.split_shares([nation_row("113", 0, 0)], mapping)
+
+
+def test_jobs_sum_the_ownerships_and_the_public_three() -> None:
+    functions = v2.load_mapping_v2()
+    nation = [
+        nation_row("311", 10, 100, "5"),
+        nation_row("311", 4, 40, "1"),
+        nation_row("311", 6, 60, "3"),
+        nation_row("311", None, None, "2"),
+    ]
+    got = {
+        (c.row_key, c.column_key): (c.value, c.unit) for c in accounts.jobs_cells(nation, functions)
+    }
+    assert got[("food", "jobs")] == (20, "jobs")
+    assert got[("food", "annual_payroll_usd")] == (200, "usd")
+    assert got[("food", "jobs_public")] == (10, "jobs")
+    assert got[("food", "annual_payroll_public_usd")] == (100, "usd")
+    assert got[("extraction", "jobs")] == (0, "jobs")
+    assert len(got) == 48
+
+
+def identity_cells(output: int) -> tuple[list[Any], Any, Any]:
+    """One farm industry whose output differs from inputs plus value added by `output - 110`."""
+    use = accounts.BeaSheet(
+        ("111CA", "T005", "V001", "T00OTOP", "V003", "VABAS", "T018", "VAPRO"),
+        ("111CA", "T001", "F010", "T019"),
+        {
+            ("111CA", "111CA"): 40,
+            ("111CA", "T001"): 40,
+            ("111CA", "F010"): output - 40,
+            ("111CA", "T019"): output,
+            ("T005", "111CA"): 40,
+            ("V001", "111CA"): 40,
+            ("T00OTOP", "111CA"): 10,
+            ("V003", "111CA"): 20,
+            ("VABAS", "111CA"): 70,
+            ("T018", "111CA"): output,
+            ("VAPRO", "111CA"): output - 40,
+        },
+    )
+    supply = accounts.BeaSheet(
+        ("111CA", "T017"),
+        ("111CA", "T007", "T016"),
+        {
+            ("111CA", "111CA"): output,
+            ("111CA", "T007"): output,
+            ("111CA", "T016"): output,
+            ("T017", "111CA"): output,
+        },
+    )
+    mapping = accounts.load_accounts_mapping(accounts.ACCOUNTS_MAPPING, v2.load_mapping_v2())
+    return list(accounts.fold(use, supply, mapping, even_shares(mapping))), use, supply
+
+
+def test_a_gap_beyond_its_bound_is_refused() -> None:
+    cells, use, supply = identity_cells(120)
+    result = accounts.check(cells, use, supply)
+    assert result["checks"]["industry_output"] == 10
+    assert set(result["checks"]) == set(accounts.CHECK_NAMES)
+    assert result["source_controls"] == {"T018": 120, "T005": 40, "VABAS": 70, "T019": 120}
+    cells, use, supply = identity_cells(121)
+    with pytest.raises(
+        county.ReferenceBuildError, match=r"accounts_identity: industry_output/111CA"
+    ):
+        accounts.check(cells, use, supply)
+    cells, use, supply = identity_cells(110)
+    assert accounts.check(cells, use, supply)["checks"]["industry_output"] == 0
+
+
+def committed_cells() -> dict[tuple[str, str, str], tuple[str, int]]:
+    with gzip.open(accounts.ARTIFACT_OUT, "rt", newline="") as stream:
+        reader = csv.reader(stream)
+        assert tuple(next(reader)) == accounts.COLUMNS
+        return {(r[0], r[1], r[2]): (r[3], int(r[4])) for r in reader}
+
+
+def test_the_committed_accounts() -> None:
+    cells = committed_cells()
+    counts = {b: sum(k[0] == b for k in cells) for b in accounts.BLOCK_ORDER}
+    # The plan pins 796 rows with 345 in `use` (15 x 23), but its own INDUSTRIES (13) and
+    # FINAL_USES (11) make 24 columns: 15 x 24 = 360 and 811 rows in all.
+    assert counts == {
+        "use": 360,
+        "supply": 120,
+        "make": 195,
+        "industry": 78,
+        "jobs": 48,
+        "split": 10,
+    }
+    assert len(cells) == 811
+    metadata = json.loads(accounts.METADATA_OUT.read_bytes())
+    assert metadata["checks"] == {
+        "use_total": 2,
+        "use_row": 6,
+        "use_column": 8,
+        "supply_parts": 2,
+        "use_supply": 1,
+        "industry_output": 1,
+        "value_added": 1,
+        "make_row": 4,
+        "make_column": 4,
+        "make_use_output": 0,
+    }
+    split = {(k[1], k[2]): v[1] for k, v in cells.items() if k[0] == "split"}
+    assert split == {
+        ("113FF", "extraction"): 74_846,
+        ("113FF", "food"): 375_931,
+        ("311FT", "food"): 2_090_409,
+        ("311FT", "manufacturing"): 10_634,
+        ("313TT", "manufacturing"): 84_975,
+        ("313TT", "consumer_goods"): 96_972,
+        ("334", "consumer_goods"): 18_851,
+        ("334", "capital_goods"): 1_001_166,
+        ("335", "consumer_goods"): 60_010,
+        ("335", "capital_goods"): 360_166,
+    }
+    jobs = {
+        trade: (cells[("jobs", trade, "jobs")][1], cells[("jobs", trade, "annual_payroll_usd")][1])
+        for trade in accounts.TRADES
+    }
+    assert jobs == {
+        "food": (3_276_552, 182_524_887_785),
+        "extraction": (661_997, 81_101_049_742),
+        "energy_utilities": (966_571, 120_557_836_752),
+        "manufacturing": (5_061_467, 408_360_829_124),
+        "consumer_goods": (2_239_990, 168_955_584_595),
+        "capital_goods": (3_282_239, 372_473_890_208),
+        "construction_housing": (10_164_182, 815_427_986_577),
+        "distribution_transport": (29_169_333, 1_789_433_399_662),
+        "household_services": (42_212_557, 2_712_539_847_517),
+        "leisure_hospitality": (17_159_014, 572_592_943_503),
+        "business_services": (32_695_640, 3_809_815_227_073),
+        "public_provisioning": (7_846_751, 662_040_421_314),
+    }
+    assert sum(jobs_pair[0] for jobs_pair in jobs.values()) == 154_736_293
+    housing = sum(
+        cells[("use", row, "households")][1]
+        for row in ("owner_occupied_housing", "construction_housing")
+    )
+    assert housing == 3_151_785_000
+    gross = sum(cells[("industry", i, "gross_output")][1] for i in accounts.INDUSTRIES)
+    assert gross == 1000 * metadata["source_controls"]["T018"]
+    assert metadata["artifact"]["rows"] == len(cells)
+    assert metadata["artifact"]["sha256"] == county.sha256(accounts.ARTIFACT_OUT)
+    assert metadata["artifact"]["bytes"] == accounts.ARTIFACT_OUT.stat().st_size
+    registered = {
+        entry["name"]: entry
+        for entry in yaml.safe_load((ROOT / "data-artifacts.yaml").read_text())["artifacts"]
+    }["national_trade_accounts_2024"]
+    assert registered["sha256"] == metadata["artifact"]["sha256"]
+    assert registered["rows"] == len(cells)
+
+
+def test_every_block_is_dense_and_signed_as_the_source() -> None:
+    cells = committed_cells()
+    for row in accounts.PRODUCTS:
+        for column in (*accounts.INDUSTRIES, *accounts.FINAL_USES):
+            assert ("use", row, column) in cells
+    assert cells[("use", "scrap_used", "households")][0] == "usd_thousands"
+    assert cells[("jobs", "food", "jobs")][0] == "jobs"
+    assert cells[("jobs", "food", "annual_payroll_usd")][0] == "usd"
+    assert cells[("split", "113FF", "food")][0] == "jobs"
+    assert cells[("supply", "distribution_transport", "trade_margins")][1] < 0
+    assert cells[("supply", "food", "trade_margins")][1] > 0
+    assert cells[("supply", "food", "product_subsidies")][1] <= 0

@@ -3,28 +3,28 @@
   "periods_timed": 1,
   "sets": [
     {
-      "elapsed_ms": 1519,
+      "elapsed_ms": 1479,
       "ratio_to_baseline_bps": 10000,
       "set": "baseline"
     },
     {
-      "elapsed_ms": 8029,
-      "ratio_to_baseline_bps": 52834,
+      "elapsed_ms": 6513,
+      "ratio_to_baseline_bps": 44035,
       "set": "market"
     },
     {
-      "elapsed_ms": 13136,
-      "ratio_to_baseline_bps": 86435,
+      "elapsed_ms": 10911,
+      "ratio_to_baseline_bps": 73770,
       "set": "no-seekers"
     },
     {
-      "elapsed_ms": 28857,
-      "ratio_to_baseline_bps": 189878,
+      "elapsed_ms": 19995,
+      "ratio_to_baseline_bps": 135186,
       "set": "all-six"
     },
     {
-      "elapsed_ms": 28374,
-      "ratio_to_baseline_bps": 186703,
+      "elapsed_ms": 20479,
+      "ratio_to_baseline_bps": 138461,
       "set": "all-six-with-benefits"
     }
   ]

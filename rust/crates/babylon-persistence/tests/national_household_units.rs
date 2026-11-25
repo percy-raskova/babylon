@@ -2047,3 +2047,170 @@ fn the_benefits_column_adds_back() {
     println!("AllSixWithBenefits period 1: public {}", row["public"]);
     println!("AllSixWithBenefits period 1: benefits {benefits}");
 }
+
+/// One period of a set as the pin keeps it: set, period, state digest in hex, adjustment receipts, market clearings.
+type PinnedPeriod = (&'static str, u64, String, usize, usize);
+
+/// The state's digest in lowercase hex.
+fn digest_hex(bench: &CountryBench) -> String {
+    let digest = engine::material_circuit_state_digest(bench.catalog(), bench.state())
+        .expect("the state digests");
+    digest.iter().fold(String::new(), |mut out, byte| {
+        let _ = write!(out, "{byte:02x}");
+        out
+    })
+}
+
+/// What the bench's periods were before the squares of the engine were mended, filled in once from the first run.
+const PINNED: &[(&str, u64, &str, usize, usize)] = &[
+    (
+        "baseline",
+        1,
+        "5c5c7a178e2a10c66a16f6ccc79357e7c694697d468a235e3696af6577f54c71",
+        0,
+        0,
+    ),
+    (
+        "baseline",
+        2,
+        "1b0c9c574a31100469f6e1b511362511089ca0c2c39181aba4ce7b80a774747a",
+        0,
+        0,
+    ),
+    (
+        "market",
+        1,
+        "175e2c2f1e4256f398b788cc3c2c789cdacc0c2ebd0641fa73bd1e493ca2d861",
+        0,
+        728,
+    ),
+    (
+        "market",
+        2,
+        "adb6ee9c296a21c32c1ae426523d73861443f3f64adb57f86239a6e20e37daf8",
+        0,
+        949,
+    ),
+    (
+        "no-seekers",
+        1,
+        "cc54c0741fe27efc04b84f91bbcf5cc05a4d46802819b7dd48c9f8d1a8297dbb",
+        8873,
+        728,
+    ),
+    (
+        "no-seekers",
+        2,
+        "bcfe71102958e762858a1398c85789d3013a117cf24721165d382dd376d621ce",
+        8873,
+        953,
+    ),
+    (
+        "all-six",
+        1,
+        "212af063b5ea7f1fb5bfae2501d1def17a71488acf220edb7791f320e4156964",
+        17427,
+        728,
+    ),
+    (
+        "all-six",
+        2,
+        "b69d9919d443d9620b62385b782ea8fda1211addeffec46c019e07c172f71c5f",
+        17426,
+        954,
+    ),
+    (
+        "all-six",
+        3,
+        "9eae057310424a8802a5d93714f5c32ec6322d4629efe6f1985ec6b17a472b90",
+        24373,
+        976,
+    ),
+    (
+        "all-six",
+        4,
+        "07c0f1aab5343e7724df3f6f61f8c1e78d8b4d7c07f1db2d35ceb58133157d77",
+        27023,
+        1057,
+    ),
+    (
+        "all-six",
+        5,
+        "08d47735dd9ffe02d196fb80a031d5a81c16c632c3016dd1382ad8dfd0cac550",
+        27126,
+        1059,
+    ),
+    (
+        "all-six-with-benefits",
+        1,
+        "da772b3785b2dbc720d29e2aae6eb017324f3aa89360e8cd4bd4fe31f2ba1e76",
+        17427,
+        728,
+    ),
+    (
+        "all-six-with-benefits",
+        2,
+        "c84553610800183bc1895b82e41f3d6053481f74bd505183eedf6a265207ad19",
+        17426,
+        964,
+    ),
+    (
+        "all-six-with-benefits",
+        3,
+        "cbc2bf208a42c2bb14254eabcc4d8ca1cb47bb6f7fb9bf9a6b0b966ef47fd489",
+        24372,
+        1030,
+    ),
+    (
+        "all-six-with-benefits",
+        4,
+        "11fc758dc82f783e33e72caf764647a1630de64560f30d69a2ccf35eaa43834f",
+        26995,
+        1095,
+    ),
+    (
+        "all-six-with-benefits",
+        5,
+        "e9945af51e2e43244ba1098728acb077e44313e93d46853cb5420318f7baf288",
+        27124,
+        1099,
+    ),
+];
+
+/// The bench's own periods before the squares of the engine are mended: the state's digest, the adjustment
+/// receipts and the market clearings of each period, for every set. The restart tests nothing before period
+/// 3, so the sets with the stop rule step five periods.
+#[test]
+#[ignore = "national periods of every set; run by Task 7's gate"]
+fn the_bench_digests_before_the_squares() {
+    let mut actual: Vec<PinnedPeriod> = Vec::new();
+    for (set, periods) in [
+        (RuleSet::None, 2_u64),
+        (RuleSet::Market, 2),
+        (RuleSet::NoSeekers, 2),
+        (RuleSet::AllSix, 5),
+        (RuleSet::AllSixWithBenefits, 5),
+    ] {
+        let catalog = pooled_catalog();
+        let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
+        for _ in 0..periods {
+            let period = bench
+                .step()
+                .unwrap_or_else(|error| panic!("{}: {error}", set.name()));
+            actual.push((
+                set.name(),
+                period.period,
+                digest_hex(&bench),
+                period.adjustments.len(),
+                period.market_clearings.len(),
+            ));
+        }
+    }
+    let expected: Vec<PinnedPeriod> = PINNED
+        .iter()
+        .map(|&(set, period, digest, adjustments, clearings)| {
+            (set, period, digest.to_string(), adjustments, clearings)
+        })
+        .collect();
+    assert_eq!(actual, expected, "the bench's periods");
+}

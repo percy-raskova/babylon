@@ -49,6 +49,26 @@ pub(crate) fn made_hours(state: &MaterialCircuitState, site: SiteId) -> bool {
     })
 }
 
+/// The sites for which `made_hours` is true, found once: a site is among them when one of its employment terms
+/// names a member whose labor row of the closing period offers hours. For a state that is not monetary, none.
+pub(crate) fn sites_with_hours(state: &MaterialCircuitState) -> BTreeSet<SiteId> {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return BTreeSet::new();
+    };
+    let offering: BTreeSet<_> = economy
+        .member_labor
+        .iter()
+        .filter(|row| row.period == state.period && row.available_hours > 0)
+        .map(|row| row.member_id)
+        .collect();
+    economy
+        .employment
+        .iter()
+        .filter(|terms| offering.contains(&terms.member_id))
+        .map(|terms| terms.site_id)
+        .collect()
+}
+
 /// The products among `products` whose sellers rest at this close, with what each offered at its markets.
 pub(crate) fn resting_among(
     catalog: &MaterialCatalog,

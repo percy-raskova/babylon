@@ -18,13 +18,13 @@ use super::receipts::{
     AdjustmentReceipt, OwnerSpareReceipt, RestartReceipt, RestartTest, RestingPriceReceipt,
     RestingPriceToCostReceipt,
 };
-use super::rest;
+use super::rest::{self, Product};
 use super::standing::{StopHold, WorkplaceStanding, WorkplaceStandingRow};
 use crate::{
-    AccountId, CashTransferPurpose, CircuitAccounting, GoodId, HistoricalCostBook, MaterialCatalog,
-    MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MonetaryBook,
-    MonetaryCircuit, MoneyTransferReceipt, PricePolicy, PublicTransferTreatment, RecurringEconomy,
-    SiteId, UnitId,
+    AccountId, CashTransferPurpose, CircuitAccounting, FinalDemandPrincipalId, GoodId,
+    HistoricalCostBook, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
+    MaterialCircuitTransition, MonetaryBook, MonetaryCircuit, MoneyTransferReceipt, PricePolicy,
+    ProcessId, PublicTransferTreatment, RecurringEconomy, SiteId, UnitId,
 };
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
@@ -168,99 +168,397 @@ fn economy_of(state: &MaterialCircuitState) -> Result<(&MonetaryCircuit, &Recurr
     }
 }
 
-fn posted(recurring: &RecurringEconomy, site: SiteId, good: GoodId, unit: UnitId) -> Option<i128> {
-    recurring
-        .offers
-        .iter()
-        .find(|offer| (offer.site_id, offer.good_id, offer.unit_id) == (site, good, unit))
-        .map(|offer| offer.unit_price.micro_units())
+/// The first row of each key, in row order: what a `find` from the start of the rows returned.
+fn first_by<T, K: Ord, V>(
+    rows: &[T],
+    key: impl Fn(&T) -> K,
+    value: impl Fn(&T) -> V,
+) -> BTreeMap<K, V> {
+    let mut table = BTreeMap::new();
+    for row in rows {
+        table.entry(key(row)).or_insert_with(|| value(row));
+    }
+    table
+}
+
+/// Every row of each key, in row order: what a `filter` over the rows returned.
+fn all_by<T, K: Ord, V>(
+    rows: &[T],
+    key: impl Fn(&T) -> K,
+    value: impl Fn(&T) -> V,
+) -> BTreeMap<K, Vec<V>> {
+    let mut table: BTreeMap<K, Vec<V>> = BTreeMap::new();
+    for row in rows {
+        table.entry(key(row)).or_default().push(value(row));
+    }
+    table
+}
+
+/// The rows of a table at a key, or none.
+fn rows_at<'a, K: Ord, V>(table: &'a BTreeMap<K, Vec<V>>, key: &K) -> &'a [V] {
+    table.get(key).map_or(&[], Vec::as_slice)
+}
+
+/// The checked sum of quantities.
+fn total<'a>(mut quantities: impl Iterator<Item = &'a u64>) -> Result<u64> {
+    quantities
+        .try_fold(0_u64, |sum, quantity| sum.checked_add(*quantity))
+        .ok_or(MaterialCircuitError::Arithmetic)
+}
+
+/// What the restart reads of the offers, as they stand when the tables are made.
+struct OfferTables {
+    /// The price of the first offer of each product.
+    first: BTreeMap<Product, i128>,
+    /// The highest price among the offers of each product.
+    own_top: BTreeMap<Product, i128>,
+    /// The highest price of each good among all its sellers.
+    top: BTreeMap<(GoodId, UnitId), i128>,
+    /// The lowest `maximum` among a site's offers whose pricing has a range.
+    ceiling: BTreeMap<SiteId, i128>,
+}
+
+impl OfferTables {
+    fn of(recurring: &RecurringEconomy) -> Self {
+        let mut tables = Self {
+            first: BTreeMap::new(),
+            own_top: BTreeMap::new(),
+            top: BTreeMap::new(),
+            ceiling: BTreeMap::new(),
+        };
+        for offer in &recurring.offers {
+            let price = offer.unit_price.micro_units();
+            let product = (offer.site_id, offer.good_id, offer.unit_id);
+            tables.first.entry(product).or_insert(price);
+            let own = tables.own_top.entry(product).or_insert(price);
+            *own = (*own).max(price);
+            let top = tables
+                .top
+                .entry((offer.good_id, offer.unit_id))
+                .or_insert(price);
+            *top = (*top).max(price);
+            if let PricePolicy::ServiceResponsive { maximum, .. }
+            | PricePolicy::Responsive { maximum, .. } = offer.pricing
+            {
+                let ceiling = tables
+                    .ceiling
+                    .entry(offer.site_id)
+                    .or_insert(maximum.micro_units());
+                *ceiling = (*ceiling).min(maximum.micro_units());
+            }
+        }
+        tables
+    }
+}
+
+/// What the restart reads of the catalog and of the recurring economy's policies: they stand through the close.
+struct PlantTables {
+    /// The process of the first production policy of each site.
+    process_at: BTreeMap<SiteId, ProcessId>,
+    /// The batches planned by the first production policy of each process.
+    planned: BTreeMap<ProcessId, u64>,
+    /// The hours of one batch of each process, row by row.
+    labor: BTreeMap<ProcessId, Vec<u64>>,
+    /// The input coefficients of each process: good, unit and units a batch.
+    inputs: BTreeMap<ProcessId, Vec<(GoodId, UnitId, u64)>>,
+    /// The handling coefficients of each site: good, unit and hours a unit.
+    handling: BTreeMap<SiteId, Vec<(GoodId, UnitId, i128)>>,
+    /// The provider of the first service input of each (buyer, good, unit), and the most it may buy a period.
+    provider: BTreeMap<Product, (SiteId, u64)>,
+    /// The supplier of the first replenishment row of each (buyer, good, unit).
+    supplier: BTreeMap<Product, SiteId>,
+    /// The first output of each process: good, unit and units a batch.
+    output_of_process: BTreeMap<ProcessId, (GoodId, UnitId, u64)>,
+    /// The outputs of each (site, good, unit): process and units a batch.
+    outputs: BTreeMap<Product, Vec<(ProcessId, u64)>>,
+    /// The retailer of the first purchase policy of each (principal, good, unit).
+    retailer: BTreeMap<(FinalDemandPrincipalId, GoodId, UnitId), SiteId>,
+}
+
+impl PlantTables {
+    fn of(catalog: &MaterialCatalog, recurring: &RecurringEconomy) -> Self {
+        Self {
+            process_at: first_by(
+                &recurring.production,
+                |row| row.site_id,
+                |row| row.process_id,
+            ),
+            planned: first_by(
+                &recurring.production,
+                |row| row.process_id,
+                |row| row.planned_batches,
+            ),
+            labor: all_by(
+                &catalog.labor_coefficients,
+                |row| row.process_id,
+                |row| row.quantity_per_batch,
+            ),
+            inputs: all_by(
+                &catalog.input_coefficients,
+                |row| row.process_id,
+                |row| (row.good_id, row.unit_id, row.quantity_per_batch),
+            ),
+            handling: all_by(
+                &catalog.handling_coefficients,
+                |row| row.site_id,
+                |row| (row.good_id, row.unit_id, i128::from(row.hours_per_unit)),
+            ),
+            provider: first_by(
+                &catalog.service_inputs,
+                |row| (row.buyer_site_id, row.good_id, row.unit_id),
+                |row| {
+                    (
+                        row.provider_site_id,
+                        row.quantity_per_period.min(row.maximum_purchase),
+                    )
+                },
+            ),
+            supplier: first_by(
+                &recurring.replenishment,
+                |row| (row.buyer_site_id, row.good_id, row.unit_id),
+                |row| row.supplier_site_id,
+            ),
+            output_of_process: first_by(
+                &catalog.process_outputs,
+                |row| row.process_id,
+                |row| (row.good_id, row.unit_id, row.quantity_per_batch),
+            ),
+            outputs: all_by(
+                &catalog.process_outputs,
+                |row| (row.site_id, row.good_id, row.unit_id),
+                |row| (row.process_id, row.quantity_per_batch),
+            ),
+            retailer: first_by(
+                &recurring.household_purchases,
+                |row| (row.principal_id, row.good_id, row.unit_id),
+                |row| row.retailer_site_id,
+            ),
+        }
+    }
+}
+
+/// What the restart reads of the period's receipts, row by row in the order they stand.
+struct PeriodTables {
+    /// What each seller's markets wanted at the quote and sold: both quantities of each clearing.
+    clearings: BTreeMap<SiteId, Vec<(u64, u64)>>,
+    /// The units each supplier's local transfers moved.
+    shipped_by: BTreeMap<SiteId, Vec<u64>>,
+    /// The units each buyer's local transfers took in.
+    received_by: BTreeMap<SiteId, Vec<u64>>,
+    /// The units each retailer's local fulfillments handed over.
+    retailed_by: BTreeMap<SiteId, Vec<u64>>,
+    /// The units each site's service markets performed.
+    performed_by: BTreeMap<SiteId, Vec<u64>>,
+    /// The production receipts of each site: process and batches made.
+    made_by: BTreeMap<SiteId, Vec<(ProcessId, u64)>>,
+    /// The batches made, by process.
+    batches_of: BTreeMap<ProcessId, Vec<u64>>,
+    /// What each provider performed of a service, by buyer.
+    served: BTreeMap<Product, Vec<(AccountId, u64)>>,
+    /// What each supplier's local transfers moved of a product, by buyer's site.
+    sent: BTreeMap<Product, Vec<(SiteId, u64)>>,
+    /// What each retailer's local fulfillments handed over of a product.
+    retailed: BTreeMap<Product, Vec<u64>>,
+    /// What each household requires of a good or a service, goods first.
+    wanted: BTreeMap<FinalDemandPrincipalId, Vec<(GoodId, UnitId, u64)>>,
+}
+
+impl PeriodTables {
+    fn of(transition: &MaterialCircuitTransition) -> Self {
+        let mut wanted = all_by(
+            &transition.household_consumption,
+            |row| row.principal_id,
+            |row| (row.good_id, row.unit_id, row.required_quantity),
+        );
+        for row in &transition.household_services {
+            wanted.entry(row.principal_id).or_default().push((
+                row.good_id,
+                row.unit_id,
+                row.required_quantity,
+            ));
+        }
+        Self {
+            clearings: all_by(
+                &transition.market_clearings,
+                |row| row.site_id,
+                |row| (row.demand_at_quote, row.sold_quantity),
+            ),
+            shipped_by: all_by(
+                &transition.local_transfers,
+                |row| row.supplier_site_id,
+                |row| row.quantity,
+            ),
+            received_by: all_by(
+                &transition.local_transfers,
+                |row| row.buyer_site_id,
+                |row| row.quantity,
+            ),
+            retailed_by: all_by(
+                &transition.local_fulfillments,
+                |row| row.retailer_site_id,
+                |row| row.quantity,
+            ),
+            performed_by: all_by(
+                &transition.service_markets,
+                |row| row.site_id,
+                |row| row.performed_quantity,
+            ),
+            made_by: all_by(
+                &transition.production,
+                |row| row.site_id,
+                |row| (row.process_id, row.produced_batches),
+            ),
+            batches_of: all_by(
+                &transition.production,
+                |row| row.process_id,
+                |row| row.produced_batches,
+            ),
+            served: all_by(
+                &transition.service_performance,
+                |row| (row.provider_site_id, row.good_id, row.unit_id),
+                |row| (row.buyer, row.performed_quantity),
+            ),
+            sent: all_by(
+                &transition.local_transfers,
+                |row| (row.supplier_site_id, row.good_id, row.unit_id),
+                |row| (row.buyer_site_id, row.quantity),
+            ),
+            retailed: all_by(
+                &transition.local_fulfillments,
+                |row| (row.retailer_site_id, row.good_id, row.unit_id),
+                |row| row.quantity,
+            ),
+            wanted,
+        }
+    }
+}
+
+/// What the restart reads of the state's own books: they stand through the restart.
+struct LedgerTables {
+    /// The units each site holds of each product.
+    held: BTreeMap<Product, u64>,
+    /// The holder of the first ownership claim of each workplace.
+    holder: BTreeMap<SiteId, AccountId>,
+    /// The sites named as recipients of an operating grant by some public allocation.
+    granted: BTreeSet<SiteId>,
+    /// The largest `Wage` rate of each site's employment terms.
+    rate: BTreeMap<SiteId, i128>,
+    /// The sites whose people made available any hours in the closing period.
+    hours: BTreeSet<SiteId>,
+}
+
+impl LedgerTables {
+    fn of(state: &MaterialCircuitState, economy: &MonetaryCircuit) -> Self {
+        let mut held: BTreeMap<Product, u64> = BTreeMap::new();
+        for row in &state.inventory {
+            let units = held
+                .entry((row.site_id, row.good_id, row.unit_id))
+                .or_insert(0);
+            *units = units.saturating_add(row.quantity);
+        }
+        let mut rate: BTreeMap<SiteId, i128> = BTreeMap::new();
+        for ((site, _), wage) in crate::recurring::spare_money::wages(economy) {
+            let largest = rate.entry(site).or_insert(0);
+            *largest = (*largest).max(wage);
+        }
+        Self {
+            held,
+            holder: first_by(
+                &economy.financial.ownership,
+                |claim| claim.issuer_site_id,
+                |claim| claim.beneficiary,
+            ),
+            granted: economy
+                .financial
+                .public_allocations
+                .iter()
+                .filter(|row| row.treatment == PublicTransferTreatment::ProviderOperatingGrant)
+                .filter_map(|row| match row.recipient {
+                    AccountId::Site(site) => Some(site),
+                    _ => None,
+                })
+                .collect(),
+            rate,
+            hours: rest::sites_with_hours(state),
+        }
+    }
+}
+
+/// Everything the restart reads from a long list, indexed once: each table keeps the rows as the old read found
+/// them, the first row of a key where the read took the first and every row of a key, in row order, where it
+/// summed. It is made before the restart's first read, and the offers are made again when a price was raised;
+/// nothing else the restart reads is changed before the last test of a workplace.
+struct CloseTables {
+    offers: OfferTables,
+    plant: PlantTables,
+    period: PeriodTables,
+    ledger: LedgerTables,
+}
+
+impl CloseTables {
+    fn build(catalog: &MaterialCatalog, transition: &MaterialCircuitTransition) -> Result<Self> {
+        let (economy, recurring) = economy_of(&transition.state)?;
+        Ok(Self {
+            offers: OfferTables::of(recurring),
+            plant: PlantTables::of(catalog, recurring),
+            period: PeriodTables::of(transition),
+            ledger: LedgerTables::of(&transition.state, economy),
+        })
+    }
+
+    /// The posted price of a product: its first offer.
+    fn posted(&self, site: SiteId, good: GoodId, unit: UnitId) -> Option<i128> {
+        self.offers.first.get(&(site, good, unit)).copied()
+    }
+
+    /// The holder of a workplace's ownership claim: the first claim of the state's rows.
+    fn holder_of(&self, site: SiteId) -> Option<AccountId> {
+        self.ledger.holder.get(&site).copied()
+    }
 }
 
 /// The largest `Wage` rate of a site's employment terms.
-fn rate_of(economy: &MonetaryCircuit, site: SiteId) -> i128 {
-    crate::recurring::spare_money::wages(economy)
-        .into_iter()
-        .filter(|((owner, _), _)| *owner == site)
-        .map(|(_, rate)| rate)
-        .max()
-        .unwrap_or(0)
+fn rate_of(tables: &CloseTables, site: SiteId) -> i128 {
+    tables.ledger.rate.get(&site).copied().unwrap_or(0)
 }
 
 /// One batch's cost: a maker's hours at `rate` and each input at the highest posted price among its provider's
 /// offers; a merchant's hours a unit at `rate` and its supplier's posted price (one unit a batch).
 ///
 /// # Errors
-/// `Arithmetic`, or `MonetaryInvariant` for a state with no recurring economy.
-pub(crate) fn batch_cost(
-    catalog: &MaterialCatalog,
-    state: &MaterialCircuitState,
-    site: SiteId,
-    rate: i128,
-) -> Result<Option<i128>> {
-    let (_, recurring) = economy_of(state)?;
+/// `Arithmetic`.
+fn batch_cost(tables: &CloseTables, site: SiteId, rate: i128) -> Result<Option<i128>> {
     let arithmetic = MaterialCircuitError::Arithmetic;
-    if let Some(policy) = recurring.production.iter().find(|row| row.site_id == site) {
-        let hours = catalog
-            .labor_coefficients
-            .iter()
-            .filter(|row| row.process_id == policy.process_id)
-            .try_fold(0_u64, |sum, row| sum.checked_add(row.quantity_per_batch))
-            .ok_or(arithmetic)?;
+    let plant = &tables.plant;
+    if let Some(process) = plant.process_at.get(&site) {
+        let hours = total(rows_at(&plant.labor, process).iter())?;
         let mut cost = i128::from(hours).checked_mul(rate).ok_or(arithmetic)?;
-        for input in catalog
-            .input_coefficients
-            .iter()
-            .filter(|row| row.process_id == policy.process_id)
-        {
-            let provider = catalog
-                .service_inputs
-                .iter()
-                .find(|row| {
-                    row.buyer_site_id == site
-                        && row.good_id == input.good_id
-                        && row.unit_id == input.unit_id
-                })
-                .map(|row| row.provider_site_id);
-            let price = recurring
-                .offers
-                .iter()
-                .filter(|offer| offer.good_id == input.good_id && offer.unit_id == input.unit_id)
-                .filter(|offer| provider.is_none_or(|provider| offer.site_id == provider))
-                .map(|offer| offer.unit_price.micro_units())
-                .max();
-            let Some(price) = price else {
+        for &(good, unit, per_batch) in rows_at(&plant.inputs, process) {
+            let price = match plant.provider.get(&(site, good, unit)) {
+                Some(&(provider, _)) => tables.offers.own_top.get(&(provider, good, unit)),
+                None => tables.offers.top.get(&(good, unit)),
+            };
+            let Some(&price) = price else {
                 return Ok(None);
             };
-            cost = i128::from(input.quantity_per_batch)
+            cost = i128::from(per_batch)
                 .checked_mul(price)
                 .and_then(|inputs| cost.checked_add(inputs))
                 .ok_or(arithmetic)?;
         }
         return Ok(Some(cost));
     }
-    let Some(handling) = catalog
-        .handling_coefficients
-        .iter()
-        .find(|row| row.site_id == site)
+    let Some(&(good, unit, hours_per_unit)) = rows_at(&plant.handling, &site).first() else {
+        return Ok(None);
+    };
+    let Some(price) = plant
+        .supplier
+        .get(&(site, good, unit))
+        .and_then(|supplier| tables.posted(*supplier, good, unit))
     else {
         return Ok(None);
     };
-    let supplier = recurring.replenishment.iter().find(|row| {
-        row.buyer_site_id == site
-            && row.good_id == handling.good_id
-            && row.unit_id == handling.unit_id
-    });
-    let Some(price) = supplier.and_then(|row| {
-        posted(
-            recurring,
-            row.supplier_site_id,
-            handling.good_id,
-            handling.unit_id,
-        )
-    }) else {
-        return Ok(None);
-    };
-    Ok(i128::from(handling.hours_per_unit)
+    Ok(hours_per_unit
         .checked_mul(rate)
         .and_then(|hours| hours.checked_add(price)))
 }
@@ -269,38 +567,26 @@ pub(crate) fn batch_cost(
 fn output_of(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
+    tables: &CloseTables,
     site: SiteId,
     next_period: u64,
 ) -> Result<Option<Output>> {
-    let (_, recurring) = economy_of(state)?;
-    if let Some(policy) = recurring.production.iter().find(|row| row.site_id == site) {
-        let Some(out) = catalog
-            .process_outputs
-            .iter()
-            .find(|row| row.process_id == policy.process_id)
-        else {
+    let plant = &tables.plant;
+    if let Some(&process) = plant.process_at.get(&site) {
+        let Some(&(good, unit, per_batch)) = plant.output_of_process.get(&process) else {
             return Ok(None);
         };
-        let nameplate = crate::capacity::process_available(
-            catalog,
-            state,
-            policy.process_id,
-            site,
-            next_period,
-        )?;
-        return Ok(
-            posted(recurring, site, out.good_id, out.unit_id).map(|price| Output {
-                per_batch: out.quantity_per_batch,
-                nameplate,
-                price,
-            }),
-        );
+        let nameplate =
+            crate::capacity::process_available(catalog, state, process, site, next_period)?;
+        return Ok(tables.posted(site, good, unit).map(|price| Output {
+            per_batch,
+            nameplate,
+            price,
+        }));
     }
-    Ok(catalog
-        .handling_coefficients
-        .iter()
-        .find(|row| row.site_id == site)
-        .and_then(|row| posted(recurring, site, row.good_id, row.unit_id))
+    Ok(rows_at(&plant.handling, &site)
+        .first()
+        .and_then(|&(good, unit, _)| tables.posted(site, good, unit))
         .map(|price| Output {
             per_batch: 1,
             nameplate: u64::MAX,
@@ -314,34 +600,6 @@ fn workplaces(state: &MaterialCircuitState) -> Result<BTreeSet<SiteId>> {
     Ok(economy.employment.iter().map(|row| row.site_id).collect())
 }
 
-/// Whether some public allocation of the state names the site as the recipient of an operating grant: its price
-/// is a token that its public body's budget tops up, never meant to cover cost.
-fn funded_by_grant(state: &MaterialCircuitState, site: SiteId) -> bool {
-    match &state.accounting {
-        CircuitAccounting::Monetary(economy) => {
-            economy.financial.public_allocations.iter().any(|row| {
-                row.recipient == AccountId::Site(site)
-                    && row.treatment == PublicTransferTreatment::ProviderOperatingGrant
-            })
-        }
-        CircuitAccounting::PhysicalControl => false,
-    }
-}
-
-/// The lowest `maximum` among the site's offers whose pricing has a range; `None` when none has one.
-fn offer_ceiling(recurring: &RecurringEconomy, site: SiteId) -> Option<i128> {
-    recurring
-        .offers
-        .iter()
-        .filter(|offer| offer.site_id == site)
-        .filter_map(|offer| match offer.pricing {
-            PricePolicy::ServiceResponsive { maximum, .. }
-            | PricePolicy::Responsive { maximum, .. } => Some(maximum.micro_units()),
-            PricePolicy::Fixed => None,
-        })
-        .min()
-}
-
 /// Step (b): a price that rested at this close and stands under one unit's cost is raised to that cost, or to
 /// the lowest ceiling of the site's offers when that is lower; a provider funded by a grant is left alone. The
 /// period's price and service market receipts get the new price, and each raise has a receipt. Whether any
@@ -349,6 +607,7 @@ fn offer_ceiling(recurring: &RecurringEconomy, site: SiteId) -> Option<i128> {
 fn raise_resting_prices(
     catalog: &MaterialCatalog,
     transition: &mut MaterialCircuitTransition,
+    tables: &CloseTables,
 ) -> Result<bool> {
     let rested: BTreeSet<SiteId> = transition
         .adjustments
@@ -364,42 +623,66 @@ fn raise_resting_prices(
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let mut lifts = Vec::new();
     for site in rested {
-        if funded_by_grant(&transition.state, site) {
+        if tables.ledger.granted.contains(&site) {
             continue;
         }
-        let (economy, recurring) = economy_of(&transition.state)?;
-        let rate = rate_of(economy, site);
+        let rate = rate_of(tables, site);
         let (Some(cost), Some(output)) = (
-            batch_cost(catalog, &transition.state, site, rate)?,
-            output_of(catalog, &transition.state, site, next_period)?,
+            batch_cost(tables, site, rate)?,
+            output_of(catalog, &transition.state, tables, site, next_period)?,
         ) else {
             continue;
         };
         if let Some(unit) = raised_price(cost, output.per_batch, output.price) {
-            let unit = offer_ceiling(recurring, site).map_or(unit, |ceiling| unit.min(ceiling));
+            let unit = tables
+                .offers
+                .ceiling
+                .get(&site)
+                .map_or(unit, |ceiling| unit.min(*ceiling));
             if unit > output.price {
                 lifts.push((site, output.price, unit));
             }
         }
     }
-    for &(site, old, unit) in &lifts {
+    apply_lifts(transition, &lifts, closing);
+    Ok(!lifts.is_empty())
+}
+
+/// Write each raise: the offers of the site, the period's price and service market receipts, and the raise's own
+/// receipt, in the order of the sites. Each site is raised once, so the rows of a site are found once.
+fn apply_lifts(
+    transition: &mut MaterialCircuitTransition,
+    lifts: &[(SiteId, i128, i128)],
+    closing: u64,
+) {
+    if lifts.is_empty() {
+        return;
+    }
+    let at_offers = match &transition.state.accounting {
+        CircuitAccounting::Monetary(economy) => economy
+            .recurring
+            .as_deref()
+            .map_or_else(BTreeMap::new, |recurring| {
+                positions(&recurring.offers, |row| row.site_id)
+            }),
+        CircuitAccounting::PhysicalControl => BTreeMap::new(),
+    };
+    let at_prices = positions(&transition.prices, |row| row.site_id);
+    let at_markets = positions(&transition.service_markets, |row| row.site_id);
+    for &(site, old, unit) in lifts {
         let raised = Currency::from_micro_units(unit);
         if let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting {
             if let Some(recurring) = economy.recurring.as_mut() {
-                for offer in recurring.offers.iter_mut().filter(|o| o.site_id == site) {
-                    offer.unit_price = raised;
+                for &at in rows_at(&at_offers, &site) {
+                    recurring.offers[at].unit_price = raised;
                 }
             }
         }
-        for row in transition.prices.iter_mut().filter(|r| r.site_id == site) {
-            row.next_price = raised;
+        for &at in rows_at(&at_prices, &site) {
+            transition.prices[at].next_price = raised;
         }
-        for row in transition
-            .service_markets
-            .iter_mut()
-            .filter(|r| r.site_id == site)
-        {
-            row.next_price = raised;
+        for &at in rows_at(&at_markets, &site) {
+            transition.service_markets[at].next_price = raised;
         }
         transition
             .adjustments
@@ -412,96 +695,67 @@ fn raise_resting_prices(
                 },
             ));
     }
-    Ok(!lifts.is_empty())
+}
+
+/// The positions of the rows of each site, in row order.
+fn positions<T>(rows: &[T], site: impl Fn(&T) -> SiteId) -> BTreeMap<SiteId, Vec<usize>> {
+    let mut table: BTreeMap<SiteId, Vec<usize>> = BTreeMap::new();
+    for (at, row) in rows.iter().enumerate() {
+        table.entry(site(row)).or_default().push(at);
+    }
+    table
 }
 
 /// What a workplace sold and made in the closing period, as the prototype read them: it made or sold anything
 /// when it sold something, or it has a recurring production row and made or took in something.
-fn made_or_sold(
-    catalog: &MaterialCatalog,
-    transition: &MaterialCircuitTransition,
-    site: SiteId,
-) -> Result<bool> {
+fn made_or_sold(tables: &CloseTables, site: SiteId) -> Result<bool> {
     let arithmetic = MaterialCircuitError::Arithmetic;
-    let (_, recurring) = economy_of(&transition.state)?;
-    let sold = transition
-        .local_transfers
-        .iter()
-        .filter(|row| row.supplier_site_id == site)
-        .map(|row| row.quantity)
-        .chain(
-            transition
-                .local_fulfillments
-                .iter()
-                .filter(|row| row.retailer_site_id == site)
-                .map(|row| row.quantity),
-        )
-        .chain(
-            transition
-                .service_markets
-                .iter()
-                .filter(|row| row.site_id == site)
-                .map(|row| row.performed_quantity),
-        )
-        .try_fold(0_u64, u64::checked_add)
-        .ok_or(arithmetic)?;
+    let period = &tables.period;
+    let sold = total(
+        rows_at(&period.shipped_by, &site)
+            .iter()
+            .chain(rows_at(&period.retailed_by, &site))
+            .chain(rows_at(&period.performed_by, &site)),
+    )?;
     if sold > 0 {
         return Ok(true);
     }
-    if !recurring.production.iter().any(|row| row.site_id == site) {
+    if !tables.plant.process_at.contains_key(&site) {
         return Ok(false);
     }
     let mut made = 0_u64;
-    for row in transition.production.iter().filter(|r| r.site_id == site) {
-        let per_batch = catalog
-            .process_outputs
-            .iter()
-            .find(|out| out.process_id == row.process_id)
+    for &(process, batches) in rows_at(&period.made_by, &site) {
+        let per_batch = tables
+            .plant
+            .output_of_process
+            .get(&process)
             .ok_or(MaterialCircuitError::ProcessInvariant)?
-            .quantity_per_batch;
-        made = row
-            .produced_batches
-            .checked_mul(per_batch)
-            .ok_or(arithmetic)?;
+            .2;
+        made = batches.checked_mul(per_batch).ok_or(arithmetic)?;
     }
-    let taken = transition
-        .local_transfers
-        .iter()
-        .filter(|row| row.buyer_site_id == site)
-        .try_fold(0_u64, |sum, row| sum.checked_add(row.quantity))
-        .ok_or(arithmetic)?;
+    let taken = total(rows_at(&period.received_by, &site).iter())?;
     Ok(made.checked_add(taken).ok_or(arithmetic)? > 0)
 }
 
 /// An owner's money beyond one period of its own need at the posted prices: its cash less the goods and
 /// services its household requires. Each owner of a workplace, in account order.
-fn owner_spares(transition: &MaterialCircuitTransition) -> Result<BTreeMap<AccountId, i128>> {
+fn owner_spares(
+    transition: &MaterialCircuitTransition,
+    tables: &CloseTables,
+) -> Result<BTreeMap<AccountId, i128>> {
     let arithmetic = MaterialCircuitError::Arithmetic;
-    let (economy, recurring) = economy_of(&transition.state)?;
+    let (economy, _) = economy_of(&transition.state)?;
     let mut spares = BTreeMap::new();
     for owner in economy.financial.ownership.iter().map(|c| c.beneficiary) {
         let cash = economy.book.cash(owner)?.micro_units();
         let mut need = 0_i128;
         if let AccountId::Household(principal) = owner {
-            let wanted = transition
-                .household_consumption
-                .iter()
-                .filter(|row| row.principal_id == principal)
-                .map(|row| (row.good_id, row.unit_id, row.required_quantity))
-                .chain(
-                    transition
-                        .household_services
-                        .iter()
-                        .filter(|row| row.principal_id == principal)
-                        .map(|row| (row.good_id, row.unit_id, row.required_quantity)),
-                );
-            for (good, unit, quantity) in wanted {
-                let Some(purchase) = recurring.household_purchases.iter().find(|row| {
-                    row.principal_id == principal && row.good_id == good && row.unit_id == unit
-                }) else {
+            for &(good, unit, quantity) in rows_at(&tables.period.wanted, &principal) {
+                let Some(&retailer) = tables.plant.retailer.get(&(principal, good, unit)) else {
                     continue;
                 };
-                let price = posted(recurring, purchase.retailer_site_id, good, unit)
+                let price = tables
+                    .posted(retailer, good, unit)
                     .ok_or(MaterialCircuitError::PurchaseInvariant)?;
                 need = i128::from(quantity)
                     .checked_mul(price)
@@ -514,19 +768,6 @@ fn owner_spares(transition: &MaterialCircuitTransition) -> Result<BTreeMap<Accou
     Ok(spares)
 }
 
-/// The holder of a workplace's ownership claim: the first claim of the state's rows.
-fn holder_of(state: &MaterialCircuitState, site: SiteId) -> Option<AccountId> {
-    match &state.accounting {
-        CircuitAccounting::Monetary(economy) => economy
-            .financial
-            .ownership
-            .iter()
-            .find(|claim| claim.issuer_site_id == site)
-            .map(|claim| claim.beneficiary),
-        CircuitAccounting::PhysicalControl => None,
-    }
-}
-
 /// Whether the inputs of one batch of `site` can be had at this close: it holds each, or each it lacks is made
 /// by a supplier that employs people and made it in the period that closed, and that the bound of this close lets
 /// it buy: what the supplier plans to make for the next period (capped at nameplate and at its own bound) less
@@ -535,49 +776,42 @@ fn holder_of(state: &MaterialCircuitState, site: SiteId) -> Option<AccountId> {
 fn inputs_can_be_had(
     catalog: &MaterialCatalog,
     transition: &MaterialCircuitTransition,
+    tables: &CloseTables,
     bound: &HiringBound,
     site: SiteId,
 ) -> Result<bool> {
-    let state = &transition.state;
-    let (_, recurring) = economy_of(state)?;
-    let held = |good: GoodId, unit: UnitId| -> u64 {
-        state
-            .inventory
+    let plant = &tables.plant;
+    let needs: Vec<(GoodId, UnitId, u64)> = if let Some(process) = plant.process_at.get(&site) {
+        rows_at(&plant.inputs, process)
             .iter()
-            .filter(|row| row.site_id == site && row.good_id == good && row.unit_id == unit)
-            .map(|row| row.quantity)
-            .fold(0, u64::saturating_add)
+            .filter(|row| row.2 > 0)
+            .copied()
+            .collect()
+    } else {
+        rows_at(&plant.handling, &site)
+            .iter()
+            .map(|&(good, unit, _)| (good, unit, 1))
+            .collect()
     };
-    let needs: Vec<(GoodId, UnitId, u64)> =
-        if let Some(policy) = recurring.production.iter().find(|row| row.site_id == site) {
-            catalog
-                .input_coefficients
-                .iter()
-                .filter(|row| row.process_id == policy.process_id && row.quantity_per_batch > 0)
-                .map(|row| (row.good_id, row.unit_id, row.quantity_per_batch))
-                .collect()
-        } else {
-            catalog
-                .handling_coefficients
-                .iter()
-                .filter(|row| row.site_id == site)
-                .map(|row| (row.good_id, row.unit_id, 1))
-                .collect()
-        };
     for (good, unit, per_batch) in needs {
-        let have = held(good, unit);
+        let have = tables
+            .ledger
+            .held
+            .get(&(site, good, unit))
+            .copied()
+            .unwrap_or(0);
         if have >= per_batch {
             continue;
         }
-        let Some((supplier, limit)) = supplier_of(catalog, recurring, site, good, unit) else {
+        let Some((supplier, limit)) = supplier_of(catalog, tables, site, good, unit) else {
             return Ok(false);
         };
-        let planned = planned_by(catalog, transition, bound, supplier, (good, unit))?;
+        let planned = planned_by(catalog, transition, tables, bound, supplier, (good, unit))?;
         let Some(planned) = planned else {
             return Ok(false);
         };
         let service = crate::services::is_service(catalog, good, unit);
-        let others = taken_by_others(transition, service, supplier, site, (good, unit))?;
+        let others = taken_by_others(tables, service, supplier, site, (good, unit))?;
         let for_me = planned.saturating_sub(others).min(limit);
         if for_me < per_batch.saturating_sub(have) {
             return Ok(false);
@@ -589,28 +823,19 @@ fn inputs_can_be_had(
 /// Who supplies `good` to `site`, and the most it may buy from them in a period.
 fn supplier_of(
     catalog: &MaterialCatalog,
-    recurring: &RecurringEconomy,
+    tables: &CloseTables,
     site: SiteId,
     good: GoodId,
     unit: UnitId,
 ) -> Option<(SiteId, u64)> {
     if crate::services::is_service(catalog, good, unit) {
-        catalog
-            .service_inputs
-            .iter()
-            .find(|row| row.buyer_site_id == site && row.good_id == good && row.unit_id == unit)
-            .map(|row| {
-                (
-                    row.provider_site_id,
-                    row.quantity_per_period.min(row.maximum_purchase),
-                )
-            })
+        tables.plant.provider.get(&(site, good, unit)).copied()
     } else {
-        recurring
-            .replenishment
-            .iter()
-            .find(|row| row.buyer_site_id == site && row.good_id == good && row.unit_id == unit)
-            .map(|row| (row.supplier_site_id, u64::MAX))
+        tables
+            .plant
+            .supplier
+            .get(&(site, good, unit))
+            .map(|supplier| (*supplier, u64::MAX))
     }
 }
 
@@ -619,46 +844,47 @@ fn supplier_of(
 fn planned_by(
     catalog: &MaterialCatalog,
     transition: &MaterialCircuitTransition,
+    tables: &CloseTables,
     bound: &HiringBound,
     supplier: SiteId,
     (good, unit): (GoodId, UnitId),
 ) -> Result<Option<u64>> {
     let state = &transition.state;
-    let (_, recurring) = economy_of(state)?;
-    let outputs: Vec<_> = catalog
-        .process_outputs
-        .iter()
-        .filter(|row| row.site_id == supplier && row.good_id == good && row.unit_id == unit)
-        .collect();
-    let made_last = transition
-        .production
-        .iter()
-        .filter(|row| outputs.iter().any(|out| out.process_id == row.process_id))
-        .try_fold(0_u64, |sum, row| sum.checked_add(row.produced_batches))
-        .ok_or(MaterialCircuitError::Arithmetic)?;
-    if !rest::made_hours(state, supplier) || made_last == 0 {
+    let outputs = rows_at(&tables.plant.outputs, &(supplier, good, unit));
+    let mut counted = BTreeSet::new();
+    let mut made_last = 0_u64;
+    for &(process, _) in outputs {
+        if counted.insert(process) {
+            made_last = rows_at(&tables.period.batches_of, &process)
+                .iter()
+                .try_fold(made_last, |sum, batches| sum.checked_add(*batches))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+    }
+    if !tables.ledger.hours.contains(&supplier) || made_last == 0 {
         return Ok(None);
     }
     let mut planned = 0_u64;
-    for out in outputs {
+    for &(process, per_batch) in outputs {
         let nameplate = crate::capacity::process_available(
             catalog,
             state,
-            out.process_id,
+            process,
             supplier,
             bound.next_period,
         )?;
-        let mut batches = recurring
-            .production
-            .iter()
-            .find(|row| row.process_id == out.process_id)
-            .map_or(0, |row| row.planned_batches)
+        let mut batches = tables
+            .plant
+            .planned
+            .get(&process)
+            .copied()
+            .unwrap_or(0)
             .min(nameplate);
-        if let Some(&(own, _)) = bound.process.get(&out.process_id) {
+        if let Some(&(own, _)) = bound.process.get(&process) {
             batches = batches.min(own);
         }
         planned = batches
-            .checked_mul(out.quantity_per_batch)
+            .checked_mul(per_batch)
             .and_then(|made| planned.checked_add(made))
             .ok_or(MaterialCircuitError::Arithmetic)?;
     }
@@ -668,52 +894,29 @@ fn planned_by(
 /// What a supplier's other buyers took of a product in the period that closed: a service it performed for
 /// buyers other than `site`, or goods it sold to other buyers and to households.
 fn taken_by_others(
-    transition: &MaterialCircuitTransition,
+    tables: &CloseTables,
     service: bool,
     supplier: SiteId,
     site: SiteId,
     (good, unit): (GoodId, UnitId),
 ) -> Result<u64> {
+    let product = (supplier, good, unit);
+    let period = &tables.period;
     let taken: Vec<u64> = if service {
-        transition
-            .service_performance
+        rows_at(&period.served, &product)
             .iter()
-            .filter(|row| {
-                row.provider_site_id == supplier
-                    && row.good_id == good
-                    && row.unit_id == unit
-                    && row.buyer != AccountId::Site(site)
-            })
-            .map(|row| row.performed_quantity)
+            .filter(|(buyer, _)| *buyer != AccountId::Site(site))
+            .map(|(_, quantity)| *quantity)
             .collect()
     } else {
-        transition
-            .local_transfers
+        rows_at(&period.sent, &product)
             .iter()
-            .filter(|row| {
-                row.supplier_site_id == supplier
-                    && row.good_id == good
-                    && row.unit_id == unit
-                    && row.buyer_site_id != site
-            })
-            .map(|row| row.quantity)
-            .chain(
-                transition
-                    .local_fulfillments
-                    .iter()
-                    .filter(|row| {
-                        row.retailer_site_id == supplier
-                            && row.good_id == good
-                            && row.unit_id == unit
-                    })
-                    .map(|row| row.quantity),
-            )
+            .filter(|(buyer, _)| *buyer != site)
+            .map(|(_, quantity)| *quantity)
+            .chain(rows_at(&period.retailed, &product).iter().copied())
             .collect()
     };
-    taken
-        .into_iter()
-        .try_fold(0_u64, u64::checked_add)
-        .ok_or(MaterialCircuitError::Arithmetic)
+    total(taken.iter())
 }
 
 /// The sales test of one stopped workplace, and the inputs test: what its buyers could pay for at its price and
@@ -721,25 +924,24 @@ fn taken_by_others(
 fn try_site(
     catalog: &MaterialCatalog,
     transition: &MaterialCircuitTransition,
+    tables: &CloseTables,
     bound: &HiringBound,
     site: SiteId,
     outlay_periods: u64,
 ) -> Result<Option<Tried>> {
     let arithmetic = MaterialCircuitError::Arithmetic;
     let (economy, _) = economy_of(&transition.state)?;
-    let rate = rate_of(economy, site);
+    let rate = rate_of(tables, site);
     let (Some(cost), Some(output)) = (
-        batch_cost(catalog, &transition.state, site, rate)?,
-        output_of(catalog, &transition.state, site, bound.next_period)?,
+        batch_cost(tables, site, rate)?,
+        output_of(catalog, &transition.state, tables, site, bound.next_period)?,
     ) else {
         return Ok(None);
     };
-    let turned = transition
-        .market_clearings
+    let turned = rows_at(&tables.period.clearings, &site)
         .iter()
-        .filter(|row| row.site_id == site)
-        .try_fold(0_u64, |sum, row| {
-            let short = row.demand_at_quote.checked_sub(row.sold_quantity)?;
+        .try_fold(0_u64, |sum, &(demand, sold)| {
+            let short = demand.checked_sub(sold)?;
             sum.checked_add(short)
         })
         .ok_or(arithmetic)?;
@@ -757,7 +959,7 @@ fn try_site(
     if revenue <= cost {
         return Ok(Some(tried));
     }
-    if !inputs_can_be_had(catalog, transition, bound, site)? {
+    if !inputs_can_be_had(catalog, transition, tables, bound, site)? {
         tried.inputs_short = true;
         return Ok(Some(tried));
     }
@@ -810,14 +1012,20 @@ pub(crate) fn restart_stopped(
     if bound.next_period != next_period {
         return Err(MaterialCircuitError::MonetaryInvariant);
     }
-    let mut moved = raise_resting_prices(catalog, transition)?;
+    let mut tables = CloseTables::build(catalog, transition)?;
+    let mut moved = raise_resting_prices(catalog, transition, &tables)?;
+    if moved {
+        // The raise wrote the offers' prices: every other table stands as the close left it.
+        let (_, recurring) = economy_of(&transition.state)?;
+        tables.offers = OfferTables::of(recurring);
+    }
     let sites = workplaces(&transition.state)?;
     for site in &sites {
-        let did = made_or_sold(catalog, transition, *site)?;
+        let did = made_or_sold(&tables, *site)?;
         count(standing.row_mut(*site), did)?;
     }
     let period = transition.state.period;
-    let mut spares = owner_spares(transition)?;
+    let mut spares = owner_spares(transition, &tables)?;
     transition
         .adjustments
         .extend(spares.iter().map(|(owner, spare)| {
@@ -829,32 +1037,32 @@ pub(crate) fn restart_stopped(
         }));
     let mut tried = Vec::new();
     for site in &sites {
-        let tested = is_tested(
-            &standing.row_of(*site),
-            rest::made_hours(&transition.state, *site),
-        );
+        let tested = is_tested(&standing.row_of(*site), tables.ledger.hours.contains(site));
         if tested {
-            tried.extend(try_site(catalog, transition, bound, *site, outlay_periods)?);
+            tried.extend(try_site(
+                catalog,
+                transition,
+                &tables,
+                bound,
+                *site,
+                outlay_periods,
+            )?);
         }
     }
     let mut candidates: Vec<Candidate> = tried.iter().filter_map(|row| row.candidate).collect();
     rank(&mut candidates);
-    let seated = seat(
-        &candidates,
-        |site| holder_of(&transition.state, site),
-        &mut spares,
-    );
+    let seated = seat(&candidates, |site| tables.holder_of(site), &mut spares);
+    let seat_of: BTreeMap<SiteId, Option<AccountId>> =
+        first_by(&seated, |(site, _)| *site, |(_, owner)| *owner);
+    let money_of: BTreeMap<SiteId, i128> = first_by(&candidates, |row| row.site, |row| row.money);
     let mut receipts = Vec::new();
     for row in &tried {
-        let seat = seated.iter().find(|(site, _)| *site == row.site);
-        let money = candidates
-            .iter()
-            .find(|c| c.site == row.site)
-            .map_or(0, |c| c.money);
+        let seat = seat_of.get(&row.site);
+        let money = money_of.get(&row.site).copied().unwrap_or(0);
         let (test, owner) = match seat {
             _ if row.candidate.is_none() => (RestartTest::Failed, None),
-            Some((_, Some(owner))) => (RestartTest::Restarted, Some(*owner)),
-            _ => (RestartTest::NoBuyer, holder_of(&transition.state, row.site)),
+            Some(Some(owner)) => (RestartTest::Restarted, Some(*owner)),
+            _ => (RestartTest::NoBuyer, tables.holder_of(row.site)),
         };
         if test == RestartTest::Restarted {
             moved = true;
@@ -1045,5 +1253,315 @@ mod tests {
         count(&mut row, true)?;
         assert_eq!((row.periods_since_work, row.quiet_periods), (0, 0));
         Ok(())
+    }
+
+    /// The size test of the restart. A world of thousands of stopped workplaces, each tested at one close.
+    mod size {
+        use super::*;
+        use babylon_kernel::economic_location::EconomicLocation;
+
+        use crate::{
+            AdjustmentRule, AidBook, CapacityReservations, CapacitySupply, CommodityDefinition,
+            CommodityKind, CorridorId, EmploymentTerms, FinancialInstitutions,
+            HouseholdTimeAccounting, LaborCompensation, LogisticsNodeId, MarketClearingPolicy,
+            MaterialCatalogDefinition, MemberLaborCapacityRow, MerchantHandling,
+            MerchantHandlingCoefficient, MerchantRole, MonetaryBook, OwnershipClaim,
+            ReplenishmentPolicy, SellerOffer, SiteLogisticsNode, StaffingMemberId,
+        };
+
+        const STOPPED: u32 = 2_500;
+
+        /// A workplace of the fixture, its id made from a `u32`.
+        fn workplace(number: u32) -> SiteId {
+            let mut bytes = [7_u8; 32];
+            bytes[..4].copy_from_slice(&number.to_le_bytes());
+            SiteId::from_bytes(bytes)
+        }
+
+        fn good() -> GoodId {
+            GoodId::from_bytes([2; 32])
+        }
+
+        fn unit() -> UnitId {
+            UnitId::from_bytes([1; 32])
+        }
+
+        fn hours() -> UnitId {
+            UnitId::from_bytes([3; 32])
+        }
+
+        fn location() -> EconomicLocation {
+            "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type")
+        }
+
+        /// The catalog: `count` merchants, each handling one good at one hour a unit.
+        fn catalog(count: u32) -> MaterialCatalog {
+            let sites: Vec<SiteId> = (1..=count).map(workplace).collect();
+            MaterialCatalog::try_new(MaterialCatalogDefinition {
+                company_portfolios: None,
+                company_payouts: vec![],
+                capacity_policy: CapacitySupply::FiniteSchedule,
+                site_logistics_nodes: sites
+                    .iter()
+                    .map(|site| SiteLogisticsNode {
+                        site_id: *site,
+                        node_id: LogisticsNodeId::from_bytes(site.as_bytes()),
+                    })
+                    .collect(),
+                process_outputs: vec![],
+                input_coefficients: vec![],
+                labor_coefficients: vec![],
+                commodities: vec![CommodityDefinition {
+                    good_id: good(),
+                    unit_id: unit(),
+                    kind: CommodityKind::Storable { grams_per_unit: 1 },
+                }],
+                supplier_routes: vec![],
+                route_stages: vec![],
+                merchants: sites
+                    .iter()
+                    .map(|site| MerchantHandling {
+                        site_id: *site,
+                        location: location(),
+                        role: MerchantRole::Retail,
+                        capacity_id: CorridorId::from_bytes(site.as_bytes()),
+                        labor_unit_id: hours(),
+                    })
+                    .collect(),
+                handling_coefficients: sites
+                    .iter()
+                    .map(|site| MerchantHandlingCoefficient {
+                        site_id: *site,
+                        good_id: good(),
+                        unit_id: unit(),
+                        hours_per_unit: 1,
+                    })
+                    .collect(),
+                maintenance_binding: None,
+                aid_mandates: vec![],
+                household_time_policy: vec![],
+                service_inputs: vec![],
+                household_needs: vec![],
+                market_clearing: Some(MarketClearingPolicy {
+                    paying_order: vec![(good(), unit())],
+                    household_wants: vec![],
+                    plans_from_spare_money: false,
+                    adjustments: vec![
+                        AdjustmentRule::HiringWithinMeans,
+                        AdjustmentRule::SeekingInPlace,
+                        AdjustmentRule::StopWithoutPay,
+                        AdjustmentRule::RestingPrice,
+                        AdjustmentRule::OwnerRestart { outlay_periods: 1 },
+                    ],
+                }),
+            })
+            .expect("the fixture catalog is valid")
+        }
+
+        /// The closing state: each workplace employs one member who offers no hours, sells nothing, buys its
+        /// good from the next workplace, and is owned by one household.
+        fn state(count: u32) -> MaterialCircuitState {
+            let owner = FinalDemandPrincipalId::from_bytes([9; 32]);
+            let sites: Vec<SiteId> = (1..=count).map(workplace).collect();
+            let mut accounts = vec![CashAccount {
+                id: AccountId::Household(owner),
+                cash: Currency::from_micro_units(dollars(1_000_000)),
+            }];
+            accounts.extend(sites.iter().map(|site| CashAccount {
+                id: AccountId::Site(*site),
+                cash: Currency::from_micro_units(dollars(5)),
+            }));
+            let book = MonetaryBook::open(accounts).expect("the fixture opens");
+            let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
+                .expect("the fixture opens");
+            let mut financial = FinancialInstitutions::empty();
+            financial
+                .ownership
+                .extend(sites.iter().map(|site| OwnershipClaim {
+                    issuer_site_id: *site,
+                    beneficiary: AccountId::Household(owner),
+                    shares: 1,
+                }));
+            let member = |site: &SiteId| StaffingMemberId::from_bytes(site.as_bytes());
+            let recurring = RecurringEconomy {
+                households: vec![],
+                household_stocks: vec![],
+                household_purchases: vec![],
+                offers: sites
+                    .iter()
+                    .map(|site| SellerOffer {
+                        site_id: *site,
+                        good_id: good(),
+                        unit_id: unit(),
+                        unit_price: Currency::from_micro_units(dollars(3)),
+                        pricing: PricePolicy::Fixed,
+                    })
+                    .collect(),
+                replenishment: sites
+                    .iter()
+                    .enumerate()
+                    .map(|(at, site)| ReplenishmentPolicy {
+                        buyer_site_id: *site,
+                        supplier_site_id: sites[(at + 1) % sites.len()],
+                        good_id: good(),
+                        unit_id: unit(),
+                        target_stock: 0,
+                        maximum_purchase: 0,
+                        cash_floor: Currency::from_micro_units(0),
+                    })
+                    .collect(),
+                production: vec![],
+                attendance: vec![],
+                last_household_admission_period: 0,
+                last_household_consumption_period: 0,
+            };
+            MaterialCircuitState {
+                period: 1,
+                accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+                    aid: AidBook::default(),
+                    household_time: HouseholdTimeAccounting::NotModeled,
+                    financial,
+                    member_labor: sites
+                        .iter()
+                        .map(|site| MemberLaborCapacityRow {
+                            member_id: member(site),
+                            period: 1,
+                            available_hours: 0,
+                        })
+                        .collect(),
+                    costs,
+                    book,
+                    recurring: Some(Box::new(recurring)),
+                    employment: sites
+                        .iter()
+                        .map(|site| EmploymentTerms {
+                            member_id: member(site),
+                            site_id: *site,
+                            unit_id: hours(),
+                            payee: owner,
+                            compensation: LaborCompensation::Wage(Currency::from_micro_units(
+                                dollars(1),
+                            )),
+                        })
+                        .collect(),
+                })),
+                service_connections: vec![],
+                service_orders: vec![],
+                route_stage_capacities: vec![],
+                inventory: vec![],
+                orders: vec![],
+                freight: vec![],
+                corridor_capacities: vec![],
+                capacities: vec![],
+                labor: vec![],
+                production_commitments: vec![],
+                final_demand_principals: vec![],
+                final_demand_orders: vec![],
+                maintenance_service: None,
+                capacity_reservations: CapacityReservations::default(),
+            }
+        }
+
+        /// A period's transition with no receipt but its state.
+        fn transition(state: MaterialCircuitState) -> MaterialCircuitTransition {
+            MaterialCircuitTransition {
+                household_lifecycle: vec![],
+                resident_workforce_attrition: vec![],
+                agency_attendance: vec![],
+                aid: vec![],
+                collections: vec![],
+                aid_contributions: vec![],
+                household_time: vec![],
+                installation: vec![],
+                installation_decisions: vec![],
+                equipment_wear: vec![],
+                investment: vec![],
+                public_budgets: vec![],
+                public_programs: vec![],
+                taxes: vec![],
+                distributions: vec![],
+                company_basis: vec![],
+                company_distributions: vec![],
+                contributions: vec![],
+                staffing_members: vec![],
+                member_labor_use: vec![],
+                service_performance: vec![],
+                household_services: vec![],
+                service_markets: vec![],
+                service_outputs: vec![],
+                income: vec![],
+                state,
+                household_demand: vec![],
+                household_consumption: vec![],
+                procurement: vec![],
+                production_plans: vec![],
+                prices: vec![],
+                money_transfers: vec![],
+                wage_accruals: vec![],
+                labor_use: vec![],
+                production: vec![],
+                dispatches: vec![],
+                losses: vec![],
+                arrivals: vec![],
+                deliveries: vec![],
+                realizations: vec![],
+                handling: vec![],
+                local_fulfillments: vec![],
+                local_transfers: vec![],
+                maintenance: None,
+                market_clearings: vec![],
+                household_wants: vec![],
+                household_tiers: vec![],
+                adjustments: vec![],
+            }
+        }
+
+        /// A guard against a square coming back: thousands of stopped workplaces are tested at one close,
+        /// each by reading the close's tables. It times nothing; it sees that the close returns, that each
+        /// tested workplace has one restart receipt, and that the money is the same.
+        #[test]
+        fn many_stopped_workplaces_are_tested_for_a_restart() -> Result<()> {
+            let catalog = catalog(STOPPED);
+            let mut transition = transition(state(STOPPED));
+            let money_before = economy_of(&transition.state)?
+                .0
+                .book
+                .total_cash_and_reserves()?;
+            // Each workplace has been quiet for two closes: this close is its third.
+            let mut standing = WorkplaceStanding::opening();
+            for number in 1..=STOPPED {
+                standing.row_mut(workplace(number)).quiet_periods = RESTART_QUIET_PERIODS - 1;
+            }
+            let mut bound = HiringBound {
+                next_period: 2,
+                process: BTreeMap::new(),
+                rows: vec![],
+                cuts: BTreeMap::new(),
+            };
+            restart_stopped(&catalog, &mut transition, &mut standing, &mut bound, 2)?;
+            let tested: BTreeSet<SiteId> = transition
+                .adjustments
+                .iter()
+                .filter_map(|row| match row {
+                    AdjustmentReceipt::Restart(receipt) => Some(receipt.site_id),
+                    _ => None,
+                })
+                .collect();
+            let restarts = transition
+                .adjustments
+                .iter()
+                .filter(|row| matches!(row, AdjustmentReceipt::Restart(_)))
+                .count();
+            assert_eq!(restarts, usize::try_from(STOPPED).expect("a small count"));
+            assert_eq!(tested.len(), restarts, "one receipt for each workplace");
+            let money_after = economy_of(&transition.state)?
+                .0
+                .book
+                .total_cash_and_reserves()?;
+            assert_eq!(money_after, money_before, "the money is conserved");
+            Ok(())
+        }
     }
 }

@@ -854,16 +854,16 @@ pub opening_per_hundred: Option<u64>,
 // src/small_world/controls.rs
 /// The figure of the standing line: 100.
 pub const PER_HUNDRED: u64 = 100;
-pub const GOODS_HOLLOW_LINE: &str =
-    "A hollow part of a square: goods from the opening stock, whose hours were never measured.";
+pub const GOODS_HOLLOW_LINE: &str = "A hollow square: goods from the opening stock, whose hours were never \
+    measured. A part smaller than a square is drawn full.";
 /// The standing line of ruling 18: "Of every 100 units moved this period, {n} come from the opening stock.";
 /// empty without a record.
 #[must_use] pub fn opening_line(per_hundred: Option<u64>) -> String;
 /// The standing line's text entity.
 #[derive(Component)] pub struct OpeningLine;
-/// Write the standing line when the picture changes.
-pub fn paint_opening_line(shown: Res<SceneShown>, scene: Res<SceneRunner>, view: Res<PanelView>,
-    mut line: Query<&mut Text, With<OpeningLine>>);
+/// Write the standing line when the picture changes: the share of the period the picture shows, never the
+/// table pager's period.
+pub fn paint_opening_line(shown: Res<SceneShown>, mut line: Query<&mut Text, With<OpeningLine>>);
 /// Where the people line stands: after the five fixed lines of the key (was 4).
 const PEOPLE_LINE_AT: usize = 5;
 // src/small_world/script_tests.rs
@@ -880,11 +880,13 @@ const PROOF_SH5: &str;
    are pushed, before the empty moves are dropped and before sorting,
    from `result.hours`: `opening = (opening_micro_units + 500_000) / 1_000_000`, at most `quantity`. A move that
    has no `MoveHours` while `hours` is `Some` is `ReadingError::UnknownParty` with the move's receipt.
-3. **Drawn part full, part hollow** (S10). `goods_flows` writes, for a move with `opening: Some(n)`, a full flow of
-   `quantity - n` and a hollow flow of `n`, each only when above 0, same stream, same ends; with `None`, one
-   hollow flow as today. So a part that rounds to no unit is drawn full. Whether a part smaller than one mark
-   (`UNITS_PER_MARK`) draws is the library's own count, shown as today in the "not drawn" line; the lead judges at
-   the window.
+3. **Drawn part full, part hollow** (S10). `goods_flows` writes, for a move with `opening: Some(n)`, a hollow flow
+   of the opening's whole squares, `(n / UNITS_PER_MARK) * UNITS_PER_MARK`, and a full flow of the rest of the
+   quantity, each only when above 0, same stream, same ends; with `None`, one hollow flow as today. So a part
+   smaller than a square is drawn full, as S10 rules. (As first built, the hollow flow was `n` and the full flow
+   `quantity - n`. The library draws nothing for a flow of less than one mark, so a quarter to a third of the
+   food was not drawn in periods 2 to 4. The lead saw it at the window; the last section says how it was
+   mended.)
 4. **The standing line** counts every move drawn (power, care and food together; calls list 16):
    `opening_per_hundred = (100 * sum(opening_micro_units) + half) / (sum(quantity) * 1_000_000)` with half equal
    to half the divisor, so 12.5 shows 13. Built in `read_period` from `result.hours.moves`. Its text entity sits
@@ -902,9 +904,13 @@ const PROOF_SH5: &str;
     one step, again.
   - `every_hollow_part_is_the_record_s` (in `frame.rs`, `open_runner()`): period 1: the food stream's hollow total
     is 120 and its full total 40 (both places: 40 to homes and 20 of the 40 farm to shop each, from the opening);
-    power full 240 and hollow 0; care full 80 and hollow 0. Period 2: food hollow 60, full 100. In every period of
-    12, each move's hollow flow equals its record's opening rounded as decision 2, and full plus hollow equals the
-    move's quantity.
+    power full 240 and hollow 0; care full 80 and hollow 0. Period 2: food hollow 40, full 120. In every period of
+    12, each move's hollow flow equals its record's opening rounded as decision 2 and taken down to whole
+    squares, and full plus hollow equals the move's quantity.
+  - `the_split_loses_no_goods` (in `frame.rs`): a runner with hours and a runner without, side by side for 12
+    periods; in every period and goods stream the units not drawn with hours are no more than those without.
+  - `the_not_drawn_line_of_periods_two_and_four`: the whole "Not drawn" line of periods 2 and 4 (food 4 and
+    food 8).
   - `the_standing_line_counts_the_opening_share`: periods 1 to 4 read "Of every 100 units moved this period, 25
     come from the opening stock.", then 13, 6 and 3; `opening_line(None)` is "".
   - `the_goods_line_says_a_hollow_part_is_opening_stock`: `GOODS_HOLLOW_LINE` on screen once with the words
@@ -1006,7 +1012,8 @@ const PROOF_SH6: &str;
    less than back, and the panel shows the rest. The first set's rows by place take their hours from the
    workplaces; this set sums households. The two agree while nobody works outside their place, and the seekers
    move within one place only. An owner's capital put into a workplace is in the money columns only.
-3. **Cells.** Hours to the hour (`micro_hours_to_hour`; given with `grouped`), a dash for `None`; bars in `BONE`
+3. **Cells.** Hours to the hour (`micro_hours_to_hour`; given with `grouped`), a plain hyphen for `None` (the
+   figures' face holds ASCII only: a long dash is drawn as an empty box); bars in `BONE`
    on one scale, `HoursTable.scale`. Under the table `TO_THE_HOUR_LINE` shows while the second set does, and
    `TO_THE_CENT_LINE` while the first does (the lines under the table are spawned once today: the one that
    changes with the set gets a marker component and a paint system, as the "not drawn" line has). The headers
@@ -1185,3 +1192,28 @@ above from what it found. Tasks 1 and 2 needed nothing: no file they lean on had
 - **Not checked by reading** (the tasks' own tests show them): the pinned figures; whether the fold accepts the
   seekers' path, a restart's capital and a rule turned on in the middle of a run; the order of the money inside
   the support close; whether the pager's row has room for one more button (the lead's look).
+
+## What the lead's looks changed
+
+The lead ran the proofs of Tasks 5, 6 and 7 on the real display and read the scene as a player would. The code
+changed in five places, and the text above was amended to match.
+
+- **A part smaller than a square is drawn full** (Task 5, decision 3; `920976963`). As first built, a move was
+  split into `quantity - n` full units and `n` hollow units. The library draws nothing for a flow of less than
+  one square, so the scene's own "Not drawn" line read food 40 of 160 units in period 2 and food 56 in period 4,
+  in exactly the periods in which the opening stock runs down. Now the hollow flow carries the opening's whole
+  squares and the full flow the rest, and the line reads food 4 and food 8. The key says so. The standing line
+  did not change: it is the record's own share, to the unit. So in period 2 it says 13 of every 100 while few
+  squares are hollow: the design's rule (S10) draws a small part full.
+- **The standing line reads the picture shown** (Task 5; `e49e97c5f`), not the table pager's period:
+  `paint_opening_line` takes `SceneShown` and the line's query only.
+- **A cell without a figure shows a plain hyphen** (Task 6, decision 3). The figures' face is Bevy's bundled
+  Fira Mono, which holds ASCII only. The long dash first built was drawn as an empty box in every such cell.
+  `every_figure_of_the_table_is_a_sign_its_face_holds` pins the whole class: every figure of the table, in both
+  sets of columns and all three groupings, is ASCII.
+- **A script can press the table's grouping**: `{"grouping":"workplace"}`, `{"grouping":"class"}` or
+  `{"grouping":"place"}`, as it presses the switch. The proofs of Tasks 6 and 7 show the second set by
+  workplace only, where the design shows Given and four hyphens (S10; calls list 15). The hours back are read
+  by class and by place, so the lead's look needed the command.
+- **Task 7's report** gives each household group five figures: its back for work, by owning, as support, not
+  recorded, and its back whole. The task's text listed four names for five places.

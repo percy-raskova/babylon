@@ -23,10 +23,11 @@ use babylon_practice_contract::{
 
 use crate::economic_catalog::{EconomicCatalogError, EconomicOpening};
 use crate::national_economy::{
-    NationalAidCapture, NationalGamePolicy, NationalOpeningError, NationalSupportClaimant,
-    NATIONAL_SCENARIO_ID,
+    GameWages, NationalAidCapture, NationalGamePolicy, NationalOpeningError,
+    NationalSupportClaimant, NATIONAL_SCENARIO_ID,
 };
 use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::national_trade_pay::NationalTradePayReference;
 
 use std::result::Result as StdResult;
 
@@ -96,6 +97,8 @@ pub(crate) struct CountyReviewCapture<'a> {
     pub claimant: &'a NationalSupportClaimant,
     pub household_keys: &'a BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub hearing: &'a OrganizerHearingConfig,
+    /// The pay table: `Some` exactly under a scenario of twelve trades.
+    pub pay: Option<&'a NationalTradePayReference>,
 }
 
 fn actor_key() -> StableElementKey {
@@ -439,6 +442,28 @@ pub(crate) fn check_payroll_site(
     }
 }
 
+/// The going wage: what an hour of a household's time is worth to the session's floor. It is the
+/// scenario's one wage under `GameWages::Single`, and under `GameWages::Observed` the average pay
+/// of the review's county, read from `[county_review]` and never a literal.
+///
+/// # Errors
+///
+/// A policy with no `[county_review]` or an observed wage with no pay table is a policy refusal.
+pub(crate) fn going_wage(
+    policy: &NationalGamePolicy,
+    pay: Option<&NationalTradePayReference>,
+) -> Result<i128> {
+    let refused = || EconomicCatalogError::NationalOpening(NationalOpeningError::Policy);
+    match policy.wages {
+        GameWages::Single(wage) => Ok(wage.micro_units()),
+        GameWages::Observed => {
+            let terms = policy.county_review.as_ref().ok_or_else(refused)?;
+            let pay = pay.ok_or_else(refused)?;
+            Ok(pay.county_average(terms.county).micro_units())
+        }
+    }
+}
+
 /// Assembles the county review's configuration and its opening roster.
 ///
 /// # Errors
@@ -495,14 +520,7 @@ pub(crate) fn assemble(
     )?;
     let (crews, people) = crews(capture.opening, &groups)?;
     let actor_id = actor_id()?;
-    // Until the County Review reads the observed going wage (Task 8), only a single wage serves.
-    let going_wage = policy
-        .wages
-        .single()
-        .ok_or(EconomicCatalogError::NationalOpening(
-            NationalOpeningError::Policy,
-        ))?
-        .micro_units();
+    let going_wage = going_wage(policy, capture.pay)?;
     let content = content_identity(
         campaign,
         actor_id,

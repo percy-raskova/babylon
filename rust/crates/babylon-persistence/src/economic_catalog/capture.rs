@@ -474,6 +474,7 @@ fn assemble_county_review(
             claimant,
             household_keys: &national.household_keys,
             hearing,
+            pay: national.pay(),
         },
     )?;
     let city_pd = input

@@ -9,6 +9,7 @@ use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind as Kind,
 };
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::national_cohorts::CohortKey;
 use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWorkplaceSource};
 use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
@@ -20,6 +21,7 @@ use babylon_persistence::{
 };
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
+use uuid::Uuid;
 
 const SHIPPED: &[u8] = include_bytes!("../../../../content/scenarios/national/defines.toml");
 const FIXTURE: &[u8] = include_bytes!("fixtures/national_twelve_trades.defines.toml");
@@ -523,4 +525,52 @@ fn foreign_plants_pay_a_fraction() {
             .micro_units(),
         expected
     );
+}
+
+/// The fixture captured as a campaign, once: the City PD and the county review read its opening.
+fn campaign_catalog() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        let input =
+            economic_catalog::national_catalog_input_for(FIXTURE).expect("the fixture parses");
+        CapturedEconomicCatalog::capture_national_campaign(
+            input,
+            CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7036)),
+        )
+        .expect("the fixture captures as a campaign")
+    })
+}
+
+#[test]
+fn the_going_wage_is_wayne_average_pay() {
+    let catalog = campaign_catalog();
+    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
+    let wayne = CountyGeoid::try_from("26163").expect("Wayne");
+    let config = catalog
+        .county_review_config()
+        .expect("the campaign carries the county review");
+    assert_eq!(
+        config.going_wage_micros,
+        pay.county_average(wayne).micro_units()
+    );
+}
+
+#[test]
+fn the_city_pd_pays_its_payroll_site() {
+    let catalog = campaign_catalog();
+    let config = catalog.city_pd_config().expect("the City PD");
+    let site = catalog
+        .opening()
+        .sites
+        .iter()
+        .find(|site| site.site_id.as_bytes() == config.payroll_site_account_id)
+        .expect("the payroll site exists");
+    let rate = site_wage(catalog, site.site_id).expect("the payroll site pays a wage");
+    assert_eq!(config.hourly_wage_micros, rate.micro_units());
+    let positions = i128::from(config.payroll_positions);
+    assert_eq!(
+        config.payroll_micros,
+        positions * i128::from(config.payroll_hours_per_position) * rate.micro_units()
+    );
+    assert_eq!(config.payroll_hours_per_position, 160);
 }

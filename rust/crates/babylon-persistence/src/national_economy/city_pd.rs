@@ -19,7 +19,7 @@ use crate::economic_catalog::{
     EconomicSiteSource, SourceArtifactKind,
 };
 use crate::national_economy::{
-    GameCityPdPolicy, NationalAidCapture, NationalGamePolicy, NationalOpeningError, VenueLogReader,
+    GameCityPdPolicy, GameWages, NationalAidCapture, NationalGamePolicy, VenueLogReader,
     NATIONAL_SCENARIO_ID,
 };
 
@@ -117,10 +117,10 @@ pub(crate) fn assemble(
         .ok_or(EconomicCatalogError::Opening(
             "City PD terms need a national policy that carries [city_pd]",
         ))?;
-    let books = Books::of(&policy, terms)?;
     let county: EconomicLocation = "county:26163"
         .parse()
         .map_err(|_| EconomicCatalogError::Identity)?;
+    let (site, books) = payroll_books(opening, county, &policy, terms)?;
     let (principal, labor_unit) = investigator(opening, aid, county)?;
     let actor_digest = content_digest::sha256_of(
         &actor_key()
@@ -130,11 +130,10 @@ pub(crate) fn assemble(
     let actor_id = actor_id()?;
     let authority_id = authority_id(campaign, actor_id);
     let public_account_id = public_account_id(county);
-    let payroll_site_account_id = payroll_site(
+    let payroll_site_account_id = payroll_grant(
         opening,
-        county,
+        site,
         PublicAccountId::from_bytes(public_account_id),
-        terms.positions,
         books.payroll,
     )?;
     let agency_account_id =
@@ -216,6 +215,22 @@ pub(crate) fn public_account_id(county: EconomicLocation) -> [u8; 32] {
     content_digest::sha256_of(&preimage)
 }
 
+/// The payroll site, chosen by its staff alone, and the books at its wage: the scenario's one wage
+/// under `GameWages::Single`, and the wage the site's employees are paid under `GameWages::Observed`.
+fn payroll_books<'a>(
+    opening: &'a EconomicOpening,
+    county: EconomicLocation,
+    policy: &NationalGamePolicy,
+    terms: &GameCityPdPolicy,
+) -> Result<(&'a EconomicSiteSeed, Books)> {
+    let site = payroll_site(opening, county, terms.positions)?;
+    let wage = match policy.wages {
+        GameWages::Single(wage) => wage.micro_units(),
+        GameWages::Observed => site_wage(opening, site.site_id)?,
+    };
+    Ok((site, Books::of(wage, policy, terms)?))
+}
+
 /// The City PD's three numbers and its payroll, each worked out from the scenario's wage.
 struct Books {
     wage: i128,
@@ -228,15 +243,7 @@ impl Books {
     /// One number used to do three jobs. They are now the scenario's wage, the price of the
     /// visit hours and the appropriation for the visits allowed in a period; the payroll is the
     /// positions times a period's hours times the wage.
-    fn of(policy: &NationalGamePolicy, terms: &GameCityPdPolicy) -> Result<Self> {
-        // Until the City PD's payroll reads the observed wage (Task 8), only a single wage serves.
-        let wage = policy
-            .wages
-            .single()
-            .ok_or(EconomicCatalogError::NationalOpening(
-                NationalOpeningError::Policy,
-            ))?
-            .micro_units();
+    fn of(wage: i128, policy: &NationalGamePolicy, terms: &GameCityPdPolicy) -> Result<Self> {
         let visit_cost = i128::from(terms.visit_hours)
             .checked_mul(wage)
             .ok_or(EconomicCatalogError::Arithmetic)?;
@@ -292,10 +299,8 @@ fn investigator(
 fn payroll_site(
     opening: &EconomicOpening,
     county: EconomicLocation,
-    public: PublicAccountId,
     positions: u64,
-    payroll: i128,
-) -> Result<[u8; 32]> {
+) -> Result<&EconomicSiteSeed> {
     let EconomicLocation::County(geoid) = county else {
         return Err(EconomicCatalogError::Identity);
     };
@@ -333,6 +338,37 @@ fn payroll_site(
             "City PD payroll site: it employs fewer persons than the City PD has positions",
         ));
     }
+    Ok(site)
+}
+
+/// The one wage the payroll site's employees are paid.
+fn site_wage(opening: &EconomicOpening, site: SiteId) -> Result<i128> {
+    let mut wages = opening
+        .employment
+        .iter()
+        .filter(|terms| terms.site_id == site)
+        .filter_map(|terms| match terms.compensation {
+            LaborCompensation::Wage(wage) => Some(wage.micro_units()),
+            _ => None,
+        });
+    let first = wages.next().ok_or(EconomicCatalogError::Opening(
+        "City PD payroll site: it pays no wage",
+    ))?;
+    if wages.any(|wage| wage != first) {
+        return Err(EconomicCatalogError::Opening(
+            "City PD payroll site: its employees are paid more than one wage",
+        ));
+    }
+    Ok(first)
+}
+
+/// The site's provider operating grant, which must cover the payroll; returns the site's account.
+fn payroll_grant(
+    opening: &EconomicOpening,
+    site: &EconomicSiteSeed,
+    public: PublicAccountId,
+    payroll: i128,
+) -> Result<[u8; 32]> {
     let recipient = AccountId::Site(site.site_id);
     let mut grant = 0_i128;
     for row in &opening.institutions.public_allocations {
@@ -567,13 +603,8 @@ mod tests {
         positions: u64,
         payroll: i128,
     ) -> Result<[u8; 32], EconomicCatalogError> {
-        super::payroll_site(
-            opening,
-            wayne(),
-            PublicAccountId::from_bytes(PUBLIC),
-            positions,
-            payroll,
-        )
+        let site = super::payroll_site(opening, wayne(), positions)?;
+        super::payroll_grant(opening, site, PublicAccountId::from_bytes(PUBLIC), payroll)
     }
 
     fn refusal(result: Result<[u8; 32], EconomicCatalogError>) -> &'static str {

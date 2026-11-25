@@ -145,6 +145,10 @@ impl NationalSources {
             opening.opening,
         ))
     }
+    /// The pay table, when the scenario's trades are twelve.
+    pub(super) const fn pay(&self) -> Option<&NationalTradePayReference> {
+        self.pay.as_ref()
+    }
     pub(super) fn view(&self) -> EconomicSourceView<'_> {
         EconomicSourceView::National {
             counties: &self.counties,

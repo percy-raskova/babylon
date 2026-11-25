@@ -15,7 +15,7 @@ mod model;
 mod national;
 mod preset;
 
-pub use preset::national_catalog_input;
+pub use preset::{national_catalog_input, national_catalog_input_for};
 mod session;
 mod sources;
 mod view;

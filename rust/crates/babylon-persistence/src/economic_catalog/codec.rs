@@ -15,11 +15,11 @@ const MAX_SOURCE_ROWS: usize = 32;
 const MAX_TEXT_BYTES: usize = 128;
 // Matches the authoritative practice-contract organizer codec bound.
 const MAX_ORGANIZER_CONFIG_BYTES: usize = 32 * 1024 * 1024;
-/// The one compiler whose frame ends with the county review's footer. A catalog of an earlier
+/// The compilers whose frame ends with the county review's footer. A catalog of an earlier
 /// compiler keeps its bytes and has no county.
 pub(super) const COUNTY_REVIEW_COMPILER: &str = "national-world-v12";
 fn frames_county_review(compiler: &str) -> bool {
-    compiler == COUNTY_REVIEW_COMPILER
+    matches!(compiler, COUNTY_REVIEW_COMPILER | "national-world-v13")
 }
 fn text(out: &mut Vec<u8>, text: &str) -> Result<()> {
     if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
@@ -380,7 +380,7 @@ mod tests {
             (timebase, 27, EconomicCatalogError::CompilerVersion),
             (duration_padding, 1, EconomicCatalogError::WireTag),
             (geography, 4, EconomicCatalogError::WireTag),
-            (source_kind, 37, EconomicCatalogError::WireTag),
+            (source_kind, 38, EconomicCatalogError::WireTag),
             (source_kind + 1, 0, EconomicCatalogError::Digest),
         ] {
             let mut altered = raw.clone();

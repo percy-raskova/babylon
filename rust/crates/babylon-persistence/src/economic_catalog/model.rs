@@ -34,6 +34,7 @@ use babylon_material_circuit::FinalDemandPrincipal;
 use babylon_material_circuit::FinancialInstitutions;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::MaintenanceBinding;
+use babylon_material_circuit::MarketClearingPolicy;
 use babylon_material_circuit::OrderRow;
 use babylon_material_circuit::RollingProcessSupply;
 use babylon_material_circuit::StaffingMemberBinding;
@@ -284,6 +285,8 @@ pub struct EconomicOpening {
     pub logistics: CatalogLogistics,
     pub orders: CatalogOpeningOrders,
     pub maintenance: Option<CatalogMaintenance>,
+    /// The products that clear by price. Never encoded: the national opening sets it from its policy.
+    pub market_clearing: Option<MarketClearingPolicy>,
 }
 
 /// Fixed geographic coverage, separate from mutable economic stocks.

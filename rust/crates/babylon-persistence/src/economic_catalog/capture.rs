@@ -25,6 +25,7 @@ use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use babylon_kernel::content_digest;
+use babylon_kernel::economic_identity::TradeSet;
 use babylon_material_circuit::{CompanyConditionOrder, FinalDemandPrincipalId};
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use std::collections::BTreeSet;
@@ -499,6 +500,11 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 .map_err(|_| EconomicCatalogError::Source(kind))?;
             match (input.preset_id.as_str(), policy.companies) {
                 ("national-world", None) => Ok("national-world-v7"),
+                ("national-world", Some(terms))
+                    if terms.experiment.is_none() && policy.trades == TradeSet::Twelve =>
+                {
+                    Ok("national-world-v13")
+                }
                 ("national-world", Some(terms)) if terms.experiment.is_none() => {
                     Ok(match terms.portfolio.condition_order {
                         CompanyConditionOrder::FirstApplicable if policy.city_pd.is_some() => {
@@ -725,6 +731,18 @@ mod tests {
         assert_eq!(
             CapturedEconomicCatalog::decode(&previous, content_digest::sha256_of(&previous)),
             Err(EconomicCatalogError::CompilerVersion)
+        );
+    }
+    #[test]
+    fn the_fixture_compiles_as_v13_and_the_shipped_input_as_v12() {
+        let fixture = super::super::preset::national_catalog_input_for(include_bytes!(
+            "../../tests/fixtures/national_twelve_trades.defines.toml"
+        ))
+        .expect("the fixture parses");
+        assert_eq!(compiler_for(&fixture), Ok("national-world-v13"));
+        assert_eq!(
+            compiler_for(&super::super::preset::national_catalog_input()),
+            Ok("national-world-v12")
         );
     }
     #[test]

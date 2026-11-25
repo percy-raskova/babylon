@@ -444,6 +444,7 @@ mod tests {
                     crate::national_ages::national_age_reference().expect("county age margins"),
                 ),
                 policy: &policy,
+                pay: None,
                 source_hash: content_digest::sha256_of(bytes),
             },
         )

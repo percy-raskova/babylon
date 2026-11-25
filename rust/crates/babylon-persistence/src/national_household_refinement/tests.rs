@@ -222,6 +222,7 @@ fn national_fixture() -> &'static NationalFixture {
                     crate::national_ages::national_age_reference().expect("county age margins"),
                 ),
                 policy: &policy,
+                pay: None,
                 source_hash: babylon_kernel::content_digest::sha256_of(include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/../../../content/scenarios/national/defines.toml"

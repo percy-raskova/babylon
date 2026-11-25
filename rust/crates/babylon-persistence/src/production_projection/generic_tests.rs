@@ -91,6 +91,7 @@ fn native_source_view_keeps_foreign_scope_and_suppressed_jobs_without_michigan_l
     view.opening = &opening;
     view.sources = EconomicSourceView::National {
         ages: None,
+        pay: None,
         counties: crate::national_counties::national_county_reference()
             .expect("the county reference fixture loads"),
         cohorts,

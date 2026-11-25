@@ -26,7 +26,8 @@ encoding:
     - exact_current_canonical_organizer_config_bytes
   city_pd_footer: A second presence tag and length carry the optional City PD configuration.
   county_review_footer: A third presence tag and length carry the optional county review configuration. It is written
-    only under national-world-v12; the roster the review opens with is regenerated from the opening, never encoded.
+    only under national-world-v12 and v13; the roster the review opens with is regenerated from the opening, never
+    encoded.
     A catalog of an earlier compiler ends after the City PD footer and keeps its bytes.
   organizer_presence: Absent is tag zero and length zero; present is tag one and positive bounded length.
   maximum_organizer_config_bytes: 33554432
@@ -73,11 +74,16 @@ source_roles:
   michigan_spatial_products: 34
   national_households: 35
   national_ages: 36
+  # Kind 37 is captured only under national policy schema 8; kinds 6 and 11 hold that set's table and mapping.
+  national_trade_pay: 37
 admission:
   compilers: [national-world-v7, national-world-v8, national-world-v9, national-world-v10, national-world-v11,
-              national-world-v12, national-company-scale-v1, national-company-scale-v2, national-company-scale-v3,
-              national-company-scale-v4, michigan-control-v2]
+              national-world-v12, national-world-v13, national-company-scale-v1, national-company-scale-v2,
+              national-company-scale-v3, national-company-scale-v4, michigan-control-v2]
   national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v12}
+  national_twelve_trades: A national policy of schema 8 compiles as national-world-v13. It captures the version 2
+    cohort table and mapping as kinds 6 and 11 and the pay table as kind 37; under schema 7 and earlier kind 37 is
+    unexpected and the sources keep every byte.
   national_age_source: The national lifecycle requires a captured age table and exact resident and age-16-plus
     county controls.
   national_support_claimant: National policy schema 6 accounts for an independently funded Wayne household

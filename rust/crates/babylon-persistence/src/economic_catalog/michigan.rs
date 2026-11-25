@@ -96,6 +96,7 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         .collect::<Result<_>>()?;
     let (logistics, orders, capacity) = import_logistics(catalog)?;
     Ok(EconomicOpening {
+        market_clearing: None,
         commodity_labels: catalog
             .goods()
             .iter()

@@ -54,6 +54,7 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
                     .expect("county age margins"),
             ),
             policy: &policy,
+            pay: None,
             source_hash: babylon_kernel::content_digest::sha256_of(include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../../content/scenarios/national/defines.toml"

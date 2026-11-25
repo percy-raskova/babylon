@@ -10,6 +10,7 @@ use crate::national_cohorts::NationalCohortReference;
 use crate::national_counties::NationalCountyReference;
 use crate::national_households::NationalHouseholdReference;
 use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_trade_pay::NationalTradePayReference;
 use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 
@@ -27,6 +28,8 @@ pub enum EconomicSourceView<'a> {
     National {
         counties: &'a NationalCountyReference,
         cohorts: &'a NationalCohortReference,
+        /// The pay table: `Some` exactly under the twelve trades.
+        pay: Option<&'a NationalTradePayReference>,
         residents: &'a NationalResidentWorkforceReference,
         households: &'a NationalHouseholdReference,
         ages: Option<&'a NationalAgeReference>,

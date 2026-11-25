@@ -25,11 +25,12 @@ use crate::national_household_allocation::{HouseholdAllocationError, HouseholdBu
 use crate::national_households::NationalHouseholdReference;
 use crate::national_resident_allocation::AllocationError;
 use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_trade_pay::NationalTradePayReference;
 use crate::national_transport::NationalTransportReference;
 use crate::world_reference::WorldReference;
 
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_material_circuit::{
@@ -140,6 +141,8 @@ pub(in crate::national_economy) struct Builder<'a> {
 pub struct NationalOpeningPolicy<'a> {
     pub policy: &'a NationalGamePolicy,
     pub ages: Option<&'a NationalAgeReference>,
+    /// The pay table: `Some` exactly when the policy's trades are the twelve.
+    pub pay: Option<&'a NationalTradePayReference>,
     pub source_hash: [u8; 32],
 }
 
@@ -161,8 +164,11 @@ pub fn build_national_opening(
         policy,
         source_hash: policy_source_hash,
         ages,
+        pay,
     } = captured_policy;
-    if u64::from(transport.period_days()) != policy.period_days {
+    if u64::from(transport.period_days()) != policy.period_days
+        || pay.is_some() != (policy.trades == TradeSet::Twelve)
+    {
         return Err(NationalOpeningError::Policy);
     }
     let household_budgets = national_household_allocation::allocate_households(
@@ -366,6 +372,7 @@ impl<'a> Builder<'a> {
             offer_indices: BTreeMap::new(),
             procurement_indices: BTreeMap::new(),
             opening: EconomicOpening {
+                market_clearing: templates::market_clearing(policy)?,
                 commodity_labels,
                 commodities,
                 recipes,

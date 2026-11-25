@@ -483,6 +483,7 @@ mod tests {
     /// An opening that holds nothing: tests add the sites and allocations they need.
     fn empty_opening() -> EconomicOpening {
         EconomicOpening {
+            market_clearing: None,
             commodity_labels: vec![],
             commodities: vec![],
             recipes: vec![],

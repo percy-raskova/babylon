@@ -1,6 +1,11 @@
 //! The pinned production source roster for the explicit national economy preset.
-use super::{CatalogGeography, EconomicCatalogInput, SourceArtifact, SourceArtifactKind as Kind};
+use super::{
+    CatalogGeography, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
+    SourceArtifactKind as Kind,
+};
+use crate::national_economy::NationalGamePolicy;
 use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::economic_identity::TradeSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum NationalGraph {
@@ -16,6 +21,7 @@ impl NationalGraph {
                 | "national-world-v10"
                 | "national-world-v11"
                 | "national-world-v12"
+                | "national-world-v13"
                 | "national-company-scale-v1"
                 | "national-company-scale-v2"
                 | "national-company-scale-v3"
@@ -32,24 +38,57 @@ impl NationalGraph {
 /// No live dataset or caller-provided Michigan defines file participates.
 #[must_use]
 pub fn national_catalog_input() -> EconomicCatalogInput {
-    let rows: &[(Kind, &[u8])] = &[
+    national_input(
+        include_bytes!("../../../../../content/scenarios/national/defines.toml"),
+        TradeSet::Ten,
+    )
+}
+
+/// The national input for these defines: the version 1 or 2 cohort table and mapping as the policy's trade set
+/// names them, and the pay table for the twelve. `national_catalog_input()` is this with the shipped defines.
+///
+/// # Errors
+/// `Source(NationalGamePolicy)` for defines that do not parse.
+pub fn national_catalog_input_for(
+    defines: &[u8],
+) -> Result<EconomicCatalogInput, EconomicCatalogError> {
+    let policy = NationalGamePolicy::from_captured_bytes(defines)
+        .map_err(|_| EconomicCatalogError::Source(Kind::NationalGamePolicy))?;
+    Ok(national_input(defines, policy.trades))
+}
+
+fn national_input(defines: &[u8], trades: TradeSet) -> EconomicCatalogInput {
+    let (cohorts, mapping): (&[u8], &[u8]) = match trades {
+        TradeSet::Ten => (
+            include_bytes!("../../../../../src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz"),
+            include_bytes!("../../../../../contracts/national_qcew_function_mapping_v1.json"),
+        ),
+        TradeSet::Twelve => (
+            crate::national_cohorts::ARTIFACT_V2,
+            crate::national_cohorts::MAPPING_V2,
+        ),
+    };
+    let mut rows: Vec<(Kind, &[u8])> = vec![
         (Kind::GraphDeclarations, include_bytes!("../../../../../content/scenarios/national/structure.bscn")),
         (Kind::Rules, include_bytes!("../../../../../content/scenarios/national/material-cycle.bsl")),
-        (Kind::NationalGamePolicy, include_bytes!("../../../../../content/scenarios/national/defines.toml")),
+        (Kind::NationalGamePolicy, defines),
         (Kind::NationalCounties, include_bytes!("../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz")),
-        (Kind::NationalCohorts, include_bytes!("../../../../../src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz")),
+        (Kind::NationalCohorts, cohorts),
         (Kind::ResidentWorkforce, include_bytes!("../../../../../src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz")),
         (Kind::NationalAges, crate::national_ages::ARTIFACT),
         (Kind::NationalHouseholds, include_bytes!("../../../../../src/babylon/data/reference/economy/national_household_reference_2024.csv.gz")),
         (Kind::NationalTransport, include_bytes!("../../../../../src/babylon/data/reference/transport/national_transport_reference_2024.json.gz")),
         (Kind::InternationalTrade, include_bytes!("../../../../../src/babylon/data/reference/economy/international_counterpart_reference_2024.csv.gz")),
         (Kind::WorldPopulation, include_bytes!("../../../../../src/babylon/data/reference/economy/world_population_reference_2024.csv.gz")),
-        (Kind::CohortFunctionMapping, include_bytes!("../../../../../contracts/national_qcew_function_mapping_v1.json")),
+        (Kind::CohortFunctionMapping, mapping),
         (Kind::CounterpartMembership, include_bytes!("../../../../../contracts/international_counterpart_membership_v1.json")),
         (Kind::PopulationScopePolicy, include_bytes!("../../../../../contracts/world_population_scope_v1.json")),
         (Kind::TransportPolicy, include_bytes!("../../../../../contracts/national_transport_policy_v1.json")),
         (Kind::TransportSourceManifest, include_bytes!("../../../../../tools/national_transport_2024_sources.json")),
     ];
+    if trades == TradeSet::Twelve {
+        rows.push((Kind::NationalTradePay, crate::national_trade_pay::ARTIFACT));
+    }
     let mut input = EconomicCatalogInput {
         scenario_id: crate::national_economy::NATIONAL_SCENARIO_ID.into(),
         preset_id: "national-world".into(),

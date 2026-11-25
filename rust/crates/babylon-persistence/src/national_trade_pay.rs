@@ -20,3 +20,4 @@ pub use model::{
 mod artifact;
 
 pub use artifact::national_trade_pay_reference;
+pub(crate) use artifact::ARTIFACT;

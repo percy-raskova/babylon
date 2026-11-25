@@ -229,6 +229,7 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
         super::super::NationalOpeningPolicy {
             ages: Some(crate::national_ages::national_age_reference().expect("county age margins")),
             policy: &policy,
+            pay: None,
             source_hash: policy.source_digest,
         },
     )

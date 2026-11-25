@@ -51,6 +51,8 @@ pub enum SourceArtifactKind {
     NationalHouseholds = 35,
     /// Derived ACS age margins reconciled to the captured county foundation.
     NationalAges = 36,
+    /// Observed pay of each trade by place; captured only under national policy schema 8.
+    NationalTradePay = 37,
 }
 
 /// One captured blob, independent of its evidence interpretation. Compressed
@@ -127,6 +129,7 @@ impl TryFrom<u8> for SourceArtifactKind {
             34 => Ok(Self::MichiganSpatialProducts),
             35 => Ok(Self::NationalHouseholds),
             36 => Ok(Self::NationalAges),
+            37 => Ok(Self::NationalTradePay),
             _ => Err(EconomicCatalogError::WireTag),
         }
     }

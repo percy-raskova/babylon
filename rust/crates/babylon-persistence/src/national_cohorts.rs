@@ -29,3 +29,4 @@ pub use artifact::{
     national_cohort_reference, national_cohort_reference_v2, NationalCohortReference,
     NationalCohortReferenceError, JOBS_BASIS_V2_SHA256, LEAF_BASIS_SHA256,
 };
+pub(crate) use artifact::{ARTIFACT_V2, MAPPING_V2};

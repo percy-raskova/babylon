@@ -1501,7 +1501,18 @@ fn the_fund_keeps_the_opening_s_money() {
         .iter()
         .find(|row| row.id == AccountId::Public(country_fund::fund_account()))
         .expect("the fund holds cash");
-    let persons = country_fund::no_earner_persons(before).expect("the persons count");
+    // Computed here from the staffing, not by the helper the fund itself uses.
+    let mut employed: BTreeMap<FinalDemandPrincipalId, u64> = BTreeMap::new();
+    for member in before.staffing.iter().flat_map(|pool| &pool.members) {
+        *employed.entry(member.member.household_id()).or_default() += member.employed;
+    }
+    let persons: u64 = before
+        .households
+        .iter()
+        .filter(|household| household.location.to_string().starts_with("county:"))
+        .filter(|household| employed.get(&household.principal_id).copied().unwrap_or(0) == 0)
+        .map(|household| household.persons)
+        .sum();
     assert_eq!(
         fund.cash.micro_units(),
         2 * TEST_PER_PERSON_MICROS * i128::from(persons)
@@ -1552,13 +1563,50 @@ fn every_domestic_account_is_in_one_program() {
             + u8::from(laid_off.contains(&household.principal_id));
         assert_eq!(listed, u8::from(domestic), "{}", household.location);
     }
-    let (accounts, persons) = country_fund::paid_neither(catalog.opening()).expect("they count");
     println!(
-        "no_earner recipients {}; laid_off recipients {}; accounts whose members all look for work: \
-         {accounts} ({persons} persons)",
+        "no_earner recipients {}; laid_off recipients {}",
         no_earner.len(),
         laid_off.len()
     );
+}
+
+/// The `no_earner` benefit reaches every domestic account with no earner (no member with anyone
+/// employed, or no member at all); `laid_off` takes every other domestic account.
+#[test]
+fn the_no_earner_benefit_reaches_every_account_with_no_earner() {
+    let catalog = pooled_catalog();
+    let opening = catalog.opening();
+    let after = with_test_fund(opening);
+    let mut employed: BTreeMap<FinalDemandPrincipalId, u64> = BTreeMap::new();
+    for member in opening.staffing.iter().flat_map(|pool| &pool.members) {
+        *employed.entry(member.member.household_id()).or_default() += member.employed;
+    }
+    let programs = country_fund::program_recipients(&after);
+    let no_earner = &programs[country_fund::NO_EARNER];
+    let laid_off = &programs[country_fund::LAID_OFF];
+    for account in no_earner {
+        assert_eq!(
+            employed.get(account).copied().unwrap_or(0),
+            0,
+            "a no_earner recipient has an earner"
+        );
+    }
+    for account in laid_off {
+        assert!(
+            employed.get(account).copied().unwrap_or(0) > 0,
+            "a laid_off recipient has no earner"
+        );
+    }
+    let mut listed: Vec<_> = no_earner.iter().chain(laid_off).copied().collect();
+    listed.sort_unstable();
+    let mut domestic: Vec<_> = opening
+        .households
+        .iter()
+        .filter(|household| household.location.to_string().starts_with("county:"))
+        .map(|household| household.principal_id)
+        .collect();
+    domestic.sort_unstable();
+    assert_eq!(listed, domestic);
 }
 
 /// The set with benefits closes the country's first period, and no program row is paid more than due.

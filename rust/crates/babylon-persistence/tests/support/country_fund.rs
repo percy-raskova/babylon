@@ -33,7 +33,7 @@ fn refused(what: &'static str) -> BenchError {
 }
 
 fn overflow() -> BenchError {
-    refused("the fund's arithmetic overflowed")
+    BenchError::Arithmetic { period: 0 }
 }
 
 /// The fund's account: the first 32 bytes of `sha256_of(b"CountryBenchNationalFundV1\0")`.
@@ -110,16 +110,16 @@ fn split_taxes(
 }
 
 /// The recipients of the two programs: `(no_earner, laid_off)`, each sorted. A household account of the
-/// opening is domestic when it sits in a county; it is on `laid_off` when it is the household of a member.
+/// opening is domestic when it sits in a county. It is on `no_earner` when none of its members has anyone
+/// employed (an account with no member at all is among them), and on `laid_off` otherwise.
 fn recipients(
     opening: &EconomicOpening,
-) -> (Vec<FinalDemandPrincipalId>, Vec<FinalDemandPrincipalId>) {
-    let with_member: BTreeSet<FinalDemandPrincipalId> = opening
-        .staffing
-        .iter()
-        .flat_map(|pool| &pool.members)
-        .map(|member| member.member.household_id())
-        .collect();
+) -> Result<(Vec<FinalDemandPrincipalId>, Vec<FinalDemandPrincipalId>), BenchError> {
+    let mut employed: BTreeMap<FinalDemandPrincipalId, u64> = BTreeMap::new();
+    for member in opening.staffing.iter().flat_map(|pool| &pool.members) {
+        let held = employed.entry(member.member.household_id()).or_default();
+        *held = held.checked_add(member.employed).ok_or_else(overflow)?;
+    }
     let mut no_earner = Vec::new();
     let mut laid_off = Vec::new();
     for household in opening
@@ -127,15 +127,15 @@ fn recipients(
         .iter()
         .filter(|household| is_domestic(household.location))
     {
-        if with_member.contains(&household.principal_id) {
-            laid_off.push(household.principal_id);
-        } else {
+        if employed.get(&household.principal_id).copied().unwrap_or(0) == 0 {
             no_earner.push(household.principal_id);
+        } else {
+            laid_off.push(household.principal_id);
         }
     }
     no_earner.sort_unstable();
     laid_off.sort_unstable();
-    (no_earner, laid_off)
+    Ok((no_earner, laid_off))
 }
 
 /// The persons of the domestic household accounts of a list.
@@ -152,26 +152,9 @@ fn persons_of(
 }
 
 /// The persons of the `no_earner` recipients.
-pub fn no_earner_persons(opening: &EconomicOpening) -> Result<u64, BenchError> {
-    let (no_earner, _) = recipients(opening);
+fn no_earner_persons(opening: &EconomicOpening) -> Result<u64, BenchError> {
+    let (no_earner, _) = recipients(opening)?;
     persons_of(opening, &no_earner.into_iter().collect())
-}
-
-/// Accounts whose members are all looking for work at the opening are paid neither benefit: they are
-/// domestic accounts on `laid_off` whose every member has no one employed. Returns `(accounts, persons)`.
-pub fn paid_neither(opening: &EconomicOpening) -> Result<(u64, u64), BenchError> {
-    let mut employed: BTreeMap<FinalDemandPrincipalId, u64> = BTreeMap::new();
-    for member in opening.staffing.iter().flat_map(|pool| &pool.members) {
-        let held = employed.entry(member.member.household_id()).or_default();
-        *held = held.checked_add(member.employed).ok_or_else(overflow)?;
-    }
-    let (_, laid_off) = recipients(opening);
-    let idle: BTreeSet<FinalDemandPrincipalId> = laid_off
-        .into_iter()
-        .filter(|account| employed.get(account) == Some(&0))
-        .collect();
-    let persons = persons_of(opening, &idle)?;
-    Ok((u64::try_from(idle.len()).map_err(|_| overflow())?, persons))
 }
 
 /// The `no_earner` amount: the baseline's first-period spend on needs, per domestic person. The need is
@@ -333,7 +316,7 @@ pub fn with_fund(
         .institutions
         .public_budgets
         .sort_unstable_by_key(|row| row.public_account);
-    let (no_earner, laid_off) = recipients(opening);
+    let (no_earner, laid_off) = recipients(opening)?;
     let key = |text: &str| {
         PublicProgramKey::new(text).map_err(|_| refused("a program key of the fund is refused"))
     };

@@ -9,10 +9,10 @@ use babylon_material_circuit::{
     self as engine, AdjustmentReceipt, CircuitAccounting, HouseholdLifecycleReceipt,
     LaborCapacityRow, MarketClearingReceipt, MaterialCatalog, MaterialCircuitError,
     MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow, MonetaryCircuit,
-    PlaceStaffingError, PoolMembers, ProcessId, ProductionPlanReceipt, PublicProgramReceipt,
-    RecurringEconomy, ResidentWorkforceAttrition, SiteId, StaffingError, StaffingMemberId,
-    StaffingMemberReceipt, StaffingMemberState, StaffingPlace, StaffingPoolId, StaffingPoolState,
-    StaffingState, StaffingWorkRequest, WorkplaceStanding,
+    PlaceStaffingError, PoolMembers, ProcessId, PublicProgramReceipt, RecurringEconomy,
+    ResidentWorkforceAttrition, SiteId, StaffingError, StaffingMemberId, StaffingMemberReceipt,
+    StaffingMemberState, StaffingPlace, StaffingPoolId, StaffingPoolState, StaffingState,
+    StaffingWorkRequest, WorkplaceStanding,
 };
 use babylon_persistence::economic_catalog::{EconomicCatalogError, EconomicOpening};
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -584,13 +584,16 @@ fn recurring_of(
 }
 
 /// The production policies the close raised above the period's plan: the plan receipt's batches for
-/// the process, or, for a process with no receipt (a service), the batches it held at the open.
+/// a goods process; for a service, the batches of the service market's planned quantity (the market
+/// writes the service's plan at every close, before rule A6 runs); for any other process, the
+/// batches it held at the open.
 fn spare_money_raised(
     period: u64,
+    catalog: &MaterialCatalog,
     before: &MaterialCircuitState,
-    plans: &[ProductionPlanReceipt],
-    after: &MaterialCircuitState,
+    transition: &MaterialCircuitTransition,
 ) -> Result<u64, BenchError> {
+    let (plans, after) = (&transition.production_plans, &transition.state);
     let mut planned: BTreeMap<ProcessId, u64> = recurring_of(period, before)?
         .production
         .iter()
@@ -598,6 +601,19 @@ fn spare_money_raised(
         .collect();
     for plan in plans {
         planned.insert(plan.process_id, plan.planned_batches);
+    }
+    for market in &transition.service_markets {
+        let per_batch = catalog
+            .process_outputs
+            .binary_search_by_key(&market.process_id, |o| o.process_id)
+            .ok()
+            .map(|i| catalog.process_outputs[i].quantity_per_batch)
+            .filter(|per_batch| *per_batch > 0)
+            .ok_or(BenchError::Arithmetic { period })?;
+        planned.insert(
+            market.process_id,
+            market.planned_quantity.div_ceil(per_batch),
+        );
     }
     let raised = recurring_of(period, after)?
         .production
@@ -716,12 +732,8 @@ impl CountryBench {
             members,
         } = self.advance(period)?;
         let elapsed = started.elapsed();
-        let spare_money_raised = spare_money_raised(
-            period,
-            &self.state,
-            &transition.production_plans,
-            &transition.state,
-        )?;
+        let spare_money_raised =
+            spare_money_raised(period, &self.catalog, &self.state, &transition)?;
         let receipts = tick_receipts(period, &mut transition);
         let period_row = BenchPeriod {
             period,

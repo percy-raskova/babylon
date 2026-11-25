@@ -3,18 +3,18 @@
   "periods_timed": 1,
   "sets": [
     {
-      "elapsed_ms": 1568,
+      "elapsed_ms": 1527,
       "ratio_to_baseline_bps": 10000,
       "set": "baseline"
     },
     {
-      "elapsed_ms": 8214,
-      "ratio_to_baseline_bps": 52374,
+      "elapsed_ms": 9217,
+      "ratio_to_baseline_bps": 60326,
       "set": "market"
     },
     {
-      "elapsed_ms": 13527,
-      "ratio_to_baseline_bps": 86250,
+      "elapsed_ms": 14440,
+      "ratio_to_baseline_bps": 94504,
       "set": "no-seekers"
     }
   ]

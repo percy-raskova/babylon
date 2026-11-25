@@ -4,7 +4,7 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
-    self as engine, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState,
+    self as engine, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState, RestartTest,
 };
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
@@ -1237,9 +1237,20 @@ fn the_rule_columns_add_back() {
     let restarts: u64 = (0..3)
         .map(|at| rules["restarts"][at].as_u64().expect("a count"))
         .sum();
-    assert!(
-        restarts <= counts[5],
-        "a restart row not tested is in no count"
+    let not_tested = u64::try_from(
+        stepped
+            .adjustments
+            .iter()
+            .filter(|row| {
+                matches!(row, AdjustmentReceipt::Restart(r) if r.test == RestartTest::NotTested)
+            })
+            .count(),
+    )
+    .expect("few rows");
+    assert_eq!(
+        restarts + not_tested,
+        counts[5],
+        "restarted + failed + no buyer + not tested = the restart rows"
     );
     assert_eq!(first("owner_spare"), Some(counts[6]));
     assert_eq!(first("goods_offers"), Some(counts[7]));
@@ -1258,14 +1269,32 @@ fn the_rule_columns_add_back() {
         short,
         u64::try_from(stepped.market_clearings.len()).expect("few rows")
     );
-    for (scope, cells) in row["jobs_after_moves"].as_object().expect("jobs by scope") {
+    let after_moves = row["jobs_after_moves"].as_object().expect("jobs by scope");
+    for (scope, cells) in after_moves {
         let close = &row["jobs"][scope]["all"];
         assert_eq!(cells[0], close[2], "at work, {scope}");
         assert_eq!(cells[1], close[3], "looking, {scope}");
     }
+    for scope in row["jobs"].as_object().expect("jobs by scope").keys() {
+        assert!(
+            after_moves.contains_key(scope),
+            "jobs_after_moves lacks {scope}"
+        );
+    }
     println!(
         "NoSeekers period 1: rules {rules}; short markets {short}; spare money raised {}; took {:?}",
         stepped.spare_money_raised, stepped.elapsed
+    );
+}
+
+/// Rule A6 is off in the Market set, so no policy is raised above its plan there.
+#[test]
+fn spare_money_raises_nothing_where_rule_a6_is_off() {
+    let (_catalog, _census, mut bench) = open_census(RuleSet::Market);
+    let stepped = bench.step().expect("the first period closes");
+    assert_eq!(
+        stepped.spare_money_raised, 0,
+        "the Market set has no spare-money rule"
     );
 }
 
@@ -1307,7 +1336,11 @@ fn record_country_bench_timings() {
         if matches!(set, RuleSet::None) {
             baseline = nanos;
         }
-        let ratio = nanos * 10_000 / baseline.max(1);
+        assert!(
+            baseline > 0,
+            "the baseline period took no time to divide by"
+        );
+        let ratio = nanos * 10_000 / baseline;
         let elapsed_ms = u64::try_from(period.elapsed.as_millis()).expect("a short time");
         println!(
             "{:<12} {elapsed_ms:>8} ms {ratio:>8} bps of the baseline",

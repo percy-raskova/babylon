@@ -106,13 +106,13 @@ pub(super) fn domestic(
             employed,
             employee_persons,
             force,
-            wage: builder.policy.default_wage,
+            wage: single_wage(builder)?,
             price_scale_bps: 10_000,
             planned_batches: 0,
             process_id: None,
         };
         site(builder, context, target.workplace.clone(), source, label)?;
-        employment(builder, row);
+        employment(builder, row)?;
     }
     builder.opening.staffing = allocation
         .staffing_seeds(|target| {
@@ -137,12 +137,20 @@ pub(super) fn domestic(
     Ok(())
 }
 
-fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) {
+/// The one wage of a scenario of schema 7 or earlier; the observed wages are read from Task 7 on.
+fn single_wage(builder: &Builder<'_>) -> Result<Currency> {
+    builder
+        .policy
+        .wages
+        .single()
+        .ok_or(NationalOpeningError::Policy)
+}
+
+fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) -> Result<()> {
+    let wage = single_wage(builder)?;
     for member in &row.members {
         let compensation = match member.mode {
-            ResidentAttendanceMode::Employee => {
-                LaborCompensation::Wage(builder.policy.default_wage)
-            }
+            ResidentAttendanceMode::Employee => LaborCompensation::Wage(wage),
             ResidentAttendanceMode::WorkingOwner => LaborCompensation::WorkingOwner,
             ResidentAttendanceMode::UnpaidFamily => LaborCompensation::UnpaidFamily,
         };
@@ -154,6 +162,7 @@ fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) {
             compensation,
         });
     }
+    Ok(())
 }
 
 pub(super) fn sources(actor: &ActorContext) -> Vec<StaffingWorkSource> {

@@ -3,7 +3,7 @@ use super::{actors, ActorContext, Builder, NationalOpeningError, Result, FUNCTIO
 use crate::economic_catalog::{
     EconomicSiteSource, ResidentStaffingMemberSeed, ResidentStaffingPoolSeed,
 };
-use crate::national_economy::GameProfile;
+use crate::national_economy::{GameProfile, GameProfileWage};
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::world_reference::WorldReference;
 
@@ -70,8 +70,17 @@ fn add(
         counts.households,
         profile.price_scale_bps,
     )?;
-    let employed = partition(counts.employed, &profile.function_weights_bps)?;
-    let reserve = partition(counts.reserve, &profile.function_weights_bps)?;
+    // Until the opening reads the trade set (Task 6), only the ten of schema 7 are laid out.
+    let weights: &[u16; 10] = profile
+        .function_weights_bps
+        .as_slice()
+        .try_into()
+        .map_err(|_| NationalOpeningError::Policy)?;
+    let GameProfileWage::PerHour(wage) = profile.wage else {
+        return Err(NationalOpeningError::Policy);
+    };
+    let employed = partition(counts.employed, weights)?;
+    let reserve = partition(counts.reserve, weights)?;
     for (index, function) in FUNCTIONS.into_iter().enumerate() {
         let mut identity = b"NationalExternalSiteV1\0".to_vec();
         identity.extend_from_slice(&location.canonical_bytes());
@@ -88,7 +97,7 @@ fn add(
             employed: employed[index],
             employee_persons: employed[index],
             force: workforce,
-            wage: profile.wage_per_hour,
+            wage,
             price_scale_bps: profile.price_scale_bps,
             planned_batches: 0,
             process_id: None,

@@ -9,7 +9,7 @@ pub use game::{
     GameAidPolicy, GameCityPdPolicy, GameCommodity, GameCountyReviewPolicy, GameDependencyProfile,
     GameEquipmentPolicy, GameFinancialPolicy, GameHouseholdLifecyclePolicy, GameHouseholdPolicy,
     GameHouseholdSupportClaimant, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy,
-    GameNeed, GameOrganizerPolicy, GamePrice, GameProfile, GameRecipe, GameServiceReach,
-    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts,
-    VenueLogReader,
+    GameNeed, GameOrganizerPolicy, GamePrice, GameProfile, GameProfileWage, GameRecipe,
+    GameServiceReach, GameWages, InitialAgeDistribution, NationalGamePolicy,
+    NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
 };

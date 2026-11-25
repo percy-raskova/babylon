@@ -19,7 +19,8 @@ use crate::economic_catalog::{
     EconomicSiteSource, SourceArtifactKind,
 };
 use crate::national_economy::{
-    GameCityPdPolicy, NationalAidCapture, NationalGamePolicy, VenueLogReader, NATIONAL_SCENARIO_ID,
+    GameCityPdPolicy, NationalAidCapture, NationalGamePolicy, NationalOpeningError, VenueLogReader,
+    NATIONAL_SCENARIO_ID,
 };
 
 use std::result::Result as StdResult;
@@ -228,7 +229,14 @@ impl Books {
     /// visit hours and the appropriation for the visits allowed in a period; the payroll is the
     /// positions times a period's hours times the wage.
     fn of(policy: &NationalGamePolicy, terms: &GameCityPdPolicy) -> Result<Self> {
-        let wage = policy.default_wage.micro_units();
+        // Until the City PD's payroll reads the observed wage (Task 8), only a single wage serves.
+        let wage = policy
+            .wages
+            .single()
+            .ok_or(EconomicCatalogError::NationalOpening(
+                NationalOpeningError::Policy,
+            ))?
+            .micro_units();
         let visit_cost = i128::from(terms.visit_hours)
             .checked_mul(wage)
             .ok_or(EconomicCatalogError::Arithmetic)?;

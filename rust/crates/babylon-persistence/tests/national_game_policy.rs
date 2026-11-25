@@ -1,8 +1,11 @@
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage};
 use babylon_persistence::national_economy;
-use babylon_persistence::national_economy::{NationalGamePolicy, NationalGamePolicyError};
+use babylon_persistence::national_economy::{
+    GameProfileWage, GameWages, NationalGamePolicy, NationalGamePolicyError,
+};
 
 const SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -414,7 +417,10 @@ fn city_pd_terms_are_designed_sourced_and_required_from_schema_7() {
     assert_eq!(terms.visit_hours, 1);
     assert!(terms.positions_source.starts_with("City of Detroit"));
     // The wage is still the shipped wage; only its three jobs are separate.
-    assert_eq!(policy.default_wage.micro_units(), 24_000_000);
+    assert_eq!(
+        policy.wages.single().map(Currency::micro_units),
+        Some(24_000_000)
+    );
 
     let table = SOURCE
         .find("\n[city_pd]\n")
@@ -501,4 +507,181 @@ fn county_review_terms_are_designed_and_required_from_schema_7() {
         assert_ne!(changed, SOURCE, "the mutation must change the input");
         assert!(NationalGamePolicy::parse(&changed).is_err());
     }
+}
+
+const TWELVE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/national_twelve_trades.defines.toml"
+));
+
+#[test]
+fn the_twelve_trade_fixture_parses() {
+    let policy = NationalGamePolicy::parse(TWELVE).expect("the schema 8 fixture");
+    assert_eq!(policy.trades, TradeSet::Twelve);
+    assert_eq!(policy.commodities.len(), 12);
+    assert_eq!(policy.recipes.len(), 11);
+    assert_eq!(policy.household_needs.len(), 6);
+    assert_eq!(policy.wages, GameWages::Observed);
+    assert_eq!(policy.wages.single(), None);
+    assert_eq!(policy.households.next_forty_households_bps, Some(4000));
+    let order = policy.markets.paying_order.as_ref().expect("paying order");
+    assert_eq!(
+        order.as_slice(),
+        [
+            "food",
+            "materials",
+            "consumer_goods",
+            "utility",
+            "housing",
+            "household_services",
+            "leisure",
+            "business_services",
+            "resources"
+        ]
+    );
+    let canada = &policy.counterparts[&ForeignCounterpart::Canada];
+    assert_eq!(
+        canada.wage,
+        GameProfileWage::FractionOfUnitedStates { bps: 8333 }
+    );
+    assert_eq!(canada.function_weights_bps.len(), 12);
+    assert_eq!(
+        canada
+            .function_weights_bps
+            .iter()
+            .map(|w| u64::from(*w))
+            .sum::<u64>(),
+        10_000
+    );
+    assert!(policy
+        .recipes
+        .contains_key(&EconomicFunction::ConsumerGoods));
+    assert!(policy
+        .recipes
+        .contains_key(&EconomicFunction::LeisureHospitality));
+}
+
+#[test]
+fn the_shipped_policy_keeps_its_shape() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("the shipped policy");
+    assert_eq!(policy.trades, TradeSet::Ten);
+    assert_eq!(
+        policy.wages,
+        GameWages::Single(Currency::from_micro_units(24_000_000))
+    );
+    assert_eq!(policy.markets.paying_order, None);
+    assert_eq!(policy.households.next_forty_households_bps, None);
+    assert_eq!(policy.commodities.len(), 10);
+    assert_eq!(policy.recipes.len(), 9);
+    let canada = &policy.counterparts[&ForeignCounterpart::Canada];
+    assert_eq!(
+        canada.wage,
+        GameProfileWage::PerHour(Currency::from_micro_units(20_000_000))
+    );
+    assert_eq!(canada.function_weights_bps.len(), 10);
+}
+
+#[test]
+fn schema_8_keys_are_refused_under_schema_7() {
+    let bands = SOURCE.replace(
+        "private_owner_households_bps = 1000\n",
+        "private_owner_households_bps = 1000\nnext_forty_households_bps = 4000\n",
+    );
+    let order = SOURCE.replace(
+        "journey_timing =",
+        "paying_order = [\"food\"]\njourney_timing =",
+    );
+    for changed in [bands, order] {
+        assert_ne!(changed, SOURCE);
+        assert_eq!(
+            NationalGamePolicy::parse(&changed),
+            Err(NationalGamePolicyError::Shape)
+        );
+    }
+}
+
+fn shape_or_profile(changed: &str) {
+    assert_ne!(changed, TWELVE);
+    assert!(
+        matches!(
+            NationalGamePolicy::parse(changed),
+            Err(NationalGamePolicyError::Shape | NationalGamePolicyError::Profile(_))
+        ),
+        "{:?}",
+        NationalGamePolicy::parse(changed)
+    );
+}
+
+#[test]
+fn schema_8_needs_all_its_keys() {
+    let order_start = TWELVE.find("paying_order = ").expect("order");
+    let order_end = order_start + TWELVE[order_start..].find('\n').expect("eol") + 1;
+    let mut no_order = TWELVE.to_owned();
+    no_order.replace_range(order_start..order_end, "");
+    shape_or_profile(&no_order);
+    shape_or_profile(&TWELVE.replace("next_forty_households_bps = 4000\n", ""));
+    shape_or_profile(&TWELVE.replace(
+        "work_hours_per_person = 160\n",
+        "work_hours_per_person = 160\ndefault_wage_micros_per_hour = 24000000\n",
+    ));
+    shape_or_profile(&TWELVE.replace(
+        "function_weights_bps = [1200, 300, 1000, 150, 1200, 800, 1800, 800, 1350, 500, 600, 300]",
+        "function_weights_bps = [1200, 300, 1000, 1200, 800, 1800, 800, 2000, 600, 300]",
+    ));
+    shape_or_profile(&TWELVE.replace(
+        "wage_fraction_bps = 8333",
+        "wage_micros_per_hour = 20000000",
+    ));
+    shape_or_profile(&TWELVE.replace("wage_fraction_bps = 8333", "wage_fraction_bps = 10001"));
+    shape_or_profile(&TWELVE.replace("wage_fraction_bps = 8333", "wage_fraction_bps = 0"));
+    let mut eleven = TWELVE.to_owned();
+    let at = eleven.find("[process.consumer_goods]").expect("process");
+    let end = at + eleven[at..].find("\n\n").expect("blank") + 2;
+    eleven.replace_range(at..end, "");
+    shape_or_profile(&eleven);
+}
+
+#[test]
+fn an_order_of_paying_is_refused_when_wrong() {
+    let original = "paying_order = [\"food\", \"materials\", \"consumer_goods\", \"utility\", \"housing\", \"household_services\", \"leisure\", \"business_services\", \"resources\"]";
+    assert!(TWELVE.contains(original));
+    let with = |order: &str| TWELVE.replace(original, &format!("paying_order = [{order}]"));
+    let cases = [
+        // an unknown product
+        with("\"food\", \"materials\", \"consumer_goods\", \"utility\", \"housing\", \"household_services\", \"leisure\", \"business_services\", \"resources\", \"nothing\""),
+        // a product twice
+        with("\"food\", \"materials\", \"consumer_goods\", \"utility\", \"housing\", \"household_services\", \"leisure\", \"business_services\", \"resources\", \"food\""),
+        // a storable household need after a service
+        with("\"food\", \"utility\", \"housing\", \"materials\", \"consumer_goods\", \"household_services\", \"leisure\", \"business_services\", \"resources\""),
+        // a storable household need left out
+        with("\"food\", \"consumer_goods\", \"utility\", \"housing\", \"household_services\", \"leisure\", \"business_services\", \"resources\""),
+        // utility after a local service
+        with("\"food\", \"materials\", \"consumer_goods\", \"housing\", \"utility\", \"household_services\", \"leisure\", \"business_services\", \"resources\""),
+        // a product with no price
+        with("\"food\", \"materials\", \"consumer_goods\", \"utility\", \"housing\", \"household_services\", \"leisure\", \"business_services\", \"resources\", \"resource_deposit\""),
+    ];
+    for changed in cases {
+        assert_ne!(changed, TWELVE);
+        assert!(
+            matches!(
+                NationalGamePolicy::parse(&changed),
+                Err(NationalGamePolicyError::Profile(ref what)) if what == "paying order"
+            ),
+            "{:?}",
+            NationalGamePolicy::parse(&changed)
+        );
+    }
+}
+
+#[test]
+fn bands_need_a_bottom_half() {
+    let changed = TWELVE.replace(
+        "private_owner_households_bps = 1000\n# The next 40% by earnings, the better-paid earning account (rule O17).\nnext_forty_households_bps = 4000",
+        "private_owner_households_bps = 1000\nnext_forty_households_bps = 9000",
+    );
+    assert_ne!(changed, TWELVE);
+    assert!(matches!(
+        NationalGamePolicy::parse(&changed),
+        Err(NationalGamePolicyError::Profile(_))
+    ));
 }

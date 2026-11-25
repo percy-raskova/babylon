@@ -240,6 +240,8 @@ pub enum NationalGrainError {
     TimeMargin(CountyGeoid),
     UnsupportedGeneration,
     UnsupportedEssentialFoodRecipe,
+    /// The scenario's wages are observed by trade and place; this reader needs one wage.
+    ObservedWagesUnread,
     CatchmentIdentityCollision,
     MissingOwnerBudget(FinancialDomainId),
     MissingFinancialDomain(AccountId),
@@ -742,9 +744,13 @@ impl OpeningProductiveEndowment {
             .iter()
             .filter(|m| m.mode == ResidentAttendanceMode::Employee)
             .try_fold(0, |n, m| add(n, m.seed.employed))?;
+        let single_wage = policy
+            .wages
+            .single()
+            .ok_or(NationalGrainError::ObservedWagesUnread)?;
         let wages = i128::from(employee_persons)
             .checked_mul(i128::from(policy.work_hours_per_person))
-            .and_then(|hours| hours.checked_mul(policy.default_wage.micro_units()))
+            .and_then(|hours| hours.checked_mul(single_wage.micro_units()))
             .ok_or(NationalGrainError::Arithmetic)?;
         if row.target.function == EconomicFunction::DistributionTransport {
             return Ok(Self {

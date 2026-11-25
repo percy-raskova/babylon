@@ -1,0 +1,528 @@
+# TEST FIXTURE, NOT A PLAYABLE SCENARIO. Schema 8: twelve trades, observed wages,
+# three earning accounts. Its figures are designed for tests; the rebuilt numbers are stage 5's.
+# Designed first national/world campaign policy. These are gameplay units,
+# not source-derived production, subsistence thresholds or a forecast.
+# Every price is millionths of one common currency unit; no exchange rates.
+schema_version = 8
+evidence_class = "Designed"
+period_days = 28
+work_hours_per_person = 160
+opening_pantry_periods = 1
+opening_input_periods = 2
+working_capital_periods = 2
+retailer_buffer_periods = 2
+resource_reserve_output_periods = 1040
+handling_hours_per_unit = 1
+missing_peer_weight_per_establishment = 1 # Designed allocation points, never observed jobs.
+household_enterprise_function = "household_services"
+
+[households]
+# Designed exposure within each historical earnings margin; not observed wealth/class.
+private_owner_households_bps = 1000
+# The next 40% by earnings, the better-paid earning account (rule O17).
+next_forty_households_bps = 4000
+
+[markets]
+foreign_procurement_bps = 2500 # A sourcing cap, not a promised realized flow.
+journey_timing = "slowest_profile" # Administrative hops do not add 28-day delays.
+service_reach = "same_state_or_own_counterpart"
+# The order of paying (ADR312): what a household buys first, and what last.
+paying_order = ["food", "materials", "consumer_goods", "utility", "housing", "household_services", "leisure", "business_services", "resources"]
+
+[financial]
+wage_tax_bps = 1500
+operating_income_tax_bps = 1500
+private_distribution_bps = 5000
+reserve_food_support_periods = 1
+cross_border_ownership_bps = 2000
+
+# Designed time accounting. Domestic eligibility uses ACS age 16+ controls;
+# external eligibility is a fixed approximation, never a new workforce source.
+[household_time]
+hours_per_eligible_person = 224
+ordinary_protected_hours_per_household = 32
+ordinary_provisioning_hours_per_household = 64
+collective_protected_hours_per_person = 32
+collective_provisioning_hours_per_person = 64
+external_eligible_persons_bps = 8000
+unmet_hours_per_unit = { food = 20 }
+
+[equipment]
+batches_per_unit_per_period = 40
+service_batches_per_unit = 4000
+installation_hours_per_unit = 32
+installation_inputs = { materials = 4 }
+installation_workforce_hours_bps = 625
+expansion_earnings_fraction_bps = 2500
+opening_remaining_service_bps = [2500, 5000, 7500, 10000]
+
+# Prices change through existing inspectable responsive market policies.
+# Public grants pay provider costs; the small posted public fee is separate.
+
+[commodity.food]
+label = "Food for one person for 28 days"
+unit_label = "person-period food parcel"
+kind = "storable"
+cargo_class = "general"
+grams_per_unit = 14000
+opening_price_micros = 280000000
+minimum_price_micros = 70000000
+maximum_price_micros = 1120000000
+price_step_micros = 7000000
+
+[commodity.resources]
+label = "Industrial feedstock"
+unit_label = "feedstock bundle"
+kind = "storable"
+cargo_class = "dry_bulk"
+grams_per_unit = 10000
+opening_price_micros = 40000000
+minimum_price_micros = 10000000
+maximum_price_micros = 160000000
+price_step_micros = 1000000
+
+[commodity.materials]
+label = "Manufactured supplies"
+unit_label = "supplies bundle"
+kind = "storable"
+cargo_class = "general"
+grams_per_unit = 5000
+opening_price_micros = 120000000
+minimum_price_micros = 30000000
+maximum_price_micros = 480000000
+price_step_micros = 3000000
+
+[commodity.equipment]
+label = "Productive equipment"
+unit_label = "equipment unit"
+kind = "storable"
+cargo_class = "general"
+grams_per_unit = 250000
+opening_price_micros = 4000000000
+minimum_price_micros = 1000000000
+maximum_price_micros = 16000000000
+price_step_micros = 100000000
+
+[commodity.utility]
+label = "Utility provision"
+unit_label = "utility service unit"
+kind = "utility"
+grams_per_unit = 0
+opening_price_micros = 75000000
+minimum_price_micros = 18750000
+maximum_price_micros = 300000000
+price_step_micros = 1875000
+
+[commodity.housing]
+label = "Housing provision"
+unit_label = "household-period housing"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 1450000000
+minimum_price_micros = 362500000
+maximum_price_micros = 5800000000
+price_step_micros = 36250000
+
+[commodity.household_services]
+label = "Household services"
+unit_label = "person-period service"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 600000000
+minimum_price_micros = 150000000
+maximum_price_micros = 2400000000
+price_step_micros = 15000000
+
+[commodity.business_services]
+label = "Business support"
+unit_label = "business service unit"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 100000000
+minimum_price_micros = 25000000
+maximum_price_micros = 400000000
+price_step_micros = 2500000
+
+[commodity.public_provision]
+label = "Public provisioning"
+unit_label = "person-period provision"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 1000000
+minimum_price_micros = 250000
+maximum_price_micros = 4000000
+price_step_micros = 25000
+
+[commodity.consumer_goods]
+label = "Consumer goods"
+unit_label = "consumer goods bundle"
+kind = "storable"
+cargo_class = "general"
+grams_per_unit = 5000
+opening_price_micros = 240000000
+minimum_price_micros = 60000000
+maximum_price_micros = 960000000
+price_step_micros = 6000000
+
+[commodity.leisure]
+label = "Leisure and hospitality"
+unit_label = "person-period leisure"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 300000000
+minimum_price_micros = 75000000
+maximum_price_micros = 1200000000
+price_step_micros = 7500000
+
+[commodity.resource_deposit]
+label = "Finite extractable reserve"
+unit_label = "feedstock bundle"
+kind = "storable"
+grams_per_unit = 10000
+
+[process.food]
+output = "food"
+output_units_per_batch = 16
+labor_hours_per_batch = 16
+inputs = { materials = 1, utility = 1, business_services = 1 }
+
+[process.extraction]
+output = "resources"
+output_units_per_batch = 8
+labor_hours_per_batch = 16
+inputs = { resource_deposit = 8, utility = 1, business_services = 1 }
+
+[process.energy_utilities]
+output = "utility"
+output_units_per_batch = 160
+labor_hours_per_batch = 16
+inputs = { resources = 8 }
+
+[process.manufacturing]
+output = "materials"
+output_units_per_batch = 8
+labor_hours_per_batch = 16
+inputs = { resources = 8, utility = 2, business_services = 1 }
+
+[process.capital_goods]
+output = "equipment"
+output_units_per_batch = 1
+labor_hours_per_batch = 16
+inputs = { resources = 8, materials = 4, utility = 2, business_services = 1 }
+
+[process.construction_housing]
+output = "housing"
+output_units_per_batch = 16
+labor_hours_per_batch = 16
+inputs = { materials = 1, utility = 1 }
+
+[process.household_services]
+output = "household_services"
+output_units_per_batch = 8
+labor_hours_per_batch = 160
+inputs = { materials = 1, utility = 1 }
+
+[process.business_services]
+output = "business_services"
+output_units_per_batch = 16
+labor_hours_per_batch = 160
+inputs = { materials = 1, utility = 1 }
+
+[process.public_provisioning]
+output = "public_provision"
+output_units_per_batch = 160
+labor_hours_per_batch = 160
+inputs = { materials = 1, utility = 1 }
+
+[process.consumer_goods]
+output = "consumer_goods"
+output_units_per_batch = 8
+labor_hours_per_batch = 16
+inputs = { materials = 2, utility = 1, business_services = 1 }
+
+[process.leisure_hospitality]
+output = "leisure"
+output_units_per_batch = 16
+labor_hours_per_batch = 160
+inputs = { food = 2, materials = 1, utility = 1 }
+
+[[household_needs]]
+good = "food"
+basis = "persons"
+units_per_basis = 1
+
+[[household_needs]]
+good = "materials"
+basis = "households"
+units_per_basis = 1
+
+[[household_needs]]
+good = "utility"
+basis = "persons"
+units_per_basis = 1
+
+[[household_needs]]
+good = "housing"
+basis = "households"
+units_per_basis = 1
+
+[[household_needs]]
+good = "household_services"
+basis = "persons"
+units_per_basis = 1
+
+[[household_needs]]
+good = "public_provision"
+basis = "persons"
+units_per_basis = 1
+
+# Counterpart shares are game allocations, not measured class or sector shares.
+# Function order (Ord of the twelve trades): business, capital, housing, consumer
+# goods, distribution, energy, extraction, food, household services, leisure,
+# manufacturing, public. Membership lives separately.
+
+[counterpart."canada"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 8333
+price_scale_bps = 10000
+function_weights_bps = [1200, 300, 1000, 150, 1200, 800, 1800, 800, 1350, 500, 600, 300]
+
+[counterpart."mexico"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 2916
+price_scale_bps = 4000
+function_weights_bps = [900, 500, 1000, 250, 1400, 400, 600, 1000, 1400, 550, 1700, 300]
+
+[counterpart."china"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 4166
+price_scale_bps = 4500
+function_weights_bps = [800, 1300, 800, 650, 1100, 500, 700, 700, 500, 350, 2300, 300]
+
+[counterpart."russia"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 4583
+price_scale_bps = 5500
+function_weights_bps = [900, 500, 900, 250, 1100, 1000, 1700, 800, 1050, 400, 1100, 300]
+
+[counterpart."india"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 2083
+price_scale_bps = 2200
+function_weights_bps = [1200, 400, 900, 200, 1300, 400, 500, 1500, 1450, 550, 1300, 300]
+
+[counterpart."japan"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 9166
+price_scale_bps = 10000
+function_weights_bps = [1300, 1100, 900, 550, 1300, 500, 300, 500, 1350, 600, 1300, 300]
+
+[counterpart."european_union"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 9166
+price_scale_bps = 9500
+function_weights_bps = [1300, 700, 1100, 350, 1200, 500, 400, 700, 1600, 650, 1200, 300]
+
+[counterpart."remaining_europe"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 5833
+price_scale_bps = 7000
+function_weights_bps = [1000, 600, 1000, 300, 1200, 700, 900, 900, 1300, 500, 1300, 300]
+
+[counterpart."latin_america_caribbean"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 2916
+price_scale_bps = 4000
+function_weights_bps = [900, 300, 1000, 150, 1300, 500, 1100, 1500, 1500, 550, 900, 300]
+
+[counterpart."west_asia_north_africa"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 3333
+price_scale_bps = 4500
+function_weights_bps = [900, 300, 1100, 150, 1200, 1000, 2000, 700, 1300, 450, 600, 300]
+
+[counterpart."sub_saharan_africa"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 1666
+price_scale_bps = 1800
+function_weights_bps = [800, 200, 800, 100, 1500, 500, 1500, 2000, 1350, 450, 500, 300]
+
+[counterpart."remaining_asia_pacific"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 3750
+price_scale_bps = 4500
+function_weights_bps = [1000, 600, 900, 300, 1200, 500, 1000, 1000, 1200, 500, 1500, 300]
+
+# Separate dependencies use source persons when available. The missing UM
+# observation stays missing; its 50 temporary game residents are Designed.
+[dependency]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_fraction_bps = 10000
+price_scale_bps = 10000
+function_weights_bps = [1000, 500, 1000, 250, 1500, 500, 500, 1500, 1250, 500, 1000, 500]
+missing_population_game_persons = 50
+
+# Designed terms captured in existing NationalGamePolicy artifact.
+[aid]
+evidence_class = "Designed"
+donor_actor = 2616301
+local_recipient_actor = 2616302
+remote_recipient_actor = 1703101
+donor_contributor_id = 2616301
+local_recipient_contributor_id = 2616302
+remote_recipient_contributor_id = 1703101
+organization_opening_cash_micros = 1000000
+maximum_cash_micros = 1450000000
+initial_food_quantity = 1
+initial_cash_micros = 0
+local_cash_receiving_consent = "accept"
+remote_cash_receiving_consent = "accept"
+fulfillment_hours_per_unit = 2
+maximum_quantity = 4
+
+# Designed consent and organization commitments; real time remains finite.
+[organizer]
+evidence_class = "Designed"
+venue_log_reader = "controlled_organizer"
+organization_label = "Wayne Organizing Collective"
+workplace_partner_label = "Wayne Workplace Committee"
+neighborhood_partner_label = "Wayne Neighborhood Contact Group"
+local_partner_label = "Wayne Local Aid Partners"
+remote_partner_label = "Cook Independent Solidarity Partners"
+contributor_hours_cap = 8
+inquiry_hours = 2
+contact_hours = 2
+partner_response_hours = 2
+aid_coordination_hours = 2
+initial_agreement_through_period = 1
+contact_renewal_periods = 1
+local_receiving_consent = "accept"
+remote_receiving_consent = "accept"
+# Independent Designed cash consent; protected material needs remain mandatory.
+collection_cash_consent = "accept"
+collection_initial_cash_micros = 280000000
+collection_maximum_cash_micros = 1450000000
+collection_protected_cash_floor_micros = 0
+collection_hours = 2
+workplace_policy = "participate"
+neighborhood_policy = "participate"
+local_policy = "participate"
+remote_policy = "participate"
+
+[organizer.local_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[organizer.remote_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[grain]
+evidence_class = "Designed"
+generation = "state_faf_reserve_positions"
+protected_counties = ["17031", "26163"]
+hub_selection = "largest_observed_population_then_geoid"
+access_capacity = "captured_hub_lane"
+capacity_refinement = "essential_food_lower_bound_first_fit"
+
+[companies]
+# Designed opening employment shares. Whole sites can overshoot these targets.
+opening_employment_bps = [3500, 3500, 3000]
+# Designed share of each subsidiary's spendable cash above its captured operating floor.
+opening_treasury_bps = 1000
+portfolio_weights = [[70, 30, 0, 0], [10, 70, 15, 5], [60, 25, 15, 0], [10, 10, 60, 20]]
+high_utilization_bps = 8000
+history_periods = 3
+modest_expansion_bps = 5000
+# Existing national-world-v7 physical geography namespace. Company policy retains its own full source digest.
+inherited_grain_policy_sha256 = [0xa4, 0x33, 0x05, 0xed, 0x1d, 0x0e, 0x95, 0xf9, 0xd7, 0xdf, 0x6b, 0x8a, 0xac, 0xe5, 0xa8, 0xf9, 0x79, 0x08, 0x26, 0xf8, 0xc4, 0xc0, 0xb3, 0xb0, 0x6d, 0x1d, 0x54, 0x67, 0x51, 0xdc, 0x4f, 0x03]
+
+[household_lifecycle]
+# Designed initial birthdays fill the remaining four-week periods of each age band.
+# Survivors finish the band within its full width. Subsequent entrants keep their due period.
+initial_age_distribution = "uniform_remaining_birthdays"
+# Designed common four-week gameplay rates, per million residents in the specified
+# opening band. Birth exposure is residents age 18–64. Death exposures follow
+# under 16, 16–17, 18–64 and 65+. These terms are shared across all markets.
+births_per_million_working_age_per_period = 1350
+deaths_per_million_per_period = [15, 20, 340, 3250]
+# Designed foreign/dependency mix within the pre-existing 16+ control, in the
+# order 16–17, 18–64 and 65+. Domestic county ages use the captured ACS margins.
+external_eligible_age_bps = [400, 8000, 1600]
+
+# Separate no-earner nonowner households drawn from Wayne's reserve residents.
+[household_support_claimant]
+evidence_class = "Designed"
+county = "26163"
+households = 2
+reserve_persons = 2
+
+# The two household bodies separately authorize their delegations for this hearing.
+# The minutes grant a place at the next review. They cannot spend county money.
+[organizer.hearing]
+evidence_class = "Designed"
+county_geoid = "26163"
+period = 2
+review_period = 3
+attendance_hours = 2
+claimant_label = "Wayne Relief Claimants Assembly"
+claimant_claim = "Keep current claimants on the relief roll while the county reviews their cases."
+partner_claim = "Hear the cases of residents who received no county support."
+claimant_mandate = "either_procedural_offer"
+partner_mandate = { settle = "joint_minutes" }
+claimant_delegation = { delegate_label = "Claimants' meeting secretary", authorizing_households = 2 }
+partner_delegation = { delegate_label = "Case delegate for the aid partners", authorizing_households = 3 }
+
+# The City PD's books. The force is already employed inside Wayne's public workplaces, so
+# its payroll is named there (positions x a period's hours x the wage) and not paid twice.
+# The appropriation pays for the visits allowed in a period at the price of a visit hour.
+[city_pd]
+evidence_class = "Designed"
+positions = 3529
+positions_source = "City of Detroit, City Council Legislative Policy Division, budget analysis of 21 March 2025: Police Department, adopted positions, fiscal year 2025"
+visits_per_period = 1
+visit_hours = 1
+
+# The county review. The county ranks its households by the wage tax each paid and pays relief
+# units down that list; the organizer can reach one household in a named position per period. The
+# price of a unit is derived from the opening, not written here. The two body labels repeat the
+# labels the hearing already uses and are checked against them.
+[county_review]
+evidence_class = "Designed"
+county = "26163"
+first_session_period = 4
+session_hours = 2
+bring_hours = 2
+administration_label = "Wayne County administration"
+claimants_body_label = "Wayne Relief Claimants Assembly"
+aid_body_label = "Wayne Local Aid Partners"

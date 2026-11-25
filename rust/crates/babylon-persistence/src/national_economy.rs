@@ -25,6 +25,7 @@ pub use policy::{
     GameAidPolicy, GameCityPdPolicy, GameCommodity, GameCountyReviewPolicy, GameDependencyProfile,
     GameEquipmentPolicy, GameFinancialPolicy, GameHouseholdLifecyclePolicy, GameHouseholdPolicy,
     GameHouseholdSupportClaimant, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy,
-    GameNeed, GamePrice, GameProfile, GameRecipe, GameServiceReach, InitialAgeDistribution,
-    NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
+    GameNeed, GamePrice, GameProfile, GameProfileWage, GameRecipe, GameServiceReach, GameWages,
+    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts,
+    VenueLogReader,
 };

@@ -23,7 +23,8 @@ use babylon_practice_contract::{
 
 use crate::economic_catalog::{EconomicCatalogError, EconomicOpening};
 use crate::national_economy::{
-    NationalAidCapture, NationalGamePolicy, NationalSupportClaimant, NATIONAL_SCENARIO_ID,
+    NationalAidCapture, NationalGamePolicy, NationalOpeningError, NationalSupportClaimant,
+    NATIONAL_SCENARIO_ID,
 };
 use crate::national_household_allocation::HouseholdBudgetKey;
 
@@ -361,13 +362,14 @@ fn content_identity(
     public_account_id: [u8; 32],
     unit_price: i128,
     policy: &NationalGamePolicy,
+    going_wage: i128,
 ) -> [u8; 32] {
     let mut content = b"babylon.county-review-national-policy.v1\0".to_vec();
     content.extend_from_slice(&campaign);
     content.extend_from_slice(&actor_id.to_be_bytes());
     content.extend_from_slice(&public_account_id);
     content.extend_from_slice(&unit_price.to_be_bytes());
-    content.extend_from_slice(&policy.default_wage.micro_units().to_be_bytes());
+    content.extend_from_slice(&going_wage.to_be_bytes());
     if let Some(terms) = &policy.county_review {
         content.extend_from_slice(&terms.first_session_period.to_be_bytes());
         content.extend_from_slice(&terms.session_hours.to_be_bytes());
@@ -493,7 +495,22 @@ pub(crate) fn assemble(
     )?;
     let (crews, people) = crews(capture.opening, &groups)?;
     let actor_id = actor_id()?;
-    let content = content_identity(campaign, actor_id, public_account_id, unit_price, policy);
+    // Until the County Review reads the observed going wage (Task 8), only a single wage serves.
+    let going_wage = policy
+        .wages
+        .single()
+        .ok_or(EconomicCatalogError::NationalOpening(
+            NationalOpeningError::Policy,
+        ))?
+        .micro_units();
+    let content = content_identity(
+        campaign,
+        actor_id,
+        public_account_id,
+        unit_price,
+        policy,
+        going_wage,
+    );
     let config = CountyReviewConfig {
         schema_version: COUNTY_REVIEW_SCHEMA_VERSION,
         campaign_id: campaign,
@@ -505,7 +522,7 @@ pub(crate) fn assemble(
         aid_body_label: terms.aid_body_label.clone(),
         public_account_id,
         unit_price_micros: unit_price,
-        going_wage_micros: policy.default_wage.micro_units(),
+        going_wage_micros: going_wage,
         session_hours: terms.session_hours,
         bring_hours: terms.bring_hours,
         first_session_period: terms.first_session_period,

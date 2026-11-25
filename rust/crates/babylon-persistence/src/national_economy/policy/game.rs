@@ -7,7 +7,7 @@ use super::admission;
 use babylon_practice_contract::OrganizerSharingBasis;
 
 use babylon_kernel::currency::Currency;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_kernel::geography::CountyGeoid;
 
@@ -34,7 +34,10 @@ pub struct NationalGamePolicy {
     pub grain_identity_policy_digest: [u8; 32],
     pub period_days: u64,
     pub work_hours_per_person: u64,
-    pub default_wage: Currency,
+    /// Ten trades for schema 2 to 7, twelve for schema 8.
+    pub trades: TradeSet,
+    /// One wage for every workplace (schema 7 and earlier), or the observed wage of its trade and place.
+    pub wages: GameWages,
     pub opening_pantry_periods: u64,
     pub opening_input_periods: u64,
     pub working_capital_periods: u64,
@@ -112,16 +115,48 @@ pub struct GameNeed {
     pub units_per_basis: u64,
 }
 
+/// How a scenario sets the pay of its workplaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameWages {
+    /// One designed wage for every workplace: schema 7 and earlier.
+    Single(Currency),
+    /// The observed wage of each trade in its place: schema 8.
+    Observed,
+}
+
+impl GameWages {
+    /// The one wage, when the scenario has one.
+    #[must_use]
+    pub const fn single(self) -> Option<Currency> {
+        match self {
+            Self::Single(wage) => Some(wage),
+            Self::Observed => None,
+        }
+    }
+}
+
+/// The pay of a foreign region or the dependency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameProfileWage {
+    /// A designed wage per hour: schema 7 and earlier.
+    PerHour(Currency),
+    /// A designed fraction of the United States wage, in basis points: schema 8.
+    FractionOfUnitedStates {
+        /// Basis points of the United States wage, in `1..=10_000`.
+        bps: u16,
+    },
+}
+
 /// Statistical source population is not itself a labor-force observation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameProfile {
     pub participation_bps: u16,
     pub opening_employment_bps: u16,
     pub persons_per_household: u64,
-    pub wage_per_hour: Currency,
+    pub wage: GameProfileWage,
     pub price_scale_bps: u16,
-    /// `EconomicFunction` source-key order, independent of ownership or class.
-    pub function_weights_bps: [u16; 10],
+    /// `Ord` order of the scenario's trades (ten or twelve rows), independent of ownership or class.
+    pub function_weights_bps: Vec<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +169,8 @@ pub struct GameDependencyProfile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameHouseholdPolicy {
     pub private_owner_households_bps: u16,
+    /// The share of earning households in the better-paid account; `Some` only under schema 8.
+    pub next_forty_households_bps: Option<u16>,
 }
 
 /// Designed rates and budget commitments; payments still require actual funds.
@@ -303,9 +340,11 @@ impl GamePrice {
 }
 
 /// Captured trade sourcing and coarse journey conventions, not observed flows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameMarketPolicy {
     pub foreign_procurement_bps: u16,
+    /// What a household buys first and last; `Some` only under schema 8.
+    pub paying_order: Option<Vec<String>>,
     pub journey_timing: GameJourneyTiming,
     pub service_reach: GameServiceReach,
 }

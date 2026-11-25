@@ -1154,3 +1154,27 @@ reading of the five records, with every figure, is `reports/country-bench-2026-1
 - With all six rules a period takes 25 seconds while the country stands and 150 once it has collapsed (Task 7).
 - The `acted` lists of the heads count rows, as decision 3 of Task 8 says. A rule whose rows stand every period is
   listed in every period though it did nothing (the stop without pay). Read the figures, not the lists.
+
+## What the speed task and the long runs found (25 November)
+
+- **Task 7 was built in two halves** (`701bffc61`, `c2b13488f`), each with a profile first. The profile, not the
+  list this plan had made from reading the code, named the costs. For every workplace the restart tested and every
+  resting price it raised, `rate_of` called `spare_money::wages`, which makes a table over every employment term:
+  52 and 46 of the 123 seconds of period 4. In the hiring bound, `provider_first` scanned the processes left at
+  every step. Neither was on the list.
+- **With all six rules a period now takes 4.1 seconds on average** over 34 periods and 7.1 at the slowest (it was
+  137 and 153). All five sets fit a turn of ten seconds at 187 pooled places. What is left of a period with the
+  price rule is mostly the market itself, in `firms.rs` and `households.rs`, which this task did not touch.
+- **The guard held.** A pin of five periods of the two slow sets and two of the others; the engine's tests, the
+  small worlds' tests and the fifteen long tests; and the five records recorded again after each half, equal to
+  the first recording in every figure but the times.
+- **The runs of 400 periods** (Task 8, Step 4, run by the lead after Task 7): no rule, and all six with benefits.
+  Both close all 400 periods with the money equal in every row, in 8 and 25 minutes. Neither brings the shipped
+  country back: 47,028,722 persons are counted at work at period 400 with no rule and 93,953 with the rules, and
+  food is 99.98% unmet in both. The summaries are committed; the whole records are not.
+- **The reviewers' small things** are closed (`caa5a36e6`).
+- **The runs' logs are not committed.** Task 8 said to commit them, and they were force-added though `.gitignore`
+  ignores `*.log`. The repository's hygiene gate refuses a tracked file that matches `.gitignore`, and GitHub's
+  checks on that push failed for it. The logs are taken out again; the records stay.
+
+This plan is built. What its records say is in `reports/country-bench-2026-11-24/README.md`.

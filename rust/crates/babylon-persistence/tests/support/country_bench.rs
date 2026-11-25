@@ -2,6 +2,7 @@
 //! It closes each period with the engine's public entries, in the order of the tick's staffed run, and
 //! checks money, persons and the labor force every period. A refusal is returned typed and leaves the
 //! bench as it was.
+use super::country_fund;
 use super::country_rules;
 use super::country_seekers::{self, SeekerRows};
 use babylon_kernel::currency::Currency;
@@ -23,7 +24,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::mem;
 use std::time::{Duration, Instant};
 
-/// Which rules the bench turns on. Task 6 adds the set with benefits.
+/// Which rules the bench turns on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuleSet {
     None,
@@ -33,6 +34,8 @@ pub enum RuleSet {
     NoSeekers,
     /// (iii) All six rules, with spare money.
     AllSix,
+    /// (iv) All six rules, with the national fund and its two programs added to the opening.
+    AllSixWithBenefits,
 }
 
 impl RuleSet {
@@ -43,13 +46,19 @@ impl RuleSet {
             Self::Market => "market",
             Self::NoSeekers => "no-seekers",
             Self::AllSix => "all-six",
+            Self::AllSixWithBenefits => "all-six-with-benefits",
         }
     }
 
     /// Whether the set staffs by place: its members are the seekers' rows and its period is the
     /// seekers' path.
     pub const fn seeks_in_place(self) -> bool {
-        matches!(self, Self::AllSix)
+        matches!(self, Self::AllSix | Self::AllSixWithBenefits)
+    }
+
+    /// Whether the opening gains the national fund and its programs.
+    pub const fn has_benefits(self) -> bool {
+        matches!(self, Self::AllSixWithBenefits)
     }
 }
 
@@ -243,6 +252,7 @@ pub struct CountryBench {
     standing: WorkplaceStanding,
     set: RuleSet,
     opening_money: i128,
+    no_earner_per_person: Option<Currency>,
 }
 
 /// What a closed period decided, before the bench keeps any of it.
@@ -717,11 +727,30 @@ fn tick_receipts(period: u64, transition: &mut MaterialCircuitTransition) -> Mat
 
 impl CountryBench {
     /// The opening as the campaign compiler builds it, with the companies' portfolio choice left out.
+    /// A set with benefits first steps a baseline bench one period to read the `no_earner` amount, then
+    /// opens on the opening with the fund.
     ///
     /// # Errors
     /// `BenchError::Opening` when the opening does not compile; `Engine { stage: Open, .. }` when the catalog
     /// with portfolios off is refused.
     pub fn open(opening: &EconomicOpening, set: RuleSet) -> Result<Self, BenchError> {
+        if !set.has_benefits() {
+            return Self::open_plain(opening, set);
+        }
+        let first = Self::open_plain(opening, RuleSet::None)?.step()?;
+        let per_person = country_fund::no_earner_per_person(opening, &first)?;
+        let funded = country_fund::with_fund(opening, per_person)?;
+        let mut bench = Self::open_plain(&funded, set)?;
+        bench.no_earner_per_person = Some(per_person);
+        Ok(bench)
+    }
+
+    /// The `no_earner` amount a set with benefits opened with.
+    pub const fn no_earner_per_person(&self) -> Option<Currency> {
+        self.no_earner_per_person
+    }
+
+    fn open_plain(opening: &EconomicOpening, set: RuleSet) -> Result<Self, BenchError> {
         let compiled = opening.compile().map_err(BenchError::Opening)?;
         let mut state = compiled.state;
         let period = state.period;
@@ -747,6 +776,7 @@ impl CountryBench {
             standing: WorkplaceStanding::opening(),
             set,
             opening_money,
+            no_earner_per_person: None,
         })
     }
 

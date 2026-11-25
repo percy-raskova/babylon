@@ -2,10 +2,11 @@
 //! engine's own accounts.
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
-    self as engine, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState, RestartTest,
-    StopHold,
+    self as engine, AccountId, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState,
+    RestartTest, StopHold, TaxBasis, TaxPolicy,
 };
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
@@ -26,6 +27,8 @@ use uuid::Uuid;
 
 #[path = "support/country_bench.rs"]
 mod country_bench;
+#[path = "support/country_fund.rs"]
+mod country_fund;
 #[path = "support/country_rules.rs"]
 mod country_rules;
 #[path = "support/country_seekers.rs"]
@@ -1139,6 +1142,12 @@ fn bench_report(set: RuleSet, periods: u64) -> Value {
     head.insert("columns".to_owned(), economy_health::bench_columns());
     head.insert("panel".to_owned(), json!(panel));
     head.insert("periods".to_owned(), json!(rows));
+    if let Some(amount) = bench.no_earner_per_person() {
+        head.insert(
+            "no_earner_per_person_micros".to_owned(),
+            json!(amount.micro_units().to_string()),
+        );
+    }
     record
 }
 
@@ -1451,6 +1460,124 @@ fn one_period_with_all_six_rules_closes() {
     assert_eq!(stepped.receipts.resolve_tick, 1);
 }
 
+/// A figure for the money tests: the amount does not matter to them, only that it is positive.
+const TEST_PER_PERSON_MICROS: i128 = 1_000_000;
+
+fn with_test_fund(opening: &EconomicOpening) -> EconomicOpening {
+    country_fund::with_fund(opening, Currency::from_micro_units(TEST_PER_PERSON_MICROS))
+        .expect("the fund is added")
+}
+
+fn opening_money(opening: &EconomicOpening) -> i128 {
+    let cash = |amount: Currency| amount.micro_units();
+    let institutions: i128 = opening
+        .institutional_cash
+        .iter()
+        .map(|row| cash(row.cash))
+        .sum();
+    let sites: i128 = opening
+        .sites
+        .iter()
+        .map(|site| cash(site.opening_cash))
+        .sum();
+    let households: i128 = opening
+        .households
+        .iter()
+        .map(|household| cash(household.opening_cash))
+        .sum();
+    institutions + sites + households
+}
+
+/// The fund adds no money: the opening's total is the same, and the fund holds two periods of its
+/// `no_earner` payments.
+#[test]
+fn the_fund_keeps_the_opening_s_money() {
+    let catalog = pooled_catalog();
+    let before = catalog.opening();
+    let after = with_test_fund(before);
+    assert_eq!(opening_money(&after), opening_money(before));
+    let fund = after
+        .institutional_cash
+        .iter()
+        .find(|row| row.id == AccountId::Public(country_fund::fund_account()))
+        .expect("the fund holds cash");
+    let persons = country_fund::no_earner_persons(before).expect("the persons count");
+    assert_eq!(
+        fund.cash.micro_units(),
+        2 * TEST_PER_PERSON_MICROS * i128::from(persons)
+    );
+    println!(
+        "the fund opens with {} micros for {persons} persons",
+        fund.cash.micro_units()
+    );
+}
+
+/// Each payer's rows after the split sum to its rate before, basis by basis.
+#[test]
+fn the_split_taxes_keep_each_rate() {
+    let catalog = pooled_catalog();
+    let before = catalog.opening();
+    let after = with_test_fund(before);
+    let sums = |rows: &[TaxPolicy]| {
+        let mut sums = BTreeMap::<(AccountId, TaxBasis), u64>::new();
+        for row in rows {
+            *sums.entry((row.payer, row.basis)).or_default() += u64::from(row.rate_bps);
+        }
+        sums
+    };
+    assert_eq!(
+        sums(&after.institutions.taxes),
+        sums(&before.institutions.taxes)
+    );
+    println!(
+        "tax rows: {} before, {} after",
+        before.institutions.taxes.len(),
+        after.institutions.taxes.len()
+    );
+}
+
+/// Each domestic household account is a recipient of exactly one of the two programs.
+#[test]
+fn every_domestic_account_is_in_one_program() {
+    let catalog = pooled_catalog();
+    let after = with_test_fund(catalog.opening());
+    let programs = country_fund::program_recipients(&after);
+    assert_eq!(programs.len(), 2);
+    let no_earner: BTreeSet<_> = programs[country_fund::NO_EARNER].iter().copied().collect();
+    let laid_off: BTreeSet<_> = programs[country_fund::LAID_OFF].iter().copied().collect();
+    assert!(no_earner.is_disjoint(&laid_off));
+    for household in &after.households {
+        let domestic = household.location.to_string().starts_with("county:");
+        let listed = u8::from(no_earner.contains(&household.principal_id))
+            + u8::from(laid_off.contains(&household.principal_id));
+        assert_eq!(listed, u8::from(domestic), "{}", household.location);
+    }
+    let (accounts, persons) = country_fund::paid_neither(catalog.opening()).expect("they count");
+    println!(
+        "no_earner recipients {}; laid_off recipients {}; accounts whose members all look for work: \
+         {accounts} ({persons} persons)",
+        no_earner.len(),
+        laid_off.len()
+    );
+}
+
+/// The set with benefits closes the country's first period, and no program row is paid more than due.
+#[test]
+fn one_period_with_benefits_closes() {
+    let (_catalog, _census, mut bench) = open_census(RuleSet::AllSixWithBenefits);
+    let stepped = bench.step().expect("the first period closes");
+    assert_eq!(stepped.receipts.resolve_tick, 1);
+    for row in &stepped.public_programs {
+        assert!(row.paid <= row.due, "a program row is paid more than due");
+    }
+    println!(
+        "all-six-with-benefits period 1: {} program rows, no_earner {:?} micros a person, took {:?}",
+        stepped.public_programs.len(),
+        bench.no_earner_per_person().map(Currency::micro_units),
+        stepped.elapsed
+    );
+}
+
 /// One period of each set built so far, timed, beside the baseline's.
 #[test]
 #[ignore = "writes reports/country-bench-2026-11-24/timings.json"]
@@ -1462,6 +1589,7 @@ fn record_country_bench_timings() {
         RuleSet::Market,
         RuleSet::NoSeekers,
         RuleSet::AllSix,
+        RuleSet::AllSixWithBenefits,
     ] {
         let catalog = pooled_catalog();
         let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");

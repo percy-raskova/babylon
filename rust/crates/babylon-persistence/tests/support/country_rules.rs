@@ -59,7 +59,7 @@ pub fn rules_of(set: RuleSet) -> Vec<AdjustmentRule> {
             AdjustmentRule::RestingPrice,
             AdjustmentRule::GoodsStepDown,
         ],
-        RuleSet::AllSix => vec![
+        RuleSet::AllSix | RuleSet::AllSixWithBenefits => vec![
             AdjustmentRule::HiringWithinMeans,
             AdjustmentRule::SeekingInPlace,
             AdjustmentRule::StopWithoutPay,

@@ -3,19 +3,24 @@
   "periods_timed": 1,
   "sets": [
     {
-      "elapsed_ms": 1527,
+      "elapsed_ms": 1497,
       "ratio_to_baseline_bps": 10000,
       "set": "baseline"
     },
     {
-      "elapsed_ms": 9217,
-      "ratio_to_baseline_bps": 60326,
+      "elapsed_ms": 7181,
+      "ratio_to_baseline_bps": 47945,
       "set": "market"
     },
     {
-      "elapsed_ms": 14440,
-      "ratio_to_baseline_bps": 94504,
+      "elapsed_ms": 13086,
+      "ratio_to_baseline_bps": 87369,
       "set": "no-seekers"
+    },
+    {
+      "elapsed_ms": 28216,
+      "ratio_to_baseline_bps": 188388,
+      "set": "all-six"
     }
   ]
 }

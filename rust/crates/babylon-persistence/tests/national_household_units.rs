@@ -5,6 +5,7 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
     self as engine, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState, RestartTest,
+    StopHold,
 };
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
@@ -1407,19 +1408,45 @@ fn the_seekers_rows_keep_every_person() {
         .expect("the state with the seekers' rows encodes");
 }
 
-/// FINDING (24 November 2026): the engine refuses period 1 of this set with
-/// `Engine { period: 1, stage: Finish, error: ServiceInvariant }`. The set without the restart
-/// (hiring bound, seeking in place, stop, resting price, step-down) closes; adding `OwnerRestart` is what
-/// is refused. Left ignored, not mended: the lead decides (Global Constraints, "a refusal is a finding").
+/// All six rules close the country's first period; the counts of each kind of row are printed.
 #[test]
-#[ignore = "finding: the engine refuses period 1 of AllSix with ServiceInvariant at Finish, the owner's restart being the rule that brings it"]
 fn one_period_with_all_six_rules_closes() {
     let (_catalog, _census, mut bench) = open_census(RuleSet::AllSix);
     let stepped = bench.step().expect("the first period closes");
     let counts = counted(&stepped);
+    let mut persons_moved = 0_u64;
+    let mut held = 0_u64;
+    let mut restarts = [0_u64; 4];
+    for row in &stepped.adjustments {
+        match row {
+            AdjustmentReceipt::PlaceMove(m) => persons_moved += m.persons,
+            AdjustmentReceipt::Stop(s) if s.hold == StopHold::Held => held += 1,
+            AdjustmentReceipt::Restart(r) => match r.test {
+                RestartTest::NotTested => restarts[0] += 1,
+                RestartTest::Failed => restarts[1] += 1,
+                RestartTest::NoBuyer => restarts[2] += 1,
+                RestartTest::Restarted => restarts[3] += 1,
+            },
+            _ => {}
+        }
+    }
     println!(
-        "AllSix period 1: place moves {}, stops {}, took {:?}",
-        counts[1], counts[2], stepped.elapsed
+        "AllSix period 1: place moves {} ({persons_moved} persons moved); stops {} ({held} held); \
+         hiring bounds {}; resting prices {}; resting-price-to-cost {}; restarts {} (not tested {}, \
+         failed {}, no buyer {}, restarted {}); owner spare {}; goods offers {}; took {:?}",
+        counts[1],
+        counts[2],
+        counts[0],
+        counts[3],
+        counts[4],
+        counts[5],
+        restarts[0],
+        restarts[1],
+        restarts[2],
+        restarts[3],
+        counts[6],
+        counts[7],
+        stepped.elapsed
     );
     assert_eq!(stepped.receipts.resolve_tick, 1);
 }
@@ -1430,7 +1457,12 @@ fn one_period_with_all_six_rules_closes() {
 fn record_country_bench_timings() {
     let mut rows = Vec::new();
     let mut baseline = 0_u128;
-    for set in [RuleSet::None, RuleSet::Market, RuleSet::NoSeekers] {
+    for set in [
+        RuleSet::None,
+        RuleSet::Market,
+        RuleSet::NoSeekers,
+        RuleSet::AllSix,
+    ] {
         let catalog = pooled_catalog();
         let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
         let period = bench

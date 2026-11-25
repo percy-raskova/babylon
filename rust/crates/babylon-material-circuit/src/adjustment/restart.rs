@@ -23,7 +23,8 @@ use super::standing::{StopHold, WorkplaceStanding, WorkplaceStandingRow};
 use crate::{
     AccountId, CashTransferPurpose, CircuitAccounting, GoodId, HistoricalCostBook, MaterialCatalog,
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MonetaryBook,
-    MonetaryCircuit, MoneyTransferReceipt, RecurringEconomy, SiteId, UnitId,
+    MonetaryCircuit, MoneyTransferReceipt, PricePolicy, PublicTransferTreatment, RecurringEconomy,
+    SiteId, UnitId,
 };
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
@@ -313,7 +314,36 @@ fn workplaces(state: &MaterialCircuitState) -> Result<BTreeSet<SiteId>> {
     Ok(economy.employment.iter().map(|row| row.site_id).collect())
 }
 
-/// Step (b): a price that rested at this close and stands under one unit's cost is raised to that cost. The
+/// Whether some public allocation of the state names the site as the recipient of an operating grant: its price
+/// is a token that its public body's budget tops up, never meant to cover cost.
+fn funded_by_grant(state: &MaterialCircuitState, site: SiteId) -> bool {
+    match &state.accounting {
+        CircuitAccounting::Monetary(economy) => {
+            economy.financial.public_allocations.iter().any(|row| {
+                row.recipient == AccountId::Site(site)
+                    && row.treatment == PublicTransferTreatment::ProviderOperatingGrant
+            })
+        }
+        CircuitAccounting::PhysicalControl => false,
+    }
+}
+
+/// The lowest `maximum` among the site's offers whose pricing has a range; `None` when none has one.
+fn offer_ceiling(recurring: &RecurringEconomy, site: SiteId) -> Option<i128> {
+    recurring
+        .offers
+        .iter()
+        .filter(|offer| offer.site_id == site)
+        .filter_map(|offer| match offer.pricing {
+            PricePolicy::ServiceResponsive { maximum, .. }
+            | PricePolicy::Responsive { maximum, .. } => Some(maximum.micro_units()),
+            PricePolicy::Fixed => None,
+        })
+        .min()
+}
+
+/// Step (b): a price that rested at this close and stands under one unit's cost is raised to that cost, or to
+/// the lowest ceiling of the site's offers when that is lower; a provider funded by a grant is left alone. The
 /// period's price and service market receipts get the new price, and each raise has a receipt. Whether any
 /// price moved.
 fn raise_resting_prices(
@@ -334,7 +364,10 @@ fn raise_resting_prices(
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let mut lifts = Vec::new();
     for site in rested {
-        let (economy, _) = economy_of(&transition.state)?;
+        if funded_by_grant(&transition.state, site) {
+            continue;
+        }
+        let (economy, recurring) = economy_of(&transition.state)?;
         let rate = rate_of(economy, site);
         let (Some(cost), Some(output)) = (
             batch_cost(catalog, &transition.state, site, rate)?,
@@ -343,7 +376,10 @@ fn raise_resting_prices(
             continue;
         };
         if let Some(unit) = raised_price(cost, output.per_batch, output.price) {
-            lifts.push((site, output.price, unit));
+            let unit = offer_ceiling(recurring, site).map_or(unit, |ceiling| unit.min(ceiling));
+            if unit > output.price {
+                lifts.push((site, output.price, unit));
+            }
         }
     }
     for &(site, old, unit) in &lifts {

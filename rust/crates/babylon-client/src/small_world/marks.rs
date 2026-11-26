@@ -1075,11 +1075,14 @@ mod tests {
         }
         let mut failed = restart_of(1, RestartTest::Failed);
         failed.inputs_short = true;
+        let unit_id = result.members.first().ok_or("a member")?.unit_id;
         result.receipts.adjustments = vec![
             AdjustmentReceipt::Restart(failed),
             AdjustmentReceipt::RestingPriceToCost(RestingPriceToCostReceipt {
                 period: 1,
                 site_id: farm.site_id(),
+                good_id: Good::Food.good_id(),
+                unit_id,
                 old: dollars(12),
                 raised: dollars(23),
             }),

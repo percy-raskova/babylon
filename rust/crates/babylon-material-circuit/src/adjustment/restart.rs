@@ -32,14 +32,31 @@ type Result<T> = StdResult<T, MaterialCircuitError>;
 /// The quiet periods a workplace counts before its restart is tested.
 pub const RESTART_QUIET_PERIODS: u64 = 3;
 
-/// What one batch of a workplace costs, makes, and sells for.
-struct Output {
+/// One line of a workplace: a product, what one batch of it costs, makes and sells for. A maker has one line, a
+/// merchant one for each good it handles.
+struct Line {
+    good: GoodId,
+    unit: UnitId,
+    /// Whether the line is a maker's: it reads every market receipt of the site and every input of its process.
+    maker: bool,
     /// The units of one batch: the process's output, or one unit for a merchant.
     per_batch: u64,
     /// The batches its capacity runs: the nameplate, or without limit for a merchant.
     nameplate: u64,
+    /// What one batch costs.
+    cost: i128,
     /// The posted price of its product.
     price: i128,
+}
+
+/// What the test of one line found.
+enum LineTest {
+    /// What was turned away of it is not worth more than one batch costs.
+    Idle,
+    /// It pays, and its inputs cannot be had.
+    Short,
+    /// It pays and its inputs can be had: its plan and what it would earn.
+    Open { plan: i128, earn: i128 },
 }
 
 /// One workplace that passed the sales test, with the figures its buyer reads.
@@ -339,8 +356,9 @@ impl PlantTables {
 
 /// What the restart reads of the period's receipts, row by row in the order they stand.
 struct PeriodTables {
-    /// What each seller's markets wanted at the quote and sold: both quantities of each clearing.
-    clearings: BTreeMap<SiteId, Vec<(u64, u64)>>,
+    /// What each seller's markets wanted at the quote and sold: the good, the unit and both quantities of each
+    /// clearing.
+    clearings: BTreeMap<SiteId, Vec<(GoodId, UnitId, u64, u64)>>,
     /// The units each supplier's local transfers moved.
     shipped_by: BTreeMap<SiteId, Vec<u64>>,
     /// The units each buyer's local transfers took in.
@@ -381,7 +399,14 @@ impl PeriodTables {
             clearings: all_by(
                 &transition.market_clearings,
                 |row| row.site_id,
-                |row| (row.demand_at_quote, row.sold_quantity),
+                |row| {
+                    (
+                        row.good_id,
+                        row.unit_id,
+                        row.demand_at_quote,
+                        row.sold_quantity,
+                    )
+                },
             ),
             shipped_by: all_by(
                 &transition.local_transfers,
@@ -522,76 +547,106 @@ fn rate_of(tables: &CloseTables, site: SiteId) -> i128 {
     tables.ledger.rate.get(&site).copied().unwrap_or(0)
 }
 
-/// One batch's cost: a maker's hours at `rate` and each input at the highest posted price among its provider's
-/// offers; a merchant's hours a unit at `rate` and its supplier's posted price (one unit a batch).
+/// One batch's cost of a maker: its hours at `rate` and each input at the highest posted price among its
+/// provider's offers.
 ///
 /// # Errors
 /// `Arithmetic`.
-fn batch_cost(tables: &CloseTables, site: SiteId, rate: i128) -> Result<Option<i128>> {
+fn maker_cost(
+    tables: &CloseTables,
+    site: SiteId,
+    process: ProcessId,
+    rate: i128,
+) -> Result<Option<i128>> {
     let arithmetic = MaterialCircuitError::Arithmetic;
     let plant = &tables.plant;
-    if let Some(process) = plant.process_at.get(&site) {
-        let hours = total(rows_at(&plant.labor, process).iter())?;
-        let mut cost = i128::from(hours).checked_mul(rate).ok_or(arithmetic)?;
-        for &(good, unit, per_batch) in rows_at(&plant.inputs, process) {
-            let price = match plant.provider.get(&(site, good, unit)) {
-                Some(&(provider, _)) => tables.offers.own_top.get(&(provider, good, unit)),
-                None => tables.offers.top.get(&(good, unit)),
-            };
-            let Some(&price) = price else {
-                return Ok(None);
-            };
-            cost = i128::from(per_batch)
-                .checked_mul(price)
-                .and_then(|inputs| cost.checked_add(inputs))
-                .ok_or(arithmetic)?;
-        }
-        return Ok(Some(cost));
+    let hours = total(rows_at(&plant.labor, &process).iter())?;
+    let mut cost = i128::from(hours).checked_mul(rate).ok_or(arithmetic)?;
+    for &(good, unit, per_batch) in rows_at(&plant.inputs, &process) {
+        let price = match plant.provider.get(&(site, good, unit)) {
+            Some(&(provider, _)) => tables.offers.own_top.get(&(provider, good, unit)),
+            None => tables.offers.top.get(&(good, unit)),
+        };
+        let Some(&price) = price else {
+            return Ok(None);
+        };
+        cost = i128::from(per_batch)
+            .checked_mul(price)
+            .and_then(|inputs| cost.checked_add(inputs))
+            .ok_or(arithmetic)?;
     }
-    let Some(&(good, unit, hours_per_unit)) = rows_at(&plant.handling, &site).first() else {
-        return Ok(None);
-    };
-    let Some(price) = plant
-        .supplier
-        .get(&(site, good, unit))
-        .and_then(|supplier| tables.posted(*supplier, good, unit))
-    else {
-        return Ok(None);
-    };
-    Ok(hours_per_unit
-        .checked_mul(rate)
-        .and_then(|hours| hours.checked_add(price)))
+    Ok(Some(cost))
 }
 
-/// What one batch of a workplace makes, how many its capacity runs, and its posted price.
-fn output_of(
+/// The lines of a workplace. A maker has one, read as it always was: its process's first output, the units of
+/// one batch, its nameplate, one batch's cost and its posted price. A merchant has one for each of its handling
+/// rows, in the rows' order: the row's good, one unit a batch, no nameplate, the cost of one unit (the row's hours
+/// a unit at the site's rate plus the posted price of that good at its supplier) and the site's posted price of
+/// that good. A row without a supplier, a price at the supplier or an offer of the site has no line.
+///
+/// # Errors
+/// `Arithmetic`, or the refusal of the capacity reading.
+fn lines_of(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     tables: &CloseTables,
     site: SiteId,
     next_period: u64,
-) -> Result<Option<Output>> {
+) -> Result<Vec<Line>> {
     let plant = &tables.plant;
+    let rate = rate_of(tables, site);
     if let Some(&process) = plant.process_at.get(&site) {
+        let Some(cost) = maker_cost(tables, site, process, rate)? else {
+            return Ok(vec![]);
+        };
         let Some(&(good, unit, per_batch)) = plant.output_of_process.get(&process) else {
-            return Ok(None);
+            return Ok(vec![]);
         };
         let nameplate =
             crate::capacity::process_available(catalog, state, process, site, next_period)?;
-        return Ok(tables.posted(site, good, unit).map(|price| Output {
-            per_batch,
-            nameplate,
-            price,
-        }));
+        return Ok(tables
+            .posted(site, good, unit)
+            .map(|price| Line {
+                good,
+                unit,
+                maker: true,
+                per_batch,
+                nameplate,
+                cost,
+                price,
+            })
+            .into_iter()
+            .collect());
     }
-    Ok(rows_at(&plant.handling, &site)
-        .first()
-        .and_then(|&(good, unit, _)| tables.posted(site, good, unit))
-        .map(|price| Output {
+    let mut lines = Vec::new();
+    for &(good, unit, hours_per_unit) in rows_at(&plant.handling, &site) {
+        let Some(supplied) = plant
+            .supplier
+            .get(&(site, good, unit))
+            .and_then(|supplier| tables.posted(*supplier, good, unit))
+        else {
+            continue;
+        };
+        let Some(price) = tables.posted(site, good, unit) else {
+            continue;
+        };
+        let Some(cost) = hours_per_unit
+            .checked_mul(rate)
+            .and_then(|hours| hours.checked_add(supplied))
+        else {
+            continue;
+        };
+        lines.push(Line {
+            good,
+            unit,
+            maker: false,
             per_batch: 1,
             nameplate: u64::MAX,
+            cost,
             price,
-        }))
+        });
+    }
+    Ok(lines)
 }
 
 /// The product a workplace makes or handles, as `output_of` reads it: the first output of its process, or the
@@ -617,10 +672,10 @@ fn workplaces(state: &MaterialCircuitState) -> Result<BTreeSet<SiteId>> {
 
 /// Step (b): a price that rested at this close and stands under one unit's cost is raised to that cost, or to
 /// the lowest ceiling of that product's offers when that is lower; a provider funded by a grant is left alone.
-/// A resting price is a seller's price of one product: a site is raised only when the product the restart
-/// reads it by is itself the one that rested, and only that product's rows are written. The period's price
-/// and service market receipts of the product get the new price, and each raise has a receipt. Whether any
-/// price moved.
+/// A resting price is a seller's price of one product: each line of a site whose product is itself named by a
+/// resting-price receipt is raised, in the sites' order and the lines' order, and only that product's rows are
+/// written. The period's price and service market receipts of the product get the new price, and each raise has
+/// a receipt that names the product. Whether any price moved.
 fn raise_resting_prices(
     catalog: &MaterialCatalog,
     transition: &mut MaterialCircuitTransition,
@@ -649,28 +704,21 @@ fn raise_resting_prices(
         if tables.ledger.granted.contains(&site) {
             continue;
         }
-        let Some((good, unit)) = product_of(tables, site) else {
-            continue;
-        };
-        let product = (site, good, unit);
-        if !rested.contains(&product) {
-            continue;
-        }
-        let rate = rate_of(tables, site);
-        let (Some(cost), Some(output)) = (
-            batch_cost(tables, site, rate)?,
-            output_of(catalog, &transition.state, tables, site, next_period)?,
-        ) else {
-            continue;
-        };
-        if let Some(unit) = raised_price(cost, output.per_batch, output.price) {
-            let unit = tables
-                .offers
-                .ceiling
-                .get(&product)
-                .map_or(unit, |ceiling| unit.min(*ceiling));
-            if unit > output.price {
-                lifts.push((product, output.price, unit));
+        let lines = lines_of(catalog, &transition.state, tables, site, next_period)?;
+        for line in lines {
+            let product = (site, line.good, line.unit);
+            if !rested.contains(&product) {
+                continue;
+            }
+            if let Some(unit) = raised_price(line.cost, line.per_batch, line.price) {
+                let unit = tables
+                    .offers
+                    .ceiling
+                    .get(&product)
+                    .map_or(unit, |ceiling| unit.min(*ceiling));
+                if unit > line.price {
+                    lifts.push((product, line.price, unit));
+                }
             }
         }
     }
@@ -679,8 +727,8 @@ fn raise_resting_prices(
 }
 
 /// Write each raise: the offers of the product, the period's price and service market receipts of the product,
-/// and the raise's own receipt, in the order of the sites. Each site is raised once, so the rows of a site are
-/// found once; the site's other goods keep their prices.
+/// and the raise's own receipt, in the order of the lifts. The rows of each site are found once; the site's
+/// other goods keep their prices.
 fn apply_lifts(
     transition: &mut MaterialCircuitTransition,
     lifts: &[(Product, i128, i128)],
@@ -730,6 +778,8 @@ fn apply_lifts(
                 RestingPriceToCostReceipt {
                     period: closing,
                     site_id: site,
+                    good_id: good,
+                    unit_id: unit_of,
                     old: Currency::from_micro_units(old),
                     raised,
                 },
@@ -808,31 +858,31 @@ fn owner_spares(
     Ok(spares)
 }
 
-/// Whether the inputs of one batch of `site` can be had at this close: it holds each, or each it lacks is made
-/// by a supplier that employs people and made it in the period that closed, and that the bound of this close lets
-/// it buy: what the supplier plans to make for the next period (capped at nameplate and at its own bound) less
-/// what its other buyers took, within the policy's caps for a service. A merchant's batch is one unit of each
-/// good it handles.
+/// What one batch of a line needs: a maker's inputs, or one unit of a merchant's own good.
+fn needs_of(tables: &CloseTables, site: SiteId, line: &Line) -> Vec<(GoodId, UnitId, u64)> {
+    let plant = &tables.plant;
+    match plant.process_at.get(&site) {
+        Some(process) if line.maker => rows_at(&plant.inputs, process)
+            .iter()
+            .filter(|row| row.2 > 0)
+            .copied()
+            .collect(),
+        _ => vec![(line.good, line.unit, 1)],
+    }
+}
+
+/// Whether `needs`, the inputs of one batch of a line of `site`, can be had at this close: it holds each, or each
+/// it lacks is made by a supplier that employs people and made it in the period that closed, and that the bound
+/// of this close lets it buy: what the supplier plans to make for the next period (capped at nameplate and at its
+/// own bound) less what its other buyers took, within the policy's caps for a service.
 fn inputs_can_be_had(
     catalog: &MaterialCatalog,
     transition: &MaterialCircuitTransition,
     tables: &CloseTables,
     bound: &HiringBound,
     site: SiteId,
+    needs: Vec<(GoodId, UnitId, u64)>,
 ) -> Result<bool> {
-    let plant = &tables.plant;
-    let needs: Vec<(GoodId, UnitId, u64)> = if let Some(process) = plant.process_at.get(&site) {
-        rows_at(&plant.inputs, process)
-            .iter()
-            .filter(|row| row.2 > 0)
-            .copied()
-            .collect()
-    } else {
-        rows_at(&plant.handling, &site)
-            .iter()
-            .map(|&(good, unit, _)| (good, unit, 1))
-            .collect()
-    };
     for (good, unit, per_batch) in needs {
         let have = tables
             .ledger
@@ -959,8 +1009,67 @@ fn taken_by_others(
     total(taken.iter())
 }
 
-/// The sales test of one stopped workplace, and the inputs test: what its buyers could pay for at its price and
-/// were not sold must cover one batch's cost.
+/// What was turned away of a line: a maker's, every market receipt of the site; a merchant's, those of its own
+/// good. The quantity each market wanted at the quote less what it sold.
+fn turned_of(tables: &CloseTables, site: SiteId, line: Option<&Line>) -> Result<u64> {
+    rows_at(&tables.period.clearings, &site)
+        .iter()
+        .filter(|&&(good, unit, _, _)| {
+            line.is_none_or(|line| line.maker || (line.good, line.unit) == (good, unit))
+        })
+        .try_fold(0_u64, |sum, &(_, _, demand, sold)| {
+            let short = demand.checked_sub(sold)?;
+            sum.checked_add(short)
+        })
+        .ok_or(MaterialCircuitError::Arithmetic)
+}
+
+/// The test of one line: what its buyers could pay for at its price and were not sold, up to one batch, must be
+/// worth more than one batch costs, and the inputs of one batch must be had. An open line plans batches (what was
+/// turned away over a batch's output, at least one, at most its nameplate) for the periods of outlay.
+fn try_line(
+    catalog: &MaterialCatalog,
+    transition: &MaterialCircuitTransition,
+    tables: &CloseTables,
+    bound: &HiringBound,
+    site: SiteId,
+    line: &Line,
+    outlay_periods: u64,
+) -> Result<LineTest> {
+    let arithmetic = MaterialCircuitError::Arithmetic;
+    let turned = turned_of(tables, site, Some(line))?;
+    let revenue = i128::from(turned.min(line.per_batch))
+        .checked_mul(line.price)
+        .ok_or(arithmetic)?;
+    if revenue <= line.cost {
+        return Ok(LineTest::Idle);
+    }
+    let needs = needs_of(tables, site, line);
+    if !inputs_can_be_had(catalog, transition, tables, bound, site, needs)? {
+        return Ok(LineTest::Short);
+    }
+    let batches = (turned / line.per_batch).min(line.nameplate).max(1);
+    let made = i128::from(line.per_batch)
+        .checked_mul(i128::from(batches))
+        .ok_or(arithmetic)?;
+    let earn = i128::from(turned)
+        .min(made)
+        .checked_mul(line.price)
+        .and_then(|sales| {
+            i128::from(batches)
+                .checked_mul(line.cost)
+                .and_then(|spent| sales.checked_sub(spent))
+        })
+        .ok_or(arithmetic)?;
+    let plan = i128::from(batches)
+        .checked_mul(line.cost)
+        .and_then(|batch| batch.checked_mul(i128::from(outlay_periods)))
+        .ok_or(arithmetic)?;
+    Ok(LineTest::Open { plan, earn })
+}
+
+/// The test of one stopped workplace, line by line. No line pays: it fails. Lines pay and none is open: it fails
+/// with the inputs short. Else its plan and its earnings are the sums over its open lines.
 fn try_site(
     catalog: &MaterialCatalog,
     transition: &MaterialCircuitTransition,
@@ -971,55 +1080,50 @@ fn try_site(
 ) -> Result<Option<Tried>> {
     let arithmetic = MaterialCircuitError::Arithmetic;
     let (economy, _) = economy_of(&transition.state)?;
-    let rate = rate_of(tables, site);
-    let (Some(cost), Some(output)) = (
-        batch_cost(tables, site, rate)?,
-        output_of(catalog, &transition.state, tables, site, bound.next_period)?,
-    ) else {
+    let lines = lines_of(catalog, &transition.state, tables, site, bound.next_period)?;
+    if lines.is_empty() {
         return Ok(None);
-    };
-    let turned = rows_at(&tables.period.clearings, &site)
-        .iter()
-        .try_fold(0_u64, |sum, &(demand, sold)| {
-            let short = demand.checked_sub(sold)?;
-            sum.checked_add(short)
-        })
-        .ok_or(arithmetic)?;
+    }
+    let mut cost = 0_i128;
+    for line in &lines {
+        cost = cost.checked_add(line.cost).ok_or(arithmetic)?;
+    }
     let mut tried = Tried {
         site,
         cost,
-        turned,
+        turned: turned_of(tables, site, None)?,
         inputs_short: false,
         candidate: None,
     };
-    let per_batch = i128::from(output.per_batch);
-    let revenue = i128::from(turned.min(output.per_batch))
-        .checked_mul(output.price)
-        .ok_or(arithmetic)?;
-    if revenue <= cost {
+    let (mut plan, mut earn) = (0_i128, 0_i128);
+    let (mut pays, mut open) = (false, false);
+    for line in &lines {
+        match try_line(
+            catalog,
+            transition,
+            tables,
+            bound,
+            site,
+            line,
+            outlay_periods,
+        )? {
+            LineTest::Idle => {}
+            LineTest::Short => pays = true,
+            LineTest::Open {
+                plan: spent,
+                earn: gain,
+            } => {
+                pays = true;
+                open = true;
+                plan = plan.checked_add(spent).ok_or(arithmetic)?;
+                earn = earn.checked_add(gain).ok_or(arithmetic)?;
+            }
+        }
+    }
+    if !open {
+        tried.inputs_short = pays;
         return Ok(Some(tried));
     }
-    if !inputs_can_be_had(catalog, transition, tables, bound, site)? {
-        tried.inputs_short = true;
-        return Ok(Some(tried));
-    }
-    let batches = (turned / output.per_batch).min(output.nameplate).max(1);
-    let made = per_batch
-        .checked_mul(i128::from(batches))
-        .ok_or(arithmetic)?;
-    let earn = i128::from(turned)
-        .min(made)
-        .checked_mul(output.price)
-        .and_then(|sales| {
-            i128::from(batches)
-                .checked_mul(cost)
-                .and_then(|spent| sales.checked_sub(spent))
-        })
-        .ok_or(arithmetic)?;
-    let plan = i128::from(batches)
-        .checked_mul(cost)
-        .and_then(|batch| batch.checked_mul(i128::from(outlay_periods)))
-        .ok_or(arithmetic)?;
     let cash = economy.book.cash(AccountId::Site(site))?.micro_units();
     tried.candidate = money_to_put_in(plan, cash).map(|money| Candidate {
         site,
@@ -1308,10 +1412,10 @@ mod tests {
             AdjustmentRule, AidBook, CapacityReservations, CapacitySupply, CommodityDefinition,
             CommodityKind, CorridorId, EmploymentTerms, FinancialInstitutions,
             GoodsPriceCostEvidence, HouseholdTimeAccounting, LaborCompensation, LogisticsNodeId,
-            MarketClearingPolicy, MaterialCatalogDefinition, MemberLaborCapacityRow,
-            MerchantHandling, MerchantHandlingCoefficient, MerchantRole, MonetaryBook,
-            OwnershipClaim, PriceDecision, PriceReceipt, ReplenishmentPolicy, SellerOffer,
-            ServiceStage, SiteLogisticsNode, StaffingMemberId,
+            MarketClearingPolicy, MarketClearingReceipt, MarketMoment, MaterialCatalogDefinition,
+            MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
+            MonetaryBook, OwnershipClaim, PriceDecision, PriceReceipt, ReplenishmentPolicy,
+            SellerOffer, ServiceStage, SiteLogisticsNode, StaffingMemberId,
         };
 
         const STOPPED: u32 = 2_500;
@@ -1712,6 +1816,23 @@ mod tests {
                 unit_price: Currency::from_micro_units(price),
                 pricing: responsive(minimum, maximum),
             });
+            // The second merchant sells B at $9, so that B costs the first one $1 of hours plus $9.
+            recurring.offers.push(SellerOffer {
+                site_id: workplace(2),
+                good_id: second_good(),
+                unit_id: unit(),
+                unit_price: Currency::from_micro_units(dollars(9)),
+                pricing: PricePolicy::Fixed,
+            });
+            recurring.replenishment.push(ReplenishmentPolicy {
+                buyer_site_id: workplace(1),
+                supplier_site_id: workplace(2),
+                good_id: second_good(),
+                unit_id: unit(),
+                target_stock: 0,
+                maximum_purchase: 0,
+                cash_floor: Currency::from_micro_units(0),
+            });
             Ok((catalog, transition(state)))
         }
 
@@ -1726,8 +1847,8 @@ mod tests {
         }
 
         /// The price receipts of both goods of the first merchant, as the close wrote them.
-        fn price_rows(transition: &mut MaterialCircuitTransition) {
-            for (good, price) in [(good(), dollars(2)), (second_good(), dollars(20))] {
+        fn price_rows(transition: &mut MaterialCircuitTransition, b_price: i128) {
+            for (good, price) in [(good(), dollars(2)), (second_good(), b_price)] {
                 transition.prices.push(PriceReceipt {
                     period: 1,
                     site_id: workplace(1),
@@ -1787,7 +1908,7 @@ mod tests {
         fn a_raise_leaves_the_other_goods_of_a_shop() -> Result<()> {
             let (catalog, mut transition) =
                 two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
-            price_rows(&mut transition);
+            price_rows(&mut transition, dollars(20));
             transition.adjustments.push(rested(good(), dollars(2)));
             assert!(raise(&catalog, &mut transition)?);
             // A costs $1 of hours and $3 of its supplier's price.
@@ -1813,7 +1934,7 @@ mod tests {
         fn a_resting_second_good_raises_nothing() -> Result<()> {
             let (catalog, mut transition) =
                 two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
-            price_rows(&mut transition);
+            price_rows(&mut transition, dollars(20));
             transition
                 .adjustments
                 .push(rested(second_good(), dollars(20)));
@@ -1829,11 +1950,183 @@ mod tests {
             // B's maximum is below A's cost of $4; A's own maximum is above it.
             let (catalog, mut transition) =
                 two_goods(dollars(5), (dollars(3), dollars(1), dollars(3) + 500_000))?;
-            price_rows(&mut transition);
+            price_rows(&mut transition, dollars(20));
             transition.adjustments.push(rested(good(), dollars(2)));
             assert!(raise(&catalog, &mut transition)?);
             assert_eq!(offer_price(&transition, good())?, dollars(4));
             assert_eq!(raises(&transition), vec![(dollars(2), dollars(4))]);
+            Ok(())
+        }
+
+        /// A market that turned buyers away from the first merchant at its price of `good`.
+        fn turn_away(
+            transition: &mut MaterialCircuitTransition,
+            good: GoodId,
+            units: u64,
+            price: i128,
+        ) {
+            transition.market_clearings.push(MarketClearingReceipt {
+                period: 1,
+                moment: MarketMoment::HouseholdGoods,
+                site_id: workplace(1),
+                good_id: good,
+                unit_id: unit(),
+                quote_price: Currency::from_micro_units(price),
+                clearing_price: Currency::from_micro_units(price),
+                supply: 0,
+                demand_at_quote: units,
+                sold_quantity: 0,
+                bidders: 1,
+                served_bidders: 0,
+            });
+        }
+
+        /// The first merchant holds a hundred units of `good`.
+        fn hold(transition: &mut MaterialCircuitTransition, good: GoodId) {
+            transition.state.inventory.push(crate::InventoryRow {
+                site_id: workplace(1),
+                good_id: good,
+                unit_id: unit(),
+                quantity: 100,
+            });
+        }
+
+        /// The restart's test of the first merchant, one period of outlay.
+        fn tried(
+            catalog: &MaterialCatalog,
+            transition: &MaterialCircuitTransition,
+        ) -> Result<Tried> {
+            let tables = CloseTables::build(catalog, transition)?;
+            let bound = HiringBound {
+                next_period: 2,
+                process: BTreeMap::new(),
+                rows: vec![],
+                cuts: BTreeMap::new(),
+            };
+            Ok(
+                try_site(catalog, transition, &tables, &bound, workplace(1), 1)?
+                    .expect("the shop has lines"),
+            )
+        }
+
+        fn set_price(transition: &mut MaterialCircuitTransition, good: GoodId, price: i128) {
+            let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting else {
+                panic!("the fixture is monetary");
+            };
+            let recurring = economy
+                .recurring
+                .as_mut()
+                .expect("the fixture is recurring");
+            for offer in &mut recurring.offers {
+                if offer.site_id == workplace(1) && offer.good_id == good {
+                    offer.unit_price = Currency::from_micro_units(price);
+                }
+            }
+        }
+
+        #[test]
+        fn a_shop_is_tested_good_by_good() -> Result<()> {
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            turn_away(&mut transition, second_good(), 10, dollars(20));
+            hold(&mut transition, second_good());
+            let row = tried(&catalog, &transition)?;
+            // A costs $4 and B costs $10; one period of outlay.
+            let candidate = row.candidate.expect("the shop is a candidate");
+            assert_eq!(candidate.plan, 10 * dollars(10));
+            assert_eq!(candidate.earn, 10 * (dollars(20) - dollars(10)));
+            assert_eq!(row.turned, 10);
+            assert_eq!(row.cost, dollars(4) + dollars(10));
+            assert!(!row.inputs_short);
+            Ok(())
+        }
+
+        #[test]
+        fn a_good_that_does_not_pay_adds_nothing() -> Result<()> {
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            // A stands at $2 under its cost of $4; B at $20 over its cost of $10.
+            turn_away(&mut transition, good(), 5, dollars(2));
+            turn_away(&mut transition, second_good(), 3, dollars(20));
+            hold(&mut transition, good());
+            hold(&mut transition, second_good());
+            let row = tried(&catalog, &transition)?;
+            let candidate = row.candidate.expect("B pays");
+            assert_eq!(candidate.plan, 3 * dollars(10));
+            assert_eq!(candidate.earn, 3 * dollars(10));
+            assert_eq!(row.turned, 8);
+            Ok(())
+        }
+
+        #[test]
+        fn a_shop_none_of_whose_goods_pays_fails() -> Result<()> {
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            turn_away(&mut transition, good(), 5, dollars(2));
+            hold(&mut transition, good());
+            hold(&mut transition, second_good());
+            let row = tried(&catalog, &transition)?;
+            assert!(row.candidate.is_none());
+            assert!(!row.inputs_short);
+            Ok(())
+        }
+
+        #[test]
+        fn a_good_that_cannot_be_had_is_left_out() -> Result<()> {
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            set_price(&mut transition, good(), dollars(10));
+            turn_away(&mut transition, good(), 10, dollars(10));
+            turn_away(&mut transition, second_good(), 10, dollars(20));
+            // The shop holds A and not B, and B's supplier employs nobody who makes it.
+            hold(&mut transition, good());
+            let row = tried(&catalog, &transition)?;
+            let candidate = row.candidate.expect("A can be had");
+            assert_eq!(candidate.plan, 10 * dollars(4));
+            assert_eq!(candidate.earn, 10 * (dollars(10) - dollars(4)));
+            // Holding neither, and with both suppliers idle, nothing is open.
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            set_price(&mut transition, good(), dollars(10));
+            turn_away(&mut transition, good(), 10, dollars(10));
+            turn_away(&mut transition, second_good(), 10, dollars(20));
+            let row = tried(&catalog, &transition)?;
+            assert!(row.candidate.is_none());
+            assert!(row.inputs_short);
+            Ok(())
+        }
+
+        #[test]
+        fn every_resting_good_is_raised_to_its_own_cost() -> Result<()> {
+            // A stands at $2 under its cost of $4; B at $8 under its cost of $10 and may not pass $9.50.
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(8), dollars(1), dollars(9) + 500_000))?;
+            price_rows(&mut transition, dollars(8));
+            transition.adjustments.push(rested(good(), dollars(2)));
+            transition
+                .adjustments
+                .push(rested(second_good(), dollars(8)));
+            assert!(raise(&catalog, &mut transition)?);
+            assert_eq!(offer_price(&transition, good())?, dollars(4));
+            assert_eq!(price_row(&transition, good()), dollars(4));
+            assert_eq!(
+                offer_price(&transition, second_good())?,
+                dollars(9) + 500_000
+            );
+            assert_eq!(price_row(&transition, second_good()), dollars(9) + 500_000);
+            let named: Vec<(GoodId, UnitId)> = transition
+                .adjustments
+                .iter()
+                .filter_map(|row| match row {
+                    AdjustmentReceipt::RestingPriceToCost(r) => Some((r.good_id, r.unit_id)),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(named, vec![(good(), unit()), (second_good(), unit())]);
+            assert_eq!(
+                raises(&transition),
+                vec![(dollars(2), dollars(4)), (dollars(8), dollars(9) + 500_000)]
+            );
             Ok(())
         }
 

@@ -58,6 +58,10 @@ pub struct RestingPriceToCostReceipt {
     pub period: u64,
     /// The seller.
     pub site_id: SiteId,
+    /// The good whose price was raised.
+    pub good_id: GoodId,
+    /// The unit it is priced in.
+    pub unit_id: UnitId,
     /// The price that stood.
     pub old: Currency,
     /// The price now: one unit's cost, rounded up to the micro-unit.

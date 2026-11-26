@@ -249,25 +249,41 @@ market_clearing:
     offered nothing at its markets of a product (the sum of the supply of its markets of it, 0 when it had none)
     does not move that product's posted price at the close: the price decision is Hold and the product's own quote
     (its step ups and step downs) does not run for it, a service keeps its price; the rule keeps nothing from one
-    close to the next; each price that rested has a receipt (RestingPrice) with the period, the product and the price
+    close to the next; a period service that the market does not clear by price (one the order of paying leaves out)
+    never rests, and its price moves as its own policy says (ADR325, N3); each price that rested has a receipt
+    (RestingPrice) with the period, the product and the price
   ADR314_restart: >-
     when a catalog asks for OwnerRestart (which asks for the bound, the stop rule and the resting price), the close
     ends with the restart, before staffing, and the entry that carries the stop rule's memory is the only one that
-    runs it. In this order. (b) a price that rested at this close and stands under one unit's cost (a maker's hours
-    at its largest wage rate and each input at the highest posted price among its provider's offers; a merchant's
-    hours a unit and its supplier's price; over the units of a batch, rounded up to the micro-unit) is raised to
-    that cost, every offer of the workplace, the period's price and service market receipts take the new price
-    and each raise has a receipt (RestingPriceToCost). The counters of the memory (periods since it made or sold
-    anything; quiet periods) go to 0 for a workplace that sold anything or, having a production row, made or took
-    in anything, else up by one; they advance only in a close whose catalog asks for the restart. A workplace whose
-    people made available no hours in the closing period and that has 3 quiet periods is tested: what its buyers
-    could pay for at its price and were not sold (the sum, over its market receipts of this close, of demand at the
-    quote less the quantity sold) up to one batch must be worth more than one batch costs, and the inputs of one
-    batch must be had (held, or made this period by a supplier that employs people, within what that supplier plans
-    to make for the next period under its own bound, less what its other buyers took, within a service's caps).
-    It then plans batches (what was turned away over a batch's output, at least one, at most its nameplate) for
-    the periods of outlay the rule names; the money is that plan less the cash it holds, and a restart that would
-    put in nothing is refused. The buyer is the holder of its ownership claim, from that owner's own spare money
+    runs it. A workplace is read by its lines: a maker has one, its process's first output, and a merchant has one
+    for each good it handles, in the order of its handling rows, with one unit a batch, the cost of one unit (its
+    hours a unit at its largest wage rate and the posted price of that good at its supplier) and its own posted
+    price of that good; a good with no supplier, no price at its supplier or no offer of the workplace has no line.
+    In this order. (b) a price of a product that rested at this close (a line whose product has a RestingPrice
+    receipt) and stands under one unit's cost (a maker's hours at its largest wage rate and each input at the
+    highest posted price among its provider's offers; a merchant's hours a unit and its supplier's price; over the
+    units of a batch, rounded up to the micro-unit) is raised to that cost, or to the lowest maximum among the
+    workplace's offers of that product when that is lower; that product's offers, price receipts and service market
+    receipts take the new price and the workplace's other products keep theirs; each raise has a receipt
+    (RestingPriceToCost) that names the product, a workplace's lines in order. The counters of the memory (periods
+    since it made or sold anything; quiet periods) go to 0 for a workplace that sold anything or, having a
+    production row, made or took in anything, else up by one; they advance only in a close whose catalog asks for
+    the restart. A workplace whose
+    people made available no hours in the closing period and that has 3 quiet periods is tested, except a
+    provider of a service that the market shares, which lives on its public body's money (ADR325, N3). Each of its
+    lines is tested: what its buyers could pay for at its price and were not sold (for a maker, the sum over all
+    its market receipts of this close, and for a merchant's line, over its market receipts of that good, of demand
+    at the quote less the quantity sold) up to one batch must be worth more than one batch costs, and the inputs of
+    one batch must be had (a maker's inputs, or a merchant's one unit of that good; held, or made this period by a
+    supplier that employs people, within what that supplier plans to make for the next period under its own bound,
+    less what its other buyers took, within a service's caps). No line that pays: the test fails. Lines that pay
+    and none with its inputs to be had: it fails with the inputs short. Else, over the lines that pay and can be
+    supplied, it plans batches for each (what was turned away of it over a batch's output, at least one, at most
+    its nameplate) for the periods of outlay the rule names; its plan is the sum of what those batches cost over
+    those periods, and what it would earn is the sum of what each line's turned away units sell for less what its
+    batches cost; the receipt's turned away is the sum over all its market receipts, and its batch cost the sum of
+    the costs of its lines. The money is that plan less the cash it holds, and a restart that would put in nothing
+    is refused. The buyer is the holder of its ownership claim, from that owner's own spare money
     only: the owner's cash less one period of the goods and services its household requires at posted prices;
     candidates go in the order of what each would earn on the money put in, highest first, ties by site, and
     each takes its money out of what is left of that owner's spare. The money is a cash transfer (capital

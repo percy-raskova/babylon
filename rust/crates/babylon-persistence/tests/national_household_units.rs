@@ -5,8 +5,8 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
-    self as engine, AccountId, AdjustmentReceipt, FinalDemandPrincipalId, MaterialCircuitState,
-    RestartTest, StaffingMemberState, StopHold, TaxBasis, TaxPolicy,
+    self as engine, AccountId, AdjustmentReceipt, FinalDemandPrincipalId, LaborCompensation,
+    MaterialCircuitState, RestartTest, StaffingMemberState, StopHold, TaxBasis, TaxPolicy,
 };
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
@@ -2534,14 +2534,44 @@ fn the_opening_names_every_band() {
         pay("earning-better-paid-forty"),
         pay("earning-lower-paid-half"),
     );
-    // Pinned from the first run: Wayne's average hourly pay by band, in millionths of a dollar, as the wage
-    // bill over the band's employed persons and hours a person.
-    assert_eq!((owners, forty, half), (22_911_711, 44_911_830, 28_988_253));
+    // Wayne's average hourly pay by band, in millionths of a dollar: the wage bill over the band's waged
+    // persons and hours a person, rounded down.
+    assert_eq!((owners, forty, half), (52_532_633, 44_911_830, 28_988_253));
+    assert!(
+        owners >= forty,
+        "owners {owners} under the better-paid forty {forty}"
+    );
+    assert!(
+        owners >= half,
+        "owners {owners} under the lower-paid half {half}"
+    );
     assert!(forty >= half);
-    // The plan also expected owners >= forty. The data do not show it, and the figure cannot: the owners' band
-    // is dealt the working owners first, who are paid no wage, yet count among its employed persons, so its
-    // figure is the wage bill over persons some of whom draw none. The record's six figures hold no count of
-    // persons paid a wage, so the order of owners to forty is not asserted.
+    for held in read
+        .nation
+        .values()
+        .chain(read.places.values().flat_map(BTreeMap::values))
+    {
+        assert!(held.waged_persons <= held.employed_persons);
+    }
+    let rated: BTreeSet<_> = catalog
+        .opening()
+        .employment
+        .iter()
+        .filter(|term| matches!(term.compensation, LaborCompensation::Wage(_)))
+        .map(|term| term.member_id)
+        .collect();
+    let mut waged = 0_u64;
+    for seed in &catalog.opening().staffing {
+        if sites.contains(&seed.pool.site_id()) {
+            waged += seed
+                .members
+                .iter()
+                .filter(|m| rated.contains(&m.member.member_id()))
+                .map(|m| m.employed)
+                .sum::<u64>();
+        }
+    }
+    assert_eq!(total(|held| held.waged_persons), waged);
 }
 
 #[test]

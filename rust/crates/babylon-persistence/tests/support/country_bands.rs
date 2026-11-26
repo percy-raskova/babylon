@@ -127,6 +127,9 @@ pub struct Held {
     pub persons: u64,
     pub employed_persons: u64,
     pub looking_persons: u64,
+    /// The employed persons of the members whose compensation is a wage (a working owner and an unpaid
+    /// member of a family are at work and draw none).
+    pub waged_persons: u64,
     /// One period's wages: wage times employed persons times hours a person, over the members paid a wage.
     pub wage_bill_micros: i128,
 }
@@ -140,6 +143,7 @@ impl Held {
             self.persons,
             self.employed_persons,
             self.looking_persons,
+            self.waged_persons,
             self.wage_bill_micros.to_string(),
         ])
     }
@@ -152,6 +156,7 @@ impl Held {
         self.persons = sum(self.persons, other.persons)?;
         self.employed_persons = sum(self.employed_persons, other.employed_persons)?;
         self.looking_persons = sum(self.looking_persons, other.looking_persons)?;
+        self.waged_persons = sum(self.waged_persons, other.waged_persons)?;
         self.wage_bill_micros = self
             .wage_bill_micros
             .checked_add(other.wage_bill_micros)
@@ -159,10 +164,10 @@ impl Held {
         Ok(())
     }
 
-    /// Average hourly pay of the band's employed persons, in millionths of a dollar, rounded down.
+    /// Average hourly pay of the band's persons paid a wage, in millionths of a dollar, rounded down.
     #[must_use]
     pub fn hourly_pay_micros(&self, hours_per_person: u64) -> Option<i128> {
-        let hours = i128::from(self.employed_persons).checked_mul(i128::from(hours_per_person))?;
+        let hours = i128::from(self.waged_persons).checked_mul(i128::from(hours_per_person))?;
         (hours > 0).then(|| self.wage_bill_micros / hours)
     }
 }
@@ -220,19 +225,20 @@ pub fn opening_bands(opening: &EconomicOpening, bands: &Bands) -> Result<Opening
             let Some(account) = bands.account(member.member.household_id())? else {
                 continue;
             };
-            let wage_bill_micros = rates
-                .get(&member.member.member_id())
-                .map_or(Ok(0), |rate| {
-                    rate.checked_mul(i128::from(member.employed))
-                        .and_then(|paid| paid.checked_mul(i128::from(hours)))
-                        .ok_or(BenchError::Arithmetic { period: 0 })
-                })?;
+            let rate = rates.get(&member.member.member_id());
+            let waged_persons = if rate.is_some() { member.employed } else { 0 };
+            let wage_bill_micros = rate.map_or(Ok(0), |rate| {
+                rate.checked_mul(i128::from(member.employed))
+                    .and_then(|paid| paid.checked_mul(i128::from(hours)))
+                    .ok_or(BenchError::Arithmetic { period: 0 })
+            })?;
             put(
                 &account.place,
                 account.key,
                 Held {
                     employed_persons: member.employed,
                     looking_persons: member.reserve,
+                    waged_persons,
                     wage_bill_micros,
                     ..Held::default()
                 },
@@ -292,15 +298,16 @@ fn opening_legend() -> Value {
     json!({
         "figures": [
             "accounts", "households", "persons", "employed_persons", "looking_persons",
-            "wage_bill_micros"
+            "waged_persons", "wage_bill_micros"
         ],
         "accounts": "domestic household accounts of the band, the accounts carved from one counted under its parent's band",
         "households": "households of those accounts",
         "persons": "persons of those accounts, at work, looking or neither",
         "employed_persons": "persons at work at the opening, over the members of the accounts",
         "looking_persons": "persons looking for work at the opening",
+        "waged_persons": "the employed persons of the members whose compensation is a wage; a working owner and an unpaid member of a family are at work and are paid none, so employed_persons less waged_persons is the persons at work for no wage",
         "wage_bill_micros": "one period's wages in millionths of a dollar: the wage times the member's employed persons times the member's hours a person, over the members paid a wage",
-        "average_hourly_pay": "the wage bill over the employed persons and the hours a person (hours_per_person), rounded down",
+        "average_hourly_pay": "the wage bill over the waged persons and the hours a person (hours_per_person), rounded down",
         "key": "the household account's budget key: earning-lower-paid-half, earning-better-paid-forty, earning-owner, no-earner-nonowner, no-earner-owner, collective-residence",
         "place": "the hub county's geoid of a pooled place; the nation is the sum of the places",
     })
@@ -311,7 +318,7 @@ fn opening_legend() -> Value {
 pub fn earners_legend() -> Value {
     json!({
         "by_key": ["at_work", "looking", "wages_received_micros", "benefits_received_micros", "money_micros"],
-        "at_work": "persons at work at the close, after the moves of people who look for work",
+        "at_work": "persons at work at the close, after the moves of people who look for work; working owners and unpaid members of a family at work are counted, though they draw no wage",
         "looking": "persons looking for work at the close, counted as jobs_after_moves counts them",
         "wages_received_micros": "wages the band's accounts were paid in the period",
         "benefits_received_micros": "what the fund's programs paid the band's accounts in the period",

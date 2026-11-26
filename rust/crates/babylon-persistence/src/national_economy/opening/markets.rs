@@ -18,7 +18,8 @@ use babylon_material_circuit::{
     AccountId, CommodityKind, CorridorId, FinalDemandPrincipalId, GoodId, HouseholdNeedBasis,
     HouseholdPurchasePolicy, MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer,
     ServiceConnection, ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
-    MAX_HOUSEHOLD_NEEDS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_SERVICE_CONNECTIONS,
+    MAX_HOUSEHOLD_NEEDS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_REPLENISHMENT_POLICIES,
+    MAX_SERVICE_CONNECTIONS,
 };
 use std::collections::BTreeMap;
 
@@ -168,7 +169,10 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         &providers,
         &mut network,
         &mut preferences,
-        (&dealt, &shops),
+        &Dealings {
+            services: &dealt,
+            shops: &shops,
+        },
     )?;
     producers(builder, &providers, &mut network, &mut preferences, &dealt)?;
     super::equipment::wire(builder, &providers, &mut network, &mut preferences)?;
@@ -189,7 +193,8 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
     check_service_bounds(
         policies.service_inputs.len(),
         policies.service_connections.len(),
-    )
+    )?;
+    check_shop_bounds(policies.offers.len(), policies.replenishment.len())
 }
 
 // Only missing retailer locations need these indices. Actor locations/employment
@@ -472,14 +477,33 @@ fn check_service_bounds(service_inputs: usize, service_connections: usize) -> Re
     Ok(())
 }
 
+/// The shop offers and the restocking rows, which the dealing of shops makes grow, stay within the
+/// engine's bounds: past them the compiler refuses, typed, before the engine would.
+fn check_shop_bounds(offers: usize, replenishment: usize) -> Result<()> {
+    if offers > MAX_MATERIAL_CIRCUIT_ROWS || replenishment > MAX_REPLENISHMENT_POLICIES {
+        return Err(NationalOpeningError::Bounds);
+    }
+    Ok(())
+}
+
+/// What the dealing has settled before the households' rows are written.
+struct Dealings<'a> {
+    services: &'a Dealt,
+    shops: &'a BTreeMap<FinalDemandPrincipalId, SiteId>,
+}
+
 fn households(
     builder: &mut Builder<'_>,
     retailers: &BTreeMap<EconomicLocation, SiteId>,
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
-    (dealt, shops): (&Dealt, &BTreeMap<FinalDemandPrincipalId, SiteId>),
+    dealings: &Dealings<'_>,
 ) -> Result<()> {
+    let Dealings {
+        services: dealt,
+        shops,
+    } = *dealings;
     let households = builder.opening.households.clone();
     let domain_retailers = representative_retailers(builder)?;
     let mut retail_requirements = BTreeMap::<(SiteId, String), u64>::new();
@@ -1189,6 +1213,18 @@ mod retailer_index_controls {
         );
         assert_eq!(
             check_service_bounds(0, MAX_SERVICE_CONNECTIONS + 1),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_shop_bounds(MAX_MATERIAL_CIRCUIT_ROWS, MAX_REPLENISHMENT_POLICIES),
+            Ok(())
+        );
+        assert_eq!(
+            check_shop_bounds(MAX_MATERIAL_CIRCUIT_ROWS + 1, 0),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_shop_bounds(0, MAX_REPLENISHMENT_POLICIES + 1),
             Err(NationalOpeningError::Bounds)
         );
     }

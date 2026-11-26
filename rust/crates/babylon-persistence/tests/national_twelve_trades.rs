@@ -2626,3 +2626,96 @@ fn the_fixture_sends_no_equipment_abroad_by_share() {
             || matches!(at[&p.supplier_site_id], EconomicLocation::County(_))
     }));
 }
+
+/// Each county of the fixture's opening with the label of the part that keeps it, in county order.
+fn county_labels(catalog: &CapturedEconomicCatalog) -> Vec<(String, String)> {
+    let witness = catalog.national_generation().expect("the witness");
+    let mut found: Vec<(String, String)> = witness
+        .counties
+        .iter()
+        .map(|county| {
+            let label = match county.destination {
+                ContributionDestination::Detailed(geoid) => part_label(geoid, None),
+                ContributionDestination::Representative {
+                    catchment,
+                    position,
+                } => {
+                    let hub = witness
+                        .catchments
+                        .iter()
+                        .find(|c| c.id == catchment)
+                        .expect("the catchment")
+                        .key
+                        .hub;
+                    part_label(hub, Some(position))
+                }
+            };
+            (county.controls.county.as_str().to_owned(), label)
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// The number of places (hubs), the number of parts and a digest of every county's part, as hex.
+fn places_and_digest(catalog: &CapturedEconomicCatalog) -> (usize, usize, String) {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+    let labels = county_labels(catalog);
+    let parts: BTreeSet<&String> = labels.iter().map(|(_, label)| label).collect();
+    let hubs: BTreeSet<&str> = parts
+        .iter()
+        .map(|label| label.split('/').next().expect("a hub"))
+        .collect();
+    let mut hasher = Sha256::new();
+    for (county, label) in &labels {
+        hasher.update(format!("{county}={label}\n").as_bytes());
+    }
+    let mut digest = String::new();
+    for byte in hasher.finalize() {
+        write!(digest, "{byte:02x}").expect("a string takes text");
+    }
+    (hubs.len(), parts.len(), digest)
+}
+
+const FIXTURE_PLACES: usize = 187;
+const FIXTURE_PARTS: usize = 316;
+const FIXTURE_PARTS_DIGEST: &str =
+    "29cccf2e041bd684378f06673c413cbfffed5674bf299c7eb1e37881c2b52738";
+
+#[test]
+fn the_fixture_keeps_its_places() {
+    let (places, parts, digest) = places_and_digest(captured());
+    println!("places {places}, parts {parts}, digest {digest}");
+    assert_eq!(places, FIXTURE_PLACES);
+    assert_eq!(parts, FIXTURE_PARTS);
+    assert_eq!(digest, FIXTURE_PARTS_DIGEST);
+}
+
+#[test]
+fn the_map_does_not_follow_the_food_recipe() {
+    let text = std::str::from_utf8(FIXTURE).expect("the fixture is text");
+    let recipe = "output = \"food\"\noutput_units_per_batch = 16\nlabor_hours_per_batch = 16\n";
+    let need = "[[household_needs]]\ngood = \"food\"\nbasis = \"persons\"\nunits_per_basis = 1\n";
+    assert!(text.matches(recipe).count() == 1 && text.matches(need).count() == 1);
+    let changed = text
+        .replacen(
+            recipe,
+            "output = \"food\"\noutput_units_per_batch = 3\nlabor_hours_per_batch = 160\n",
+            1,
+        )
+        .replacen(
+            need,
+            "[[household_needs]]\ngood = \"food\"\nbasis = \"persons\"\nunits_per_basis = 28\n",
+            1,
+        );
+    let other = capture_text(&changed).expect("the changed fixture captures");
+    assert_eq!(county_labels(captured()), county_labels(&other));
+    assert_eq!(
+        captured()
+            .national_generation()
+            .expect("witness")
+            .catchments,
+        other.national_generation().expect("witness").catchments
+    );
+}

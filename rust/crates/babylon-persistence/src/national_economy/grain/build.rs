@@ -351,6 +351,15 @@ fn food(policy: &NationalGamePolicy) -> Result<(EconomicFunction, u128, u128, u1
     if commodity.cargo != Some(CargoClass::General) {
         return Err(NationalGrainError::UnsupportedEssentialFoodRecipe);
     }
+    // Under schema 8 the map folds on its own pinned basis (O15), whatever the scenario's recipe says.
+    if let Some(basis) = &policy.map_basis {
+        return Ok((
+            *function,
+            u128::from(basis.food_labor_hours_per_batch),
+            u128::from(basis.food_output_units_per_batch),
+            u128::from(basis.food_grams_per_unit),
+        ));
+    }
     Ok((
         *function,
         u128::from(recipe.labor_hours_per_batch),
@@ -517,6 +526,13 @@ pub fn capture_membership(
         .iter()
         .find(|n| n.key == "food")
         .ok_or(NationalGrainError::UnsupportedEssentialFoodRecipe)?;
+    // The food need's figures, or under schema 8 the map's own: persons, `food_units_per_person`.
+    let (need_basis, need_units) = policy
+        .map_basis
+        .as_ref()
+        .map_or((need.basis, need.units_per_basis), |basis| {
+            (HouseholdNeedBasis::Persons, basis.food_units_per_person)
+        });
     let mut hours = BTreeMap::<CountyGeoid, u128>::new();
     for workplace in &source.workplaces {
         let EconomicLocation::County(county) = workplace.target.location else {
@@ -560,7 +576,7 @@ pub fn capture_membership(
         let basis = household.budgets().iter().try_fold(0_u128, |n, b| {
             plus(
                 n,
-                u128::from(match need.basis {
+                u128::from(match need_basis {
                     HouseholdNeedBasis::Persons => b.persons,
                     HouseholdNeedBasis::Households => b.households,
                 }),
@@ -569,7 +585,7 @@ pub fn capture_membership(
         let screen = Screen {
             county: *county,
             population: control.population,
-            demand: product(basis, u128::from(need.units_per_basis))?,
+            demand: product(basis, u128::from(need_units))?,
             hours: hours.get(county).copied().unwrap_or(0),
             capacity: capacity.unwrap_or(0),
         };

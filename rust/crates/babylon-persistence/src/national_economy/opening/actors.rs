@@ -532,22 +532,18 @@ pub(super) fn node_id(source: &str) -> LogisticsNodeId {
 }
 
 pub(super) fn handling_requirements(builder: &Builder<'_>) -> Result<Vec<HandlingRequirement>> {
-    builder
-        .policy
-        .household_needs
-        .iter()
-        .filter_map(|need| match builder.commodity(&need.key) {
-            Ok(good) if matches!(good.kind, CommodityKind::Storable { .. }) => {
-                Some(Ok(HandlingRequirement {
-                    good_id: good.good_id,
-                    unit_id: good.unit_id,
-                    hours_per_unit: builder.policy.handling_hours_per_unit,
-                }))
-            }
-            Ok(_) => None,
-            Err(error) => Some(Err(error)),
-        })
-        .collect()
+    let mut rows = Vec::new();
+    for need in &builder.policy.household_needs {
+        let good = builder.commodity(&need.key)?;
+        if matches!(good.kind, CommodityKind::Storable { .. }) {
+            rows.push(HandlingRequirement {
+                good_id: good.good_id,
+                unit_id: good.unit_id,
+                hours_per_unit: super::markets::handling_hours(builder.policy, &need.key)?,
+            });
+        }
+    }
+    Ok(rows)
 }
 
 /// National authoring guard: no graph member force is funded by invented residents.

@@ -23,9 +23,11 @@ pub use identity::{
 };
 pub use policy::{
     GameAidPolicy, GameCityPdPolicy, GameCommodity, GameCountyReviewPolicy, GameDependencyProfile,
-    GameEquipmentPolicy, GameFinancialPolicy, GameHouseholdLifecyclePolicy, GameHouseholdPolicy,
-    GameHouseholdSupportClaimant, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy,
-    GameNeed, GamePrice, GameProfile, GameProfileWage, GameRecipe, GameServiceReach, GameWages,
-    InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError, ResidentOpeningCounts,
-    VenueLogReader,
+    GameEquipmentPolicy, GameFinancialPolicy, GameFundPolicy, GameHandling,
+    GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdSupportClaimant,
+    GameHouseholdTimePolicy, GameJourneyTiming, GameLuxuryScale, GameMachines, GameMapBasis,
+    GameMarketPolicy, GameNeed, GamePrice, GameProcurement, GameProfile, GameProfileWage,
+    GameProgram, GameProgramRecipients, GameProgramTerms, GameRecipe, GameServiceReach, GameWages,
+    GameWant, InitialAgeDistribution, NationalGamePolicy, NationalGamePolicyError,
+    ResidentOpeningCounts, VenueLogReader,
 };

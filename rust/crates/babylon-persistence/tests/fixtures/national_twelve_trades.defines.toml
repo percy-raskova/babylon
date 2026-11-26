@@ -12,7 +12,6 @@ opening_input_periods = 2
 working_capital_periods = 2
 retailer_buffer_periods = 2
 resource_reserve_output_periods = 1040
-handling_hours_per_unit = 1
 missing_peer_weight_per_establishment = 1 # Designed allocation points, never observed jobs.
 household_enterprise_function = "household_services"
 
@@ -23,7 +22,10 @@ private_owner_households_bps = 1000
 next_forty_households_bps = 4000
 
 [markets]
-foreign_procurement_bps = 2500 # A sourcing cap, not a promised realized flow.
+# A domestic buyer's share bought abroad, by product: a sourcing cap, not a promised realized flow.
+import_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 0 }
+# Services a buyer takes only in its own place.
+place_services = ["household_services", "housing", "public_provision"]
 journey_timing = "slowest_profile" # Administrative hops do not add 28-day delays.
 service_reach = "same_state_or_own_counterpart"
 # The order of paying (ADR312): what a household buys first, and what last.
@@ -35,6 +37,35 @@ operating_income_tax_bps = 1500
 private_distribution_bps = 5000
 reserve_food_support_periods = 1
 cross_border_ownership_bps = 2000
+
+# The country's fund: one share of each tax, the same in every place (O12, O13).
+[fund]
+evidence_class = "Designed"
+wage_tax_share_bps = 0
+operating_income_tax_share_bps = 0
+reserve_periods = 2
+
+[[programs]]
+key = "laid_off"
+kind = "after_layoff"
+rank = 0
+wage_share_bps = 5000
+half_periods = 13
+recipients = "earning_or_residence_at_opening"
+
+[[programs]]
+key = "no_earner"
+kind = "per_person"
+rank = 0
+amount_per_person_micros = 1595033714
+recipients = "no_earner_at_opening"
+
+[[programs]]
+key = "residence"
+kind = "per_person_by_place"
+rank = 0
+recipients = "collective_residence_at_opening"
+amounts_micros = {}
 
 # Designed time accounting. Domestic eligibility uses ACS age 16+ controls;
 # external eligibility is a fixed approximation, never a new workforce source.
@@ -48,18 +79,21 @@ external_eligible_persons_bps = 8000
 unmet_hours_per_unit = { food = 20 }
 
 [equipment]
-batches_per_unit_per_period = 40
-service_batches_per_unit = 4000
+# Workers per machine: 4 where the batch is 16 hours, 40 where it is 160, so a machine does 40
+# batches a period and serves 4,000 batches over its life of 100 periods.
+workers_per_machine = { business_services = 40, capital_goods = 4, construction_housing = 4, consumer_goods = 4, energy_utilities = 4, extraction = 4, food = 4, household_services = 40, leisure_hospitality = 40, manufacturing = 4, public_provisioning = 40 }
+machine_life_periods = 100
 installation_hours_per_unit = 32
 installation_inputs = { materials = 4 }
 installation_workforce_hours_bps = 625
 expansion_earnings_fraction_bps = 2500
-opening_remaining_service_bps = [2500, 5000, 7500, 10000]
 
 # Prices change through existing inspectable responsive market policies.
 # Public grants pay provider costs; the small posted public fee is separate.
 
 [commodity.food]
+handling_hours = 1
+handling_units = 1
 label = "Food for one person for 28 days"
 unit_label = "person-period food parcel"
 kind = "storable"
@@ -82,6 +116,8 @@ maximum_price_micros = 160000000
 price_step_micros = 1000000
 
 [commodity.materials]
+handling_hours = 1
+handling_units = 1
 label = "Manufactured supplies"
 unit_label = "supplies bundle"
 kind = "storable"
@@ -181,48 +217,56 @@ kind = "storable"
 grams_per_unit = 10000
 
 [process.food]
+margin_bps = 0
 output = "food"
 output_units_per_batch = 16
 labor_hours_per_batch = 16
 inputs = { materials = 1, utility = 1, business_services = 1 }
 
 [process.extraction]
+margin_bps = 0
 output = "resources"
 output_units_per_batch = 8
 labor_hours_per_batch = 16
 inputs = { resource_deposit = 8, utility = 1, business_services = 1 }
 
 [process.energy_utilities]
+margin_bps = 0
 output = "utility"
 output_units_per_batch = 160
 labor_hours_per_batch = 16
 inputs = { resources = 8 }
 
 [process.manufacturing]
+margin_bps = 0
 output = "materials"
 output_units_per_batch = 8
 labor_hours_per_batch = 16
 inputs = { resources = 8, utility = 2, business_services = 1 }
 
 [process.capital_goods]
+margin_bps = 0
 output = "equipment"
 output_units_per_batch = 1
 labor_hours_per_batch = 16
 inputs = { resources = 8, materials = 4, utility = 2, business_services = 1 }
 
 [process.construction_housing]
+margin_bps = 0
 output = "housing"
 output_units_per_batch = 16
 labor_hours_per_batch = 16
 inputs = { materials = 1, utility = 1 }
 
 [process.household_services]
+margin_bps = 0
 output = "household_services"
 output_units_per_batch = 8
 labor_hours_per_batch = 160
 inputs = { materials = 1, utility = 1 }
 
 [process.business_services]
+margin_bps = 0
 output = "business_services"
 output_units_per_batch = 16
 labor_hours_per_batch = 160
@@ -235,12 +279,14 @@ labor_hours_per_batch = 160
 inputs = { materials = 1, utility = 1 }
 
 [process.consumer_goods]
+margin_bps = 0
 output = "consumer_goods"
 output_units_per_batch = 8
 labor_hours_per_batch = 16
 inputs = { materials = 2, utility = 1, business_services = 1 }
 
 [process.leisure_hospitality]
+margin_bps = 0
 output = "leisure"
 output_units_per_batch = 16
 labor_hours_per_batch = 160
@@ -288,6 +334,7 @@ persons_per_household = 3
 wage_fraction_bps = 8333
 price_scale_bps = 10000
 function_weights_bps = [1200, 150, 1000, 150, 1200, 800, 1800, 800, 1500, 500, 600, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."mexico"]
 participation_bps = 4500
@@ -296,6 +343,7 @@ persons_per_household = 3
 wage_fraction_bps = 2916
 price_scale_bps = 4000
 function_weights_bps = [900, 250, 1000, 250, 1400, 400, 600, 1000, 1650, 550, 1700, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."china"]
 participation_bps = 4500
@@ -304,6 +352,7 @@ persons_per_household = 3
 wage_fraction_bps = 4166
 price_scale_bps = 4500
 function_weights_bps = [800, 650, 800, 650, 1100, 500, 700, 700, 1150, 350, 2300, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."russia"]
 participation_bps = 4500
@@ -312,6 +361,7 @@ persons_per_household = 3
 wage_fraction_bps = 4583
 price_scale_bps = 5500
 function_weights_bps = [900, 250, 900, 250, 1100, 1000, 1700, 800, 1300, 400, 1100, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."india"]
 participation_bps = 4500
@@ -320,6 +370,7 @@ persons_per_household = 3
 wage_fraction_bps = 2083
 price_scale_bps = 2200
 function_weights_bps = [1200, 200, 900, 200, 1300, 400, 500, 1500, 1650, 550, 1300, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."japan"]
 participation_bps = 4500
@@ -328,6 +379,7 @@ persons_per_household = 3
 wage_fraction_bps = 9166
 price_scale_bps = 10000
 function_weights_bps = [1300, 550, 900, 550, 1300, 500, 300, 500, 1900, 600, 1300, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."european_union"]
 participation_bps = 4500
@@ -336,6 +388,7 @@ persons_per_household = 3
 wage_fraction_bps = 9166
 price_scale_bps = 9500
 function_weights_bps = [1300, 350, 1100, 350, 1200, 500, 400, 700, 1950, 650, 1200, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."remaining_europe"]
 participation_bps = 4500
@@ -344,6 +397,7 @@ persons_per_household = 3
 wage_fraction_bps = 5833
 price_scale_bps = 7000
 function_weights_bps = [1000, 300, 1000, 300, 1200, 700, 900, 900, 1600, 500, 1300, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."latin_america_caribbean"]
 participation_bps = 4500
@@ -352,6 +406,7 @@ persons_per_household = 3
 wage_fraction_bps = 2916
 price_scale_bps = 4000
 function_weights_bps = [900, 150, 1000, 150, 1300, 500, 1100, 1500, 1650, 550, 900, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."west_asia_north_africa"]
 participation_bps = 4500
@@ -360,6 +415,7 @@ persons_per_household = 3
 wage_fraction_bps = 3333
 price_scale_bps = 4500
 function_weights_bps = [900, 150, 1100, 150, 1200, 1000, 2000, 700, 1450, 450, 600, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."sub_saharan_africa"]
 participation_bps = 4500
@@ -368,6 +424,7 @@ persons_per_household = 3
 wage_fraction_bps = 1666
 price_scale_bps = 1800
 function_weights_bps = [800, 100, 800, 100, 1500, 500, 1500, 2000, 1450, 450, 500, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 [counterpart."remaining_asia_pacific"]
 participation_bps = 4500
@@ -376,6 +433,7 @@ persons_per_household = 3
 wage_fraction_bps = 3750
 price_scale_bps = 4500
 function_weights_bps = [1000, 300, 900, 300, 1200, 500, 1000, 1000, 1500, 500, 1500, 300]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 
 # Separate dependencies use source persons when available. The missing UM
 # observation stays missing; its 50 temporary game residents are Designed.
@@ -386,6 +444,7 @@ persons_per_household = 3
 wage_fraction_bps = 10000
 price_scale_bps = 10000
 function_weights_bps = [1000, 250, 1000, 250, 1500, 500, 500, 1500, 1500, 500, 1000, 500]
+export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }
 missing_population_game_persons = 50
 
 # Designed terms captured in existing NationalGamePolicy artifact.
@@ -454,6 +513,13 @@ protected_counties = ["17031", "26163"]
 hub_selection = "largest_observed_population_then_geoid"
 access_capacity = "captured_hub_lane"
 capacity_refinement = "essential_food_lower_bound_first_fit"
+
+# The food figures that fold the counties into places (O15): the shipped food recipe, need and grams.
+[grain.basis]
+food_labor_hours_per_batch = 16
+food_output_units_per_batch = 16
+food_units_per_person = 1
+food_grams_per_unit = 14000
 
 [companies]
 # Designed opening employment shares. Whole sites can overshoot these targets.

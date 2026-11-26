@@ -11,8 +11,9 @@ use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_kernel::geography::CountyGeoid;
 
+use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_material_circuit::{
-    CommodityKind, GoodId, HouseholdLifecycleRates, HouseholdNeedBasis, UnitId,
+    CommodityKind, GoodId, HouseholdLifecycleRates, HouseholdNeedBasis, UnitId, WantTier,
 };
 
 use crate::national_transport::CargoClass;
@@ -43,7 +44,8 @@ pub struct NationalGamePolicy {
     pub working_capital_periods: u64,
     pub retailer_buffer_periods: u64,
     pub resource_reserve_output_periods: u64,
-    pub handling_hours_per_unit: u64,
+    /// One handling figure for every good: `Some` under schema 7 and earlier; schema 8 writes it by good.
+    pub handling_hours_per_unit: Option<u64>,
     pub missing_peer_weight_per_establishment: u64,
     pub household_enterprise_function: EconomicFunction,
     pub aid: GameAidPolicy,
@@ -62,6 +64,18 @@ pub struct NationalGamePolicy {
     pub commodities: BTreeMap<String, GameCommodity>,
     pub recipes: BTreeMap<EconomicFunction, GameRecipe>,
     pub household_needs: Vec<GameNeed>,
+    /// What a household buys after its needs, sorted `(tier, key)`; empty under schema 7 and earlier.
+    pub household_wants: Vec<GameWant>,
+    /// The national fund's terms: `Some` exactly under schema 8.
+    pub fund: Option<GameFundPolicy>,
+    /// The public programs, in key order: three rows exactly under schema 8, none before.
+    pub programs: Vec<GameProgram>,
+    /// Accounts whose money passes their three tiers buy luxuries times a scale, sorted `(place, key)`.
+    pub luxury_scales: Vec<GameLuxuryScale>,
+    /// Period services a buyer takes only in its own place, sorted; empty before schema 8.
+    pub place_services: Vec<String>,
+    /// The food figures that fold the counties into places: `Some` exactly under schema 8.
+    pub map_basis: Option<GameMapBasis>,
     pub counterparts: BTreeMap<ForeignCounterpart, GameProfile>,
     pub dependency: GameDependencyProfile,
 }
@@ -90,6 +104,16 @@ pub struct GameCommodity {
     pub kind: CommodityKind,
     pub cargo: Option<CargoClass>,
     pub price: Option<GamePrice>,
+    /// Retail handling of a storable good that households need or want: `Some` exactly under
+    /// schema 8, and only for such a good.
+    pub handling: Option<GameHandling>,
+}
+
+/// Retail handling of one shop good: `hours` of retail work for every `units` units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameHandling {
+    pub hours: u64,
+    pub units: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +130,8 @@ pub struct GameRecipe {
     pub output_units_per_batch: u64,
     pub labor_hours_per_batch: u64,
     pub inputs: BTreeMap<String, u64>,
+    /// The trade's margin over cost, in basis points: `Some` under schema 8 for every private trade.
+    pub margin_bps: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,6 +139,76 @@ pub struct GameNeed {
     pub key: String,
     pub basis: HouseholdNeedBasis,
     pub units_per_basis: u64,
+}
+
+/// One want of a household account: a tier, a good and a count a person or a household.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameWant {
+    pub key: String,
+    pub tier: WantTier,
+    pub basis: HouseholdNeedBasis,
+    pub units_per_basis: u64,
+}
+
+/// The national fund's terms: one share of each tax, the same in every place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameFundPolicy {
+    pub wage_tax_share_bps: u16,
+    pub operating_income_tax_share_bps: u16,
+    /// Periods of its payments the fund opens with.
+    pub reserve_periods: u64,
+}
+
+/// What a public program pays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameProgramTerms {
+    PerPerson {
+        amount_per_person: Currency,
+    },
+    /// One amount a person for each place named, by its hub county.
+    PerPersonByPlace {
+        amounts: BTreeMap<CountyGeoid, Currency>,
+    },
+    AfterLayoff {
+        wage_share_bps: u16,
+        half_periods: u16,
+    },
+}
+
+/// Who a program pays at the opening.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameProgramRecipients {
+    NoEarnerAtOpening,
+    EarningOrResidenceAtOpening,
+    CollectiveResidenceAtOpening,
+}
+
+/// One public program of the scenario.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameProgram {
+    pub key: String,
+    pub rank: u32,
+    pub terms: GameProgramTerms,
+    pub recipients: GameProgramRecipients,
+}
+
+/// An account whose money passes its three tiers buys its luxuries times `bps / 10_000`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameLuxuryScale {
+    /// A domestic part's label (`<hub geoid>` or `<hub geoid>/<position>`), or a counterpart's or
+    /// the dependency's key.
+    pub place: String,
+    pub key: HouseholdBudgetKey,
+    pub bps: u32,
+}
+
+/// The food figures that fold the counties into places, written down so recipes can change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameMapBasis {
+    pub food_labor_hours_per_batch: u64,
+    pub food_output_units_per_batch: u64,
+    pub food_units_per_person: u64,
+    pub food_grams_per_unit: u64,
 }
 
 /// How a scenario sets the pay of its workplaces.
@@ -155,6 +251,9 @@ pub struct GameProfile {
     pub persons_per_household: u64,
     pub wage: GameProfileWage,
     pub price_scale_bps: u16,
+    /// A buyer of this region's share bought from the United States, by product key: `Some` exactly
+    /// under schema 8.
+    pub export_bps: Option<BTreeMap<String, u16>>,
     /// `Ord` order of the scenario's trades (ten or twelve rows), independent of ownership or class.
     pub function_weights_bps: Vec<u16>,
 }
@@ -198,13 +297,27 @@ pub struct GameHouseholdTimePolicy {
 /// Finite productive use and installation requirements, independent of the horizon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameEquipmentPolicy {
-    pub batches_per_unit_per_period: u64,
-    pub service_batches_per_unit: u64,
+    pub machines: GameMachines,
     pub installation_hours_per_unit: u64,
     pub installation_inputs: BTreeMap<String, u64>,
     pub installation_workforce_hours_bps: u16,
     pub expansion_earnings_fraction_bps: u16,
-    pub opening_remaining_service_bps: [u16; 4],
+}
+
+/// Machines of the scenario.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameMachines {
+    /// Schema 7 and earlier.
+    Batches {
+        batches_per_unit_per_period: u64,
+        service_batches_per_unit: u64,
+        opening_remaining_service_bps: [u16; 4],
+    },
+    /// Schema 8: workers per machine by trade, one life for all.
+    Workers {
+        workers_per_machine: BTreeMap<EconomicFunction, u64>,
+        life_periods: u64,
+    },
 }
 
 /// Disjoint fixed person pools; no jobs are converted into additional people.
@@ -342,11 +455,20 @@ impl GamePrice {
 /// Captured trade sourcing and coarse journey conventions, not observed flows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameMarketPolicy {
-    pub foreign_procurement_bps: u16,
+    pub procurement: GameProcurement,
     /// What a household buys first and last; `Some` only under schema 8.
     pub paying_order: Option<Vec<String>>,
     pub journey_timing: GameJourneyTiming,
     pub service_reach: GameServiceReach,
+}
+
+/// How much of each storable good a buyer may take from abroad.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameProcurement {
+    /// One cap for every good and both directions: schema 7 and earlier.
+    Single(u16),
+    /// Schema 8: a domestic buyer's share bought abroad, by product key.
+    ByProduct { import_bps: BTreeMap<String, u16> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

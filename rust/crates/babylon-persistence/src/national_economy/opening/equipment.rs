@@ -1,6 +1,7 @@
 //! Designed opening instruments with finite use, real sourcing and installation.
 use super::{markets, routes, ActorContext, Builder, NationalOpeningError, Result};
 use crate::economic_catalog::CatalogCapacity;
+use crate::national_economy::{GameMachines, NationalGamePolicy};
 use babylon_kernel::currency::Currency;
 
 use babylon_kernel::content_digest;
@@ -107,11 +108,55 @@ fn bind_installation_work(
     Ok(())
 }
 
+/// Today's three machine figures from either arm of the policy: batches a machine does in a period,
+/// batches it serves over its life and the four opening ages. Under schema 8 one definition serves
+/// every process, so the trades must agree (Task 6 replaces this).
+fn machine_figures(policy: &NationalGamePolicy) -> Result<(u64, u64, [u16; 4])> {
+    match &policy.equipment.machines {
+        GameMachines::Batches {
+            batches_per_unit_per_period,
+            service_batches_per_unit,
+            opening_remaining_service_bps,
+        } => Ok((
+            *batches_per_unit_per_period,
+            *service_batches_per_unit,
+            *opening_remaining_service_bps,
+        )),
+        GameMachines::Workers {
+            workers_per_machine,
+            life_periods,
+        } => {
+            let mut figures = BTreeSet::new();
+            for (function, workers) in workers_per_machine {
+                let recipe = policy
+                    .recipes
+                    .get(function)
+                    .ok_or(NationalOpeningError::Policy)?;
+                let batches = policy
+                    .work_hours_per_person
+                    .checked_mul(*workers)
+                    .ok_or(NationalOpeningError::Arithmetic)?
+                    .div_ceil(recipe.labor_hours_per_batch);
+                figures.insert(batches);
+            }
+            let (Some(batches), 1) = (figures.first().copied(), figures.len()) else {
+                return Err(NationalOpeningError::Policy);
+            };
+            let service = batches
+                .checked_mul(*life_periods)
+                .ok_or(NationalOpeningError::Arithmetic)?;
+            Ok((batches, service, [2_500, 5_000, 7_500, 10_000]))
+        }
+    }
+}
+
 fn definition(builder: &Builder<'_>) -> Result<EquipmentDefinition> {
     let good = builder.commodity("equipment")?;
     let policy = &builder.policy.equipment;
-    if policy.batches_per_unit_per_period == 0
-        || policy.service_batches_per_unit == 0
+    let (batches_per_unit_per_period, service_batches_per_unit, _) =
+        machine_figures(builder.policy)?;
+    if batches_per_unit_per_period == 0
+        || service_batches_per_unit == 0
         || policy.installation_hours_per_unit == 0
     {
         return Err(NationalOpeningError::Policy);
@@ -123,8 +168,8 @@ fn definition(builder: &Builder<'_>) -> Result<EquipmentDefinition> {
         id: EquipmentDefinitionId::from_bytes(content_digest::sha256_of(&identity)),
         equipment_good_id: good.good_id,
         equipment_unit_id: good.unit_id,
-        batches_per_unit_per_period: policy.batches_per_unit_per_period,
-        service_batches_per_unit: policy.service_batches_per_unit,
+        batches_per_unit_per_period,
+        service_batches_per_unit,
         installation_labor_unit_id: builder.labor_unit,
         installation_hours_per_unit: policy.installation_hours_per_unit,
     })
@@ -152,7 +197,7 @@ fn opening_asset(
     if units == 0 {
         return Ok(());
     }
-    let fractions = builder.policy.equipment.opening_remaining_service_bps;
+    let (_, _, fractions) = machine_figures(builder.policy)?;
     let fraction = fractions[usize::from(actor.site_id.as_bytes()[0]) % fractions.len()];
     if fraction == 0 || fraction > 10_000 {
         return Err(NationalOpeningError::Policy);
@@ -272,7 +317,8 @@ fn policies(
         let secondary =
             markets::secondary_supplier(builder, locations, network, actor.site_id, cargo)?;
         let cap = u64::try_from(
-            u128::from(starts) * u128::from(builder.policy.markets.foreign_procurement_bps)
+            u128::from(starts)
+                * u128::from(markets::abroad_bps(builder, actor.site_id, "equipment")?)
                 / 10_000,
         )
         .map_err(|_| NationalOpeningError::Arithmetic)?;

@@ -1,11 +1,16 @@
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+use babylon_material_circuit::WantTier;
 use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage};
 use babylon_persistence::national_economy;
 use babylon_persistence::national_economy::{
-    GameProfileWage, GameWages, NationalGamePolicy, NationalGamePolicyError,
+    GameFundPolicy, GameHandling, GameLuxuryScale, GameMachines, GameMapBasis, GameProcurement,
+    GameProfileWage, GameProgramRecipients, GameProgramTerms, GameWages, NationalGamePolicy,
+    NationalGamePolicyError,
 };
+use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
+use std::collections::BTreeMap;
 
 const SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -754,4 +759,402 @@ fn consumer_goods_must_be_a_storable_good_and_leisure_a_period_service() {
         NationalGamePolicy::parse(&as_good),
         Err(NationalGamePolicyError::Profile(_))
     ));
+}
+
+// ---- Task 1 of stage 5: the keys of the rebuilt opening (schema 8) ----
+
+fn expect_error(changed: &str, expected: NationalGamePolicyError) {
+    assert_ne!(changed, TWELVE, "the mutation must change the input");
+    assert_eq!(NationalGamePolicy::parse(changed), Err(expected));
+}
+
+#[test]
+fn the_fixture_takes_the_fund_and_the_programs() {
+    let policy = NationalGamePolicy::parse(TWELVE).expect("the schema 8 fixture");
+    assert_eq!(policy.household_wants.len(), 0);
+    assert_eq!(
+        policy.fund,
+        Some(GameFundPolicy {
+            wage_tax_share_bps: 0,
+            operating_income_tax_share_bps: 0,
+            reserve_periods: 2,
+        })
+    );
+    let keys: Vec<_> = policy.programs.iter().map(|p| p.key.as_str()).collect();
+    assert_eq!(keys, ["laid_off", "no_earner", "residence"]);
+    assert!(policy.programs.iter().all(|p| p.rank == 0));
+    assert_eq!(
+        policy.programs[0].terms,
+        GameProgramTerms::AfterLayoff {
+            wage_share_bps: 5_000,
+            half_periods: 13
+        }
+    );
+    assert_eq!(
+        policy.programs[0].recipients,
+        GameProgramRecipients::EarningOrResidenceAtOpening
+    );
+    assert_eq!(
+        policy.programs[1].terms,
+        GameProgramTerms::PerPerson {
+            amount_per_person: Currency::from_micro_units(1_595_033_714)
+        }
+    );
+    assert_eq!(
+        policy.programs[1].recipients,
+        GameProgramRecipients::NoEarnerAtOpening
+    );
+    assert_eq!(
+        policy.programs[2].terms,
+        GameProgramTerms::PerPersonByPlace {
+            amounts: BTreeMap::new()
+        }
+    );
+    assert_eq!(
+        policy.programs[2].recipients,
+        GameProgramRecipients::CollectiveResidenceAtOpening
+    );
+    assert_eq!(policy.luxury_scales.len(), 0);
+}
+
+#[test]
+fn the_fixture_takes_the_places_and_the_markets() {
+    let policy = NationalGamePolicy::parse(TWELVE).expect("the schema 8 fixture");
+    assert_eq!(
+        policy.place_services,
+        ["household_services", "housing", "public_provision"]
+    );
+    assert_eq!(
+        policy.map_basis,
+        Some(GameMapBasis {
+            food_labor_hours_per_batch: 16,
+            food_output_units_per_batch: 16,
+            food_units_per_person: 1,
+            food_grams_per_unit: 14_000,
+        })
+    );
+    let GameProcurement::ByProduct { import_bps } = &policy.markets.procurement else {
+        panic!("schema 8 procurement is by product");
+    };
+    assert_eq!(import_bps.len(), 5);
+    for (key, bps) in import_bps {
+        assert_eq!(*bps, if key == "equipment" { 0 } else { 2_500 }, "{key}");
+    }
+    let canada = &policy.counterparts[&ForeignCounterpart::Canada];
+    let export = canada.export_bps.as_ref().expect("export shares");
+    assert_eq!(export.len(), 5);
+    assert!(export.values().all(|bps| *bps == 2_500));
+    assert!(policy
+        .dependency
+        .profile
+        .export_bps
+        .as_ref()
+        .is_some_and(|rows| rows.len() == 5));
+}
+
+#[test]
+fn the_fixture_takes_the_machines_and_the_handling() {
+    let policy = NationalGamePolicy::parse(TWELVE).expect("the schema 8 fixture");
+    let GameMachines::Workers {
+        workers_per_machine,
+        life_periods,
+    } = &policy.equipment.machines
+    else {
+        panic!("schema 8 machines are by workers");
+    };
+    assert_eq!(workers_per_machine.len(), 11);
+    assert_eq!(*life_periods, 100);
+    assert_eq!(workers_per_machine[&EconomicFunction::Food], 4);
+    assert_eq!(
+        workers_per_machine[&EconomicFunction::HouseholdServices],
+        40
+    );
+    assert_eq!(policy.handling_hours_per_unit, None);
+    for (key, commodity) in &policy.commodities {
+        let expected = matches!(key.as_str(), "food" | "materials")
+            .then_some(GameHandling { hours: 1, units: 1 });
+        assert_eq!(commodity.handling, expected, "{key}");
+    }
+    assert!(policy
+        .recipes
+        .values()
+        .all(|r| r.margin_bps == Some(0) || r.output == "public_provision"));
+    assert_eq!(
+        policy.recipes[&EconomicFunction::PublicProvisioning].margin_bps,
+        None
+    );
+}
+
+#[test]
+fn the_shipped_policy_keeps_its_arms() {
+    let policy = NationalGamePolicy::parse(SOURCE).expect("the shipped policy");
+    assert_eq!(policy.markets.procurement, GameProcurement::Single(2_500));
+    assert_eq!(
+        policy.equipment.machines,
+        GameMachines::Batches {
+            batches_per_unit_per_period: 40,
+            service_batches_per_unit: 4_000,
+            opening_remaining_service_bps: [2_500, 5_000, 7_500, 10_000],
+        }
+    );
+    assert_eq!(policy.handling_hours_per_unit, Some(1));
+    assert_eq!(policy.household_wants.len(), 0);
+    assert_eq!(policy.fund, None);
+    assert_eq!(policy.programs.len(), 0);
+    assert_eq!(policy.luxury_scales.len(), 0);
+    assert_eq!(policy.place_services.len(), 0);
+    assert_eq!(policy.map_basis, None);
+    assert!(policy.commodities.values().all(|c| c.handling.is_none()));
+    assert!(policy.recipes.values().all(|r| r.margin_bps.is_none()));
+    assert!(policy.counterparts.values().all(|c| c.export_bps.is_none()));
+}
+
+#[test]
+fn builder_keys_are_refused_under_schema_7() {
+    let at = |anchor: &str, add: &str| {
+        let changed = SOURCE.replacen(anchor, &format!("{anchor}{add}"), 1);
+        assert_ne!(changed, SOURCE, "{anchor}");
+        changed
+    };
+    let cases = [
+        at("[markets]\n", "import_bps = { food = 1 }\n"),
+        at("[markets]\n", "place_services = [\"housing\"]\n"),
+        at("[commodity.food]\n", "handling_hours = 1\nhandling_units = 1\n"),
+        at("[process.food]\n", "margin_bps = 10\n"),
+        at("[equipment]\n", "workers_per_machine = { food = 4 }\n"),
+        at("[equipment]\n", "machine_life_periods = 100\n"),
+        at("[counterpart.\"canada\"]\n", "export_bps = { food = 1 }\n"),
+        format!("{SOURCE}\n[grain.basis]\nfood_labor_hours_per_batch = 16\nfood_output_units_per_batch = 16\nfood_units_per_person = 1\nfood_grams_per_unit = 14000\n"),
+        format!("{SOURCE}\n[fund]\nevidence_class = \"Designed\"\nwage_tax_share_bps = 0\noperating_income_tax_share_bps = 0\nreserve_periods = 2\n"),
+        format!("{SOURCE}\n[[programs]]\nkey = \"no_earner\"\n"),
+        format!("{SOURCE}\n[luxury_scale]\nby_account = {{}}\n"),
+        format!("{SOURCE}\n[[household_wants]]\ngood = \"food\"\ntier = \"comfort\"\nbasis = \"persons\"\nunits_per_basis = 1\n"),
+    ];
+    for changed in cases {
+        assert_ne!(changed, SOURCE);
+        assert!(
+            matches!(
+                NationalGamePolicy::parse(&changed),
+                Err(NationalGamePolicyError::Shape | NationalGamePolicyError::Syntax)
+            ),
+            "{:?}",
+            NationalGamePolicy::parse(&changed)
+        );
+    }
+}
+
+fn remove_between(text: &str, start: &str, end: &str) -> String {
+    let from = text.find(start).expect("start");
+    let to = from + text[from..].find(end).expect("end") + end.len();
+    let mut out = text.to_owned();
+    out.replace_range(from..to, "");
+    out
+}
+
+#[test]
+fn schema_8_needs_the_builder_keys() {
+    let no_fund = remove_between(TWELVE, "[fund]", "reserve_periods = 2\n");
+    let no_programs = remove_between(TWELVE, "[[programs]]", "amounts_micros = {}\n");
+    let no_basis = remove_between(TWELVE, "[grain.basis]", "food_grams_per_unit = 14000\n");
+    let no_import = remove_between(TWELVE, "import_bps = {", "}\n");
+    let no_export = TWELVE.replacen(
+        "export_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }\n",
+        "",
+        1,
+    );
+    let no_workers = remove_between(TWELVE, "workers_per_machine = {", "}\n");
+    let no_life = TWELVE.replace("machine_life_periods = 100\n", "");
+    let old_handling = TWELVE.replacen(
+        "missing_peer_weight_per_establishment",
+        "handling_hours_per_unit = 1\nmissing_peer_weight_per_establishment",
+        1,
+    );
+    let old_procurement = TWELVE.replacen(
+        "journey_timing",
+        "foreign_procurement_bps = 2500\njourney_timing",
+        1,
+    );
+    let old_machines = TWELVE.replacen(
+        "[equipment]\n",
+        "[equipment]\nbatches_per_unit_per_period = 40\n",
+        1,
+    );
+    let no_handling = TWELVE.replacen("handling_hours = 1\nhandling_units = 1\n", "", 1);
+    let no_margin = TWELVE.replacen("margin_bps = 0\n", "", 1);
+    for changed in [
+        no_fund,
+        no_programs,
+        no_basis,
+        no_import,
+        no_export,
+        no_workers,
+        no_life,
+        old_handling,
+        old_procurement,
+        old_machines,
+        no_handling,
+        no_margin,
+    ] {
+        expect_error(&changed, NationalGamePolicyError::Shape);
+    }
+}
+
+fn profile(name: &str) -> NationalGamePolicyError {
+    NationalGamePolicyError::Profile(name.to_owned())
+}
+
+#[test]
+fn bad_builder_values_are_refused() {
+    let cases: Vec<(String, NationalGamePolicyError)> = vec![
+        (TWELVE.replacen("handling_hours = 1", "handling_hours = 0", 1), profile("handling")),
+        (TWELVE.replacen("handling_units = 1", "handling_units = 0", 1), profile("handling")),
+        (TWELVE.replacen("import_bps = { food = 2500", "import_bps = { food = 10001", 1), profile("import_bps")),
+        (TWELVE.replacen("food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }\n\n[", "food = 10001, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }\n\n[", 1), profile("export_bps")),
+        (TWELVE.replacen("margin_bps = 0", "margin_bps = 100001", 1), profile("margin_bps")),
+        (TWELVE.replacen("food = 4,", "food = 0,", 1), profile("workers_per_machine")),
+        (TWELVE.replace("machine_life_periods = 100", "machine_life_periods = 0"), profile("machine_life_periods")),
+        (TWELVE.replace("machine_life_periods = 100", "machine_life_periods = 10001"), profile("machine_life_periods")),
+        (TWELVE.replace("wage_tax_share_bps = 0", "wage_tax_share_bps = 10001"), profile("fund")),
+        (TWELVE.replace("reserve_periods = 2", "reserve_periods = 0"), profile("fund")),
+        (TWELVE.replace("reserve_periods = 2", "reserve_periods = 17"), profile("fund")),
+        (TWELVE.replace("key = \"residence\"", "key = \"other\""), profile("program")),
+        (TWELVE.replace("key = \"residence\"", "key = \"no_earner\""), profile("program")),
+        (TWELVE.replace("rank = 0\nwage_share_bps", "rank = 256\nwage_share_bps"), profile("program")),
+        (TWELVE.replace("wage_share_bps = 5000", "wage_share_bps = 0"), profile("program")),
+        (TWELVE.replace("wage_share_bps = 5000", "wage_share_bps = 10001"), profile("program")),
+        (TWELVE.replace("half_periods = 13", "half_periods = 0"), profile("program")),
+        (TWELVE.replace("half_periods = 13", "half_periods = 27"), profile("program")),
+        (TWELVE.replace("amount_per_person_micros = 1595033714", "amount_per_person_micros = 0"), profile("program")),
+        (TWELVE.replace("kind = \"per_person\"", "kind = \"after_layoff\""), profile("program")),
+        (TWELVE.replace("recipients = \"no_earner_at_opening\"", "recipients = \"collective_residence_at_opening\""), profile("program")),
+        (TWELVE.replace("units_per_basis = 1\n\n[[household_needs]]\ngood = \"materials\"", "units_per_basis = 0\n\n[[household_needs]]\ngood = \"materials\""), NationalGamePolicyError::HouseholdNeed("food".to_owned())),
+        (TWELVE.replace("food_labor_hours_per_batch = 16", "food_labor_hours_per_batch = 0"), profile("grain basis")),
+        (TWELVE.replace("food_grams_per_unit = 14000", "food_grams_per_unit = 0"), profile("grain basis")),
+    ];
+    for (index, (changed, expected)) in cases.into_iter().enumerate() {
+        assert_ne!(changed, TWELVE, "case {index} must change the input");
+        let got = NationalGamePolicy::parse(&changed);
+        assert_eq!(got, Err(expected), "case {index}");
+    }
+    // A handling row on a good that no need or want names.
+    let changed = TWELVE.replacen(
+        "[commodity.consumer_goods]\n",
+        "[commodity.consumer_goods]\nhandling_hours = 1\nhandling_units = 1\n",
+        1,
+    );
+    expect_error(&changed, NationalGamePolicyError::Shape);
+}
+
+const WANTS: &str = "\n[[household_wants]]\ngood = \"leisure\"\ntier = \"luxury\"\nbasis = \"persons\"\nunits_per_basis = 2\n\n[[household_wants]]\ngood = \"consumer_goods\"\ntier = \"comfort\"\nbasis = \"households\"\nunits_per_basis = 1\n";
+
+#[test]
+fn a_want_is_read_in_tier_and_key_order() {
+    // Consumer goods are a storable good the wants now name, so they take a handling row.
+    let with_wants = TWELVE.replacen(
+        "[commodity.consumer_goods]\n",
+        "[commodity.consumer_goods]\nhandling_hours = 1\nhandling_units = 1\n",
+        1,
+    ) + WANTS;
+    let policy = NationalGamePolicy::parse(&with_wants).expect("two wants");
+    let wants: Vec<_> = policy
+        .household_wants
+        .iter()
+        .map(|w| (w.tier, w.key.as_str(), w.units_per_basis))
+        .collect();
+    assert_eq!(
+        wants,
+        [
+            (WantTier::Comfort, "consumer_goods", 1),
+            (WantTier::Luxury, "leisure", 2)
+        ]
+    );
+    // Without its handling row the wanted shop good is refused.
+    expect_error(&(TWELVE.to_owned() + WANTS), NationalGamePolicyError::Shape);
+    let equipment = TWELVE.to_owned()
+        + "\n[[household_wants]]\ngood = \"equipment\"\ntier = \"comfort\"\nbasis = \"persons\"\nunits_per_basis = 1\n";
+    expect_error(
+        &equipment,
+        NationalGamePolicyError::HouseholdNeed("equipment".to_owned()),
+    );
+    let twice = with_wants.clone()
+        + &WANTS
+            .replace("leisure", "consumer_goods")
+            .replace("luxury", "comfort");
+    expect_error(
+        &twice,
+        NationalGamePolicyError::HouseholdNeed("consumer_goods".to_owned()),
+    );
+}
+
+#[test]
+fn residence_amounts_and_luxury_scales_are_read() {
+    let amounts = |entries: &str| {
+        TWELVE.replace(
+            "amounts_micros = {}",
+            &format!("amounts_micros = {entries}"),
+        )
+    };
+    let scales = |entries: &str| format!("{TWELVE}\n[luxury_scale]\nby_account = {entries}\n");
+    let policy = NationalGamePolicy::parse(&amounts("{ \"26163\" = 700000000 }"))
+        .expect("an amount for Wayne");
+    assert_eq!(
+        policy.programs[2].terms,
+        GameProgramTerms::PerPersonByPlace {
+            amounts: BTreeMap::from([(
+                babylon_kernel::geography::CountyGeoid::try_from("26163").expect("county"),
+                Currency::from_micro_units(700_000_000)
+            )])
+        }
+    );
+    expect_error(
+        &amounts("{ \"99999\" = 700000000 }"),
+        NationalGamePolicyError::Location,
+    );
+    expect_error(&amounts("{ \"26163\" = 0 }"), profile("program"));
+    let policy =
+        NationalGamePolicy::parse(&scales("{ \"26163:earning-owner\" = 12500 }")).expect("a scale");
+    assert_eq!(
+        policy.luxury_scales,
+        [GameLuxuryScale {
+            place: "26163".to_owned(),
+            key: HouseholdBudgetKey::EarningOwner,
+            bps: 12_500
+        }]
+    );
+    expect_error(
+        &scales("{ \"26163:earning-owner\" = 10000 }"),
+        profile("luxury_scale"),
+    );
+    expect_error(
+        &scales("{ \"26163:earning-owner\" = 1000001 }"),
+        profile("luxury_scale"),
+    );
+    expect_error(
+        &scales("{ \"26163:no-such-key\" = 12500 }"),
+        NationalGamePolicyError::Location,
+    );
+    let policy = NationalGamePolicy::parse(&scales(
+        "{ \"01073/below:earning-owner\" = 12500, \"canada:pooled-external\" = 20000 }",
+    ))
+    .expect("a part's label");
+    let places: Vec<_> = policy
+        .luxury_scales
+        .iter()
+        .map(|s| s.place.as_str())
+        .collect();
+    assert_eq!(places, ["01073/below", "canada"]);
+    expect_error(
+        &scales("{ \"01073/north:earning-owner\" = 12500 }"),
+        NationalGamePolicyError::Location,
+    );
+    let services = TWELVE.replace(
+        "place_services = [\"household_services\", \"housing\", \"public_provision\"]",
+        "place_services = [\"food\"]",
+    );
+    expect_error(&services, profile("place_services"));
+    let twice = TWELVE.replace(
+        "place_services = [\"household_services\", \"housing\", \"public_provision\"]",
+        "place_services = [\"housing\", \"housing\"]",
+    );
+    expect_error(&twice, profile("place_services"));
 }

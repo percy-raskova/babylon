@@ -2,6 +2,7 @@
 use crate::economic_catalog::{CommodityAmount, OpeningCommodityStock};
 use crate::national_counties::{CountyReference, NationalCountyReference};
 use crate::national_economy::GameCommodity;
+use crate::national_economy::GameMachines;
 use crate::national_economy::GameRecipe;
 use crate::national_economy::GameWages;
 use crate::national_economy::{
@@ -744,6 +745,42 @@ pub(super) fn cell(
         reason,
     })
 }
+/// Today's three machine figures of a trade, from either arm of the policy: batches a machine does
+/// in a period, batches it serves over its life, and the four opening ages (Task 6 replaces this).
+fn machine_figures(
+    policy: &NationalGamePolicy,
+    function: EconomicFunction,
+    recipe: &GameRecipe,
+) -> Result<(u64, u64, [u16; 4])> {
+    match &policy.equipment.machines {
+        GameMachines::Batches {
+            batches_per_unit_per_period,
+            service_batches_per_unit,
+            opening_remaining_service_bps,
+        } => Ok((
+            *batches_per_unit_per_period,
+            *service_batches_per_unit,
+            *opening_remaining_service_bps,
+        )),
+        GameMachines::Workers {
+            workers_per_machine,
+            life_periods,
+        } => {
+            let workers = workers_per_machine
+                .get(&function)
+                .ok_or(NationalGrainError::SourceIncidenceMismatch)?;
+            let batches = policy
+                .work_hours_per_person
+                .checked_mul(*workers)
+                .ok_or(NationalGrainError::Arithmetic)?
+                .div_ceil(recipe.labor_hours_per_batch);
+            let service = batches
+                .checked_mul(*life_periods)
+                .ok_or(NationalGrainError::Arithmetic)?;
+            Ok((batches, service, [2_500, 5_000, 7_500, 10_000]))
+        }
+    }
+}
 impl OpeningProductiveEndowment {
     pub(super) fn source(
         row: &AssignedResidentWorkplace,
@@ -787,7 +824,9 @@ impl OpeningProductiveEndowment {
         let batches = hours
             .checked_div(recipe.labor_hours_per_batch)
             .ok_or(NationalGrainError::Arithmetic)?;
-        let units = batches.div_ceil(policy.equipment.batches_per_unit_per_period);
+        let (batches_per_unit, service_batches_per_unit, ages) =
+            machine_figures(policy, row.target.function, recipe)?;
+        let units = batches.div_ceil(batches_per_unit);
         let force = row
             .members
             .iter()
@@ -795,14 +834,10 @@ impl OpeningProductiveEndowment {
         let force_hours = force
             .checked_mul(policy.work_hours_per_person)
             .ok_or(NationalGrainError::Arithmetic)?;
-        let workforce_equipment_units = (force_hours / recipe.labor_hours_per_batch)
-            .div_ceil(policy.equipment.batches_per_unit_per_period);
-        let fraction = policy.equipment.opening_remaining_service_bps
-            [usize::from(row.target.site_id.as_bytes()[0]) % 4];
-        let life = product(
-            u128::from(units),
-            u128::from(policy.equipment.service_batches_per_unit),
-        )?;
+        let workforce_equipment_units =
+            (force_hours / recipe.labor_hours_per_batch).div_ceil(batches_per_unit);
+        let fraction = ages[usize::from(row.target.site_id.as_bytes()[0]) % 4];
+        let life = product(u128::from(units), u128::from(service_batches_per_unit))?;
         let remaining = u64::try_from(product(life, u128::from(fraction))? / 10_000)
             .map_err(|_| NationalGrainError::Arithmetic)?;
         let price = policy

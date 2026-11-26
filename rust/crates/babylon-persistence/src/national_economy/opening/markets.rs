@@ -10,7 +10,7 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::EconomicLocation;
 
-use crate::national_economy::GameCommodity;
+use crate::national_economy::{GameCommodity, GameProcurement, NationalGamePolicy};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::{
@@ -333,7 +333,7 @@ fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<
             hours
                 .checked_add(super::quantity(
                     units,
-                    builder.policy.handling_hours_per_unit,
+                    handling_hours(builder.policy, &need.key)?,
                 )?)
                 .ok_or(NationalOpeningError::Arithmetic)
         })?;
@@ -454,7 +454,7 @@ fn retail_stock(
         .ok_or(NationalOpeningError::Policy)?
         .scaled(actor.price_scale_bps)
         .map_err(|_| NationalOpeningError::Arithmetic)?;
-    let handling_charge = super::amount(builder.policy.handling_hours_per_unit, actor.wage)?;
+    let handling_charge = super::amount(handling_hours(builder.policy, key)?, actor.wage)?;
     let unit_price = super::sum_amount(price.opening, handling_charge)?;
     let minimum = super::sum_amount(price.minimum, handling_charge)?;
     let maximum = super::sum_amount(price.maximum, handling_charge)?;
@@ -702,6 +702,59 @@ pub(super) fn secondary_supplier(
     Ok(secondary)
 }
 
+/// Hours of retail work for a unit of a shop good, as today's single figure: schema 8's blocks of
+/// units are wired by Task 3, until then a block of one unit is the only one read.
+pub(super) fn handling_hours(policy: &NationalGamePolicy, key: &str) -> Result<u64> {
+    if let Some(hours) = policy.handling_hours_per_unit {
+        return Ok(hours);
+    }
+    policy
+        .commodities
+        .get(key)
+        .and_then(|good| good.handling)
+        .filter(|row| row.units == 1)
+        .map(|row| row.hours)
+        .ok_or(NationalOpeningError::Policy)
+}
+
+/// A buyer's share, in basis points, bought from the second supplier of a good: schema 7's one cap,
+/// or schema 8's share of a domestic buyer's imports and of a foreign buyer's region (Task 5
+/// replaces this).
+pub(super) fn abroad_bps(builder: &Builder<'_>, buyer: SiteId, key: &str) -> Result<u16> {
+    let location = builder
+        .actors
+        .get(&buyer)
+        .ok_or(NationalOpeningError::Identity)?
+        .location;
+    match &builder.policy.markets.procurement {
+        GameProcurement::Single(bps) => Ok(*bps),
+        GameProcurement::ByProduct { import_bps } => {
+            let profile = match location {
+                EconomicLocation::County(_) => None,
+                EconomicLocation::Foreign(counterpart) => Some(
+                    &builder
+                        .policy
+                        .counterparts
+                        .get(&counterpart)
+                        .ok_or(NationalOpeningError::Policy)?
+                        .export_bps,
+                ),
+                EconomicLocation::Dependency(_) => {
+                    Some(&builder.policy.dependency.profile.export_bps)
+                }
+            };
+            let table = match profile {
+                None => Some(import_bps),
+                Some(export) => export.as_ref(),
+            };
+            table
+                .and_then(|rows| rows.get(key))
+                .copied()
+                .ok_or(NationalOpeningError::Policy)
+        }
+    }
+}
+
 pub(super) fn procure(
     builder: &mut Builder<'_>,
     providers: &Providers,
@@ -728,11 +781,8 @@ pub(super) fn procure(
     let primary = primary_supplier(locations, network, preferences, location, buyer, &good)?;
     let secondary = secondary_supplier(builder, locations, network, buyer, cargo)?;
     let foreign_cap = if secondary.is_some() {
-        u64::try_from(
-            u128::from(required) * u128::from(builder.policy.markets.foreign_procurement_bps)
-                / 10_000,
-        )
-        .map_err(|_| NationalOpeningError::Arithmetic)?
+        u64::try_from(u128::from(required) * u128::from(abroad_bps(builder, buyer, key)?) / 10_000)
+            .map_err(|_| NationalOpeningError::Arithmetic)?
     } else {
         0
     };

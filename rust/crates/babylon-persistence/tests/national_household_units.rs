@@ -25,6 +25,8 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+#[path = "support/country_bands.rs"]
+mod country_bands;
 #[path = "support/country_bench.rs"]
 mod country_bench;
 #[path = "support/country_fund.rs"]
@@ -42,6 +44,7 @@ mod household_accounts;
 #[path = "support/supply_chain.rs"]
 mod supply_chain;
 
+use country_bands::{Bands, Held};
 use country_bench::{BenchError, BenchPeriod, CountryBench, RuleSet};
 use country_seekers::Wages;
 use country_sizes::{CountrySizes, PlaceKey, PlaceSizes, SEEKER_BOUND};
@@ -1199,6 +1202,28 @@ fn bench_row(
     row
 }
 
+/// The twelve trades' row gains `earners`: the nation's period by band, with the sums that must hold.
+fn add_earners(
+    row: &mut Value,
+    bands: &Bands,
+    stepped: &BenchPeriod,
+    bench: &CountryBench,
+) -> Result<(), BenchError> {
+    let earners = country_bands::earners(
+        stepped.period,
+        bands,
+        bench.state(),
+        &stepped.closing_members,
+        &stepped.receipts.money_transfers,
+        &stepped.public_programs,
+        row,
+    )?;
+    row.as_object_mut()
+        .expect("a period row is an object")
+        .insert("earners".to_owned(), earners);
+    Ok(())
+}
+
 /// Plays up to `periods` closes of the bench under one rule set and returns its record (head,
 /// columns, panel, periods) and its refusal, if any. A refusal is written into the record, not
 /// thrown: the record keeps the periods that closed, the error in the engine's words and the full row
@@ -1233,6 +1258,8 @@ fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Op
     let (catalog, census) = scenario.captured();
     let mut bench =
         CountryBench::open_with(catalog.opening(), set, scenario.wages()).expect("the bench opens");
+    let bands = (scenario == Scenario::TwelveTrades)
+        .then(|| Bands::read(&catalog).expect("the bands of the opening are read"));
     let mut rows: Vec<Value> = Vec::new();
     let mut refusal = None;
     let mut total_nanos = 0_u128;
@@ -1247,6 +1274,12 @@ fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Op
         };
         let mut row = bench_row(&census, &open, &stepped, &bench);
         assert_eq!(row["period"], json!(stepped.period));
+        if let Some(bands) = &bands {
+            if let Err(error) = add_earners(&mut row, bands, &stepped, &bench) {
+                refusal = Some(error);
+                break;
+            }
+        }
         total_nanos += stepped.elapsed.as_nanos();
         let elapsed_ms = u64::try_from(stepped.elapsed.as_millis()).expect("a short time");
         row.as_object_mut()
@@ -1261,7 +1294,14 @@ fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Op
         .collect();
     let mut record = scenario_header(scenario, set);
     let head = record.as_object_mut().expect("the header is an object");
-    head.insert("columns".to_owned(), economy_health::bench_columns());
+    let mut columns = economy_health::bench_columns();
+    if scenario == Scenario::TwelveTrades {
+        columns
+            .as_object_mut()
+            .expect("the legend is an object")
+            .insert("earners".to_owned(), country_bands::earners_legend());
+    }
+    head.insert("columns".to_owned(), columns);
     head.insert("panel".to_owned(), json!(panel));
     head.insert("periods".to_owned(), json!(rows));
     if let Some(amount) = bench.no_earner_per_person() {
@@ -2421,6 +2461,130 @@ fn the_twelve_trades_open_on_the_bench() {
     assert_ne!(period.receipts.staffing_members.len(), 0);
 }
 
+/// The geoid of Wayne's pooled place.
+const WAYNE: &str = "26163";
+
+/// The six keys a band may carry and no other; "earning-nonowner" is the schema 7 band.
+fn band_labels() -> BTreeSet<&'static str> {
+    country_bands::KEYS.iter().map(|key| key.label()).collect()
+}
+
+#[test]
+fn the_opening_names_every_band() {
+    let (catalog, _census) = Scenario::TwelveTrades.captured();
+    let bands = Bands::read(&catalog).expect("the bands are read");
+    let read = country_bands::opening_bands(catalog.opening(), &bands).expect("the opening reads");
+    let labels: BTreeSet<&str> = read.nation.keys().copied().collect();
+    assert_eq!(labels, band_labels());
+    assert!(!labels.contains("earning-nonowner"));
+    let domestic = economy_health::opening_counts(catalog.opening())["domestic"];
+    let total = |pick: fn(&Held) -> u64| -> u64 { read.nation.values().map(pick).sum() };
+    assert_eq!(total(|held| held.accounts), 1900);
+    assert_eq!(total(|held| held.households), domestic[0]);
+    assert_eq!(total(|held| held.persons), domestic[1]);
+    let sites: BTreeSet<_> = catalog
+        .opening()
+        .sites
+        .iter()
+        .filter(|site| economy_health::scope(&site.location.to_string()) == "domestic")
+        .map(|site| site.site_id)
+        .collect();
+    let (mut employed, mut looking) = (0_u64, 0_u64);
+    for seed in &catalog.opening().staffing {
+        if sites.contains(&seed.pool.site_id()) {
+            employed += seed.members.iter().map(|m| m.employed).sum::<u64>();
+            looking += seed.members.iter().map(|m| m.reserve).sum::<u64>();
+        }
+    }
+    assert_eq!(total(|held| held.employed_persons), employed);
+    assert_eq!(total(|held| held.looking_persons), looking);
+    for (geoid, keys) in &read.places {
+        let earning = [
+            "earning-lower-paid-half",
+            "earning-better-paid-forty",
+            "earning-owner",
+        ];
+        if earning.iter().any(|key| keys.contains_key(key)) {
+            for key in &earning[..2] {
+                assert!(keys.contains_key(key), "{geoid} lacks {key}");
+            }
+        }
+    }
+    let wayne = &read.places[WAYNE];
+    let pay = |key: &str| {
+        wayne[key]
+            .hourly_pay_micros(read.hours_per_person)
+            .expect("the band has paid persons")
+    };
+    let (owners, forty, half) = (
+        pay("earning-owner"),
+        pay("earning-better-paid-forty"),
+        pay("earning-lower-paid-half"),
+    );
+    // Pinned from the first run: Wayne's average hourly pay by band, in millionths of a dollar, as the wage
+    // bill over the band's employed persons and hours a person.
+    assert_eq!((owners, forty, half), (22_911_711, 44_911_830, 28_988_253));
+    assert!(forty >= half);
+}
+
+#[test]
+fn a_period_names_every_band() {
+    let (catalog, census) = Scenario::TwelveTrades.captured();
+    let mut bench = CountryBench::open_with(
+        catalog.opening(),
+        RuleSet::None,
+        Scenario::TwelveTrades.wages(),
+    )
+    .expect("the bench opens");
+    let bands = Bands::read(&catalog).expect("the bands are read");
+    let open = Opening::read(&census, bench.catalog(), bench.state());
+    let stepped = bench.step().expect("the first period closes");
+    let mut row = bench_row(&census, &open, &stepped, &bench);
+    add_earners(&mut row, &bands, &stepped, &bench).expect("the bands' sums hold");
+    let earners = row["earners"].as_object().expect("the row has earners");
+    let labels: BTreeSet<&str> = earners.keys().map(String::as_str).collect();
+    assert_eq!(labels, band_labels());
+    let sum = |at: usize| -> u64 {
+        earners
+            .values()
+            .map(|v| v[at].as_u64().expect("persons"))
+            .sum()
+    };
+    assert_eq!(
+        sum(0),
+        row["jobs_after_moves"]["domestic"][0]
+            .as_u64()
+            .expect("at work")
+    );
+    assert_eq!(
+        sum(1),
+        row["jobs_after_moves"]["domestic"][1]
+            .as_u64()
+            .expect("looking")
+    );
+    let money: i128 = earners
+        .values()
+        .map(|v| {
+            v[4].as_str()
+                .expect("money")
+                .parse::<i128>()
+                .expect("a number")
+        })
+        .sum();
+    assert_eq!(
+        row["money"]["households_domestic"],
+        json!(money.to_string())
+    );
+}
+
+#[test]
+fn the_shipped_record_has_no_earners() {
+    let (record, refusal) = scenario_report(Scenario::Shipped, RuleSet::None, 1);
+    assert!(refusal.is_none());
+    assert!(record["periods"][0].get("earners").is_none());
+    assert!(record["columns"].get("earners").is_none());
+}
+
 /// One period of each set, timed, for the twelve trades.
 #[test]
 #[ignore = "writes reports/country-opening-2026-11/bands-timings.json"]
@@ -2477,6 +2641,40 @@ fn record_twelve_trades_timings() {
     std::fs::write(path, text + "\n").expect("the record is written");
 }
 
+/// The opening by place and band, written once before the first set is played: the nation and each place on
+/// a line of its own.
+fn write_bands_opening() {
+    let (catalog, _census) = Scenario::TwelveTrades.captured();
+    let bands = Bands::read(&catalog).expect("the bands are read");
+    let read = country_bands::opening_bands(catalog.opening(), &bands).expect("the opening reads");
+    let mut record = read.record(
+        Scenario::TwelveTrades.name(),
+        Scenario::TwelveTrades.compiler(),
+    );
+    let head = record.as_object_mut().expect("the record is an object");
+    let places = head.remove("places").expect("a record has places");
+    let lines: Vec<String> = places
+        .as_object()
+        .expect("the places are an object")
+        .iter()
+        .map(|(geoid, keys)| format!("{}: {}", json!(geoid), keys))
+        .collect();
+    let mut text = serde_json::to_string_pretty(&record).expect("the head serializes");
+    text.truncate(text.len() - 2);
+    text += ",\n  \"places\": {\n    ";
+    text += &lines.join(",\n    ");
+    text += "\n  }\n}\n";
+    assert!(
+        text.len() < 1_048_576,
+        "the opening's record is {} bytes",
+        text.len()
+    );
+    let path = twelve_trades_path("bands-opening.json");
+    std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
+    std::fs::write(&path, &text).expect("the record is written");
+    println!("bands-opening.json: {} bytes", text.len());
+}
+
 /// 34 periods of the baseline, of all six rules and of all six with benefits, as `bands-<set>.json` beside
 /// Task 8b's `twelve-trades-<set>.json`, which stay. A record over the
 /// hygiene budget is written whole under the target's tmp, and its rows of the summary's periods are
@@ -2484,6 +2682,7 @@ fn record_twelve_trades_timings() {
 #[test]
 #[ignore = "writes the twelve trades' records with the bands under reports/country-opening-2026-11/; TWELVE_TRADES_SET=<name> plays one"]
 fn record_twelve_trades_sets() {
+    write_bands_opening();
     for set in twelve_trades_sets() {
         let (record, refusal) = scenario_report(Scenario::TwelveTrades, set, 34);
         let name = format!("bands-{}", set.name());

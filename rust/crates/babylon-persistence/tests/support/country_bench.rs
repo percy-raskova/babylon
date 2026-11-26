@@ -9,12 +9,12 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
     self as engine, AdjustmentReceipt, CircuitAccounting, ClosedMaterialPeriod,
-    HouseholdLifecycleReceipt, LaborCapacityRow, MarketClearingReceipt, MaterialCatalog,
-    MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition, MemberLaborCapacityRow,
-    MonetaryCircuit, PlaceStaffingError, PoolMembers, ProcessId, PublicProgramReceipt,
-    RecurringEconomy, ResidentWorkforceAttrition, SiteId, StaffingError, StaffingMemberId,
-    StaffingMemberReceipt, StaffingMemberState, StaffingPlace, StaffingPoolId, StaffingPoolState,
-    StaffingState, StaffingWorkRequest, WorkplaceStanding,
+    FinalDemandPrincipalId, HouseholdLifecycleReceipt, LaborCapacityRow, MarketClearingReceipt,
+    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
+    MemberLaborCapacityRow, MonetaryCircuit, PlaceStaffingError, PoolMembers, ProcessId,
+    PublicProgramReceipt, RecurringEconomy, ResidentWorkforceAttrition, SiteId, StaffingError,
+    StaffingMemberId, StaffingMemberReceipt, StaffingMemberState, StaffingPlace, StaffingPoolId,
+    StaffingPoolState, StaffingState, StaffingWorkRequest, WorkplaceStanding,
 };
 use babylon_persistence::economic_catalog::{EconomicCatalogError, EconomicOpening};
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -115,6 +115,22 @@ pub enum BenchError {
     Arithmetic {
         period: u64,
     },
+    /// A domestic household account whose band (budget key) cannot be found.
+    UnknownBand {
+        principal: FinalDemandPrincipalId,
+    },
+    /// A domestic household account the book does not hold at the close.
+    NoAccount {
+        period: u64,
+        principal: FinalDemandPrincipalId,
+    },
+    /// A sum over the bands differs from the record's own figure.
+    BandsDiffer {
+        period: u64,
+        what: &'static str,
+        bands: i128,
+        expected: i128,
+    },
 }
 
 impl Display for BenchError {
@@ -165,6 +181,21 @@ impl Display for BenchError {
                 "period {period}: labor force {closing}, attrition explains {expected}"
             ),
             Self::Arithmetic { period } => write!(out, "period {period}: arithmetic overflowed"),
+            Self::UnknownBand { principal } => {
+                write!(out, "the band of household account {principal:?} cannot be found")
+            }
+            Self::NoAccount { period, principal } => {
+                write!(out, "period {period}: the book holds no account {principal:?}")
+            }
+            Self::BandsDiffer {
+                period,
+                what,
+                bands,
+                expected,
+            } => write!(
+                out,
+                "period {period}: the bands' {what} sum to {bands}, the record's figure is {expected}"
+            ),
         }
     }
 }

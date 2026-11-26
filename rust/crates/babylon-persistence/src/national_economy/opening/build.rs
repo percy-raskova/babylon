@@ -5,8 +5,9 @@ use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::OpeningProductiveEndowment;
 use babylon_material_circuit::AccountId;
 
+use super::fund::Indices;
 use super::{
-    actors, aid, claimant, external, financial, household_time, markets, routes, templates,
+    actors, aid, claimant, external, financial, fund, household_time, markets, routes, templates,
 };
 
 use super::super::{GameCommodity, NationalGamePolicy};
@@ -125,6 +126,8 @@ pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) logistics_nodes: BTreeMap<EconomicLocation, LogisticsNodeId>,
     /// The luxury scale of each account the scenario names, found once, after the households exist.
     pub(in crate::national_economy) luxury_scales: BTreeMap<FinalDemandPrincipalId, u32>,
+    /// Indices of the final rows, built once when the fund's programs are worked out.
+    pub(in crate::national_economy) fund_indices: Indices,
     offer_indices: BTreeMap<(SiteId, GoodId, UnitId), usize>,
     procurement_indices: BTreeMap<(SiteId, SiteId, GoodId, UnitId), usize>,
 }
@@ -281,6 +284,7 @@ impl<'a> Builder<'a> {
         markets::wire(&mut builder)?;
         actors::validate_people(&builder.opening)?;
         financial::wire(&mut builder)?;
+        fund::wire(&mut builder)?;
         routes::finish(&mut builder)?;
         household_time::wire(&mut builder, time_controls)?;
         sort_principals(&mut builder);
@@ -374,6 +378,7 @@ impl<'a> Builder<'a> {
                 .map(|node| (node.location(), actors::node_id(node.id())))
                 .collect(),
             luxury_scales: BTreeMap::new(),
+            fund_indices: Indices::default(),
             offer_indices: BTreeMap::new(),
             procurement_indices: BTreeMap::new(),
             opening: EconomicOpening {
@@ -449,6 +454,20 @@ impl<'a> Builder<'a> {
                 .insert(key, self.opening.policies.offers.len());
             self.opening.policies.offers.push(offer);
         }
+    }
+    /// The offer a seller posts for a good. Valid once `markets::wire` has sorted the offers (it sorts them
+    /// last, after which no offer is written); the offer indices are not kept through that sort.
+    pub(in crate::national_economy) fn offer(
+        &self,
+        site: SiteId,
+        good: GoodId,
+        unit: UnitId,
+    ) -> Option<&SellerOffer> {
+        let offers = &self.opening.policies.offers;
+        offers
+            .binary_search_by_key(&(site, good, unit), |o| (o.site_id, o.good_id, o.unit_id))
+            .ok()
+            .and_then(|index| offers.get(index))
     }
     pub(in crate::national_economy) fn add_procurement(
         &mut self,

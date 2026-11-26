@@ -6,7 +6,8 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
     self as engine, AccountId, AdjustmentReceipt, FinalDemandPrincipalId, LaborCompensation,
-    MaterialCircuitState, RestartTest, StaffingMemberState, StopHold, TaxBasis, TaxPolicy,
+    MaterialCircuitState, PublicSpendingRule, RestartTest, StaffingMemberState, StopHold, TaxBasis,
+    TaxPolicy,
 };
 use babylon_persistence::economic_catalog;
 use babylon_persistence::economic_catalog::{
@@ -14,6 +15,7 @@ use babylon_persistence::economic_catalog::{
     SourceArtifactKind,
 };
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::national_economy;
 use babylon_persistence::runtime_session::Band;
 use babylon_practice_contract::CountyPeriodFacts;
 use babylon_tick::material_replay::PreparedMaterialTick;
@@ -1184,22 +1186,31 @@ fn bench_row(
         "public".to_owned(),
         economy_health::public_record(open.providers(), &beside, bench.state(), bench.staffing()),
     );
-    let fund_cash = bench.no_earner_per_person().map(|_| {
+    // The bench's own fund is read at its own account and keeps two programs; an opening's own fund at
+    // the opening's account, with every program the opening carries.
+    let own = bench.own_programs();
+    let fund = if own.is_empty() {
+        country_fund::fund_account()
+    } else {
+        national_economy::fund_account()
+    };
+    let fund_cash = (bench.no_earner_per_person().is_some() || !own.is_empty()).then(|| {
         economy_health::economy(bench.state())
             .book
-            .cash(AccountId::Public(country_fund::fund_account()))
+            .cash(AccountId::Public(fund))
             .map(Currency::micro_units)
             .expect(
                 "the fund's account is held at the close: a missing account is a failure, not 0",
             )
     });
+    let keys: Vec<&str> = if own.is_empty() {
+        vec![country_fund::NO_EARNER, country_fund::LAID_OFF]
+    } else {
+        own.iter().map(String::as_str).collect()
+    };
     object.insert(
         "benefits".to_owned(),
-        economy_health::benefits_record(
-            &beside,
-            &[country_fund::NO_EARNER, country_fund::LAID_OFF],
-            fund_cash,
-        ),
+        economy_health::benefits_record(&beside, &keys, fund_cash),
     );
     row
 }
@@ -2005,6 +2016,35 @@ fn three_periods_with_benefits_close() {
         }
         println!("period {period} fund cash at the close: {fund_cash} micros");
     }
+}
+
+/// An opening that carries its own fund and programs keeps them on the bench: one fund account and the
+/// fixture's two programs, the bench adding none.
+#[test]
+fn the_bench_keeps_an_opening_s_own_fund() {
+    let (catalog, _census) = Scenario::TwelveTrades.captured();
+    let opening = catalog.opening();
+    let bench = CountryBench::open_with(
+        opening,
+        RuleSet::AllSixWithBenefits,
+        Scenario::TwelveTrades.wages(),
+    )
+    .expect("the bench opens");
+    assert_eq!(bench.own_programs(), ["laid_off", "no_earner"]);
+    assert_eq!(bench.no_earner_per_person(), None);
+    assert_eq!(opening.institutions.programs.len(), 2);
+    let funds: Vec<_> = opening
+        .institutions
+        .public_budgets
+        .iter()
+        .filter(|row| row.rule == PublicSpendingRule::CashInProportion)
+        .collect();
+    assert_eq!(funds.len(), 1, "one fund account");
+    assert_eq!(funds[0].public_account, national_economy::fund_account());
+    economy_health::economy(bench.state())
+        .book
+        .cash(AccountId::Public(national_economy::fund_account()))
+        .expect("the opening's fund is held on the bench");
 }
 
 /// One period of each set built so far, timed, beside the baseline's.

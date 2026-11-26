@@ -12,6 +12,7 @@ mod policy;
 
 pub use opening::aid::{AidChildCapture, NationalAidCapture};
 pub use opening::claimant::NationalSupportClaimant;
+pub use opening::fund_account;
 pub use opening::{
     build_national_opening, NationalOpening, NationalOpeningError, NationalOpeningPolicy,
 };

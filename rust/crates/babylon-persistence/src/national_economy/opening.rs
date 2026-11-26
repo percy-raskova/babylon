@@ -12,6 +12,8 @@ mod external;
 
 pub(super) mod financial;
 
+mod fund;
+
 mod household_time;
 mod lifecycle;
 
@@ -30,6 +32,7 @@ use build::{amount, quantity, sum_amount, ActorContext, Builder, Result};
 pub use build::{
     build_national_opening, NationalOpening, NationalOpeningError, NationalOpeningPolicy,
 };
+pub use fund::fund_account;
 
 #[cfg(test)]
 mod grain_controls;

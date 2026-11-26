@@ -284,6 +284,8 @@ pub struct CountryBench {
     set: RuleSet,
     opening_money: i128,
     no_earner_per_person: Option<Currency>,
+    /// The keys of the programs an opening carried with its own fund; empty for an opening with none.
+    own_programs: Vec<String>,
 }
 
 /// What a closed period decided, before the bench keeps any of it.
@@ -780,6 +782,18 @@ impl CountryBench {
         if !set.has_benefits() {
             return Self::open_plain(opening, set, wages);
         }
+        if !opening.institutions.programs.is_empty() {
+            // An opening that carries its own fund and programs keeps them: `with_fund` would push a
+            // second public account, split every tax row again and replace the programs.
+            let mut bench = Self::open_plain(opening, set, wages)?;
+            bench.own_programs = opening
+                .institutions
+                .programs
+                .iter()
+                .map(|program| program.key.as_str().to_owned())
+                .collect();
+            return Ok(bench);
+        }
         let first = Self::open_plain(opening, RuleSet::None, wages)?.step()?;
         let per_person = country_fund::no_earner_per_person(opening, &first)?;
         let funded = country_fund::with_fund(opening, per_person)?;
@@ -791,6 +805,11 @@ impl CountryBench {
     /// The `no_earner` amount a set with benefits opened with.
     pub const fn no_earner_per_person(&self) -> Option<Currency> {
         self.no_earner_per_person
+    }
+
+    /// The keys of the programs of the opening's own fund; empty when the bench added its fund.
+    pub fn own_programs(&self) -> &[String] {
+        &self.own_programs
     }
 
     fn open_plain(
@@ -824,6 +843,7 @@ impl CountryBench {
             set,
             opening_money,
             no_earner_per_person: None,
+            own_programs: Vec::new(),
         })
     }
 

@@ -4,8 +4,9 @@ use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSe
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_kernel::geography::CountyGeoid;
 use babylon_material_circuit::{
-    AccountId, CommodityKind, FinalDemandPrincipalId, HouseholdCohort, HouseholdKind,
-    HouseholdNeedBasis, HouseholdWant, LaborCompensation, ServiceConnection, SiteId, WantTier,
+    AccountId, CommodityKind, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdKind,
+    HouseholdNeedBasis, HouseholdWant, LaborCompensation, PublicAccountId, PublicProgramTerms,
+    PublicSpendingRule, PublicTransferTreatment, ServiceConnection, SiteId, TaxBasis, WantTier,
 };
 use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
@@ -14,6 +15,9 @@ use babylon_persistence::economic_catalog::{
 use babylon_persistence::economic_catalog::{EconomicHouseholdSeed, EconomicSiteSeed};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::national_cohorts::CohortKey;
+use babylon_persistence::national_economy::grain::{
+    ContributionDestination, FinancialDomainId, ReservePosition,
+};
 use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWorkplaceSource};
 use babylon_persistence::national_household_allocation::{self, NationalHouseholdAllocation};
 use babylon_persistence::national_household_allocation::{
@@ -1351,4 +1355,935 @@ fn a_scale_that_names_no_account_is_refused() {
             national_economy::NationalOpeningError::Policy
         ))
     ));
+}
+
+// ---- Task 4: the national fund, the split taxes, the place grants and the programs ----
+
+const WAYNE: &str = "26163";
+const PLACE_GRANT_PRIORITY: u32 = 256;
+
+fn fixture_text() -> &'static str {
+    std::str::from_utf8(FIXTURE).expect("utf8")
+}
+
+/// The fixture with the fund's two shares at 2,530 and the table of shares by part, if any.
+fn fund_text(table: &str) -> String {
+    fixture_text().replacen(
+        "wage_tax_share_bps = 0\noperating_income_tax_share_bps = 0\nreserve_periods = 2\n",
+        &format!(
+            "wage_tax_share_bps = 2530\noperating_income_tax_share_bps = 2530\nreserve_periods = 2\n{table}"
+        ),
+        1,
+    )
+}
+
+const RESIDENCE_ROW: &str = "\n[[programs]]\nkey = \"residence\"\nkind = \"own_needs\"\nrank = 0\nshare_bps = 10000\nrecipients = \"collective_residence_at_opening\"\n";
+
+/// The fixture with its fund at 2,530, `no_earner` paying each account its own needs and a `residence`
+/// program, and what else the test adds (a table of shares by part before the programs, grant rows after).
+fn programmed_text(table: &str, grants: &str) -> String {
+    let text = fund_text(table).replacen(
+        "kind = \"per_person\"\nrank = 0\namount_per_person_micros = 1595033714\n",
+        "kind = \"own_needs\"\nrank = 0\nshare_bps = 10000\n",
+        1,
+    );
+    format!("{text}{RESIDENCE_ROW}{grants}")
+}
+
+fn capture_text(text: &str) -> Result<CapturedEconomicCatalog, EconomicCatalogError> {
+    let input =
+        economic_catalog::national_catalog_input_for(text.as_bytes()).expect("the text parses");
+    CapturedEconomicCatalog::capture(input, None)
+}
+
+fn refused_as_policy(text: &str) -> bool {
+    matches!(
+        capture_text(text),
+        Err(EconomicCatalogError::NationalOpening(
+            national_economy::NationalOpeningError::Policy
+        ))
+    )
+}
+
+/// The fixture with its fund at 2,530 only, captured once.
+fn funded() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| capture_text(&fund_text("")).expect("the funded fixture captures"))
+}
+
+/// The fixture with the fund, own-needs programs and a `residence` program, captured once.
+fn programmed() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        capture_text(&programmed_text("", "")).expect("the programmed fixture captures")
+    })
+}
+
+/// A part's label as the scenario writes it: the hub's geoid, then `/<position>` for a part with one.
+fn part_label(hub: CountyGeoid, position: Option<ReservePosition>) -> String {
+    match position {
+        None => hub.as_str().to_owned(),
+        Some(position) => format!(
+            "{}/{}",
+            hub.as_str(),
+            match position {
+                ReservePosition::NoLaborForce => "none",
+                ReservePosition::BelowCellReserveRate => "below",
+                ReservePosition::AtCellReserveRate => "at",
+                ReservePosition::AboveCellReserveRate => "above",
+            }
+        ),
+    }
+}
+
+/// Every domestic part of the opening, by label, with its domain, from the capture's own witness.
+fn parts(catalog: &CapturedEconomicCatalog) -> BTreeMap<String, FinancialDomainId> {
+    let witness = catalog.national_generation().expect("the witness");
+    let mut found = BTreeMap::new();
+    for county in &witness.counties {
+        let (label, domain) = match county.destination {
+            ContributionDestination::Detailed(geoid) => (
+                part_label(geoid, None),
+                FinancialDomainId::detailed(
+                    EconomicLocation::domestic_county(geoid).expect("a domestic county"),
+                ),
+            ),
+            ContributionDestination::Representative {
+                catchment,
+                position,
+            } => {
+                let hub = witness
+                    .catchments
+                    .iter()
+                    .find(|c| c.id == catchment)
+                    .expect("the catchment")
+                    .key
+                    .hub;
+                (
+                    part_label(hub, Some(position)),
+                    FinancialDomainId {
+                        location: EconomicLocation::domestic_county(hub)
+                            .expect("a domestic county"),
+                        representative: Some((catchment, position)),
+                    },
+                )
+            }
+        };
+        found.insert(label, domain);
+    }
+    found
+}
+
+fn location_of(catalog: &CapturedEconomicCatalog) -> BTreeMap<AccountId, EconomicLocation> {
+    let opening = catalog.opening();
+    let mut found = BTreeMap::new();
+    for household in &opening.households {
+        found.insert(
+            AccountId::Household(household.principal_id),
+            household.location,
+        );
+    }
+    for site in &opening.sites {
+        found.insert(AccountId::Site(site.site_id), site.location);
+    }
+    found
+}
+
+/// The rows of each (payer, basis) of the opening's tax policy.
+fn tax_rows(
+    catalog: &CapturedEconomicCatalog,
+) -> BTreeMap<(AccountId, TaxBasis), Vec<(PublicAccountId, u16)>> {
+    let mut rows: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    for row in &catalog.opening().institutions.taxes {
+        rows.entry((row.payer, row.basis))
+            .or_default()
+            .push((row.public_recipient, row.rate_bps));
+    }
+    rows
+}
+
+fn fund_part(rate: u16, share: u16) -> u16 {
+    u16::try_from(u32::from(rate) * u32::from(share) / 10_000).expect("a rate")
+}
+
+#[test]
+fn the_fund_takes_its_share_of_each_tax() {
+    let catalog = funded();
+    let policy = NationalGamePolicy::parse(&fund_text("")).expect("the text admits");
+    let fund = national_economy::fund_account();
+    let locations = location_of(catalog);
+    let rows = tax_rows(catalog);
+    let mut fund_rates = BTreeSet::new();
+    for ((payer, basis), parts) in &rows {
+        let rate = match basis {
+            TaxBasis::WageIncome => policy.financial.wage_tax_bps,
+            TaxBasis::PositiveOperatingIncome => policy.financial.operating_income_tax_bps,
+        };
+        let domestic = matches!(locations[payer], EconomicLocation::County(_));
+        let to_fund: Vec<_> = parts.iter().filter(|(to, _)| *to == fund).collect();
+        let total: u16 = parts.iter().map(|(_, r)| *r).sum();
+        assert_eq!(total, rate, "{payer:?} {basis:?} pays its rate");
+        if domestic {
+            assert_eq!(parts.len(), 2, "{payer:?} {basis:?}");
+            assert_eq!(to_fund.len(), 1);
+            fund_rates.insert((rate, to_fund[0].1));
+            assert_eq!(to_fund[0].1, fund_part(rate, 2_530));
+        } else {
+            assert!(to_fund.is_empty(), "no foreign payer pays the fund");
+            assert_eq!(parts.len(), 1);
+        }
+    }
+    println!(
+        "tax rows: {}; fund rates by rate: {fund_rates:?}",
+        catalog.opening().institutions.taxes.len()
+    );
+    assert!(catalog.opening().institutions.taxes.len() < 262_144);
+    assert_eq!(fund_rates.len(), 1, "the fund's rate follows the rate");
+}
+
+/// The table of shares by part, as TOML text: `wayne` at 0, `special` at 10,000, every other at 2,530, a
+/// part named `skip` left out and `extra` added.
+fn share_table(
+    labels: &BTreeSet<String>,
+    special: &str,
+    skip: Option<&str>,
+    extra: Option<&str>,
+) -> String {
+    let mut entries: Vec<String> = labels
+        .iter()
+        .filter(|label| Some(label.as_str()) != skip)
+        .map(|label| {
+            let share = if label.starts_with(WAYNE) {
+                0
+            } else if label == special {
+                10_000
+            } else {
+                2_530
+            };
+            format!("\"{label}\" = {share}")
+        })
+        .collect();
+    if let Some(extra) = extra {
+        entries.push(format!("\"{extra}\" = 2530"));
+    }
+    format!("share_by_part = {{ {} }}\n", entries.join(", "))
+}
+
+#[test]
+fn a_part_s_own_share_sets_its_rows() {
+    let parts = parts(funded());
+    let labels: BTreeSet<String> = parts.keys().cloned().collect();
+    assert_eq!(labels.len(), 316);
+    let special = labels
+        .iter()
+        .find(|label| !label.contains('/') && !label.starts_with(WAYNE))
+        .expect("a detailed part")
+        .clone();
+    let table = share_table(&labels, &special, None, None);
+    let catalog = capture_text(&fund_text(&table)).expect("the table admits");
+    let fund = national_economy::fund_account();
+    let by_account: BTreeMap<PublicAccountId, String> = parts
+        .iter()
+        .map(|(label, domain)| (domain.public_account(), label.clone()))
+        .collect();
+    let policy = NationalGamePolicy::parse(&fund_text(&table)).expect("the text admits");
+    let (mut at_zero, mut at_all) = (0_u64, 0_u64);
+    for ((payer, basis), rows) in tax_rows(&catalog) {
+        let rate = match basis {
+            TaxBasis::WageIncome => policy.financial.wage_tax_bps,
+            TaxBasis::PositiveOperatingIncome => policy.financial.operating_income_tax_bps,
+        };
+        let Some((place, place_rate)) = rows.iter().find(|(to, _)| *to != fund).copied() else {
+            panic!("{payer:?} has no row to its own body");
+        };
+        let Some(label) = by_account.get(&place) else {
+            continue; // a foreign payer's body
+        };
+        let to_fund = rows
+            .iter()
+            .find(|(to, _)| *to == fund)
+            .map_or(0, |(_, rate)| *rate);
+        if label.starts_with(WAYNE) {
+            at_zero += 1;
+            assert_eq!(to_fund, 0, "{label} sends nothing");
+            assert_eq!(place_rate, rate);
+        } else if *label == special {
+            at_all += 1;
+            assert_eq!(to_fund, rate, "{label} sends everything");
+            assert_eq!(place_rate, 0);
+        } else {
+            assert_eq!(to_fund, fund_part(rate, 2_530), "{label}");
+            assert_eq!(place_rate + to_fund, rate);
+        }
+    }
+    assert!(at_zero > 0 && at_all > 0, "{at_zero} {at_all}");
+    // A part left out of the table, and an entry for a county that is no part.
+    let skip = labels
+        .iter()
+        .find(|label| *label != &special && !label.starts_with(WAYNE))
+        .expect("another part");
+    assert!(refused_as_policy(&fund_text(&share_table(
+        &labels,
+        &special,
+        Some(skip),
+        None
+    ))));
+    let witness = funded().national_generation().expect("the witness");
+    let no_hub = witness
+        .counties
+        .iter()
+        .map(|county| county.controls.county.as_str().to_owned())
+        .find(|geoid| !labels.contains(geoid))
+        .expect("a county that is no part");
+    assert!(refused_as_policy(&fund_text(&share_table(
+        &labels,
+        &special,
+        None,
+        Some(&no_hub)
+    ))));
+}
+
+/// Every provider operating grant of the opening from a public body at one priority: site -> (body, amount).
+fn grants_at(
+    catalog: &CapturedEconomicCatalog,
+    account: Option<PublicAccountId>,
+    priority: u32,
+) -> BTreeMap<SiteId, (PublicAccountId, i128)> {
+    let mut found = BTreeMap::new();
+    for row in &catalog.opening().institutions.public_allocations {
+        let (AccountId::Site(site), PublicTransferTreatment::ProviderOperatingGrant) =
+            (row.recipient, row.treatment)
+        else {
+            continue;
+        };
+        if row.priority == priority && account.is_none_or(|a| a == row.public_account) {
+            let slot = found.entry(site).or_insert((row.public_account, 0));
+            slot.1 += row.amount_per_period.micro_units();
+        }
+    }
+    found
+}
+
+fn payroll_site() -> SiteId {
+    let config = campaign_catalog().city_pd_config().expect("the City PD");
+    SiteId::from_bytes(config.payroll_site_account_id)
+}
+
+fn public_cap_and_cash(
+    catalog: &CapturedEconomicCatalog,
+    account: PublicAccountId,
+) -> (i128, i128) {
+    let opening = catalog.opening();
+    let cap = opening
+        .institutions
+        .public_budgets
+        .iter()
+        .find(|b| b.public_account == account)
+        .map_or(0, |b| b.period_cap.micro_units());
+    let cash = opening
+        .institutional_cash
+        .iter()
+        .find(|c| c.id == AccountId::Public(account))
+        .map_or(0, |c| c.cash.micro_units());
+    (cap, cash)
+}
+
+fn grant_row(part: &str, micros: i128) -> String {
+    format!("\n[[place_grants]]\npart = \"{part}\"\namount_per_period_micros = {micros}\n")
+}
+
+/// The part of the largest public provider's own grant in Wayne, its funded providers' grants (the City PD's
+/// payroll site left out), and its public body.
+fn wayne_part(
+    base: &CapturedEconomicCatalog,
+    parts: &BTreeMap<String, FinancialDomainId>,
+) -> (String, PublicAccountId, BTreeMap<SiteId, i128>) {
+    let wayne = county(WAYNE);
+    let wayne_sites: BTreeSet<SiteId> = base
+        .opening()
+        .sites
+        .iter()
+        .filter(|site| site.location == wayne)
+        .map(|site| site.site_id)
+        .collect();
+    let own = grants_at(base, None, 0);
+    let (_, (body, _)) = own
+        .iter()
+        .filter(|(site, _)| wayne_sites.contains(site))
+        .max_by_key(|(_, (_, grant))| *grant)
+        .expect("a public provider in Wayne");
+    let label = parts
+        .iter()
+        .find(|(_, domain)| domain.public_account() == *body)
+        .map(|(label, _)| label.clone())
+        .expect("a part");
+    let funded: BTreeMap<SiteId, i128> = own
+        .iter()
+        .filter(|(site, (account, _))| account == body && **site != payroll_site())
+        .map(|(site, (_, grant))| (*site, *grant))
+        .collect();
+    (label, *body, funded)
+}
+
+#[test]
+fn a_place_grant_is_paid_by_the_fund() {
+    let base = captured();
+    let parts = parts(base);
+    let (label, body, funded_grants) = wayne_part(base, &parts);
+    let total: i128 = funded_grants.values().sum();
+    let row = total / 2;
+    assert!(row > 0, "{label} has grants to share");
+    let policy = NationalGamePolicy::parse(&programmed_text("", &grant_row(&label, row)))
+        .expect("the text admits");
+    let granted =
+        capture_text(&programmed_text("", &grant_row(&label, row))).expect("the grant admits");
+    let fund = national_economy::fund_account();
+    let from_fund = grants_at(&granted, Some(fund), PLACE_GRANT_PRIORITY);
+    let from_body = grants_at(&granted, Some(body), 0);
+    assert_eq!(
+        from_fund.values().map(|(_, part)| *part).sum::<i128>(),
+        row,
+        "the fund's parts sum to the row"
+    );
+    let own_before = grants_at(base, None, 0);
+    for (site, (_, grant)) in own_before.iter().filter(|(_, (b, _))| *b == body) {
+        let paid_by_fund = from_fund.get(site).map_or(0, |(_, part)| *part);
+        let paid_by_body = from_body.get(site).map_or(0, |(_, part)| *part);
+        assert_eq!(
+            paid_by_fund + paid_by_body,
+            *grant,
+            "{site:?} keeps its grant"
+        );
+        if *site == payroll_site() {
+            assert_eq!(paid_by_fund, 0, "the City PD's payroll site is its body's");
+        }
+    }
+    assert!(from_fund
+        .keys()
+        .all(|site| funded_grants.contains_key(site)));
+    let (cap_before, cash_before) = public_cap_and_cash(base, body);
+    let (cap_after, cash_after) = public_cap_and_cash(&granted, body);
+    assert_eq!(cap_after, cap_before - row);
+    assert_eq!(
+        cash_after,
+        cash_before - i128::from(policy.working_capital_periods) * row
+    );
+    // No other part's rows move.
+    for (other, domain) in &parts {
+        if domain.public_account() != body {
+            assert_eq!(
+                public_cap_and_cash(&granted, domain.public_account()),
+                public_cap_and_cash(base, domain.public_account()),
+                "{other}"
+            );
+            assert_eq!(
+                grants_at(&granted, Some(domain.public_account()), 0),
+                grants_at(base, Some(domain.public_account()), 0),
+                "{other}"
+            );
+        }
+    }
+    // A row above the part's grants, and a row for a part with no funded provider.
+    assert!(refused_as_policy(&programmed_text(
+        "",
+        &grant_row(&label, total + 1)
+    )));
+    let labels: BTreeSet<String> = parts.keys().cloned().collect();
+    let witness = base.national_generation().expect("the witness");
+    let no_part = witness
+        .counties
+        .iter()
+        .map(|county| county.controls.county.as_str().to_owned())
+        .find(|geoid| !labels.contains(geoid))
+        .expect("a county that is no part");
+    assert!(refused_as_policy(&programmed_text(
+        "",
+        &grant_row(&no_part, 1)
+    )));
+}
+
+/// The household accounts' class at the opening, by the fixture's own facts: a collective residence, an
+/// account with no one at work, and an earning account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Class {
+    Residence,
+    NoEarner,
+    Earning,
+}
+
+fn employed_by_household(
+    catalog: &CapturedEconomicCatalog,
+) -> BTreeMap<FinalDemandPrincipalId, u64> {
+    let mut employed: BTreeMap<_, u64> = BTreeMap::new();
+    for member in catalog
+        .opening()
+        .staffing
+        .iter()
+        .flat_map(|pool| &pool.members)
+    {
+        *employed.entry(member.member.household_id()).or_default() += member.employed;
+    }
+    employed
+}
+
+fn class_of(row: &EconomicHouseholdSeed, employed: u64) -> Class {
+    if row.kind == HouseholdKind::CollectiveResidence {
+        Class::Residence
+    } else if employed == 0 {
+        Class::NoEarner
+    } else {
+        Class::Earning
+    }
+}
+
+fn recipients_of(catalog: &CapturedEconomicCatalog, key: &str) -> BTreeSet<FinalDemandPrincipalId> {
+    catalog
+        .opening()
+        .institutions
+        .programs
+        .iter()
+        .find(|program| program.key.as_str() == key)
+        .map(|program| program.recipients.iter().copied().collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn every_domestic_account_is_in_its_programs() {
+    let catalog = programmed();
+    let employed = employed_by_household(catalog);
+    let (no_earner, laid_off, residence) = (
+        recipients_of(catalog, "no_earner"),
+        recipients_of(catalog, "laid_off"),
+        recipients_of(catalog, "residence"),
+    );
+    let mut seen = BTreeMap::<&str, u64>::new();
+    for row in &catalog.opening().households {
+        let id = row.principal_id;
+        let domestic = matches!(row.location, EconomicLocation::County(_));
+        let at_work = employed.get(&id).copied().unwrap_or(0);
+        let class = class_of(row, at_work);
+        let (n, l, r) = (
+            no_earner.contains(&id),
+            laid_off.contains(&id),
+            residence.contains(&id),
+        );
+        if !domestic {
+            assert!(!n && !l && !r, "a foreign account is no recipient");
+            continue;
+        }
+        match class {
+            Class::NoEarner => {
+                assert_eq!((n, l, r), (row.persons > 0, false, false), "{id:?}");
+                *seen.entry("no_earner").or_default() += u64::from(n);
+            }
+            Class::Earning => {
+                assert_eq!((n, l, r), (false, true, false), "{id:?}");
+                *seen.entry("earning").or_default() += 1;
+            }
+            Class::Residence => {
+                assert!(!n && l, "{id:?}");
+                assert_eq!(r, row.persons > at_work, "{id:?}");
+                *seen.entry("residence").or_default() += u64::from(r);
+            }
+        }
+    }
+    println!("recipients: {seen:?}");
+    assert!(seen.values().all(|count| *count > 0), "{seen:?}");
+}
+
+/// What the account's needs cost, from its purchase rows and its sellers' offers.
+fn needs_cost_of(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    row: &EconomicHouseholdSeed,
+) -> i128 {
+    let opening = catalog.opening();
+    let mut cost = 0_i128;
+    for need in &policy.household_needs {
+        if row.kind == HouseholdKind::CollectiveResidence
+            && need.basis == HouseholdNeedBasis::Households
+        {
+            continue;
+        }
+        let count = match need.basis {
+            HouseholdNeedBasis::Persons => row.persons,
+            HouseholdNeedBasis::Households => row.households,
+        };
+        let good = &policy.commodities[&need.key];
+        let seller = opening
+            .policies
+            .household_purchases
+            .iter()
+            .find(|p| {
+                (p.principal_id, p.good_id, p.unit_id)
+                    == (row.principal_id, good.good_id, good.unit_id)
+            })
+            .expect("a need has a purchase row")
+            .retailer_site_id;
+        let offer = opening
+            .policies
+            .offers
+            .iter()
+            .find(|o| (o.site_id, o.good_id, o.unit_id) == (seller, good.good_id, good.unit_id))
+            .expect("the seller offers the good");
+        cost += i128::from(count * need.units_per_basis) * offer.unit_price.micro_units();
+    }
+    cost
+}
+
+/// What county support pays the account a period: its reserve persons times a period of the food need.
+fn support_of(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    row: &EconomicHouseholdSeed,
+) -> i128 {
+    let reserve: u64 = catalog
+        .opening()
+        .staffing
+        .iter()
+        .flat_map(|pool| &pool.members)
+        .filter(|m| {
+            m.member.household_id() == row.principal_id && m.member.residence() == row.location
+        })
+        .map(|m| m.reserve)
+        .sum();
+    let food = policy.commodities["food"]
+        .price
+        .as_ref()
+        .expect("a price")
+        .opening;
+    let units = policy
+        .household_needs
+        .iter()
+        .find(|need| need.key == "food")
+        .expect("food is a need")
+        .units_per_basis;
+    i128::from(reserve * policy.financial.reserve_food_support_periods * units) * food.micro_units()
+}
+
+/// ceil(numerator / divisor) for a divisor above 0, at least 1.
+fn ceil_at_least_one(numerator: i128, divisor: i128) -> i128 {
+    if numerator <= 0 {
+        1
+    } else {
+        ((numerator - 1) / divisor + 1).max(1)
+    }
+}
+
+#[test]
+fn each_account_is_paid_its_own_needs() {
+    let catalog = programmed();
+    let policy = NationalGamePolicy::parse(&programmed_text("", "")).expect("the text admits");
+    let opening = catalog.opening();
+    let employed = employed_by_household(catalog);
+    let households: BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row))
+        .collect();
+    let carved: BTreeSet<_> = catalog
+        .national_aid_capture()
+        .map(|aid| aid.children.iter().map(|child| child.principal).collect())
+        .unwrap_or_default();
+    let mut carved_recipients = 0_u64;
+    let mut programs_of_own_needs = 0;
+    for program in &opening.institutions.programs {
+        let PublicProgramTerms::PerPersonOwn { share_bps } = program.terms else {
+            assert_eq!(program.key.as_str(), "laid_off");
+            continue;
+        };
+        programs_of_own_needs += 1;
+        assert_eq!(share_bps, 10_000);
+        assert_eq!(program.own_amounts.len(), program.recipients.len());
+        let residence = program.key.as_str() == "residence";
+        let mut amounts: Vec<i128> = Vec::new();
+        for (id, own) in program.recipients.iter().zip(&program.own_amounts) {
+            let row = households[id];
+            assert!(row.persons > 0, "an account of no persons is no recipient");
+            let persons = i128::from(row.persons);
+            let cost = needs_cost_of(catalog, &policy, row);
+            let support = support_of(catalog, &policy, row);
+            let own = own.micro_units();
+            amounts.push(own);
+            let income = own * persons + support;
+            if residence {
+                let jobless = persons - i128::from(employed.get(id).copied().unwrap_or(0));
+                assert!(jobless > 0);
+                // Needs of the jobless residents over persons: cost x jobless / persons.
+                let numerator = cost * jobless - support * persons;
+                assert_eq!(
+                    own,
+                    ceil_at_least_one(numerator, persons * persons),
+                    "{id:?}"
+                );
+                if own > 1 {
+                    assert!(
+                        income * persons >= cost * jobless,
+                        "{id:?} covers its needs"
+                    );
+                    assert!(
+                        income * persons < cost * jobless + persons * persons,
+                        "{id:?} is paid above its needs"
+                    );
+                }
+            } else {
+                assert_eq!(
+                    own,
+                    ceil_at_least_one(cost - support, persons),
+                    "{} {id:?}: cost {cost} support {support} persons {persons} at {}",
+                    program.key.as_str(),
+                    row.location
+                );
+                if own > 1 {
+                    assert!(income >= cost, "{id:?} covers its needs");
+                    assert!(income < cost + persons, "{id:?} is paid above its needs");
+                }
+                carved_recipients += u64::from(carved.contains(id));
+            }
+        }
+        amounts.sort_unstable();
+        println!(
+            "{}: lowest {} median {} highest {} micros a person over {} recipients",
+            program.key.as_str(),
+            amounts[0],
+            amounts[amounts.len() / 2],
+            amounts[amounts.len() - 1],
+            amounts.len()
+        );
+    }
+    assert_eq!(programs_of_own_needs, 2, "no_earner and residence");
+    println!("carved no-earner recipients: {carved_recipients}");
+    assert!(
+        carved_recipients > 0,
+        "Wayne's carved accounts are recipients"
+    );
+}
+
+/// What a program owes at the opening, by the engine's rule at each recipient's persons.
+fn dues_of(catalog: &CapturedEconomicCatalog) -> i128 {
+    let opening = catalog.opening();
+    let persons: BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|row| (row.principal_id, i128::from(row.persons)))
+        .collect();
+    let mut dues = 0_i128;
+    for program in &opening.institutions.programs {
+        match program.terms {
+            PublicProgramTerms::PerPerson { amount_per_person } => {
+                dues += program
+                    .recipients
+                    .iter()
+                    .map(|id| amount_per_person.micro_units() * persons[id])
+                    .sum::<i128>();
+            }
+            PublicProgramTerms::PerPersonOwn { share_bps } => {
+                dues += program
+                    .recipients
+                    .iter()
+                    .zip(&program.own_amounts)
+                    .map(|(id, own)| {
+                        own.micro_units() * persons[id] * i128::from(share_bps) / 10_000
+                    })
+                    .sum::<i128>();
+            }
+            PublicProgramTerms::AfterLayoff { .. } => {}
+        }
+    }
+    dues
+}
+
+fn fund_cash_and_budget(catalog: &CapturedEconomicCatalog) -> (i128, i128) {
+    let opening = catalog.opening();
+    let fund = national_economy::fund_account();
+    let cash = opening
+        .institutional_cash
+        .iter()
+        .find(|row| row.id == AccountId::Public(fund))
+        .expect("the fund holds cash")
+        .cash
+        .micro_units();
+    let budgets: Vec<_> = opening
+        .institutions
+        .public_budgets
+        .iter()
+        .filter(|row| row.public_account == fund)
+        .collect();
+    assert_eq!(budgets.len(), 1, "one budget for the fund");
+    assert_eq!(budgets[0].rule, PublicSpendingRule::CashInProportion);
+    assert_eq!(budgets[0].period_cap.micro_units(), 0);
+    assert_eq!(budgets[0].cash_floor.micro_units(), 0);
+    assert_eq!(
+        opening
+            .institutions
+            .locations
+            .iter()
+            .filter(|row| row.account == AccountId::Public(fund))
+            .count(),
+        1
+    );
+    assert!(opening.institutions.layoffs.is_empty(), "no layoff record");
+    let grants: i128 = opening
+        .institutions
+        .public_allocations
+        .iter()
+        .filter(|row| row.public_account == fund)
+        .map(|row| row.amount_per_period.micro_units())
+        .sum();
+    (cash, 2 * (dues_of(catalog) + grants))
+}
+
+#[test]
+fn the_fund_opens_with_two_periods_of_its_payments() {
+    for (name, catalog) in [("fixture", captured()), ("programmed", programmed())] {
+        let (cash, expected) = fund_cash_and_budget(catalog);
+        println!("{name}: the fund opens with {cash} micros");
+        assert_eq!(cash, expected, "{name}");
+        assert!(cash > 0, "{name}");
+    }
+}
+
+#[test]
+fn a_short_fund_cuts_the_grants_first() {
+    let base = captured();
+    let parts = parts(base);
+    let (label, _, funded_grants) = wayne_part(base, &parts);
+    let row = funded_grants.values().sum::<i128>() / 2;
+    let text = programmed_text("", &grant_row(&label, row));
+    let catalog = capture_text(&text).expect("the grant admits");
+    let fund = national_economy::fund_account();
+    let rows: Vec<_> = catalog
+        .opening()
+        .institutions
+        .public_allocations
+        .iter()
+        .filter(|r| r.public_account == fund)
+        .collect();
+    assert_ne!(rows.len(), 0, "rows exist");
+    assert!(rows.iter().all(|r| r.priority == PLACE_GRANT_PRIORITY));
+    assert!(catalog
+        .opening()
+        .institutions
+        .programs
+        .iter()
+        .all(|program| program.rank <= 255));
+}
+
+#[test]
+fn the_support_unit_is_a_period_of_food() {
+    let catalog = captured();
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the text admits");
+    let unit = i128::from(policy.financial.reserve_food_support_periods)
+        * i128::from(
+            policy
+                .household_needs
+                .iter()
+                .find(|need| need.key == "food")
+                .expect("food is a need")
+                .units_per_basis,
+        )
+        * policy.commodities["food"]
+            .price
+            .as_ref()
+            .expect("a price")
+            .opening
+            .micro_units();
+    let opening = catalog.opening();
+    let rows: Vec<_> = opening
+        .institutions
+        .public_allocations
+        .iter()
+        .filter(|r| r.treatment == PublicTransferTreatment::HouseholdIncomeSupport)
+        .collect();
+    assert_ne!(rows.len(), 0, "rows exist");
+    let mut domestic = 0_u64;
+    for row in rows {
+        let AccountId::Household(id) = row.recipient else {
+            panic!("support pays a household");
+        };
+        let account = opening
+            .households
+            .iter()
+            .find(|h| h.principal_id == id)
+            .expect("the household");
+        if !matches!(account.location, EconomicLocation::County(_)) {
+            continue; // a region abroad is paid at its own price scale
+        }
+        domestic += 1;
+        let reserve: u64 = opening
+            .staffing
+            .iter()
+            .flat_map(|pool| &pool.members)
+            .filter(|m| m.member.household_id() == id && m.member.residence() == account.location)
+            .map(|m| m.reserve)
+            .sum();
+        assert_eq!(
+            row.amount_per_period.micro_units(),
+            i128::from(reserve) * unit,
+            "{id:?} at {} holds {} persons, reserve {reserve}, unit {unit}",
+            account.location,
+            account.persons
+        );
+    }
+    assert!(domestic > 0);
+}
+
+#[test]
+fn a_public_provider_s_grant_covers_its_wear() {
+    // A grant is payroll + inputs + wear - receipts (never below 0), recomputed from the opening's own rows;
+    // a machine's wear is its $4,000.00 over a life of 100 periods, $40.00, so the rest is whole machines.
+    let catalog = captured();
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the text admits");
+    let opening = catalog.opening();
+    let price_of = |good: GoodId| {
+        policy
+            .commodities
+            .values()
+            .find(|c| c.good_id == good)
+            .and_then(|c| c.price.as_ref())
+            .expect("a priced good")
+            .opening
+            .micro_units()
+    };
+    let grants = grants_at(catalog, None, 0);
+    let (mut checked, mut machines) = (0_u64, 0_i128);
+    for site in opening.sites.iter().filter(|site| {
+        site.function == EconomicFunction::PublicProvisioning
+            && matches!(site.location, EconomicLocation::County(_))
+    }) {
+        let Some((_, grant)) = grants.get(&site.site_id) else {
+            continue;
+        };
+        let process = &site.processes[0];
+        let recipe = opening
+            .recipes
+            .iter()
+            .find(|r| r.id == process.recipe)
+            .expect("the recipe");
+        let batches = i128::from(process.planned_batches);
+        let inputs: i128 = recipe
+            .inputs
+            .iter()
+            .map(|i| batches * i128::from(i.quantity) * price_of(i.good_id))
+            .sum();
+        let receipts =
+            batches * i128::from(recipe.output.quantity) * price_of(recipe.output.good_id);
+        let without_wear = payroll_of(catalog, site) + inputs - receipts;
+        let wear = grant - without_wear;
+        assert!(
+            wear >= 0,
+            "{}: the grant covers more than payroll and inputs",
+            site.label
+        );
+        assert_eq!(
+            wear % 40_000_000,
+            0,
+            "{}: wear comes in machines",
+            site.label
+        );
+        machines += wear / 40_000_000;
+        checked += 1;
+    }
+    println!("public providers checked: {checked}; machines worn: {machines}");
+    assert!(checked > 0 && machines > 0);
 }

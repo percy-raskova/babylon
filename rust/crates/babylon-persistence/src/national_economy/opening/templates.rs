@@ -234,7 +234,7 @@ pub(super) fn shop_goods(policy: &NationalGamePolicy) -> Result<Vec<(String, Gam
 
 /// A part's label in the scenario: its hub's geoid, then `/<position>` for a part with a position;
 /// a counterpart's key; a dependency's code.
-fn part_label(domain: FinancialDomainId) -> String {
+pub(super) fn part_label(domain: FinancialDomainId) -> String {
     match domain.location {
         EconomicLocation::County(county) => {
             let hub = county.geoid().as_str().to_owned();

@@ -245,6 +245,39 @@ fn opening_asset(
     Ok(())
 }
 
+/// One period of a site's machines' wear under schema 8: the machines `machine_units` gives for `actor.force`,
+/// times the equipment's opening price at the actor's price scale, over `machine_life_periods`, rounded up.
+/// Zero under schema 7 and earlier, whose machines have no life in periods.
+pub(super) fn wear_per_period(builder: &Builder<'_>, actor: &ActorContext) -> Result<Currency> {
+    let GameMachines::Workers { life_periods, .. } = &builder.policy.equipment.machines else {
+        return Ok(Currency::from_micro_units(0));
+    };
+    let machines = machine_units(builder, actor, actor.force, &definition(builder)?)?;
+    let price = builder
+        .commodity("equipment")?
+        .price
+        .as_ref()
+        .ok_or(NationalOpeningError::Policy)?
+        .scaled(actor.price_scale_bps)
+        .map_err(|_| NationalOpeningError::Arithmetic)?
+        .opening;
+    wear(machines, price, *life_periods)
+}
+
+/// Its arithmetic: ceil(machines x price / `life_periods`).
+fn wear(machines: u64, price: Currency, life_periods: u64) -> Result<Currency> {
+    let value = super::amount(machines, price)?.micro_units();
+    let life = i128::from(life_periods);
+    if life == 0 || value < 0 {
+        return Err(NationalOpeningError::Arithmetic);
+    }
+    let rounded_up = value
+        .checked_add(life - 1)
+        .ok_or(NationalOpeningError::Arithmetic)?
+        / life;
+    Ok(Currency::from_micro_units(rounded_up))
+}
+
 fn machine_units(
     builder: &Builder<'_>,
     actor: &ActorContext,
@@ -385,4 +418,21 @@ fn installation_policy(
         maximum_hours_per_period: hours,
     });
     Ok(Some((starts, maximum)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wear_is_a_period_of_the_machines_life() {
+        let micros = |n| Currency::from_micro_units(n);
+        assert_eq!(
+            wear(100, micros(1_000_000_000), 100),
+            Ok(micros(1_000_000_000))
+        );
+        assert_eq!(wear(3, micros(1_000_000), 100), Ok(micros(30_000)));
+        assert_eq!(wear(1, micros(1_000_001), 100), Ok(micros(10_001)));
+        assert_eq!(wear(1, micros(1), 0), Err(NationalOpeningError::Arithmetic));
+    }
 }

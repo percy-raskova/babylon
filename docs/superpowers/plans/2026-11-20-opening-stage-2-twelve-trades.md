@@ -838,6 +838,253 @@ recipients. `the_twelve_trades_sizes` is pinned again from a failing run, the se
 compiles as v13 and stands on the shipped policy "with its `paying_order`" (its lines 309-310 and 1108). This plan
 refuses that key under schema 7; that plan is corrected when it resumes.
 
+## What the bands' records asked for (25 November, evening)
+
+Tasks 0 to 10b are built. Task 10b's records brought three things, and Tasks 10c, 10d and 11 answer them, in this
+order: an engine refusal in period 32 of the run with all six rules and benefits (Task 10c); no figure of a record
+names a band, though the Director ruled the bands in so that the bench shows who holds the better-paid jobs (Task
+10d); and the reviewers' small notes of the whole stage (Task 11).
+
+### Task 10c: A raise of a resting price touches its own product only (the engine)
+
+Commit `fix(material-circuit): raise a resting price on its own product only`.
+
+**What broke.** With the bands, all six rules and benefits, the engine refused period 32 of the twelve-trade run:
+`PurchaseInvariant` at the finish, and `bands-all-six-with-benefits.json` holds 31 rows. The lead replayed the run
+with prints in the engine. At the close of period 32 a shop with two offers had its first good's resting price raised
+from $86.432156 to its cost, $86.882156, and that price was written to BOTH its offers. Its second good stood at
+$324.432156 with a minimum of $93.432156, so that offer left its own range and the next state's validation refused
+it (`recurring/validation.rs`, the range check of a `Responsive` offer). In periods 27 to 32 of that run, 194 raises
+were written at shops with two offers, and 32 of them overwrote a second good's price that differed from the first's.
+
+**The defect.** In `adjustment/restart.rs`, `raise_resting_prices` gathers the SITES that have a resting-price
+receipt, works out one raise from the product the restart reads the site by (`product_of`: a process's first output,
+or the first good a merchant handles), caps it at the lowest `maximum` among ALL the site's offers
+(`OfferTables::ceiling`), and `apply_lifts` writes it to every offer row, every price receipt row and every service
+market row of the site. But a resting price is a seller's price of one product: `RestingPriceReceipt` names the good
+and the unit. The small worlds' sellers have one product each, so no measured world shows it.
+
+**Files:**
+- Modify: `rust/crates/babylon-material-circuit/src/adjustment/restart.rs` (`OfferTables`, `raise_resting_prices`,
+  `apply_lifts`, and its tests)
+- Modify, if a digest moves: `rust/crates/babylon-persistence/tests/national_household_units.rs` (the pins of
+  `the_bench_digests_before_the_squares`) and the records named in decision 7
+
+**Decisions:**
+1. **A raise is of a product.** A site is considered for a raise only when the product the restart reads it by
+   (`product_of`) is itself named by one of the close's resting-price receipts (site, good, unit). A resting receipt
+   for another good of the site raises nothing.
+2. **It is capped by that product's own offer.** `OfferTables::ceiling` is keyed by product (site, good, unit): the
+   lowest `maximum` among the offers of that product at that site whose pricing has a range.
+3. **It is written to that product's rows only:** the site's offer rows, its price receipt rows
+   (`transition.prices`) and its service market rows (`transition.service_markets`) whose good and unit are the
+   product's. Every other row of the site keeps its price.
+4. **The receipt keeps its shape:** `RestingPriceToCostReceipt { period, site_id, old, raised }`, one raise a site, of
+   the site's product. No wire and no contract changes.
+5. **Not built here:** a shop's other goods are still never raised to their own cost, because the restart reads a
+   workplace by one product. Say so in the hand-off; it is the lead's to carry to the Director.
+6. **Bytes.** A seller with one product behaves as today, so every measured small world keeps its bytes (the long
+   `reproduces_` tests), and a catalog that does not ask for the owner's restart keeps every byte.
+7. **The bench.** `baseline`, `market` and `no-seekers` have no restart: their digests and records must not move. The
+   digests of `all-six` and `all-six-with-benefits` in `the_bench_digests_before_the_squares` may move. If they do:
+   fill them again once from one failing run, put each old and new value into the hand-off, and record the shipped
+   opening's sets again (`record_country_bench_sets`; the three sets without a restart must come out equal apart from
+   the times). If they do not move, record nothing of the shipped opening. Then record the bands' two sets with the
+   restart (`record_twelve_trades_sets` with `TWELVE_TRADES_SET=all-six`, then with `all-six-with-benefits`) and
+   report how many periods each closes: the set with benefits is expected to close all 34 now, and if it is refused
+   again, that is a result to report with its period, stage and the engine's words, not a thing to work around. The
+   two summaries of 400 periods are the lead's to rerun, and no `README.md` under `reports/` is edited.
+
+- [ ] **Step 1: Write the failing tests** in `restart.rs`'s test module, on a fixture of one merchant that handles two
+  goods, A first and B second, each with a `Responsive` offer, and a close in which a resting-price receipt names
+  what the test says:
+  - `a_raise_leaves_the_other_goods_of_a_shop`: A rested and stands under its unit cost; B's price is above A's cost
+    and B's `minimum` is above A's cost. After `raise_resting_prices`: A's offer and A's price receipt row are at A's
+    cost; B's offer and B's price receipt row keep B's price; one `RestingPriceToCostReceipt` with A's old and new
+    price; and the state passes `canonical_state` (today it is refused with `PurchaseInvariant`).
+  - `a_resting_second_good_raises_nothing`: only B has a resting-price receipt. No offer moves and no
+    `RestingPriceToCostReceipt` is written (today A is raised).
+  - `a_raise_is_capped_by_its_own_offer`: A's `maximum` is above A's cost and B's `maximum` is below it. A is raised
+    to its cost (today it is capped at B's maximum).
+  - The existing tests of the restart keep their values.
+- [ ] **Step 2: Run them and see each fail** for the reason given in brackets.
+- [ ] **Step 3: Implement** decisions 1 to 3.
+- [ ] **Step 4: Run** the crate (`mise run rust:test:q -- -p babylon-material-circuit`), `-p babylon-circuit-worlds`,
+  and in the background the long tests (`--run-ignored only` with `test(/^reproduces_/) |
+  test(hours_fold_every_reference_run)` on `babylon-material-circuit`). Expected: pass, no value changed.
+- [ ] **Step 5: The bench.** `binary(national_household_units)`; then the ignored pin
+  `the_bench_digests_before_the_squares` by name; then decision 7.
+- [ ] **Step 6: Gate and commit** with the subject above. The gate's sentinel leg passes when `mise run
+  check:bsl-sentinels` reports no E-SENTINEL, whatever the count of older W-SENTINEL warnings. Hand over: each test
+  seen failing; whether a shipped digest moved, with old and new values; how many periods each of the bands' two sets
+  closes; each re-recorded record's size in bytes; and decision 5's limit in one sentence.
+
+What the player would see: a shop's second good no longer takes the first good's price when the owner's restart
+raises a resting price.
+
+### Task 10d: The bench reads the bands
+
+Commit `test(persistence): the country bench reads each band's jobs, pay and money`. Test code only.
+
+**Why.** The Director ruled the bands in now so that the country bench shows who holds the better-paid jobs in each
+place (ADR325, N2). Tasks 9 and 10 make the three accounts and deal the jobs; Task 10b records the sets again. But
+no figure of a record names a band, so nothing of the ruling can be read from the bench yet.
+
+**Files:**
+- Modify: `rust/crates/babylon-persistence/tests/national_household_units.rs` and its `tests/support/` files
+  (`economy_health.rs`, `country_bench.rs`)
+- Create (by the recorder): `reports/country-opening-2026-11/bands-opening.json`
+- The three `bands-<set>.json` records gain a column. This task records the baseline (Step 4); the lead records
+  the two sets with rules again at the stage's end.
+
+**Decisions:**
+1. **A band is a household account's budget key** (`HouseholdBudgetKey::label()`: "earning-lower-paid-half",
+   "earning-better-paid-forty", "earning-owner", "no-earner-nonowner", "no-earner-owner", "collective-residence").
+   The bench reads each domestic account's key from the capture's own generation witness
+   (`catalog.national_generation()`: a `household_incidence` row's `destination` is the account and `margins.key` its
+   key), as `every_place_has_three_earning_accounts` does. An account carved from another (the aid donor, the
+   claimant) is counted under its parent's key. A domestic account whose key cannot be found is a typed `BenchError`,
+   never skipped. Accounts abroad and in dependencies are not read.
+2. **The opening by place and band** is one file, `bands-opening.json`, written once by `record_twelve_trades_sets`
+   before the first set is played. For the nation and for each domestic place (keyed by the place's hub county
+   geoid), for each key, in this order: `accounts`, `households`, `persons`, `employed_persons`,
+   `looking_persons`, `wage_bill_micros`. The wage bill is one period's: the sum, over the account's members paid a
+   wage, of the wage times the member's employed persons times the member's hours a person. The file's head gives
+   the scenario, the compiler, the legend of the six figures in plain words, and the count of places. Rows are
+   sorted by geoid and then by key. The reader derives a band's average hourly pay as the wage bill over its
+   employed persons and hours.
+3. **Each period by band, for the nation.** A period's row gains `earners`: for each key, `[at_work, looking,
+   wages_received_micros, benefits_received_micros, money_micros]`: the persons at work and looking at the close
+   (after the moves of people who look for work, as `jobs_after_moves` counts them), the wages the accounts were
+   paid in the period, what the fund's programs paid them in the period, and their cash at the close. The record's
+   `columns` gains the legend. It is written for the twelve-trade scenario only: a record of the shipped scenario
+   keeps today's keys, so no committed shipped record goes out of date.
+4. **Sums that must hold,** asserted by the bench every period (a failure is a `BenchError`, as its other checks
+   are): the sum of `at_work` over the keys equals the domestic figure of `jobs_after_moves`, and so does `looking`;
+   the sum of `money_micros` equals the record's own `households_domestic` money.
+5. **Size.** The column adds about thirty figures a period. A record that passes 1,048,576 bytes with it follows Task
+   8b's decision 7.
+6. No pin of the shipped scenario moves, no shipped record is written, and no `README.md` under `reports/` is edited.
+
+- [ ] **Step 1: Write the failing tests** in `national_household_units.rs`:
+  - `the_opening_names_every_band` (the fixture): the nation's rows hold exactly the six keys above and no
+    "earning-nonowner"; the sums over keys of `persons`, `employed_persons` and `looking_persons` equal the opening's
+    domestic totals as the bench's census counts them; every place with an earning household has the three earning
+    keys; in Wayne (26163) the average hourly pay of the owners' band is at least the better-paid forty's, and that
+    at least the lower-paid half's (pin the three figures from the first run, in millionths of a dollar).
+  - `a_period_names_every_band` (the fixture, one period of the baseline, as `the_twelve_trades_open_on_the_bench`
+    plays it): the row has `earners` with the six keys, and decision 4's three sums hold.
+  - `the_shipped_record_has_no_earners`: one period of the shipped baseline has no `earners` key.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement** decisions 1 to 4.
+- [ ] **Step 4: Run** `binary(national_household_units)`, `binary(national_twelve_trades)`,
+  `binary(shipped_world_bytes)`. Then run `record_twelve_trades_sets` with `TWELVE_TRADES_SET=baseline`, in the
+  background, to write `bands-opening.json` and the baseline's record with the new column; check that the record
+  differs from the committed one in the new column, the legend and the times only.
+- [ ] **Step 5: Gate, run `mise run check:hygiene`, and commit** with `bands-opening.json` and the baseline's record.
+  Hand over: the nation's six rows of `bands-opening.json` in full, Wayne's rows, the three pinned figures, each
+  file's size in bytes, and the baseline's `earners` of periods 1, 2 and 34.
+
+What the player would see: nothing yet. It lets the lead say, from the game's own opening, which band holds which
+jobs at what pay, and on whom a layoff lands.
+
+### Task 11: The reviews' small notes
+
+Two commits, in this order: `refactor(economy): close the reviews' small notes on the twelve trades` (kernel,
+persistence, tests, the register) and `refactor(material-circuit): test a workplace before reading its product`
+(the engine's two items). No behaviour changes: every pin of the shipped world, of the twelve trades and of the
+country bench keeps its value, and no record under `reports/` is written.
+
+Each item below was raised by a task's reviewer and left for this piece. An item that turns out to be done already
+is reported as done, with the commit that did it. An item that cannot be done without moving a pinned value is left
+and reported with the reason.
+
+**Tests that tighten (`rust/crates/babylon-persistence/tests/`).**
+1. `shipped_world_bytes.rs`: where the version 11 input cuts the defines at the first `[city_pd]`, assert that what
+   is cut holds exactly the two sections `[city_pd]` and `[county_review]`, so that a section added after them is not
+   cut unseen.
+2. `national_cohorts.rs`, `the_v2_table_decodes_with_its_own_pins`: compare all 32 bytes of `artifact_sha256()` and
+   of `function_mapping_sha256()` with the hex in the committed metadata, not the first four bytes.
+3. `national_twelve_trades.rs`: the fixture's weights test derives its twelve expected rows from the shipped defines
+   (consumer goods' share taken out of capital goods, leisure's out of household services, as the plan's Task 4
+   decision 4 has it) and compares the fixture's rows with them, where today it checks each row against itself.
+4. `national_twelve_trades.rs`: `assert_eq!(pay.rows().len(), 65_065)` sits in a test it has nothing to do with (about
+   L113). `national_trade_pay.rs` already holds that figure: drop the stray one.
+5. `national_twelve_trades.rs`: the bounds are checked with `<=` where the plan's Task 6 says "under": use `<`.
+6. `national_twelve_trades.rs`: the check that no foreign account holds a claim on Wayne's capital goods sites
+   matches only each foreign counterpart's pooled principal: check the claim holder's location instead.
+7. `national_twelve_trades.rs`: `a_representative_site_of_one_source_row_pays_the_place_wage` skips one-row sites with
+   no jobs, so the branch of `place_wage` that takes the mean of the rows' own wages has no direct test. Add one, as
+   a crate test beside `place_wage` if the fixture has no such site.
+
+**Readers and refusals (`rust/crates/babylon-persistence/src/`).**
+8. `national_cohorts/parse.rs` (about L74) and `national_cohorts/mapping.rs` (about L55) read a trade with
+   `EconomicFunction::from_source_key`: read it with the table's own set (`TradeSet::from_source_key`). Add a test: a
+   version 1 table that names `consumer_goods` is refused by the parser, before the mapping is asked.
+9. `national_trade_pay/model.rs` (about L331): the nation's figure falls back to a zero `Currency` for an empty table.
+   `from_rows` refuses an empty table with a typed error, with its test, so that no zero wage can be built.
+10. `national_trade_pay/artifact.rs` (about L124-127): `national_trade_pay_reference` turns a county table failure into
+    `UnknownCounty` and a version 2 cohort failure into `Coverage`, and the cause is lost. Give each its own variant
+    that carries the cause, if that touches no caller's match beyond this crate; else leave it and say so.
+11. `national_economy/policy/admission.rs`: under the twelve trades, `consumer_goods` must be a storable good and
+    `leisure` a period service (of either stage); refuse the other kinds with the existing `Profile` error, with one
+    test for each. Do not tie any other product to a stage: a scenario may place a service in either stage.
+12. `economic_catalog/capture.rs` (about L503): a policy of twelve trades WITH an experiment would compile as a
+    company-scale experiment. Refuse it with a typed error, with its test.
+13. `economic_catalog/preset.rs`: add a test that `national_catalog_input()` equals
+    `national_catalog_input_for(<the shipped defines>)` in every source's kind and bytes, so that the two cannot
+    part unseen. Do not reshape the `let rows` block (the test `the_release_tool_can_read_the_national_rows` holds it).
+14. `national_economy/opening/external.rs`, `partition`: `Vec::with_capacity(10)` becomes `weights.len()`.
+15. `companies/capture.rs`, `from_workplaces`: a site whose trade is not in the set is left in `by_function` and
+    dropped. Refuse with a typed error when anything but public provisioning is left over, with its test.
+16. `national_economy/grain/build.rs`: move the wage pass of `coarsen_source_allocation` into a helper and drop that
+    function's `too_many_lines` allow; `place_wage` sums with `checked_add` and a typed refusal (`Arithmetic`), where
+    it has `saturating_add`; `place_average`'s doc comment also says "or whose rows hold no jobs"; `site_wages`' doc
+    comment is wrapped at 100 columns.
+17. `city_pd.rs`: `Books`' doc comment says each figure is worked out from the scenario's wage; under observed pay it
+    is the payroll site's wage. Reword.
+18. `county_review.rs`, `going_wage`: refuse a zero wage with a typed error, with its test, as Task 7's foreign
+    fraction does.
+
+7b. `national_twelve_trades.rs`, `every_place_has_three_earning_accounts`: assert that the set of counties in the
+   household incidence equals `budgets.counties()`, so that a county missing from the incidence is seen; and replace
+   the bound `places > 100` by the exact count of domains, pinned once from a run.
+7c. `national_twelve_trades.rs` (about L23): `use babylon_practice_contract::{self, Band, Roster};` carries a redundant
+   `self`. Drop it if `check:bsl-sentinels` then still reports no E-SENTINEL; else leave it and say so.
+
+**The bench's helpers (`rust/crates/babylon-persistence/tests/`).**
+19. `support/economy_health.rs`: `recipe_cost`'s doc comment says "at the default wage"; it uses `census.labor_wage`.
+    `process_wages`: with no member paid a wage, refuse with a typed `BenchError` where `average` falls back to 0;
+    use checked sums as `place_offer` does.
+20a. `national_household_units.rs` (about L1221): the head of a record of the twelve trades names the baseline it is
+    judged against as `twelve-trades-baseline.json`; the records with bands are judged against `bands-baseline.json`.
+    Pass the baseline's file name into `scenario_header`. The lead records the three `bands-*` records again; do not
+    run the recorders.
+20. `national_household_units.rs`, `scenario_report`: when the benefit's due is within the public bodies' cash, leave
+    the `fund_reserve` key out (Task 8b's decision 6). No committed record changes: both scenarios have the sentence.
+
+**The register.**
+21. `data-artifacts.yaml`: the `national_trade_pay_2024` entry says "no reader exists yet"; it has one,
+    `babylon-persistence::national_trade_pay`. The version 2 cohort entry's "will parse" becomes "parses". Only the
+    words change: `tools/make_data_artifacts.py --check` and `tests/unit/reference/test_data_artifacts.py` pass, and no
+    table's bytes or metadata change. If the words are pinned anywhere, stop and report.
+
+**The engine (`rust/crates/babylon-material-circuit/src/adjustment/restart.rs`), the second commit.**
+22. `restart_stopped` reads `product_of` and `is_shared_service` for every workplace: test `tested` first, the same
+    result with less work.
+23. `a_workplace_of_a_shared_service_is_not_tested` asserts `raises == 0`, which cannot fail in its fixture. Drop that
+    assertion; `a_shared_service_never_rests` already holds the line.
+
+- [ ] **Step 1:** for each item that asks for a test, write it and see it fail (or, for a tightening of an existing
+  test, see the tightened test pass and say that it could not have failed before).
+- [ ] **Step 2: Implement** the items, one file at a time.
+- [ ] **Step 3: Run** `binary(shipped_world_bytes)`, `binary(national_cohorts)`, `binary(national_trade_pay)`,
+  `binary(national_twelve_trades)`, `binary(national_game_policy)`, `binary(national_county_review)`,
+  `binary(national_household_units)`, the persistence crate, `-p babylon-material-circuit`, and the two Python files
+  of item 21. Expected: pass, no pinned value moved, `git status` shows no change under `reports/`.
+- [ ] **Step 4: Gate and commit** in the two commits above. The hand-off lists every item by its number: done, done
+  already (with the commit), or left (with the reason).
+
 ## What the re-reading of 25 November changed
 
 - **The bench.** This plan was written before the Director ruled that the country's opening is counted on the country

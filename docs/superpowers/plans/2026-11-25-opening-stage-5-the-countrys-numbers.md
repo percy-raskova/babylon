@@ -64,8 +64,9 @@ bench's plan and `reports/country-bench-2026-11-24/README.md`.
 owner's restart mended for a shop of several goods), and the country bench's Task 9, which leaves public providers
 out of the resting price and the owner's restart. Runs of builders, with the lead's gate
 between runs:
-- run A: Tasks 7a, 1, 2, 3, in that order (Task 7a first: it needs nothing of the others, it is one key of the
-  fixture, and it lets the first period be read early). A ruling that adds a key amends Task 1 afterwards;
+- run A: Tasks 7a, 1, 2, 3, then 3b and 3c, in that order (Task 7a first: it needs nothing of the others, it is one
+  key of the fixture, and it lets the first period be read early; Tasks 3b and 3c were added when Task 3's review
+  found that the engine could not scale a want). A ruling that adds a key amends Task 1 afterwards;
 - run B: Tasks 4, 6, 5, 7, 7b, 7c, 7d, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement
   machines that Task 6 sets; Task 6 uses nothing of Task 5; Tasks 7b to 7d deal buyers to sellers after Task 5 has
   set what is bought abroad, and before Task 8's census reads who sells to whom);
@@ -647,6 +648,147 @@ pub(super) fn shop_goods(policy: &NationalGamePolicy) -> Result<Vec<(String, Gam
 
 What the player would see: households that buy cars and meals out once their needs are met (on the bench now; on
 screen when the game's turn carries wants).
+
+### Task 3b: A want's quantity may be scaled (the engine)
+
+Commit `feat(material-circuit): a want's quantity may be scaled`.
+
+**Why: found by Task 3's review.** Call 20 has an account above its three tiers buy its luxuries times a scale, "so
+that it spends all" (design call 4), and Task 3's decision 1 sets the scaled want at `floor(units_per_basis x basis
+count x bps / 10_000)`. The engine's `HouseholdWant::quantity` is `count x units_per_basis` and has no field that
+could carry a scale, so Task 3 as committed (`bef4dd731`) floors the scale on ONE person's units: at 12,500 a
+luxury of 2 a person stays 2. Part II writes want rows as small whole units (Task 11, decision 9) and its scales
+have a median of 1.25, so scaled a person they would mostly do nothing, in silence. The scale has to act on the
+account's whole quantity, and only the engine knows the count.
+
+**Files:**
+- Modify: `rust/crates/babylon-material-circuit/src/recurring/model.rs` (`HouseholdWant`, `quantity`),
+  `src/catalog.rs` (the refusal), `src/wire/catalog.rs` (catalog version 11 and its tail), `src/wire/state.rs`
+  (`MATERIAL_CIRCUIT_SOURCE_SHA256`), `contracts/material_circuit_v4.yaml`; every construction of a
+  `HouseholdWant` (the engine's sources and tests, `babylon-circuit-worlds/src/doubled/catalog.rs`,
+  `babylon-persistence` `opening/templates.rs` and `tests/national_twelve_trades.rs`) gains the neutral scale
+- Test: `src/catalog.rs` tests, `src/recurring/households_tests.rs`, `tests/market_clearing/` (its wants cases)
+
+**Interfaces:**
+
+```rust
+/// A want row as written: 10,000 parts in 10,000.
+pub const WANT_SCALE_ONE_BPS: u32 = 10_000;
+/// The largest scale a want row may carry: a hundred times the row.
+pub const MAX_WANT_SCALE_BPS: u32 = 1_000_000;
+pub struct HouseholdWant {
+    pub principal_id: FinalDemandPrincipalId,
+    pub tier: WantTier,
+    pub good_id: GoodId,
+    pub unit_id: UnitId,
+    pub basis: HouseholdNeedBasis,
+    pub units_per_basis: u64,
+    /// Parts in 10,000 of the row's quantity that the account buys: 10,000 is the row as written.
+    pub scale_bps: u32,
+}
+// HouseholdWant::quantity(cohort) = floor(count x units_per_basis x scale_bps / 10_000).
+```
+
+**Decisions:**
+1. **The quantity.** `count x units_per_basis` first, by today's code and with today's refusals (the wrong
+   principal, a household basis for a collective residence, zero units, overflow). At 10,000 that figure is
+   returned as it is: the old path, the same operations in the same order. At any other scale it is multiplied by
+   `scale_bps` in u128, divided by 10,000 rounded down, and brought back to u64 (`Arithmetic` when it does not
+   fit).
+2. **One place computes it.** Every reader of a want's quantity goes through `HouseholdWant::quantity` (households'
+   buying, the tiers' lists, the admission of service wants). A reader that multiplies `units_per_basis` by a count
+   on its own is changed to call it; the hand-off lists the readers found.
+3. **The refusal.** A want with `scale_bps` 0 or above `MAX_WANT_SCALE_BPS` is `MarketClearingInvariant`, where
+   `units_per_basis == 0` is refused today (`catalog.rs`).
+4. **Bytes.** A catalog whose every want is at 10,000 writes today's bytes, so every measured small world, the
+   shipped world and the fixture keep theirs. A catalog with a want at another scale writes catalog version 11
+   after the domain bytes (after version 10 where both are written), then every byte the same catalog writes
+   without it, then a tail: the count of want rows as u32 and each row's `scale_bps` as u32, in the rows' order
+   (after the handling blocks' tail where both are written). This is Task 2's pattern for a handling row's units.
+   No state's bytes change: a want is a row of the catalog. If another encoding of a want row exists (search for
+   writes of `units_per_basis`), it carries the scale by the same rule, and the hand-off names it.
+5. **Every existing construction** gains `scale_bps: WANT_SCALE_ONE_BPS`, and no existing test's figure moves.
+6. **The contract.** The lines of `contracts/material_circuit_v4.yaml` that describe a want and the catalog's
+   versions gain the scale, its rounding and version 11 with its tail; `MATERIAL_CIRCUIT_SOURCE_SHA256` is filled
+   once from the failing run of `tests/weighted_freight.rs`.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `a_scaled_want_is_floored_on_its_whole_quantity` (`households_tests.rs` or `model.rs` tests): a cohort of 5
+    persons and a luxury of 2 a person: 10 at 10,000; 12 at 12,500 (the floor of 12.5); 20 at 20,000. A luxury of 1
+    a person for 3 persons at 15,000: 4. A scale of 9,000 on 10 units: 9. A product that passes u64 is
+    `Err(Arithmetic)`.
+  - `a_scale_out_of_range_is_refused` (`catalog.rs` tests): `scale_bps` 0 and 1,000,001 are each
+    `Err(MarketClearingInvariant)`; 1 and 1,000,000 are admitted.
+  - `a_scale_changes_the_catalog_bytes_only_when_used` (`catalog.rs` tests, beside
+    `blocks_change_the_catalog_bytes_only_when_used`): a catalog with wants at 10,000 has the bytes it had before
+    this task (its pinned digest does not move); one want at 12,500 gives other bytes, which begin with version 11
+    after the domain bytes and end with the tail; two catalogs that differ only in one scale differ in bytes; a
+    catalog with a block above 1 and a scaled want writes version 10, then 11, and the two tails in that order.
+  - `a_scaled_luxury_is_bought_when_money_reaches_it` (`tests/market_clearing/`, on its wants fixture): an account
+    whose money reaches all of its luxury buys `floor(2 x persons x 5 / 4)` units of it with the row at 12,500 and
+    `2 x persons` with the row at 10,000; nothing else of the period differs but what follows from those units.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** the `babylon-material-circuit` crate, `babylon-circuit-worlds`, `babylon-tick`, and of
+  `babylon-persistence` `binary(shipped_world_bytes)`, `binary(national_household_units)` and
+  `binary(national_twelve_trades)`. Then, in the background and AFTER the last change under
+  `babylon-material-circuit/src`, the long tests once: `-p babylon-material-circuit --test adjustment_bench -E
+  'test(/^reproduces_/) | test(hours_fold_every_reference_run)' --run-ignored only`. A `reproduces_` test that
+  fails is a stop.
+- [ ] **Step 5: Gate and commit** with the subject above. Hand over: the readers of a want's quantity found; every
+  construction site changed; the contract's changed lines; the constant's old and new value.
+
+What the player would see: nothing yet. Task 3c uses it.
+
+### Task 3c: A scaled account's luxuries are scaled whole (compiler)
+
+Commit `fix(economy): scale an account's luxuries on its whole quantity`.
+
+**Why.** It completes Task 3's decision 1 on the engine's scale (Task 3b), and closes the review of Task 3. As
+committed, the compiler floors the scale on one person's units (`templates.rs` `scaled_units`), and the test
+`a_scaled_account_wants_more_luxuries` was moved from the plan's 2 a person to 4 a person so that the floor passed.
+
+**Files:**
+- Modify: `rust/crates/babylon-persistence/src/national_economy/opening/templates.rs` (`household_wants`;
+  `scaled_units` goes), `opening/markets.rs` (`purchases`, `retail_hours`, `check_bounds`), `opening/build.rs`
+  (`wire_wants`, the scales kept once)
+- Test: `tests/national_twelve_trades.rs`; crate tests of `markets.rs`
+
+**Decisions:**
+1. **The want row.** A luxury row of an account named in the luxury scales carries `scale_bps` = its scale. Every
+   other want row carries 10,000: a comfort, and any row of an account with no scale. `units_per_basis` is the
+   scenario's own figure. `scaled_units` is removed.
+2. **One quantity.** Whatever the compiler sizes from what an account buys uses the engine's own figure,
+   `floor(units_per_basis x count x bps / 10_000)`: the wanted units of a purchase row (`purchases`), a shop's
+   stock and offers, and the hours a fallback retailer reserves (`retail_hours`, which today counts the scenario's
+   rows unscaled: it is given its customers' accounts, or their scaled units, and not only their persons and
+   households). One helper in `templates.rs` computes it for a `GameWant`, a count and an optional scale, and a
+   crate test holds it equal to `HouseholdWant::quantity` on the same figures.
+3. **The scales are found once.** `templates::luxury_scales` runs once and its map is kept on the `Builder` for
+   `markets::households` and `wire_wants` (today it runs twice and nothing says the two agree).
+4. **The bound on wants** is checked where the want rows are written; `check_bounds` loses the argument that is
+   always 0 at its call.
+5. Schema 7 has no wants: every byte of the shipped world stays.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `a_scaled_account_wants_more_luxuries` as Task 3's Step 1 has it: the fixture with leisure a luxury at 2 a
+    person and Wayne's owner accounts at 12,500. Each such account's leisure want, by the engine's
+    `HouseholdWant::quantity` on its cohort, is `floor(2 x persons x 5 / 4)` and above `2 x persons`; its purchase
+    row's wanted units are that number; no other account's want moves and no comfort is scaled.
+  - `a_scale_that_names_no_account_is_refused`: a `[luxury_scale]` entry of a rightly formed label that no account
+    of the opening has (for example a position its hub does not hold) is `Err(NationalOpeningError::Policy)`.
+  - `a_fallback_shop_reserves_hours_for_scaled_luxuries` (crate test of `markets.rs`): with a storable good wanted
+    as a luxury and one customer account scaled, the hours reserved count that account's scaled units.
+  - `the_compiler_and_the_engine_count_a_want_alike` (crate test): the helper of decision 2 equals
+    `HouseholdWant::quantity` for the cases of Task 3b's first test.
+  - `the_shipped_wants_are_unchanged`: `binary(shipped_world_bytes)`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** `binary(national_twelve_trades)`, `binary(national_opening)`, `binary(shipped_world_bytes)`,
+  `binary(national_household_units)`, the crate.
+- [ ] **Step 5: Gate and commit** with the subject above.
+
+What the player would see: a rich household in a rich place spends what it earns, on more of its luxuries.
 
 ### Task 4: The national fund, the split taxes and the programs (compiler)
 
@@ -3217,3 +3359,13 @@ Where a line below says a finding waits for Part II, the next section says where
   buyer abroad took from one maker (decision 3 deals them). The two thresholds a builder could not have met as
   first written were set from the rule itself, run on the dump of the compiled opening: 0.7% of household-services
   workers at providers with no buyer, 0.5% of shop workers at shops with none.
+- Run A built Tasks 7a, 1, 2 and 3. Task 3's review did not pass it: the plan's rule for a scaled luxury, a floor
+  on the account's whole quantity, cannot be written in the engine's want row, which holds whole units a person.
+  The builder had floored a person's units and moved the test's input to fit, and the fix round stopped for the
+  lead. The lead chose the engine: a want row gains a scale, written to bytes only where it is used, as Task 2
+  did for a handling row's units (Task 3b), and the compiler then scales whole (Task 3c). The other course, units
+  so small that the floor loses little, would have bent Part II's choice of units for every good that is a luxury.
+- Two things Task 1 left for the lead, settled here: a luxury scale's place for a dependency is its M49 code, as
+  Task 1 admits it, and Part II writes that label; and the plan's one test of the fixture's keys stands as three
+  (`the_fixture_takes_the_fund_and_the_programs`, `..._the_places_and_the_markets`,
+  `..._the_machines_and_the_handling`).

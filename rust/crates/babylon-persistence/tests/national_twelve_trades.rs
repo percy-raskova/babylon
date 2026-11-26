@@ -924,3 +924,140 @@ fn owners_keep_the_business_shares() {
     }
     assert!(domestic_claims > 0, "domestic owners hold claims");
 }
+
+/// The fixture's work hours a person, as its policy states them.
+const WORK_HOURS_PER_PERSON: i128 = 160;
+
+/// A site's payroll for one period: its employed persons paid a wage, at their wage and the policy's hours.
+fn payroll_of(catalog: &CapturedEconomicCatalog, site: &EconomicSiteSeed) -> i128 {
+    let opening = catalog.opening();
+    let wages: BTreeMap<_, _> = opening
+        .employment
+        .iter()
+        .filter(|term| term.site_id == site.site_id)
+        .filter_map(|term| match term.compensation {
+            LaborCompensation::Wage(wage) => Some((term.member_id, wage.micro_units())),
+            _ => None,
+        })
+        .collect();
+    opening
+        .staffing
+        .iter()
+        .filter(|pool| pool.workplace == site.subject)
+        .flat_map(|pool| pool.members.iter())
+        .filter_map(|member| {
+            wages
+                .get(&member.member.member_id())
+                .map(|wage| i128::from(member.employed) * WORK_HOURS_PER_PERSON * wage)
+        })
+        .sum()
+}
+
+/// What a site's service inputs of one period cost at their providers' opening prices.
+fn service_input_cost(catalog: &CapturedEconomicCatalog, site: SiteId) -> i128 {
+    let policies = &catalog.opening().policies;
+    policies
+        .service_inputs
+        .iter()
+        .filter(|row| row.buyer_site_id == site)
+        .map(|row| {
+            let offer = policies
+                .offers
+                .iter()
+                .find(|offer| {
+                    offer.site_id == row.provider_site_id
+                        && offer.good_id == row.good_id
+                        && offer.unit_id == row.unit_id
+                })
+                .expect("a provider of a service input offers it");
+            i128::from(row.quantity_per_period) * offer.unit_price.micro_units()
+        })
+        .sum()
+}
+
+#[test]
+fn every_workplace_can_pay_for_its_first_period() {
+    let catalog = captured();
+    let opening = catalog.opening();
+    let mut short: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    let mut shown = 0;
+    let mut checked = 0_u64;
+    for site in opening
+        .sites
+        .iter()
+        .filter(|site| matches!(site.location, EconomicLocation::County(_)))
+    {
+        let floor = opening
+            .policies
+            .service_inputs
+            .iter()
+            .filter(|row| row.buyer_site_id == site.site_id)
+            .map(|row| row.cash_floor.micro_units())
+            .max();
+        let Some(floor) = floor else {
+            continue;
+        };
+        checked += 1;
+        let payroll = payroll_of(catalog, site);
+        let inputs = service_input_cost(catalog, site.site_id);
+        let cash = site.opening_cash.micro_units();
+        if cash - payroll - floor < inputs {
+            let workers = opening
+                .staffing
+                .iter()
+                .filter(|pool| pool.workplace == site.subject)
+                .flat_map(|pool| pool.members.iter())
+                .map(|member| member.employed)
+                .sum::<u64>();
+            let entry = short.entry(format!("{:?}", site.function)).or_default();
+            entry.0 += 1;
+            entry.1 += workers;
+            if shown < 10 {
+                shown += 1;
+                println!(
+                    "short: {} cash {cash} payroll {payroll} floor {floor} inputs {inputs}",
+                    site.label
+                );
+            }
+        }
+    }
+    println!("workplaces with a service input: {checked}");
+    println!("short by trade (workplaces, workers): {short:?}");
+    assert!(short.is_empty(), "workplaces short: {short:?}");
+}
+
+#[test]
+fn a_company_takes_nothing_at_the_opening() {
+    let catalog = campaign_catalog();
+    let finances = catalog
+        .national_company_finances()
+        .expect("the campaign carries the companies' finances");
+    assert_eq!(finances.sweep_bps, 0);
+    assert!(
+        finances.members.len() > 1,
+        "the fixture has company members"
+    );
+    for member in &finances.members {
+        assert_eq!(member.swept.micro_units(), 0, "{:?}", member.site);
+        assert_eq!(member.remaining_cash, member.original_cash);
+        let site = catalog
+            .opening()
+            .sites
+            .iter()
+            .find(|site| site.site_id == member.site)
+            .expect("a company's workplace is a site");
+        assert_eq!(site.opening_cash, member.original_cash);
+    }
+    assert!(finances.treasuries.len() > 1, "the fixture has companies");
+    for treasury in &finances.treasuries {
+        assert_eq!(treasury.cash.micro_units(), 0, "{:?}", treasury.company);
+    }
+    let company_money: i128 = catalog
+        .opening()
+        .institutional_cash
+        .iter()
+        .filter(|account| matches!(account.id, AccountId::Company(_)))
+        .map(|account| account.cash.micro_units())
+        .sum();
+    assert_eq!(company_money, 0);
+}

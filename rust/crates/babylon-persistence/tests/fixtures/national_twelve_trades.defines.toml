@@ -459,7 +459,7 @@ capacity_refinement = "essential_food_lower_bound_first_fit"
 # Designed opening employment shares. Whole sites can overshoot these targets.
 opening_employment_bps = [3500, 3500, 3000]
 # Designed share of each subsidiary's spendable cash above its captured operating floor.
-opening_treasury_bps = 1000
+opening_treasury_bps = 0
 portfolio_weights = [[70, 30, 0, 0], [10, 70, 15, 5], [60, 25, 15, 0], [10, 10, 60, 20]]
 high_utilization_bps = 8000
 history_periods = 3

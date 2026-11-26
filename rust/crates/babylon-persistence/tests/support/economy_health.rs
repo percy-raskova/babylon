@@ -6,12 +6,12 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{
     AccountId, AdjustmentReceipt, CapacitySupply, CircuitAccounting, CommodityKind, CorridorId,
-    FinalDemandPrincipalId, GoodId, MarketClearingReceipt, MaterialCatalog, MaterialCircuitState,
-    MonetaryCircuit, OrderId, OutboundOrderId, PoolMembers, PublicProgramReceipt,
-    PublicTransferTreatment, RestartTest, RouteId, SiteId, StaffingMemberState, StaffingPoolId,
-    StaffingState, StopHold, UnitId,
+    FinalDemandPrincipalId, GoodId, LaborCompensation, MarketClearingReceipt, MaterialCatalog,
+    MaterialCircuitState, MonetaryCircuit, OrderId, OutboundOrderId, PoolMembers,
+    PublicProgramReceipt, PublicTransferTreatment, RestartTest, RouteId, SiteId,
+    StaffingMemberState, StaffingPoolId, StaffingState, StopHold, UnitId,
 };
-use babylon_persistence::economic_catalog::EconomicOpening;
+use babylon_persistence::economic_catalog::{EconomicOpening, RecipeTemplate};
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -74,6 +74,8 @@ pub struct Census {
     /// The routes from a supplier abroad to a domestic buyer.
     import_routes: BTreeSet<RouteId>,
     default_wage_micros: i128,
+    /// The observed wage of each designed process (twelve trades); empty when one wage pays all.
+    recipe_wages: BTreeMap<Recipe, i128>,
     pub panel: Vec<PanelCounty>,
 }
 
@@ -164,9 +166,28 @@ impl Census {
             route_corridors,
             import_routes,
             default_wage_micros,
+            recipe_wages: BTreeMap::new(),
             panel,
             sites,
         }
+    }
+
+    /// Reads the facts of an opening that pays each workplace its own observed wage: the labor of a
+    /// batch costs, for each designed process, the wage of the persons employed at its sites (see
+    /// `process_wages`); a process with no paid person at any site costs the opening's own average.
+    pub fn observed(opening: &EconomicOpening) -> Self {
+        let (recipe_wages, average) = process_wages(opening);
+        let mut census = Self::new(opening, average);
+        census.recipe_wages = recipe_wages;
+        census
+    }
+
+    /// The wage that pays one hour of a process's labor.
+    fn labor_wage(&self, recipe: &Recipe) -> i128 {
+        self.recipe_wages
+            .get(recipe)
+            .copied()
+            .unwrap_or(self.default_wage_micros)
     }
 
     fn good(&self, key: Key) -> &str {
@@ -185,21 +206,81 @@ impl Census {
     }
 }
 
+fn recipe_of(row: &RecipeTemplate) -> Recipe {
+    Recipe {
+        output: (row.output.good_id, row.output.unit_id),
+        output_units: row.output.quantity,
+        labor_hours: row.labor.as_ref().map_or(0, |labor| labor.hours_per_batch),
+        inputs: row
+            .inputs
+            .iter()
+            .map(|input| ((input.good_id, input.unit_id), input.quantity))
+            .collect(),
+    }
+}
+
 fn recipes(opening: &EconomicOpening) -> BTreeSet<Recipe> {
-    opening
+    opening.recipes.iter().map(recipe_of).collect()
+}
+
+/// For each designed process, the sum of wage times employed persons over the members paid a wage at
+/// its sites, divided by the sum of those persons, rounded down; and the same over every member of the
+/// opening. A process with no such person has no entry.
+fn process_wages(opening: &EconomicOpening) -> (BTreeMap<Recipe, i128>, i128) {
+    let rates: BTreeMap<_, i128> = opening
+        .employment
+        .iter()
+        .filter_map(|term| match term.compensation {
+            LaborCompensation::Wage(rate) => Some((term.member_id, rate.micro_units())),
+            LaborCompensation::WorkingOwner | LaborCompensation::UnpaidFamily => None,
+        })
+        .collect();
+    let mut by_site: BTreeMap<SiteId, (i128, i128)> = BTreeMap::new();
+    for seed in &opening.staffing {
+        let total = by_site.entry(seed.pool.site_id()).or_default();
+        for member in &seed.members {
+            if let Some(rate) = rates.get(&member.member.member_id()) {
+                let persons = i128::from(member.employed);
+                total.0 += rate * persons;
+                total.1 += persons;
+            }
+        }
+    }
+    let template_recipe: BTreeMap<u16, Recipe> = opening
         .recipes
         .iter()
-        .map(|row| Recipe {
-            output: (row.output.good_id, row.output.unit_id),
-            output_units: row.output.quantity,
-            labor_hours: row.labor.as_ref().map_or(0, |labor| labor.hours_per_batch),
-            inputs: row
-                .inputs
-                .iter()
-                .map(|input| ((input.good_id, input.unit_id), input.quantity))
-                .collect(),
-        })
-        .collect()
+        .map(|row| (row.id.0, recipe_of(row)))
+        .collect();
+    let mut sums: BTreeMap<Recipe, (i128, i128)> = BTreeMap::new();
+    for site in &opening.sites {
+        let Some(&(paid, persons)) = by_site.get(&site.site_id) else {
+            continue;
+        };
+        let made: BTreeSet<&Recipe> = site
+            .processes
+            .iter()
+            .filter_map(|process| template_recipe.get(&process.recipe.0))
+            .collect();
+        for recipe in made {
+            let sum = sums.entry(recipe.clone()).or_default();
+            sum.0 += paid;
+            sum.1 += persons;
+        }
+    }
+    let everyone = by_site
+        .values()
+        .fold((0_i128, 0_i128), |a, b| (a.0 + b.0, a.1 + b.1));
+    let average = if everyone.1 == 0 {
+        0
+    } else {
+        everyone.0 / everyone.1
+    };
+    let wages = sums
+        .into_iter()
+        .filter(|(_, (_, persons))| *persons > 0)
+        .map(|(recipe, (paid, persons))| (recipe, paid / persons))
+        .collect();
+    (wages, average)
 }
 
 /// The highest service-input floor of each buyer site (all of a site's floors are its payroll).
@@ -823,7 +904,7 @@ fn sold(receipts: &MaterialTickReceipts) -> BTreeMap<Key, (u64, i128)> {
 /// inputs at the lowest domestic offer, against its output at the lowest and highest domestic
 /// offer.
 fn recipe_cost(census: &Census, open: &Opening, recipe: &Recipe) -> Value {
-    let labor = i128::from(recipe.labor_hours) * census.default_wage_micros;
+    let labor = i128::from(recipe.labor_hours) * census.labor_wage(recipe);
     let mut inputs = 0_i128;
     let mut unpriced = Vec::new();
     for (key, quantity) in &recipe.inputs {

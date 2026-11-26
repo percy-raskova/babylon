@@ -16,6 +16,16 @@ use std::collections::{BTreeMap, BTreeSet};
 /// The wage of a pool that has no wage term: the policy's default, $24 an hour, in millionths.
 const DEFAULT_WAGE_MICROS: i128 = 24_000_000;
 
+/// The wage a pool offers its seekers when it has no member paid a wage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wages {
+    /// The policy's default, $24 an hour: the shipped scenario.
+    Default,
+    /// The average wage of the place's members paid a wage: the sum of wage times employed persons
+    /// over the sum of those persons, rounded down.
+    PlaceAverage,
+}
+
 /// The id of the member a household holds at a pool it has none at: the first 32 bytes of
 /// `sha256_of(b"CountryBenchSeekerMemberV1\0" ++ pool_id bytes ++ household_id bytes)`.
 pub fn seeker_member_id(
@@ -41,18 +51,53 @@ fn refused(what: &'static str) -> BenchError {
     BenchError::Opening(EconomicCatalogError::Opening(what))
 }
 
-/// The highest wage among a pool's existing wage terms, else the policy's default.
+/// The highest wage among a pool's existing wage terms, else the place's offer.
 fn pool_wage(
     seed: &ResidentStaffingPoolSeed,
     terms: &BTreeMap<StaffingMemberId, i128>,
+    otherwise: i128,
 ) -> Currency {
     let highest = seed
         .members
         .iter()
         .filter_map(|member| terms.get(&member.member.member_id()).copied())
         .max()
-        .unwrap_or(DEFAULT_WAGE_MICROS);
+        .unwrap_or(otherwise);
     Currency::from_micro_units(highest)
+}
+
+/// What a place's pools offer when a pool has no wage term of its own.
+fn place_offer(
+    wages: Wages,
+    place: &StaffingPlace,
+    seeds: &BTreeMap<StaffingPoolId, &ResidentStaffingPoolSeed>,
+    terms: &BTreeMap<StaffingMemberId, i128>,
+) -> Result<i128, BenchError> {
+    if wages == Wages::Default {
+        return Ok(DEFAULT_WAGE_MICROS);
+    }
+    let (mut paid, mut persons) = (0_i128, 0_i128);
+    for pool in &place.pools {
+        let seed = seeds
+            .get(pool)
+            .ok_or_else(|| refused("a place names a pool the opening does not hold"))?;
+        for member in &seed.members {
+            if let Some(rate) = terms.get(&member.member.member_id()) {
+                let employed = i128::from(member.employed);
+                paid = rate
+                    .checked_mul(employed)
+                    .and_then(|pay| paid.checked_add(pay))
+                    .ok_or_else(|| refused("a place's wage sum overflowed"))?;
+                persons += employed;
+            }
+        }
+    }
+    if persons == 0 {
+        return Err(refused(
+            "a place has no employed person paid a wage to set its seekers' offer",
+        ));
+    }
+    Ok(paid / persons)
 }
 
 /// The wage of each member that has a wage term.
@@ -132,11 +177,13 @@ fn pool_rows(
 /// The seekers' rows of an opening, place by place.
 ///
 /// # Errors
-/// `BenchError::Opening` when a place names a pool the opening does not hold; `BenchError::Staffing` when
-/// the engine refuses a member.
+/// `BenchError::Opening` when a place names a pool the opening does not hold, or (with
+/// `Wages::PlaceAverage`) holds no employed person paid a wage; `BenchError::Staffing` when the engine
+/// refuses a member.
 pub fn seeker_rows(
     opening: &EconomicOpening,
     places: &[StaffingPlace],
+    offered: Wages,
 ) -> Result<SeekerRows, BenchError> {
     let seeds: BTreeMap<StaffingPoolId, &ResidentStaffingPoolSeed> = opening
         .staffing
@@ -151,11 +198,17 @@ pub fn seeker_rows(
     };
     for place in places {
         let households = place_households(place, &seeds)?;
+        let otherwise = place_offer(offered, place, &seeds, &wages)?;
         for pool in &place.pools {
             let seed = seeds
                 .get(pool)
                 .ok_or_else(|| refused("a place names a pool the opening does not hold"))?;
-            pool_rows(seed, &households, pool_wage(seed, &wages), &mut rows)?;
+            pool_rows(
+                seed,
+                &households,
+                pool_wage(seed, &wages, otherwise),
+                &mut rows,
+            )?;
         }
     }
     Ok(rows)

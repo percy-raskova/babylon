@@ -4,7 +4,7 @@
 //! bench as it was.
 use super::country_fund;
 use super::country_rules;
-use super::country_seekers::{self, SeekerRows};
+use super::country_seekers::{self, SeekerRows, Wages};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
@@ -734,13 +734,25 @@ impl CountryBench {
     /// `BenchError::Opening` when the opening does not compile; `Engine { stage: Open, .. }` when the catalog
     /// with portfolios off is refused.
     pub fn open(opening: &EconomicOpening, set: RuleSet) -> Result<Self, BenchError> {
+        Self::open_with(opening, set, Wages::Default)
+    }
+
+    /// As `open`, with the wage a seeker is offered where its pool pays none.
+    ///
+    /// # Errors
+    /// As `open`; `BenchError::Opening` also when `Wages::PlaceAverage` finds no paid person in a place.
+    pub fn open_with(
+        opening: &EconomicOpening,
+        set: RuleSet,
+        wages: Wages,
+    ) -> Result<Self, BenchError> {
         if !set.has_benefits() {
-            return Self::open_plain(opening, set);
+            return Self::open_plain(opening, set, wages);
         }
-        let first = Self::open_plain(opening, RuleSet::None)?.step()?;
+        let first = Self::open_plain(opening, RuleSet::None, wages)?.step()?;
         let per_person = country_fund::no_earner_per_person(opening, &first)?;
         let funded = country_fund::with_fund(opening, per_person)?;
-        let mut bench = Self::open_plain(&funded, set)?;
+        let mut bench = Self::open_plain(&funded, set, wages)?;
         bench.no_earner_per_person = Some(per_person);
         Ok(bench)
     }
@@ -750,7 +762,11 @@ impl CountryBench {
         self.no_earner_per_person
     }
 
-    fn open_plain(opening: &EconomicOpening, set: RuleSet) -> Result<Self, BenchError> {
+    fn open_plain(
+        opening: &EconomicOpening,
+        set: RuleSet,
+        wages: Wages,
+    ) -> Result<Self, BenchError> {
         let compiled = opening.compile().map_err(BenchError::Opening)?;
         let mut state = compiled.state;
         let period = state.period;
@@ -763,7 +779,7 @@ impl CountryBench {
             opening_staffing(opening, period).map_err(staffing_error(period, BenchStage::Open))?;
         let places = opening_places(opening)?;
         if set.seeks_in_place() {
-            let rows = country_seekers::seeker_rows(opening, &places)?;
+            let rows = country_seekers::seeker_rows(opening, &places, wages)?;
             add_seekers(period, &mut state, &mut members, rows)?;
         }
         let opening_money = total_money(period, &state)?;

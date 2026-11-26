@@ -24,6 +24,16 @@ pub fn market_policy(
     opening: &EconomicOpening,
     set: RuleSet,
 ) -> Result<Option<MarketClearingPolicy>, BenchError> {
+    if let Some(own) = &opening.market_clearing {
+        // The scenario names its own order of paying: the baseline and the market alone keep its
+        // policy untouched, the other sets add their rules to it.
+        let mut policy = own.clone();
+        if !matches!(set, RuleSet::None | RuleSet::Market) {
+            policy.plans_from_spare_money = true;
+            policy.adjustments = rules_of(set);
+        }
+        return Ok(Some(policy));
+    }
     if matches!(set, RuleSet::None) {
         return Ok(None);
     }

@@ -43,6 +43,7 @@ mod household_accounts;
 mod supply_chain;
 
 use country_bench::{BenchError, BenchPeriod, CountryBench, RuleSet};
+use country_seekers::Wages;
 use country_sizes::{CountrySizes, PlaceKey, PlaceSizes, SEEKER_BOUND};
 use economy_health::{BenchReceipts, Census, Opening};
 use household_accounts::{AccountReading, AccountSpec, PeriodReading, Session, TopTenth};
@@ -102,6 +103,67 @@ fn pooled_catalog() -> CapturedEconomicCatalog {
     .expect("the national campaign");
     assert_eq!(catalog.compiler_version(), "national-world-v12");
     catalog
+}
+
+/// The twelve-trade scenario's defines (policy schema 8): the plan's fixture.
+const TWELVE_TRADES_DEFINES: &[u8] = include_bytes!("fixtures/national_twelve_trades.defines.toml");
+
+/// The scenario a bench run names: the shipped one, or the twelve trades.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Scenario {
+    Shipped,
+    TwelveTrades,
+}
+
+impl Scenario {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Shipped => "shipped",
+            Self::TwelveTrades => "twelve-trades",
+        }
+    }
+
+    fn input(self) -> EconomicCatalogInput {
+        match self {
+            Self::Shipped => economic_catalog::national_catalog_input(),
+            Self::TwelveTrades => {
+                economic_catalog::national_catalog_input_for(TWELVE_TRADES_DEFINES)
+                    .expect("the twelve-trade defines parse")
+            }
+        }
+    }
+
+    const fn compiler(self) -> &'static str {
+        match self {
+            Self::Shipped => "national-world-v12",
+            Self::TwelveTrades => "national-world-v13",
+        }
+    }
+
+    /// The wage a seeker is offered where its pool pays none.
+    const fn wages(self) -> Wages {
+        match self {
+            Self::Shipped => Wages::Default,
+            Self::TwelveTrades => Wages::PlaceAverage,
+        }
+    }
+
+    /// The scenario captured as the campaign compiler builds it, with the census its record reads.
+    fn captured(self) -> (CapturedEconomicCatalog, Census) {
+        let input = self.input();
+        let wage = match self {
+            Self::Shipped => Some(default_wage(&input)),
+            Self::TwelveTrades => None,
+        };
+        let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
+            .expect("the national campaign");
+        assert_eq!(catalog.compiler_version(), self.compiler());
+        let census = match wage {
+            Some(wage) => Census::new(catalog.opening(), wage),
+            None => Census::observed(catalog.opening()),
+        };
+        (catalog, census)
+    }
 }
 
 #[test]
@@ -1142,12 +1204,35 @@ fn bench_row(
 /// thrown: the record keeps the periods that closed, the error in the engine's words and the full row
 /// of the period before it.
 fn bench_report(set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
-    let input = economic_catalog::national_catalog_input();
-    let wage = default_wage(&input);
-    let catalog = CapturedEconomicCatalog::capture_national_campaign(input, campaign())
-        .expect("the national campaign");
-    let census = Census::new(catalog.opening(), wage);
-    let mut bench = CountryBench::open(catalog.opening(), set).expect("the bench opens");
+    scenario_report(Scenario::Shipped, set, periods)
+}
+
+/// The head of a record: the shipped scenario's is the committed one; the twelve trades' names its
+/// scenario, its compiler and what pays labor and seekers.
+fn scenario_header(scenario: Scenario, set: RuleSet) -> Value {
+    let mut head = country_bench::bench_header(set);
+    if scenario == Scenario::TwelveTrades {
+        let object = head.as_object_mut().expect("the header is an object");
+        object.insert("bench".to_owned(), json!("country-opening-2026-11"));
+        object.insert("scenario".to_owned(), json!(scenario.name()));
+        object.insert("compiler".to_owned(), json!(scenario.compiler()));
+        object.insert(
+            "judged_against".to_owned(),
+            json!("the bench's own baseline (twelve-trades-baseline.json), never a record of the shipped scenario"),
+        );
+        object.insert(
+            "labor_cost".to_owned(),
+            json!("The labor of a batch, in the products' costs, is its hours times the wage of the persons employed at the process's sites: the sum of wage times employed persons over the members paid a wage, divided by the sum of those persons, rounded down; a process with none takes the same average over the whole opening. A seeker whose pool pays no wage is offered its place's average wage, found the same way."),
+        );
+    }
+    head
+}
+
+/// Plays up to `periods` closes of one scenario under one rule set: `bench_report` for any scenario.
+fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
+    let (catalog, census) = scenario.captured();
+    let mut bench =
+        CountryBench::open_with(catalog.opening(), set, scenario.wages()).expect("the bench opens");
     let mut rows: Vec<Value> = Vec::new();
     let mut refusal = None;
     let mut total_nanos = 0_u128;
@@ -1174,7 +1259,7 @@ fn bench_report(set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
         .iter()
         .map(|county| json!({"name": county.name, "geoid": county.geoid, "rule": county.rule}))
         .collect();
-    let mut record = country_bench::bench_header(set);
+    let mut record = scenario_header(scenario, set);
     let head = record.as_object_mut().expect("the header is an object");
     head.insert("columns".to_owned(), economy_health::bench_columns());
     head.insert("panel".to_owned(), json!(panel));
@@ -1185,21 +1270,21 @@ fn bench_report(set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
             "no_earner_per_person_micros".to_owned(),
             json!(amount.micro_units().to_string()),
         );
-        head.insert(
-            "fund_reserve".to_owned(),
-            json!("none: one period of the no-earner benefit is more than the country's public bodies hold between them"),
-        );
+        let due = country_fund::no_earner_due_a_period(opening, amount).expect("the due figure");
+        let bodies_cash = country_fund::public_bodies_cash(opening).expect("the bodies' cash");
+        let reserve = if due > bodies_cash {
+            "none: one period of the no-earner benefit is more than the country's public bodies hold between them"
+        } else {
+            "none: the fund opens with no cash"
+        };
+        head.insert("fund_reserve".to_owned(), json!(reserve));
         head.insert(
             "no_earner_due_a_period_micros".to_owned(),
-            json!(country_fund::no_earner_due_a_period(opening, amount)
-                .expect("the due figure")
-                .to_string()),
+            json!(due.to_string()),
         );
         head.insert(
             "public_bodies_cash_micros".to_owned(),
-            json!(country_fund::public_bodies_cash(opening)
-                .expect("the bodies' cash")
-                .to_string()),
+            json!(bodies_cash.to_string()),
         );
     }
     head.insert("total_ms".to_owned(), json!(total_nanos / 1_000_000));
@@ -1316,6 +1401,11 @@ const LONG_SUMMARY_PERIODS: [u64; 10] = [1, 2, 3, 4, 5, 13, 34, 100, 200, 400];
 
 /// A record's head and `acted` with only the rows of the summary's periods.
 fn long_summary(record: &Value) -> Value {
+    rows_of(record, &LONG_SUMMARY_PERIODS)
+}
+
+/// A record whole but for its rows: only those of `keep` that exist, and the last.
+fn rows_of(record: &Value, keep: &[u64]) -> Value {
     let rows = record["periods"].as_array().expect("periods are a list");
     let last = rows.last().map(|row| row["period"].clone());
     let kept: Vec<Value> = rows
@@ -1323,7 +1413,7 @@ fn long_summary(record: &Value) -> Value {
         .filter(|row| {
             row["period"]
                 .as_u64()
-                .is_some_and(|period| LONG_SUMMARY_PERIODS.contains(&period))
+                .is_some_and(|period| keep.contains(&period))
                 || Some(&row["period"]) == last.as_ref()
         })
         .cloned()
@@ -1571,7 +1661,7 @@ fn every_pool_has_a_member_for_each_household_of_its_place() {
         total += pool.members.len();
     }
     assert_eq!(total, 67_509);
-    let rows = country_seekers::seeker_rows(catalog.opening(), bench.places())
+    let rows = country_seekers::seeker_rows(catalog.opening(), bench.places(), Wages::Default)
         .expect("the seekers' rows build");
     assert_eq!(rows.members.len(), 67_509 - 21_062);
     assert_eq!(rows.terms.len(), rows.members.len());
@@ -2223,4 +2313,201 @@ fn the_bench_digests_before_the_squares() {
         })
         .collect();
     assert_eq!(actual, expected, "the bench's periods");
+}
+
+/// The country bench's records of the twelve-trade scenario.
+fn twelve_trades_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../reports/country-opening-2026-11")
+        .join(name)
+}
+
+/// The sets the twelve trades are recorded under (`TWELVE_TRADES_SET=<name>` plays one): the
+/// scenario's own policy is the baseline and the `market` set would be the same run.
+fn twelve_trades_sets() -> Vec<RuleSet> {
+    let all = [RuleSet::None, RuleSet::AllSix, RuleSet::AllSixWithBenefits];
+    match std::env::var("TWELVE_TRADES_SET") {
+        Ok(name) => {
+            let chosen: Vec<RuleSet> = all.into_iter().filter(|set| set.name() == name).collect();
+            assert!(!chosen.is_empty(), "no rule set is named {name}");
+            chosen
+        }
+        Err(_) => all.to_vec(),
+    }
+}
+
+/// What the twelve trades' opening holds, counted as `the_country_s_sizes` counts the shipped one.
+#[test]
+fn the_twelve_trades_sizes() {
+    let (catalog, _census) = Scenario::TwelveTrades.captured();
+    let opening = catalog.opening();
+    let compiled = opening
+        .compile()
+        .expect("the twelve-trade opening compiles");
+    let sizes = country_sizes::country_sizes(opening, &compiled);
+    println!(
+        "members_with_seekers {} against SEEKER_BOUND {SEEKER_BOUND}: {}",
+        sizes.members_with_seekers,
+        if sizes.members_with_seekers <= SEEKER_BOUND {
+            "fits"
+        } else {
+            "does not fit"
+        }
+    );
+    for (key, place) in busiest_places(&sizes) {
+        println!("{} {place:?}", key.0);
+    }
+    println!("{sizes:#?}");
+    assert!(
+        sizes.members_with_seekers <= SEEKER_BOUND,
+        "the seekers' rows do not fit: stop and report"
+    );
+    assert_eq!(
+        sum(sizes.workplaces_by_scope.values().copied()),
+        u64::try_from(opening.sites.len()).expect("a count")
+    );
+    assert_eq!(
+        sizes.seeker_rows,
+        sum(sizes.by_place.values().map(|p| p.seeker_rows))
+    );
+    assert_eq!(sizes.places_with_households, 187);
+    assert_eq!(
+        sizes.workplaces_by_scope,
+        BTreeMap::from([("dependency", 72), ("domestic", 8475), ("foreign", 144)])
+    );
+    assert_eq!(
+        sizes.household_accounts_by_scope,
+        BTreeMap::from([("dependency", 6), ("domestic", 1584), ("foreign", 12)])
+    );
+    assert_eq!(sizes.pools, 8691);
+    assert_eq!(sizes.members, 23877);
+    assert_eq!(sizes.employment_terms, 23877);
+    assert_eq!(sizes.member_labor_rows, 23877);
+    assert_eq!(sizes.offers_goods, 2436);
+    assert_eq!(sizes.offers_services, 5914);
+    assert_eq!(sizes.market_rows_at_most, 10786);
+    assert_eq!(sizes.members_outside_their_place, 0);
+    assert_eq!(sizes.seeker_rows, 78715);
+    assert_eq!(sizes.members_with_seekers, 78763);
+}
+
+/// The twelve trades open on the bench: the baseline closes one period under the scenario's own policy,
+/// and the bench's own checks (money, persons, the labor force) pass.
+#[test]
+fn the_twelve_trades_open_on_the_bench() {
+    let (catalog, _census) = Scenario::TwelveTrades.captured();
+    assert!(
+        catalog.opening().market_clearing.is_some(),
+        "schema 8 names its own order of paying"
+    );
+    let mut bench = CountryBench::open_with(
+        catalog.opening(),
+        RuleSet::None,
+        Scenario::TwelveTrades.wages(),
+    )
+    .expect("the bench opens");
+    let money_of = |state: &MaterialCircuitState| {
+        economy_health::economy(state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the book totals")
+            .micro_units()
+    };
+    let opening_money = money_of(bench.state());
+    let period = bench.step().expect("the first period closes");
+    println!("one baseline period took {:?}", period.elapsed);
+    assert_eq!(period.receipts.resolve_tick, 1);
+    assert_eq!(money_of(bench.state()), opening_money);
+    assert_ne!(period.receipts.staffing_members.len(), 0);
+}
+
+/// One period of each set, timed, for the twelve trades.
+#[test]
+#[ignore = "writes reports/country-opening-2026-11/twelve-trades-timings.json"]
+fn record_twelve_trades_timings() {
+    let mut rows = Vec::new();
+    let mut baseline = 0_u128;
+    for set in [
+        RuleSet::None,
+        RuleSet::NoSeekers,
+        RuleSet::AllSix,
+        RuleSet::AllSixWithBenefits,
+    ] {
+        let (catalog, _census) = Scenario::TwelveTrades.captured();
+        let mut bench =
+            CountryBench::open_with(catalog.opening(), set, Scenario::TwelveTrades.wages())
+                .expect("the bench opens");
+        match bench.step() {
+            Ok(period) => {
+                let nanos = period.elapsed.as_nanos();
+                if matches!(set, RuleSet::None) {
+                    baseline = nanos;
+                }
+                assert!(
+                    baseline > 0,
+                    "the baseline period took no time to divide by"
+                );
+                let ratio = nanos * 10_000 / baseline;
+                let elapsed_ms = u64::try_from(period.elapsed.as_millis()).expect("a short time");
+                println!(
+                    "{:<12} {elapsed_ms:>8} ms {ratio:>8} bps of the baseline",
+                    set.name()
+                );
+                rows.push(json!({
+                    "set": set.name(),
+                    "elapsed_ms": elapsed_ms,
+                    "ratio_to_baseline_bps": u64::try_from(ratio).expect("a small ratio"),
+                }));
+            }
+            Err(error) => {
+                println!("{}: refused: {error}", set.name());
+                rows.push(json!({"set": set.name(), "refused": format!("{error:?}")}));
+            }
+        }
+    }
+    let record = json!({
+        "bench": "country-opening-2026-11",
+        "scenario": Scenario::TwelveTrades.name(),
+        "periods_timed": 1,
+        "sets": rows,
+    });
+    let path = twelve_trades_path("twelve-trades-timings.json");
+    std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
+    let text = serde_json::to_string_pretty(&record).expect("the record serializes");
+    std::fs::write(path, text + "\n").expect("the record is written");
+}
+
+/// 34 periods of the baseline, of all six rules and of all six with benefits. A record over the
+/// hygiene budget is written whole under the target's tmp, and its rows of the summary's periods are
+/// committed instead.
+#[test]
+#[ignore = "writes the twelve trades' records under reports/country-opening-2026-11/; TWELVE_TRADES_SET=<name> plays one"]
+fn record_twelve_trades_sets() {
+    for set in twelve_trades_sets() {
+        let (record, refusal) = scenario_report(Scenario::TwelveTrades, set, 34);
+        let name = format!("twelve-trades-{}", set.name());
+        let whole =
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("country-opening/{name}.json"));
+        let size = write_compact_unbounded(&record, &whole);
+        println!(
+            "{}: {} rows, whole record {} bytes at {}",
+            set.name(),
+            record["periods"].as_array().map_or(0, Vec::len),
+            size,
+            whole.display()
+        );
+        if size < 1_048_576 {
+            write_compact(&record, &twelve_trades_path(&format!("{name}.json")));
+        } else {
+            write_compact(
+                &rows_of(&record, &SUMMARY_PERIODS),
+                &twelve_trades_path(&format!("{name}-summary.json")),
+            );
+        }
+        match refusal {
+            Some(error) => println!("{}: refused: {error}", set.name()),
+            None => assert_eq!(record["periods"].as_array().map(Vec::len), Some(34)),
+        }
+        assert_money_totals_equal(&record);
+    }
 }

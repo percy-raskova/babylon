@@ -1965,7 +1965,7 @@ What the player would see: the numbers of the rebuilt country, on the bench firs
 Commit `test(economy): open the rebuilt scenario where the twelve-trade fixture was`.
 
 **Depends on Part II.** This task opens the scenario that Task 13 writes, `content/scenarios/national-rebuilt/
-defines.toml`. If Part II's rewrite changes its path or its keys, this task follows the rewritten Task 13.
+defines.toml`, with the keys Tasks 1, 3 and 4 admit, the residences' row and the luxury scales among them.
 
 **Files:**
 - Modify (tests): every file that includes `tests/fixtures/national_twelve_trades.defines.toml` (`rg -l
@@ -2473,9 +2473,10 @@ Each variant is written as the edits it makes, task by task. None is built until
   domain; a domestic place missing from a non-empty table is `NationalOpeningError::Policy`. Tests:
   `a_place_share_table_sets_each_place` (two places' shares set in the test; their payers' rows use them) and
   `a_missing_place_is_refused` (`Err(Policy)`).
-- Part II (Task 10): the value is `10_000 - floor(10_000 x payments / taxes)` of the place at the national rate, at
-  least 0. A place whose payments exceed its taxes keeps all of them (fund 0) and opens short; the metadata lists each
-  such place and its gap. Task 13 writes the table.
+- Part II: `Settings.place_body = "even_where_own_taxes_reach"`. Task 11 (decision 11) computes the table,
+  `place_fund_share_bps`: the value is `10_000 - floor(10_000 x payments / taxes)` of the place at the national rate,
+  at least 0. A place whose payments exceed its taxes keeps all of them (fund 0) and opens short; the metadata lists
+  each such place and its gap. Task 13 then writes the table in place of its refusal of the setting.
 - Task 15: `every_public_body_opens_within_one_percent` asserts each place's receipts against its payments within 1%,
   but for the places the metadata lists, which are reported with their gap.
 - Review Focus 5: expected, each place opens even but the listed ones.
@@ -2500,8 +2501,9 @@ covers its own public services, and the fund pays every other place a grant, a n
   `amount_per_period_micros`; refused as V1's keys are.
 - Task 4: wires each row by road (a) or (b), payer the fund, rank 0; a test that each listed place's receipts and
   grant equal its payments within 1%.
-- Part II (Task 10): the share is the best-off place's payments over its taxes; each other place's grant is its
-  payments less its taxes at that share. Task 13 writes the rows.
+- Part II: `Settings.place_body = "every_place_even"`. Task 11 (decision 11) computes the share, the best-off
+  place's payments over its taxes, and each other place's grant, its payments less its taxes at that share
+  (`place_grant_micros`). Task 13 then writes the rows in place of its refusal of the setting.
 - Task 15: as V1, with the grants counted in each place's receipts and in the fund's payments.
 
 **V3. Each place its own cost** (item 2). An engine program has one amount for all its recipients
@@ -2510,13 +2512,15 @@ covers its own public services, and the fund pays every other place a grant, a n
   within `MAX_PUBLIC_PROGRAMS` (256, `model.rs:41`), and each key fits `PublicProgramKey` (lowercase, digits and `_`,
   at most 32 bytes, `financial/model.rs:175-182`). Task 1 admits `no_earner_<geoid>` rows of kind `per_person`, each
   with its `place`, one for every domestic place; Task 4 deals each place's no-earner accounts to its own row; Part II
-  (Task 10) sets each row's amount at that place's tier-1 cost at its opening prices; Task 13 writes the rows; Task 15
-  asserts every account reaches tier 1 and reports the spread of amounts.
+  (`Settings.benefit_rule = "each_place_own"`; Task 11, decision 6) sets each row's amount at that place's own
+  tier-1 cost at its own sellers' prices (`own_place_benefit_micros`); Task 13 then writes the rows in place of its
+  refusal of the setting; Task 15 asserts every account reaches tier 1 and reports the spread of amounts.
 - (b) A new kind of terms, an amount by place, in the engine (`financial/model.rs`, `programs.rs`, validation, the
   wire and the contract), one program row with a table of amounts. Larger; (a) is enough.
 
-**V4. One figure at the average** (item 2). Part II (Task 10) sets the `no_earner` amount at one person's tier-1 cost at
-national prices. Task 15: `no_account_opens_going_without` asserts it for every account but the no-earner accounts
+**V4. One figure at the average** (item 2). Part II (`Settings.benefit_rule = "one_average"`; Task 10, decision 10,
+and Task 11, decision 6) sets the `no_earner` amount at one person's tier-1 cost at national prices; Task 13 writes
+it with no new key. Task 15: `no_account_opens_going_without` asserts it for every account but the no-earner accounts
 whose tier-1 cost at their own sellers' prices exceeds the benefit; those are written into the report with their place
 and gap and counted.
 
@@ -2539,8 +2543,9 @@ stay `kind = "service"`. The order of paying becomes food, materials, consumer g
 services, household services, leisure, resources.
 - Task 1: nothing in the engine. The admission may take a clearer word for the first stage (the lead's to decide
   when ruled); the fixture keeps its kinds.
-- Part II (Tasks 9, 12, 13): the re-cut reads each product's stage from the scenario template, lets a service buy a
-  service of an earlier stage, and spreads the rest by O4; the template writes the kinds and the order above.
+- Part II: `Settings.service_stage` and `Settings.paying_order` (Task 9, decisions 2 and 4): the re-cut lets a
+  service buy a service of an earlier stage and spreads the rest by O4; Task 13 writes the kinds and the order
+  above, which the compiler admits today.
 - Task 15: the report names what is still spread (260.2 a period in the prototype).
 - Left bent, and written into the report: housing cannot buy business services (its price is 0.69 of the model with
   no rules; it is 7.5% of the basket against 11.4%).
@@ -2550,15 +2555,17 @@ own before Task 1, about three tasks by the lead's estimate from reading the cod
 (`services/model.rs`), the period's loop over stages (`transition/state.rs`, about L1430) and the stage's market
 moment (`services/admission.rs:694`, `clearing/table.rs` `MarketMoment`, whose order must then be decoupled from its
 wire tag) follow, the compiler's `kind` gains a word for it, and every measured small world keeps its bytes. It
-amends ADR264 (two stages) and ADR312 (the order of a period's steps).
+amends ADR264 (two stages) and ADR312 (the order of a period's steps). Part II: `Settings.service_stage` with a
+stage 3, which Task 13 refuses until the compiler's word exists.
 
 **V8. Business services cross a border** (item 2). Two or three compiler tasks before Task 5, by the lead's estimate:
 `opening/markets.rs` `service_provider` gives one provider per buyer location and good; a buyer then takes a share of
 its business services from a provider across the border, by `import_bps["business_services"]` at home and its region's
 `export_bps["business_services"]` abroad (Task 1's tables gain that key). The engine does not forbid it
 (`ServiceConnection`: "geographic eligibility belongs to source compilation"). Task 15's trade balance counts services.
-Part II keeps the accounts' own exports and import share of business services, and the one export factor runs over
-six products.
+Part II (`Settings.crossing` with `business_services`; Task 9, decision 4, and Task 10, decision 6) keeps the
+accounts' own exports and import share of business services, and the one export factor runs over six products;
+Task 13 then writes the two shares in place of its refusal of the setting.
 
 **V9. Utility, leisure and business services are sold across the country** (item 5).
 - A plan of its own, before Task 14a: the policy admits a reach for each service (`same_state_or_own_counterpart`

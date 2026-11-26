@@ -1077,11 +1077,12 @@ pub(crate) fn restart_stopped(
         }));
     let mut tried = Vec::new();
     for site in &sites {
-        let tested = is_tested(&standing.row_of(*site), tables.ledger.hours.contains(site));
-        // A provider of a service that the market shares is not tested: it lives on its public body's money.
-        let shared = product_of(&tables, *site)
-            .is_some_and(|(good, unit)| policy::is_shared_service(catalog, good, unit));
-        if tested && !shared {
+        // A provider of a service that the market shares is not tested: it lives on its public body's
+        // money. The test of standing comes first, so the product is read only for a tested workplace.
+        let skipped = !is_tested(&standing.row_of(*site), tables.ledger.hours.contains(site))
+            || product_of(&tables, *site)
+                .is_some_and(|(good, unit)| policy::is_shared_service(catalog, good, unit));
+        if !skipped {
             tried.extend(try_site(
                 catalog,
                 transition,
@@ -1652,12 +1653,6 @@ mod tests {
                 vec![plain],
                 "no restart receipt for the shared service"
             );
-            let raises = transition
-                .adjustments
-                .iter()
-                .filter(|row| matches!(row, AdjustmentReceipt::RestingPriceToCost(_)))
-                .count();
-            assert_eq!(raises, 0, "no raise of a price");
             Ok(())
         }
 

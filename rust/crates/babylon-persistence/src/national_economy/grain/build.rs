@@ -745,41 +745,51 @@ pub(super) fn cell(
         reason,
     })
 }
-/// Today's three machine figures of a trade, from either arm of the policy: batches a machine does
-/// in a period, batches it serves over its life, and the four opening ages (Task 6 replaces this).
-fn machine_figures(
+/// A source's machines under schema 7 and earlier: the machines of its jobs and of its workforce, the batches
+/// of service left and their carrying value. Under schema 8 the grain carries none: the compiler sizes every
+/// site's machines from its workforce and its trade's workers a machine (Task 6).
+fn source_machines(
     policy: &NationalGamePolicy,
-    function: EconomicFunction,
+    row: &AssignedResidentWorkplace,
     recipe: &GameRecipe,
-) -> Result<(u64, u64, [u16; 4])> {
-    match &policy.equipment.machines {
-        GameMachines::Batches {
-            batches_per_unit_per_period,
-            service_batches_per_unit,
-            opening_remaining_service_bps,
-        } => Ok((
-            *batches_per_unit_per_period,
-            *service_batches_per_unit,
-            *opening_remaining_service_bps,
-        )),
-        GameMachines::Workers {
-            workers_per_machine,
-            life_periods,
-        } => {
-            let workers = workers_per_machine
-                .get(&function)
-                .ok_or(NationalGrainError::SourceIncidenceMismatch)?;
-            let batches = policy
-                .work_hours_per_person
-                .checked_mul(*workers)
-                .ok_or(NationalGrainError::Arithmetic)?
-                .div_ceil(recipe.labor_hours_per_batch);
-            let service = batches
-                .checked_mul(*life_periods)
-                .ok_or(NationalGrainError::Arithmetic)?;
-            Ok((batches, service, [2_500, 5_000, 7_500, 10_000]))
-        }
-    }
+    batches: u64,
+) -> Result<(u64, u64, u64, i128)> {
+    let GameMachines::Batches {
+        batches_per_unit_per_period: batches_per_unit,
+        service_batches_per_unit,
+        opening_remaining_service_bps: ages,
+    } = &policy.equipment.machines
+    else {
+        return Ok((0, 0, 0, 0));
+    };
+    let units = batches.div_ceil(*batches_per_unit);
+    let force = row
+        .members
+        .iter()
+        .try_fold(0, |n, m| add(n, m.seed.member.labor_force()))?;
+    let force_hours = force
+        .checked_mul(policy.work_hours_per_person)
+        .ok_or(NationalGrainError::Arithmetic)?;
+    let workforce_units = (force_hours / recipe.labor_hours_per_batch).div_ceil(*batches_per_unit);
+    let fraction = ages[usize::from(row.target.site_id.as_bytes()[0]) % 4];
+    let life = product(u128::from(units), u128::from(*service_batches_per_unit))?;
+    let remaining = u64::try_from(product(life, u128::from(fraction))? / 10_000)
+        .map_err(|_| NationalGrainError::Arithmetic)?;
+    let price = policy
+        .commodities
+        .get("equipment")
+        .and_then(|g| g.price.as_ref())
+        .ok_or(NationalGrainError::SourceIncidenceMismatch)?
+        .opening
+        .micro_units();
+    let original = price
+        .checked_mul(i128::from(units))
+        .ok_or(NationalGrainError::Arithmetic)?;
+    let carrying = (original / 10_000)
+        .checked_mul(i128::from(fraction))
+        .and_then(|n| n.checked_add((original % 10_000) * i128::from(fraction) / 10_000))
+        .ok_or(NationalGrainError::Arithmetic)?;
+    Ok((units, workforce_units, remaining, carrying))
 }
 impl OpeningProductiveEndowment {
     pub(super) fn source(
@@ -824,36 +834,8 @@ impl OpeningProductiveEndowment {
         let batches = hours
             .checked_div(recipe.labor_hours_per_batch)
             .ok_or(NationalGrainError::Arithmetic)?;
-        let (batches_per_unit, service_batches_per_unit, ages) =
-            machine_figures(policy, row.target.function, recipe)?;
-        let units = batches.div_ceil(batches_per_unit);
-        let force = row
-            .members
-            .iter()
-            .try_fold(0, |n, m| add(n, m.seed.member.labor_force()))?;
-        let force_hours = force
-            .checked_mul(policy.work_hours_per_person)
-            .ok_or(NationalGrainError::Arithmetic)?;
-        let workforce_equipment_units =
-            (force_hours / recipe.labor_hours_per_batch).div_ceil(batches_per_unit);
-        let fraction = ages[usize::from(row.target.site_id.as_bytes()[0]) % 4];
-        let life = product(u128::from(units), u128::from(service_batches_per_unit))?;
-        let remaining = u64::try_from(product(life, u128::from(fraction))? / 10_000)
-            .map_err(|_| NationalGrainError::Arithmetic)?;
-        let price = policy
-            .commodities
-            .get("equipment")
-            .and_then(|g| g.price.as_ref())
-            .ok_or(NationalGrainError::SourceIncidenceMismatch)?
-            .opening
-            .micro_units();
-        let original = price
-            .checked_mul(i128::from(units))
-            .ok_or(NationalGrainError::Arithmetic)?;
-        let carrying = (original / 10_000)
-            .checked_mul(i128::from(fraction))
-            .and_then(|n| n.checked_add((original % 10_000) * i128::from(fraction) / 10_000))
-            .ok_or(NationalGrainError::Arithmetic)?;
+        let (units, workforce_equipment_units, remaining, carrying) =
+            source_machines(policy, row, recipe, batches)?;
         let (opening_stock, inputs_cost) = source_stocks(policy, recipe, batches)?;
         let opening_cash_micros = wages
             .checked_add(inputs_cost)

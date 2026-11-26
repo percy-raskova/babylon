@@ -3,21 +3,26 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_kernel::geography::CountyGeoid;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
     AccountId, CommodityKind, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdKind,
-    HouseholdNeedBasis, HouseholdWant, LaborCompensation, PublicAccountId, PublicProgramTerms,
-    PublicSpendingRule, PublicTransferTreatment, ServiceConnection, SiteId, TaxBasis, WantTier,
+    HouseholdNeedBasis, HouseholdWant, LaborCompensation, ProductiveEquipment, PublicAccountId,
+    PublicProgramTerms, PublicSpendingRule, PublicTransferTreatment, RollingProcessSupply,
+    ServiceConnection, SiteId, TaxBasis, WantTier,
 };
 use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind as Kind,
 };
-use babylon_persistence::economic_catalog::{EconomicHouseholdSeed, EconomicSiteSeed};
+use babylon_persistence::economic_catalog::{
+    CatalogCapacity, EconomicHouseholdSeed, EconomicSiteSeed,
+};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::national_cohorts::CohortKey;
 use babylon_persistence::national_economy::grain::{
     ContributionDestination, FinancialDomainId, ReservePosition,
 };
+use babylon_persistence::national_economy::GameMachines;
 use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWorkplaceSource};
 use babylon_persistence::national_household_allocation::{self, NationalHouseholdAllocation};
 use babylon_persistence::national_household_allocation::{
@@ -2286,4 +2291,162 @@ fn a_public_provider_s_grant_covers_its_wear() {
     }
     println!("public providers checked: {checked}; machines worn: {machines}");
     assert!(checked > 0 && machines > 0);
+}
+
+// ---- Task 6: machines by trade, of every age, for the whole workforce ----
+
+/// The fixture's productive equipment, as the compiler wrote it.
+fn productive_equipment(catalog: &CapturedEconomicCatalog) -> &ProductiveEquipment {
+    let CatalogCapacity::Rolling(RollingProcessSupply::Equipment(equipment)) =
+        &catalog.opening().capacity
+    else {
+        panic!("the fixture has rolling equipment");
+    };
+    equipment
+}
+
+fn workers_per_machine() -> BTreeMap<EconomicFunction, u64> {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture's policy");
+    let GameMachines::Workers {
+        workers_per_machine,
+        ..
+    } = policy.equipment.machines
+    else {
+        panic!("the fixture counts workers a machine");
+    };
+    workers_per_machine
+}
+
+#[test]
+fn the_engine_admits_a_definition_per_trade() {
+    let catalog = captured();
+    let equipment = productive_equipment(catalog);
+    assert_eq!(equipment.definitions.len(), 11, "one definition a trade");
+    let good = equipment.definitions[0].equipment_good_id;
+    assert!(equipment
+        .definitions
+        .iter()
+        .all(|d| d.equipment_good_id == good));
+    assert_eq!(equipment.installation_inputs.len(), 11);
+    for definition in &equipment.definitions {
+        let rows: Vec<_> = equipment
+            .installation_inputs
+            .iter()
+            .filter(|input| input.definition_id == definition.id)
+            .collect();
+        assert_eq!(rows.len(), 1, "each definition has its own input row");
+        assert_eq!(rows[0].quantity_per_equipment_unit, 4);
+    }
+    // The foundation admits the material catalog: `MaterialCatalog::try_new` returns `Ok`.
+    capture_text(fixture_text())
+        .expect("the fixture captures again")
+        .create_foundation(
+            ReplaySessionId::try_from("twelve-trade-machines").expect("session identity"),
+            ReplaySeed::new(6),
+        )
+        .expect("the foundation admits every definition");
+}
+
+/// Per site with a process: its machines (the cohorts' units) and its labor force.
+fn machines_and_force(
+    catalog: &CapturedEconomicCatalog,
+) -> Vec<(EconomicFunction, u64, u64, bool)> {
+    let opening = catalog.opening();
+    let mut units = BTreeMap::<_, u64>::new();
+    for cohort in &opening.equipment_position.cohorts {
+        *units.entry(cohort.process_id).or_default() += cohort.units;
+    }
+    let force: BTreeMap<SiteId, u64> = opening
+        .staffing
+        .iter()
+        .map(|s| (s.pool.site_id(), s.pool.labor_force()))
+        .collect();
+    opening
+        .sites
+        .iter()
+        .filter(|site| !site.processes.is_empty())
+        .map(|site| {
+            (
+                site.function,
+                units
+                    .get(&site.processes[0].process_id)
+                    .copied()
+                    .unwrap_or(0),
+                force.get(&site.site_id).copied().unwrap_or(0),
+                matches!(site.location, EconomicLocation::County(_)),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn coarsened_sites_have_machines_for_their_force() {
+    let workers = workers_per_machine();
+    let rows = machines_and_force(captured());
+    let mut checked = 0_u64;
+    for (function, machines, force, domestic) in rows {
+        if !domestic {
+            continue;
+        }
+        assert_eq!(
+            machines,
+            force.div_ceil(workers[&function]),
+            "{function:?}: {force} workers"
+        );
+        checked += 1;
+    }
+    println!("domestic sites with a process: {checked}");
+    assert!(checked > 0);
+}
+
+/// Pinned once from the first run: the domestic processes with machines and the cohorts they open with.
+const PROCESSES_WITH_MACHINES: u64 = 7_462;
+const OPENING_COHORTS: u64 = 54_049;
+
+#[test]
+fn about_one_machine_in_a_hundred_is_due() {
+    let catalog = captured();
+    let equipment = productive_equipment(catalog);
+    let per_period: BTreeMap<_, _> = equipment
+        .definitions
+        .iter()
+        .map(|d| (d.id, d.batches_per_unit_per_period))
+        .collect();
+    let definition_of: BTreeMap<_, _> = equipment
+        .bindings
+        .iter()
+        .map(|b| (b.process_id, b.definition_id))
+        .collect();
+    let domestic: BTreeSet<_> = catalog
+        .opening()
+        .sites
+        .iter()
+        .filter(|s| matches!(s.location, EconomicLocation::County(_)))
+        .flat_map(|s| s.processes.iter().map(|p| p.process_id))
+        .collect();
+    let cohorts: Vec<_> = catalog
+        .opening()
+        .equipment_position
+        .cohorts
+        .iter()
+        .filter(|c| domestic.contains(&c.process_id))
+        .collect();
+    let (mut machines, mut due) = (0_u128, 0_u128);
+    for cohort in &cohorts {
+        let batches = per_period[&definition_of[&cohort.process_id]];
+        machines += u128::from(cohort.units);
+        if cohort.remaining_service_batches <= cohort.units * batches {
+            due += u128::from(cohort.units);
+        }
+    }
+    let processes: BTreeSet<_> = cohorts.iter().map(|c| c.process_id).collect();
+    println!(
+        "machines {machines}, due within a period {due} ({} per 10,000); processes with machines {}; cohorts {}",
+        due * 10_000 / machines,
+        processes.len(),
+        cohorts.len()
+    );
+    assert!(due * 1_000 >= machines * 5 && due * 1_000 <= machines * 15);
+    assert_eq!(processes.len() as u64, PROCESSES_WITH_MACHINES);
+    assert_eq!(cohorts.len() as u64, OPENING_COHORTS);
 }

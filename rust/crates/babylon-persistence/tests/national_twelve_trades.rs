@@ -1280,10 +1280,10 @@ fn the_shop_handles_consumer_goods() {
 
 #[test]
 fn a_scaled_account_wants_more_luxuries() {
-    // Four a person at 12,500 basis points is five a person: a whole number, which the engine's
-    // `units_per_basis x persons` can say.
+    // Two a person at 12,500 basis points is floor(2 x persons x 5 / 4) in all: more than 2 a person,
+    // and not a whole number a person.
     let text = wants_text(
-        4,
+        2,
         "\n[luxury_scale]\nby_account = { \"26163:earning-owner\" = 12500 }\n",
     );
     let policy = NationalGamePolicy::parse(&text).expect("the text admits");
@@ -1309,13 +1309,46 @@ fn a_scaled_account_wants_more_luxuries() {
         if want.principal_id == owner && want.good_id == leisure.good_id {
             scaled += 1;
             assert!(seed.persons > 0);
-            assert_eq!(quantity, 4 * seed.persons * 12_500 / 10_000);
-            assert!(quantity > 4 * seed.persons);
+            assert_eq!(want.units_per_basis, 2, "the scenario's own figure");
+            assert_eq!(want.scale_bps, 12_500);
+            assert_eq!(quantity, 2 * seed.persons * 5 / 4);
+            assert!(quantity > 2 * seed.persons);
+            // Its purchase row is sized by the same number.
+            let row = opening
+                .policies
+                .household_purchases
+                .iter()
+                .find(|row| row.principal_id == owner && row.good_id == leisure.good_id)
+                .expect("a purchase row for the want");
+            assert_eq!(
+                row.maximum_purchase,
+                quantity * policy.retailer_buffer_periods
+            );
         } else if want.tier == WantTier::Luxury {
-            assert_eq!(quantity, 4 * seed.persons, "no other luxury moves");
+            assert_eq!(want.scale_bps, 10_000);
+            assert_eq!(quantity, 2 * seed.persons, "no other luxury moves");
         } else {
+            assert_eq!(want.scale_bps, 10_000);
             assert_eq!(quantity, 3 * seed.persons, "no comfort moves");
         }
     }
     assert_eq!(scaled, 1);
+}
+
+#[test]
+fn a_scale_that_names_no_account_is_refused() {
+    // A rightly formed label that no account of the opening has: Wayne holds no part at a position.
+    let text = wants_text(
+        2,
+        "\n[luxury_scale]\nby_account = { \"26163/below:earning-owner\" = 12500 }\n",
+    );
+    NationalGamePolicy::parse(&text).expect("the text admits");
+    let input =
+        economic_catalog::national_catalog_input_for(text.as_bytes()).expect("the text parses");
+    assert!(matches!(
+        CapturedEconomicCatalog::capture(input, None),
+        Err(EconomicCatalogError::NationalOpening(
+            national_economy::NationalOpeningError::Policy
+        ))
+    ));
 }

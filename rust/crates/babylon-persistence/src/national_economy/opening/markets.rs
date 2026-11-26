@@ -17,7 +17,7 @@ use babylon_material_circuit::{
     AccountId, CommodityKind, CorridorId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
     MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer, ServiceConnection,
     ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
-    MAX_HOUSEHOLD_NEEDS, MAX_HOUSEHOLD_WANTS,
+    MAX_HOUSEHOLD_NEEDS,
 };
 use std::collections::BTreeMap;
 
@@ -85,6 +85,7 @@ impl ProviderLocations {
 }
 
 pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
+    builder.luxury_scales = templates::luxury_scales(builder)?;
     let retailers = local_retailers(builder)?;
     let mut sites_by_good = BTreeMap::<_, BTreeMap<_, Vec<_>>>::new();
     let actors: Vec<_> = builder.actors.values().cloned().collect();
@@ -209,28 +210,19 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
     }
     // Missing commercial distribution becomes a role at an existing accounted
     // workplace, with its existing people, shared attendance and actual cash.
-    let mut resident_totals = BTreeMap::<EconomicLocation, (u64, u64)>::new();
-    for row in &builder.opening.households {
-        let totals = resident_totals.entry(row.location).or_default();
-        totals.0 = totals
-            .0
-            .checked_add(row.persons)
-            .ok_or(NationalOpeningError::Arithmetic)?;
-        totals.1 = totals
-            .1
-            .checked_add(row.households)
-            .ok_or(NationalOpeningError::Arithmetic)?;
+    let mut residents = BTreeMap::<EconomicLocation, Vec<usize>>::new();
+    for (index, row) in builder.opening.households.iter().enumerate() {
+        residents.entry(row.location).or_default().push(index);
     }
-    let missing: Vec<_> = resident_totals
+    let missing: Vec<_> = residents
         .into_iter()
         .filter(|(location, _)| !selected.contains_key(location))
-        .map(|(location, (persons, households))| (location, persons, households))
         .collect();
     if missing.is_empty() {
         return Ok(selected);
     }
     let fallback = RetailFallbackIndices::new(&builder.actors, &builder.opening.staffing);
-    for (location, persons, households) in missing {
+    for (location, accounts) in missing {
         let site = fallback
             .sites
             .get(&location)
@@ -244,7 +236,7 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
             labor_unit_id: builder.labor_unit,
             handling: actors::handling_requirements(builder)?,
         };
-        let retail_hours = retail_hours(builder, persons, households)?;
+        let retail_hours = retail_hours(builder, &accounts)?;
         reserve_retail_labor(builder, site, retail_hours)?;
         builder.site_mut(site)?.merchant = Some(merchant);
         let index = *fallback
@@ -314,36 +306,59 @@ fn reserve_retail_labor(builder: &mut Builder<'_>, site: SiteId, retail_hours: u
     Ok(())
 }
 
-/// The hours a fallback retailer reserves: for each shop good its units of needs and of wants (the
-/// scenario's rows, unscaled), handled in hours rounded up to a whole block.
-fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<u64> {
+/// The hours a fallback retailer reserves: for each shop good its units of needs and of wants, handled
+/// in hours rounded up to a whole block. `accounts` are the customers' rows of the opening's
+/// households; a want is counted as the engine counts it for each account (its scale, a collective
+/// residence's household-based rows left out), a need on the customers' persons and households.
+fn retail_hours(builder: &Builder<'_>, accounts: &[usize]) -> Result<u64> {
     let policy = builder.policy;
-    let rows = policy
-        .household_needs
-        .iter()
-        .map(|need| (&need.key, need.basis, need.units_per_basis))
-        .chain(
-            policy
-                .household_wants
-                .iter()
-                .map(|want| (&want.key, want.basis, want.units_per_basis)),
-        );
-    let mut units = BTreeMap::<&String, u64>::new();
-    for (key, basis, per_basis) in rows {
+    let mut persons = 0_u64;
+    let mut households = 0_u64;
+    for &index in accounts {
+        let row = &builder.opening.households[index];
+        persons = persons
+            .checked_add(row.persons)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+        households = households
+            .checked_add(row.households)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+    }
+    let mut units = BTreeMap::<String, u64>::new();
+    let mut add = |key: &String, quantity: u64| -> Result<()> {
         if !matches!(builder.commodity(key)?.kind, CommodityKind::Storable { .. }) {
-            continue;
+            return Ok(());
         }
-        let count = match basis {
+        let total = units.entry(key.clone()).or_default();
+        *total = total
+            .checked_add(quantity)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+        Ok(())
+    };
+    for need in &policy.household_needs {
+        let count = match need.basis {
             HouseholdNeedBasis::Persons => persons,
             HouseholdNeedBasis::Households => households,
         };
-        let total = units.entry(key).or_default();
-        *total = total
-            .checked_add(super::quantity(count, per_basis)?)
-            .ok_or(NationalOpeningError::Arithmetic)?;
+        add(&need.key, super::quantity(count, need.units_per_basis)?)?;
+    }
+    for want in &policy.household_wants {
+        for &index in accounts {
+            let row = &builder.opening.households[index];
+            if row.kind == HouseholdKind::CollectiveResidence
+                && want.basis == HouseholdNeedBasis::Households
+            {
+                continue;
+            }
+            let count = match want.basis {
+                HouseholdNeedBasis::Persons => row.persons,
+                HouseholdNeedBasis::Households => row.households,
+            };
+            let scale = builder.luxury_scales.get(&row.principal_id).copied();
+            add(&want.key, templates::want_quantity(want, count, scale)?)?;
+        }
     }
     units.into_iter().try_fold(0_u64, |hours, (key, total)| {
-        let block = handling(policy, key)?;
+        let block = handling(policy, &key)?;
         let needed = u128::from(total) * u128::from(block.hours);
         let rounded = u64::try_from(needed.div_ceil(u128::from(block.units)))
             .map_err(|_| NationalOpeningError::Arithmetic)?;
@@ -362,11 +377,8 @@ struct Purchase {
 
 /// An account's purchases, needs first in their order and then the goods only wanted; a want of
 /// the households of a collective residence is left out, as a need of theirs is.
-fn purchases(
-    builder: &Builder<'_>,
-    household: &EconomicHouseholdSeed,
-    scale_bps: Option<u32>,
-) -> Result<Vec<Purchase>> {
+fn purchases(builder: &Builder<'_>, household: &EconomicHouseholdSeed) -> Result<Vec<Purchase>> {
+    let scale = builder.luxury_scales.get(&household.principal_id).copied();
     let collective = household.kind == HouseholdKind::CollectiveResidence;
     let count = |basis| match basis {
         HouseholdNeedBasis::Persons => household.persons,
@@ -406,16 +418,19 @@ fn purchases(
         if collective && want.basis == HouseholdNeedBasis::Households {
             continue;
         }
-        let per_basis = templates::scaled_units(want, scale_bps)?;
-        add(&want.key, 0, super::quantity(count(want.basis), per_basis)?)?;
+        add(
+            &want.key,
+            0,
+            templates::want_quantity(want, count(want.basis), scale)?,
+        )?;
     }
     Ok(rows)
 }
 
-/// The purchase rows of the opening, needs and wants together, stay within the engine's bound, and so
-/// do the wants.
-fn check_bounds(purchase_rows: usize, wants: usize) -> Result<()> {
-    if purchase_rows > MAX_HOUSEHOLD_NEEDS || wants > MAX_HOUSEHOLD_WANTS {
+/// The purchase rows of the opening, needs and wants together, stay within the engine's bound. The
+/// want rows are bounded where they are written (`templates::household_wants`).
+fn check_bounds(purchase_rows: usize) -> Result<()> {
+    if purchase_rows > MAX_HOUSEHOLD_NEEDS {
         return Err(NationalOpeningError::Bounds);
     }
     Ok(())
@@ -429,7 +444,6 @@ fn households(
     preferences: &mut Preferences,
 ) -> Result<()> {
     let households = builder.opening.households.clone();
-    let scales = templates::luxury_scales(builder)?;
     let domain_retailers = representative_retailers(builder)?;
     let mut retail_requirements = BTreeMap::<(SiteId, String), u64>::new();
     for household in households {
@@ -441,11 +455,7 @@ fn households(
             .get(&domain)
             .or_else(|| retailers.get(&household.location))
             .ok_or(NationalOpeningError::Identity)?;
-        for row in purchases(
-            builder,
-            &household,
-            scales.get(&household.principal_id).copied(),
-        )? {
+        for row in purchases(builder, &household)? {
             let good = builder.commodity(&row.key)?.clone();
             let required = row
                 .need
@@ -499,7 +509,7 @@ fn households(
                 .ok_or(NationalOpeningError::Arithmetic)?;
         }
     }
-    check_bounds(builder.opening.policies.household_purchases.len(), 0)?;
+    check_bounds(builder.opening.policies.household_purchases.len())?;
     // Supply and fractional sourcing are calculated once from the location total.
     for ((retailer, key), required) in retail_requirements {
         retail_stock(builder, retailer, &key, required)?;
@@ -1081,17 +1091,56 @@ mod retailer_index_controls {
 
     #[test]
     fn too_many_purchase_rows_are_refused() {
+        assert_eq!(check_bounds(MAX_HOUSEHOLD_NEEDS), Ok(()));
         assert_eq!(
-            check_bounds(MAX_HOUSEHOLD_NEEDS, MAX_HOUSEHOLD_WANTS),
-            Ok(())
-        );
-        assert_eq!(
-            check_bounds(MAX_HOUSEHOLD_NEEDS + 1, 0),
+            check_bounds(MAX_HOUSEHOLD_NEEDS + 1),
             Err(NationalOpeningError::Bounds)
         );
-        assert_eq!(
-            check_bounds(0, MAX_HOUSEHOLD_WANTS + 1),
-            Err(NationalOpeningError::Bounds)
-        );
+    }
+
+    #[test]
+    fn a_fallback_shop_reserves_hours_for_scaled_luxuries() {
+        use crate::economic_catalog::HouseholdTemplateId;
+        use crate::national_economy::GameWant;
+        use babylon_material_circuit::{FinalDemandPrincipalId, WantTier};
+        let mut policy = NationalGamePolicy::parse(include_str!(
+            "../../../tests/fixtures/national_twelve_trades.defines.toml"
+        ))
+        .expect("the fixture admits");
+        policy.household_needs.clear();
+        policy.handling_hours_per_unit = Some(1);
+        policy.household_wants = vec![GameWant {
+            key: "consumer_goods".to_owned(),
+            tier: WantTier::Luxury,
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 2,
+        }];
+        let transport =
+            crate::national_transport::national_transport_reference().expect("transport");
+        let mut builder = Builder::new(&policy, None, transport, None).expect("builder");
+        let location = EconomicLocation::domestic_county(
+            babylon_kernel::geography::CountyGeoid::try_from("26163").expect("county"),
+        )
+        .expect("a domestic location");
+        let mut seats = Vec::new();
+        for (index, persons) in [(1_u8, 8_u64), (2, 10)] {
+            let principal = FinalDemandPrincipalId::from_bytes([index; 32]);
+            seats.push(principal);
+            builder.opening.households.push(EconomicHouseholdSeed {
+                kind: HouseholdKind::Ordinary,
+                principal_id: principal,
+                subject: actors::subject(location, &format!("test-{index}")),
+                location,
+                persons,
+                households: persons,
+                template: HouseholdTemplateId(1),
+                opening_stock: Vec::new(),
+                opening_cash: Currency::from_micro_units(0),
+            });
+        }
+        assert_eq!(retail_hours(&builder, &[0, 1]), Ok(2 * 8 + 2 * 10));
+        builder.luxury_scales.insert(seats[1], 12_500);
+        // Ten persons at 2 a person, at 12,500: floor(20 x 5 / 4) = 25.
+        assert_eq!(retail_hours(&builder, &[0, 1]), Ok(2 * 8 + 25));
     }
 }

@@ -123,6 +123,8 @@ pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) actors: BTreeMap<SiteId, ActorContext>,
     pub(in crate::national_economy) sites: BTreeMap<SiteId, usize>,
     pub(in crate::national_economy) logistics_nodes: BTreeMap<EconomicLocation, LogisticsNodeId>,
+    /// The luxury scale of each account the scenario names, found once, after the households exist.
+    pub(in crate::national_economy) luxury_scales: BTreeMap<FinalDemandPrincipalId, u32>,
     offer_indices: BTreeMap<(SiteId, GoodId, UnitId), usize>,
     procurement_indices: BTreeMap<(SiteId, SiteId, GoodId, UnitId), usize>,
 }
@@ -371,6 +373,7 @@ impl<'a> Builder<'a> {
                 })
                 .map(|node| (node.location(), actors::node_id(node.id())))
                 .collect(),
+            luxury_scales: BTreeMap::new(),
             offer_indices: BTreeMap::new(),
             procurement_indices: BTreeMap::new(),
             opening: EconomicOpening {
@@ -527,8 +530,11 @@ fn wire_wants(builder: &mut Builder<'_>) -> Result<()> {
     if builder.opening.market_clearing.is_none() {
         return Ok(());
     }
-    let scales = templates::luxury_scales(builder)?;
-    let wants = templates::household_wants(builder.policy, &builder.opening.households, &scales)?;
+    let wants = templates::household_wants(
+        builder.policy,
+        &builder.opening.households,
+        &builder.luxury_scales,
+    )?;
     if let Some(clearing) = builder.opening.market_clearing.as_mut() {
         clearing.household_wants = wants;
     }

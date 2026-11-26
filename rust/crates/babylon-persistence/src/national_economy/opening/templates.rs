@@ -11,7 +11,7 @@ use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::{
     AccountId, CommodityDefinition, CommodityKind, FinalDemandPrincipalId, HouseholdKind,
-    HouseholdWant, MarketClearingPolicy, UnitId, WantTier, MAX_HOUSEHOLD_WANTS,
+    HouseholdWant, MarketClearingPolicy, UnitId, WantTier, MAX_HOUSEHOLD_WANTS, WANT_SCALE_ONE_BPS,
 };
 use std::collections::BTreeMap;
 
@@ -151,14 +151,24 @@ pub(super) fn market_clearing(policy: &NationalGamePolicy) -> Result<Option<Mark
     }))
 }
 
-/// The want's coefficient for an account: a luxury of an account named in the luxury scales is
-/// `floor(units_per_basis x bps / 10_000)`, so the engine's `units_per_basis x count` is the scaled
-/// want; a comfort is never scaled.
-pub(super) fn scaled_units(want: &GameWant, scale_bps: Option<u32>) -> Result<u64> {
-    let Some(bps) = scale_bps.filter(|_| want.tier == WantTier::Luxury) else {
-        return Ok(want.units_per_basis);
-    };
-    let scaled = u128::from(want.units_per_basis) * u128::from(bps) / 10_000;
+/// The scale an account's want row carries: a luxury of an account named in the luxury scales has
+/// its scale, every other row (a comfort, an account with no scale) 10,000.
+pub(super) fn want_scale(want: &GameWant, scale_bps: Option<u32>) -> u32 {
+    scale_bps
+        .filter(|_| want.tier == WantTier::Luxury)
+        .unwrap_or(WANT_SCALE_ONE_BPS)
+}
+
+/// What an account wants of one row, as the engine counts it: `floor(units_per_basis x count x bps /
+/// 10_000)`, with `count` the account's persons or households by the row's basis. It equals
+/// `HouseholdWant::quantity` on the same figures.
+pub(super) fn want_quantity(want: &GameWant, count: u64, scale_bps: Option<u32>) -> Result<u64> {
+    let rows = super::quantity(count, want.units_per_basis)?;
+    let bps = want_scale(want, scale_bps);
+    if bps == WANT_SCALE_ONE_BPS {
+        return Ok(rows);
+    }
+    let scaled = u128::from(rows) * u128::from(bps) / u128::from(WANT_SCALE_ONE_BPS);
     u64::try_from(scaled).map_err(|_| NationalOpeningError::Arithmetic)
 }
 
@@ -188,8 +198,8 @@ pub(super) fn household_wants(
                 good_id: good.good_id,
                 unit_id: good.unit_id,
                 basis: want.basis,
-                units_per_basis: scaled_units(want, scales.get(&household.principal_id).copied())?,
-                scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
+                units_per_basis: want.units_per_basis,
+                scale_bps: want_scale(want, scales.get(&household.principal_id).copied()),
             });
         }
     }
@@ -325,5 +335,66 @@ mod tests {
             id(TradeSet::Ten, ConsumerGoods),
             Err(NationalOpeningError::Policy)
         );
+    }
+
+    #[test]
+    fn the_compiler_and_the_engine_count_a_want_alike() {
+        use babylon_material_circuit::{GoodId, HouseholdCohort};
+        let principal = FinalDemandPrincipalId::from_bytes([1; 32]);
+        let cases: [(u64, u32, u64, WantTier); 8] = [
+            (2, 10_000, 5, WantTier::Luxury),
+            (2, 12_500, 5, WantTier::Luxury),
+            (2, 20_000, 5, WantTier::Luxury),
+            (1, 15_000, 3, WantTier::Luxury),
+            (1, 9_000, 10, WantTier::Luxury),
+            (u64::MAX, 20_000, 1, WantTier::Luxury),
+            (u64::MAX, 10_000, 2, WantTier::Luxury),
+            (2, 12_500, 5, WantTier::Comfort),
+        ];
+        for (units_per_basis, bps, persons, tier) in cases {
+            let game = GameWant {
+                key: "leisure".to_owned(),
+                tier,
+                basis: HouseholdNeedBasis::Persons,
+                units_per_basis,
+            };
+            let engine = HouseholdWant {
+                principal_id: principal,
+                tier,
+                good_id: GoodId::from_bytes([2; 32]),
+                unit_id: UnitId::from_bytes([3; 32]),
+                basis: HouseholdNeedBasis::Persons,
+                units_per_basis: game.units_per_basis,
+                scale_bps: want_scale(&game, Some(bps)),
+            };
+            let cohort = HouseholdCohort {
+                kind: HouseholdKind::Ordinary,
+                principal_id: principal,
+                households: persons,
+                persons,
+            };
+            assert_eq!(
+                want_quantity(&game, persons, Some(bps)).ok(),
+                engine.quantity(&cohort).ok(),
+                "{units_per_basis} x {persons} at {bps} ({tier:?})"
+            );
+        }
+        let luxury = GameWant {
+            key: "leisure".to_owned(),
+            tier: WantTier::Luxury,
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 2,
+        };
+        assert_eq!(want_quantity(&luxury, 5, Some(12_500)), Ok(12));
+        assert_eq!(want_quantity(&luxury, 5, None), Ok(10));
+        assert!(want_quantity(
+            &GameWant {
+                units_per_basis: u64::MAX,
+                ..luxury
+            },
+            2,
+            None
+        )
+        .is_err());
     }
 }

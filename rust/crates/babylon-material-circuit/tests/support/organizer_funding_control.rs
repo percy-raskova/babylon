@@ -479,6 +479,7 @@ pub fn opening_with_cash(
                 good_id: good(g),
                 unit_id: unit(g),
                 hours_per_unit: 1,
+                units: 1,
             })
             .to_vec(),
         company_portfolios: None,

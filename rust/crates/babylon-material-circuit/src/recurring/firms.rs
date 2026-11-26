@@ -787,7 +787,12 @@ fn planned_hours(
     let coefficients: BTreeMap<_, _> = catalog
         .handling_coefficients
         .iter()
-        .map(|row| ((row.site_id, row.good_id, row.unit_id), row.hours_per_unit))
+        .map(|row| {
+            (
+                (row.site_id, row.good_id, row.unit_id),
+                (row.hours_per_unit, row.units),
+            )
+        })
         .collect();
     let merchandise = handling_quantities(state, wanted, dispatches, sold, gains)?;
     for (key, quantity) in merchandise {
@@ -797,9 +802,11 @@ fn planned_hours(
         let coefficient = coefficients
             .get(&key)
             .ok_or(MaterialCircuitError::MerchantInvariant)?;
-        let requested = quantity
-            .checked_mul(*coefficient)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let requested = crate::transition::merchant_admission::block_hours(
+            coefficient.0,
+            coefficient.1,
+            quantity,
+        )?;
         add_hours(
             &mut hours,
             merchant.site_id,

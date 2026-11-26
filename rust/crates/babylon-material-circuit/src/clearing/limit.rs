@@ -203,9 +203,10 @@ fn merchant_figure(
     };
     let mut handling = 0;
     if let Some(merchant) = catalog.merchants.iter().find(|m| m.site_id == site) {
-        let hours =
-            crate::transition::merchant_admission::hours_per_unit(catalog, site, good, unit)?;
-        handling = wage_of_hours(funded, site, merchant.labor_unit_id, hours)?;
+        let (hours, units) =
+            crate::transition::merchant_admission::handling_row(catalog, site, good, unit)?;
+        let block = wage_of_hours(funded, site, merchant.labor_unit_id, hours)?;
+        handling = crate::transition::merchant_admission::handling_cost_per_unit(1, units, block)?;
     }
     price
         .micro_units()
@@ -310,6 +311,7 @@ pub(crate) mod tests {
                 good_id: good(1),
                 unit_id: units(),
                 hours_per_unit: 2,
+                units: 1,
             }],
             maintenance_binding: None,
             aid_mandates: vec![],

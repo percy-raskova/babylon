@@ -350,6 +350,7 @@ impl Fixture {
                     good_id: good(shelf.good),
                     unit_id: units(),
                     hours_per_unit: 1,
+                    units: 1,
                 })
                 .collect(),
             company_portfolios: None,

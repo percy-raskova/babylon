@@ -228,6 +228,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
                 good_id: g(),
                 unit_id: u(),
                 hours_per_unit: 1,
+                units: 1,
             }],
             company_portfolios: None,
             company_payouts: vec![],
@@ -599,6 +600,7 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
             good_id: other,
             unit_id: u(),
             hours_per_unit: 1,
+            units: 1,
         });
     let rows = household_rows(&mut state);
     rows.household_stocks.push(HouseholdStock {
@@ -688,6 +690,7 @@ fn opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
             good_id: other,
             unit_id: u(),
             hours_per_unit: 1,
+            units: 1,
         });
     catalog.market_clearing = Some(crate::MarketClearingPolicy {
         plans_from_spare_money: false,

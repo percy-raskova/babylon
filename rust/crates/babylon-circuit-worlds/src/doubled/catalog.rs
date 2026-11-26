@@ -227,6 +227,7 @@ fn handling_coefficients() -> Vec<MerchantHandlingCoefficient> {
             good_id: Good::Food.good_id(),
             unit_id: ids::goods_unit(),
             hours_per_unit: 1,
+            units: 1,
         })
         .collect()
 }

@@ -169,7 +169,7 @@ struct Tables<'a> {
     /// The restocking decisions of each buyer.
     procurement: BTreeMap<SiteId, Vec<&'a ProcurementReceipt>>,
     /// The products a merchant handles, with the hours a unit takes, and each merchant's labor unit.
-    handling: BTreeMap<StockKey, u64>,
+    handling: BTreeMap<StockKey, (u64, u64)>,
     merchant_unit: BTreeMap<SiteId, UnitId>,
     /// The process that makes each product, the labor of each process and the inputs of each process.
     process_of: BTreeMap<StockKey, &'a ProcessOutput>,
@@ -202,7 +202,7 @@ impl<'a> Tables<'a> {
         for row in &catalog.handling_coefficients {
             handling
                 .entry((row.site_id, row.good_id, row.unit_id))
-                .or_insert(row.hours_per_unit);
+                .or_insert((row.hours_per_unit, row.units));
         }
         let mut merchant_unit = BTreeMap::new();
         for row in &catalog.merchants {
@@ -455,6 +455,31 @@ fn raise_maker(
     Ok(true)
 }
 
+/// What spare money buys of a merchant's handling for `gap` more units: whole blocks. Returns the units, the
+/// hours and the money. `per` is the cost of one block, `hours_per_unit x wage`; `blocks = affordable(ceil(gap /
+/// units), per, spare)`; `units = min(gap, blocks x units)`; the hours are rounded up.
+fn merchant_blocks(
+    gap: u64,
+    (hours_per_unit, block): (u64, u64),
+    wage: i128,
+    spare: i128,
+) -> Result<(u64, u64, i128)> {
+    let per = i128::from(hours_per_unit)
+        .checked_mul(wage)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    let blocks = affordable(gap.div_ceil(block), per, spare)?;
+    let units = gap.min(
+        blocks
+            .checked_mul(block)
+            .ok_or(MaterialCircuitError::Arithmetic)?,
+    );
+    let hours = crate::transition::merchant_admission::block_hours(hours_per_unit, block, units)?;
+    let cost = i128::from(blocks)
+        .checked_mul(per)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok((units, hours, cost))
+}
+
 /// A merchant's extra handling hours for `gap` more units, as far as its spare money pays.
 fn raise_merchant(
     reads: &Reads<'_>,
@@ -466,22 +491,13 @@ fn raise_merchant(
     let Some(&labor_unit) = reads.tables.merchant_unit.get(&key.0) else {
         return Ok(());
     };
-    let Some(&hours_per_unit) = reads.tables.handling.get(&key) else {
+    let Some(&(hours_per_unit, block)) = reads.tables.handling.get(&key) else {
         return Ok(());
     };
     let Some(&wage) = reads.prices.wage.get(&(key.0, labor_unit)) else {
         return Ok(());
     };
-    let per = i128::from(hours_per_unit)
-        .checked_mul(wage)
-        .ok_or(MaterialCircuitError::Arithmetic)?;
-    let units = affordable(gap, per, purse.spare)?;
-    let hours = units
-        .checked_mul(hours_per_unit)
-        .ok_or(MaterialCircuitError::Arithmetic)?;
-    let cost = i128::from(units)
-        .checked_mul(per)
-        .ok_or(MaterialCircuitError::Arithmetic)?;
+    let (_, hours, cost) = merchant_blocks(gap, (hours_per_unit, block), wage, purse.spare)?;
     purse.spare = purse
         .spare
         .checked_sub(cost)
@@ -623,6 +639,21 @@ mod tests {
     fn no_spare_money_plans_nothing_more() {
         assert_eq!(affordable(10, 23_000_000, 0), Ok(0));
         assert_eq!(affordable(10, 23_000_000, -40_000_000), Ok(0));
+    }
+
+    #[test]
+    fn spare_money_buys_whole_blocks() {
+        // A row of 1 hour for 10 units, a gap of 25 units, a wage of $20 and spare money of $50:
+        // 2 blocks, 20 units, 2 hours, $40 spent.
+        assert_eq!(
+            merchant_blocks(25, (1, 10), 20_000_000, 50_000_000),
+            Ok((20, 2, 40_000_000))
+        );
+        // With every block at 1 unit it is the rule of a whole number of hours for each unit.
+        assert_eq!(
+            merchant_blocks(5, (2, 1), 10_000_000, 70_000_000),
+            Ok((3, 6, 60_000_000))
+        );
     }
 
     #[test]

@@ -941,6 +941,7 @@ fn retail_state() -> Parts {
             good_id: inventory.good_id,
             unit_id: inventory.unit_id,
             hours_per_unit: 2,
+            units: 1,
         });
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: demand_principal_id,

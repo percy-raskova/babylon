@@ -370,6 +370,8 @@ pub struct MerchantHandlingCoefficient {
     pub good_id: GoodId,
     pub unit_id: UnitId,
     pub hours_per_unit: u64,
+    /// The units that `hours_per_unit` hours handle. 1 is the rule of a whole number of hours for each unit.
+    pub units: u64,
 }
 
 /// End-buyer account identity and market location, without a stock assertion.

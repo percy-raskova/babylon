@@ -27,6 +27,10 @@ const SPARE_MONEY_CATALOG_SCHEMA_VERSION: u16 = 8;
 /// same catalog writes without them.
 const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
 
+/// A catalog with a handling row of more than one unit writes this version right after the domain bytes, then
+/// every byte the same catalog writes without it, then a tail with each handling row's units.
+const HANDLING_BLOCK_CATALOG_SCHEMA_VERSION: u16 = 10;
+
 fn append_adjustments(
     out: &mut Vec<u8>,
     rules: &[AdjustmentRule],
@@ -204,6 +208,13 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);
+    let blocks = catalog
+        .handling_coefficients
+        .iter()
+        .any(|row| row.units != 1);
+    if blocks {
+        out.extend_from_slice(&HANDLING_BLOCK_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
     if let Some(policy) = &catalog.market_clearing {
         append_adjustments(&mut out, &policy.adjustments)?;
     }
@@ -283,6 +294,14 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         }
         if !policy.household_wants.is_empty() {
             append_wants(&mut out, &policy.household_wants)?;
+        }
+    }
+    if blocks {
+        let count = u32::try_from(catalog.handling_coefficients.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?;
+        out.extend_from_slice(&count.to_be_bytes());
+        for row in &catalog.handling_coefficients {
+            out.extend_from_slice(&row.units.to_be_bytes());
         }
     }
     Ok(out)

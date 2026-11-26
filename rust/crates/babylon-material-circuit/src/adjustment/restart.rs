@@ -279,7 +279,7 @@ struct PlantTables {
     /// The input coefficients of each process: good, unit and units a batch.
     inputs: BTreeMap<ProcessId, Vec<(GoodId, UnitId, u64)>>,
     /// The handling coefficients of each site: good, unit and hours a unit.
-    handling: BTreeMap<SiteId, Vec<(GoodId, UnitId, i128)>>,
+    handling: BTreeMap<SiteId, Vec<(GoodId, UnitId, u64, u64)>>,
     /// The provider of the first service input of each (buyer, good, unit), and the most it may buy a period.
     provider: BTreeMap<Product, (SiteId, u64)>,
     /// The supplier of the first replenishment row of each (buyer, good, unit).
@@ -318,7 +318,7 @@ impl PlantTables {
             handling: all_by(
                 &catalog.handling_coefficients,
                 |row| row.site_id,
-                |row| (row.good_id, row.unit_id, i128::from(row.hours_per_unit)),
+                |row| (row.good_id, row.unit_id, row.hours_per_unit, row.units),
             ),
             provider: first_by(
                 &catalog.service_inputs,
@@ -619,7 +619,7 @@ fn lines_of(
             .collect());
     }
     let mut lines = Vec::new();
-    for &(good, unit, hours_per_unit) in rows_at(&plant.handling, &site) {
+    for &(good, unit, hours_per_unit, units) in rows_at(&plant.handling, &site) {
         let Some(supplied) = plant
             .supplier
             .get(&(site, good, unit))
@@ -630,10 +630,13 @@ fn lines_of(
         let Some(price) = tables.posted(site, good, unit) else {
             continue;
         };
-        let Some(cost) = hours_per_unit
-            .checked_mul(rate)
-            .and_then(|hours| hours.checked_add(supplied))
-        else {
+        let Some(cost) = crate::transition::merchant_admission::handling_cost_per_unit(
+            hours_per_unit,
+            units,
+            rate,
+        )
+        .ok()
+        .and_then(|handling| handling.checked_add(supplied)) else {
             continue;
         };
         lines.push(Line {
@@ -661,7 +664,7 @@ fn product_of(tables: &CloseTables, site: SiteId) -> Option<(GoodId, UnitId)> {
     }
     rows_at(&plant.handling, &site)
         .first()
-        .map(|&(good, unit, _)| (good, unit))
+        .map(|&(good, unit, ..)| (good, unit))
 }
 
 /// Every workplace the rules count: the sites of the employment terms, in site order.
@@ -1486,6 +1489,7 @@ mod tests {
                         good_id: good(),
                         unit_id: unit(),
                         hours_per_unit: 1,
+                        units: 1,
                     })
                     .collect(),
                 maintenance_binding: None,
@@ -1796,6 +1800,7 @@ mod tests {
                     good_id: second_good(),
                     unit_id: unit(),
                     hours_per_unit: 1,
+                    units: 1,
                 });
             let catalog = MaterialCatalog::try_new(definition)?;
             let mut state = state(2);

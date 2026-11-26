@@ -217,6 +217,7 @@ impl Restock {
                         good_id: support::good(INPUT),
                         unit_id: support::units(),
                         hours_per_unit: 1,
+                        units: 1,
                     });
                 }
             }

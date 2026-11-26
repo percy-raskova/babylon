@@ -35,3 +35,6 @@ mod unreached_wants;
 
 #[path = "market_clearing/many_sellers.rs"]
 mod many_sellers;
+
+#[path = "market_clearing/handling_blocks.rs"]
+mod handling_blocks;

@@ -70,6 +70,7 @@ fn opening() -> Materials {
             good_id: crate::good(2),
             unit_id: crate::unit(2),
             hours_per_unit: 1,
+            units: 1,
         });
     material
         .corridor_capacities

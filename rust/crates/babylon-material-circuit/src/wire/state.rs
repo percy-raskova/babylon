@@ -29,8 +29,8 @@ pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circui
 
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    13, 97, 95, 147, 168, 122, 42, 193, 215, 178, 98, 103, 124, 137, 199, 115, 144, 198, 5, 2, 73,
-    213, 84, 244, 118, 255, 12, 157, 73, 8, 223, 134,
+    114, 78, 129, 205, 135, 74, 218, 173, 59, 200, 101, 114, 247, 49, 148, 54, 91, 78, 206, 254,
+    102, 53, 193, 5, 57, 225, 217, 228, 23, 81, 238, 23,
 ];
 
 /// Published schema version of one canonical material-circuit state frame.

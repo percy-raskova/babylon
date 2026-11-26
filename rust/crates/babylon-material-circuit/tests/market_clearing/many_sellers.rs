@@ -119,6 +119,7 @@ fn catalog(sites: &[SiteId]) -> MaterialCatalog {
                 good_id: good(),
                 unit_id: unit(),
                 hours_per_unit: 1,
+                units: 1,
             })
             .collect(),
         maintenance_binding: None,

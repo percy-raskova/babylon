@@ -544,10 +544,13 @@ impl Reading<'_> {
                     .get(&(row.site_id, row.good_id, row.unit_id))
                     .copied()
                     .unwrap_or(0);
-                to_handle = held
-                    .checked_mul(row.hours_per_unit)
-                    .and_then(|hours| to_handle.checked_add(hours))
-                    .ok_or(MaterialCircuitError::Arithmetic)?;
+                to_handle = crate::transition::merchant_admission::block_hours(
+                    row.hours_per_unit,
+                    row.units,
+                    held,
+                )?
+                .checked_add(to_handle)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
             }
             let before_money = handling.min(to_handle);
             let wage = self.wages.get(&key).copied().unwrap_or(0);

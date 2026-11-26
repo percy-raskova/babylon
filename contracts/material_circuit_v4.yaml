@@ -113,7 +113,7 @@ catalog_row_field_order:
   supplier_routes: [buyer_site_id, supplier_site_id, good_id, unit_id, route_id, transport_kind_u8]
   route_stages: [route_id, stage_index, from_node_id, to_node_id, travel_periods, loss_ppm]
   merchants: [site_id, economic_location, role_u8, capacity_id, labor_unit_id]
-  handling_coefficients: [site_id, good_id, unit_id, hours_per_unit]
+  handling_coefficients: [site_id, good_id, unit_id, hours_per_unit, units]  # units: the tail of catalog version 10
   maintenance_binding: [provider_site_id, consumer_process_id, spare_good_id, spare_unit_id, labor_unit_id,
                         spare_units_per_job, labor_units_per_job, enabled_batches_per_job, maximum_jobs_per_period]
   aid_mandates: [id, source_hash, donor_actor, donor_contributor_id, recipient_actor, payer_account,
@@ -133,6 +133,11 @@ catalog_row_field_order:
   # catalog (catalog version 8), then the bytes the same catalog writes without it.
   # A market policy that asks for adjustments adds no tail either: it writes u16 9, the count as u16 and each
   # rule's tag as u8 (a restart then its periods of outlay as u64) before every other byte (catalog version 9).
+  # A catalog with a handling row of more than one unit writes u16 10 right after the domain bytes and their 0,
+  # before every version above (catalog version 10), then every byte the same catalog writes without it, then a
+  # tail: the count of handling rows as u32 and each row's units as u64 big-endian, in the rows' canonical order.
+  # A catalog whose every handling row has one unit writes today's bytes. Nothing reads the tail: there is no
+  # catalog decoder.
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -178,7 +183,9 @@ market_clearing:
     merchant pays no more than its own posted price less its handling wage
   P6_offer: >-
     stock or output at the moment of sale less what the seller owes to orders accepted earlier; for a merchant
-    also no more than its hands and room can pass over
+    also no more than its hands and room can pass over; hands are hours for a block of units: hours for a
+    quantity are rounded up, units for hours are rounded down, a cost per unit is rounded up (ceil(hours_per_unit
+    x wage / units) micros); with units 1 the rule is hours_per_unit for each unit
   P7_order_of_paying: >-
     the catalog names one order of its products; a buyer's purse reaches the markets in that order, and each
     purchase is paid before the next market is cleared; a household's list goes by tier first and by the order
@@ -478,7 +485,8 @@ admission:
   - every merchant owns a unique handling capacity disjoint from route capacities
   - production and merchant work at one site share its inventory and exact site-unit labor budget
   - every merchant site has a logistics access point, checked economic location, and one labor-unit principal
-  - each merchant outbound good-unit has positive exact handling hours and mass per native unit
+  - each merchant outbound good-unit has positive exact handling hours for a positive block of units, and mass per
+    native unit
   - each final-demand principal has one unique identity and account; distinct households may share a location
   - a local order names a retail merchant in its demand principal economic location
   - local order quantities satisfy zero <= fulfilled <= ordered with ordered positive
@@ -524,11 +532,13 @@ allocation:
     aggregated_resource_request / total_requested)
   base_native_grant: floor(base_resource_grant / aggregated_resource_per_native_unit), capped by admitted request
   base_physical_outbound: minimum base native grant across stock, donor time and every timed route or merchant capacity
-  base_labor_request: base physical merchant native quantity multiplied by hours_per_unit
+  base_labor_request: base physical merchant native quantity multiplied by hours_per_unit, divided by units and
+    rounded up
   base_actual_outbound: minimum base physical quantity and proportional-floor opening handling-labor grant
   physical_ceiling: independent per-request minimum of admitted remaining quantity and floor(pass-opening available
     resource / aggregated nonlabor coefficient), excluding shared competition and current merchant handling labor
-  handling_need: checked u64 physical_ceiling multiplied by hours_per_unit; this Designed demand approximation
+  handling_need: checked u64 physical_ceiling multiplied by hours_per_unit, divided by units and rounded up; this
+    Designed demand approximation
     need not be jointly feasible and guarantees no employment or performance
   handling_feasible_quantity: physical_ceiling; actual handled_quantity never exceeds it
   residual_matrix: all original physical cuts plus complete handling-labor coefficients, including zero-base requests
@@ -542,7 +552,8 @@ allocation:
   residual_limits: no global throughput optimum, equal treatment, fairness, growth or guaranteed aid outcome is claimed
   labor_scope: routed and local merchant requests share one current funded site-unit labor budget
   handling_reservation: actual native outbound multiplied by grams_per_unit once per handling membership
-  handling_labor_debit: actual native outbound multiplied by hours_per_unit once
+  handling_labor_debit: actual native outbound multiplied by hours_per_unit once, divided by units and rounded up;
+    a labor cut of a block of units grants floor(share x units / hours_per_unit) native units
   reservation: actual native dispatch multiplied by grams_per_unit for every timed capacity membership
   funding: retain original purchase and aid admission bounds; no re-admission, credit, new cash or capacity inflation
   passes: preserve existing outbound selections and service stages; no second grant for an excluded existing order,

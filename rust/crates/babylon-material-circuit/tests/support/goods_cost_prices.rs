@@ -355,6 +355,7 @@ fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis()
             good_id: crate::good(2),
             unit_id: crate::units(),
             hours_per_unit: 1,
+            units: 1,
         });
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state

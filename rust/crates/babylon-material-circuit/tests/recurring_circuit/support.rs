@@ -236,6 +236,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             good_id: good(2),
             unit_id: units(),
             hours_per_unit: 1,
+            units: 1,
         }],
         company_portfolios: None,
         company_payouts: vec![],
@@ -827,6 +828,7 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
             good_id: good(1),
             unit_id: units(),
             hours_per_unit: 1,
+            units: 1,
         });
 
     state

@@ -319,6 +319,7 @@ mod tests {
                     good_id: limit_fixture::good(1),
                     unit_id: limit_fixture::units(),
                     hours_per_unit: 1,
+                    units: 1,
                 }]
             } else {
                 vec![]

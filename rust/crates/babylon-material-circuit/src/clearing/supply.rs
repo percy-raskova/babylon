@@ -126,14 +126,13 @@ impl<'a> Offer<'a> {
         product: (GoodId, UnitId),
         quantity: u64,
     ) -> Result<(u64, u64), MaterialCircuitError> {
-        let hours = merchant_admission::hours_per_unit(catalog, site, product.0, product.1)?;
-        let grams = catalog.grams_per_unit(product.0, product.1)?;
-        let scale = |per_unit: u64| {
-            per_unit
-                .checked_mul(quantity)
-                .ok_or(MaterialCircuitError::Arithmetic)
-        };
-        Ok((scale(hours)?, scale(grams)?))
+        let hours =
+            merchant_admission::handling_hours(catalog, site, product.0, product.1, quantity)?;
+        let grams = catalog
+            .grams_per_unit(product.0, product.1)?
+            .checked_mul(quantity)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        Ok((hours, grams))
     }
 
     /// What the seller can sell of this product now.
@@ -151,11 +150,9 @@ impl<'a> Offer<'a> {
         let Some(hands) = self.merchants.get(&site) else {
             return Ok(stock);
         };
-        let (hours, grams) = Self::needs(self.catalog, site, (good, unit), 1)?;
-        let by_hours = hands
-            .hours
-            .checked_div(hours)
-            .ok_or(MaterialCircuitError::MerchantInvariant)?;
+        let (_, grams) = Self::needs(self.catalog, site, (good, unit), 1)?;
+        let by_hours =
+            merchant_admission::handled_units(self.catalog, site, good, unit, hands.hours)?;
         let by_room = hands
             .grams
             .checked_div(grams)

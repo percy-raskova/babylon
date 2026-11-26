@@ -169,6 +169,7 @@ fn source_ownership_case() -> (MaterialCatalog, MaterialCircuitState, StaffingSt
             good_id: crate::good(2),
             unit_id: crate::unit(2),
             hours_per_unit: 1,
+            units: 1,
         });
     state.corridor_capacities.push(CorridorCapacity {
         corridor_id: CorridorId::from_bytes([17; 32]),

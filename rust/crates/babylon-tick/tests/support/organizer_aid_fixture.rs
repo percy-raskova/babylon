@@ -469,6 +469,7 @@ pub(crate) fn opening() -> Materials {
             good_id: good(2),
             unit_id: units(),
             hours_per_unit: 1,
+            units: 1,
         }],
         company_portfolios: None,
         company_payouts: vec![],

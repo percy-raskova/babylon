@@ -186,6 +186,7 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
                 good_id: *commodity,
                 unit_id: crate::unit(4),
                 hours_per_unit: 1,
+                units: 1,
             });
     }
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {

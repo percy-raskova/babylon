@@ -72,6 +72,7 @@ fn merchant() -> (MaterialCatalog, MaterialCircuitState) {
             good_id,
             unit_id,
             hours_per_unit: 2,
+            units: 1,
         }],
         company_portfolios: None,
         company_payouts: vec![],

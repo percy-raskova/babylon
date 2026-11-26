@@ -299,6 +299,7 @@ impl MaterialCatalogDefinition {
         }
         for row in &self.handling_coefficients {
             if row.hours_per_unit == 0
+                || row.units == 0
                 || !self
                     .merchants
                     .iter()
@@ -559,6 +560,84 @@ mod tests {
             MaterialCatalog::try_new(definition),
             Err(MaterialCircuitError::MarketClearingInvariant)
         )
+    }
+
+    fn shop(units: u64) -> MaterialCatalogDefinition {
+        let mut definition = base();
+        let site = crate::SiteId::from_bytes([5; 32]);
+        definition.site_logistics_nodes = vec![crate::SiteLogisticsNode {
+            site_id: site,
+            node_id: crate::LogisticsNodeId::from_bytes([5; 32]),
+        }];
+        definition.merchants = vec![crate::MerchantHandling {
+            site_id: site,
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
+            role: crate::MerchantRole::Retail,
+            capacity_id: crate::CorridorId::from_bytes([6; 32]),
+            labor_unit_id: unit(7),
+        }];
+        definition.handling_coefficients = vec![MerchantHandlingCoefficient {
+            site_id: site,
+            good_id: good(1),
+            unit_id: unit(1),
+            hours_per_unit: 3,
+            units,
+        }];
+        definition
+    }
+
+    #[test]
+    fn a_block_of_units_takes_its_hours_rounded_up() {
+        use crate::transition::merchant_admission;
+        let catalog = MaterialCatalog::try_new(shop(40)).expect("the shop catalog is valid");
+        let site = crate::SiteId::from_bytes([5; 32]);
+        let hours = |quantity| {
+            merchant_admission::handling_hours(&catalog, site, good(1), unit(1), quantity)
+        };
+        assert_eq!(
+            [hours(1), hours(40), hours(41), hours(0)],
+            [Ok(1), Ok(3), Ok(4), Ok(0)]
+        );
+        let units =
+            |hours| merchant_admission::handled_units(&catalog, site, good(1), unit(1), hours);
+        assert_eq!([units(1), units(3), units(4)], [Ok(13), Ok(40), Ok(53)]);
+        assert_eq!(
+            merchant_admission::handling_cost_per_unit(3, 40, 30_000_000),
+            Ok(2_250_000)
+        );
+        assert_eq!(
+            merchant_admission::handling_cost_per_unit(1, 3, 10_000_000),
+            Ok(3_333_334)
+        );
+        assert_eq!(
+            merchant_admission::handling_cost_per_unit(1, 3, -1),
+            Err(MaterialCircuitError::Arithmetic)
+        );
+    }
+
+    #[test]
+    fn a_row_of_zero_units_is_refused() {
+        assert!(matches!(
+            MaterialCatalog::try_new(shop(0)),
+            Err(MaterialCircuitError::MerchantInvariant)
+        ));
+    }
+
+    #[test]
+    fn blocks_change_the_catalog_bytes_only_when_used() {
+        let blocks = crate::wire::catalog_bytes(&shop(40)).expect("bytes");
+        let ones = crate::wire::catalog_bytes(&shop(1)).expect("bytes");
+        let head = crate::wire::MATERIAL_CATALOG_DOMAIN_BYTES.len() + 1;
+        assert_eq!(blocks[head..head + 2], 10_u16.to_be_bytes());
+        // Right after the version comes every byte the same catalog writes without it, then the tail.
+        let mut tail = 1_u32.to_be_bytes().to_vec();
+        tail.extend_from_slice(&40_u64.to_be_bytes());
+        assert!(blocks.ends_with(&tail));
+        assert_eq!(blocks[head + 2..blocks.len() - tail.len()], ones[head..]);
+        assert_ne!(ones[head..head + 2], 10_u16.to_be_bytes());
+        assert!(!ones.ends_with(&tail));
     }
 
     #[test]

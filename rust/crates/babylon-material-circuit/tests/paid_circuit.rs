@@ -240,6 +240,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
                     good_id: good(),
                     unit_id: unit(),
                     hours_per_unit: 1,
+                    units: 1,
                 }],
                 company_portfolios: None,
                 company_payouts: vec![],

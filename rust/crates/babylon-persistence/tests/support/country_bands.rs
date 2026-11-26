@@ -144,6 +144,7 @@ impl Held {
         ])
     }
 
+    /// Adds another's figures. Period 0 in an overflow error means the opening, which has no period.
     fn add(&mut self, other: Self) -> Result<(), BenchError> {
         let sum = |a: u64, b: u64| a.checked_add(b).ok_or(BenchError::Arithmetic { period: 0 });
         self.accounts = sum(self.accounts, other.accounts)?;
@@ -237,6 +238,9 @@ pub fn opening_bands(opening: &EconomicOpening, bands: &Bands) -> Result<Opening
                 },
             )?;
         }
+    }
+    if hours_seen.is_empty() {
+        return Err(refused("the opening holds no staffing pools"));
     }
     let [hours_per_person] = hours_seen.iter().copied().collect::<Vec<_>>()[..] else {
         return Err(refused("the pools differ in hours a person"));

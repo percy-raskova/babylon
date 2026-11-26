@@ -2505,7 +2505,7 @@ fn the_opening_names_every_band() {
             "earning-owner",
         ];
         if earning.iter().any(|key| keys.contains_key(key)) {
-            for key in &earning[..2] {
+            for key in &earning {
                 assert!(keys.contains_key(key), "{geoid} lacks {key}");
             }
         }
@@ -2525,6 +2525,10 @@ fn the_opening_names_every_band() {
     // bill over the band's employed persons and hours a person.
     assert_eq!((owners, forty, half), (22_911_711, 44_911_830, 28_988_253));
     assert!(forty >= half);
+    // The plan also expected owners >= forty. The data do not show it, and the figure cannot: the owners' band
+    // is dealt the working owners first, who are paid no wage, yet count among its employed persons, so its
+    // figure is the wage bill over persons some of whom draw none. The record's six figures hold no count of
+    // persons paid a wage, so the order of owners to forty is not asserted.
 }
 
 #[test]

@@ -14,6 +14,16 @@ a ruling changes a setting and, where the compiler must follow, a variant.
 10, 10b, 11, 12 and 13. **Task 4** (the fund and its programs) builds the approved text's one benefit figure and one
 fund share; a ruling on either is a variant's small edit.
 
+**A place and its parts.** The map has 187 pooled places. The accounts have 316: a pooled place is kept in up to
+four parts, by its counties' share of people looking for work against the place's own (`ReservePosition`; 129
+places open with two parts and 58 with one). A part is the code's financial domain (`FinancialDomainId`,
+`grain/build.rs`): it has its own household accounts, one a key, its own workplaces and wages and its own public
+body, and all of them sit at the place's hub. In this plan a *place* is the hub's location, where buyers and
+sellers meet, and a *part* is where accounts are kept. A part's label, in the scenario and in the census, is `<hub
+geoid>` for a part with no position (`representative` is `None`: a protected county, kept as itself) and `<hub
+geoid>/<position>` for every other, the position `none`, `below`, `at` or `above`. The label is unique: a hub is the
+first county of its own catchment, and catchments do not overlap (`grain/build.rs`). Part II's "place" is a part.
+
 **Rulings that bind it** (the Director, 25 November 2026, ADR325): the country's numbers are built before the pay
 fight; the three earning bands are built now (stage 2's Tasks 9 and 10); public providers are left out of the resting
 price and the owner's restart (the country bench's Task 9, built as `ef4bb77e6`; the goods' step-down never reached a
@@ -55,8 +65,9 @@ owner's restart mended for a shop of several goods), and the country bench's Tas
 out of the resting price and the owner's restart. Runs of builders, with the lead's gate
 between runs:
 - run A: Tasks 1, 2, 3, in that order. A ruling that adds a key amends Task 1 afterwards;
-- run B: Tasks 4, 6, 5, 7, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement machines that Task 6
-  sets; Task 6 uses nothing of Task 5);
+- run B: Tasks 4, 6, 5, 7, 7b, 7c, 7d, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement machines
+  that Task 6 sets; Task 6 uses nothing of Task 5; Tasks 7b to 7d deal buyers to sellers after Task 5 has set what
+  is bought abroad, and before Task 8's census reads who sells to whom);
 - run C: Part II, Tasks 9, 10, 10b, 11, 12, 13, in that order (Python only), once Task 8's census is committed;
 - run D: Tasks 14a, 14b, 15, in that order;
 - run E: Tasks 16, 17, 18, in that order.
@@ -94,6 +105,8 @@ pinned value: the builder recomputes each one from the committed tables.
   a private workplace does from its margin;
 - machines by trade at a designed number of workers per machine, opening at every age, for the whole workforce (O14);
 - the map's basis pinned as the shipped food figures, so the 187 places stay (O15);
+- buyers dealt to sellers so that every workplace with people at work has custom in proportion to them (Tasks 7b to
+  7d): O4 holds for a workplace, not only for a trade;
 - `private_distribution_bps = 10000` (the spike's section 5, item 5: balance 4 holds only at a full payout of book
   earnings, because wear is in cost).
 
@@ -203,6 +216,7 @@ records through the tick, is a later plan's.
 | `rust/crates/babylon-persistence/src/national_economy/opening/{markets,equipment}.rs` | Imports and exports by product; equipment abroad | 5 |
 | `rust/crates/babylon-persistence/src/national_economy/opening/equipment.rs`, `grain/build.rs` | Machines by trade, of every age | 1, 6 |
 | `rust/crates/babylon-persistence/src/national_economy/grain/build.rs` | The map's pinned basis | 7 |
+| `rust/crates/babylon-persistence/src/national_economy/opening/{dealing,markets,equipment}.rs` | Buyers dealt to sellers in proportion | 7b to 7d |
 | `rust/crates/babylon-persistence/src/economic_catalog/capture.rs` | `national_household_budget` made public for the census | 8 |
 | `rust/crates/babylon-persistence/tests/national_opening_census.rs`, `tests/support/opening_census.rs` | The census recorder and its check | 8, 14a |
 | `src/babylon/data/reference/economy/national_opening_census_v13.json` | The game's workforce, bands, places, foreign rows | 8 |
@@ -303,7 +317,10 @@ pub struct GameProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameLuxuryScale { pub place: String, pub key: HouseholdBudgetKey, pub bps: u32 }
 // NationalGamePolicy gains `luxury_scales: Vec<GameLuxuryScale>`, sorted (place, key); empty under schema 7 and when
-// the table is absent. `place` is a domestic place's hub county geoid, or a counterpart's or the dependency's key.
+// the table is absent. `place` is a domestic part's label (`<hub geoid>` or `<hub geoid>/<position>`, the position
+// `none`, `below`, `at` or `above`), or a counterpart's or the dependency's key.
+// NationalGamePolicy gains `place_services: Vec<String>`, sorted: the period services a buyer takes only in its own
+// place (Task 7b); empty under schema 7 and when the key is absent.
 /// The food figures that fold the counties into places (O15), written down so recipes can change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GameMapBasis {
@@ -328,7 +345,8 @@ pub struct GameMapBasis {
    "residence"`, `kind = "per_person_by_place"`, `rank`, `recipients = "collective_residence_at_opening"`,
    `amounts_micros = { "<hub geoid>" = <micros>, ... }` (one entry for each domestic place whose residences are paid;
    the table may be empty); an optional `[luxury_scale]` table, `by_account = { "<place>:<budget key label>" = <bps>,
-   ... }`, the label as `HouseholdBudgetKey::label()` writes it; `[grain.basis]` with the four `GameMapBasis` fields.
+   ... }`, the label as `HouseholdBudgetKey::label()` writes it, the place a part's label; an optional `[markets]
+   place_services = ["<service key>", ...]`; `[grain.basis]` with the four `GameMapBasis` fields.
 2. **Refused under schema 8** (`Shape`): the top-level `handling_hours_per_unit`; `[markets] foreign_procurement_bps`;
    `[equipment] batches_per_unit_per_period`, `service_batches_per_unit`, `opening_remaining_service_bps`. Each new key
    under schema 7 or earlier is refused (`Shape`), and each missing under schema 8 is refused (`Shape`). The existing
@@ -341,10 +359,15 @@ pub struct GameMapBasis {
    program key other than the three, a key twice, `rank`
    above 255, `wage_share_bps` outside `1..=10_000`, `half_periods` outside `1..=26`, an amount not above 0, a kind
    that does not match its key (`no_earner` is per person, `laid_off` after layoff, `residence` per person by place),
-   a recipients word that does not match its key; an `amounts_micros` key that is not a domestic place's hub
-   (`Location`); a `luxury_scale` key whose place is no domestic hub, counterpart or the dependency, or whose label
-   is no budget key (`Location`), the same account twice, a value at or under 10,000 or above 1,000,000
-   (`Profile("luxury_scale")`); any basis field 0.
+   a recipients word that does not match its key; an `amounts_micros` key that `EconomicLocation::domestic_county`
+   refuses (`Location`); a `luxury_scale` key whose place has not the form of a part's label, a counterpart's key or the
+   dependency's,
+   or whose label is no budget key (`Location`), the same account twice, a value at or under 10,000 or above
+   1,000,000 (`Profile("luxury_scale")`); a `place_services` entry that is no period service of the scenario, or
+   named twice (`Profile("place_services")`); any basis field 0. Admission reads the scenario alone and cannot know
+   a hub or a part: it checks the form (a county by `EconomicLocation::domestic_county`, which refuses a state code
+   that is none; a position by its four words), and the compiler refuses a scale or an amount that names nothing
+   (Tasks 3 and 4).
 4. **Price scales** keep today's range and meaning in this task: the fixture carries scales below 10,000 (Mexico
    4,000, China 4,500 and others) and its stage 2 tests read them. Task 14a, which retires the fixture, refuses under
    schema 8 any `price_scale_bps` but 10,000.
@@ -363,7 +386,8 @@ pub struct GameMapBasis {
    schema 8 and reads as empty when absent); `[fund]` with shares 0 and `reserve_periods = 2`; the three programs (rank
    0; `laid_off` 5,000 and 13; `no_earner` 1,595,033,714 micros, the bench's stand-in figure, read from
    `reports/country-bench-2026-11-24/all-six-with-benefits.json`; the README rounds it to $1,595.03; `residence` with
-   an empty `amounts_micros`, so no residence is paid by it); no `[luxury_scale]` table; `[grain.basis]`
+   an empty `amounts_micros`, so no residence is paid by it); no `[luxury_scale]` table; `place_services =
+   ["household_services", "housing", "public_provision"]`; `[grain.basis]`
    16, 16, 1, 14,000 (the shipped food recipe, need and grams). A fund share of 0 makes no fund tax row (Task 4), so the
    fixture's opening keeps its tax rows.
 7. **The old readers under schema 8.** Every reader of `handling_hours_per_unit`, `foreign_procurement_bps` and the
@@ -385,6 +409,7 @@ pub struct GameMapBasis {
   - `the_fixture_takes_the_builder_keys`: the fixture parses; `household_wants` is empty; `fund` has shares (0, 0) and
     `reserve_periods == 2`; `programs` holds `laid_off`, `no_earner`, then `residence` with the decision 6 terms;
     `luxury_scales` is empty;
+    `place_services` holds the three of decision 6;
     `map_basis ==
     Some(GameMapBasis { 16, 16, 1, 14_000 })`; `procurement == ByProduct` with five rows, 2,500 but equipment 0;
     Canada's `export_bps` five rows of 2,500; `machines == Workers` with eleven rows; `handling_hours_per_unit == None`;
@@ -403,7 +428,9 @@ pub struct GameMapBasis {
   - `residence_amounts_and_luxury_scales_are_read`: the fixture with `amounts_micros = { "26163" = 700000000 }` and
     `[luxury_scale] by_account = { "26163:earning-owner" = 12500 }` gives `PerPersonByPlace` with one entry of $700.00
     and one `GameLuxuryScale { "26163", EarningOwner, 12_500 }`; an amount for `"99999"` is `Err(Location)`; a scale of
-    10,000 is `Err(Profile("luxury_scale"))`; a scale for `"26163:no-such-key"` is `Err(Location)`.
+    10,000 is `Err(Profile("luxury_scale"))`; a scale for `"26163:no-such-key"` is `Err(Location)`; a scale for
+    `"01073/below:earning-owner"` is read with the place `01073/below`, and one for `"01073/north:earning-owner"` is
+    `Err(Location)`; `place_services = ["food"]` (a storable good) is `Err(Profile("place_services"))`.
 - [ ] **Step 2: Run them and see them fail.** `-p babylon-persistence -E 'binary(national_game_policy)'`: does not
   compile.
 - [ ] **Step 3: Implement** the types, the admission, the readers' helpers (decision 7) and the fixture's keys.
@@ -562,7 +589,9 @@ pub(super) fn shop_goods(policy: &NationalGamePolicy) -> Result<Vec<(String, Gam
    out for a collective residence (the engine refuses it there, as `markets.rs` leaves out a household need). The
    wants must stay within `MAX_HOUSEHOLD_WANTS` (262,144), and the purchase rows, needs and wants together, within
    `MAX_HOUSEHOLD_NEEDS` (131,072; stage 3's Task 2, decision 5); else `NationalOpeningError::Bounds`. An account
-   named in the scenario's luxury scales (its place and its budget key; every account of that place and key) has
+   named in the scenario's luxury scales (its part's label and its budget key: every account of that part and key,
+   an account carved from another with its parent; a scale that names no account is `NationalOpeningError::Policy`)
+   has
    each of its luxury wants at `floor(units_per_basis x basis count x bps / 10_000)` in place of `units_per_basis x
    basis count` (call 20); its comforts are not scaled. Test: `a_scaled_account_wants_more_luxuries` (the fixture
    with Wayne's owner accounts at 12,500: each one's leisure want is `floor(2 x persons x 5 / 4)`, and no other
@@ -667,8 +696,10 @@ fn wear(machines: u64, price: Currency, life_periods: u64) -> Result<Currency>;
    recipients every domestic account whose key is `NoEarnerNonowner` or `NoEarnerOwner`. `laid_off`: `AfterLayoff`,
    its recipients every domestic account whose key is `EarningLowerPaidHalf`, `EarningBetterPaidForty`,
    `EarningOwner` or `CollectiveResidence`. `residence` is expanded into one engine `PerPerson` program for each
-   entry of its `amounts_micros`: key `residence_<hub geoid>` (15 bytes, within `PublicProgramKey`), recipients that
-   place's `CollectiveResidence` accounts, the amount the entry's; a place with no entry has no such program. So a
+   entry of its `amounts_micros`: key `residence_<hub geoid>` (15 bytes, within `PublicProgramKey`), recipients the
+   `CollectiveResidence` accounts of every part of that place, the amount the entry's (an entry whose county is no
+   place's hub, or whose place has no such account, is `NationalOpeningError::Policy`: the engine refuses a program
+   with no recipient); a place with no entry has no such program. So a
    residence is paid for its residents with no job at the opening (the builder writes the amount a resident times
    that share), and a resident who loses a job in play is paid by `laid_off` as any worker is: the engine allows one
    after-layoff program a household and any number of per-person ones (`financial/validation.rs`). The programs are
@@ -934,6 +965,255 @@ Commit `feat(economy): fold the counties on the map's own food basis`.
 
 What the player would see: the same 187 places on the map, whatever the recipes.
 
+### Task 7b: A buyer of a service is dealt its provider (compiler)
+
+Commit `feat(economy): deal every buyer of a service a provider in proportion`.
+
+**Why, counted from the compiled opening (26 November; "What the compiled opening showed").** `service_provider`
+gives every buyer at one location the same provider of a service: the nearest location of its state that has one,
+and there the site with the most people at work (`ProviderLocations::new` sorts each location's sites by `employed`;
+`ids.first()`). A place has several: a median of 9 sellers of household services, 7 of business services, 6 of
+public provision, by part and by owner. So in the twelve-trade opening 187 of 1,489 makers of household services
+have a buyer and 64.3% of the trade's workers are at makers with none; public provision 62.4%, utility 49.0%,
+premises 31.8%, business services 26.8%. With what buyers ask scaled up to what the nation's makers can make, at
+most 35.7% of what household-services workers can make can be sold. The engine holds one provider a buyer and
+service (`recurring/validation.rs` `unique` on `(principal_id, good_id, unit_id)`; `services/validation.rs` on
+`(buyer_site_id, good_id, unit_id)`), so the mend is in who is given to whom. This task's rule, run on the same
+opening outside the engine, reaches 91.9% for household services, against 95.0% if every buyer could share every
+seller of its place, and leaves 0.7% of the trade's workers at providers with no buyer.
+
+**Files:**
+- Create: `rust/crates/babylon-persistence/src/national_economy/opening/dealing.rs`
+- Modify: `opening/markets.rs` (`households`, `producers`, `service_provider`; an accessor for a location's
+  providers, since `ProviderLocations.sites` is private to the file), the module list of `opening`
+- Test: `dealing.rs` crate tests; `tests/national_twelve_trades.rs`
+
+**Interfaces:**
+
+```rust
+/// One buyer of one product among buyers of its kind: where it is and how much it counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Custom { pub buyer: AccountId, pub location: EconomicLocation, pub weight: u64 }
+/// One seller of the product: where it is and its persons at work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Stall { pub site: SiteId, pub location: EconomicLocation, pub employed: u64 }
+/// Deals whole buyers to sellers so that each seller's custom is in proportion to its persons at work. `kinds` are
+/// dealt one after another; inside a kind the buyers in order of weight, largest first, then by account. A buyer
+/// counts as its share of its own kind's whole weight, in parts of 2^32 rounded down. Each goes to the seller for
+/// which `(shares dealt to it so far, over every kind, + this share) / employed` is smallest (compared by
+/// cross-multiplying in u128), among equals a seller at the buyer's own location first, then the lower site id.
+/// A stall with nobody at work is `Policy`. With no stall the map is empty: the caller decides (decision 4).
+pub(super) fn deal(kinds: &[Vec<Custom>], stalls: &[Stall]) -> Result<BTreeMap<AccountId, SiteId>>;
+/// The providers a domestic buyer at `location` may be dealt for the service `key`: those at its own location for a
+/// service of the place (`policy.place_services`), those of its own state for any other. Where its own location
+/// has none, a service of the place takes those of the nearest location of its state that has one, which is the
+/// location `service_provider` reads today.
+pub(super) fn reach(policy: &NationalGamePolicy, providers: &ProviderLocations, network: &mut Network<'_>,
+    key: &str, location: EconomicLocation) -> Result<Vec<SiteId>>;
+```
+
+**Decisions:**
+1. **Under schema 8 only** (the policy's twelve trades, `policy.trades`), for domestic buyers. Under schema 7, and
+   for a foreign or dependency buyer under either, `service_provider` is today's and every byte of the shipped
+   world stays.
+2. **Kinds of buyers.** For one service: the household accounts are one kind, an account's weight its persons;
+   the buying sites of one trade are one kind, a site's weight its `force`. The households are dealt first, then
+   the trades in `EconomicFunction`'s order, and a provider's shares are carried from kind to kind. A whole buyer
+   cannot be split, so a kind of one or two buyers cannot be spread: carried shares place it where the kinds before
+   it left room, and the kinds of few buyers are then spread over the providers as a group, where each dealt afresh
+   would pile onto the largest provider. What is in proportion to the providers' people is the sum of the shares,
+   and each kind of many buyers. (Goods are dealt otherwise, Task 7d: there a buyer's need can be split, in units.)
+   The dealing reads no price and no want, and of a recipe only whether a trade buys the service at all: it is the
+   same whatever numbers the builder writes, which Task 8's census of who sells to which account depends on.
+3. **Groups.** Buyers that `reach` gives one set of providers are dealt together. An account carved from another
+   (`builder.aid.children`, `builder.support_claimant`: an aid donor, the support claimant) is not dealt: it takes
+   its parent's provider (its parent is at its own location). A collective residence is not dealt a provider of a
+   service it does not buy (a need on a household basis).
+4. **Where nobody sells.** As today: a household account with no provider in reach is `MissingObservation`; a
+   buying site with none is left without the input (`producers` skips it).
+5. **The rows** are today's (`ServiceInputPolicy`, `HouseholdPurchasePolicy`, `ServiceConnection`), with the dealt
+   provider in place of `service_provider`'s. No row is added: one provider a buyer and service, as before.
+6. **The fixture's pins** move wherever a pin reads who sells a service to whom, or follows it (service
+   connections, the opening's digests of the twelve trades). Each is filled once from the first failing run and
+   listed in the hand-over with its old and new value. No pin of the shipped world moves.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `whole_buyers_are_dealt_in_proportion` (crate test): stalls with 60, 30 and 10 at work and one kind of ten
+    buyers of weight 10: 6, 3 and 1 buyers. Stalls 50 and 50 with buyers 70 and 30: one each. One stall: every
+    buyer. Equal ratios go to the stall at the buyer's own location, then to the lower site id. A stall with
+    nobody at work is `Err(Policy)`; no stall gives an empty map.
+  - `a_later_kind_goes_where_room_is_left` (crate test): stalls 60 and 40; a first kind of one buyer; a second
+    kind of one buyer: the first goes to the stall of 60, the second to the stall of 40.
+  - `the_dealing_is_the_same_in_any_order` (crate test): the buyers inside each kind and the stalls shuffled give
+    the same map.
+  - `every_provider_with_workers_has_a_buyer` (fixture): for each service a household needs, the persons at work
+    at domestic providers that no household and no site is dealt to are under 5% of the service's (print each
+    share; today's are 27% to 64%, and the rule run outside the engine left under 1%). If one is not, stop and
+    tell the lead with the figures: do not loosen it.
+  - `a_service_of_the_place_is_bought_in_the_place` (fixture, `place_services` as Task 1 sets them): every domestic
+    account whose location has a provider of housing, of household services or of public provision has its
+    provider of that service there; an account whose location has none has it at another location of its state;
+    some buyer's provider of utility is at another location of its state; no provider is in another state.
+  - `carved_accounts_follow_their_parents` (fixture): Wayne's carved accounts have their parents' providers.
+  - `the_shipped_services_are_unchanged`: `binary(shipped_world_bytes)`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** the crate tests, `binary(national_twelve_trades)`, `binary(shipped_world_bytes)`,
+  `binary(national_household_units)`, the crate.
+- [ ] **Step 5: Gate and commit** with the subject above. Hand over: for each service, the providers with a buyer
+  over all providers, and the share of workers at providers with none, before and after.
+
+What the player would see: every clinic, school, landlord and office in a place with customers from the first
+period, where today one of each has them all.
+
+### Task 7c: A household is dealt its shop (compiler)
+
+Commit `feat(economy): deal every household a shop in proportion`.
+
+**Why, counted.** A household buys every storable good at one shop: the largest distribution site of its own part
+(`representative_retailers`), else its location's. 316 of the 992 domestic shops have customers. They hold 94.0% of
+the trade's workers, so 1.7 million people work at shops nobody is given to buy at. This task's rule, run outside
+the engine, gives 704 shops customers and leaves 0.5% of the workers at shops with none.
+
+**Files:**
+- Modify: `opening/markets.rs` (`households`)
+- Test: `tests/national_twelve_trades.rs`
+
+**Decisions:**
+1. Under schema 8 the domestic household accounts of one location are dealt over the location's shops (every site
+   with a merchant role and persons at work, of either part) by Task 7b's `deal`, as one kind: an account's weight
+   its persons, a shop's its persons at work. A carved account takes its parent's shop. Foreign and dependency
+   accounts as today. (The engine wants a shop's customer at the shop's own location, `recurring/validation.rs`.)
+2. Everything a shop's customers set stays computed from them (`retail_requirements`, `retail_stock`, its offers
+   and its own restocking): a shop with customers now stocks and restocks, so offers and restocking rows grow. They
+   stay inside the engine's bounds; if not, `NationalOpeningError::Bounds`, and stop and tell the lead.
+3. A location with no shop keeps today's fallback (`local_retailers`).
+4. The fixture's pins move as in Task 7b, decision 6.
+
+- [ ] **Step 1: Write the failing tests** (fixture):
+  - `every_shop_with_workers_has_customers`: the persons at work at domestic shops with no household customer are
+    under 2% of the trade's (print the share; today's is 6.0%).
+  - `shops_customers_follow_their_workers`: over the nation's shops, the persons at work at shops whose customers'
+    persons a worker are under half the nation's own ratio are under 5% of the trade's (print the shares under
+    half and over twice).
+  - `the_shipped_shops_are_unchanged`: `binary(shipped_world_bytes)`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** `binary(national_twelve_trades)`, `binary(shipped_world_bytes)`,
+  `binary(national_household_units)`, the crate.
+- [ ] **Step 5: Gate and commit** with the subject above. Hand over: shops with customers before and after; the
+  counts of offers and of restocking rows before and after, against their bounds.
+
+What the player would see: every shop of a place with customers.
+
+### Task 7d: A business is dealt its makers of goods and machines (compiler)
+
+Commit `feat(economy): deal every buyer of goods its makers by nearness and room`.
+
+**Why, counted.** A business restocks a good at home from one maker: the site with the most people at work at the
+nearest location that has a maker (`primary_supplier`). 185 of 368 food makers, 175 of 341 makers of resources and
+303 of 339 makers of materials have a buyer, and a third of the workers in food and in extraction are at makers
+with none. Buyers go to the nearest maker, not to where the product is made: with what home buyers ask scaled to
+what the nation's makers can make, at most 56.8% of food, 63.3% of materials and 40.0% of resources can be sold. A
+process takes its machines from one maker by the same rule (`equipment.rs` `policies`). And every buyer abroad takes
+its share from the country at ONE maker (counted: the 35 buyers abroad of food at one maker in Kern County,
+California; the 214 of materials at one in Dane County, Wisconsin; the 36 of resources at one in Hidalgo County,
+Texas): `secondary_candidates` gives a buyer that is not in a county the counties in one order, with no rotation,
+and `secondary_supplier` takes the first with a path, and its largest site. The
+engine admits several suppliers a buyer and good (`recurring/validation.rs` `unique` on `(buyer_site_id,
+supplier_site_id, good_id, unit_id)`), and one machine supplier a process (`equipment/validation.rs`).
+
+**Files:**
+- Modify: `opening/dealing.rs`, `opening/markets.rs` (`procure`, `primary_supplier`'s and `secondary_supplier`'s
+  callers), `opening/equipment.rs` (`policies`), `opening/routes.rs` (a test of whether a route can be built)
+- Test: `dealing.rs` crate tests; `tests/national_twelve_trades.rs`
+
+**Interfaces:**
+
+```rust
+/// A buyer's share at one maker: `part` of `whole`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Share { pub maker: SiteId, pub part: u128, pub whole: u128 }
+/// Deals buyers' weights over makers by nearness and room. A maker's room is its persons at work over all makers'
+/// times the buyers' whole weight, kept exact as `employed x whole weight` against `weight x all makers' employed`.
+/// Buyers in order of weight, largest first, then by site id; each takes room from the makers of the nearest
+/// location that has room left (`nearest` gives it; inside a location the makers by site id), then the next
+/// nearest, up to `most` makers; the last takes whatever is left.
+pub(super) fn deal_by_room(custom: &[Custom], stalls: &[Stall], most: usize,
+    nearest: &mut dyn FnMut(EconomicLocation, &BTreeSet<EconomicLocation>) -> Result<Option<EconomicLocation>>)
+    -> Result<BTreeMap<AccountId, Vec<Share>>>;
+/// A cap dealt over shares by largest remainder (equal remainders to the lower site id), so that the parts sum to
+/// `cap`; a part that comes to 0 gives no row.
+pub(super) fn caps(cap: u64, shares: &[Share]) -> Result<Vec<(SiteId, u64)>>;
+/// Whether `routes::add_stage` would build a route from `from` to `to` for this cargo: a path exists, and its links
+/// have a travel time above 0 and a pool. The same test `add_stage` makes; a location is its own route.
+pub(super) fn routable(builder: &Builder<'_>, network: &mut Network<'_>, from: EconomicLocation,
+    to: EconomicLocation, cargo: CargoClass) -> Result<bool>;
+```
+
+**Decisions:**
+1. **Under schema 8 only** (`policy.trades`). Under schema 7 `procure` and `equipment::policies` are today's.
+2. **In units, one dealing a good.** A buyer's weight is what it may take from the country's makers in a period, in
+   the good's units: for a domestic site its home cap (`required` less the cap abroad, Task 5), summed over
+   everything it buys the good for (a recipe input, an installation input of its machines through
+   `equipment::policies`, a shop's customers' needs); for a buyer abroad its cap from the country (Task 5). The
+   home buyers of a good are dealt together, and the buyers abroad together, each against the makers' people
+   afresh: each maker's whole custom is then in proportion to its people. This dealing follows the scenario's
+   numbers, and it may: nothing of it is in Task 8's census.
+3. **Goods:** `deal_by_room` with `most = 3` for home buyers and `most = 16` for buyers abroad (a buyer abroad is a
+   whole region's trade, as large as many makers). The buyer's cap is dealt over its makers by `caps`; each row
+   keeps today's `target_stock` and `cash_floor`. A maker is never dealt itself. A domestic buyer's row abroad
+   is today's.
+4. **Machines:** one maker a process (the engine's rule): the home buyers of machines are dealt with `most = 1`, a
+   process's weight its replacement machines (Task 6). Task 5's rule on which processes buy abroad stays.
+5. **Nearness** is the network's own (`Network::nearest`: hops to the buyer's location, by the good's cargo
+   class). A maker location is offered to a buyer only where `routable` holds from it to the buyer, so that no
+   dealt pair fails `add_stage` (`NationalOpeningError::Route`).
+6. **When a buyer wants less than its caps together,** the engine serves its rows in its own order and the last go
+   short (`recurring/firms.rs` `position`: each row sees what the rows before it ordered). That is today's rule
+   for a home and a foreign supplier; this task leaves it.
+7. **Bounds.** Restocking rows and routes grow (up to three home rows a buyer and good, sixteen for a buyer abroad,
+   and a route for each new pair of locations and cargo class). Print and pin the counts of restocking rows,
+   supplier routes, route stages and stage memberships, and print the mean number of pools a stage (memberships
+   are the count nearest their bound, 262,144). Past a bound of the engine: `NationalOpeningError::Bounds`; then
+   build with `most = 2` at home and say so.
+8. **Room on the routes.** Goods now travel from where they are made. The opening's report (Task 15) lists every
+   shared freight pool whose opening use passes its room (O15: "the record of health lists every route that is
+   full"); nothing is asserted here.
+9. The fixture's pins move as in Task 7b, decision 6.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `buyers_take_the_nearest_room` (crate test): makers A (40 at work, near) and B (60, far), buyers of weight 50
+    and 50: the first takes 40 of A and 10 of B, the second 50 of B. With `most = 1` each takes one maker, the
+    first A. A buyer with no maker location offered gets no share.
+  - `caps_sum_to_the_cap` (crate test): 10 over parts 1, 1, 1 of 3 gives 4, 3, 3, the 4 at the lowest site id; a
+    part that comes to 0 gives no row.
+  - `every_maker_with_workers_has_a_buyer` (fixture): for food, materials, resources, consumer goods and machines,
+    the persons at work at domestic makers no buyer is dealt to are under 5% of the trade's (print each share). A
+    product nothing in the fixture buys is printed and left out.
+  - `makers_are_asked_in_proportion` (fixture): for food and materials, the caps asked of a maker from home and
+    from abroad over its persons at work lie within a factor of two of the nation's own ratio for makers holding
+    nine tenths of the trade's workers (print the shares under half and over twice).
+  - `buyers_abroad_are_dealt_over_the_country` (fixture): the buyers abroad of food are dealt more than one home
+    maker between them, and no home maker is asked from abroad for more than twice its share by people.
+  - `an_installation_need_follows_its_site_s_makers` (fixture): a process whose machines need materials restocks
+    them from the makers its site is dealt for materials.
+  - `the_shipped_restocking_is_unchanged`: `binary(shipped_world_bytes)`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** the crate tests, `binary(national_twelve_trades)`, `binary(shipped_world_bytes)`,
+  `binary(national_household_units)`, the crate.
+- [ ] **Step 5: Record** the bench's baseline of the fixture once, in the background (`record_twelve_trades_sets`
+  with `TWELVE_TRADES_SET=baseline`), and hand over the domestic persons at work at the close of periods 1, 2, 5,
+  13 and 34 beside the committed record's, the layoffs of period 2 by trade, and whether any period was refused
+  (a refusal of the engine is a result: its period, stage and words). The fixture's numbers are not the rebuilt
+  opening's: the figures show what the dealing alone moves, and are no verdict.
+- [ ] **Step 6: Gate and commit** with the subject above and the record. Hand over the pinned counts and, for each
+  good, the makers with a buyer and the share of workers at makers with none, before and after.
+
+What the player would see: farms, mills and machine works across the country with buyers at home and abroad, and
+goods that travel from where they are made.
+
 ### Task 8: The census of the twelve-trade opening
 
 Commit `feat(reference): the census of the twelve-trade opening`.
@@ -959,8 +1239,14 @@ that the builder reads.
 
 ```rust
 /// What the opening's people and workplaces are, before any recipe or price matters.
-pub fn opening_census(opening: &EconomicOpening, policy: &NationalGamePolicy, pay: &NationalTradePayReference)
-    -> Result<Value, CensusError>;
+// The capture, not the opening alone: an account's and a site's part are not in `EconomicOpening`. They are read
+// from the capture's generation witness (`national_generation()`: `household_incidence`, `counties[].destination`,
+// `catchments[].key.hub`; carved accounts through `national_aid_capture()` and `national_support_claimant()`), as
+// the bench's `tests/support/country_bands.rs` reads an account's key. If a site's part cannot be read so, the
+// compiler's own map (`Builder.financial_domains`) is kept on `NationalOpening` behind a `pub` accessor, and the
+// hand-over says so.
+pub fn opening_census(catalog: &CapturedEconomicCatalog, policy: &NationalGamePolicy,
+    pay: &NationalTradePayReference) -> Result<Value, CensusError>;
 pub fn census_bytes(census: &Value) -> Vec<u8>;   // serde_json pretty with 2 spaces, sorted keys, trailing newline
 ```
 
@@ -973,7 +1259,8 @@ pub fn census_bytes(census: &Value) -> Vec<u8>;   // serde_json pretty with 2 sp
      the builder and the compiler both use `payroll_micros_per_period / (employee_persons x 160)` (Task 14b).
    - `households`: for each `HouseholdBudgetKey`, domestic: `accounts`, `households`, `persons`, `employed`, `reserve`,
      `wage_income_micros_per_period` (its members' wages x employed x hours).
-   - `places`: for each domestic financial domain, by its hub county: persons, households and reserve by key; the wage
+   - `places`: one row for each domestic part (financial domain), keyed by the part's label and naming its `hub`
+     (316 rows over 187 hubs are expected): persons, households and reserve by key; the wage
      income of its residents by key (`wage_income_micros_per_period`: the wage tax is paid where the household lives,
      not where it works); by trade, employee persons and payroll of its workplaces; `owner_households` (the households
      of `owner_exposure` keys).
@@ -992,9 +1279,10 @@ pub fn census_bytes(census: &Value) -> Vec<u8>;   // serde_json pretty with 2 sp
      `ceil(force / workers_per_machine)` at the fixture's figures), with a top-level `workers_per_machine` table of
      the figures used; in `places`, by key `employed`, by trade `public_employee_persons` and
      `public_payroll_micros_per_period`, and `sellers`: for each key and each product a household account buys, the
-     employee wage (micros an hour) of the site that sells it to that place's accounts of that key at the opening,
-     the provider of a service and the retailer of a storable good. Where accounts of one place and key have
-     different sellers of a product, the recorder refuses (`CensusError`): the lead then widens the table.
+     employee wage (micros an hour) of the site that sells it to that part's accounts of that key at the opening,
+     the provider of a service and the shop of a storable good, as Tasks 7b and 7c deal them (a carved account takes
+     its parent's, so a part's accounts of one key share their sellers). Where they do not, the recorder refuses
+     (`CensusError`): the lead then widens the table.
 2. **Not in it:** anything that follows recipes, prices, taxes or wants. Task 14a proves the census is the same from the
    rebuilt scenario (Review Focus 1).
 3. The recorder is an ignored test, `record_national_opening_census`, that compiles the fixture
@@ -1008,7 +1296,8 @@ pub fn census_bytes(census: &Value) -> Vec<u8>;   // serde_json pretty with 2 sp
 - [ ] **Step 1: Write** the checker and the recorder; run the checker and see it fail (no file).
 - [ ] **Step 2: Run the recorder** in the background; then the checker passes. Hand over: the domestic persons at
   work by trade (the spike's 161.3 million in all is the size to expect, not a pin), the persons by key, the machines
-  by trade, the lowest and highest seller's wage of each product over the places, and the size.
+  by trade, the count of parts and of hubs, the lowest and highest seller's wage of each product over the parts, and
+  the size.
 - [ ] **Step 3: Register** it and run `tools/make_data_artifacts.py --check`.
 - [ ] **Step 4: Gate** (Rust legs with `binary(national_opening_census)`, `binary(shipped_world_bytes)` and
   `binary(national_household_units)`, since `capture.rs` changes; the Python test of the register), `mise run
@@ -1102,8 +1391,9 @@ class KeyCount:
 class PlaceTrade:
     employee_persons: int; payroll_micros: int; public_employee_persons: int; public_payroll_micros: int
 @dataclass(frozen=True)
-class Place:
-    hub: str                                   # the hub county's geoid
+class Place:                                   # ONE PART of a pooled place: the game's unit of accounts (Task 8)
+    label: str                                 # `<hub geoid>`, or `<hub geoid>/<position>` for a pooled part
+    hub: str                                   # the hub county's geoid: where its accounts buy and its sites sell
     state: str                                 # the hub's first two digits: a service is bought inside it
     keys: Mapping[HouseholdKey, KeyCount]      # `accounts` is 1 or more; Wayne's detailed accounts are summed
     trades: Mapping[str, PlaceTrade]
@@ -1117,7 +1407,7 @@ class Region:
 class Census:
     trades: Mapping[str, TradeCount]
     households: Mapping[HouseholdKey, KeyCount]
-    places: tuple[Place, ...]                  # in hub order
+    places: tuple[Place, ...]                  # one for each part, in label order
     abroad: Mapping[str, Region]               # the foreign regions and the dependency, by policy key
     firm_assignment: Mapping[tuple[str, str, str], int]   # (good, region, buyer trade) -> force
     retail_assignment: Mapping[tuple[str, str], int]       # (good, region) -> persons served
@@ -1396,8 +1686,9 @@ def solve(recut: Recut, census: Census, settings: Settings) -> Opening: ...
     (the national price plus the charge at its retailer's wage). Its own tier-1 cost a person is `c1own = (persons x
     sum_person needs t1q[i] pown[i] + households x sum_household needs t1q[i] pown[i]) / persons + fee` (no
     household needs for a residence).
-    `dearest_place` (default): `b` is the highest `c1own` over the no-earner accounts of the 187 pooled places (both
-    no-earner keys) and `bc` the highest over the residences: one figure each, enough in the dearest place. `BEN = b
+    `dearest_place` (default): `b` is the highest `c1own` over the no-earner accounts of the 316 parts of the 187
+    pooled places (both no-earner keys) and `bc` the highest over the residences: one figure each, enough in the dearest
+    place. `BEN = b
     x no-earner persons + bc x (collective persons - collective employed)`. `each_place_own`: each account its own
     `c1own`, summed; `one_average`: the cost at national posted prices of all no-earner accounts over their persons
     (and likewise for the residences). Under each rule a residence is paid for its residents with no job.
@@ -1407,7 +1698,7 @@ def solve(recut: Recut, census: Census, settings: Settings) -> Opening: ...
     - employed)`; the two owner keys share the payout by households. Full cost: `persons x (sum of the person needs'
     t1 + fee + (tier_sizes[1] + tier_sizes[2]) cbar) + households x sum of the household needs' t1 x AVG` (no
     household needs for the residence). Kept: `sum max(0, money - full cost)`. Luxury scaling (call 20) is applied
-    to the 187 pooled places' accounts in Task 11, not here: with it nothing is kept at any factor, so it cannot set
+    to the parts' accounts in Task 11, not here: with it nothing is kept at any factor, so it cannot set
     the factor.
 12. **The margin factor** (model-spec 9). `largest_with_nothing_kept` bisects on `[0, 1]`: kept at 0 above 0 is
     `margin_scale_none`; kept at 1 equal to 0 gives 1; else `margin_halvings` (40) halvings, keeping `lo` with nothing
@@ -1578,8 +1869,9 @@ Commit `feat(reference): the tiers, the benefit and each account's money`.
 
 **Why.** The tiers must make what the game's own accounts buy, under R4, equal what households must buy of each
 product, or some trade's workers are not needed (model-spec 10; the prototype: proportional contents bought by the
-order of paying miss food by 29%). The accounts are the 187 pooled places by six keys; an account above its three
-tiers spends all on its luxuries (call 20).
+order of paying miss food by 29%). The accounts are the game's own: the 316 parts of the 187 pooled places by six
+keys (a part is the census's row and this task's "place"); an account above its three tiers spends all on its
+luxuries (call 20).
 
 **Files:**
 - Create: `tools/national_opening_tiers.py`; `tests/unit/tools/test_national_opening_tiers.py` (a module of its
@@ -1660,8 +1952,9 @@ def tiers(o: Opening, census: Census, w: Written, settings: Settings) -> Tiers: 
 6. **The benefit written** (O12; call 18; For the Director item 3). An account's own tier-1 cost is its tier 1 rows
    at its own posted prices. Under `dearest_place`: `no_earner_micros = ceil(max over no-earner accounts of own
    tier-1 cost / persons)`, so every no-earner account reaches tier 1 at its own sellers. A residence: `bc_micros =
-   ceil(max over residences of own tier-1 cost / persons)`, and the place's amount a resident `floor(bc_micros x
-   (persons - employed) / persons)` (call 18: rounded down). Under `each_place_own` each account's own cost, one
+   ceil(max over residences of own tier-1 cost / persons)`, and each hub's amount a resident `floor(bc_micros x
+   (persons - employed) / persons)`, persons and employed summed over the residences of the hub's parts (call 18:
+   rounded down; Task 4 has one residence program a hub). Under `each_place_own` each account's own cost, one
    amount a place and key; under `one_average`, the cost at national posted prices over all no-earner persons.
 7. **The tier solve, exact on each piece.** Start `z0`: half of tier 1 a person for the need products, consumer
    goods and business services sharing `cbar / 5` by `Hs` (in units), `rho3 = 13/10`, leisure `4/5 cbar` (the
@@ -1685,8 +1978,9 @@ def tiers(o: Opening, census: Census, w: Written, settings: Settings) -> Tiers: 
    what Task 12's export shares absorb; for services it is reported (Task 15 measures it against workers).
 10. **Luxury scales written** (call 20). An account is scaled in the scenario when its money passes its three
     tiers at its OWN posted prices and written contents: `luxury_scale_bps = floor(10_000 x (money - tier 1 - tier
-    2) / tier 3)`, each tier at its own prices; only those above 10,000 are written. So in the compiled opening every
-    account spends its money where it buys. (The solve's own scaled set, decision 5, is at national prices.)
+    2) / tier 3)`, each tier at its own prices; only those above 10,000 are written, each under its part's label and
+    its budget key (Task 1). So in the compiled opening every account spends its money where it buys. (The solve's own
+    scaled set, decision 5, is at national prices.)
 11. **Each place's body** (model-spec 12; For the Director item 4). For the metadata under every setting: receipts
     `(1 - f) t (residents' wage income + OI_c) + (1 - t) PO_c`, payments `payroll_c,public + (G - payroll_public) x
     emp_c,public / emp_public + reserve_c x s`. Under `even_where_own_taxes_reach` (V1): the place's fund share
@@ -1870,7 +2164,8 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
    replaced by the rebuilt scenario's (what it is; counted on the country bench; not played by the game's own turn
    yet). Every hand-authored section (organizer, aid, hearing, City PD, County Review, grain's own keys, companies,
    lifecycle, household time but `unmet_hours_per_unit`, counterparts' participation, employment, persons per
-   household and wage fractions, the installation figures of `[equipment]`) is the fixture's, unchanged.
+   household and wage fractions, the installation figures of `[equipment]`, and `[markets] place_services`) is the
+   fixture's, unchanged.
    The fixture's commodity labels, grams and opening prices (which decision 4 of Task 10b and its labels read) stay
    in the template as one line each, `#@fact <key> | <label> | <unit label> | <grams> | <price micros>`;
    `template_facts` reads them and `render` drops them. `render`
@@ -2116,6 +2411,14 @@ pub fn opening_ledger(opening: &EconomicOpening, policy: &NationalGamePolicy) ->
     site or 1% of its workers' hours, whichever is larger; retail within 1%. The report also gives needed hours at
     the sellers' own posted prices against workers' hours by trade, by trade and place, and by service and state
     (capacity, use, and the shares idle and unserved); none of those is asserted.
+  - `every_workplace_is_asked_for_its_work` (design 8.2: "jobs needed against jobs present, by trade and place"):
+    for each domestic workplace with persons at work, what the opening's buyers ask of it a period (its dealt
+    accounts' needs and reached wants, its dealt sites' inputs, its home caps, machines due) over what it can make.
+    Asserted: for each trade, the persons at work at workplaces asked for under half of what they can make are
+    under 25% of the trade's (as the compiler deals today they are 32% to 66%; this plan's rule, run outside the
+    engine on the fixture with what is asked scaled to what can be made, leaves 1% to 10%). Reported: the same
+    share by trade for under half and for over twice, and every shared freight pool whose opening use passes its
+    room (O15). A figure that fails is reported and not loosened.
   - `every_private_price_covers_its_cost_at_the_national_wage`: national price x n at least labor, inputs and wear.
   - `no_account_opens_going_without`: every domestic account's income reaches its tier 1; pin the count of accounts
     at each standard and each band's income per person (from the first failing run).
@@ -2311,10 +2614,77 @@ tiers with every account buying at national prices, and it balanced the nation, 
   counts both effects for the game's own people (Task 11, decision 12). Whether a service may be sold across state
   lines is For the Director, item 5.
 
+## What the compiled opening showed (26 November)
+
+Counted by the lead from the compiled opening of the twelve trades at `9753016ea` (every figure a sum over the
+opening's own rows: workplaces, staffing, purchase rows, service inputs, restocking rows), while checking this plan.
+The shipped opening gives the same shares.
+
+- **A buyer has one seller of each product, and a place has several.** The compiler gives every buyer at one
+  location the largest workplace of the trade at the nearest location (Task 7b's "Why" names the code), and the
+  engine holds one seller a household and good and one provider a business and service. A place has a median of 9
+  sellers of household services, 7 of business services, 6 of public provision, 5 of leisure, 4 of utility and of
+  premises.
+- **So most workplaces have no buyer, whatever the numbers.** Domestic workers at workplaces that no purchase row,
+  service input or restocking row names:
+
+  | Trade | Workplaces | With no buyer | Workers | At workplaces with no buyer | Share |
+  |---|--:|--:|--:|--:|--:|
+  | Household services | 1,495 | 1,308 | 55,463,744 | 35,661,169 | 64.3% |
+  | Public provision | 959 | 772 | 9,309,178 | 5,808,745 | 62.4% |
+  | Utility | 636 | 454 | 984,732 | 482,900 | 49.0% |
+  | Food | 370 | 185 | 3,286,458 | 1,088,197 | 33.1% |
+  | Premises | 728 | 542 | 9,721,849 | 3,095,193 | 31.8% |
+  | Extraction | 342 | 167 | 638,542 | 193,914 | 30.4% |
+  | Business services | 1,057 | 871 | 26,744,137 | 7,160,833 | 26.8% |
+  | Shops | 991 | 676 | 28,678,765 | 1,727,512 | 6.0% |
+  | Materials | 340 | 37 | 5,010,596 | 3,396 | 0.1% |
+
+  Together 55.2 of 139.8 million, 39.5%. Consumer goods and leisure have no buyer in the fixture at all (wants come
+  with Task 3), and the buyers of machines were not in the count.
+- **Period 2's layoffs follow it.** In the bench's record of the twelve trades with no rule, the people laid off in
+  period 2 sit close to the workers at workplaces with no buyer, trade by trade: household services 35.9 against
+  35.7 million, public provision 7.3 against 5.8, food 1.2 against 1.1, utility 0.6 against 0.5, and all of
+  leisure, consumer goods and machines (16.4, 2.1 and 3.0, which have no buyer in the fixture). Where far more are
+  laid off than that (shops 25.8 against 1.7, business services 19.2 against 7.2, premises 8.9 against 3.1), the
+  fixture's own numbers do the rest. In all, 76.7 of the 122.5 million laid off could be workers of workplaces
+  with no buyer. The record does not name the workplaces, so this is a match of counts, not a trace of persons.
+- **What it costs, with the numbers taken out.** For each product, what buyers ask was scaled until the nation's
+  buyers ask for exactly what the nation's makers can make, which is what the rebuilt numbers do. A seller sells at
+  most what it can make. Share of what the nation's makers can make that can then be sold:
+
+  | Product | As dealt today | By Task 7b's rule (whole buyers) | If every buyer shared the sellers of its place | of its state |
+  |---|--:|--:|--:|--:|
+  | Household services | 35.7% | 91.9% | 95.0% | 95.5% |
+  | Public provision | 36.2% | 86.5% | 87.1% | 90.3% |
+  | Premises | 65.6% | 89.3% | 90.1% | 93.1% |
+  | Utility | 48.5% | 86.2% | 83.8% | 87.5% |
+  | Business services | 57.8% | 82.4% | 74.5% | 84.9% |
+  | Food | 56.8% | | | |
+  | Materials | 63.3% | | | |
+  | Resources | 40.0% | | | |
+
+  The first three are bought in the buyer's own place and the next two anywhere in its state (Task 7b). So dealing
+  whole buyers in proportion loses one to three points against sharing, and leaves under 1% of a service's workers
+  at providers with no buyer, with no change in the engine. What is left is where things are made against where
+  they are bought: Part II's count of each state's services (For the Director, item 5).
+- **Abroad, one maker serves every buyer.** Each buyer abroad takes its share from the country at one maker: the 35
+  buyers abroad of food at one in Kern County, California, the 214 of materials at one in Dane County, Wisconsin,
+  the 36 of resources at one in Hidalgo County, Texas (Task 7d deals them over the country's makers).
+- **A workplace's wage differs inside a place.** Among the sites of one trade at one location the highest wage over
+  the lowest has a median of 2.0 for household services and 1.6 for shops (parts and owners differ). By O5 their
+  prices differ too. So which account is dealt to which seller decides what it pays (For the Director, item 7).
+- **The approved design names it.** "A buyer is bound to one named seller. A second seller of the same product
+  would get no buyers" (how the economy adjusts, 21 November, "Today"), and its rule A4: "No buyer is bound to one
+  seller ... equal prices share buyers in proportion ... a market is one product in one place, with all its
+  sellers." A4 was prototyped once, held, and is not among the six rules; every measured small world has one seller
+  a product a place.
+
 ## For the Director
 
-Six choices. Four change what the builder computes, one changes who may sell a service to whom, one who gets
-what the shop saves abroad. For each: what the approved text says, what this plan builds until a ruling, and the
+Seven choices. Four change what the builder computes, one changes who may sell a service to whom, one who gets
+what the shop saves abroad, and one whether a buyer may have several sellers of one product. For each: what the approved
+text says, what this plan builds until a ruling, and the
 variants (written out under "Variants that wait for the Director", so that a ruling is a small edit). The lead's
 recommendation is given last and is NOT built until ruled.
 
@@ -2371,6 +2741,19 @@ recommendation is given last and is NOT built until ruled.
    abroad cheaper and the shop has no such income. The lead recommends V10: it is "labor only" read strictly, and it
    puts the gain from cheap foreign labor in the price of what households in the country consume. A firm that buys
    its inputs abroad keeps its saving as profit under both.
+7. **Several sellers of one product in one place.**
+   *The approved text.* O4: "Every observed job is needed at the opening." Design 8.2: "jobs needed against jobs
+   present, by trade and place". Rule A4 of how the economy adjusts (approved 21 November, held after its first
+   measurement, not built): "No buyer is bound to one seller ... equal prices share buyers in proportion".
+   *What this plan builds.* The compiler deals whole buyers to sellers in proportion to the sellers' people (Tasks
+   7b to 7d), with no change in the engine: one seller a buyer and product stays. It is the lead's call, as the
+   smallest mend that lets O4 hold for a workplace. Two things stay as they are: a household that loses its one
+   seller of a thing loses all of it; and where sellers of one place pay different wages, which account is dealt
+   the dearer seller is an accident of the dealing.
+   *Variants.* V11, a buyer's custom is shared over its sellers in the engine, each seller a fixed share: every
+   account of a place pays the place's blend and no account depends on one workplace. V12, rule A4 in full: the
+   cheapest seller first. The lead recommends this plan's dealing now and V11 before homes are built; V12 only
+   after it is measured again with the six rules.
 
 ## Calls for the lead to confirm
 
@@ -2449,6 +2832,14 @@ recommendation is given last and is NOT built until ruled.
     'not slow'`, a fast test holds the committed scenario to its inputs' digests, and the lead runs the slow ones
     before a push that changes the builder.
 27. **No Rust parse of the written scenario in Task 13** (run C is Python only): Task 14a opens it first thing.
+28. **The plan's unit of accounts is the part, not the pooled place** (the header's "A place and its parts"): the
+    census has a row a part, the luxury scales name a part, and a place's residences are paid by one row a hub (316
+    rows would pass the engine's 256 programs).
+29. **Buyers are dealt to sellers in proportion to the sellers' people** (Tasks 7b to 7d), by weights that read no
+    recipe, price or want, so that the census of who sells to whom is the same whatever numbers the builder writes.
+30. **Three services are bought in the buyer's own place:** premises (housing), household services and public
+    provision, a key of the scenario (`place_services`). Utility, business services and leisure may come from
+    anywhere in the buyer's state, the rule as it stands; item 5 asks whether those three may cross state lines.
 
 ## Settled by approved text
 
@@ -2585,6 +2976,19 @@ Task 13 then writes the two shares in place of its refusal of the setting.
 - Part II: `Settings.shop_import_saving = "households"` (Task 10, decision 7; Task 13 then writes it).
 - Task 15: `no_account_opens_going_without` and the balances read the shop's posted prices as before.
 
+**V11. A buyer's custom is shared over its sellers** (item 7).
+- An engine plan of its own, six to ten tasks by the lead's estimate from reading the code, not a plan: a household's
+  purchase rows and a business's service inputs are keyed by the seller too (`recurring/validation.rs`,
+  `services/validation.rs`), each row a fixed share of the buyer's need of the good; the household's buying
+  (`recurring/households.rs`), the tiers' lists, the price limit, the restart's tables and the wire follow. Every
+  measured small world has one seller a buyer and keeps its bytes.
+- Tasks 7b and 7c then write a row for each seller of the buyer's reach with its share, in place of dealing whole
+  buyers; Task 8's `sellers` holds the shares' average wage; Part II's own price of a need is the place's blend.
+
+**V12. A buyer takes from the cheapest seller it can reach** (item 7; rule A4). The market becomes one product in
+one place with all its sellers (it changes rule P1 of ADR312). Measured once, in round six: the cheaper seller won at
+once and the loser shut. It waits for a measurement with the six rules on, and for V11's rows.
+
 ## Where the code differs from the design, the stage 2 plan or the spike
 
 - **The import cap is the compiler's, and it is two caps in one.** The spike's section 1 calls it a cap on "buying
@@ -2705,3 +3109,18 @@ Where a line below says a finding waits for Part II, the next section says where
   same-state rule move (Task 11, decisions 2, 6, 10 and 12); Task 15 asserts the national count and reports the
   others. It also gave every key its support (Task 10, decision 11), named the shop's price (Task 14b, decision 1),
   and raised two more choices for the Director (items 5 and 6; variants V9 and V10).
+- Checking Task 8's census against the code, the lead found that the compiler gives every buyer one seller, the
+  largest of its place, and counted it on the compiled opening ("What the compiled opening showed"). Tasks 7b to 7d
+  were added for it, Task 15 gained a check by workplace, and item 7 with variants V11 and V12 went to the Director.
+  The same reading showed that the game keeps its accounts by a place's parts: the census, the luxury scales and
+  Part II's "place" were moved to the part (calls 28 to 30).
+- Tasks 7b to 7d and the moved passages were checked once against the code at `9753016ea` by an independent reader.
+  Two faults would have stopped a builder, and both are mended above: the census cannot read an account's part from
+  the opening alone (Task 8 now takes the capture), and policy admission cannot know which county is a hub (Task 1
+  now checks a label's form, and Tasks 3 and 4 refuse what names nothing). Its other findings are in the tasks: a
+  kind of buyers is not spread on its own when shares are carried (Task 7b, decision 2, says what is in
+  proportion); installation inputs follow their site's makers (Task 7d, decision 2); a maker is offered only where
+  a route can be built (decision 5); the count nearest its bound is a route stage's memberships (decision 7); every
+  buyer abroad took from one maker (decision 3 deals them). The two thresholds a builder could not have met as
+  first written were set from the rule itself, run on the dump of the compiled opening: 0.7% of household-services
+  workers at providers with no buyer, 0.5% of shop workers at shops with none.

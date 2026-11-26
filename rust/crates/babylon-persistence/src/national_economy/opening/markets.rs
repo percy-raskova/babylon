@@ -822,35 +822,39 @@ pub(super) fn handling_charge(handling: GameHandling, wage: Currency) -> Result<
     Ok(Currency::from_micro_units(charge))
 }
 
-/// A buyer's share, in basis points, bought from the second supplier of a good: schema 7's one cap,
-/// or schema 8's share of a domestic buyer's imports and of a foreign buyer's region (Task 5
-/// replaces this).
-pub(super) fn abroad_bps(builder: &Builder<'_>, buyer: SiteId, key: &str) -> Result<u16> {
-    match &builder.policy.markets.procurement {
-        GameProcurement::Single(bps) => Ok(*bps),
+/// The share of `key` a buyer at `location` takes abroad: a domestic buyer's import share, a foreign or
+/// dependency buyer's export share of its region (from the United States). `key` is a priced storable good or a
+/// crossing service (K1, `policy.crossing_services`). Schema 7: the single cap, for a storable good only.
+///
+/// # Errors
+/// `Policy` for a key in no table (a service that does not cross; under schema 7, any service).
+pub(super) fn foreign_share_bps(
+    policy: &NationalGamePolicy,
+    location: EconomicLocation,
+    key: &str,
+) -> Result<u16> {
+    match &policy.markets.procurement {
+        GameProcurement::Single(bps) => policy
+            .commodities
+            .get(key)
+            .and_then(|good| good.cargo)
+            .map(|_| *bps)
+            .ok_or(NationalOpeningError::Policy),
         GameProcurement::ByProduct { import_bps } => {
-            let location = builder
-                .actors
-                .get(&buyer)
-                .ok_or(NationalOpeningError::Identity)?
-                .location;
-            let profile = match location {
+            let export = match location {
                 EconomicLocation::County(_) => None,
                 EconomicLocation::Foreign(counterpart) => Some(
-                    &builder
-                        .policy
+                    &policy
                         .counterparts
                         .get(&counterpart)
                         .ok_or(NationalOpeningError::Policy)?
                         .export_bps,
                 ),
-                EconomicLocation::Dependency(_) => {
-                    Some(&builder.policy.dependency.profile.export_bps)
-                }
+                EconomicLocation::Dependency(_) => Some(&policy.dependency.profile.export_bps),
             };
-            let table = match profile {
+            let table = match export {
                 None => Some(import_bps),
-                Some(export) => export.as_ref(),
+                Some(rows) => rows.as_ref(),
             };
             table
                 .and_then(|rows| rows.get(key))
@@ -886,8 +890,11 @@ pub(super) fn procure(
     let primary = primary_supplier(locations, network, preferences, location, buyer, &good)?;
     let secondary = secondary_supplier(builder, locations, network, buyer, cargo)?;
     let foreign_cap = if secondary.is_some() {
-        u64::try_from(u128::from(required) * u128::from(abroad_bps(builder, buyer, key)?) / 10_000)
-            .map_err(|_| NationalOpeningError::Arithmetic)?
+        u64::try_from(
+            u128::from(required) * u128::from(foreign_share_bps(builder.policy, location, key)?)
+                / 10_000,
+        )
+        .map_err(|_| NationalOpeningError::Arithmetic)?
     } else {
         0
     };
@@ -1142,5 +1149,68 @@ mod retailer_index_controls {
         builder.luxury_scales.insert(seats[1], 12_500);
         // Ten persons at 2 a person, at 12,500: floor(20 x 5 / 4) = 25.
         assert_eq!(retail_hours(&builder, &[0, 1]), Ok(2 * 8 + 25));
+    }
+}
+
+#[cfg(test)]
+mod foreign_share_controls {
+    use super::*;
+    use babylon_kernel::economic_location::ForeignCounterpart;
+    use babylon_kernel::geography::CountyGeoid;
+
+    const FIXTURE: &str =
+        include_str!("../../../tests/fixtures/national_twelve_trades.defines.toml");
+    const SHIPPED: &str = include_str!("../../../../../../content/scenarios/national/defines.toml");
+
+    fn wayne() -> EconomicLocation {
+        EconomicLocation::domestic_county(
+            CountyGeoid::try_from("26163").expect("the fixture value fits the target range"),
+        )
+        .expect("a domestic county")
+    }
+
+    fn crossing_text() -> String {
+        FIXTURE
+            .replacen(
+                "place_services = [",
+                "crossing_services = [\"business_services\"]\nplace_services = [",
+                1,
+            )
+            .replacen(
+                "equipment = 0 }",
+                "equipment = 0, business_services = 1500 }",
+                1,
+            )
+            .replace(
+                "equipment = 2500 }",
+                "equipment = 2500, business_services = 1000 }",
+            )
+    }
+
+    #[test]
+    fn a_crossing_service_has_a_share() {
+        let canada = EconomicLocation::Foreign(ForeignCounterpart::Canada);
+        let policy = NationalGamePolicy::parse(&crossing_text()).expect("the text admits");
+        assert_eq!(
+            foreign_share_bps(&policy, wayne(), "business_services"),
+            Ok(1_500)
+        );
+        assert_eq!(
+            foreign_share_bps(&policy, canada, "business_services"),
+            Ok(1_000)
+        );
+        assert_eq!(foreign_share_bps(&policy, wayne(), "food"), Ok(2_500));
+        let fixture = NationalGamePolicy::parse(FIXTURE).expect("the fixture admits");
+        assert_eq!(
+            foreign_share_bps(&fixture, wayne(), "business_services"),
+            Err(NationalOpeningError::Policy)
+        );
+        let shipped = NationalGamePolicy::parse(SHIPPED).expect("the shipped text admits");
+        assert_eq!(
+            foreign_share_bps(&shipped, wayne(), "business_services"),
+            Err(NationalOpeningError::Policy)
+        );
+        assert_eq!(foreign_share_bps(&shipped, wayne(), "food"), Ok(2_500));
+        assert_eq!(foreign_share_bps(&shipped, canada, "food"), Ok(2_500));
     }
 }

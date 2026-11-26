@@ -2450,3 +2450,179 @@ fn about_one_machine_in_a_hundred_is_due() {
     assert_eq!(processes.len() as u64, PROCESSES_WITH_MACHINES);
     assert_eq!(cohorts.len() as u64, OPENING_COHORTS);
 }
+
+// ---- Task 5: trade by product ----
+
+const FIXTURE_IMPORTS: &str = "import_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 0 }";
+const CANADA_EXPORTS: &str = "[counterpart.\"canada\"]\nparticipation_bps = 4500\nopening_employment_bps = 9000\npersons_per_household = 3\nwage_fraction_bps = 8333\nprice_scale_bps = 10000\nfunction_weights_bps = [1200, 150, 1000, 150, 1200, 800, 1800, 800, 1500, 500, 600, 300]\nexport_bps = { food = 2500, resources = 2500, materials = 2500, consumer_goods = 2500, equipment = 2500 }";
+
+/// The fixture with its wants (so that the shop buys consumer goods), the import shares of the task's tests
+/// and Canada's consumer goods at 1,000.
+fn trade_text() -> String {
+    let text = wants_text(2, "")
+        .replacen(
+            FIXTURE_IMPORTS,
+            "import_bps = { food = 1102, resources = 2500, materials = 2500, consumer_goods = 4277, equipment = 4104 }",
+            1,
+        )
+        .replacen(
+            CANADA_EXPORTS,
+            &CANADA_EXPORTS.replace("consumer_goods = 2500", "consumer_goods = 1000"),
+            1,
+        );
+    assert_ne!(text, wants_text(2, ""));
+    text
+}
+
+fn traded() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| capture_text(&trade_text()).expect("the trading fixture captures"))
+}
+
+/// For each buyer of a good, its restocking rows as (supplier's location, cap).
+fn restocking_rows(
+    catalog: &CapturedEconomicCatalog,
+    good: &str,
+) -> BTreeMap<SiteId, Vec<(EconomicLocation, u64)>> {
+    let policy = NationalGamePolicy::parse(&trade_text()).expect("the text admits");
+    let good_id = policy.commodities[good].good_id;
+    let opening = catalog.opening();
+    let at: BTreeMap<SiteId, EconomicLocation> = opening
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.location))
+        .collect();
+    let mut rows: BTreeMap<SiteId, Vec<_>> = BTreeMap::new();
+    for row in opening
+        .policies
+        .replenishment
+        .iter()
+        .filter(|r| r.good_id == good_id)
+    {
+        rows.entry(row.buyer_site_id)
+            .or_default()
+            .push((at[&row.supplier_site_id], row.maximum_purchase));
+    }
+    rows
+}
+
+#[test]
+fn imports_follow_each_product() {
+    let catalog = traded();
+    let at: BTreeMap<SiteId, EconomicLocation> = catalog
+        .opening()
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.location))
+        .collect();
+    for (good, share) in [("food", 1_102_u64), ("consumer_goods", 4_277)] {
+        let mut checked = 0;
+        for (buyer, rows) in restocking_rows(catalog, good) {
+            if !matches!(at[&buyer], EconomicLocation::County(_)) {
+                continue;
+            }
+            let foreign: u64 = rows
+                .iter()
+                .filter(|(from, _)| matches!(from, EconomicLocation::Foreign(_)))
+                .map(|(_, cap)| cap)
+                .sum();
+            let required: u64 = rows.iter().map(|(_, cap)| cap).sum();
+            if rows.len() < 2 || foreign == 0 {
+                continue;
+            }
+            assert_eq!(foreign, required * share / 10_000, "{good} {buyer:?}");
+            checked += 1;
+        }
+        println!("{good}: {checked} domestic buyers with a foreign second row");
+        assert!(checked > 0, "{good}");
+    }
+}
+
+#[test]
+fn a_foreign_buyer_takes_its_export_share() {
+    let catalog = traded();
+    let at: BTreeMap<SiteId, EconomicLocation> = catalog
+        .opening()
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.location))
+        .collect();
+    let canada = EconomicLocation::Foreign(ForeignCounterpart::Canada);
+    let mut checked = 0;
+    for (buyer, rows) in restocking_rows(catalog, "consumer_goods") {
+        if at[&buyer] != canada || rows.len() < 2 {
+            continue;
+        }
+        let home: u64 = rows
+            .iter()
+            .filter(|(from, _)| matches!(from, EconomicLocation::County(_)))
+            .map(|(_, cap)| cap)
+            .sum();
+        let required: u64 = rows.iter().map(|(_, cap)| cap).sum();
+        assert_eq!(home, required * 1_000 / 10_000, "{buyer:?}");
+        checked += 1;
+    }
+    println!("Canadian buyers with a domestic row: {checked}");
+    assert!(checked > 0);
+}
+
+#[test]
+fn equipment_abroad_follows_its_share() {
+    let catalog = traded();
+    let equipment = productive_equipment(catalog);
+    let at: BTreeMap<SiteId, EconomicLocation> = catalog
+        .opening()
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.location))
+        .collect();
+    let site_of: BTreeMap<_, _> = equipment
+        .bindings
+        .iter()
+        .map(|b| (b.process_id, b.site_id))
+        .collect();
+    let (mut total, mut abroad, mut largest) = (0_u64, 0_u64, 0_u64);
+    for policy in &equipment.investment_policies {
+        if !matches!(
+            at[&site_of[&policy.process_id]],
+            EconomicLocation::County(_)
+        ) {
+            continue;
+        }
+        total += policy.replacement_target_units;
+        if matches!(at[&policy.supplier_site_id], EconomicLocation::Foreign(_)) {
+            abroad += policy.replacement_target_units;
+            largest = largest.max(policy.replacement_target_units);
+        }
+    }
+    let bound = total * 4_104 / 10_000;
+    println!(
+        "replacement machines {total}, bought abroad {abroad}, bound {bound}, largest {largest}"
+    );
+    assert!(abroad > 0 && abroad <= bound);
+    assert!(
+        abroad + largest >= bound,
+        "within the largest process of it"
+    );
+}
+
+#[test]
+fn the_fixture_sends_no_equipment_abroad_by_share() {
+    let catalog = captured();
+    let equipment = productive_equipment(catalog);
+    let at: BTreeMap<SiteId, EconomicLocation> = catalog
+        .opening()
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.location))
+        .collect();
+    let site_of: BTreeMap<_, _> = equipment
+        .bindings
+        .iter()
+        .map(|b| (b.process_id, b.site_id))
+        .collect();
+    assert!(equipment.investment_policies.iter().all(|p| {
+        !matches!(at[&site_of[&p.process_id]], EconomicLocation::County(_))
+            || matches!(at[&p.supplier_site_id], EconomicLocation::County(_))
+    }));
+}

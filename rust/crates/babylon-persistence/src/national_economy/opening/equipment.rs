@@ -1,9 +1,10 @@
 //! Designed opening instruments with finite use, real sourcing and installation.
 use super::{markets, routes, ActorContext, Builder, NationalOpeningError, Result};
 use crate::economic_catalog::CatalogCapacity;
-use crate::national_economy::GameMachines;
+use crate::national_economy::{GameMachines, GameProcurement};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{
@@ -52,6 +53,13 @@ pub(super) fn wire(
             });
         }
     }
+    let abroad = equipment_abroad(builder)?;
+    let mut sourcing = Sourcing {
+        providers,
+        network,
+        preferences,
+        abroad: &abroad,
+    };
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     let ages = machine_ages(processes_with_machines(builder, &actors)?)?;
     for actor in actors.into_iter().filter(|a| a.process_id.is_some()) {
@@ -66,15 +74,7 @@ pub(super) fn wire(
             &mut equipment,
             &mut position,
         )?;
-        policies(
-            builder,
-            &actor,
-            definition,
-            &mut equipment,
-            providers,
-            network,
-            preferences,
-        )?;
+        policies(builder, &actor, definition, &mut equipment, &mut sourcing)?;
     }
     equipment.bindings.sort_unstable_by_key(|r| r.process_id);
     position
@@ -96,6 +96,61 @@ pub(super) fn wire(
     builder.opening.capacity =
         CatalogCapacity::Rolling(RollingProcessSupply::Equipment(Box::new(equipment)));
     Ok(())
+}
+
+/// What a process's sourcing reads: the sellers, the routes, the cached preferences and the processes that
+/// buy their machines abroad.
+struct Sourcing<'a, 'n> {
+    providers: &'a Providers,
+    network: &'a mut Network<'n>,
+    preferences: &'a mut Preferences,
+    abroad: &'a BTreeSet<ProcessId>,
+}
+
+/// Which domestic processes buy their machines abroad (schema 8): processes in order of
+/// sha256(b"NationalEquipmentAbroadV1\0" ++ process id), taken while the replacement machines of those taken stay
+/// at or under `floor(total replacement machines x import_bps["equipment"] / 10_000)`, the total being that of every
+/// domestic process; a process whose own machines would pass it is skipped, and the next tried. Empty under
+/// schema 7 and earlier.
+pub(super) fn equipment_abroad(builder: &Builder<'_>) -> Result<BTreeSet<ProcessId>> {
+    let GameProcurement::ByProduct { import_bps } = &builder.policy.markets.procurement else {
+        return Ok(BTreeSet::new());
+    };
+    let share = *import_bps
+        .get("equipment")
+        .ok_or(NationalOpeningError::Policy)?;
+    let definitions = definitions(builder)?;
+    let mut rows: Vec<([u8; 32], ProcessId, u64)> = Vec::new();
+    for actor in builder.actors.values() {
+        let Some(process) = actor.process_id else {
+            continue;
+        };
+        if !matches!(actor.location, EconomicLocation::County(_)) {
+            continue;
+        }
+        let definition = definitions
+            .get(&actor.function)
+            .ok_or(NationalOpeningError::Policy)?;
+        let machines = replacement_units(builder, actor, definition)?;
+        let mut identity = b"NationalEquipmentAbroadV1\0".to_vec();
+        identity.extend_from_slice(&process.as_bytes());
+        rows.push((content_digest::sha256_of(&identity), process, machines));
+    }
+    let total: u128 = rows
+        .iter()
+        .map(|(_, _, machines)| u128::from(*machines))
+        .sum();
+    let bound = total * u128::from(share) / 10_000;
+    rows.sort_unstable();
+    let (mut taken, mut found) = (0_u128, BTreeSet::new());
+    for (_, process, machines) in rows {
+        let machines = u128::from(machines);
+        if machines > 0 && taken + machines <= bound {
+            taken += machines;
+            found.insert(process);
+        }
+    }
+    Ok(found)
 }
 
 fn bind_installation_work(
@@ -509,10 +564,14 @@ fn policies(
     actor: &ActorContext,
     definition: &EquipmentDefinition,
     equipment: &mut ProductiveEquipment,
-    providers: &Providers,
-    network: &mut Network<'_>,
-    preferences: &mut Preferences,
+    sourcing: &mut Sourcing<'_, '_>,
 ) -> Result<()> {
+    let Sourcing {
+        providers,
+        network,
+        preferences,
+        abroad,
+    } = sourcing;
     let process = actor.process_id.ok_or(NationalOpeningError::Identity)?;
     let Some((starts, maximum)) = installation_policy(builder, actor, definition, equipment)?
     else {
@@ -545,17 +604,27 @@ fn policies(
         actor.site_id,
         &good,
     )?;
-    let (supplier, cap) = if let Some(supplier) = primary {
+    let by_product = matches!(
+        builder.policy.markets.procurement,
+        GameProcurement::ByProduct { .. }
+    );
+    let domestic = matches!(actor.location, EconomicLocation::County(_));
+    let (supplier, cap) = if by_product && domestic && abroad.contains(&process) {
+        let secondary =
+            markets::secondary_supplier(builder, locations, network, actor.site_id, cargo)?;
+        (secondary.or(primary), starts)
+    } else if let Some(supplier) = primary {
         (Some(supplier), starts)
     } else {
         let secondary =
             markets::secondary_supplier(builder, locations, network, actor.site_id, cargo)?;
-        let cap = u64::try_from(
-            u128::from(starts)
-                * u128::from(markets::abroad_bps(builder, actor.site_id, "equipment")?)
-                / 10_000,
-        )
-        .map_err(|_| NationalOpeningError::Arithmetic)?;
+        let cap = if by_product && domestic {
+            starts
+        } else {
+            let share = markets::foreign_share_bps(builder.policy, actor.location, "equipment")?;
+            u64::try_from(u128::from(starts) * u128::from(share) / 10_000)
+                .map_err(|_| NationalOpeningError::Arithmetic)?
+        };
         (secondary, cap)
     };
     let Some(supplier) = supplier.filter(|_| cap > 0) else {

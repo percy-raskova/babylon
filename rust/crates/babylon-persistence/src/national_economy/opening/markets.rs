@@ -1,22 +1,23 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
 use super::routes::Network;
-use super::{actors, ActorContext, Builder, NationalOpeningError, Result};
+use super::{actors, templates, ActorContext, Builder, NationalOpeningError, Result};
 use crate::national_economy::grain::FinancialDomainId;
 
-use crate::economic_catalog::{MerchantSeed, ResidentStaffingPoolSeed};
+use crate::economic_catalog::{EconomicHouseholdSeed, MerchantSeed, ResidentStaffingPoolSeed};
 use crate::national_transport::CargoClass;
 
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::EconomicLocation;
 
-use crate::national_economy::{GameCommodity, GameProcurement, NationalGamePolicy};
+use crate::national_economy::{GameCommodity, GameHandling, GameProcurement, NationalGamePolicy};
 use babylon_kernel::content_digest;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::{
     AccountId, CommodityKind, CorridorId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
     MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer, ServiceConnection,
     ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
+    MAX_HOUSEHOLD_NEEDS, MAX_HOUSEHOLD_WANTS,
 };
 use std::collections::BTreeMap;
 
@@ -313,32 +314,111 @@ fn reserve_retail_labor(builder: &mut Builder<'_>, site: SiteId, retail_hours: u
     Ok(())
 }
 
+/// The hours a fallback retailer reserves: for each shop good its units of needs and of wants (the
+/// scenario's rows, unscaled), handled in hours rounded up to a whole block.
 fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<u64> {
-    let hours = builder
-        .policy
+    let policy = builder.policy;
+    let rows = policy
         .household_needs
         .iter()
-        .try_fold(0_u64, |hours, need| {
-            let good = builder.commodity(&need.key)?;
-            if !matches!(good.kind, CommodityKind::Storable { .. }) {
-                return Ok(hours);
-            }
-            let units = super::quantity(
-                match need.basis {
-                    HouseholdNeedBasis::Persons => persons,
-                    HouseholdNeedBasis::Households => households,
-                },
-                need.units_per_basis,
-            )?;
-            hours
-                .checked_add(super::quantity(
-                    units,
-                    handling_hours(builder.policy, &need.key)?,
-                )?)
-                .ok_or(NationalOpeningError::Arithmetic)
-        })?;
+        .map(|need| (&need.key, need.basis, need.units_per_basis))
+        .chain(
+            policy
+                .household_wants
+                .iter()
+                .map(|want| (&want.key, want.basis, want.units_per_basis)),
+        );
+    let mut units = BTreeMap::<&String, u64>::new();
+    for (key, basis, per_basis) in rows {
+        if !matches!(builder.commodity(key)?.kind, CommodityKind::Storable { .. }) {
+            continue;
+        }
+        let count = match basis {
+            HouseholdNeedBasis::Persons => persons,
+            HouseholdNeedBasis::Households => households,
+        };
+        let total = units.entry(key).or_default();
+        *total = total
+            .checked_add(super::quantity(count, per_basis)?)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+    }
+    units.into_iter().try_fold(0_u64, |hours, (key, total)| {
+        let block = handling(policy, key)?;
+        let needed = u128::from(total) * u128::from(block.hours);
+        let rounded = u64::try_from(needed.div_ceil(u128::from(block.units)))
+            .map_err(|_| NationalOpeningError::Arithmetic)?;
+        hours
+            .checked_add(rounded)
+            .ok_or(NationalOpeningError::Arithmetic)
+    })
+}
 
-    Ok(hours)
+/// What an account buys of one good in a period: its need and its wants.
+struct Purchase {
+    key: String,
+    need: u64,
+    want: u64,
+}
+
+/// An account's purchases, needs first in their order and then the goods only wanted; a want of
+/// the households of a collective residence is left out, as a need of theirs is.
+fn purchases(
+    builder: &Builder<'_>,
+    household: &EconomicHouseholdSeed,
+    scale_bps: Option<u32>,
+) -> Result<Vec<Purchase>> {
+    let collective = household.kind == HouseholdKind::CollectiveResidence;
+    let count = |basis| match basis {
+        HouseholdNeedBasis::Persons => household.persons,
+        HouseholdNeedBasis::Households => household.households,
+    };
+    let mut rows: Vec<Purchase> = Vec::new();
+    let mut add = |key: &str, need: u64, want: u64| -> Result<()> {
+        if let Some(row) = rows.iter_mut().find(|row| row.key == key) {
+            row.need = row
+                .need
+                .checked_add(need)
+                .ok_or(NationalOpeningError::Arithmetic)?;
+            row.want = row
+                .want
+                .checked_add(want)
+                .ok_or(NationalOpeningError::Arithmetic)?;
+        } else {
+            rows.push(Purchase {
+                key: key.to_owned(),
+                need,
+                want,
+            });
+        }
+        Ok(())
+    };
+    for need in &builder.policy.household_needs {
+        if collective && need.basis == HouseholdNeedBasis::Households {
+            continue;
+        }
+        add(
+            &need.key,
+            super::quantity(count(need.basis), need.units_per_basis)?,
+            0,
+        )?;
+    }
+    for want in &builder.policy.household_wants {
+        if collective && want.basis == HouseholdNeedBasis::Households {
+            continue;
+        }
+        let per_basis = templates::scaled_units(want, scale_bps)?;
+        add(&want.key, 0, super::quantity(count(want.basis), per_basis)?)?;
+    }
+    Ok(rows)
+}
+
+/// The purchase rows of the opening, needs and wants together, stay within the engine's bound, and so
+/// do the wants.
+fn check_bounds(purchase_rows: usize, wants: usize) -> Result<()> {
+    if purchase_rows > MAX_HOUSEHOLD_NEEDS || wants > MAX_HOUSEHOLD_WANTS {
+        return Err(NationalOpeningError::Bounds);
+    }
+    Ok(())
 }
 
 fn households(
@@ -349,6 +429,7 @@ fn households(
     preferences: &mut Preferences,
 ) -> Result<()> {
     let households = builder.opening.households.clone();
+    let scales = templates::luxury_scales(builder)?;
     let domain_retailers = representative_retailers(builder)?;
     let mut retail_requirements = BTreeMap::<(SiteId, String), u64>::new();
     for household in households {
@@ -360,20 +441,16 @@ fn households(
             .get(&domain)
             .or_else(|| retailers.get(&household.location))
             .ok_or(NationalOpeningError::Identity)?;
-        for need in builder.policy.household_needs.clone() {
-            if household.kind == HouseholdKind::CollectiveResidence
-                && need.basis == HouseholdNeedBasis::Households
-            {
-                continue;
-            }
-            let good = builder.commodity(&need.key)?.clone();
-            let required = super::quantity(
-                match need.basis {
-                    HouseholdNeedBasis::Persons => household.persons,
-                    HouseholdNeedBasis::Households => household.households,
-                },
-                need.units_per_basis,
-            )?;
+        for row in purchases(
+            builder,
+            &household,
+            scales.get(&household.principal_id).copied(),
+        )? {
+            let good = builder.commodity(&row.key)?.clone();
+            let required = row
+                .need
+                .checked_add(row.want)
+                .ok_or(NationalOpeningError::Arithmetic)?;
             let seller = match good.kind {
                 CommodityKind::Storable { .. } => retailer,
                 CommodityKind::PeriodService { .. } => service_provider(
@@ -386,6 +463,7 @@ fn households(
                 )?
                 .ok_or(NationalOpeningError::MissingObservation)?,
             };
+            // A want is used where it is bought: it has no pantry, so no stock to hold.
             builder
                 .opening
                 .policies
@@ -395,7 +473,7 @@ fn households(
                     retailer_site_id: seller,
                     good_id: good.good_id,
                     unit_id: good.unit_id,
-                    target_closing_stock: if good.cargo.is_some() { required } else { 0 },
+                    target_closing_stock: if good.cargo.is_some() { row.need } else { 0 },
                     maximum_purchase: super::quantity(
                         required,
                         builder.policy.retailer_buffer_periods,
@@ -415,12 +493,13 @@ fn households(
                     });
                 continue;
             }
-            let total = retail_requirements.entry((retailer, need.key)).or_default();
+            let total = retail_requirements.entry((retailer, row.key)).or_default();
             *total = total
                 .checked_add(required)
                 .ok_or(NationalOpeningError::Arithmetic)?;
         }
     }
+    check_bounds(builder.opening.policies.household_purchases.len(), 0)?;
     // Supply and fractional sourcing are calculated once from the location total.
     for ((retailer, key), required) in retail_requirements {
         retail_stock(builder, retailer, &key, required)?;
@@ -454,7 +533,7 @@ fn retail_stock(
         .ok_or(NationalOpeningError::Policy)?
         .scaled(actor.price_scale_bps)
         .map_err(|_| NationalOpeningError::Arithmetic)?;
-    let handling_charge = super::amount(handling_hours(builder.policy, key)?, actor.wage)?;
+    let handling_charge = handling_charge(handling(builder.policy, key)?, actor.wage)?;
     let unit_price = super::sum_amount(price.opening, handling_charge)?;
     let minimum = super::sum_amount(price.minimum, handling_charge)?;
     let maximum = super::sum_amount(price.maximum, handling_charge)?;
@@ -702,19 +781,35 @@ pub(super) fn secondary_supplier(
     Ok(secondary)
 }
 
-/// Hours of retail work for a unit of a shop good, as today's single figure: schema 8's blocks of
-/// units are wired by Task 3, until then a block of one unit is the only one read.
-pub(super) fn handling_hours(policy: &NationalGamePolicy, key: &str) -> Result<u64> {
+/// The retail handling of a shop good: schema 7's one figure for every good, in blocks of one unit, or
+/// schema 8's row of the good.
+pub(super) fn handling(policy: &NationalGamePolicy, key: &str) -> Result<GameHandling> {
     if let Some(hours) = policy.handling_hours_per_unit {
-        return Ok(hours);
+        return Ok(GameHandling { hours, units: 1 });
     }
     policy
         .commodities
         .get(key)
         .and_then(|good| good.handling)
-        .filter(|row| row.units == 1)
-        .map(|row| row.hours)
         .ok_or(NationalOpeningError::Policy)
+}
+
+/// The retail charge of a unit, in micros: `ceil(hours x wage / units)`, the engine's cost of a unit.
+pub(super) fn handling_charge(handling: GameHandling, wage: Currency) -> Result<Currency> {
+    let hours = i128::from(handling.hours)
+        .checked_mul(wage.micro_units())
+        .ok_or(NationalOpeningError::Arithmetic)?;
+    let units = i128::from(handling.units);
+    if units == 0 {
+        return Err(NationalOpeningError::Policy);
+    }
+    let whole = hours.div_euclid(units);
+    let charge = if hours.rem_euclid(units) == 0 {
+        whole
+    } else {
+        whole + 1
+    };
+    Ok(Currency::from_micro_units(charge))
 }
 
 /// A buyer's share, in basis points, bought from the second supplier of a good: schema 7's one cap,
@@ -966,5 +1061,37 @@ mod retailer_index_controls {
         }
         let empty = RetailFallbackIndices::new(&BTreeMap::new(), &[]);
         assert!(empty.sites.is_empty() && empty.staffing.is_empty());
+    }
+
+    #[test]
+    fn a_handling_block_sets_the_retail_charge() {
+        let charge = |hours, units, wage: i128| {
+            handling_charge(
+                GameHandling { hours, units },
+                Currency::from_micro_units(wage),
+            )
+            .map(Currency::micro_units)
+        };
+        // Three hours for forty units at $30: 90,000,000 / 40 = 2,250,000 micros.
+        assert_eq!(charge(3, 40, 30_000_000), Ok(2_250_000));
+        // Rounded up to a whole micro; a block of one unit is the hours times the wage.
+        assert_eq!(charge(1, 3, 10), Ok(4));
+        assert_eq!(charge(2, 1, 30_000_000), Ok(60_000_000));
+    }
+
+    #[test]
+    fn too_many_purchase_rows_are_refused() {
+        assert_eq!(
+            check_bounds(MAX_HOUSEHOLD_NEEDS, MAX_HOUSEHOLD_WANTS),
+            Ok(())
+        );
+        assert_eq!(
+            check_bounds(MAX_HOUSEHOLD_NEEDS + 1, 0),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_bounds(0, MAX_HOUSEHOLD_WANTS + 1),
+            Err(NationalOpeningError::Bounds)
+        );
     }
 }

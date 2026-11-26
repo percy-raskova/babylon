@@ -199,7 +199,7 @@ fn append_sites(
                             good_id: row.good_id,
                             unit_id: row.unit_id,
                             hours_per_unit: row.hours_per_unit,
-                            units: 1,
+                            units: row.units,
                         }),
                 );
         }

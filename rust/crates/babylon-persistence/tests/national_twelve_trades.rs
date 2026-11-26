@@ -3,12 +3,15 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership, TradeSet};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_kernel::geography::CountyGeoid;
-use babylon_material_circuit::{AccountId, LaborCompensation, SiteId};
-use babylon_persistence::economic_catalog::EconomicSiteSeed;
+use babylon_material_circuit::{
+    AccountId, CommodityKind, FinalDemandPrincipalId, HouseholdCohort, HouseholdKind,
+    HouseholdNeedBasis, HouseholdWant, LaborCompensation, ServiceConnection, SiteId, WantTier,
+};
 use babylon_persistence::economic_catalog::{
     self, CapturedEconomicCatalog, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind as Kind,
 };
+use babylon_persistence::economic_catalog::{EconomicHouseholdSeed, EconomicSiteSeed};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::national_cohorts::CohortKey;
 use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWorkplaceSource};
@@ -1060,4 +1063,258 @@ fn a_company_takes_nothing_at_the_opening() {
         .map(|account| account.cash.micro_units())
         .sum();
     assert_eq!(company_money, 0);
+}
+
+/// The fixture's counts of the rows that wants add to: purchase rows, handling rows and offers.
+fn want_sensitive_counts(catalog: &CapturedEconomicCatalog) -> (usize, usize, usize) {
+    let opening = catalog.opening();
+    let handling = opening
+        .sites
+        .iter()
+        .filter_map(|site| site.merchant.as_ref())
+        .map(|merchant| merchant.handling.len())
+        .sum();
+    (
+        opening.policies.household_purchases.len(),
+        handling,
+        opening.policies.offers.len(),
+    )
+}
+
+#[test]
+fn the_fixture_without_wants_keeps_its_rows() {
+    let counts = want_sensitive_counts(captured());
+    println!("purchase rows, handling rows, offers: {counts:?}");
+    assert_eq!(counts, (10_876, 2_020, 8_350));
+}
+
+/// Two want rows on the fixture, as the builder will write them: a comfort of shop goods and a luxury
+/// service, with the shop's handling row for the good that is only wanted.
+fn wants_text(leisure_per_person: u64, scale: &str) -> String {
+    let text = std::str::from_utf8(FIXTURE).expect("utf8").replacen(
+        "[commodity.consumer_goods]\n",
+        "[commodity.consumer_goods]\nhandling_hours = 1\nhandling_units = 1\n",
+        1,
+    );
+    format!(
+        "{text}\n[[household_wants]]\ngood = \"consumer_goods\"\ntier = \"comfort\"\nbasis = \"persons\"\nunits_per_basis = 3\n\n[[household_wants]]\ngood = \"leisure\"\ntier = \"luxury\"\nbasis = \"persons\"\nunits_per_basis = {leisure_per_person}\n{scale}"
+    )
+}
+
+fn captured_text(text: &str) -> CapturedEconomicCatalog {
+    let input =
+        economic_catalog::national_catalog_input_for(text.as_bytes()).expect("the text parses");
+    CapturedEconomicCatalog::capture(input, None).expect("the text captures")
+}
+
+/// The fixture with its wants, captured once.
+fn wanting() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| captured_text(&wants_text(2, "")))
+}
+
+fn cohort(row: &EconomicHouseholdSeed) -> HouseholdCohort {
+    HouseholdCohort {
+        kind: row.kind,
+        principal_id: row.principal_id,
+        households: row.households,
+        persons: row.persons,
+    }
+}
+
+#[test]
+fn every_account_wants_its_tiers() {
+    let text = wants_text(2, "");
+    let policy = NationalGamePolicy::parse(&text).expect("the text admits");
+    let opening = wanting().opening();
+    let mut expected = Vec::new();
+    for household in &opening.households {
+        for want in &policy.household_wants {
+            if household.kind == HouseholdKind::CollectiveResidence
+                && want.basis == HouseholdNeedBasis::Households
+            {
+                continue;
+            }
+            let good = &policy.commodities[&want.key];
+            expected.push(HouseholdWant {
+                principal_id: household.principal_id,
+                tier: want.tier,
+                good_id: good.good_id,
+                unit_id: good.unit_id,
+                basis: want.basis,
+                units_per_basis: want.units_per_basis,
+            });
+        }
+    }
+    expected.sort_by_key(|w| (w.principal_id, w.tier, w.good_id, w.unit_id));
+    let wants = &opening
+        .market_clearing
+        .as_ref()
+        .expect("schema 8 clears by price")
+        .household_wants;
+    assert_eq!(wants.len(), opening.households.len() * 2);
+    assert_eq!(wants, &expected);
+    let seeds: BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|h| (h.principal_id, h))
+        .collect();
+    for want in wants {
+        let seed = seeds[&want.principal_id];
+        let count = match want.basis {
+            HouseholdNeedBasis::Persons => seed.persons,
+            HouseholdNeedBasis::Households => seed.households,
+        };
+        assert_eq!(
+            want.quantity(&cohort(seed)).expect("a quantity"),
+            count * want.units_per_basis
+        );
+    }
+}
+
+#[test]
+fn every_want_has_a_seller_that_offers_it() {
+    let text = wants_text(2, "");
+    let policy = NationalGamePolicy::parse(&text).expect("the text admits");
+    let opening = wanting().opening();
+    let needed: BTreeSet<_> = policy
+        .household_needs
+        .iter()
+        .map(|need| {
+            let good = &policy.commodities[&need.key];
+            (good.good_id, good.unit_id)
+        })
+        .collect();
+    let wants = &opening
+        .market_clearing
+        .as_ref()
+        .expect("schema 8 clears by price")
+        .household_wants;
+    assert_ne!(wants.len(), 0);
+    let mut services = 0;
+    for want in wants {
+        let row = opening
+            .policies
+            .household_purchases
+            .iter()
+            .find(|row| {
+                (row.principal_id, row.good_id, row.unit_id)
+                    == (want.principal_id, want.good_id, want.unit_id)
+            })
+            .expect("a want has a purchase row");
+        assert!(row.enabled);
+        assert!(
+            opening.policies.offers.iter().any(|offer| {
+                (offer.site_id, offer.good_id, offer.unit_id)
+                    == (row.retailer_site_id, want.good_id, want.unit_id)
+            }),
+            "the seller offers the good"
+        );
+        if !needed.contains(&(want.good_id, want.unit_id)) {
+            assert_eq!(row.target_closing_stock, 0);
+            assert!(row.maximum_purchase > 0);
+        }
+        let good = policy
+            .commodities
+            .values()
+            .find(|g| (g.good_id, g.unit_id) == (want.good_id, want.unit_id))
+            .expect("a want names a good");
+        if matches!(good.kind, CommodityKind::PeriodService { .. }) {
+            services += 1;
+            let connection = ServiceConnection {
+                provider_site_id: row.retailer_site_id,
+                buyer: AccountId::Household(want.principal_id),
+                good_id: want.good_id,
+                unit_id: want.unit_id,
+            };
+            assert!(opening.policies.service_connections.contains(&connection));
+        }
+    }
+    assert!(services > 0, "the luxury is a service");
+}
+
+#[test]
+fn the_shop_handles_consumer_goods() {
+    let text = wants_text(2, "");
+    let policy = NationalGamePolicy::parse(&text).expect("the text admits");
+    let goods = &policy.commodities["consumer_goods"];
+    let key = (goods.good_id, goods.unit_id);
+    let opening = wanting().opening();
+    let retailers: BTreeSet<SiteId> = opening
+        .policies
+        .household_purchases
+        .iter()
+        .filter(|row| (row.good_id, row.unit_id) == key)
+        .map(|row| row.retailer_site_id)
+        .collect();
+    assert_ne!(retailers.len(), 0);
+    for retailer in retailers {
+        let site = opening
+            .sites
+            .iter()
+            .find(|site| site.site_id == retailer)
+            .expect("the retailer is a site");
+        let handling = &site.merchant.as_ref().expect("a merchant").handling;
+        let row = handling
+            .iter()
+            .find(|row| (row.good_id, row.unit_id) == key)
+            .expect("a handling row for consumer goods");
+        assert_eq!((row.hours_per_unit, row.units), (1, 1));
+        assert!(opening
+            .policies
+            .offers
+            .iter()
+            .any(|o| (o.site_id, o.good_id, o.unit_id) == (retailer, key.0, key.1)));
+        assert!(site
+            .opening_stock
+            .iter()
+            .any(|s| (s.amount.good_id, s.amount.unit_id) == key && s.amount.quantity > 0));
+        assert!(opening.policies.replenishment.iter().any(|r| (
+            r.buyer_site_id,
+            r.good_id,
+            r.unit_id
+        ) == (retailer, key.0, key.1)));
+    }
+}
+
+#[test]
+fn a_scaled_account_wants_more_luxuries() {
+    // Four a person at 12,500 basis points is five a person: a whole number, which the engine's
+    // `units_per_basis x persons` can say.
+    let text = wants_text(
+        4,
+        "\n[luxury_scale]\nby_account = { \"26163:earning-owner\" = 12500 }\n",
+    );
+    let policy = NationalGamePolicy::parse(&text).expect("the text admits");
+    let catalog = captured_text(&text);
+    let opening = catalog.opening();
+    let owner: FinalDemandPrincipalId =
+        national_economy::household_principal(county("26163"), HouseholdBudgetKey::EarningOwner);
+    let leisure = &policy.commodities["leisure"];
+    let seeds: BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|h| (h.principal_id, h))
+        .collect();
+    let wants = &opening
+        .market_clearing
+        .as_ref()
+        .expect("schema 8 clears by price")
+        .household_wants;
+    let mut scaled = 0;
+    for want in wants {
+        let seed = seeds[&want.principal_id];
+        let quantity = want.quantity(&cohort(seed)).expect("a quantity");
+        if want.principal_id == owner && want.good_id == leisure.good_id {
+            scaled += 1;
+            assert!(seed.persons > 0);
+            assert_eq!(quantity, 4 * seed.persons * 12_500 / 10_000);
+            assert!(quantity > 4 * seed.persons);
+        } else if want.tier == WantTier::Luxury {
+            assert_eq!(quantity, 4 * seed.persons, "no other luxury moves");
+        } else {
+            assert_eq!(quantity, 3 * seed.persons, "no comfort moves");
+        }
+    }
+    assert_eq!(scaled, 1);
 }

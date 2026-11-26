@@ -282,6 +282,7 @@ impl<'a> Builder<'a> {
         routes::finish(&mut builder)?;
         household_time::wire(&mut builder, time_controls)?;
         sort_principals(&mut builder);
+        wire_wants(&mut builder)?;
         builder
             .opening
             .policies
@@ -518,6 +519,20 @@ pub struct NationalOpening {
     pub support_claimant: Option<NationalSupportClaimant>,
     /// Authored foreground identities and conserved counted background cohorts.
     pub detail: NationalDetailPartition,
+}
+
+/// Fill the market policy's wants from the accounts, now in canonical order. A policy that clears by
+/// price has wants only under schema 8.
+fn wire_wants(builder: &mut Builder<'_>) -> Result<()> {
+    if builder.opening.market_clearing.is_none() {
+        return Ok(());
+    }
+    let scales = templates::luxury_scales(builder)?;
+    let wants = templates::household_wants(builder.policy, &builder.opening.households, &scales)?;
+    if let Some(clearing) = builder.opening.market_clearing.as_mut() {
+        clearing.household_wants = wants;
+    }
+    Ok(())
 }
 
 fn sort_principals(builder: &mut Builder<'_>) {

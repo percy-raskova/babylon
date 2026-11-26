@@ -197,6 +197,7 @@ fn import_site(
                     good_id: amount.good_id,
                     unit_id: amount.unit_id,
                     hours_per_unit: *hours,
+                    units: 1,
                 });
             }
             Ok(MerchantSeed {

@@ -120,6 +120,8 @@ pub struct HandlingRequirement {
     pub good_id: GoodId,
     pub unit_id: UnitId,
     pub hours_per_unit: u64,
+    /// The units that `hours_per_unit` hours handle; 1 under policy schema 7 and earlier.
+    pub units: u64,
 }
 
 /// Circulation role; its capacity principal is supplied in the shared capacity table.

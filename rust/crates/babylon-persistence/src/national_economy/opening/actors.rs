@@ -531,19 +531,20 @@ pub(super) fn node_id(source: &str) -> LogisticsNodeId {
     LogisticsNodeId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
+/// One handling row for each shop good: every storable good a need or a want names.
 pub(super) fn handling_requirements(builder: &Builder<'_>) -> Result<Vec<HandlingRequirement>> {
-    let mut rows = Vec::new();
-    for need in &builder.policy.household_needs {
-        let good = builder.commodity(&need.key)?;
-        if matches!(good.kind, CommodityKind::Storable { .. }) {
-            rows.push(HandlingRequirement {
+    super::templates::shop_goods(builder.policy)?
+        .into_iter()
+        .map(|(key, handling)| {
+            let good = builder.commodity(&key)?;
+            Ok(HandlingRequirement {
                 good_id: good.good_id,
                 unit_id: good.unit_id,
-                hours_per_unit: super::markets::handling_hours(builder.policy, &need.key)?,
-            });
-        }
-    }
-    Ok(rows)
+                hours_per_unit: handling.hours,
+                units: handling.units,
+            })
+        })
+        .collect()
 }
 
 /// National authoring guard: no graph member force is funded by invented residents.

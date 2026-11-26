@@ -2719,3 +2719,277 @@ fn the_map_does_not_follow_the_food_recipe() {
         other.national_generation().expect("witness").catchments
     );
 }
+
+// ---- Task 7b: a buyer of a service is dealt its provider ----
+
+/// Persons at work at each site: the employed of every member of the site's staffing pools.
+fn persons_at_work(catalog: &CapturedEconomicCatalog) -> BTreeMap<SiteId, u64> {
+    let mut work = BTreeMap::<SiteId, u64>::new();
+    for pool in &catalog.opening().staffing {
+        *work.entry(pool.pool.site_id()).or_default() += pool
+            .members
+            .iter()
+            .map(|member| member.employed)
+            .sum::<u64>();
+    }
+    work
+}
+
+fn state_of(location: EconomicLocation) -> [u8; 2] {
+    let EconomicLocation::County(county) = location else {
+        panic!("a domestic location is a county");
+    };
+    county.geoid().state_fips()
+}
+
+/// The domestic sites that make the service `key`, with the persons at work at each.
+fn providers_of(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    key: &str,
+) -> Vec<(SiteId, EconomicLocation, u64)> {
+    let function = policy
+        .recipes
+        .iter()
+        .find(|(_, recipe)| recipe.output == key)
+        .map(|(function, _)| *function)
+        .expect("a trade makes the service");
+    let work = persons_at_work(catalog);
+    catalog
+        .opening()
+        .sites
+        .iter()
+        .filter(|site| site.function == function && !site.processes.is_empty())
+        .filter(|site| matches!(site.location, EconomicLocation::County(_)))
+        .filter_map(|site| {
+            let persons = work.get(&site.site_id).copied().unwrap_or(0);
+            (persons > 0).then_some((site.site_id, site.location, persons))
+        })
+        .collect()
+}
+
+/// What each domestic buyer of the service `key` is dealt: its location, its provider and the units a period.
+fn dealings(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    key: &str,
+) -> Vec<(EconomicLocation, SiteId, u64)> {
+    let opening = catalog.opening();
+    let good = &policy.commodities[key];
+    let households: BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row.location))
+        .collect();
+    let sites: BTreeMap<_, _> = opening
+        .sites
+        .iter()
+        .map(|site| (site.site_id, site.location))
+        .collect();
+    let mut rows = Vec::new();
+    for row in &opening.policies.household_purchases {
+        if (row.good_id, row.unit_id) != (good.good_id, good.unit_id) {
+            continue;
+        }
+        let location = households[&row.principal_id];
+        if matches!(location, EconomicLocation::County(_)) {
+            rows.push((
+                location,
+                row.retailer_site_id,
+                row.maximum_purchase / policy.retailer_buffer_periods,
+            ));
+        }
+    }
+    for row in &opening.policies.service_inputs {
+        if (row.good_id, row.unit_id) != (good.good_id, good.unit_id) {
+            continue;
+        }
+        let location = sites[&row.buyer_site_id];
+        if matches!(location, EconomicLocation::County(_)) {
+            rows.push((location, row.provider_site_id, row.quantity_per_period));
+        }
+    }
+    rows
+}
+
+/// For a service: (providers with a buyer, providers, persons at providers with none, persons at all providers).
+fn custom_of(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    key: &str,
+) -> (usize, usize, u64, u64) {
+    let providers = providers_of(catalog, policy, key);
+    let bought: BTreeSet<SiteId> = dealings(catalog, policy, key)
+        .into_iter()
+        .map(|(_, provider, _)| provider)
+        .collect();
+    let with = providers
+        .iter()
+        .filter(|(site, _, _)| bought.contains(site))
+        .count();
+    let without: u64 = providers
+        .iter()
+        .filter(|(site, _, _)| !bought.contains(site))
+        .map(|(_, _, persons)| persons)
+        .sum();
+    let all: u64 = providers.iter().map(|(_, _, persons)| persons).sum();
+    (with, providers.len(), without, all)
+}
+
+#[test]
+fn every_provider_with_workers_has_a_buyer() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    for key in [
+        "utility",
+        "housing",
+        "household_services",
+        "public_provision",
+    ] {
+        let (with, providers, without, all) = custom_of(captured(), &policy, key);
+        println!("{key}: {with} of {providers} providers have a buyer; {without} of {all} persons at none");
+        assert!(without * 100 < all * 5, "{key}: {without} of {all}");
+    }
+}
+
+#[test]
+fn a_service_of_the_place_is_bought_in_the_place() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let catalog = captured();
+    for key in ["housing", "household_services", "public_provision"] {
+        let providers = providers_of(catalog, &policy, key);
+        let places: BTreeSet<_> = providers.iter().map(|(_, place, _)| *place).collect();
+        let place_of: BTreeMap<_, _> = providers
+            .iter()
+            .map(|(site, place, _)| (*site, *place))
+            .collect();
+        let mut elsewhere = 0_u64;
+        for (buyer, provider, _) in dealings(catalog, &policy, key) {
+            let at = place_of[&provider];
+            if places.contains(&buyer) {
+                assert_eq!(at, buyer, "{key}: a buyer in a place that has a provider");
+            } else {
+                elsewhere += 1;
+                assert_eq!(state_of(at), state_of(buyer), "{key}: a buyer without one");
+            }
+        }
+        println!("{key}: {elsewhere} buyers in a place with no provider");
+    }
+    let providers = providers_of(catalog, &policy, "utility");
+    let place_of: BTreeMap<_, _> = providers
+        .iter()
+        .map(|(site, place, _)| (*site, *place))
+        .collect();
+    let mut elsewhere = 0_u64;
+    for (buyer, provider, _) in dealings(catalog, &policy, "utility") {
+        let at = place_of[&provider];
+        assert_eq!(
+            state_of(at),
+            state_of(buyer),
+            "no provider is in another state"
+        );
+        elsewhere += u64::from(at != buyer);
+    }
+    assert!(elsewhere > 0, "some buyer's utility is at another location");
+}
+
+const COUNTRY_SERVICES: &str =
+    "country_services = [\"business_services\", \"leisure\", \"utility\"]\nplace_services = [";
+
+fn country_text() -> String {
+    wants_text(2, "").replacen("place_services = [", COUNTRY_SERVICES, 1)
+}
+
+/// The fixture with its three country services and its wants, captured once.
+fn countrywide() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| captured_text(&country_text()))
+}
+
+#[test]
+fn country_services_are_bought_across_the_country() {
+    let policy = NationalGamePolicy::parse(&country_text()).expect("the text admits");
+    let catalog = countrywide();
+    for (key, out_bound) in [("utility", 11), ("leisure", 3), ("business_services", 12)] {
+        let (with, providers, without, all) = custom_of(catalog, &policy, key);
+        let place_of: BTreeMap<_, _> = providers_of(catalog, &policy, key)
+            .into_iter()
+            .map(|(site, place, _)| (site, place))
+            .collect();
+        let (mut out, mut dealt) = (0_u64, 0_u64);
+        for (buyer, provider, units) in dealings(catalog, &policy, key) {
+            dealt += units;
+            if state_of(place_of[&provider]) != state_of(buyer) {
+                out += units;
+            }
+        }
+        println!(
+            "{key}: {with} of {providers} providers have a buyer; {without} of {all} persons at none; {out} of {dealt} units out of state"
+        );
+        assert!(
+            without * 100 < all,
+            "{key}: {without} of {all} persons at providers with no buyer"
+        );
+        assert!(
+            out * 100 < dealt * out_bound,
+            "{key}: {out} of {dealt} units out of state"
+        );
+    }
+}
+
+/// The accounts carved from another, with their parents.
+fn carved_pairs(
+    catalog: &CapturedEconomicCatalog,
+) -> Vec<(FinalDemandPrincipalId, FinalDemandPrincipalId)> {
+    let mut pairs: Vec<_> = catalog
+        .national_aid_capture()
+        .map(|aid| {
+            aid.children
+                .iter()
+                .map(|c| (c.principal, c.parent))
+                .collect()
+        })
+        .unwrap_or_default();
+    pairs.extend(
+        catalog
+            .national_support_claimant()
+            .map(|claimant| (claimant.principal, claimant.parent)),
+    );
+    pairs
+}
+
+fn carved_follow_parents(catalog: &CapturedEconomicCatalog, policy: &NationalGamePolicy) {
+    let pairs = carved_pairs(catalog);
+    assert!(pairs.len() >= 3, "Wayne's carved accounts: {}", pairs.len());
+    let rows = &catalog.opening().policies.household_purchases;
+    let mut services = 0;
+    for (child, parent) in pairs {
+        for row in rows.iter().filter(|row| row.principal_id == child) {
+            let good = policy
+                .commodities
+                .values()
+                .find(|good| (good.good_id, good.unit_id) == (row.good_id, row.unit_id))
+                .expect("a row names a good");
+            if !matches!(good.kind, CommodityKind::PeriodService { .. }) {
+                continue;
+            }
+            services += 1;
+            let parents = rows
+                .iter()
+                .find(|other| {
+                    other.principal_id == parent
+                        && (other.good_id, other.unit_id) == (row.good_id, row.unit_id)
+                })
+                .expect("the parent buys the service");
+            assert_eq!(row.retailer_site_id, parents.retailer_site_id);
+        }
+    }
+    assert!(services > 0, "the carved accounts buy services");
+}
+
+#[test]
+fn carved_accounts_follow_their_parents() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    carved_follow_parents(captured(), &policy);
+    let policy = NationalGamePolicy::parse(&country_text()).expect("the text admits");
+    carved_follow_parents(countrywide(), &policy);
+}

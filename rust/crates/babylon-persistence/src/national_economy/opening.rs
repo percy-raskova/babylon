@@ -3,6 +3,8 @@
 
 mod actors;
 
+mod dealing;
+
 pub mod aid;
 pub mod claimant;
 

@@ -1,4 +1,5 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
+use super::dealing::{self, Dealt};
 use super::routes::Network;
 use super::{actors, templates, ActorContext, Builder, NationalOpeningError, Result};
 use crate::national_economy::grain::FinancialDomainId;
@@ -57,6 +58,18 @@ impl ProviderLocations {
             foreign,
             counties_by_employment,
         }
+    }
+
+    /// The sites at one location, the largest workplace first.
+    pub(super) fn at(&self, location: EconomicLocation) -> &[SiteId] {
+        self.sites.get(&location).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every location that has a provider, with its sites.
+    pub(super) fn locations(&self) -> impl Iterator<Item = (EconomicLocation, &[SiteId])> {
+        self.sites
+            .iter()
+            .map(|(location, sites)| (*location, sites.as_slice()))
     }
 
     // Workplaces rotate the same finite counterpart roster independently.
@@ -142,14 +155,16 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         .collect();
     let mut network = Network::new(builder.transport)?;
     let mut preferences = Preferences::default();
+    let dealt = dealing::deal_services(builder, &providers, &mut network)?;
     households(
         builder,
         &retailers,
         &providers,
         &mut network,
         &mut preferences,
+        &dealt,
     )?;
-    producers(builder, &providers, &mut network, &mut preferences)?;
+    producers(builder, &providers, &mut network, &mut preferences, &dealt)?;
     super::equipment::wire(builder, &providers, &mut network, &mut preferences)?;
     let policies = &mut builder.opening.policies;
     policies
@@ -369,15 +384,18 @@ fn retail_hours(builder: &Builder<'_>, accounts: &[usize]) -> Result<u64> {
 }
 
 /// What an account buys of one good in a period: its need and its wants.
-struct Purchase {
-    key: String,
+pub(super) struct Purchase {
+    pub(super) key: String,
     need: u64,
     want: u64,
 }
 
 /// An account's purchases, needs first in their order and then the goods only wanted; a want of
 /// the households of a collective residence is left out, as a need of theirs is.
-fn purchases(builder: &Builder<'_>, household: &EconomicHouseholdSeed) -> Result<Vec<Purchase>> {
+pub(super) fn purchases(
+    builder: &Builder<'_>,
+    household: &EconomicHouseholdSeed,
+) -> Result<Vec<Purchase>> {
     let scale = builder.luxury_scales.get(&household.principal_id).copied();
     let collective = household.kind == HouseholdKind::CollectiveResidence;
     let count = |basis| match basis {
@@ -442,6 +460,7 @@ fn households(
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
+    dealt: &Dealt,
 ) -> Result<()> {
     let households = builder.opening.households.clone();
     let domain_retailers = representative_retailers(builder)?;
@@ -463,15 +482,22 @@ fn households(
                 .ok_or(NationalOpeningError::Arithmetic)?;
             let seller = match good.kind {
                 CommodityKind::Storable { .. } => retailer,
-                CommodityKind::PeriodService { .. } => service_provider(
-                    providers,
-                    network,
-                    preferences,
-                    household.location,
-                    good.good_id,
-                    good.unit_id,
-                )?
-                .ok_or(NationalOpeningError::MissingObservation)?,
+                CommodityKind::PeriodService { .. } => {
+                    let account = AccountId::Household(household.principal_id);
+                    let found = if dealing::applies(builder.policy, household.location) {
+                        dealt.get(&(good.good_id, good.unit_id, account)).copied()
+                    } else {
+                        service_provider(
+                            providers,
+                            network,
+                            preferences,
+                            household.location,
+                            good.good_id,
+                            good.unit_id,
+                        )?
+                    };
+                    found.ok_or(NationalOpeningError::MissingObservation)?
+                }
             };
             // A want is used where it is bought: it has no pantry, so no stock to hold.
             builder
@@ -591,6 +617,7 @@ fn producers(
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
+    dealt: &Dealt,
 ) -> Result<()> {
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     for actor in actors {
@@ -628,15 +655,21 @@ fn producers(
                     },
                 )?,
                 CommodityKind::PeriodService { .. } => {
-                    let Some(provider) = service_provider(
-                        providers,
-                        network,
-                        preferences,
-                        actor.location,
-                        good.good_id,
-                        good.unit_id,
-                    )?
-                    else {
+                    let provider = if dealing::applies(builder.policy, actor.location) {
+                        dealt
+                            .get(&(good.good_id, good.unit_id, AccountId::Site(actor.site_id)))
+                            .copied()
+                    } else {
+                        service_provider(
+                            providers,
+                            network,
+                            preferences,
+                            actor.location,
+                            good.good_id,
+                            good.unit_id,
+                        )?
+                    };
+                    let Some(provider) = provider else {
                         continue;
                     };
                     if provider == actor.site_id {

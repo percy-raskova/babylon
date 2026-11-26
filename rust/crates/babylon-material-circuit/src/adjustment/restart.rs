@@ -594,6 +594,21 @@ fn output_of(
         }))
 }
 
+/// The product a workplace makes or handles, as `output_of` reads it: the first output of its process, or the
+/// first good a merchant handles.
+fn product_of(tables: &CloseTables, site: SiteId) -> Option<(GoodId, UnitId)> {
+    let plant = &tables.plant;
+    if let Some(process) = plant.process_at.get(&site) {
+        return plant
+            .output_of_process
+            .get(process)
+            .map(|&(good, unit, _)| (good, unit));
+    }
+    rows_at(&plant.handling, &site)
+        .first()
+        .map(|&(good, unit, _)| (good, unit))
+}
+
 /// Every workplace the rules count: the sites of the employment terms, in site order.
 fn workplaces(state: &MaterialCircuitState) -> Result<BTreeSet<SiteId>> {
     let (economy, _) = economy_of(state)?;
@@ -1038,7 +1053,10 @@ pub(crate) fn restart_stopped(
     let mut tried = Vec::new();
     for site in &sites {
         let tested = is_tested(&standing.row_of(*site), tables.ledger.hours.contains(site));
-        if tested {
+        // A provider of a service that the market shares is not tested: it lives on its public body's money.
+        let shared = product_of(&tables, *site)
+            .is_some_and(|(good, unit)| policy::is_shared_service(catalog, good, unit));
+        if tested && !shared {
             tried.extend(try_site(
                 catalog,
                 transition,
@@ -1266,7 +1284,7 @@ mod tests {
             HouseholdTimeAccounting, LaborCompensation, LogisticsNodeId, MarketClearingPolicy,
             MaterialCatalogDefinition, MemberLaborCapacityRow, MerchantHandling,
             MerchantHandlingCoefficient, MerchantRole, MonetaryBook, OwnershipClaim,
-            ReplenishmentPolicy, SellerOffer, SiteLogisticsNode, StaffingMemberId,
+            ReplenishmentPolicy, SellerOffer, ServiceStage, SiteLogisticsNode, StaffingMemberId,
         };
 
         const STOPPED: u32 = 2_500;
@@ -1516,6 +1534,105 @@ mod tests {
                 household_tiers: vec![],
                 adjustments: vec![],
             }
+        }
+
+        fn process() -> ProcessId {
+            ProcessId::from_bytes([50; 32])
+        }
+
+        /// The fixture with a service among the commodities, which the order of paying leaves out, and the
+        /// workplace `shared` making it in a process of one hour a batch.
+        fn catalog_with_a_shared_service(count: u32, shared: SiteId) -> MaterialCatalog {
+            let mut definition = catalog(count).into_definition();
+            definition.commodities.push(CommodityDefinition {
+                good_id: service(),
+                unit_id: unit(),
+                kind: CommodityKind::PeriodService {
+                    stage: ServiceStage::LocalServiceProvision,
+                },
+            });
+            definition
+                .commodities
+                .sort_by_key(|row| (row.good_id, row.unit_id));
+            definition.merchants.retain(|row| row.site_id != shared);
+            definition
+                .handling_coefficients
+                .retain(|row| row.site_id != shared);
+            definition.process_outputs.push(crate::ProcessOutput {
+                process_id: process(),
+                site_id: shared,
+                good_id: service(),
+                unit_id: unit(),
+                quantity_per_batch: 1,
+            });
+            definition.labor_coefficients.push(crate::LaborCoefficient {
+                process_id: process(),
+                unit_id: hours(),
+                quantity_per_batch: 1,
+            });
+            MaterialCatalog::try_new(definition).expect("the fixture catalog is valid")
+        }
+
+        fn service() -> GoodId {
+            GoodId::from_bytes([4; 32])
+        }
+
+        /// Two stopped workplaces that have been quiet long enough, one of them the maker of a shared
+        /// service: only the other is tested.
+        #[test]
+        fn a_workplace_of_a_shared_service_is_not_tested() -> Result<()> {
+            let (plain, shared) = (workplace(1), workplace(2));
+            let catalog = catalog_with_a_shared_service(2, shared);
+            let mut state = state(2);
+            let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                panic!("the fixture is monetary");
+            };
+            let recurring = economy
+                .recurring
+                .as_mut()
+                .expect("the fixture is recurring");
+            let mut offer = recurring.offers[1].clone();
+            assert_eq!(offer.site_id, shared);
+            offer.good_id = service();
+            recurring.offers.push(offer);
+            recurring.production.push(crate::ProductionDemandPolicy {
+                process_id: process(),
+                site_id: shared,
+                output_buffer: 0,
+                planned_batches: 1,
+            });
+            let mut transition = transition(state);
+            let mut standing = WorkplaceStanding::opening();
+            for site in [plain, shared] {
+                standing.row_mut(site).quiet_periods = RESTART_QUIET_PERIODS - 1;
+            }
+            let mut bound = HiringBound {
+                next_period: 2,
+                process: BTreeMap::new(),
+                rows: vec![],
+                cuts: BTreeMap::new(),
+            };
+            restart_stopped(&catalog, &mut transition, &mut standing, &mut bound, 2)?;
+            let tested: Vec<SiteId> = transition
+                .adjustments
+                .iter()
+                .filter_map(|row| match row {
+                    AdjustmentReceipt::Restart(receipt) => Some(receipt.site_id),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                tested,
+                vec![plain],
+                "no restart receipt for the shared service"
+            );
+            let raises = transition
+                .adjustments
+                .iter()
+                .filter(|row| matches!(row, AdjustmentReceipt::RestingPriceToCost(_)))
+                .count();
+            assert_eq!(raises, 0, "no raise of a price");
+            Ok(())
         }
 
         /// A guard against a square coming back: thousands of stopped workplaces are tested at one close,

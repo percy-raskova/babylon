@@ -80,7 +80,9 @@ pub(crate) fn sites_with_hours(state: &MaterialCircuitState) -> BTreeSet<SiteId>
         .collect()
 }
 
-/// The products among `products` whose sellers rest at this close, with what each offered at its markets.
+/// The products among `products` whose sellers rest at this close, with what each offered at its markets. A
+/// service that the market shares in proportion never rests (ADR325, N3): its provider lives on its public
+/// body's money, not on sales.
 pub(crate) fn resting_among(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
@@ -89,13 +91,76 @@ pub(crate) fn resting_among(
     // The sites with hours are found once, and only when a seller that offered nothing is asked of.
     let mut with_hours: Option<BTreeSet<SiteId>> = None;
     products
-        .filter(|((site, _, _), offered)| {
+        .filter(|((site, good, unit), offered)| {
             rests_with(catalog, *offered, || {
                 with_hours
                     .get_or_insert_with(|| sites_with_hours(state))
                     .contains(site)
-            })
+            }) && !policy::is_shared_service(catalog, *good, *unit)
         })
         .map(|(product, _)| product)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::policy::fixture;
+    use super::*;
+    use crate::CapacityReservations;
+
+    fn state() -> MaterialCircuitState {
+        MaterialCircuitState {
+            period: 1,
+            accounting: CircuitAccounting::PhysicalControl,
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            inventory: vec![],
+            orders: vec![],
+            freight: vec![],
+            corridor_capacities: vec![],
+            capacities: vec![],
+            labor: vec![],
+            production_commitments: vec![],
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            maintenance_service: None,
+            capacity_reservations: CapacityReservations::default(),
+        }
+    }
+
+    fn seller(site: u8, product: u8) -> Product {
+        (
+            SiteId::from_bytes([site; 32]),
+            fixture::good(product),
+            fixture::unit(product),
+        )
+    }
+
+    /// Of the products, those that rest: each offered nothing and its seller made no hours.
+    fn resting(order: &[u8], products: &[Product]) -> BTreeSet<Product> {
+        resting_among(
+            &fixture::catalog_with(Some(order)),
+            &state(),
+            products.iter().map(|product| (*product, 0)),
+        )
+    }
+
+    #[test]
+    fn a_shared_service_never_rests() {
+        // Service 3 is in the order, service 4 is left out of it.
+        let in_order = seller(1, 3);
+        let left_out = seller(2, 4);
+        assert_eq!(
+            resting(&[1, 3], &[in_order, left_out]),
+            BTreeSet::from([in_order])
+        );
+    }
+
+    #[test]
+    fn a_good_outside_the_order_rests_as_before() {
+        // Storable good 2 is left out of the order, as equipment is: its seller rests.
+        let equipment = seller(3, 2);
+        assert_eq!(resting(&[1, 3], &[equipment]), BTreeSet::from([equipment]));
+    }
 }

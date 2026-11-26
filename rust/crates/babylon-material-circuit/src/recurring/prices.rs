@@ -366,6 +366,7 @@ fn quote(
 mod tests {
     use super::{quote, PriceDecision};
     use crate::clearing::{MarketMoment, MarketOutcome, MarketTable};
+    use crate::MaterialCircuitError;
     use crate::{GoodId, PricePolicy, SellerOffer, SiteId, UnitId};
     use babylon_kernel::currency::Currency;
 
@@ -426,6 +427,22 @@ mod tests {
         let reason = quote(&mut seller, 0, 0, false, true).expect("a quote");
         assert_eq!(reason, PriceDecision::ExcessStock);
         assert_eq!(seller.unit_price, dollars(37));
+    }
+
+    #[test]
+    fn a_period_service_takes_no_step_down() {
+        // A service's price has its own pricing: the goods quote refuses it, so unsold goods never move it.
+        let mut seller = offer(dollars(38), dollars(1), dollars(1));
+        seller.pricing = PricePolicy::ServiceResponsive {
+            minimum: dollars(1),
+            maximum: dollars(1000),
+            step: dollars(1),
+        };
+        assert_eq!(
+            quote(&mut seller, 0, 0, false, true),
+            Err(MaterialCircuitError::ServiceInvariant)
+        );
+        assert_eq!(seller.unit_price, dollars(38));
     }
 
     #[test]

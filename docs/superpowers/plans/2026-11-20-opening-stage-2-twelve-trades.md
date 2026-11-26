@@ -924,6 +924,10 @@ raises a resting price.
 
 ### Task 10d: The bench reads the bands
 
+> Built as `a6187d979` and `68318cd53`. Its Step 1 expected the owners' band to be the best paid by the wage bill over
+> all employed persons. That quotient counts working owners, who draw no wage, so the expectation was wrong and the
+> test asserts only the better-paid forty over the lower-paid half. Task 11b counts the persons paid a wage.
+
 Commit `test(persistence): the country bench reads each band's jobs, pay and money`. Test code only.
 
 **Why.** The Director ruled the bands in now so that the country bench shows who holds the better-paid jobs in each
@@ -1084,6 +1088,184 @@ and reported with the reason.
   of item 21. Expected: pass, no pinned value moved, `git status` shows no change under `reports/`.
 - [ ] **Step 4: Gate and commit** in the two commits above. The hand-off lists every item by its number: done, done
   already (with the commit), or left (with the reason).
+
+## What the last run asked for (26 November)
+
+Tasks 10c, 10d and 11 are built. Two things came of them, and Tasks 11b and 12 answer them. Task 10d showed that
+its own record could not say what a band's jobs pay, because working owners are at work and draw no wage (Task
+11b). And Task 10c mended one write of the owner's restart, where the restart still reads a shop by its first good
+alone (Task 12).
+
+### Task 11b: The bands' record counts the persons paid a wage
+
+Commit `test(persistence): a band's pay is over its persons paid a wage`. Test code only.
+
+**Why.** Task 10d's record gives each band its employed persons and its wage bill, and told the reader to divide
+one by the other. But a working owner and an unpaid member of a family are at work and are paid no wage, and Task
+10 deals the working owners to the owners' band first. So that quotient is not what a job pays: it gave Wayne's
+owners $22.91 an hour, under the lower-paid half's $28.99, and the nation's owners $19.41 against $42.80 and $26.60.
+The lead rules the reviewer's option (b): the record counts the persons paid a wage.
+
+**Files:**
+- Modify: `rust/crates/babylon-persistence/tests/support/country_bands.rs` (`Held`, the opening's legend);
+  `tests/national_household_units.rs` (`the_opening_names_every_band`)
+- Recorded again: `reports/country-opening-2026-11/bands-opening.json` and `bands-baseline.json`
+
+**Decisions:**
+1. **A seventh figure.** `Held` gains `waged_persons`, after `looking_persons`: the employed persons of the
+   account's members whose compensation is a wage. A row of `bands-opening.json` is then `[accounts, households,
+   persons, employed_persons, looking_persons, waged_persons, wage_bill_micros]`, and the legend says so and says
+   that a band's hourly pay is its wage bill over its waged persons and the hours a person.
+2. **The check that Task 10d could not keep.** In `the_opening_names_every_band`, Wayne's hourly pay by band is the
+   wage bill over waged persons and hours, rounded down to millionths of a dollar; the three figures are pinned from
+   the first failing run, in place of Task 10d's three, with the old and new values in the hand-off. The test asserts
+   owners at least the better-paid forty, and that at least the lower-paid half. If either does not hold, do not drop
+   it: return blocked=true with the three figures and each band's waged persons and wage bill, in Wayne and in the
+   nation.
+3. **A sum.** Over the keys, `waged_persons` is at most `employed_persons`, and the nation's waged persons equal
+   the sum over the opening's staffing members paid a wage at domestic sites (counted in the test from the seeds, as
+   the employed total is).
+4. The period column `earners` keeps its five figures: persons at work there include working owners, and its legend
+   gains that sentence.
+5. Record once, in the background: `record_twelve_trades_sets` with `TWELVE_TRADES_SET=baseline`. It writes
+   `bands-opening.json` and the baseline's record. The baseline's rows must equal the committed ones apart from the
+   times and from the head and legends that Tasks 10d, 11 and this one changed. The two sets with rules are recorded
+   by Task 12.
+
+- [ ] **Step 1: Change the test** to decision 2's quotient and assertions, with the three pins zeroed, and add
+  decision 3's two checks. Run it: it does not compile, or fails on the pins.
+- [ ] **Step 2: Implement** decisions 1, 3 and 4; fill the three pins from the failing run.
+- [ ] **Step 3: Run** `binary(national_household_units)`, `binary(national_twelve_trades)`,
+  `binary(shipped_world_bytes)`; then decision 5's recorder.
+- [ ] **Step 4: Gate, `mise run check:hygiene`, and commit** with the two records. Hand over: the nation's six
+  rows in full; Wayne's rows; for each of the three earning bands, in Wayne and in the nation, its waged persons,
+  its working owners and unpaid family at work (employed less waged) and its hourly pay; each file's size in bytes.
+
+What the player would see: nothing yet. It lets the lead say who holds the better-paid jobs and who works for no
+wage, in each place, from the game's own opening.
+
+### Task 12: The owner's restart reads a shop good by good (the engine)
+
+Commit `fix(material-circuit): the owner's restart reads a shop good by good`.
+
+**Why.** The six rules were measured on a world whose every seller has one product, and the restart was built for
+it: it reads a workplace by one product, a shop by the first good it handles (`batch_cost`, `output_of`,
+`product_of` in `adjustment/restart.rs`). But the country's shops handle two goods, food and materials, in the
+shipped opening and in the twelve trades alike (`opening/actors.rs`, `handling_requirements`: every storable need
+of households), and stage 5's will handle every want. Three things are then wrong for a shop.
+
+1. `try_site` adds up what was turned away at ALL the shop's markets (`turned`) and values every unit of it at the
+   first good's price and cost. So the test, the plan and the owner's money are those of a shop that sold only its
+   first good.
+2. A resting price of any other good is never raised to its own cost. Task 10c stopped it from taking the first
+   good's price, and left this.
+3. The inputs test asks for one unit of every good the shop handles, so a shop with one good out of supply never
+   restarts on the others.
+
+The contract's words are also behind the code in two places: it still says that a raise is written to every offer of
+the workplace (Task 10c changed that), and it does not say that a service the market shares is outside the resting
+price and the restart (the country bench's Task 9, ADR325 ruling N3).
+
+**Files:**
+- Modify: `rust/crates/babylon-material-circuit/src/adjustment/restart.rs` and its tests;
+  `src/adjustment/receipts.rs` (the raise's receipt); `contracts/material_circuit_v4.yaml` and
+  `src/wire/state.rs` (`MATERIAL_CIRCUIT_SOURCE_SHA256`; `tests/weighted_freight.rs` holds it)
+- Modify (readers of the receipt): `rust/crates/babylon-client/src/small_world/marks.rs`;
+  `rust/crates/babylon-persistence/tests/support/economy_health.rs`; any other the compiler finds
+- Modify, if a digest moves: `rust/crates/babylon-persistence/tests/national_household_units.rs` (the pins of
+  `the_bench_digests_before_the_squares`) and the records named in decision 11
+
+**Interfaces:**
+- Produces:
+
+```rust
+// RestingPriceToCostReceipt gains, after site_id, the product whose price was raised:
+pub good_id: GoodId,
+pub unit_id: UnitId,
+```
+
+**Decisions:**
+1. **A line of a workplace.** A maker (a site with a production policy) has one line, read exactly as today: its
+   process's first output, the units of one batch, its nameplate, one batch's cost, its posted price. A merchant
+   has one line for each of its handling rows, in the rows' order: the row's good and unit; one unit a batch; no
+   nameplate; the cost of one unit, which is the row's hours a unit at the site's rate plus the posted price of
+   that good at its supplier (the first replenishment row of site, good and unit; the supplier's first offer of
+   it); and the site's posted price of that good. A handling row without a supplier, without a posted price at the
+   supplier, or without an offer of the site has no line. A workplace with no line is not tried and gets no
+   receipt, as today.
+2. **What was turned away, by line.** A merchant's line counts the market receipts of its own good: the sum of
+   demand at the quote less the quantity sold. A maker's line counts every market receipt of the site, as today.
+3. **(b) The raise, by line.** For each line whose product is named by a resting-price receipt of this close, at a
+   site with no grant: a price under one unit's cost (`raised_price`) is raised to it, or to that product's own
+   ceiling when that is lower (Task 10c), and written to that product's rows only (Task 10c). Each raise has a
+   receipt that names its product. Sites in order, a site's lines in order.
+4. **The sales test, by line.** A line pays when what was turned away of it, up to one batch, is worth more at its
+   price than one batch costs: `min(turned, units of a batch) x price > cost`. This is today's test, for the line.
+5. **The inputs, by line.** A maker's as today. A merchant's line needs one unit of its own good: held, or to be
+   had from its supplier by today's rule for that good. A line that pays and whose inputs can be had is open.
+6. **The workplace's result.** No line pays: `Failed`, as today. Lines pay and none is open: `Failed` with
+   `inputs_short`. Else, over the open lines: `batches = max(1, min(turned / units of a batch, nameplate))`;
+   `earn` is the sum of `min(turned, batches x units) x price - batches x cost`; `plan` is the sum of `batches x
+   cost x outlay_periods`. The money, the refusal of a restart that puts in nothing, the ranking, the seating and
+   the transfer are today's, on these two sums.
+7. **The receipt's figures.** `RestartReceipt.turned` is the sum over every market receipt of the site, as today.
+   `batch_cost` is the sum of the costs of the site's lines: one unit of each good a shop handles, which is what
+   the contract already calls a merchant's batch.
+8. **A seller of one product keeps every figure and every byte.** So every measured small world keeps its bytes
+   (the long `reproduces_` tests), and a catalog that does not ask for the owner's restart keeps every byte.
+9. **The service the market shares** is still read by the site's first product (`product_of`): a shop sells no
+   service. Unchanged.
+10. **The contract.** In `contracts/material_circuit_v4.yaml`: `ADR314_rest` gains that a period service the
+    market does not clear by price (one the order of paying leaves out) never rests, and that its price moves as
+    its own policy says (ADR325, N3). `ADR314_restart` is rewritten where it is behind: (b) raises the price of a
+    product, and that product's offers, price receipts and service market receipts take the new price, with a
+    receipt that names the product; a provider of a service the market shares is not tested (ADR325, N3); a
+    merchant is tested good by good, as decisions 1 to 7 say, in the paragraph's own plain words. Nothing else of
+    the file changes. `MATERIAL_CIRCUIT_SOURCE_SHA256` follows the file (it is in no state's bytes: only
+    `tests/weighted_freight.rs` reads it).
+11. **The bench.** `baseline`, `market` and `no-seekers` have no restart: their digests and records must not move.
+    The digests of `all-six` and `all-six-with-benefits` in `the_bench_digests_before_the_squares` may move. If
+    they do, fill them again once from one failing run and put each old and new value into the hand-off. That pin
+    holds five periods only, and Task 10c's change did not move it, though a shop's raise may come later (in the
+    twelve trades with bands the first came at period 27). So the shipped opening's two sets with the restart are
+    recorded again in any case (`record_country_bench_sets` with `COUNTRY_BENCH_SET=all-six`, then with
+    `all-six-with-benefits`): say in the hand-off whether each record changed apart from the times, and from which
+    period on. The three sets without a restart are not recorded again unless their digest moved. Then record the
+    twelve trades' two sets with the restart again (`record_twelve_trades_sets` with `TWELVE_TRADES_SET=all-six`,
+    then with `all-six-with-benefits`); the baseline has no restart and was recorded by Task 11b. A refusal of the
+    engine in a recorder is a result to report with its period, stage and the engine's words. The two summaries of
+    400 periods are the lead's, and no `README.md` under `reports/` is edited.
+
+- [ ] **Step 1: Write the failing tests** in `restart.rs`'s test module, on Task 10c's fixture of one merchant that
+  handles two goods, A first and B second (give each a supplier with a posted price, so that each has a line):
+  - `a_shop_is_tested_good_by_good`: nothing was turned away of A; 10 units were turned away of B, whose price is
+    above its cost and which can be had. The shop is a candidate with `plan = 10 x cost of B x outlay_periods` and
+    `earn = 10 x (price of B - cost of B)`; its receipt has `turned` 10 and `batch_cost` the sum of the two costs
+    (today the plan and the earnings are reckoned at A's cost and price).
+  - `a_good_that_does_not_pay_adds_nothing`: 5 units turned away of A, whose price is not above its cost; 3 of B,
+    whose price is. The plan and the earnings are B's alone (today the shop fails).
+  - `a_shop_none_of_whose_goods_pays_fails`: `Failed`, `inputs_short` false, no money.
+  - `a_good_that_cannot_be_had_is_left_out`: both pay; the shop holds neither; B's supplier employs nobody. The
+    plan is A's alone. With A's supplier idle too: `Failed` with `inputs_short`.
+  - `every_resting_good_is_raised_to_its_own_cost`: both rested under their costs. Two receipts in the lines'
+    order, each naming its good; each offer and each price receipt row at its own cost; B capped by B's own
+    maximum when that is under B's cost.
+  - Task 10c's three tests and every existing test of the restart keep their values, but for the two new fields of
+    the raise's receipt.
+- [ ] **Step 2: Run them and see each fail** for the reason given in brackets, or for want of the new fields.
+- [ ] **Step 3: Implement** decisions 1 to 7, then decision 10.
+- [ ] **Step 4: Run** the crate, `-p babylon-circuit-worlds`, `-p babylon-client` (its tests construct the
+  receipt), and in the background the long tests (`--run-ignored only` with `test(/^reproduces_/) |
+  test(hours_fold_every_reference_run)` on `babylon-material-circuit`). Expected: pass, no value changed.
+- [ ] **Step 5: The bench.** `binary(national_household_units)`; then the ignored pin
+  `the_bench_digests_before_the_squares` by name; then decision 11.
+- [ ] **Step 6: Gate and commit** with the subject above. Hand over: each test seen failing; whether a shipped
+  digest moved, with old and new values; how many periods each of the bands' two sets with the restart closes; each
+  re-recorded record's size in bytes; the count of raises and of restarts in the bands' `all-six` record before and
+  after (from the records' own `rules` rows); and the contract's two paragraphs as they now read.
+
+What the player would see: a shop is restarted for the goods its buyers were turned away from, at those goods' own
+prices and costs, and each resting price of a shop is raised to its own cost.
 
 ## What the re-reading of 25 November changed
 

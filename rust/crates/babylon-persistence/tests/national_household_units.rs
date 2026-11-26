@@ -2380,9 +2380,9 @@ fn the_twelve_trades_sizes() {
         BTreeMap::from([("dependency", 6), ("domestic", 1900), ("foreign", 12)])
     );
     assert_eq!(sizes.pools, 8691);
-    assert_eq!(sizes.members, 27964);
-    assert_eq!(sizes.employment_terms, 27964);
-    assert_eq!(sizes.member_labor_rows, 27964);
+    assert_eq!(sizes.members, 23281);
+    assert_eq!(sizes.employment_terms, 23281);
+    assert_eq!(sizes.member_labor_rows, 23281);
     assert_eq!(sizes.offers_goods, 2436);
     assert_eq!(sizes.offers_services, 5914);
     assert_eq!(sizes.market_rows_at_most, 10786);

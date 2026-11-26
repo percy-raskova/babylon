@@ -165,7 +165,7 @@ fn the_twelve_trade_source_allocation_fits_its_bounds() {
     assert!(allocation.workplaces.len() <= 131_072);
     assert!(members <= 262_144);
     assert_eq!(allocation.workplaces.len(), 68_281);
-    assert_eq!(members, 113_737);
+    assert_eq!(members, 111_544);
 }
 
 /// The fixture, captured once: every test below reads this one catalog.
@@ -695,4 +695,193 @@ fn the_aid_donor_comes_from_the_lower_paid_half() {
         organizer.workplace_process_id,
         site.processes[0].process_id.as_bytes()
     );
+}
+
+/// The county-level allocation of the fixture world, made once: who works where, by band.
+fn county_allocation() -> &'static national_resident_allocation::ResidentWorkplaceAllocation {
+    static ALLOCATION: OnceLock<national_resident_allocation::ResidentWorkplaceAllocation> =
+        OnceLock::new();
+    ALLOCATION.get_or_init(|| {
+        let policy = NationalGamePolicy::parse(std::str::from_utf8(FIXTURE).expect("utf8"))
+            .expect("the fixture admits");
+        let budgets = household_budgets();
+        national_resident_allocation::allocate_home_county(
+            national_counties::national_county_reference().expect("the county reference loads"),
+            national_cohorts::national_cohort_reference_v2().expect("v2 cohorts"),
+            national_resident_workforce::national_resident_workforce_reference()
+                .expect("the workforce reference loads"),
+            &budgets,
+            &empty_leaves(&budgets),
+            &policy,
+            Some(national_trade_pay::national_trade_pay_reference().expect("pay table")),
+        )
+        .expect("the county-level allocation")
+    })
+}
+
+#[test]
+fn the_best_paid_jobs_go_to_the_owners() {
+    use national_resident_allocation::ResidentAttendanceMode::Employee;
+    let allocation = county_allocation();
+    // Per county and band: the lowest and the highest wage among employee members.
+    let mut spans: BTreeMap<(EconomicLocation, HouseholdBudgetKey), (Currency, Currency)> =
+        BTreeMap::new();
+    let mut counties = Vec::new();
+    for workplace in &allocation.workplaces {
+        let wage = workplace.county_wage.expect("observed pay ranks every job");
+        for member in workplace
+            .members
+            .iter()
+            .filter(|m| m.mode == Employee && m.seed.employed > 0)
+        {
+            let location = member.seed.member.residence();
+            let Some(band) = BAND_KEYS.into_iter().find(|key| {
+                national_economy::household_principal(location, *key)
+                    == member.seed.member.household_id()
+            }) else {
+                continue;
+            };
+            counties.push(location);
+            let span = spans.entry((location, band)).or_insert((wage, wage));
+            span.0 = span.0.min(wage);
+            span.1 = span.1.max(wage);
+        }
+    }
+    counties.sort();
+    counties.dedup();
+    let mut compared = 0_u64;
+    for location in counties {
+        let span = |key| spans.get(&(location, key));
+        for (better, worse) in [
+            (
+                HouseholdBudgetKey::EarningOwner,
+                HouseholdBudgetKey::EarningBetterPaidForty,
+            ),
+            (
+                HouseholdBudgetKey::EarningBetterPaidForty,
+                HouseholdBudgetKey::EarningLowerPaidHalf,
+            ),
+        ] {
+            if let (Some(better_span), Some(worse_span)) = (span(better), span(worse)) {
+                assert!(
+                    better_span.0 >= worse_span.1,
+                    "{location:?}: {better:?} lowest {:?} under {worse:?} highest {:?}",
+                    better_span.0,
+                    worse_span.1
+                );
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 100, "counties compared: {compared}");
+    let wayne = county("26163");
+    for key in BAND_KEYS {
+        assert!(spans.contains_key(&(wayne, key)), "Wayne {key:?} works");
+    }
+}
+
+const WAYNE_NEXT_FORTY_HOUSEHOLDS: u64 = 280_236;
+const WAYNE_BETTER_PAID_HOUSEHOLDS: u64 = 202_903;
+
+#[test]
+fn the_county_review_sees_three_earning_groups() {
+    let catalog = campaign_catalog();
+    let config = catalog.county_review_config().expect("the county review");
+    let labels: Vec<_> = config.groups.iter().map(|g| g.label.as_str()).collect();
+    for want in [
+        "earning-lower-paid-half",
+        "earning-better-paid-forty",
+        "earning-owner",
+        "earning-lower-paid-half (aid donors)",
+    ] {
+        assert!(labels.contains(&want), "{want} in {labels:?}");
+    }
+    let roster = review_roster();
+    babylon_practice_contract::validate_roster(config, &roster).expect("the roster builds");
+    for row in &roster.rows {
+        if matches!(
+            row.key.band,
+            babylon_practice_contract::Band::Top1 | babylon_practice_contract::Band::Next9
+        ) {
+            assert!(
+                config.groups[row.key.group as usize].has_ownership_income,
+                "{} has no ownership income",
+                config.groups[row.key.group as usize].label
+            );
+        }
+    }
+}
+
+/// The county review's roster, from a campaign captured afresh: the foundation takes its catalog.
+fn review_roster() -> babylon_practice_contract::Roster {
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+    let input = economic_catalog::national_catalog_input_for(FIXTURE).expect("the fixture parses");
+    CapturedEconomicCatalog::capture_national_campaign(
+        input,
+        CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7036)),
+    )
+    .expect("the fixture captures as a campaign")
+    .create_foundation(
+        ReplaySessionId::try_from("twelve-trades-review").expect("session identity"),
+        ReplaySeed::new(319),
+    )
+    .expect("the review opens inside the material register")
+    .initial_register()
+    .county_review()
+    .expect("the opening register carries the county section")
+    .state()
+    .roster
+    .clone()
+}
+
+#[test]
+fn the_review_and_the_accounts_use_their_own_words() {
+    use babylon_practice_contract::{band_label, Band};
+    let catalog = campaign_catalog();
+    let config = catalog.county_review_config().expect("the county review");
+    let roster = review_roster();
+    let next_forty = roster.band_counts()[2].households;
+    let better_paid = household_budgets()
+        .county(CountyGeoid::try_from("26163").expect("Wayne"))
+        .expect("Wayne's budgets")
+        .budgets()
+        .iter()
+        .find(|b| b.key == HouseholdBudgetKey::EarningBetterPaidForty)
+        .map_or(0, |b| b.households);
+    assert_eq!(next_forty, WAYNE_NEXT_FORTY_HOUSEHOLDS);
+    assert_eq!(better_paid, WAYNE_BETTER_PAID_HOUSEHOLDS);
+    assert_ne!(next_forty, better_paid, "two cuts, two counts");
+    for group in &config.groups {
+        for word in ["Top", "Next", "Bottom", "%"] {
+            assert!(!group.label.contains(word), "{} holds {word}", group.label);
+        }
+    }
+    for band in [Band::Top1, Band::Next9, Band::Next40, Band::Bottom50] {
+        assert!(!band_label(band).contains("paid"));
+    }
+}
+
+#[test]
+fn owners_keep_the_business_shares() {
+    let catalog = captured();
+    let witness = catalog
+        .national_generation()
+        .expect("the generation witness");
+    let key_of: BTreeMap<_, _> = witness
+        .household_incidence
+        .iter()
+        .map(|row| (row.destination, row.margins.key))
+        .collect();
+    let mut domestic_claims = 0_u64;
+    for claim in &catalog.opening().institutions.ownership {
+        let AccountId::Household(principal) = claim.beneficiary else {
+            continue;
+        };
+        let Some(key) = key_of.get(&principal) else {
+            continue;
+        };
+        domestic_claims += 1;
+        assert!(key.owner_exposure(), "{key:?} holds a claim");
+    }
+    assert!(domestic_claims > 0, "domestic owners hold claims");
 }

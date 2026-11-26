@@ -6,7 +6,9 @@ use super::{
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_refinement::NationalHouseholdLeafRoster;
 
-use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_kernel::currency::Currency;
+use babylon_material_circuit::{FinalDemandPrincipalId, SiteId};
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 struct Quota {
@@ -44,7 +46,9 @@ pub(super) fn partition(
         .enumerate()
         .flat_map(|(i, w)| w.members.iter().copied().map(move |m| (i, m)))
         .collect();
-    rows.sort_by_key(|(i, m)| (priority(m.mode), pending[*i].target.site_id));
+    rows.sort_by_key(|(i, m)| {
+        row_order(m.mode, pending[*i].county_wage, pending[*i].target.site_id)
+    });
     for (index, row) in rows {
         let shares = take(&mut quotas, row)?;
         for (key, (employed, reserve)) in shares {
@@ -150,6 +154,34 @@ fn take_leaves(
     }
     Ok(result)
 }
+/// The order jobs are dealt in: working owners, then employees from the best pay down (ties by
+/// site id), then unpaid family. Without observed pay every wage is `None` and site id decides.
+fn row_order(
+    mode: ResidentAttendanceMode,
+    wage: Option<Currency>,
+    site: SiteId,
+) -> (u8, Reverse<Option<Currency>>, SiteId) {
+    let wage = if mode == ResidentAttendanceMode::Employee {
+        wage
+    } else {
+        None
+    };
+    (priority(mode), Reverse(wage), site)
+}
+/// The order a row fills quotas in. Schema 7 keys keep their own order; under schema 8 the owners
+/// come first, then the better-paid forty, the lower-paid half and the collective residences.
+const fn deal_rank(key: HouseholdBudgetKey) -> u8 {
+    match key {
+        HouseholdBudgetKey::EarningNonowner => 0,
+        HouseholdBudgetKey::EarningOwner => 1,
+        HouseholdBudgetKey::EarningBetterPaidForty => 2,
+        HouseholdBudgetKey::EarningLowerPaidHalf => 3,
+        HouseholdBudgetKey::NoEarnerNonowner => 4,
+        HouseholdBudgetKey::NoEarnerOwner => 5,
+        HouseholdBudgetKey::CollectiveResidence => 6,
+        HouseholdBudgetKey::PooledExternal => 7,
+    }
+}
 fn priority(mode: ResidentAttendanceMode) -> u8 {
     match mode {
         ResidentAttendanceMode::WorkingOwner => 0,
@@ -166,7 +198,7 @@ fn take(
     indices.sort_by_key(|i| {
         (
             row.mode == ResidentAttendanceMode::WorkingOwner && !quotas[*i].key.owner_exposure(),
-            quotas[*i].key,
+            deal_rank(quotas[*i].key),
         )
     });
     let mut employed = row.employed;
@@ -193,4 +225,81 @@ fn take(
         return Err(AllocationError::PopulationControl);
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use HouseholdBudgetKey::{
+        CollectiveResidence, EarningBetterPaidForty, EarningLowerPaidHalf, EarningOwner,
+    };
+
+    fn quota(key: HouseholdBudgetKey, employed: u64) -> Quota {
+        Quota {
+            key,
+            employed,
+            reserve: 0,
+        }
+    }
+    fn site(n: u8) -> SiteId {
+        SiteId::from_bytes([n; 32])
+    }
+    /// Deal employee rows `(site, wage in dollars, persons)` and name each row's shares.
+    fn deal(rows: &[(u8, i128, u64)]) -> Vec<(u8, Vec<(HouseholdBudgetKey, u64)>)> {
+        let mut quotas = vec![
+            quota(EarningLowerPaidHalf, 50),
+            quota(EarningOwner, 10),
+            quota(CollectiveResidence, 5),
+            quota(EarningBetterPaidForty, 40),
+        ];
+        let mut order: Vec<_> = rows.to_vec();
+        order.sort_by_key(|(n, wage, _)| {
+            row_order(
+                ResidentAttendanceMode::Employee,
+                Some(Currency::from_micro_units(wage * 1_000_000)),
+                site(*n),
+            )
+        });
+        order
+            .into_iter()
+            .map(|(n, _, persons)| {
+                let row = PendingResidentMember {
+                    mode: ResidentAttendanceMode::Employee,
+                    employed: persons,
+                    reserve: 0,
+                };
+                let shares = take(&mut quotas, row).expect("the quotas cover the row");
+                let mut shares: Vec<_> = shares.into_iter().map(|(k, (e, _))| (k, e)).collect();
+                shares.sort_by_key(|(k, _)| deal_rank(*k));
+                (n, shares)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn jobs_are_dealt_by_pay_in_whole_persons() {
+        // A pays $50, B $30, C $20.
+        let dealt = deal(&[(1, 50, 30), (2, 30, 40), (3, 20, 35)]);
+        assert_eq!(
+            dealt,
+            vec![
+                (1, vec![(EarningOwner, 10), (EarningBetterPaidForty, 20)]),
+                (
+                    2,
+                    vec![(EarningBetterPaidForty, 20), (EarningLowerPaidHalf, 20)]
+                ),
+                (
+                    3,
+                    vec![(EarningLowerPaidHalf, 30), (CollectiveResidence, 5)]
+                ),
+            ]
+        );
+        // B at $50 with a site id below A's is dealt first.
+        let dealt = deal(&[(2, 50, 30), (1, 50, 40), (3, 20, 35)]);
+        assert_eq!(dealt[0].0, 1);
+        assert_eq!(
+            dealt[0].1,
+            vec![(EarningOwner, 10), (EarningBetterPaidForty, 30)]
+        );
+    }
 }

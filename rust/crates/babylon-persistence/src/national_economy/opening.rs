@@ -34,6 +34,7 @@ use build::{amount, quantity, sum_amount, ActorContext, Builder, Result};
 pub use build::{
     build_national_opening, NationalOpening, NationalOpeningError, NationalOpeningPolicy,
 };
+pub use dealing::{crossing_region, crossing_regions};
 pub use fund::fund_account;
 
 #[cfg(test)]

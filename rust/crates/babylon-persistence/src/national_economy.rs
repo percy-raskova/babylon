@@ -16,6 +16,7 @@ pub use opening::fund_account;
 pub use opening::{
     build_national_opening, NationalOpening, NationalOpeningError, NationalOpeningPolicy,
 };
+pub use opening::{crossing_region, crossing_regions};
 
 pub use identity::{
     commodity_good_id, household_enterprise_target, household_principal, resident_employer_target,

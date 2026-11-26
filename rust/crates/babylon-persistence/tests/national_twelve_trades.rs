@@ -2993,3 +2993,268 @@ fn carved_accounts_follow_their_parents() {
     let policy = NationalGamePolicy::parse(&country_text()).expect("the text admits");
     carved_follow_parents(countrywide(), &policy);
 }
+
+// ---- Task 7e: a business buys a crossing service at home and abroad, by shares ----
+
+const CROSSING_KEY: &str = "business_services";
+const HOME_IMPORT_BPS: u64 = 1_500;
+const EXPORT_BPS: u64 = 2_000;
+
+/// The fixture with its wants and business services crossing the border, as the builder will write it.
+fn crossing_text() -> String {
+    wants_text(2, "")
+        .replacen(
+            "place_services = [",
+            "crossing_services = [\"business_services\"]\nplace_services = [",
+            1,
+        )
+        .replacen(
+            "equipment = 0 }",
+            "equipment = 0, business_services = 1500 }",
+            1,
+        )
+        .replace(
+            "equipment = 2500 }",
+            "equipment = 2500, business_services = 2000 }",
+        )
+}
+
+fn crossed() -> &'static CapturedEconomicCatalog {
+    static CATALOG: OnceLock<CapturedEconomicCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| captured_text(&crossing_text()))
+}
+
+fn same_side(a: EconomicLocation, b: EconomicLocation) -> bool {
+    match (a, b) {
+        (EconomicLocation::County(_), EconomicLocation::County(_)) => true,
+        _ => a == b,
+    }
+}
+
+fn site_locations(catalog: &CapturedEconomicCatalog) -> BTreeMap<SiteId, EconomicLocation> {
+    catalog
+        .opening()
+        .sites
+        .iter()
+        .map(|s| (s.site_id, s.location))
+        .collect()
+}
+
+/// Each buying site's rows of a service as (provider, cap), in the catalog's order.
+fn input_rows(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+    key: &str,
+) -> BTreeMap<SiteId, Vec<(SiteId, u64)>> {
+    let good = &policy.commodities[key];
+    let mut rows = BTreeMap::<SiteId, Vec<_>>::new();
+    for row in &catalog.opening().policies.service_inputs {
+        if (row.good_id, row.unit_id) == (good.good_id, good.unit_id) {
+            assert_eq!(row.quantity_per_period, row.maximum_purchase);
+            rows.entry(row.buyer_site_id)
+                .or_default()
+                .push((row.provider_site_id, row.quantity_per_period));
+        }
+    }
+    rows
+}
+
+#[test]
+fn a_home_site_buys_its_share_abroad() {
+    let policy = NationalGamePolicy::parse(&crossing_text()).expect("the text admits");
+    let (base, cross) = (wanting(), crossed());
+    let at = site_locations(cross);
+    let (before, after) = (
+        input_rows(base, &policy, CROSSING_KEY),
+        input_rows(cross, &policy, CROSSING_KEY),
+    );
+    let (mut checked, mut with_abroad) = (0_u64, 0_u64);
+    let mut by_region = BTreeMap::<EconomicLocation, u64>::new();
+    for (buyer, rows) in &before {
+        if !matches!(at[buyer], EconomicLocation::County(_)) {
+            continue;
+        }
+        assert_eq!(rows.len(), 1, "one provider a buyer without crossing");
+        let (home, required) = rows[0];
+        let abroad = required * HOME_IMPORT_BPS / 10_000;
+        let now = &after[buyer];
+        assert_eq!(now.iter().map(|r| r.1).sum::<u64>(), required, "{buyer:?}");
+        let at_home: Vec<_> = now
+            .iter()
+            .filter(|(p, _)| matches!(at[p], EconomicLocation::County(_)))
+            .collect();
+        let overseas: Vec<_> = now
+            .iter()
+            .filter(|(p, _)| matches!(at[p], EconomicLocation::Foreign(_)))
+            .collect();
+        assert!(now
+            .iter()
+            .all(|(p, _)| !matches!(at[p], EconomicLocation::Dependency(_))));
+        if required - abroad > 0 {
+            assert_eq!(at_home, vec![&(home, required - abroad)], "{buyer:?}");
+        } else {
+            assert_eq!(at_home.len(), 0);
+        }
+        if abroad > 0 {
+            assert_eq!(overseas.len(), 1, "{buyer:?}");
+            assert_eq!(overseas[0].1, abroad);
+            *by_region.entry(at[&overseas[0].0]).or_default() += abroad;
+            with_abroad += 1;
+        } else {
+            assert_eq!(overseas.len(), 0);
+        }
+        checked += 1;
+    }
+    println!("{checked} domestic buying sites, {with_abroad} with a row abroad; units a period bought abroad by region {by_region:?}");
+    assert!(checked > 0 && with_abroad > 0);
+}
+
+#[test]
+fn a_site_abroad_buys_its_share_at_home() {
+    let policy = NationalGamePolicy::parse(&crossing_text()).expect("the text admits");
+    let (base, cross) = (wanting(), crossed());
+    let at = site_locations(cross);
+    let (before, after) = (
+        input_rows(base, &policy, CROSSING_KEY),
+        input_rows(cross, &policy, CROSSING_KEY),
+    );
+    let (mut sites, mut rows_from_abroad, mut widest, mut exports) = (0_u64, 0_u64, 0_usize, 0_u64);
+    let mut asked = BTreeMap::<SiteId, u64>::new();
+    for (buyer, rows) in &before {
+        if matches!(at[buyer], EconomicLocation::County(_)) {
+            continue;
+        }
+        let (own, required) = rows[0];
+        let export = required * EXPORT_BPS / 10_000;
+        let now = &after[buyer];
+        let at_own: Vec<_> = now
+            .iter()
+            .filter(|(p, _)| !matches!(at[p], EconomicLocation::County(_)))
+            .collect();
+        let at_home: Vec<_> = now
+            .iter()
+            .filter(|(p, _)| matches!(at[p], EconomicLocation::County(_)))
+            .collect();
+        assert_eq!(
+            at_home.iter().map(|r| r.1).sum::<u64>(),
+            export,
+            "{buyer:?}"
+        );
+        if required > export {
+            assert_eq!(at_own, vec![&(own, required - export)], "{buyer:?}");
+        } else {
+            assert_eq!(at_own.len(), 0);
+        }
+        for (provider, cap) in at_home {
+            *asked.entry(*provider).or_default() += cap;
+            rows_from_abroad += 1;
+        }
+        widest = widest.max(now.len() - 1);
+        exports += export;
+        sites += 1;
+    }
+    let providers = providers_of(cross, &policy, CROSSING_KEY);
+    let all: u64 = providers.iter().map(|p| p.2).sum();
+    assert!(exports > 0 && all > 0);
+    let (mut under_half, mut over_twice, mut most) = (0_u64, 0_u64, 0_u64);
+    for (site, _, persons) in &providers {
+        let asked = asked.get(site).copied().unwrap_or(0);
+        // Room is persons / all x exports, in units; compared by cross-multiplying.
+        let (ask, room) = (
+            u128::from(asked) * u128::from(all),
+            u128::from(*persons) * u128::from(exports),
+        );
+        if ask * 2 < room {
+            under_half += persons;
+        }
+        if ask > room * 2 {
+            over_twice += persons;
+        }
+        most = most.max(u64::try_from(ask * 1_000 / room.max(1)).expect("fits"));
+    }
+    println!(
+        "{sites} sites abroad ask {exports} units over {rows_from_abroad} rows, the widest buyer {widest}; {} providers asked of {}; persons under half their room {under_half}, over twice {over_twice} of {all}; the most asked {most} per mille of its room",
+        asked.len(),
+        providers.len()
+    );
+    assert!(sites > 0);
+    assert!(
+        rows_from_abroad < providers.len() as u64 + sites,
+        "the rows from abroad pass the providers plus the buyers less one"
+    );
+    assert!(under_half * 100 < all, "under half their room");
+    assert!(over_twice * 100 < all, "over twice their room");
+    assert!(most <= 2_000, "no provider asked more than twice its room");
+}
+
+#[test]
+fn no_household_crosses() {
+    let policy = NationalGamePolicy::parse(&crossing_text()).expect("the text admits");
+    let catalog = crossed();
+    let at = site_locations(catalog);
+    let homes: BTreeMap<_, _> = catalog
+        .opening()
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row.location))
+        .collect();
+    let good = &policy.commodities[CROSSING_KEY];
+    let mut checked = 0_u64;
+    for row in &catalog.opening().policies.household_purchases {
+        if (row.good_id, row.unit_id) == (good.good_id, good.unit_id) {
+            assert!(
+                same_side(homes[&row.principal_id], at[&row.retailer_site_id]),
+                "{:?}",
+                row.principal_id
+            );
+            checked += 1;
+        }
+    }
+    println!("{checked} household rows of {CROSSING_KEY}");
+}
+
+const CROSSING_SERVICE_INPUTS: usize = 11_570;
+const CROSSING_CONNECTIONS: usize = 20_844;
+
+#[test]
+fn crossing_rows_fit_their_bounds() {
+    let (base, cross) = (wanting(), crossed());
+    let rows = |catalog: &CapturedEconomicCatalog| {
+        let policies = &catalog.opening().policies;
+        (
+            policies.service_inputs.len(),
+            policies.service_connections.len(),
+        )
+    };
+    let (before, after) = (rows(base), rows(cross));
+    println!("service inputs and connections: without {before:?}, with crossing {after:?}");
+    assert!(after.0 <= babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS);
+    assert!(after.1 <= babylon_material_circuit::MAX_SERVICE_CONNECTIONS);
+    assert_eq!(after.0 - before.0, after.1 - before.1);
+    assert_eq!(after.0, CROSSING_SERVICE_INPUTS);
+    assert_eq!(after.1, CROSSING_CONNECTIONS);
+}
+
+#[test]
+fn the_fixture_crosses_nothing() {
+    let catalog = captured();
+    let at = site_locations(catalog);
+    let homes: BTreeMap<_, _> = catalog
+        .opening()
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row.location))
+        .collect();
+    let policies = &catalog.opening().policies;
+    for row in &policies.service_inputs {
+        assert!(same_side(at[&row.buyer_site_id], at[&row.provider_site_id]));
+    }
+    for row in &policies.service_connections {
+        let buyer = match row.buyer {
+            AccountId::Site(site) => at[&site],
+            AccountId::Household(principal) => homes[&principal],
+            _ => panic!("a service buyer is a site or a household"),
+        };
+        assert!(same_side(buyer, at[&row.provider_site_id]));
+    }
+}

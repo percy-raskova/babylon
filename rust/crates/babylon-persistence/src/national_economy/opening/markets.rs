@@ -37,7 +37,7 @@ pub(super) struct ProviderLocations {
 }
 
 impl ProviderLocations {
-    fn new(
+    pub(super) fn new(
         mut sites: BTreeMap<EconomicLocation, Vec<SiteId>>,
         actors: &BTreeMap<SiteId, ActorContext>,
     ) -> Self {
@@ -65,6 +65,11 @@ impl ProviderLocations {
         self.sites.get(&location).map_or(&[], Vec::as_slice)
     }
 
+    /// The foreign regions that have a provider, in location order.
+    pub(super) fn regions(&self) -> &[EconomicLocation] {
+        &self.foreign
+    }
+
     /// Every location that has a provider, with its sites.
     pub(super) fn locations(&self) -> impl Iterator<Item = (EconomicLocation, &[SiteId])> {
         self.sites
@@ -73,7 +78,7 @@ impl ProviderLocations {
     }
 
     // Workplaces rotate the same finite counterpart roster independently.
-    fn secondary_candidates(
+    pub(super) fn secondary_candidates(
         &self,
         location: EconomicLocation,
         buyer: SiteId,
@@ -178,7 +183,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         .sort_unstable_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
     policies
         .service_inputs
-        .sort_unstable_by_key(|r| (r.buyer_site_id, r.good_id, r.unit_id));
+        .sort_unstable_by_key(|r| (r.buyer_site_id, r.good_id, r.unit_id, r.provider_site_id));
     policies.service_connections.sort_unstable();
     Ok(())
 }
@@ -612,6 +617,23 @@ fn retail_stock(
     Ok(())
 }
 
+/// The units a site needs of the input `key` for its planned batches, at its force.
+pub(super) fn required_input(
+    builder: &Builder<'_>,
+    actor: &ActorContext,
+    key: &str,
+) -> Result<u64> {
+    let recipe = builder
+        .policy
+        .recipes
+        .get(&actor.function)
+        .ok_or(NationalOpeningError::Policy)?;
+    let coefficient = *recipe.inputs.get(key).ok_or(NationalOpeningError::Policy)?;
+    let batches = super::quantity(actor.force, builder.policy.work_hours_per_person)?
+        / recipe.labor_hours_per_batch;
+    super::quantity(batches, coefficient)
+}
+
 fn producers(
     builder: &mut Builder<'_>,
     providers: &Providers,
@@ -619,6 +641,7 @@ fn producers(
     preferences: &mut Preferences,
     dealt: &Dealt,
 ) -> Result<()> {
+    let exported = dealing::exports(builder, providers, network, preferences)?;
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     for actor in actors {
         if actor.process_id.is_none() {
@@ -630,14 +653,12 @@ fn producers(
             .get(&actor.function)
             .ok_or(NationalOpeningError::Policy)?
             .clone();
-        let maximum_batches = super::quantity(actor.force, builder.policy.work_hours_per_person)?
-            / recipe.labor_hours_per_batch;
-        for (key, coefficient) in recipe.inputs {
-            let good = builder.commodity(&key)?.clone();
+        for key in recipe.inputs.keys() {
+            let good = builder.commodity(key)?.clone();
             if good.price.is_none() {
                 continue;
             } // finite deposit is not bought or reproduced
-            let required = super::quantity(maximum_batches, coefficient)?;
+            let required = required_input(builder, &actor, key)?;
             if required == 0 {
                 continue;
             }
@@ -649,13 +670,13 @@ fn producers(
                     preferences,
                     ProcurementNeed {
                         buyer: actor.site_id,
-                        key: &key,
+                        key,
                         required,
                         buffer_periods: builder.policy.opening_input_periods,
                     },
                 )?,
                 CommodityKind::PeriodService { .. } => {
-                    let provider = if dealing::applies(builder.policy, actor.location) {
+                    let home = if dealing::applies(builder.policy, actor.location) {
                         dealt
                             .get(&(good.good_id, good.unit_id, AccountId::Site(actor.site_id)))
                             .copied()
@@ -669,35 +690,15 @@ fn producers(
                             good.unit_id,
                         )?
                     };
-                    let Some(provider) = provider else {
-                        continue;
-                    };
-                    if provider == actor.site_id {
-                        return Err(NationalOpeningError::Policy);
+                    let rows = dealing::service_rows(
+                        builder, providers, &exported, &actor, key, home, required,
+                    )?;
+                    for (provider, cap) in rows {
+                        if provider == actor.site_id {
+                            return Err(NationalOpeningError::Policy);
+                        }
+                        push_service_input(builder, &actor, &good, provider, cap)?;
                     }
-                    builder
-                        .opening
-                        .policies
-                        .service_inputs
-                        .push(ServiceInputPolicy {
-                            buyer_site_id: actor.site_id,
-                            provider_site_id: provider,
-                            good_id: good.good_id,
-                            unit_id: good.unit_id,
-                            quantity_per_period: required,
-                            maximum_purchase: required,
-                            cash_floor: payroll(builder, actor.site_id)?,
-                        });
-                    builder
-                        .opening
-                        .policies
-                        .service_connections
-                        .push(ServiceConnection {
-                            provider_site_id: provider,
-                            buyer: AccountId::Site(actor.site_id),
-                            good_id: good.good_id,
-                            unit_id: good.unit_id,
-                        });
                 }
             }
         }
@@ -705,7 +706,35 @@ fn producers(
     Ok(())
 }
 
-fn service_provider(
+/// One row of a service input and its connection: `cap` units of the service a period from `provider`.
+fn push_service_input(
+    builder: &mut Builder<'_>,
+    actor: &ActorContext,
+    good: &GameCommodity,
+    provider: SiteId,
+    cap: u64,
+) -> Result<()> {
+    let cash_floor = payroll(builder, actor.site_id)?;
+    let policies = &mut builder.opening.policies;
+    policies.service_inputs.push(ServiceInputPolicy {
+        buyer_site_id: actor.site_id,
+        provider_site_id: provider,
+        good_id: good.good_id,
+        unit_id: good.unit_id,
+        quantity_per_period: cap,
+        maximum_purchase: cap,
+        cash_floor,
+    });
+    policies.service_connections.push(ServiceConnection {
+        provider_site_id: provider,
+        buyer: AccountId::Site(actor.site_id),
+        good_id: good.good_id,
+        unit_id: good.unit_id,
+    });
+    Ok(())
+}
+
+pub(super) fn service_provider(
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,

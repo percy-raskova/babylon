@@ -65,9 +65,10 @@ owner's restart mended for a shop of several goods), and the country bench's Tas
 out of the resting price and the owner's restart. Runs of builders, with the lead's gate
 between runs:
 - run A: Tasks 1, 2, 3, in that order. A ruling that adds a key amends Task 1 afterwards;
-- run B: Tasks 4, 6, 5, 7, 7b, 7c, 7d, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement machines
-  that Task 6 sets; Task 6 uses nothing of Task 5; Tasks 7b to 7d deal buyers to sellers after Task 5 has set what
-  is bought abroad, and before Task 8's census reads who sells to whom);
+- run B: Tasks 4, 6, 5, 7, 7a, 7b, 7c, 7d, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement
+  machines that Task 6 sets; Task 6 uses nothing of Task 5; Task 7a lets every workplace pay for its first period;
+  Tasks 7b to 7d deal buyers to sellers after Task 5 has set what is bought abroad, and before Task 8's census
+  reads who sells to whom);
 - run C: Part II, Tasks 9, 10, 10b, 11, 12, 13, in that order (Python only), once Task 8's census is committed;
 - run D: Tasks 14a, 14b, 15, in that order;
 - run E: Tasks 16, 17, 18, in that order.
@@ -105,6 +106,8 @@ pinned value: the builder recomputes each one from the committed tables.
   a private workplace does from its margin;
 - machines by trade at a designed number of workers per machine, opening at every age, for the whole workforce (O14);
 - the map's basis pinned as the shipped food figures, so the 187 places stay (O15);
+- no working capital taken by a company at the opening (the Director's ruling of 20 November; Tasks 7a and 13), so
+  that every workplace can pay for its first period;
 - buyers dealt to sellers so that every workplace with people at work has custom in proportion to them (Tasks 7b to
   7d): O4 holds for a workplace, not only for a trade;
 - `private_distribution_bps = 10000` (the spike's section 5, item 5: balance 4 holds only at a full payout of book
@@ -964,6 +967,72 @@ Commit `feat(economy): fold the counties on the map's own food basis`.
 - [ ] **Step 5: Gate and commit** with the subject above.
 
 What the player would see: the same 187 places on the map, whatever the recipes.
+
+### Task 7a: A company takes no working capital at the opening (the fixture)
+
+Commit `fix(economy): the twelve-trade fixture's companies take no working capital at the opening`.
+
+**Why: a ruling of 20 November that this plan's first drafts missed, counted again on 26 November.** The Director
+ruled in the economy repair that "a company no longer takes working capital at the opening". It was measured then
+on the shipped scenario (`reports/economy-repair-2026-11-20/README.md`, candidate A): the sites under a
+service-input floor fell from 630 to 0 in period 1, and household services went from 100% to 39% unmet. The opening
+design does not repeat the ruling, and the fixture still has `[companies] opening_treasury_bps = 1000`.
+
+What it does, from the code and the compiled opening. The compiler gives a workplace two periods of its wages and
+inputs as cash (`opening/actors.rs`, `grain/build.rs` `at_place_wage`). A company takes a tenth of what is above
+one payroll (`companies/treasury/opening.rs` `fund` and `sweep`, called from `opening/build.rs` with the policy's
+`treasury_bps`). The engine sets a period's wages aside first
+(`payments::fund_attendance`, before `ServiceClose::new` in `close_funded_production`), and lets a workplace buy a
+service input only with cash above a floor of one payroll (`services/admission.rs`; the floor is `payroll` in
+`opening/markets.rs`). So a company's workplace whose inputs are light beside its payroll has nothing left to buy
+them with: after the sweep it holds 1.9 payrolls and 1.8 periods of inputs, and after its wages and its floor, 1.8
+periods of inputs less a tenth of a payroll. In the fixture those are 644 workplaces with 54.6 million workers:
+
+| Trade | Workplaces that cannot pay for their input in period 1 | Their workers | Share of the trade's workers |
+|---|--:|--:|--:|
+| Business services | 315 | 26,336,319 | 98.5% |
+| Household services | 315 | 28,121,846 | 50.7% |
+| Extraction | 14 | 98,562 | 15.4% |
+
+They are the largest workplaces, so they are the ones the compiler gives the buyers to: all 186 sellers of business
+services that have a buyer, and 153 of the 187 sellers of household services. The bench's own record agrees: 314
+and 303 workplaces of those two trades under the service-input floor at the close of period 1. Every maker of goods
+needs business services, so nothing upstream is made. With buyers dealt in proportion to people (Tasks 7b to 7d)
+98.5% of the custom of business services would still go to workplaces that cannot perform: this task comes first.
+
+**Files:**
+- Modify: `rust/crates/babylon-persistence/tests/fixtures/national_twelve_trades.defines.toml`
+- Test: `rust/crates/babylon-persistence/tests/national_twelve_trades.rs`
+
+**Decisions:**
+1. The fixture's `[companies] opening_treasury_bps` goes from 1000 to 0. No source file changes. The shipped
+   scenario keeps its key: its bytes are pinned, and the rebuilt scenario (Task 13) replaces it.
+2. The fixture's pins that follow (a company's opening money, a company-owned workplace's opening cash, the
+   opening's digests) are each filled once from the first failing run and listed in the hand-over with old and new
+   values. The opening's whole money is the same sum.
+3. If a workplace is still short with the key at 0, the test of Step 1 fails: stop and tell the lead with the
+   workplaces, their cash, payroll, floor and input cost. Do not change a floor or a cash rule.
+
+- [ ] **Step 1: Write the failing tests** (fixture):
+  - `every_workplace_can_pay_for_its_first_period`: for every domestic workplace with a service-input row, its
+    opening cash, less its payroll (persons paid a wage x the policy's hours x its wage), less the row's cash floor,
+    is at least what its service inputs of one period cost at their providers' opening prices. Fails today for 644
+    workplaces (print the count by trade).
+  - `a_company_takes_nothing_at_the_opening`: every company-owned workplace of the fixture opens with the
+    compiler's own figure, two periods of its wages and inputs, and the companies' opening money is 0.
+  - `the_shipped_opening_keeps_its_sweep`: `binary(shipped_world_bytes)`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Change the key and fill the pins.**
+- [ ] **Step 4: Run** `binary(national_twelve_trades)`, `binary(shipped_world_bytes)`,
+  `binary(national_household_units)`, the crate.
+- [ ] **Step 5: Record** the bench's baseline of the fixture once, in the background (`record_twelve_trades_sets`
+  with `TWELVE_TRADES_SET=baseline`), and hand over, beside the committed record's figures: the domestic persons at
+  work at the close of periods 1, 2, 5, 13 and 34; for household services and business services the workplaces
+  under the service-input floor and the sales in periods 1 and 2; the unmet share of each need in periods 1 and 2;
+  and whether any period was refused. The figures show what the sweep alone moves, and are no verdict.
+- [ ] **Step 6: Gate and commit** with the subject above and the record.
+
+What the player would see: clinics, schools and offices that open with the money to run their first month.
 
 ### Task 7b: A buyer of a service is dealt its provider (compiler)
 
@@ -2165,7 +2234,9 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
    yet). Every hand-authored section (organizer, aid, hearing, City PD, County Review, grain's own keys, companies,
    lifecycle, household time but `unmet_hours_per_unit`, counterparts' participation, employment, persons per
    household and wage fractions, the installation figures of `[equipment]`, and `[markets] place_services`) is the
-   fixture's, unchanged.
+   fixture's, unchanged. `[companies] opening_treasury_bps` is 0, as Task 7a leaves the fixture (the Director's
+   ruling of 20 November: a company takes no working capital at the opening); `render` refuses a template in which
+   it is not (`template_marker: opening_treasury_bps`).
    The fixture's commodity labels, grams and opening prices (which decision 4 of Task 10b and its labels read) stay
    in the template as one line each, `#@fact <key> | <label> | <unit label> | <grams> | <price micros>`;
    `template_facts` reads them and `render` drops them. `render`
@@ -2419,6 +2490,11 @@ pub fn opening_ledger(opening: &EconomicOpening, policy: &NationalGamePolicy) ->
     engine on the fixture with what is asked scaled to what can be made, leaves 1% to 10%). Reported: the same
     share by trade for under half and for over twice, and every shared freight pool whose opening use passes its
     room (O15). A figure that fails is reported and not loosened.
+  - `every_workplace_can_pay_for_its_first_period` (Task 7a's test, on the rebuilt scenario): for every domestic
+    workplace with a service-input row, opening cash less its payroll less the row's cash floor is at least what its
+    service inputs of one period cost at their providers' opening prices. Here the prices follow each provider's
+    own wage (Task 14b), so a workplace whose provider is dear is the one to fail: a failure is reported with the
+    workplace, its cash, payroll, floor and cost, and nothing is loosened.
   - `every_private_price_covers_its_cost_at_the_national_wage`: national price x n at least labor, inputs and wear.
   - `no_account_opens_going_without`: every domestic account's income reaches its tier 1; pin the count of accounts
     at each standard and each band's income per person (from the first failing run).
@@ -2668,6 +2744,13 @@ The shipped opening gives the same shares.
   whole buyers in proportion loses one to three points against sharing, and leaves under 1% of a service's workers
   at providers with no buyer, with no change in the engine. What is left is where things are made against where
   they are bought: Part II's count of each state's services (For the Director, item 5).
+- **The sellers that have buyers cannot pay for their first period.** A company takes a tenth of its workplaces'
+  cash above one payroll at the opening, and a workplace may buy its service input only with cash above one payroll
+  once the period's wages are set aside. 644 workplaces cannot: 315 of business services with 98.5% of the trade's
+  workers, 315 of household services with 50.7%, 14 of extraction. They are the largest, so they are the sellers
+  the buyers are given: all 186 sellers of business services that have a buyer and 153 of the 187 of household
+  services. The Director ruled this sweep out on 20 November and it was measured then; the plan's drafts kept the
+  fixture's key by oversight (Task 7a; Task 13 writes 0).
 - **Abroad, one maker serves every buyer.** Each buyer abroad takes its share from the country at one maker: the 35
   buyers abroad of food at one in Kern County, California, the 214 of materials at one in Dane County, Wisconsin,
   the 36 of resources at one in Hidalgo County, Texas (Task 7d deals them over the country's makers).
@@ -2840,6 +2923,8 @@ recommendation is given last and is NOT built until ruled.
 30. **Three services are bought in the buyer's own place:** premises (housing), household services and public
     provision, a key of the scenario (`place_services`). Utility, business services and leisure may come from
     anywhere in the buyer's state, the rule as it stands; item 5 asks whether those three may cross state lines.
+31. **A company takes no working capital at the opening** (`opening_treasury_bps = 0` in the fixture from Task 7a
+    and in the scenario): not the lead's call but the Director's ruling of 20 November, restored here.
 
 ## Settled by approved text
 
@@ -3114,6 +3199,11 @@ Where a line below says a finding waits for Part II, the next section says where
   were added for it, Task 15 gained a check by workplace, and item 7 with variants V11 and V12 went to the Director.
   The same reading showed that the game keeps its accounts by a place's parts: the census, the luxury scales and
   Part II's "place" were moved to the part (calls 28 to 30).
+- Writing the country bench's reading at the end of stage 2, the lead asked why the few sellers that do have
+  buyers sell almost nothing in period 1, and counted it from the compiled opening: a company's opening sweep and
+  the cash floor of a service input, the cause the repair report of 20 November had found on Wayne, and which the
+  Director ruled out that day. The opening design never took the ruling up and this plan's drafts kept the
+  fixture's key. Task 7a, a line of Task 13 and a test of Task 15 restore it.
 - Tasks 7b to 7d and the moved passages were checked once against the code at `9753016ea` by an independent reader.
   Two faults would have stopped a builder, and both are mended above: the census cannot read an account's part from
   the opening alone (Task 8 now takes the capture), and policy admission cannot know which county is a hub (Task 1

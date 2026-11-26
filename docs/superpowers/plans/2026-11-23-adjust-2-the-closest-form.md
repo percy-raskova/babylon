@@ -2687,3 +2687,14 @@ Whatever is built next builds on the code as it stands, which differs from the t
   its price rests at $35.00 from the close of 46; at the close of 53 its owners restart it with $368.97 and it
   works to period 80. The step down changes no figure before period 77. In the proof of Task 8c the sixth rule
   changes no figure of the report, since no seller is left with goods unsold beyond its buffer.
+
+## A correction from the country (26 November 2026)
+
+Task 7's decision 2 says a raised resting price is written to "every offer of the site", and the contract's
+paragraphs `ADR314_rest` and `ADR314_restart` said the same. That was right for every measured small world, whose
+sellers sell one product each. The country's shops sell two, food and materials. On the country bench the raise of
+a shop's first good overwrote the price of its second, and the engine refused the next state: period 32 of the
+twelve trades with bands, all six rules and benefits. Stage 2 of the opening mends it in two tasks
+(`docs/superpowers/plans/2026-11-20-opening-stage-2-twelve-trades.md`, Tasks 10c and 12): a raise is of one
+product, and the owner's restart reads a shop good by good. No measured small world's bytes moved, and the
+contract's two paragraphs are corrected with Task 12.

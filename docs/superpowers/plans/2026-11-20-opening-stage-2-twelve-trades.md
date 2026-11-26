@@ -1283,3 +1283,87 @@ prices and costs, and each resting price of a shop is raised to its own cost.
 - **Silent, and left so:** what a working owner or an unpaid family member is paid (Task 7 pays employees only; they
   keep no wage, as ADR267 has it), the public provider with no worker and no grant, and the opening's own collapse in
   period 2 (stage 5 rebuilds the numbers). The bench's records of Tasks 8b and 10b will show each.
+
+## What the build found (25 and 26 November)
+
+- **The shipped world's bytes are pinned first** (Task 0, `272b36b14`): the catalog, the foundation, the campaign's
+  catalog and foundation, the County Review's and the City PD's configurations, and the foundations of schema 6 and
+  of the company-scale input; and the opening's counts: 7,463 sites, 1,602 household rows, 21,062 staffing members and
+  employment terms, 7,782 ownership claims, 9 recipes, 10 commodities. No task of the stage moved one of them.
+- **The twelve trades are read and compiled** (Tasks 1 to 6, `4abc55b91` to `0513cf036`): the kernel names consumer
+  goods and leisure and the two sets of trades; the cohort table of twelve trades holds 66,920 groups and 151,199
+  members, 65,065 of them admitted; the pay table holds 65,065 rows; a policy of schema 8 is admitted with its
+  wages, its bands and its order of paying; the twelve-trade sources are captured (the pay table is source kind 37)
+  and compile as `national-world-v13`. The opening built on the scenario's own trades allocates 68,281 source
+  workplaces and 111,265 staffing members, inside its bounds of 131,072 and 262,144.
+- **Each trade pays the observed wage of its place** (Task 7, `4dd9e4ac6` and `0a0cba1dd`): a pooled place's site
+  pays the place's own figure, summed pay over summed jobs; a detailed county's site pays its own row's; a foreign
+  region a fraction of the country's. The County Review's going wage is the county's average pay and the City PD's
+  payroll is the pay of Wayne's public workplaces (Task 8, `1bbf41b85`).
+- **The bench opens the twelve trades** (Task 8b, `8a4f4c01f`): 187 places with households, 8,475 domestic
+  workplaces, 8,691 pools. All 34 periods of the three recorded sets close, money equal in every row.
+- **Three earning bands in every place** (Task 9, `ce8389339` and `362b97c0a`; ADR325, N2): the lower-paid half, the
+  better-paid forty and the owners, by households, in every place that has an earner. Domestic household accounts go
+  from 1,584 to 1,900. A pooled place's accounts are found in the capture's own witness of the opening, not by
+  `household_principal`, which knows the two detailed counties only.
+- **Each county's jobs are dealt to its bands by pay** (Task 10, `6cef2b9e2`, `af3eb6b46`, `02773c3ca`): working
+  owners first, then employees from the best county wage down, in whole persons. In Wayne the better-paid forty hold
+  202,903 households; the County Review's own roster, which ranks by wage tax paid, counts 280,236 in its "next 40%":
+  two cuts with two sets of words. With the bands the staffing members are 23,281 and the members with seekers'
+  rows 94,416, against the bound of 131,072. The sentinel check has to be read for errors, not for its exit code: a
+  builder took three errors of its own for the 238 older warnings.
+- **The country with bands, all six rules and benefits stopped at period 32** (Task 10b, `0631c4481`): the engine
+  refused the next state, `PurchaseInvariant` at the finish. The lead replayed it twice with prints in the engine.
+  At the close of period 32 a shop's first good rested under its cost; the owner's restart raised it from $86.432156
+  to $86.882156 and wrote that price onto both of the shop's offers. The second good stood at $324.432156 with a
+  minimum of $93.432156, so its offer left its own range. From period 27 to 32 there were 194 raises at shops with
+  two offers, and 32 of them overwrote a second good's price that differed from the first's. The country's shops
+  sell two goods, food and materials, in the shipped opening and in the twelve trades alike; every measured small
+  world's seller sells one, which is why no earlier test met it.
+- **The mend** (Task 10c, `cf5a69930`): a raise of a resting price is of one product, capped by that product's own
+  offer and written to that product's rows. The fifteen long tests of the measured small worlds pass with no value
+  changed, and no pinned digest of the bench moved (the pin holds five periods). With it the same run closes all 34
+  periods.
+- **The bench reads the bands** (Task 10d, `a6187d979` and `68318cd53`): `bands-opening.json` holds, for the nation
+  and each of the 187 places, each band's accounts, households, persons, persons at work and looking, and its wage
+  bill; a twelve-trade record holds each period what each band has at work, is paid in wages and benefits, and
+  holds in money. Three sums are checked every period. The task's own expectation was wrong: it read a band's pay
+  as its wage bill over ALL its persons at work, and by that count Wayne's owners earned $22.91 an hour, under the
+  lower-paid half.
+- **The reviews' small notes are closed** (Task 11, `028f38ae2` and `a9059d619`): 26 items, none changing
+  behaviour. The twelve-trade places are pinned at 316 (a pooled place is kept in up to two parts, by its
+  counties' share of people looking for work). One note is left for a later pass: `coarsen_source_allocation` is
+  still about 260 lines.
+- **Who is paid a wage** (Task 11b, `7ea57304a`): the record counts the persons paid a wage. In the nation
+  16,052,757 of the owners' band's 25,091,045 persons at work draw no wage: they work in their own business. Of
+  those paid a wage, the owners' band earns $53.87 an hour, the better-paid forty $42.80 and the lower-paid half
+  $26.60; in Wayne $52.53, $44.91 and $28.99. The owners' wage earners are paid at least the better-paid forty in
+  every one of the 187 places, and the forty at least the half.
+- **The owner's restart reads a shop good by good** (Task 12, `3634cdb8a`): a shop has a line for each good it
+  handles, and each line is tested on its own good: its own cost (the shop's hours and its supplier's posted
+  price), its own price and what was turned away of it. The plan and the earnings are sums over the goods that pay;
+  a good that cannot be had or does not pay is left out; a shop none of whose goods pays fails. Every resting good
+  with a line is raised to its own cost, and the raise's receipt names its product. A maker and a shop of one good
+  take the old arithmetic in the old order: the fifteen long tests pass with no value changed and no pinned digest
+  of the bench moved. The contract's two paragraphs on the resting price and the restart say what is built, with
+  the Director's ruling on public providers (ADR325). Four records were made again and all close 34 periods. In the
+  shipped country the raises over the run go from 33,250 to 33,260 and the restarts stay 490. In the twelve trades
+  with the six rules the raises go from 40,365 to 41,216 and the restarts from 434 to 377; with benefits from
+  41,438 to 42,109 and from 408 to 392 (the earlier figures were recorded before Tasks 10d and 11).
+- **Why the country falls at once, counted at the end** (the lead, 26 November, from the compiled opening's own
+  rows; no task): two things beside the scenario's numbers. The compiler gives every buyer one seller of each
+  product, the largest workplace of the trade in its place, and a place has several: 39.5% of the workers in trades
+  that have buyers are at workplaces nobody is given to buy from (household services 64.3%, public provision
+  62.4%). And the sellers that do have buyers cannot pay for their first period: a company takes a tenth of its
+  workplaces' cash above one payroll at the opening, and a workplace may buy its service input only with cash above
+  one payroll once the period's wages are set aside. That stops 644 workplaces with 54.6 million workers, among
+  them every seller of business services that has a buyer. The Director ruled the sweep out on 20 November and no
+  scenario took it up. Both are mended first in stage 5
+  (`docs/superpowers/plans/2026-11-25-opening-stage-5-the-countrys-numbers.md`, Tasks 7a to 7d), and
+  `reports/country-opening-2026-11/README.md` has the counts.
+- **Left for a later pass,** from the reviews of the last three tasks: `coarsen_source_allocation` is still about
+  260 lines; the bands test counts the persons paid a wage by its own copy of the recorder's rule; the restart's
+  test `a_resting_second_good_raises_nothing` now passes for another reason than the one it was written for (its
+  second good stands above its new cost), and `every_resting_good_is_raised_to_its_own_cost` covers the behaviour;
+  a maker with no cost is no longer asked for its capacity before it is left out, which matters only on a broken
+  capacity table.

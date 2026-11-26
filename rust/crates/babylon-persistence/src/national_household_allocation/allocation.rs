@@ -47,10 +47,12 @@ pub(super) fn allocate_county(
         let upper = owners(
             c.with_historical_earnings_households,
             owner_bps.checked_add(next).ok_or(Error::Arithmetic)?,
-        )?
-        .max(with_owners);
-        h[6] = upper - with_owners;
-        h[5] = c.with_historical_earnings_households - upper;
+        )?;
+        h[6] = upper.checked_sub(with_owners).ok_or(Error::Arithmetic)?;
+        h[5] = c
+            .with_historical_earnings_households
+            .checked_sub(upper)
+            .ok_or(Error::Arithmetic)?;
     } else {
         h[0] = rest;
     }

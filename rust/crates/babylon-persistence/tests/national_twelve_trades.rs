@@ -19,7 +19,7 @@ use babylon_persistence::{
     national_cohorts, national_counties, national_household_time_allocation, national_households,
     national_resident_allocation, national_resident_workforce, national_trade_pay,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use uuid::Uuid;
 
@@ -585,60 +585,87 @@ const BAND_KEYS: [HouseholdBudgetKey; 3] = [
 #[test]
 fn every_place_has_three_earning_accounts() {
     let catalog = captured();
-    let rows = &catalog.opening().households;
-    let accounts: BTreeMap<_, _> = rows.iter().map(|row| (row.principal_id, row)).collect();
-    let locations: BTreeSet<_> = rows.iter().map(|row| row.location).collect();
-    let mut places = 0_u64;
-    for location in locations {
-        let has =
-            |key| accounts.contains_key(&national_economy::household_principal(location, key));
-        assert!(
-            !has(HouseholdBudgetKey::EarningNonowner),
-            "{location:?} makes no account of the schema 7 band"
-        );
-        if matches!(location, EconomicLocation::County(_)) && BAND_KEYS.iter().any(|k| has(*k)) {
-            places += 1;
-            for key in BAND_KEYS {
-                assert!(has(key), "{location:?} lacks the account {key:?}");
-            }
-        }
-    }
-    assert_ne!(places, 0);
+    let accounts: BTreeMap<_, _> = catalog
+        .opening()
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row))
+        .collect();
+    let witness = catalog
+        .national_generation()
+        .expect("the generation witness");
+    // Each county's financial domain, as the capture itself recorded it.
+    let domain_of: BTreeMap<CountyGeoid, String> = witness
+        .counties
+        .iter()
+        .map(|c| (c.controls.county, format!("{:?}", c.destination)))
+        .collect();
     let budgets = household_budgets();
-    let donor = catalog
+    let donors = &catalog
         .national_aid_capture()
         .expect("the aid cohorts")
-        .children
-        .first()
-        .expect("the donor")
-        .clone();
-    for code in ["26163", "17031"] {
-        let location = county(code);
-        let row = budgets
-            .county(CountyGeoid::try_from(code).expect("county"))
-            .expect("the county's budgets");
+        .children;
+    // domain -> key -> (account principal, households its member counties' budget rows sum to)
+    let mut domains: BTreeMap<String, BTreeMap<HouseholdBudgetKey, (_, u64)>> = BTreeMap::new();
+    for row in &witness.household_incidence {
+        let key = row.margins.key;
+        let from_budgets = budgets
+            .county(row.county)
+            .expect("the county's budgets")
+            .budgets()
+            .iter()
+            .find(|budget| budget.key == key)
+            .map_or(0, |budget| budget.households);
+        assert_eq!(
+            row.margins.households, from_budgets,
+            "{:?} {key:?}",
+            row.county
+        );
+        let domain = domain_of
+            .get(&row.county)
+            .expect("every county has a domain");
+        let entry = domains
+            .entry(domain.clone())
+            .or_default()
+            .entry(key)
+            .or_insert((row.destination, 0));
+        assert_eq!(entry.0, row.destination, "one account for {domain} {key:?}");
+        entry.1 += from_budgets;
+    }
+    let mut places = 0_u64;
+    for (domain, keys) in &domains {
+        assert!(
+            !keys.contains_key(&HouseholdBudgetKey::EarningNonowner),
+            "{domain} makes no account of the schema 7 band"
+        );
+        if !BAND_KEYS.iter().any(|k| keys.contains_key(k)) {
+            continue;
+        }
+        places += 1;
         for key in BAND_KEYS {
+            let (principal, counted) = keys
+                .get(&key)
+                .unwrap_or_else(|| panic!("{domain} lacks the account {key:?}"));
             let account = accounts
-                .get(&national_economy::household_principal(location, key))
-                .expect("the account exists");
-            let carved = if code == "26163" && key == donor.budget {
-                donor.households
-            } else {
-                0
-            };
-            let counted = row
-                .budgets()
+                .get(principal)
+                .unwrap_or_else(|| panic!("{domain} {key:?} has no opening account"));
+            let carved: u64 = donors
                 .iter()
-                .find(|budget| budget.key == key)
-                .map_or(0, |budget| budget.households);
-            assert_eq!(account.households + carved, counted, "{code} {key:?}");
+                .filter(|d| d.parent == *principal)
+                .map(|d| d.households)
+                .sum();
+            assert_eq!(account.households + carved, *counted, "{domain} {key:?}");
         }
     }
+    assert!(
+        places > 100,
+        "every pooled place and each detailed county: {places}"
+    );
 }
 
 #[test]
 fn the_aid_donor_comes_from_the_lower_paid_half() {
-    let catalog = captured();
+    let catalog = campaign_catalog();
     let aid = catalog.national_aid_capture().expect("the aid cohorts");
     let donor = aid.children.first().expect("the donor is the first child");
     assert_eq!(donor.budget, HouseholdBudgetKey::EarningLowerPaidHalf);
@@ -648,5 +675,24 @@ fn the_aid_donor_comes_from_the_lower_paid_half() {
             donor.location,
             HouseholdBudgetKey::EarningLowerPaidHalf
         )
+    );
+    // Its one employing site is the organizer's workplace.
+    let opening = catalog.opening();
+    let employed: Vec<_> = opening
+        .employment
+        .iter()
+        .filter(|term| term.payee == donor.principal)
+        .collect();
+    assert_eq!(employed.len(), 1);
+    let site = opening
+        .sites
+        .iter()
+        .find(|site| site.site_id == employed[0].site_id)
+        .expect("the donor's site");
+    let organizer = catalog.organizer_config().expect("the organizer");
+    assert_eq!(organizer.workplace_label, site.label);
+    assert_eq!(
+        organizer.workplace_process_id,
+        site.processes[0].process_id.as_bytes()
     );
 }

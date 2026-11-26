@@ -204,9 +204,7 @@ pub fn refine_households(
         }
         if !matches!(
             spec.parent_key,
-            HouseholdBudgetKey::EarningNonowner
-                | HouseholdBudgetKey::EarningLowerPaidHalf
-                | HouseholdBudgetKey::NoEarnerNonowner
+            HouseholdBudgetKey::EarningNonowner | HouseholdBudgetKey::NoEarnerNonowner
         ) {
             return Err(HouseholdRefinementError::ParentScope);
         }

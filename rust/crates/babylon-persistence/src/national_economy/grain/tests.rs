@@ -685,6 +685,7 @@ fn incomplete_county_membership_is_refused_before_source_expansion() {
         crate::national_resident_workforce::national_resident_workforce_reference()
             .expect("classes"),
         policy.households.private_owner_households_bps,
+        policy.households.next_forty_households_bps,
     )
     .expect("source household allocation");
     let source = ResidentWorkplaceAllocation {

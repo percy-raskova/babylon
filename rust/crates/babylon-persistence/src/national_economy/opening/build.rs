@@ -167,6 +167,7 @@ pub fn build_national_opening(
         household_margins,
         residents,
         policy.households.private_owner_households_bps,
+        policy.households.next_forty_households_bps,
     )
     .map_err(NationalOpeningError::Households)?;
     let time_controls =

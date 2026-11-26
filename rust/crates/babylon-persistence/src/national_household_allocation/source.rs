@@ -18,6 +18,7 @@ pub fn allocate_households(
     households: &NationalHouseholdReference,
     workforce: &NationalResidentWorkforceReference,
     owner_bps: u16,
+    next_forty_bps: Option<u16>,
 ) -> Result<NationalHouseholdAllocation> {
     if households.counties().len() != counties.counties().len()
         || workforce.counties().len() != counties.counties().len()
@@ -28,11 +29,16 @@ pub fn allocate_households(
     for county in counties.counties() {
         rows.push(CountyHouseholdAllocation {
             county: county.geoid(),
-            budgets: super::allocate_county(controls(county, households, workforce)?, owner_bps)?,
+            budgets: super::allocate_county(
+                controls(county, households, workforce)?,
+                owner_bps,
+                next_forty_bps,
+            )?,
         });
     }
     Ok(NationalHouseholdAllocation {
         private_owner_households_bps: owner_bps,
+        next_forty_households_bps: next_forty_bps,
         county_source_sha256: counties.artifact_sha256(),
         classes_source_sha256: workforce.artifact_sha256(),
         household_source_sha256: households.artifact_sha256(),

@@ -42,6 +42,7 @@ fn prepared(
         national_households::national_household_reference().expect("households"),
         residents,
         policy.households.private_owner_households_bps,
+        policy.households.next_forty_households_bps,
     )
     .expect("household allocation");
     let time = national_household_time_allocation::allocate_household_time(counties, &budgets)

@@ -28,6 +28,7 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
         national_resident_workforce::national_resident_workforce_reference()
             .expect("the workforce reference fixture loads"),
         1_000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     assert_eq!(allocation.counties().len(), 3144);
@@ -118,7 +119,8 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
             margins,
             national_resident_workforce::national_resident_workforce_reference()
                 .expect("the workforce reference fixture loads"),
-            1_000
+            1_000,
+            None,
         )
         .expect("the fixture households fit the authored cohorts")
     );
@@ -135,8 +137,8 @@ fn current_workers_fit_without_rewriting_historical_household_margins() {
         reserve: 3,
         working_owners: 1,
     };
-    let rows =
-        allocation::allocate_county(controls, 1_000).expect("the fixture county allocation fits");
+    let rows = allocation::allocate_county(controls, 1_000, None)
+        .expect("the fixture county allocation fits");
     let earning = rows
         .iter()
         .find(|r| r.key == HouseholdBudgetKey::EarningNonowner)
@@ -177,6 +179,7 @@ fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
             working_owners: 0,
         },
         1_000,
+        None,
     )
     .expect("the fixture county allocation fits");
     assert_eq!(rows.len(), 1);
@@ -201,6 +204,7 @@ fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
             working_owners: 0,
         },
         1_000,
+        None,
     )
     .expect("the fixture county allocation fits");
     assert_eq!(rows.len(), 2);
@@ -222,7 +226,7 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
         working_owners: 0,
     };
     assert_eq!(
-        allocation::allocate_county(controls, 1_000),
+        allocation::allocate_county(controls, 1_000, None),
         Err(HouseholdAllocationError::DesignedAllocationInfeasible)
     );
     let invalid = HouseholdCountyControls {
@@ -235,7 +239,7 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
         working_owners: 0,
     };
     assert_eq!(
-        allocation::allocate_county(invalid, 1_000),
+        allocation::allocate_county(invalid, 1_000, None),
         Err(HouseholdAllocationError::Arithmetic)
     );
 }
@@ -257,6 +261,7 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
             .expect("the household reference fixture loads"),
         classes,
         1_000,
+        None,
     )
     .expect("the fixture households fit the authored cohorts");
     let policy = NationalGamePolicy::parse(include_str!(concat!(
@@ -358,4 +363,92 @@ fn assert_historical_margins(row: &CountyHouseholdAllocation, source: &CountyHou
             .expect("the fixture holds the searched element");
         assert_eq!(owner.households, observed.div_ceil(10));
     }
+}
+
+fn three_band_controls() -> HouseholdCountyControls {
+    HouseholdCountyControls {
+        population: 1_000,
+        household_persons: 950,
+        with_historical_earnings_households: 300,
+        without_historical_earnings_households: 100,
+        employed: 400,
+        reserve: 30,
+        working_owners: 20,
+    }
+}
+
+fn counted(rows: &[HouseholdBudgetAllocation]) -> Vec<(HouseholdBudgetKey, u64, u64, u64, u64)> {
+    rows.iter()
+        .map(|r| (r.key, r.households, r.persons, r.employed, r.reserve))
+        .collect()
+}
+
+#[test]
+fn a_county_splits_its_earners_in_three() {
+    use HouseholdBudgetKey as K;
+    let rows = allocation::allocate_county(three_band_controls(), 1_000, Some(4_000))
+        .expect("the controls fit three bands");
+    assert_eq!(
+        counted(&rows),
+        vec![
+            (K::EarningOwner, 30, 73, 47, 1),
+            (K::NoEarnerNonowner, 90, 196, 0, 10),
+            (K::NoEarnerOwner, 10, 22, 0, 1),
+            (K::CollectiveResidence, 0, 50, 20, 2),
+            (K::EarningLowerPaidHalf, 150, 366, 185, 9),
+            (K::EarningBetterPaidForty, 120, 293, 148, 7),
+        ]
+    );
+    assert_eq!(rows.iter().map(|r| r.persons).sum::<u64>(), 1_000);
+    assert_eq!(rows.iter().map(|r| r.employed).sum::<u64>(), 400);
+    assert_eq!(rows.iter().map(|r| r.reserve).sum::<u64>(), 30);
+}
+
+#[test]
+fn the_same_controls_under_schema_7_are_today() {
+    use HouseholdBudgetKey as K;
+    let rows = allocation::allocate_county(three_band_controls(), 1_000, None)
+        .expect("the controls fit today's two bands");
+    assert_eq!(
+        counted(&rows),
+        vec![
+            (K::EarningNonowner, 270, 659, 333, 16),
+            (K::EarningOwner, 30, 73, 47, 1),
+            (K::NoEarnerNonowner, 90, 196, 0, 10),
+            (K::NoEarnerOwner, 10, 22, 0, 1),
+            (K::CollectiveResidence, 0, 50, 20, 2),
+        ]
+    );
+}
+
+#[test]
+fn one_earning_household_makes_one_band() {
+    use HouseholdBudgetKey as K;
+    let rows = allocation::allocate_county(
+        HouseholdCountyControls {
+            population: 3,
+            household_persons: 3,
+            with_historical_earnings_households: 1,
+            without_historical_earnings_households: 0,
+            employed: 2,
+            reserve: 0,
+            working_owners: 0,
+        },
+        1_000,
+        Some(4_000),
+    )
+    .expect("one household fits");
+    assert_eq!(counted(&rows), vec![(K::EarningOwner, 1, 3, 2, 0)]);
+}
+
+#[test]
+fn a_next_forty_that_leaves_no_lower_half_is_refused() {
+    assert_eq!(
+        allocation::allocate_county(three_band_controls(), 1_000, Some(9_000)),
+        Err(HouseholdAllocationError::Policy)
+    );
+    assert_eq!(
+        allocation::allocate_county(three_band_controls(), 1_000, Some(0)),
+        Err(HouseholdAllocationError::Policy)
+    );
 }

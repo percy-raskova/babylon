@@ -19,7 +19,7 @@ use babylon_persistence::{
     national_cohorts, national_counties, national_household_time_allocation, national_households,
     national_resident_allocation, national_resident_workforce, national_trade_pay,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 use uuid::Uuid;
 
@@ -130,6 +130,7 @@ fn household_budgets() -> NationalHouseholdAllocation {
         national_resident_workforce::national_resident_workforce_reference()
             .expect("the workforce reference loads"),
         1_000,
+        Some(4_000),
     )
     .expect("the households fit the authored cohorts")
 }
@@ -164,7 +165,7 @@ fn the_twelve_trade_source_allocation_fits_its_bounds() {
     assert!(allocation.workplaces.len() <= 131_072);
     assert!(members <= 262_144);
     assert_eq!(allocation.workplaces.len(), 68_281);
-    assert_eq!(members, 111_265);
+    assert_eq!(members, 113_737);
 }
 
 /// The fixture, captured once: every test below reads this one catalog.
@@ -573,4 +574,79 @@ fn the_city_pd_pays_its_payroll_site() {
         positions * i128::from(config.payroll_hours_per_position) * rate.micro_units()
     );
     assert_eq!(config.payroll_hours_per_position, 160);
+}
+
+const BAND_KEYS: [HouseholdBudgetKey; 3] = [
+    HouseholdBudgetKey::EarningOwner,
+    HouseholdBudgetKey::EarningLowerPaidHalf,
+    HouseholdBudgetKey::EarningBetterPaidForty,
+];
+
+#[test]
+fn every_place_has_three_earning_accounts() {
+    let catalog = captured();
+    let rows = &catalog.opening().households;
+    let accounts: BTreeMap<_, _> = rows.iter().map(|row| (row.principal_id, row)).collect();
+    let locations: BTreeSet<_> = rows.iter().map(|row| row.location).collect();
+    let mut places = 0_u64;
+    for location in locations {
+        let has =
+            |key| accounts.contains_key(&national_economy::household_principal(location, key));
+        assert!(
+            !has(HouseholdBudgetKey::EarningNonowner),
+            "{location:?} makes no account of the schema 7 band"
+        );
+        if matches!(location, EconomicLocation::County(_)) && BAND_KEYS.iter().any(|k| has(*k)) {
+            places += 1;
+            for key in BAND_KEYS {
+                assert!(has(key), "{location:?} lacks the account {key:?}");
+            }
+        }
+    }
+    assert_ne!(places, 0);
+    let budgets = household_budgets();
+    let donor = catalog
+        .national_aid_capture()
+        .expect("the aid cohorts")
+        .children
+        .first()
+        .expect("the donor")
+        .clone();
+    for code in ["26163", "17031"] {
+        let location = county(code);
+        let row = budgets
+            .county(CountyGeoid::try_from(code).expect("county"))
+            .expect("the county's budgets");
+        for key in BAND_KEYS {
+            let account = accounts
+                .get(&national_economy::household_principal(location, key))
+                .expect("the account exists");
+            let carved = if code == "26163" && key == donor.budget {
+                donor.households
+            } else {
+                0
+            };
+            let counted = row
+                .budgets()
+                .iter()
+                .find(|budget| budget.key == key)
+                .map_or(0, |budget| budget.households);
+            assert_eq!(account.households + carved, counted, "{code} {key:?}");
+        }
+    }
+}
+
+#[test]
+fn the_aid_donor_comes_from_the_lower_paid_half() {
+    let catalog = captured();
+    let aid = catalog.national_aid_capture().expect("the aid cohorts");
+    let donor = aid.children.first().expect("the donor is the first child");
+    assert_eq!(donor.budget, HouseholdBudgetKey::EarningLowerPaidHalf);
+    assert_eq!(
+        donor.parent,
+        national_economy::household_principal(
+            donor.location,
+            HouseholdBudgetKey::EarningLowerPaidHalf
+        )
+    );
 }

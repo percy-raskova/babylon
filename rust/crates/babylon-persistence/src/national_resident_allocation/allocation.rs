@@ -185,6 +185,8 @@ pub fn allocate_home_county(
         || household_budgets.classes_source_sha256 != classes.artifact_sha256()
         || household_budgets.private_owner_households_bps
             != policy.households.private_owner_households_bps
+        || household_budgets.next_forty_households_bps
+            != policy.households.next_forty_households_bps
     {
         return Err(AllocationError::SourceScope);
     }

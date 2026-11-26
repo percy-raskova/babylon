@@ -15,10 +15,12 @@ use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWo
 use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
 use babylon_persistence::national_household_allocation::{self, NationalHouseholdAllocation};
 use babylon_persistence::national_household_refinement::{self, NationalHouseholdLeafRoster};
+use babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation;
 use babylon_persistence::{
     national_cohorts, national_counties, national_household_time_allocation, national_households,
     national_resident_allocation, national_resident_workforce, national_trade_pay,
 };
+use babylon_practice_contract::{self, Band, Roster};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use uuid::Uuid;
@@ -698,9 +700,8 @@ fn the_aid_donor_comes_from_the_lower_paid_half() {
 }
 
 /// The county-level allocation of the fixture world, made once: who works where, by band.
-fn county_allocation() -> &'static national_resident_allocation::ResidentWorkplaceAllocation {
-    static ALLOCATION: OnceLock<national_resident_allocation::ResidentWorkplaceAllocation> =
-        OnceLock::new();
+fn county_allocation() -> &'static ResidentWorkplaceAllocation {
+    static ALLOCATION: OnceLock<ResidentWorkplaceAllocation> = OnceLock::new();
     ALLOCATION.get_or_init(|| {
         let policy = NationalGamePolicy::parse(std::str::from_utf8(FIXTURE).expect("utf8"))
             .expect("the fixture admits");
@@ -799,10 +800,7 @@ fn the_county_review_sees_three_earning_groups() {
     let roster = review_roster();
     babylon_practice_contract::validate_roster(config, &roster).expect("the roster builds");
     for row in &roster.rows {
-        if matches!(
-            row.key.band,
-            babylon_practice_contract::Band::Top1 | babylon_practice_contract::Band::Next9
-        ) {
+        if matches!(row.key.band, Band::Top1 | Band::Next9) {
             assert!(
                 config.groups[row.key.group as usize].has_ownership_income,
                 "{} has no ownership income",
@@ -813,7 +811,7 @@ fn the_county_review_sees_three_earning_groups() {
 }
 
 /// The county review's roster, from a campaign captured afresh: the foundation takes its catalog.
-fn review_roster() -> babylon_practice_contract::Roster {
+fn review_roster() -> Roster {
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
     let input = economic_catalog::national_catalog_input_for(FIXTURE).expect("the fixture parses");
     CapturedEconomicCatalog::capture_national_campaign(
@@ -836,7 +834,6 @@ fn review_roster() -> babylon_practice_contract::Roster {
 
 #[test]
 fn the_review_and_the_accounts_use_their_own_words() {
-    use babylon_practice_contract::{band_label, Band};
     let catalog = campaign_catalog();
     let config = catalog.county_review_config().expect("the county review");
     let roster = review_roster();
@@ -857,7 +854,7 @@ fn the_review_and_the_accounts_use_their_own_words() {
         }
     }
     for band in [Band::Top1, Band::Next9, Band::Next40, Band::Bottom50] {
-        assert!(!band_label(band).contains("paid"));
+        assert!(!babylon_practice_contract::band_label(band).contains("paid"));
     }
 }
 

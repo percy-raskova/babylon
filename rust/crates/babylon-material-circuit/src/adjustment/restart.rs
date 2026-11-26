@@ -214,8 +214,8 @@ struct OfferTables {
     own_top: BTreeMap<Product, i128>,
     /// The highest price of each good among all its sellers.
     top: BTreeMap<(GoodId, UnitId), i128>,
-    /// The lowest `maximum` among a site's offers whose pricing has a range.
-    ceiling: BTreeMap<SiteId, i128>,
+    /// The lowest `maximum` among the offers of each product whose pricing has a range.
+    ceiling: BTreeMap<Product, i128>,
 }
 
 impl OfferTables {
@@ -242,7 +242,7 @@ impl OfferTables {
             {
                 let ceiling = tables
                     .ceiling
-                    .entry(offer.site_id)
+                    .entry(product)
                     .or_insert(maximum.micro_units());
                 *ceiling = (*ceiling).min(maximum.micro_units());
             }
@@ -616,29 +616,44 @@ fn workplaces(state: &MaterialCircuitState) -> Result<BTreeSet<SiteId>> {
 }
 
 /// Step (b): a price that rested at this close and stands under one unit's cost is raised to that cost, or to
-/// the lowest ceiling of the site's offers when that is lower; a provider funded by a grant is left alone. The
-/// period's price and service market receipts get the new price, and each raise has a receipt. Whether any
+/// the lowest ceiling of that product's offers when that is lower; a provider funded by a grant is left alone.
+/// A resting price is a seller's price of one product: a site is raised only when the product the restart
+/// reads it by is itself the one that rested, and only that product's rows are written. The period's price
+/// and service market receipts of the product get the new price, and each raise has a receipt. Whether any
 /// price moved.
 fn raise_resting_prices(
     catalog: &MaterialCatalog,
     transition: &mut MaterialCircuitTransition,
     tables: &CloseTables,
 ) -> Result<bool> {
-    let rested: BTreeSet<SiteId> = transition
+    let rested: BTreeSet<Product> = transition
         .adjustments
         .iter()
         .filter_map(|row| match row {
-            AdjustmentReceipt::RestingPrice(RestingPriceReceipt { site_id, .. }) => Some(*site_id),
+            AdjustmentReceipt::RestingPrice(RestingPriceReceipt {
+                site_id,
+                good_id,
+                unit_id,
+                ..
+            }) => Some((*site_id, *good_id, *unit_id)),
             _ => None,
         })
         .collect();
+    let sites: BTreeSet<SiteId> = rested.iter().map(|&(site, _, _)| site).collect();
     let closing = transition.state.period;
     let next_period = closing
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let mut lifts = Vec::new();
-    for site in rested {
+    for site in sites {
         if tables.ledger.granted.contains(&site) {
+            continue;
+        }
+        let Some((good, unit)) = product_of(tables, site) else {
+            continue;
+        };
+        let product = (site, good, unit);
+        if !rested.contains(&product) {
             continue;
         }
         let rate = rate_of(tables, site);
@@ -652,10 +667,10 @@ fn raise_resting_prices(
             let unit = tables
                 .offers
                 .ceiling
-                .get(&site)
+                .get(&product)
                 .map_or(unit, |ceiling| unit.min(*ceiling));
             if unit > output.price {
-                lifts.push((site, output.price, unit));
+                lifts.push((product, output.price, unit));
             }
         }
     }
@@ -663,11 +678,12 @@ fn raise_resting_prices(
     Ok(!lifts.is_empty())
 }
 
-/// Write each raise: the offers of the site, the period's price and service market receipts, and the raise's own
-/// receipt, in the order of the sites. Each site is raised once, so the rows of a site are found once.
+/// Write each raise: the offers of the product, the period's price and service market receipts of the product,
+/// and the raise's own receipt, in the order of the sites. Each site is raised once, so the rows of a site are
+/// found once; the site's other goods keep their prices.
 fn apply_lifts(
     transition: &mut MaterialCircuitTransition,
-    lifts: &[(SiteId, i128, i128)],
+    lifts: &[(Product, i128, i128)],
     closing: u64,
 ) {
     if lifts.is_empty() {
@@ -684,20 +700,29 @@ fn apply_lifts(
     };
     let at_prices = positions(&transition.prices, |row| row.site_id);
     let at_markets = positions(&transition.service_markets, |row| row.site_id);
-    for &(site, old, unit) in lifts {
+    for &((site, good, unit_of), old, unit) in lifts {
         let raised = Currency::from_micro_units(unit);
         if let CircuitAccounting::Monetary(economy) = &mut transition.state.accounting {
             if let Some(recurring) = economy.recurring.as_mut() {
                 for &at in rows_at(&at_offers, &site) {
-                    recurring.offers[at].unit_price = raised;
+                    let offer = &mut recurring.offers[at];
+                    if (offer.good_id, offer.unit_id) == (good, unit_of) {
+                        offer.unit_price = raised;
+                    }
                 }
             }
         }
         for &at in rows_at(&at_prices, &site) {
-            transition.prices[at].next_price = raised;
+            let row = &mut transition.prices[at];
+            if (row.good_id, row.unit_id) == (good, unit_of) {
+                row.next_price = raised;
+            }
         }
         for &at in rows_at(&at_markets, &site) {
-            transition.service_markets[at].next_price = raised;
+            let row = &mut transition.service_markets[at];
+            if (row.good_id, row.unit_id) == (good, unit_of) {
+                row.next_price = raised;
+            }
         }
         transition
             .adjustments
@@ -1281,10 +1306,11 @@ mod tests {
         use crate::{
             AdjustmentRule, AidBook, CapacityReservations, CapacitySupply, CommodityDefinition,
             CommodityKind, CorridorId, EmploymentTerms, FinancialInstitutions,
-            HouseholdTimeAccounting, LaborCompensation, LogisticsNodeId, MarketClearingPolicy,
-            MaterialCatalogDefinition, MemberLaborCapacityRow, MerchantHandling,
-            MerchantHandlingCoefficient, MerchantRole, MonetaryBook, OwnershipClaim,
-            ReplenishmentPolicy, SellerOffer, ServiceStage, SiteLogisticsNode, StaffingMemberId,
+            GoodsPriceCostEvidence, HouseholdTimeAccounting, LaborCompensation, LogisticsNodeId,
+            MarketClearingPolicy, MaterialCatalogDefinition, MemberLaborCapacityRow,
+            MerchantHandling, MerchantHandlingCoefficient, MerchantRole, MonetaryBook,
+            OwnershipClaim, PriceDecision, PriceReceipt, ReplenishmentPolicy, SellerOffer,
+            ServiceStage, SiteLogisticsNode, StaffingMemberId,
         };
 
         const STOPPED: u32 = 2_500;
@@ -1632,6 +1658,187 @@ mod tests {
                 .filter(|row| matches!(row, AdjustmentReceipt::RestingPriceToCost(_)))
                 .count();
             assert_eq!(raises, 0, "no raise of a price");
+            Ok(())
+        }
+
+        fn second_good() -> GoodId {
+            GoodId::from_bytes([5; 32])
+        }
+
+        fn responsive(minimum: i128, maximum: i128) -> PricePolicy {
+            PricePolicy::Responsive {
+                minimum: Currency::from_micro_units(minimum),
+                maximum: Currency::from_micro_units(maximum),
+                step: Currency::from_micro_units(dollars(1)),
+                target_stock: 0,
+            }
+        }
+
+        /// Two merchants. The first handles two goods, A (the fixture's good) first and B second, each with a
+        /// `Responsive` offer; the second sells A at $3, so that A costs the first one $1 of hours plus $3.
+        /// `b` is B's price, minimum and maximum; `a_maximum` is A's maximum.
+        fn two_goods(
+            a_maximum: i128,
+            b: (i128, i128, i128),
+        ) -> Result<(MaterialCatalog, MaterialCircuitTransition)> {
+            let mut definition = catalog(2).into_definition();
+            definition.commodities.push(CommodityDefinition {
+                good_id: second_good(),
+                unit_id: unit(),
+                kind: CommodityKind::Storable { grams_per_unit: 1 },
+            });
+            definition
+                .commodities
+                .sort_by_key(|row| (row.good_id, row.unit_id));
+            definition
+                .handling_coefficients
+                .push(MerchantHandlingCoefficient {
+                    site_id: workplace(1),
+                    good_id: second_good(),
+                    unit_id: unit(),
+                    hours_per_unit: 1,
+                });
+            let catalog = MaterialCatalog::try_new(definition)?;
+            let mut state = state(2);
+            let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                panic!("the fixture is monetary");
+            };
+            let recurring = economy
+                .recurring
+                .as_mut()
+                .expect("the fixture is recurring");
+            let (price, minimum, maximum) = b;
+            recurring.offers[0].unit_price = Currency::from_micro_units(dollars(2));
+            recurring.offers[0].pricing = responsive(dollars(1), a_maximum);
+            recurring.offers.push(SellerOffer {
+                site_id: workplace(1),
+                good_id: second_good(),
+                unit_id: unit(),
+                unit_price: Currency::from_micro_units(price),
+                pricing: responsive(minimum, maximum),
+            });
+            Ok((catalog, transition(state)))
+        }
+
+        fn rested(good: GoodId, price: i128) -> AdjustmentReceipt {
+            AdjustmentReceipt::RestingPrice(RestingPriceReceipt {
+                period: 1,
+                site_id: workplace(1),
+                good_id: good,
+                unit_id: unit(),
+                price: Currency::from_micro_units(price),
+            })
+        }
+
+        /// The price receipts of both goods of the first merchant, as the close wrote them.
+        fn price_rows(transition: &mut MaterialCircuitTransition) {
+            for (good, price) in [(good(), dollars(2)), (second_good(), dollars(20))] {
+                transition.prices.push(PriceReceipt {
+                    period: 1,
+                    site_id: workplace(1),
+                    good_id: good,
+                    unit_id: unit(),
+                    old_price: Currency::from_micro_units(price),
+                    next_price: Currency::from_micro_units(price),
+                    unserved_quantity: 0,
+                    closing_stock: 0,
+                    reason: PriceDecision::Hold,
+                    cost: GoodsPriceCostEvidence::unavailable(),
+                });
+            }
+        }
+
+        fn offer_price(transition: &MaterialCircuitTransition, good: GoodId) -> Result<i128> {
+            let (_, recurring) = economy_of(&transition.state)?;
+            Ok(recurring
+                .offers
+                .iter()
+                .find(|row| row.site_id == workplace(1) && row.good_id == good)
+                .map(|row| row.unit_price.micro_units())
+                .expect("the offer stands"))
+        }
+
+        fn price_row(transition: &MaterialCircuitTransition, good: GoodId) -> i128 {
+            transition
+                .prices
+                .iter()
+                .find(|row| row.good_id == good)
+                .map(|row| row.next_price.micro_units())
+                .expect("the receipt stands")
+        }
+
+        fn raises(transition: &MaterialCircuitTransition) -> Vec<(i128, i128)> {
+            transition
+                .adjustments
+                .iter()
+                .filter_map(|row| match row {
+                    AdjustmentReceipt::RestingPriceToCost(receipt) => {
+                        Some((receipt.old.micro_units(), receipt.raised.micro_units()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn raise(
+            catalog: &MaterialCatalog,
+            transition: &mut MaterialCircuitTransition,
+        ) -> Result<bool> {
+            let tables = CloseTables::build(catalog, transition)?;
+            raise_resting_prices(catalog, transition, &tables)
+        }
+
+        #[test]
+        fn a_raise_leaves_the_other_goods_of_a_shop() -> Result<()> {
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            price_rows(&mut transition);
+            transition.adjustments.push(rested(good(), dollars(2)));
+            assert!(raise(&catalog, &mut transition)?);
+            // A costs $1 of hours and $3 of its supplier's price.
+            assert_eq!(offer_price(&transition, good())?, dollars(4));
+            assert_eq!(price_row(&transition, good()), dollars(4));
+            assert_eq!(offer_price(&transition, second_good())?, dollars(20));
+            assert_eq!(price_row(&transition, second_good()), dollars(20));
+            assert_eq!(raises(&transition), vec![(dollars(2), dollars(4))]);
+            // Every offer of the shop stays inside its own range.
+            let (_, recurring) = economy_of(&transition.state)?;
+            for offer in &recurring.offers {
+                if let PricePolicy::Responsive {
+                    minimum, maximum, ..
+                } = offer.pricing
+                {
+                    assert!(minimum <= offer.unit_price && offer.unit_price <= maximum);
+                }
+            }
+            Ok(())
+        }
+
+        #[test]
+        fn a_resting_second_good_raises_nothing() -> Result<()> {
+            let (catalog, mut transition) =
+                two_goods(dollars(100), (dollars(20), dollars(10), dollars(500)))?;
+            price_rows(&mut transition);
+            transition
+                .adjustments
+                .push(rested(second_good(), dollars(20)));
+            assert!(!raise(&catalog, &mut transition)?);
+            assert_eq!(offer_price(&transition, good())?, dollars(2));
+            assert_eq!(offer_price(&transition, second_good())?, dollars(20));
+            assert_eq!(raises(&transition).len(), 0);
+            Ok(())
+        }
+
+        #[test]
+        fn a_raise_is_capped_by_its_own_offer() -> Result<()> {
+            // B's maximum is below A's cost of $4; A's own maximum is above it.
+            let (catalog, mut transition) =
+                two_goods(dollars(5), (dollars(3), dollars(1), dollars(3) + 500_000))?;
+            price_rows(&mut transition);
+            transition.adjustments.push(rested(good(), dollars(2)));
+            assert!(raise(&catalog, &mut transition)?);
+            assert_eq!(offer_price(&transition, good())?, dollars(4));
+            assert_eq!(raises(&transition), vec![(dollars(2), dollars(4))]);
             Ok(())
         }
 

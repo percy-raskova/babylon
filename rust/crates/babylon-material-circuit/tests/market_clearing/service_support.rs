@@ -5,9 +5,9 @@ use super::support::{self, Product};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
-    AccountId, AidBook, AttendancePlan, CapacityReservations, CapacityRow, CapacitySupply,
-    CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, EmploymentTerms,
-    FinalDemandPrincipal, FinalDemandPrincipalId, FinancialInstitutions, GoodId,
+    AccountId, AdjustmentRule, AidBook, AttendancePlan, CapacityReservations, CapacityRow,
+    CapacitySupply, CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind,
+    EmploymentTerms, FinalDemandPrincipal, FinalDemandPrincipalId, FinancialInstitutions, GoodId,
     HistoricalCostBook, HouseholdCohort, HouseholdKind, HouseholdNeed, HouseholdNeedBasis,
     HouseholdPurchasePolicy, HouseholdTimeAccounting, HouseholdWant, InputOutputCoefficient,
     LaborCapacityRow, LaborCoefficient, LaborCompensation, LogisticsNodeId, MarketClearingPolicy,
@@ -32,6 +32,13 @@ pub(crate) const BUSINESS: u8 = 4;
 const PUBLIC_PROVIDER: u8 = 6;
 /// The payee of every wage.
 const PAYEE: u8 = 99;
+/// The second provider of the utility, when a fixture has one.
+const SECOND: u8 = 7;
+
+/// The posted price of the second provider's utility.
+pub(crate) fn second_posted() -> Currency {
+    support::dollars(6)
+}
 
 pub(crate) fn account(index: u8) -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([10 + index; 32])
@@ -89,6 +96,14 @@ pub(crate) struct ServiceFixture {
     /// Put the public service in the utility stage, ahead of the local service's market, instead of
     /// the local stage where it shares a stage with the local service.
     pub public_in_utility_stage: bool,
+    /// The batches the business plans, each taking one unit of utility.
+    pub business_batches: u64,
+    /// A second provider of the utility with this capacity: the business then holds a row at each provider.
+    pub second_utility: Option<u64>,
+    /// The caps of the business's rows at the first and the second provider.
+    pub business_caps: (u64, u64),
+    /// The adjustments the catalog's policy asks for.
+    pub adjustments: Vec<AdjustmentRule>,
 }
 
 impl ServiceFixture {
@@ -107,6 +122,10 @@ impl ServiceFixture {
             keep_fixed: false,
             household_wants: vec![],
             public_in_utility_stage: false,
+            business_batches: 100,
+            second_utility: None,
+            business_caps: (70, 30),
+            adjustments: vec![],
         }
     }
 
@@ -153,11 +172,12 @@ impl ServiceFixture {
         }
     }
 
-    /// The business's process: a hundred batches that each take one unit of utility.
-    const BUSINESS_BATCHES: u64 = 100;
-
     fn process(service: u8) -> ProcessId {
         ProcessId::from_bytes([provider(service) + 40; 32])
+    }
+
+    fn second_process() -> ProcessId {
+        ProcessId::from_bytes([SECOND + 40; 32])
     }
 
     fn business_process() -> ProcessId {
@@ -177,7 +197,10 @@ impl ServiceFixture {
             })
             .collect();
         if self.business.is_some() {
-            rows.push((BUSINESS, Self::business_process(), Self::BUSINESS_BATCHES));
+            rows.push((BUSINESS, Self::business_process(), self.business_batches));
+        }
+        if let Some(capacity) = self.second_utility {
+            rows.push((SECOND, Self::second_process(), capacity));
         }
         rows
     }
@@ -210,6 +233,15 @@ impl ServiceFixture {
                 quantity_per_batch: 1,
             })
             .collect();
+        if self.second_utility.is_some() {
+            process_outputs.push(ProcessOutput {
+                process_id: Self::second_process(),
+                site_id: support::site(SECOND),
+                good_id: support::good(UTILITY),
+                unit_id: support::units(),
+                quantity_per_batch: 1,
+            });
+        }
         let mut input_coefficients = vec![];
         let mut service_inputs = vec![];
         if self.business.is_some() {
@@ -236,10 +268,29 @@ impl ServiceFixture {
                 provider_site_id: support::site(UTILITY),
                 good_id: support::good(UTILITY),
                 unit_id: support::units(),
-                quantity_per_period: 100,
-                maximum_purchase: 100,
+                quantity_per_period: if self.second_utility.is_some() {
+                    self.business_caps.0
+                } else {
+                    100
+                },
+                maximum_purchase: if self.second_utility.is_some() {
+                    self.business_caps.0
+                } else {
+                    100
+                },
                 cash_floor: support::money(0),
             });
+            if self.second_utility.is_some() {
+                service_inputs.push(ServiceInputPolicy {
+                    buyer_site_id: support::site(BUSINESS),
+                    provider_site_id: support::site(SECOND),
+                    good_id: support::good(UTILITY),
+                    unit_id: support::units(),
+                    quantity_per_period: self.business_caps.1,
+                    maximum_purchase: self.business_caps.1,
+                    cash_floor: support::money(0),
+                });
+            }
         }
         let mut household_needs = vec![];
         for (index, wants) in self.wants.iter().enumerate() {
@@ -260,7 +311,7 @@ impl ServiceFixture {
                 .as_ref()
                 .map(|order| MarketClearingPolicy {
                     plans_from_spare_money: false,
-                    adjustments: Vec::new(),
+                    adjustments: self.adjustments.clone(),
                     paying_order: order
                         .iter()
                         .map(|&g| (support::good(g), support::units()))
@@ -314,6 +365,7 @@ impl ServiceFixture {
         }
     }
 
+    #[allow(clippy::too_many_lines, reason = "a fixture builds its whole economy")]
     fn recurring(&self) -> RecurringEconomy {
         let mut households = vec![];
         let mut purchases = vec![];
@@ -358,6 +410,23 @@ impl ServiceFixture {
                 ),
             })
             .collect();
+        if self.second_utility.is_some() {
+            offers.push(SellerOffer {
+                site_id: support::site(SECOND),
+                good_id: support::good(UTILITY),
+                unit_id: support::units(),
+                unit_price: second_posted(),
+                pricing: support::held(
+                    &PricePolicy::Fixed,
+                    self.paying_order.as_deref(),
+                    self.keep_fixed.into(),
+                    UTILITY,
+                    second_posted(),
+                    Product::Service,
+                ),
+            });
+            offers.sort_by_key(|o| (o.site_id, o.good_id, o.unit_id));
+        }
         if self.business.is_some() {
             // The business sells what it makes at a price that covers the utility many times over,
             // so its limit (P5) never binds in these tests.
@@ -389,7 +458,12 @@ impl ServiceFixture {
                 .map(|&(id, process, hours)| ProductionDemandPolicy {
                     process_id: process,
                     site_id: support::site(id),
-                    output_buffer: 0,
+                    // A business that is bound keeps a stock twice its batches, so it plans them again after making them.
+                    output_buffer: if id == BUSINESS && !self.adjustments.is_empty() {
+                        2 * hours
+                    } else {
+                        0
+                    },
                     planned_batches: hours,
                 })
                 .collect(),
@@ -425,6 +499,14 @@ impl ServiceFixture {
                 good_id: support::good(UTILITY),
                 unit_id: support::units(),
             });
+            if self.second_utility.is_some() {
+                rows.push(ServiceConnection {
+                    provider_site_id: support::site(SECOND),
+                    buyer: AccountId::Site(support::site(BUSINESS)),
+                    good_id: support::good(UTILITY),
+                    unit_id: support::units(),
+                });
+            }
         }
         rows.sort();
         rows

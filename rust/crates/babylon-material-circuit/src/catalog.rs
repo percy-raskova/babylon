@@ -205,7 +205,12 @@ impl MaterialCatalogDefinition {
                     row.principal_id
                 })
                 || crate::transition::has_duplicate(&self.service_inputs, |row| {
-                    (row.buyer_site_id, row.good_id, row.unit_id)
+                    (
+                        row.buyer_site_id,
+                        row.good_id,
+                        row.unit_id,
+                        row.provider_site_id,
+                    )
                 })
                 || crate::transition::has_duplicate(&self.household_needs, |row| {
                     (row.principal_id, row.good_id, row.unit_id)
@@ -470,8 +475,14 @@ impl MaterialCatalogDefinition {
                 .unmet_burdens
                 .sort_by_key(|row| (row.good_id, row.unit_id));
         }
-        self.service_inputs
-            .sort_by_key(|row| (row.buyer_site_id, row.good_id, row.unit_id));
+        self.service_inputs.sort_by_key(|row| {
+            (
+                row.buyer_site_id,
+                row.good_id,
+                row.unit_id,
+                row.provider_site_id,
+            )
+        });
         self.household_needs
             .sort_by_key(|row| (row.principal_id, row.good_id, row.unit_id));
         if let Some(policy) = &mut self.market_clearing {
@@ -490,10 +501,17 @@ mod tests {
         adjustment, AdjustmentRule, FinalDemandPrincipalId, HouseholdNeedBasis, HouseholdWant,
         MarketClearingPolicy, WantTier,
     };
+    use babylon_kernel::currency::Currency;
 
     const PINNED_BASE_DIGEST: [u8; 32] = [
         45, 217, 79, 34, 238, 57, 4, 28, 215, 33, 7, 185, 21, 72, 34, 167, 59, 200, 187, 74, 130,
         172, 93, 155, 160, 7, 158, 178, 154, 209, 170, 125,
+    ];
+
+    /// The digest of the catalog of `buying(&[8])`: one row of one buyer and service.
+    const PINNED_ONE_SERVICE_ROW_DIGEST: [u8; 32] = [
+        3, 158, 156, 57, 81, 248, 134, 151, 240, 154, 104, 124, 31, 122, 112, 123, 42, 222, 158,
+        150, 162, 103, 233, 170, 194, 217, 132, 109, 88, 97, 105, 37,
     ];
 
     /// The digest of a market policy with no wants, as it was before wants existed.
@@ -640,6 +658,44 @@ mod tests {
         assert_eq!(blocks[head + 2..blocks.len() - tail.len()], ones[head..]);
         assert_ne!(ones[head..head + 2], 10_u16.to_be_bytes());
         assert!(!ones.ends_with(&tail));
+    }
+
+    fn buying(providers: &[u8]) -> MaterialCatalogDefinition {
+        let mut definition = base();
+        definition.service_inputs = providers
+            .iter()
+            .map(|&provider| crate::ServiceInputPolicy {
+                buyer_site_id: crate::SiteId::from_bytes([5; 32]),
+                provider_site_id: crate::SiteId::from_bytes([provider; 32]),
+                good_id: good(1),
+                unit_id: unit(1),
+                quantity_per_period: 10,
+                maximum_purchase: 10,
+                cash_floor: Currency::from_micro_units(0),
+            })
+            .collect();
+        definition
+    }
+
+    #[test]
+    fn a_second_row_of_a_provider_is_admitted() {
+        let two = MaterialCatalog::try_new(buying(&[9, 8])).expect("two providers are admitted");
+        let order: Vec<u8> = two
+            .service_inputs
+            .iter()
+            .map(|row| row.provider_site_id.as_bytes()[0])
+            .collect();
+        assert_eq!(order, vec![8, 9], "the rows sort by provider last");
+        assert!(matches!(
+            MaterialCatalog::try_new(buying(&[8, 8])),
+            Err(MaterialCircuitError::DuplicateRow)
+        ));
+    }
+
+    #[test]
+    fn one_row_a_service_keeps_its_bytes() {
+        let catalog = MaterialCatalog::try_new(buying(&[8])).expect("one row is admitted");
+        assert_eq!(catalog.catalog_digest(), PINNED_ONE_SERVICE_ROW_DIGEST);
     }
 
     #[test]

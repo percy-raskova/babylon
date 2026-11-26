@@ -139,7 +139,12 @@ fn validate_policies(
     }
     let mut keys = BTreeSet::new();
     for policy in &catalog.service_inputs {
-        if !keys.insert((policy.buyer_site_id, policy.good_id, policy.unit_id)) {
+        if !keys.insert((
+            policy.buyer_site_id,
+            policy.good_id,
+            policy.unit_id,
+            policy.provider_site_id,
+        )) {
             return Err(MaterialCircuitError::DuplicateRow);
         }
         if policy.cash_floor.micro_units() < 0

@@ -80,6 +80,7 @@ pub(crate) fn requests(
         return Ok(vec![]);
     };
     let requirements = super::input_requirements(catalog, state, false)?;
+    let shares = super::required_inputs(catalog, &requirements)?;
     let mut result = Vec::new();
     for p in &catalog.service_inputs {
         result.push(Request {
@@ -94,7 +95,10 @@ pub(crate) fn requests(
             provider: p.provider_site_id,
             good: p.good_id,
             unit: p.unit_id,
-            requested: super::required_input(&requirements, p),
+            requested: shares
+                .get(&(p.buyer_site_id, p.provider_site_id, p.good_id, p.unit_id))
+                .copied()
+                .unwrap_or(0),
             floor: p.cash_floor,
             tier: None,
         });

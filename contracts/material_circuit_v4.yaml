@@ -159,7 +159,7 @@ catalog_canonical_keys:
   handling_coefficients: [site_id, good_id, unit_id]
   aid_mandates: [id]
   household_time_policy: [principal_id]
-  service_inputs: [buyer_site_id, good_id, unit_id]
+  service_inputs: [buyer_site_id, good_id, unit_id, provider_site_id]
   household_needs: [principal_id, good_id, unit_id]
   household_wants: [principal_id, tier_u8, good_id, unit_id]
 
@@ -241,7 +241,8 @@ market_clearing:
     asks people only for the hours it can work: a maker, the batches its capacity can run, that its service inputs
     can feed (what the provider plans to make, as far as its capacity and its own bound, less what the provider's
     other buyers took in the period that closed, within the policy's caps) and that its money, at the close, pays
-    for, at its wage for the hours of a batch and the provider's posted price for each service input, the money an
+    for, at its wage for the hours of a batch and the provider's posted price for each service input (over several
+    providers, the batches every share allows and the caps' weighted price, rounded up), the money an
     earlier request of the same site took first; a merchant, the handling that the goods it holds or has due need,
     as far as its money pays at its wage; providers are reckoned before their buyers, ties by process id; the
     attendance plan of the next period and the staffing requests are lowered by the cut, planned batches, orders and
@@ -1004,6 +1005,10 @@ period_services:
       are refused.
     - Captured provider-to-site-or-household connections authorize exact service orders; they do not infer
       geography or class.
+    - A buying site may hold one row a provider of a service; its requirement, capped at the rows' caps, is shared
+      over them in proportion to their caps, rounded down, the units left by largest remainder (the lower provider
+      id on a tie), each share capped by its row's maximum. With one row the request is min(requirement, cap,
+      maximum).
     - Service orders have a positive quantity, current-or-future performance period and a matching accepted-price
       monetary reserve.
     - Service offers use Fixed or ServiceResponsive; under a market policy a service in the order of paying is

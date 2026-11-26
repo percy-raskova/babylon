@@ -24,7 +24,7 @@ use crate::{
     AccountId, CashTransferPurpose, CircuitAccounting, FinalDemandPrincipalId, GoodId,
     HistoricalCostBook, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
     MaterialCircuitTransition, MonetaryBook, MonetaryCircuit, MoneyTransferReceipt, PricePolicy,
-    ProcessId, PublicTransferTreatment, RecurringEconomy, SiteId, UnitId,
+    ProcessId, PublicTransferTreatment, RecurringEconomy, ServiceInputPolicy, SiteId, UnitId,
 };
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
@@ -280,8 +280,8 @@ struct PlantTables {
     inputs: BTreeMap<ProcessId, Vec<(GoodId, UnitId, u64)>>,
     /// The handling coefficients of each site: good, unit and hours a unit.
     handling: BTreeMap<SiteId, Vec<(GoodId, UnitId, u64, u64)>>,
-    /// The provider of the first service input of each (buyer, good, unit), and the most it may buy a period.
-    provider: BTreeMap<Product, (SiteId, u64)>,
+    /// The rows of the service inputs of each (buyer, good, unit), one a provider, in provider order.
+    provider: BTreeMap<Product, Vec<ServiceInputPolicy>>,
     /// The supplier of the first replenishment row of each (buyer, good, unit).
     supplier: BTreeMap<Product, SiteId>,
     /// The first output of each process: good, unit and units a batch.
@@ -320,15 +320,10 @@ impl PlantTables {
                 |row| row.site_id,
                 |row| (row.good_id, row.unit_id, row.hours_per_unit, row.units),
             ),
-            provider: first_by(
+            provider: all_by(
                 &catalog.service_inputs,
                 |row| (row.buyer_site_id, row.good_id, row.unit_id),
-                |row| {
-                    (
-                        row.provider_site_id,
-                        row.quantity_per_period.min(row.maximum_purchase),
-                    )
-                },
+                Clone::clone,
             ),
             supplier: first_by(
                 &recurring.replenishment,
@@ -563,11 +558,22 @@ fn maker_cost(
     let hours = total(rows_at(&plant.labor, &process).iter())?;
     let mut cost = i128::from(hours).checked_mul(rate).ok_or(arithmetic)?;
     for &(good, unit, per_batch) in rows_at(&plant.inputs, &process) {
-        let price = match plant.provider.get(&(site, good, unit)) {
-            Some(&(provider, _)) => tables.offers.own_top.get(&(provider, good, unit)),
-            None => tables.offers.top.get(&(good, unit)),
+        let rows = rows_at(&plant.provider, &(site, good, unit));
+        let price = if rows.is_empty() {
+            tables.offers.top.get(&(good, unit)).copied()
+        } else {
+            let mut prices = Vec::with_capacity(rows.len());
+            for row in rows {
+                let own = (row.provider_site_id, good, unit);
+                let Some(&top) = tables.offers.own_top.get(&own) else {
+                    return Ok(None);
+                };
+                prices.push(top);
+            }
+            let rows: Vec<&ServiceInputPolicy> = rows.iter().collect();
+            Some(crate::services::shared_price(&rows, &prices)?)
         };
-        let Some(&price) = price else {
+        let Some(price) = price else {
             return Ok(None);
         };
         cost = i128::from(per_batch)
@@ -896,16 +902,29 @@ fn inputs_can_be_had(
         if have >= per_batch {
             continue;
         }
-        let Some((supplier, limit)) = supplier_of(catalog, tables, site, good, unit) else {
-            return Ok(false);
-        };
-        let planned = planned_by(catalog, transition, tables, bound, supplier, (good, unit))?;
-        let Some(planned) = planned else {
-            return Ok(false);
-        };
         let service = crate::services::is_service(catalog, good, unit);
-        let others = taken_by_others(tables, service, supplier, site, (good, unit))?;
-        let for_me = planned.saturating_sub(others).min(limit);
+        let rows = supplier_rows(catalog, tables, site, good, unit);
+        if rows.is_empty() {
+            return Ok(false);
+        }
+        let mut available = Vec::with_capacity(rows.len());
+        for &(supplier, limit) in &rows {
+            let planned = planned_by(catalog, transition, tables, bound, supplier, (good, unit))?;
+            let Some(planned) = planned else {
+                return Ok(false);
+            };
+            let others = taken_by_others(tables, service, supplier, site, (good, unit))?;
+            available.push(planned.saturating_sub(others).min(limit));
+        }
+        let for_me = if service {
+            let policies: Vec<&ServiceInputPolicy> =
+                rows_at(&tables.plant.provider, &(site, good, unit))
+                    .iter()
+                    .collect();
+            crate::services::shared_availability(&policies, &available)?
+        } else {
+            available[0]
+        };
         if for_me < per_batch.saturating_sub(have) {
             return Ok(false);
         }
@@ -913,22 +932,33 @@ fn inputs_can_be_had(
     Ok(true)
 }
 
-/// Who supplies `good` to `site`, and the most it may buy from them in a period.
-fn supplier_of(
+/// Who supplies `good` to `site`, and the most it may buy from them in a period: for a service one entry a row
+/// of its policy, in provider order; for a good its first replenishment row's supplier.
+fn supplier_rows(
     catalog: &MaterialCatalog,
     tables: &CloseTables,
     site: SiteId,
     good: GoodId,
     unit: UnitId,
-) -> Option<(SiteId, u64)> {
+) -> Vec<(SiteId, u64)> {
     if crate::services::is_service(catalog, good, unit) {
-        tables.plant.provider.get(&(site, good, unit)).copied()
+        rows_at(&tables.plant.provider, &(site, good, unit))
+            .iter()
+            .map(|row| {
+                (
+                    row.provider_site_id,
+                    row.quantity_per_period.min(row.maximum_purchase),
+                )
+            })
+            .collect()
     } else {
         tables
             .plant
             .supplier
             .get(&(site, good, unit))
             .map(|supplier| (*supplier, u64::MAX))
+            .into_iter()
+            .collect()
     }
 }
 
@@ -1761,6 +1791,97 @@ mod tests {
                 vec![plain],
                 "no restart receipt for the shared service"
             );
+            Ok(())
+        }
+
+        /// A maker at the first workplace that takes one unit of the shared service a batch, from the second
+        /// and third workplace at caps 70 and 30.
+        fn buyer_of_two_providers() -> Result<(MaterialCatalog, MaterialCircuitTransition)> {
+            let (buyer, first, second) = (workplace(1), workplace(2), workplace(3));
+            let mut definition = catalog_with_a_shared_service(3, first).into_definition();
+            definition.process_outputs.push(crate::ProcessOutput {
+                process_id: ProcessId::from_bytes([51; 32]),
+                site_id: buyer,
+                good_id: good(),
+                unit_id: unit(),
+                quantity_per_batch: 1,
+            });
+            definition.labor_coefficients.push(crate::LaborCoefficient {
+                process_id: ProcessId::from_bytes([51; 32]),
+                unit_id: hours(),
+                quantity_per_batch: 1,
+            });
+            definition
+                .input_coefficients
+                .push(crate::InputOutputCoefficient {
+                    process_id: ProcessId::from_bytes([51; 32]),
+                    good_id: service(),
+                    unit_id: unit(),
+                    quantity_per_batch: 1,
+                });
+            definition.service_inputs = [(second, 30), (first, 70)]
+                .into_iter()
+                .map(|(provider, cap)| ServiceInputPolicy {
+                    buyer_site_id: buyer,
+                    provider_site_id: provider,
+                    good_id: service(),
+                    unit_id: unit(),
+                    quantity_per_period: cap,
+                    maximum_purchase: cap,
+                    cash_floor: Currency::from_micro_units(0),
+                })
+                .collect();
+            let catalog = MaterialCatalog::try_new(definition)?;
+            let mut state = state(3);
+            let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                panic!("the fixture is monetary");
+            };
+            let recurring = economy
+                .recurring
+                .as_mut()
+                .expect("the fixture is recurring");
+            for (site, price) in [(first, dollars(10)), (second, dollars(4))] {
+                recurring.offers.push(SellerOffer {
+                    site_id: site,
+                    good_id: service(),
+                    unit_id: unit(),
+                    unit_price: Currency::from_micro_units(price),
+                    pricing: PricePolicy::Fixed,
+                });
+            }
+            Ok((catalog, transition(state)))
+        }
+
+        /// A batch of a maker with two providers costs the caps' weighted price, rounded up, and the test of
+        /// its inputs reads both rows.
+        #[test]
+        fn a_maker_with_two_providers_is_priced_and_tested_over_both() -> Result<()> {
+            let (catalog, transition) = buyer_of_two_providers()?;
+            let tables = CloseTables::build(&catalog, &transition)?;
+            let buyer = workplace(1);
+            assert_eq!(
+                maker_cost(&tables, buyer, ProcessId::from_bytes([51; 32]), 0)?,
+                Some(dollars(10) * 70 / 100 + dollars(4) * 30 / 100)
+            );
+            assert_eq!(
+                supplier_rows(&catalog, &tables, buyer, service(), unit()),
+                vec![(workplace(2), 70), (workplace(3), 30)]
+            );
+            // Neither provider works or made the service, so the inputs of a batch cannot be had.
+            let bound = HiringBound {
+                next_period: 2,
+                process: BTreeMap::new(),
+                rows: vec![],
+                cuts: BTreeMap::new(),
+            };
+            assert!(!inputs_can_be_had(
+                &catalog,
+                &transition,
+                &tables,
+                &bound,
+                buyer,
+                vec![(service(), unit(), 1)]
+            )?);
             Ok(())
         }
 

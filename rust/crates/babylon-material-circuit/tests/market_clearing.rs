@@ -38,3 +38,6 @@ mod many_sellers;
 
 #[path = "market_clearing/handling_blocks.rs"]
 mod handling_blocks;
+
+#[path = "market_clearing/shared_providers.rs"]
+mod shared_providers;

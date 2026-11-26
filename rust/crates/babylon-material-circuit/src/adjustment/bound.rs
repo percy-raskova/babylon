@@ -163,8 +163,8 @@ struct Tables<'a> {
     planned_batches: BTreeMap<ProcessId, u64>,
     /// The inputs of each process.
     inputs_of: BTreeMap<ProcessId, Vec<&'a InputOutputCoefficient>>,
-    /// The policy of each service input, by buyer and product.
-    policy: BTreeMap<Product, &'a ServiceInputPolicy>,
+    /// The rows of each service input, by buyer and product, one a provider in provider order.
+    policy: BTreeMap<Product, Vec<&'a ServiceInputPolicy>>,
     /// The processes that make each product.
     outputs: BTreeMap<Product, Vec<&'a ProcessOutput>>,
     /// What each provider performed of each product in the closed period.
@@ -209,7 +209,8 @@ impl<'a> Tables<'a> {
         for row in &catalog.service_inputs {
             policy
                 .entry((row.buyer_site_id, row.good_id, row.unit_id))
-                .or_insert(row);
+                .or_insert_with(Vec::new)
+                .push(row);
         }
         let mut outputs: BTreeMap<Product, Vec<&ProcessOutput>> = BTreeMap::new();
         for row in &catalog.process_outputs {
@@ -293,7 +294,7 @@ impl Reading<'_> {
         &self,
         process: ProcessId,
         site: SiteId,
-    ) -> impl Iterator<Item = (&InputOutputCoefficient, &ServiceInputPolicy)> {
+    ) -> impl Iterator<Item = (&InputOutputCoefficient, &[&ServiceInputPolicy])> {
         self.tables
             .inputs_of
             .get(&process)
@@ -306,7 +307,7 @@ impl Reading<'_> {
                 self.tables
                     .policy
                     .get(&(site, row.good_id, row.unit_id))
-                    .map(|&policy| (row, policy))
+                    .map(|rows| (row, rows.as_slice()))
             })
     }
 
@@ -318,15 +319,17 @@ impl Reading<'_> {
         let mut depends: BTreeMap<ProcessId, BTreeSet<ProcessId>> = BTreeMap::new();
         for request in requests {
             let providers = depends.entry(request.process_id).or_default();
-            for (input, policy) in self.service_inputs(request.process_id, request.site_id) {
-                providers.extend(
-                    self.tables
-                        .outputs
-                        .get(&(policy.provider_site_id, input.good_id, input.unit_id))
-                        .into_iter()
-                        .flatten()
-                        .map(|out| out.process_id),
-                );
+            for (input, rows) in self.service_inputs(request.process_id, request.site_id) {
+                for policy in rows {
+                    providers.extend(
+                        self.tables
+                            .outputs
+                            .get(&(policy.provider_site_id, input.good_id, input.unit_id))
+                            .into_iter()
+                            .flatten()
+                            .map(|out| out.process_id),
+                    );
+                }
             }
         }
         depends
@@ -406,17 +409,25 @@ impl Reading<'_> {
         let mut per = i128::from(per_batch_labor)
             .checked_mul(wage)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        for (input, policy) in self.service_inputs(request.process_id, request.site_id) {
-            let provider = policy.provider_site_id;
-            let for_me = self
-                .made(provider, input, bound)?
-                .saturating_sub(self.others(provider, input, request.site_id))
-                .min(policy.quantity_per_period)
-                .min(policy.maximum_purchase);
+        for (input, rows) in self.service_inputs(request.process_id, request.site_id) {
+            let mut available = Vec::with_capacity(rows.len());
+            let mut prices = Vec::with_capacity(rows.len());
+            for policy in rows {
+                let provider = policy.provider_site_id;
+                available.push(
+                    self.made(provider, input, bound)?
+                        .saturating_sub(self.others(provider, input, request.site_id))
+                        .min(policy.quantity_per_period)
+                        .min(policy.maximum_purchase),
+                );
+                prices.push(
+                    self.price(provider, input.good_id, input.unit_id)
+                        .ok_or(MaterialCircuitError::PurchaseInvariant)?,
+                );
+            }
+            let for_me = crate::services::shared_availability(rows, &available)?;
             by_inputs = by_inputs.min(for_me / input.quantity_per_batch);
-            let price = self
-                .price(provider, input.good_id, input.unit_id)
-                .ok_or(MaterialCircuitError::PurchaseInvariant)?;
+            let price = crate::services::shared_price(rows, &prices)?;
             per = i128::from(input.quantity_per_batch)
                 .checked_mul(price)
                 .and_then(|cost| per.checked_add(cost))

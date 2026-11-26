@@ -24,7 +24,8 @@ pub(crate) use validation::{canonicalize, validate};
 mod requirements;
 
 pub(crate) use requirements::{
-    input_requirements, is_service, kind, planning_grants, required_input, stage, Result,
+    input_requirements, is_service, kind, planning_grants, required_inputs, shared_availability,
+    shared_price, stage, Result,
 };
 
 use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, UnitId};

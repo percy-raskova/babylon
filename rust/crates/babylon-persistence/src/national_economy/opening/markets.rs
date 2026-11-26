@@ -15,9 +15,9 @@ use crate::national_economy::{GameCommodity, GameHandling, GameProcurement, Nati
 use babylon_kernel::content_digest;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::{
-    AccountId, CommodityKind, CorridorId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
-    MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer, ServiceConnection,
-    ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
+    AccountId, CommodityKind, CorridorId, FinalDemandPrincipalId, GoodId, HouseholdNeedBasis,
+    HouseholdPurchasePolicy, MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer,
+    ServiceConnection, ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
     MAX_HOUSEHOLD_NEEDS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_SERVICE_CONNECTIONS,
 };
 use std::collections::BTreeMap;
@@ -161,13 +161,14 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
     let mut network = Network::new(builder.transport)?;
     let mut preferences = Preferences::default();
     let dealt = dealing::deal_services(builder, &providers, &mut network)?;
+    let shops = dealing::deal_shops(builder)?;
     households(
         builder,
         &retailers,
         &providers,
         &mut network,
         &mut preferences,
-        &dealt,
+        (&dealt, &shops),
     )?;
     producers(builder, &providers, &mut network, &mut preferences, &dealt)?;
     super::equipment::wire(builder, &providers, &mut network, &mut preferences)?;
@@ -477,7 +478,7 @@ fn households(
     providers: &Providers,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
-    dealt: &Dealt,
+    (dealt, shops): (&Dealt, &BTreeMap<FinalDemandPrincipalId, SiteId>),
 ) -> Result<()> {
     let households = builder.opening.households.clone();
     let domain_retailers = representative_retailers(builder)?;
@@ -487,8 +488,9 @@ fn households(
             AccountId::Household(household.principal_id),
             household.location,
         )?;
-        let retailer = *domain_retailers
-            .get(&domain)
+        let retailer = *shops
+            .get(&household.principal_id)
+            .or_else(|| domain_retailers.get(&domain))
             .or_else(|| retailers.get(&household.location))
             .ok_or(NationalOpeningError::Identity)?;
         for row in purchases(builder, &household)? {

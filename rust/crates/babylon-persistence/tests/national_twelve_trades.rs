@@ -1094,7 +1094,7 @@ fn want_sensitive_counts(catalog: &CapturedEconomicCatalog) -> (usize, usize, us
 fn the_fixture_without_wants_keeps_its_rows() {
     let counts = want_sensitive_counts(captured());
     println!("purchase rows, handling rows, offers: {counts:?}");
-    assert_eq!(counts, (10_876, 2_020, 8_350));
+    assert_eq!(counts, (10_876, 2_020, 8_993));
 }
 
 /// Two want rows on the fixture, as the builder will write them: a comfort of shop goods and a luxury
@@ -3257,4 +3257,92 @@ fn the_fixture_crosses_nothing() {
         };
         assert!(same_side(buyer, at[&row.provider_site_id]));
     }
+}
+
+// ---- Task 7c: a household is dealt its shop ----
+
+/// The domestic shops with persons at work, with those persons and the persons of the accounts that buy a stored
+/// good at each.
+fn shops_and_customers(
+    catalog: &CapturedEconomicCatalog,
+    policy: &NationalGamePolicy,
+) -> Vec<(SiteId, u64, u64)> {
+    let opening = catalog.opening();
+    let work = persons_at_work(catalog);
+    let persons: BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row.persons))
+        .collect();
+    let storable: BTreeSet<_> = policy
+        .commodities
+        .values()
+        .filter(|good| matches!(good.kind, CommodityKind::Storable { .. }))
+        .map(|good| (good.good_id, good.unit_id))
+        .collect();
+    let mut customers = BTreeMap::<SiteId, BTreeSet<FinalDemandPrincipalId>>::new();
+    for row in &opening.policies.household_purchases {
+        if storable.contains(&(row.good_id, row.unit_id)) {
+            customers
+                .entry(row.retailer_site_id)
+                .or_default()
+                .insert(row.principal_id);
+        }
+    }
+    opening
+        .sites
+        .iter()
+        .filter(|site| site.merchant.is_some())
+        .filter(|site| matches!(site.location, EconomicLocation::County(_)))
+        .filter_map(|site| {
+            let employed = work.get(&site.site_id).copied().unwrap_or(0);
+            (employed > 0).then(|| {
+                let people = customers
+                    .get(&site.site_id)
+                    .map_or(0, |set| set.iter().map(|id| persons[id]).sum());
+                (site.site_id, employed, people)
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn every_shop_with_workers_has_customers() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let shops = shops_and_customers(captured(), &policy);
+    let all: u64 = shops.iter().map(|(_, employed, _)| employed).sum();
+    let without: u64 = shops
+        .iter()
+        .filter(|(_, _, people)| *people == 0)
+        .map(|(_, employed, _)| employed)
+        .sum();
+    let with = shops.iter().filter(|(_, _, people)| *people > 0).count();
+    println!(
+        "{with} of {} shops have customers; {without} of {all} persons at work at none",
+        shops.len()
+    );
+    assert!(without * 100 < all * 2, "{without} of {all}");
+}
+
+#[test]
+fn shops_customers_follow_their_workers() {
+    let policy = NationalGamePolicy::parse(fixture_text()).expect("the fixture admits");
+    let shops = shops_and_customers(captured(), &policy);
+    let all: u128 = shops
+        .iter()
+        .map(|(_, employed, _)| u128::from(*employed))
+        .sum();
+    let people: u128 = shops.iter().map(|(_, _, people)| u128::from(*people)).sum();
+    let under: u128 = shops
+        .iter()
+        .filter(|(_, employed, own)| u128::from(*own) * all * 2 < people * u128::from(*employed))
+        .map(|(_, employed, _)| u128::from(*employed))
+        .sum();
+    let over: u128 = shops
+        .iter()
+        .filter(|(_, employed, own)| u128::from(*own) * all > people * u128::from(*employed) * 2)
+        .map(|(_, employed, _)| u128::from(*employed))
+        .sum();
+    println!("persons at work at shops under half the ratio: {under} of {all}; over twice: {over}");
+    assert!(under * 100 < all * 5, "{under} of {all}");
 }

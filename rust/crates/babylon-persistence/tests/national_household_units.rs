@@ -2476,9 +2476,9 @@ fn the_twelve_trades_sizes() {
     assert_eq!(sizes.members, 23281);
     assert_eq!(sizes.employment_terms, 23281);
     assert_eq!(sizes.member_labor_rows, 23281);
-    assert_eq!(sizes.offers_goods, 2436);
+    assert_eq!(sizes.offers_goods, 3079);
     assert_eq!(sizes.offers_services, 5914);
-    assert_eq!(sizes.market_rows_at_most, 10786);
+    assert_eq!(sizes.market_rows_at_most, 12072);
     assert_eq!(sizes.members_outside_their_place, 0);
     assert_eq!(sizes.seeker_rows, 94416);
     assert_eq!(sizes.members_with_seekers, 94416);

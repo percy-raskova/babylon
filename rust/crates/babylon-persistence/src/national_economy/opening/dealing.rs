@@ -603,18 +603,10 @@ fn stalls(builder: &Builder<'_>, sites: &[SiteId]) -> Result<Vec<Stall>> {
         .collect()
 }
 
-/// Deals every domestic buyer of every period service its provider, under the twelve trades. An account carved
-/// from another (an aid donor or recipient, the support claimant) is not dealt: it takes its parent's provider.
-/// Under any other trades the map is empty and `service_provider` decides, as before.
-pub(super) fn deal_services(
+/// The accounts carved from another, by parent: the aid donors and recipients and the support claimant.
+fn carved_parents(
     builder: &Builder<'_>,
-    providers: &Providers,
-    network: &mut Network<'_>,
-) -> Result<Dealt> {
-    let mut dealt = Dealt::new();
-    if builder.policy.trades != TradeSet::Twelve {
-        return Ok(dealt);
-    }
+) -> BTreeMap<FinalDemandPrincipalId, Vec<FinalDemandPrincipalId>> {
     let mut parents = BTreeMap::<FinalDemandPrincipalId, Vec<FinalDemandPrincipalId>>::new();
     for child in &builder.aid.children {
         parents
@@ -628,6 +620,74 @@ pub(super) fn deal_services(
             .or_default()
             .push(claimant.principal);
     }
+    parents
+}
+
+/// Deals every domestic household account its shop: the accounts of one location over the location's shops (every
+/// site with a merchant role and persons at work, of either part), as one kind, an account's weight its persons
+/// and a shop's its persons at work. An account carved from another takes its parent's shop. A location with no
+/// shop, and a foreign or dependency account, are left out.
+pub(super) fn deal_shops(
+    builder: &Builder<'_>,
+) -> Result<BTreeMap<FinalDemandPrincipalId, SiteId>> {
+    let mut map = BTreeMap::new();
+    if builder.policy.trades != TradeSet::Twelve {
+        return Ok(map);
+    }
+    let parents = carved_parents(builder);
+    let carved: BTreeSet<_> = parents.values().flatten().copied().collect();
+    let mut shops = BTreeMap::<EconomicLocation, Vec<Stall>>::new();
+    for actor in builder.actors.values().filter(|actor| {
+        actor.employed > 0
+            && actor.function == EconomicFunction::DistributionTransport
+            && state(actor.location).is_some()
+    }) {
+        shops.entry(actor.location).or_default().push(Stall {
+            site: actor.site_id,
+            location: actor.location,
+            employed: actor.employed,
+        });
+    }
+    let mut accounts = BTreeMap::<EconomicLocation, Vec<Custom>>::new();
+    for household in &builder.opening.households {
+        if carved.contains(&household.principal_id) || !shops.contains_key(&household.location) {
+            continue;
+        }
+        accounts
+            .entry(household.location)
+            .or_default()
+            .push(Custom {
+                buyer: AccountId::Household(household.principal_id),
+                location: household.location,
+                weight: household.persons,
+            });
+    }
+    for (location, kind) in accounts {
+        for (buyer, site) in deal(&[kind], &shops[&location])? {
+            if let AccountId::Household(principal) = buyer {
+                map.insert(principal, site);
+                for child in parents.get(&principal).into_iter().flatten() {
+                    map.insert(*child, site);
+                }
+            }
+        }
+    }
+    Ok(map)
+}
+
+/// Deals every domestic buyer of every period service its provider, under the twelve trades. An account carved
+/// from another (an aid donor or recipient, the support claimant) is not dealt: it takes its parent's provider.
+/// Under any other trades the map is empty and `service_provider` decides, as before.
+pub(super) fn deal_services(
+    builder: &Builder<'_>,
+    providers: &Providers,
+    network: &mut Network<'_>,
+) -> Result<Dealt> {
+    let mut dealt = Dealt::new();
+    if builder.policy.trades != TradeSet::Twelve {
+        return Ok(dealt);
+    }
+    let parents = carved_parents(builder);
     let carved: BTreeSet<_> = parents.values().flatten().copied().collect();
     let services: BTreeMap<String, (GoodId, UnitId)> = builder
         .policy

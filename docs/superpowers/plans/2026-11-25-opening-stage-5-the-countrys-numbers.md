@@ -64,11 +64,11 @@ bench's plan and `reports/country-bench-2026-11-24/README.md`.
 owner's restart mended for a shop of several goods), and the country bench's Task 9, which leaves public providers
 out of the resting price and the owner's restart. Runs of builders, with the lead's gate
 between runs:
-- run A: Tasks 1, 2, 3, in that order. A ruling that adds a key amends Task 1 afterwards;
-- run B: Tasks 4, 6, 5, 7, 7a, 7b, 7c, 7d, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement
-  machines that Task 6 sets; Task 6 uses nothing of Task 5; Task 7a lets every workplace pay for its first period;
-  Tasks 7b to 7d deal buyers to sellers after Task 5 has set what is bought abroad, and before Task 8's census
-  reads who sells to whom);
+- run A: Tasks 7a, 1, 2, 3, in that order (Task 7a first: it needs nothing of the others, it is one key of the
+  fixture, and it lets the first period be read early). A ruling that adds a key amends Task 1 afterwards;
+- run B: Tasks 4, 6, 5, 7, 7b, 7c, 7d, 8, in that order (Task 6 before Task 5: Task 5 counts the replacement
+  machines that Task 6 sets; Task 6 uses nothing of Task 5; Tasks 7b to 7d deal buyers to sellers after Task 5 has
+  set what is bought abroad, and before Task 8's census reads who sells to whom);
 - run C: Part II, Tasks 9, 10, 10b, 11, 12, 13, in that order (Python only), once Task 8's census is committed;
 - run D: Tasks 14a, 14b, 15, in that order;
 - run E: Tasks 16, 17, 18, in that order.
@@ -1029,8 +1029,10 @@ needs business services, so nothing upstream is made. With buyers dealt in propo
   with `TWELVE_TRADES_SET=baseline`), and hand over, beside the committed record's figures: the domestic persons at
   work at the close of periods 1, 2, 5, 13 and 34; for household services and business services the workplaces
   under the service-input floor and the sales in periods 1 and 2; the unmet share of each need in periods 1 and 2;
-  and whether any period was refused. The figures show what the sweep alone moves, and are no verdict.
-- [ ] **Step 6: Gate and commit** with the subject above and the record.
+  and whether any period was refused. The figures show what the sweep alone moves, and are no verdict. Then put
+  the committed records back (`git checkout -- reports/country-opening-2026-11/`): the folder stays the set that
+  its reading describes, three records of one scenario, until Task 16 records the rebuilt scenario.
+- [ ] **Step 6: Gate and commit** with the subject above. No record is committed.
 
 What the player would see: clinics, schools and offices that open with the money to run their first month.
 
@@ -1274,11 +1276,12 @@ pub(super) fn routable(builder: &Builder<'_>, network: &mut Network<'_>, from: E
   `binary(national_household_units)`, the crate.
 - [ ] **Step 5: Record** the bench's baseline of the fixture once, in the background (`record_twelve_trades_sets`
   with `TWELVE_TRADES_SET=baseline`), and hand over the domestic persons at work at the close of periods 1, 2, 5,
-  13 and 34 beside the committed record's, the layoffs of period 2 by trade, and whether any period was refused
-  (a refusal of the engine is a result: its period, stage and words). The fixture's numbers are not the rebuilt
-  opening's: the figures show what the dealing alone moves, and are no verdict.
-- [ ] **Step 6: Gate and commit** with the subject above and the record. Hand over the pinned counts and, for each
-  good, the makers with a buyer and the share of workers at makers with none, before and after.
+  13 and 34 beside the committed record's and beside Task 7a's, the layoffs of period 2 by trade, and whether any
+  period was refused (a refusal of the engine is a result: its period, stage and words). The fixture's numbers are
+  not the rebuilt opening's: the figures show what the dealing alone moves, and are no verdict. Then put the
+  committed records back (`git checkout -- reports/country-opening-2026-11/`), as in Task 7a.
+- [ ] **Step 6: Gate and commit** with the subject above. No record is committed. Hand over the pinned counts and,
+  for each good, the makers with a buyer and the share of workers at makers with none, before and after.
 
 What the player would see: farms, mills and machine works across the country with buyers at home and abroad, and
 goods that travel from where they are made.

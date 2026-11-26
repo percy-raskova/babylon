@@ -296,10 +296,19 @@ mod tests {
         );
         // B at $50 with a site id below A's is dealt first.
         let dealt = deal(&[(2, 50, 30), (1, 50, 40), (3, 20, 35)]);
-        assert_eq!(dealt[0].0, 1);
         assert_eq!(
-            dealt[0].1,
-            vec![(EarningOwner, 10), (EarningBetterPaidForty, 30)]
+            dealt,
+            vec![
+                (1, vec![(EarningOwner, 10), (EarningBetterPaidForty, 30)]),
+                (
+                    2,
+                    vec![(EarningBetterPaidForty, 10), (EarningLowerPaidHalf, 20)]
+                ),
+                (
+                    3,
+                    vec![(EarningLowerPaidHalf, 30), (CollectiveResidence, 5)]
+                ),
+            ]
         );
     }
 }

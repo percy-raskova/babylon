@@ -955,6 +955,92 @@ fn acted(record: &Value) -> Value;
 **What this task must not do:** write conclusions, rerun a refused set with a change, or compare with the record
 of 20 November.
 
+### Task 9: Public providers are outside the resting price and the owner's restart
+
+Ruled by the Director on 25 November 2026 (ADR325, R3). The bench had shown that the rules treat a public provider as
+a business: from period 3 about 780 of the 976 funded by a grant had a resting price and were tested every period for
+an owner's restart, and none reopened. The Director's pick, word for word: "Leave them out. A public provider runs on
+its public body's money, not on sales. The resting price, the step-down and the owner's restart skip it. It hires
+within its grant and is cut when its public body runs short, as the opening's rule on public money already says. The
+one site with no grant keeps its token price of $1.00. What reopens a closed public provider is then a later design.
+One engine task."
+
+Commit `fix(material-circuit): leave public provision out of the resting price and the owner's restart`.
+
+**Files:**
+- Modify: `rust/crates/babylon-material-circuit/src/adjustment/policy.rs` (the one test of the product);
+  `adjustment/rest.rs` (`resting_among`); `adjustment/restart.rs` (`restart_stopped` and its tables)
+- Test: the unit tests of those modules; `rust/crates/babylon-persistence/tests/national_household_units.rs` (the pins
+  of the sets with rules); the records under `reports/country-bench-2026-11-24/` and
+  `reports/country-opening-2026-11/`
+
+**Interfaces:**
+- Produces, in `adjustment/policy.rs`:
+  `pub(crate) fn is_shared_service(catalog: &MaterialCatalog, good: GoodId, unit: UnitId) -> bool`. True when the
+  catalog has a market policy, the product's `CommodityKind` is `PeriodService`, and
+  `MarketClearingPolicy::place(good, unit)` is `None`. If the services module already has a function that says
+  whether a service clears by price, call that one inside it and write no second test of the same thing.
+
+**Decisions:**
+1. **What a public provider is, for the engine.** The engine knows no trades. It knows a product that the market
+   shares in proportion: a period service that the market policy leaves out of its order of paying (ADR312, P12, first
+   case; the price plan's Task 8, decision 5). In the national world that is public provision and nothing else, in the
+   shipped scenario and in the twelve trades. So the rule is by that product. It covers all 977 sites of public
+   provisioning, the one with no grant among them, which is what keeps that one at its token price.
+2. **NOT the other things that P12 names.** Equipment is a storable good that is also outside the order of paying
+   ("equipment bought as investment"). Its makers are private businesses and stay under every rule exactly as today.
+   A storable good is never a shared service, whatever the order holds. A test pins this (Step 1).
+3. **The resting price.** `resting_among` never returns a shared service. Its seller gets no `RestingPrice` receipt,
+   and its price is updated at the close as it is where the policy does not ask for the resting price. Both callers
+   get this through the one function. The restart's raise of a resting price reads those receipts, so it never
+   reaches such a seller; its skip of a provider funded by a grant stays as it is.
+4. **The owner's restart.** A workplace whose product is a shared service is not tested: no `Restart` receipt and no
+   seat. Its product is what `output_of` reads: the output of its process, or what a merchant handles. Its standing
+   counters are kept as today. A workplace with no product is handled as today.
+5. **The step-down** is a rule of goods and has never reached a service. No code changes. If no test pins that a
+   period service takes no step down, add one.
+6. **Not changed:** hiring within means (a public provider still hires within its grant), people who look for work,
+   and the stop without pay. What reopens a closed public provider is not designed: build nothing for it.
+7. **Bytes.** A catalog with no market policy keeps every byte, and so does a policy that asks for neither rule. The
+   measured small worlds keep theirs: before you change anything, check that every period service of every world in
+   `babylon-circuit-worlds` and of the engine's own test worlds is in its world's order of paying, and say so in the
+   hand-off. If one is not, stop and report: change nothing.
+8. **The bench's pins and records.** The sets that ask for the rules change: `no-seekers`, `all-six` and
+   `all-six-with-benefits`. The `baseline` and `market` sets are the control and must not move by one byte: their
+   rows of `the_bench_digests_before_the_squares` keep their values, and their records equal the committed ones apart
+   from the times. That pin is an ignored test: run it by name with `--run-ignored only`. Its rows of the three other
+   sets, and any other pinned figure of a test that runs a set with rules, are filled again ONCE, from one failing
+   run, and each old and new value goes into the hand-off. `the_country_s_public_providers` and
+   `the_country_s_sizes` keep their values. Then record again: the five sets of the shipped opening
+   (`record_country_bench_sets`) and the sets with rules of the twelve trades (`record_twelve_trades_sets`,
+   which stage 2's Task 8b added; its baseline must come out equal to the committed one apart from the times).
+   The two summaries of 400 periods are the lead's to rerun. No conclusion is written anywhere: the lead reads the
+   records and rewrites the readings.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `a_shared_service_never_rests` (`rest.rs`): under a policy that asks for the resting price, of two sellers of
+    services that offered nothing and made no hours, the one whose service is in the order rests and the one whose
+    service is left out of it does not.
+  - `a_good_outside_the_order_rests_as_before` (`rest.rs`): a seller of a storable good that the order leaves out,
+    which offered nothing and made no hours, rests.
+  - `a_workplace_of_a_shared_service_is_not_tested` (`restart.rs`): of two stopped workplaces that have been quiet long
+    enough, the one whose product is a shared service gets no restart receipt and no raise; the other is tested as
+    today.
+  - `is_shared_service` (`policy.rs`): false with no market policy; false for a storable good outside the order;
+    false for a service in the order; true for a service outside it.
+- [ ] **Step 2: Run them and see them fail** (the second passes already: say so).
+- [ ] **Step 3: Implement** decisions 3 and 4 on the one function of the Interfaces block.
+- [ ] **Step 4: Run** `-p babylon-material-circuit`, `-p babylon-circuit-worlds`, then the long tests once
+  (`--run-ignored only`, `test(/^reproduces_/) | test(hours_fold_every_reference_run)`): every reference set
+  reproduces byte for byte.
+- [ ] **Step 5: The bench.** Run `binary(national_household_units)` and the ignored digest pin. Fill the moved rows
+  once. Record the sets again in the background, each log outside the repository. Compare the control sets' records
+  with the committed ones.
+- [ ] **Step 6: Gate, run `mise run check:hygiene`, and commit** with the records. Hand over: each test seen failing;
+  that every small world's services clear by price; every old and new pinned value; for each changed set of the
+  shipped opening, the `public` column of periods 1, 5 and 34 before and after; one period's time of each changed set
+  before and after; the records' sizes in bytes.
+
 ## Calls of the lead
 
 1. Around the tick, test-only: the runner and everything it needs live under
@@ -1177,4 +1263,5 @@ reading of the five records, with every figure, is `reports/country-bench-2026-1
   ignores `*.log`. The repository's hygiene gate refuses a tracked file that matches `.gitignore`, and GitHub's
   checks on that push failed for it. The logs are taken out again; the records stay.
 
-This plan is built. What its records say is in `reports/country-bench-2026-11-24/README.md`.
+Tasks 1 to 8 are built. What their records say is in `reports/country-bench-2026-11-24/README.md`. Task 9 was
+added on 25 November by the Director's ruling on public providers (ADR325, N3).

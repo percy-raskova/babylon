@@ -2,6 +2,7 @@
 //! and receipts: supply to the households of every county and foreign region, jobs, businesses,
 //! products, trade and money. Nothing here is a model of them. Every figure is a sum (a share is
 //! computed from two sums, in basis points, never averaged) and money is millionths.
+use super::country_bench::BenchError;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_material_circuit::{
@@ -11,7 +12,9 @@ use babylon_material_circuit::{
     PublicProgramReceipt, PublicTransferTreatment, RestartTest, RouteId, SiteId,
     StaffingMemberState, StaffingPoolId, StaffingState, StopHold, UnitId,
 };
-use babylon_persistence::economic_catalog::{EconomicOpening, RecipeTemplate};
+use babylon_persistence::economic_catalog::{
+    EconomicCatalogError, EconomicOpening, RecipeTemplate,
+};
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -175,11 +178,14 @@ impl Census {
     /// Reads the facts of an opening that pays each workplace its own observed wage: the labor of a
     /// batch costs, for each designed process, the wage of the persons employed at its sites (see
     /// `process_wages`); a process with no paid person at any site costs the opening's own average.
-    pub fn observed(opening: &EconomicOpening) -> Self {
-        let (recipe_wages, average) = process_wages(opening);
+    ///
+    /// # Errors
+    /// `BenchError::Opening` when no member of the opening is paid a wage, or a sum overflows.
+    pub fn observed(opening: &EconomicOpening) -> Result<Self, BenchError> {
+        let (recipe_wages, average) = process_wages(opening)?;
         let mut census = Self::new(opening, average);
         census.recipe_wages = recipe_wages;
-        census
+        Ok(census)
     }
 
     /// The wage that pays one hour of a process's labor.
@@ -226,7 +232,11 @@ fn recipes(opening: &EconomicOpening) -> BTreeSet<Recipe> {
 /// For each designed process, the sum of wage times employed persons over the members paid a wage at
 /// its sites, divided by the sum of those persons, rounded down; and the same over every member of the
 /// opening. A process with no such person has no entry.
-fn process_wages(opening: &EconomicOpening) -> (BTreeMap<Recipe, i128>, i128) {
+///
+/// # Errors
+/// `BenchError::Opening` when no member of the opening is paid a wage, or a sum overflows.
+fn process_wages(opening: &EconomicOpening) -> Result<(BTreeMap<Recipe, i128>, i128), BenchError> {
+    let overflow = || BenchError::Opening(EconomicCatalogError::Arithmetic);
     let rates: BTreeMap<_, i128> = opening
         .employment
         .iter()
@@ -241,8 +251,11 @@ fn process_wages(opening: &EconomicOpening) -> (BTreeMap<Recipe, i128>, i128) {
         for member in &seed.members {
             if let Some(rate) = rates.get(&member.member.member_id()) {
                 let persons = i128::from(member.employed);
-                total.0 += rate * persons;
-                total.1 += persons;
+                total.0 = rate
+                    .checked_mul(persons)
+                    .and_then(|pay| total.0.checked_add(pay))
+                    .ok_or_else(overflow)?;
+                total.1 = total.1.checked_add(persons).ok_or_else(overflow)?;
             }
         }
     }
@@ -263,24 +276,26 @@ fn process_wages(opening: &EconomicOpening) -> (BTreeMap<Recipe, i128>, i128) {
             .collect();
         for recipe in made {
             let sum = sums.entry(recipe.clone()).or_default();
-            sum.0 += paid;
-            sum.1 += persons;
+            sum.0 = sum.0.checked_add(paid).ok_or_else(overflow)?;
+            sum.1 = sum.1.checked_add(persons).ok_or_else(overflow)?;
         }
     }
-    let everyone = by_site
-        .values()
-        .fold((0_i128, 0_i128), |a, b| (a.0 + b.0, a.1 + b.1));
-    let average = if everyone.1 == 0 {
-        0
-    } else {
-        everyone.0 / everyone.1
-    };
+    let everyone = by_site.values().try_fold((0_i128, 0_i128), |a, b| {
+        Some((a.0.checked_add(b.0)?, a.1.checked_add(b.1)?))
+    });
+    let everyone = everyone.ok_or_else(overflow)?;
+    if everyone.1 == 0 {
+        return Err(BenchError::Opening(EconomicCatalogError::Opening(
+            "no member of the opening is paid a wage",
+        )));
+    }
+    let average = everyone.0 / everyone.1;
     let wages = sums
         .into_iter()
         .filter(|(_, (_, persons))| *persons > 0)
         .map(|(recipe, (paid, persons))| (recipe, paid / persons))
         .collect();
-    (wages, average)
+    Ok((wages, average))
 }
 
 /// The highest service-input floor of each buyer site (all of a site's floors are its payroll).
@@ -900,7 +915,7 @@ fn sold(receipts: &MaterialTickReceipts) -> BTreeMap<Key, (u64, i128)> {
     sold
 }
 
-/// Whether a designed process covers its cost: a batch's labor at the default wage and its
+/// Whether a designed process covers its cost: a batch's labor at the census's wage and its
 /// inputs at the lowest domestic offer, against its output at the lowest and highest domestic
 /// offer.
 fn recipe_cost(census: &Census, open: &Opening, recipe: &Recipe) -> Value {

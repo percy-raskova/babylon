@@ -231,7 +231,8 @@ fn payroll_books<'a>(
     Ok((site, Books::of(wage, policy, terms)?))
 }
 
-/// The City PD's three numbers and its payroll, each worked out from the scenario's wage.
+/// The City PD's three numbers and its payroll, each worked out from one wage: the scenario's wage
+/// under `GameWages::Single`, and under `GameWages::Observed` the wage of the payroll site.
 struct Books {
     wage: i128,
     visit_cost: i128,

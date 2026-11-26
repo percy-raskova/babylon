@@ -1016,12 +1016,17 @@ pub(crate) fn place_wage(rows: &[(u64, u64, Currency)]) -> Result<Currency> {
     if rows.is_empty() {
         return Err(NationalGrainError::Arithmetic);
     }
-    let (payroll, jobs) = rows.iter().fold((0_u128, 0_u128), |(payroll, jobs), row| {
-        (
-            payroll.saturating_add(u128::from(row.1)),
-            jobs.saturating_add(u128::from(row.0)),
-        )
-    });
+    let (payroll, jobs) = rows
+        .iter()
+        .try_fold((0_u128, 0_u128), |(payroll, jobs), row| {
+            Ok::<_, NationalGrainError>((
+                payroll
+                    .checked_add(u128::from(row.1))
+                    .ok_or(NationalGrainError::Arithmetic)?,
+                jobs.checked_add(u128::from(row.0))
+                    .ok_or(NationalGrainError::Arithmetic)?,
+            ))
+        })?;
     let micro = if jobs > 0 {
         i128::try_from(
             payroll
@@ -1058,7 +1063,7 @@ fn place_counties(
 }
 /// The place's average over every pay row of its counties; the one county's own average for a
 /// place of one county, and the first county's (then its state's, then the nation's) for a place
-/// whose counties have no row.
+/// whose counties have no row or whose rows hold no jobs.
 fn place_average(pay: &NationalTradePayReference, counties: &[CountyGeoid]) -> Result<Currency> {
     let first = *counties.first().ok_or(NationalGrainError::MissingPay)?;
     if counties.len() == 1 {
@@ -1080,8 +1085,8 @@ fn place_average(pay: &NationalTradePayReference, counties: &[CountyGeoid]) -> R
     }
 }
 /// The wage each live site pays (rule O2): a site of one source workplace pays that workplace's
-/// own wage; a site of a place of several counties pays `place_wage` over its source rows; a fallback or a household
-/// enterprise pays its place's average.
+/// own wage; a site of a place of several counties pays `place_wage` over its source rows; a
+/// fallback or a household enterprise pays its place's average.
 fn site_wages(
     pay: &NationalTradePayReference,
     sites: &BTreeMap<SiteId, AssignedResidentWorkplace>,
@@ -1110,6 +1115,20 @@ fn site_wages(
         wages.insert(*site, wage);
     }
     Ok(wages)
+}
+/// Put each site's place wage into its productive endowment.
+/// # Errors
+/// `MissingPay` for an endowment whose site has no wage, and the endowment's own refusal.
+fn apply_wages(
+    policy: &NationalGamePolicy,
+    wages: &BTreeMap<SiteId, Currency>,
+    endowments: &mut BTreeMap<SiteId, OpeningProductiveEndowment>,
+) -> Result<()> {
+    for (site, endowment) in endowments {
+        let wage = wages.get(site).ok_or(NationalGrainError::MissingPay)?;
+        endowment.at_place_wage(policy, *wage)?;
+    }
+    Ok(())
 }
 /// Fold each source seed immediately; no fine `EconomicOpening` or site vector is built.
 /// # Errors
@@ -1349,10 +1368,7 @@ pub(crate) fn coarsen_source_allocation(
         Some(pay) => {
             let places = place_counties(&destinations, membership)?;
             let wages = site_wages(pay, &sites, &qcew_rows, &domains, &places)?;
-            for (site, endowment) in &mut endowments {
-                let wage = wages.get(site).ok_or(NationalGrainError::MissingPay)?;
-                endowment.at_place_wage(policy, *wage)?;
-            }
+            apply_wages(policy, &wages, &mut endowments)?;
             wages
         }
         None => BTreeMap::new(),

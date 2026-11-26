@@ -12,16 +12,18 @@ use babylon_persistence::economic_catalog::{
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::national_cohorts::CohortKey;
 use babylon_persistence::national_economy::{self, NationalGamePolicy, ResidentWorkplaceSource};
-use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
 use babylon_persistence::national_household_allocation::{self, NationalHouseholdAllocation};
+use babylon_persistence::national_household_allocation::{
+    CountyHouseholdAllocation, HouseholdBudgetKey,
+};
 use babylon_persistence::national_household_refinement::{self, NationalHouseholdLeafRoster};
 use babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation;
 use babylon_persistence::{
     national_cohorts, national_counties, national_household_time_allocation, national_households,
     national_resident_allocation, national_resident_workforce, national_trade_pay,
 };
-use babylon_practice_contract::{self, Band, Roster};
-use std::collections::BTreeMap;
+use babylon_practice_contract::{Band, Roster};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 use uuid::Uuid;
 
@@ -111,8 +113,6 @@ fn a_twelve_trade_policy_with_ten_trade_tables_is_refused() {
 #[test]
 fn a_ten_trade_policy_refuses_the_pay_table() {
     let mut input = economic_catalog::national_catalog_input();
-    let pay = national_trade_pay::national_trade_pay_reference().expect("pay table");
-    assert_eq!(pay.rows().len(), 65_065);
     input.sources.push(SourceArtifact::capture(
         Kind::NationalTradePay,
         b"not the pay table".to_vec(),
@@ -122,6 +122,24 @@ fn a_ten_trade_policy_refuses_the_pay_table() {
         Some(EconomicCatalogError::UnexpectedSource(
             Kind::NationalTradePay
         ))
+    );
+}
+
+#[test]
+fn a_twelve_trade_policy_with_an_experiment_is_refused() {
+    let mut input =
+        economic_catalog::national_catalog_input_for(FIXTURE).expect("the fixture parses");
+    let text = std::str::from_utf8(FIXTURE).expect("utf8").replacen(
+        "[companies]",
+        "[companies]\nexperiment_controller_count = 300",
+        1,
+    );
+    assert_ne!(text.as_bytes(), FIXTURE);
+    replace(&mut input, Kind::NationalGamePolicy, text.as_bytes());
+    "national-company-scale-experiment".clone_into(&mut input.preset_id);
+    assert_eq!(
+        CapturedEconomicCatalog::capture(input, None).err(),
+        Some(EconomicCatalogError::ExperimentOnTwelveTrades)
     );
 }
 
@@ -164,8 +182,8 @@ fn the_twelve_trade_source_allocation_fits_its_bounds() {
     )
     .expect("the twelve-trade source allocation fits its own bounds");
     let members: usize = allocation.workplaces.iter().map(|w| w.members.len()).sum();
-    assert!(allocation.workplaces.len() <= 131_072);
-    assert!(members <= 262_144);
+    assert!(allocation.workplaces.len() < 131_072);
+    assert!(members < 262_144);
     assert_eq!(allocation.workplaces.len(), 68_281);
     assert_eq!(members, 111_544);
 }
@@ -362,9 +380,13 @@ fn wayne_car_plants_carry_the_two_claims() {
     assert_eq!(claim_shares(catalog, canadian.site_id, canada), 8_000);
     assert_eq!(owners_shares(catalog, canadian.site_id), 2_000);
     assert_eq!(all_shares(catalog, canadian.site_id), 10_000);
-    let foreign: Vec<AccountId> = ForeignCounterpart::ALL
-        .into_iter()
-        .map(|c| pooled(EconomicLocation::Foreign(c)))
+    // Where each household account stands: a claim holder is foreign by its own location, not by
+    // being a foreign counterpart's pooled account.
+    let location_of: BTreeMap<_, _> = catalog
+        .opening()
+        .households
+        .iter()
+        .map(|row| (row.principal_id, row.location))
         .collect();
     for site in catalog.opening().sites.iter().filter(|s| {
         s.function == EconomicFunction::CapitalGoods
@@ -375,12 +397,17 @@ fn wayne_car_plants_carry_the_two_claims() {
         if site.location == EconomicLocation::Foreign(ForeignCounterpart::Canada) {
             assert_eq!(claim_shares(catalog, site.site_id, canada), 10_000);
         } else {
-            assert!(
-                claims(catalog, site.site_id)
-                    .iter()
-                    .all(|(who, _)| !foreign.contains(who)),
-                "Wayne's capital goods site has no foreign claimant"
-            );
+            for (who, _) in claims(catalog, site.site_id) {
+                if let AccountId::Household(principal) = who {
+                    let location = location_of
+                        .get(&principal)
+                        .expect("every household claim holder has an opening account");
+                    assert!(
+                        !matches!(location, EconomicLocation::Foreign(_)),
+                        "Wayne's capital goods site has a foreign claimant at {location:?}"
+                    );
+                }
+            }
         }
     }
 }
@@ -584,6 +611,9 @@ const BAND_KEYS: [HouseholdBudgetKey; 3] = [
     HouseholdBudgetKey::EarningBetterPaidForty,
 ];
 
+/// The domains that carry the three earning accounts, pinned once from a run.
+const PLACES: u64 = 316;
+
 #[test]
 fn every_place_has_three_earning_accounts() {
     let catalog = captured();
@@ -596,6 +626,18 @@ fn every_place_has_three_earning_accounts() {
     let witness = catalog
         .national_generation()
         .expect("the generation witness");
+    // No county is missing from the household incidence, and none is extra.
+    let incident: BTreeSet<CountyGeoid> = witness
+        .household_incidence
+        .iter()
+        .map(|row| row.county)
+        .collect();
+    let budgeted: BTreeSet<CountyGeoid> = household_budgets()
+        .counties()
+        .iter()
+        .map(CountyHouseholdAllocation::county)
+        .collect();
+    assert_eq!(incident, budgeted);
     // Each county's financial domain, as the capture itself recorded it.
     let domain_of: BTreeMap<CountyGeoid, String> = witness
         .counties
@@ -659,9 +701,9 @@ fn every_place_has_three_earning_accounts() {
             assert_eq!(account.households + carved, *counted, "{domain} {key:?}");
         }
     }
-    assert!(
-        places > 100,
-        "every pooled place and each detailed county: {places}"
+    assert_eq!(
+        places, PLACES,
+        "every pooled place and each detailed county"
     );
 }
 

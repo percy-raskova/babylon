@@ -207,6 +207,8 @@ pub enum CompanyCaptureError {
         available: usize,
     },
     Arithmetic,
+    /// An eligible site's trade is not in the trade set, so no company would hold it.
+    TradeOutsideSet(EconomicFunction),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompanyMember {

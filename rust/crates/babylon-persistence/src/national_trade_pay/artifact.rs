@@ -47,7 +47,7 @@ impl NationalTradePayReference {
         }
         let rows = parse::parse_csv(&decode_gzip(bytes)?, counties, ROW_COUNT)?;
         check_coverage(&rows, cohorts)?;
-        Ok(Self::from_rows(rows, ARTIFACT_SHA256))
+        Self::from_rows(rows, ARTIFACT_SHA256)
     }
 }
 
@@ -76,9 +76,9 @@ pub fn national_trade_pay_reference() -> Result<&'static NationalTradePayReferen
     REFERENCE
         .get_or_init(|| {
             let counties =
-                national_counties::national_county_reference().map_err(|_| Error::UnknownCounty)?;
+                national_counties::national_county_reference().map_err(Error::CountyTable)?;
             let cohorts =
-                national_cohorts::national_cohort_reference_v2().map_err(|_| Error::Coverage)?;
+                national_cohorts::national_cohort_reference_v2().map_err(Error::CohortTable)?;
             NationalTradePayReference::decode_captured(ARTIFACT, cohorts, counties)
         })
         .as_ref()

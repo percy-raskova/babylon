@@ -707,12 +707,33 @@ fn commodities(
     if raw.keys().map(String::as_str).collect::<BTreeSet<_>>() != expected {
         return Err(Error::Shape);
     }
-    raw.into_iter()
+    let admitted: BTreeMap<String, GameCommodity> = raw
+        .into_iter()
         .map(|(key, raw)| {
             let row = commodity(&key, raw)?;
             Ok((key, row))
         })
-        .collect()
+        .collect::<Result<_, Error>>()?;
+    if trades == TradeSet::Twelve {
+        // Consumer goods are a good that keeps; leisure is a service of the period, of either
+        // stage. No other product is tied to a stage: a scenario may place a service in either.
+        let kind_of = |key: &str| admitted.get(key).map(|commodity| &commodity.kind);
+        if !matches!(
+            kind_of("consumer_goods"),
+            Some(CommodityKind::Storable { .. })
+        ) {
+            return Err(Error::Profile(
+                "consumer_goods must be a storable good".into(),
+            ));
+        }
+        if !matches!(
+            kind_of("leisure"),
+            Some(CommodityKind::PeriodService { .. })
+        ) {
+            return Err(Error::Profile("leisure must be a period service".into()));
+        }
+    }
+    Ok(admitted)
 }
 fn commodity(key: &str, raw: RawCommodity) -> Result<GameCommodity, Error> {
     let fail = || Error::Commodity(key.to_owned());

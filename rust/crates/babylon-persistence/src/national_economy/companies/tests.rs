@@ -174,3 +174,44 @@ fn experimental_controllers_split_only_whole_occupied_sites_within_their_origina
         Err(CompanyCaptureError::ControllerCapacity { requested: 600, .. })
     ));
 }
+
+#[test]
+fn a_site_of_a_trade_outside_the_set_is_refused_not_dropped() {
+    use crate::national_cohorts::CohortKey;
+    use crate::national_economy::{ResidentWorkplaceSource, ResidentWorkplaceTarget};
+    use crate::national_resident_allocation::AssignedResidentWorkplace;
+    use babylon_graph::stable_element::StableElementKey;
+    use babylon_kernel::economic_identity::{QcewOwnership, TradeSet};
+    use babylon_material_circuit::StaffingPoolId;
+    let county = "26163".try_into().expect("county");
+    let workplace = AssignedResidentWorkplace {
+        target: ResidentWorkplaceTarget {
+            site_id: SiteId::from_bytes([1; 32]),
+            pool_id: StaffingPoolId::from_bytes([1; 32]),
+            workplace: StableElementKey::Node {
+                scenario: "test".into(),
+                local_name: "workplace".into(),
+            },
+            location: EconomicLocation::domestic_county(county).expect("a domestic county"),
+            function: EconomicFunction::ConsumerGoods,
+            ownership: QcewOwnership::Private,
+            allocation_weight: 1,
+            source: ResidentWorkplaceSource::Qcew(CohortKey {
+                county,
+                function: Some(EconomicFunction::ConsumerGoods),
+                ownership: QcewOwnership::Private,
+            }),
+        },
+        weight: None,
+        members: vec![],
+        county_wage: None,
+    };
+    let targets = EmploymentTargets::try_new([3500, 3500, 3000]).expect("designed shares");
+    // Under the ten trades, consumer goods is no trade of the set.
+    assert_eq!(
+        super::capture::from_workplaces(TradeSet::Ten, &[workplace], targets).err(),
+        Some(CompanyCaptureError::TradeOutsideSet(
+            EconomicFunction::ConsumerGoods
+        ))
+    );
+}

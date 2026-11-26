@@ -114,6 +114,13 @@ fn earlier_compilers_keep_their_digests() {
             let cut = text
                 .find("[city_pd]")
                 .expect("the shipped policy holds [city_pd]");
+            // What is cut holds exactly the two sections, so that a section added after them
+            // is not cut unseen.
+            let sections: Vec<&str> = text[cut..]
+                .lines()
+                .filter(|line| line.starts_with('['))
+                .collect();
+            assert_eq!(sections, ["[city_pd]", "[county_review]"]);
             text.truncate(cut);
         }),
         None,

@@ -63,6 +63,11 @@ pub(in crate::national_economy) fn from_workplaces(
             employed,
         });
     }
+    // A site of a trade outside the set would be left in the map and dropped: refuse it. Public
+    // provisioning never reached the map.
+    if let Some(function) = by_function.keys().find(|f| !trades.contains(**f)) {
+        return Err(CompanyCaptureError::TradeOutsideSet(*function));
+    }
     let mut capture = CompanyCapture {
         targets,
         companies: vec![],

@@ -62,6 +62,7 @@ pub const JOBS_BASIS_V2_SHA256: [u8; 32] = [
 /// What one trade set pins of its table: digest, groups, members and admitted groups.
 #[derive(Clone, Copy)]
 pub(super) struct TablePins {
+    pub(super) trades: TradeSet,
     pub(super) sha256: [u8; 32],
     pub(super) groups: usize,
     pub(super) members: usize,
@@ -70,12 +71,14 @@ pub(super) struct TablePins {
 pub(super) const fn table_pins(set: TradeSet) -> TablePins {
     match set {
         TradeSet::Ten => TablePins {
+            trades: TradeSet::Ten,
             sha256: ARTIFACT_SHA256,
             groups: GROUP_COUNT,
             members: MEMBER_COUNT,
             admitted: ADMITTED_COUNT,
         },
         TradeSet::Twelve => TablePins {
+            trades: TradeSet::Twelve,
             sha256: ARTIFACT_V2_SHA256,
             groups: 66_920,
             members: 151_199,

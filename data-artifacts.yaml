@@ -1612,7 +1612,7 @@ artifacts:
     home: src/babylon/data/reference/economy/national_cohort_reference_v2_2024.csv.gz
     material_relation: >-
       Part of PER-371: the twelve-trade county cohort groups that stage 2's
-      native reader will parse, in version 1's twelve columns. Members are the
+      native reader parses, in version 1's twelve columns. Members are the
       151199 county leaf cells of the version 2 jobs basis, grouped by county,
       trade and ownership; consumer goods and leisure and hospitality are
       groups of their own. Suppressed measures stay unknown, never zero.
@@ -1633,7 +1633,7 @@ artifacts:
       parents) and the pair of jobs and payroll that names its wage, taken from
       the county, its state, the nation, or the nation over all ownerships.
       Placed values are derived shares, never observations. Nothing hydrates a
-      campaign and no reader exists yet.
+      campaign, and the reader is babylon-persistence::national_trade_pay.
   - name: national_trade_accounts_2024
     format: csv.gz
     source_table: null

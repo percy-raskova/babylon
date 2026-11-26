@@ -218,7 +218,7 @@ fn partition(persons: u64, weights: &[u16]) -> Result<Vec<u64>> {
         return Err(NationalOpeningError::Policy);
     }
     let mut allocated = vec![0_u64; weights.len()];
-    let mut residuals = Vec::with_capacity(10);
+    let mut residuals = Vec::with_capacity(weights.len());
     let mut assigned = 0_u64;
     for (i, weight) in weights.iter().enumerate() {
         let numerator = u128::from(persons) * u128::from(*weight);

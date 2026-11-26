@@ -448,20 +448,25 @@ pub(crate) fn check_payroll_site(
 ///
 /// # Errors
 ///
-/// A policy with no `[county_review]` or an observed wage with no pay table is a policy refusal.
+/// A policy with no `[county_review]`, an observed wage with no pay table, or a wage that is not
+/// above zero is a policy refusal.
 pub(crate) fn going_wage(
     policy: &NationalGamePolicy,
     pay: Option<&NationalTradePayReference>,
 ) -> Result<i128> {
     let refused = || EconomicCatalogError::NationalOpening(NationalOpeningError::Policy);
-    match policy.wages {
-        GameWages::Single(wage) => Ok(wage.micro_units()),
+    let wage = match policy.wages {
+        GameWages::Single(wage) => wage.micro_units(),
         GameWages::Observed => {
             let terms = policy.county_review.as_ref().ok_or_else(refused)?;
             let pay = pay.ok_or_else(refused)?;
-            Ok(pay.county_average(terms.county).micro_units())
+            pay.county_average(terms.county).micro_units()
         }
+    };
+    if wage <= 0 {
+        return Err(refused());
     }
+    Ok(wage)
 }
 
 /// Assembles the county review's configuration and its opening roster.
@@ -566,6 +571,7 @@ pub(crate) fn assemble(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_kernel::currency::Currency;
     use babylon_practice_contract::CountyReviewCrew;
 
     fn config(crew_sites: &[u8]) -> CountyReviewConfig {
@@ -626,6 +632,22 @@ mod tests {
             content_digest: [14; 32],
             policy_source_digest: [15; 32],
         }
+    }
+
+    #[test]
+    fn a_zero_going_wage_is_refused() {
+        let mut policy = NationalGamePolicy::parse(include_str!(
+            "../../../../../content/scenarios/national/defines.toml"
+        ))
+        .expect("the shipped defines parse");
+        assert!(matches!(going_wage(&policy, None), Ok(wage) if wage > 0));
+        policy.wages = GameWages::Single(Currency::from_micro_units(0));
+        assert_eq!(
+            going_wage(&policy, None),
+            Err(EconomicCatalogError::NationalOpening(
+                NationalOpeningError::Policy
+            ))
+        );
     }
 
     #[test]

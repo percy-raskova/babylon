@@ -33,6 +33,9 @@ pub enum EconomicCatalogError {
     NationalOpening(NationalOpeningError),
     Foundation,
     Arithmetic,
+    /// A policy of twelve trades carries a company-scale experiment, which only the ten-trade
+    /// world compiles.
+    ExperimentOnTwelveTrades,
     Circuit(MaterialCircuitError),
     Staffing(MaterialStaffingError),
     /// The county review could not be captured from the opening.

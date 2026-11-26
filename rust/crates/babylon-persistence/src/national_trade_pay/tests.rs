@@ -32,6 +32,7 @@ fn reference(lines: &[&str]) -> NationalTradePayReference {
         table(lines).expect("the fixture rows are well formed"),
         [0; 32],
     )
+    .expect("the fixture rows hold jobs")
 }
 
 fn first_row(line: &str) -> TradePayRow {
@@ -171,5 +172,13 @@ fn a_table_with_one_row_removed_is_refused_as_coverage() {
     assert_eq!(
         super::artifact::check_coverage(&rows, ten),
         Err(Error::Coverage)
+    );
+}
+
+#[test]
+fn an_empty_table_is_refused_before_any_zero_wage_is_built() {
+    assert_eq!(
+        NationalTradePayReference::from_rows(Vec::new(), [0; 32]),
+        Err(Error::EmptyTable)
     );
 }

@@ -145,11 +145,21 @@ fn the_v2_table_decodes_with_its_own_pins() {
         .expect("Wayne has a private consumer goods group");
     let jobs = wayne.jobs().known_subtotal();
     assert!((53_000..54_000).contains(&jobs), "jobs {jobs}");
-    // The decoded table's pin is stage 1's metadata digest, hex 09ff8909...4d12.
-    assert_eq!(&reference.artifact_sha256()[..4], &[0x09, 0xff, 0x89, 0x09]);
+    // The decoded table's pins are the hex of the committed metadata, all 32 bytes.
+    let hex = |bytes: [u8; 32]| {
+        bytes.iter().fold(String::new(), |mut text, byte| {
+            use std::fmt::Write;
+            write!(text, "{byte:02x}").expect("a string takes text");
+            text
+        })
+    };
     assert_eq!(
-        &reference.function_mapping_sha256()[..4],
-        &[0x8b, 0x5f, 0x22, 0xd9]
+        hex(reference.artifact_sha256()),
+        "09ff890974342878a98929adcca5de766fcc7aa54aae869d999827940eb34d12"
+    );
+    assert_eq!(
+        hex(reference.function_mapping_sha256()),
+        "8b5f22d979b82b0fa808bd1579feeb78279768eed915ab5f8900a5820d851c3c"
     );
     // Version 1 keeps its meaning.
     let ten = national_cohorts::national_cohort_reference().expect("the ten-trade table decodes");

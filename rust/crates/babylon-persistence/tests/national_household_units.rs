@@ -163,7 +163,9 @@ impl Scenario {
         assert_eq!(catalog.compiler_version(), self.compiler());
         let census = match wage {
             Some(wage) => Census::new(catalog.opening(), wage),
-            None => Census::observed(catalog.opening()),
+            None => {
+                Census::observed(catalog.opening()).expect("the opening pays some member a wage")
+            }
         };
         (catalog, census)
     }
@@ -1229,12 +1231,13 @@ fn add_earners(
 /// thrown: the record keeps the periods that closed, the error in the engine's words and the full row
 /// of the period before it.
 fn bench_report(set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
-    scenario_report(Scenario::Shipped, set, periods)
+    scenario_report(Scenario::Shipped, set, periods, "")
 }
 
 /// The head of a record: the shipped scenario's is the committed one; the twelve trades' names its
-/// scenario, its compiler and what pays labor and seekers.
-fn scenario_header(scenario: Scenario, set: RuleSet) -> Value {
+/// scenario, its compiler, the file of the baseline it is judged against and what pays labor and
+/// seekers.
+fn scenario_header(scenario: Scenario, set: RuleSet, baseline: &str) -> Value {
     let mut head = country_bench::bench_header(set);
     if scenario == Scenario::TwelveTrades {
         let object = head.as_object_mut().expect("the header is an object");
@@ -1243,7 +1246,9 @@ fn scenario_header(scenario: Scenario, set: RuleSet) -> Value {
         object.insert("compiler".to_owned(), json!(scenario.compiler()));
         object.insert(
             "judged_against".to_owned(),
-            json!("the bench's own baseline (twelve-trades-baseline.json), never a record of the shipped scenario"),
+            json!(format!(
+                "the bench's own baseline ({baseline}), never a record of the shipped scenario"
+            )),
         );
         object.insert(
             "labor_cost".to_owned(),
@@ -1254,7 +1259,14 @@ fn scenario_header(scenario: Scenario, set: RuleSet) -> Value {
 }
 
 /// Plays up to `periods` closes of one scenario under one rule set: `bench_report` for any scenario.
-fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Option<BenchError>) {
+/// `baseline` is the file name the head of a twelve-trade record names as its baseline; the shipped
+/// scenario's head names none.
+fn scenario_report(
+    scenario: Scenario,
+    set: RuleSet,
+    periods: u64,
+    baseline: &str,
+) -> (Value, Option<BenchError>) {
     let (catalog, census) = scenario.captured();
     let mut bench =
         CountryBench::open_with(catalog.opening(), set, scenario.wages()).expect("the bench opens");
@@ -1292,7 +1304,7 @@ fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Op
         .iter()
         .map(|county| json!({"name": county.name, "geoid": county.geoid, "rule": county.rule}))
         .collect();
-    let mut record = scenario_header(scenario, set);
+    let mut record = scenario_header(scenario, set, baseline);
     let head = record.as_object_mut().expect("the header is an object");
     let mut columns = economy_health::bench_columns();
     if scenario == Scenario::TwelveTrades {
@@ -1312,12 +1324,13 @@ fn scenario_report(scenario: Scenario, set: RuleSet, periods: u64) -> (Value, Op
         );
         let due = country_fund::no_earner_due_a_period(opening, amount).expect("the due figure");
         let bodies_cash = country_fund::public_bodies_cash(opening).expect("the bodies' cash");
-        let reserve = if due > bodies_cash {
-            "none: one period of the no-earner benefit is more than the country's public bodies hold between them"
-        } else {
-            "none: the fund opens with no cash"
-        };
-        head.insert("fund_reserve".to_owned(), json!(reserve));
+        // The sentence is there only when the benefit's due is more than the bodies' cash.
+        if due > bodies_cash {
+            head.insert(
+                "fund_reserve".to_owned(),
+                json!("none: one period of the no-earner benefit is more than the country's public bodies hold between them"),
+            );
+        }
         head.insert(
             "no_earner_due_a_period_micros".to_owned(),
             json!(due.to_string()),
@@ -2583,7 +2596,7 @@ fn a_period_names_every_band() {
 
 #[test]
 fn the_shipped_record_has_no_earners() {
-    let (record, refusal) = scenario_report(Scenario::Shipped, RuleSet::None, 1);
+    let (record, refusal) = scenario_report(Scenario::Shipped, RuleSet::None, 1, "");
     assert!(refusal.is_none());
     assert!(record["periods"][0].get("earners").is_none());
     assert!(record["columns"].get("earners").is_none());
@@ -2688,7 +2701,8 @@ fn write_bands_opening() {
 fn record_twelve_trades_sets() {
     write_bands_opening();
     for set in twelve_trades_sets() {
-        let (record, refusal) = scenario_report(Scenario::TwelveTrades, set, 34);
+        let (record, refusal) =
+            scenario_report(Scenario::TwelveTrades, set, 34, "bands-baseline.json");
         let name = format!("bands-{}", set.name());
         let whole =
             Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("country-opening/{name}.json"));

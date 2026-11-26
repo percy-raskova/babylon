@@ -4,7 +4,8 @@ use babylon_kernel::geography::CountyGeoid;
 use std::collections::BTreeMap;
 use std::fmt::{Formatter, Result as FmtResult};
 
-use crate::national_cohorts::CohortKey;
+use crate::national_cohorts::{CohortKey, NationalCohortReferenceError};
+use crate::national_counties::NationalCountyReferenceError;
 
 /// Hours in a working year (the project's `HOURS_PER_YEAR`).
 const HOURS_PER_YEAR: u128 = 2_080;
@@ -113,6 +114,13 @@ pub enum NationalTradePayError {
     Order,
     /// Row count or keys differ from the admitted groups of the twelve-trade cohort table.
     Coverage,
+    /// The table holds no row, so no nation's figure can be worked out.
+    EmptyTable,
+    /// The county table the rows are checked against failed to decode; the cause is kept.
+    CountyTable(NationalCountyReferenceError),
+    /// The twelve-trade cohort table the rows are checked against failed to decode; the cause is
+    /// kept.
+    CohortTable(NationalCohortReferenceError),
 }
 
 impl std::fmt::Display for NationalTradePayError {
@@ -157,7 +165,17 @@ pub struct NationalTradePayReference {
 
 impl NationalTradePayReference {
     /// Build the averages over rows already checked and sorted.
-    pub(super) fn from_rows(rows: Vec<TradePayRow>, sha256: [u8; 32]) -> Self {
+    ///
+    /// # Errors
+    /// `EmptyTable` for no row, so that no zero wage can be built; `Wage` when the rows hold no
+    /// jobs or the nation's wage rounds to zero.
+    pub(super) fn from_rows(
+        rows: Vec<TradePayRow>,
+        sha256: [u8; 32],
+    ) -> Result<Self, NationalTradePayError> {
+        if rows.is_empty() {
+            return Err(NationalTradePayError::EmptyTable);
+        }
         let mut by_county: BTreeMap<CountyGeoid, Sum> = BTreeMap::new();
         let mut by_state: BTreeMap<[u8; 2], Sum> = BTreeMap::new();
         let mut by_trade: BTreeMap<EconomicFunction, Sum> = BTreeMap::new();
@@ -173,8 +191,8 @@ impl NationalTradePayReference {
             }
             all.add(row);
         }
-        let nation = all.wage().unwrap_or_else(|| Currency::from_micro_units(0));
-        Self {
+        let nation = all.wage().ok_or(NationalTradePayError::Wage)?;
+        Ok(Self {
             counties: by_county
                 .into_iter()
                 .filter_map(|(key, sum)| sum.wage().map(|wage| (key, wage)))
@@ -190,7 +208,7 @@ impl NationalTradePayReference {
             nation,
             rows: rows.into_boxed_slice(),
             sha256,
-        }
+        })
     }
 
     /// Every row, sorted by key.

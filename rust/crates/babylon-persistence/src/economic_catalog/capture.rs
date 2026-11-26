@@ -526,6 +526,11 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                     })
                 }
                 ("national-company-scale-experiment", Some(terms))
+                    if terms.experiment.is_some() && policy.trades == TradeSet::Twelve =>
+                {
+                    Err(EconomicCatalogError::ExperimentOnTwelveTrades)
+                }
+                ("national-company-scale-experiment", Some(terms))
                     if terms.experiment.is_some()
                         && input.geography == CatalogGeography::NationalCounties
                         && input.organizer.is_none()

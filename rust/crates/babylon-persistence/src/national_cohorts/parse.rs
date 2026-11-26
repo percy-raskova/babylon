@@ -6,7 +6,7 @@ use super::{
 };
 
 use crate::national_counties::NationalCountyReference;
-use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_identity::{QcewOwnership, TradeSet};
 use babylon_kernel::geography::CountyGeoid;
 
 const HEADER: &str = "county_geoid,function_id,ownership_code,admitted,member_count,establishments_known,establishments_published_members,jobs_known,jobs_published_members,payroll_known,payroll_published_members,members";
@@ -32,7 +32,7 @@ pub(super) fn parse_csv(
         if groups.len() == pins.groups {
             return Err(Error::Bound);
         }
-        let group = parse_group(line, mapping, counties)?;
+        let group = parse_group(line, mapping, counties, pins.trades)?;
         if groups
             .last()
             .is_some_and(|prior| prior.key() >= group.key())
@@ -58,6 +58,7 @@ pub(super) fn parse_group(
     line: &str,
     mapping: &FunctionMapping,
     counties: &NationalCountyReference,
+    trades: TradeSet,
 ) -> Result<CohortReference, Error> {
     let fields: [&str; 12] = line
         .splitn(13, ',')
@@ -71,7 +72,7 @@ pub(super) fn parse_group(
     let function = if fields[1].is_empty() {
         None
     } else {
-        Some(EconomicFunction::from_source_key(fields[1]).ok_or(Error::Function)?)
+        Some(trades.from_source_key(fields[1]).ok_or(Error::Function)?)
     };
     let ownership = QcewOwnership::from_source_code(fields[2]).ok_or(Error::Ownership)?;
     let key = CohortKey {

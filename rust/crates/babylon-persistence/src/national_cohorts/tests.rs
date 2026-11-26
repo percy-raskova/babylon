@@ -1,7 +1,7 @@
 //! Semantic refusals remain visible beneath the outer exact-artifact digest.
 use super::mapping::FunctionMapping;
 use super::NationalCohortReferenceError as Error;
-use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_identity::{EconomicFunction, TradeSet};
 
 use super::parse;
 use super::CohortReference;
@@ -12,7 +12,21 @@ fn row(text: &str) -> Result<CohortReference, Error> {
         text,
         &FunctionMapping::load()?,
         national_counties::national_county_reference().map_err(Error::CountyReference)?,
+        TradeSet::Ten,
     )
+}
+
+#[test]
+fn a_version_1_table_that_names_consumer_goods_is_refused_by_the_parser() {
+    // The parser reads each trade with the table's own set, before the mapping is asked.
+    assert_eq!(
+        row("01017,consumer_goods,5,0,1,0,1,0,0,0,0,311~N~0~~~"),
+        Err(Error::Function)
+    );
+    assert_eq!(
+        row("01017,leisure_hospitality,5,0,1,0,1,0,0,0,0,311~N~0~~~"),
+        Err(Error::Function)
+    );
 }
 
 #[test]

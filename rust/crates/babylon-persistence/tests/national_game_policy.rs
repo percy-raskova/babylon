@@ -693,22 +693,65 @@ fn bands_need_a_bottom_half() {
 #[test]
 fn schema_8_weights_split_consumer_goods_from_capital_and_leisure_from_services() {
     let policy = NationalGamePolicy::parse(TWELVE).expect("the twelve-trade fixture parses");
-    // Ord order: capital 1, consumer goods 3, household services 8, leisure 9.
-    // Consumer goods took half of the old capital weight, leisure a quarter of the old
-    // household-services weight, each rounded down to 50.
-    let split = |w: &[u16]| {
-        let capital = u32::from(w[1] + w[3]);
-        let services = u32::from(w[8] + w[9]);
-        (
-            u32::from(w[3]) == capital / 2 / 50 * 50,
-            u32::from(w[9]) == services / 4 / 50 * 50,
-        )
+    let shipped = NationalGamePolicy::parse(SOURCE).expect("the shipped policy parses");
+    // Ord order of the ten trades: capital 1, household services 7. Of the twelve: capital 1,
+    // consumer goods 3, household services 8, leisure 9. Consumer goods took half of the old
+    // capital weight, leisure a quarter of the old household-services weight, each rounded
+    // down to 50; every other trade keeps its weight.
+    let derive = |ten: &[u16]| -> Vec<u16> {
+        assert_eq!(ten.len(), 10);
+        let consumer = ten[1] / 2 / 50 * 50;
+        let leisure = ten[7] / 4 / 50 * 50;
+        vec![
+            ten[0],
+            ten[1] - consumer,
+            ten[2],
+            consumer,
+            ten[3],
+            ten[4],
+            ten[5],
+            ten[6],
+            ten[7] - leisure,
+            leisure,
+            ten[8],
+            ten[9],
+        ]
     };
-    for profile in policy.counterparts.values() {
-        assert_eq!(split(&profile.function_weights_bps), (true, true));
+    assert_eq!(policy.counterparts.len(), shipped.counterparts.len());
+    for (counterpart, profile) in &policy.counterparts {
+        let ten = &shipped
+            .counterparts
+            .get(counterpart)
+            .expect("the shipped policy holds the same counterpart")
+            .function_weights_bps;
+        assert_eq!(profile.function_weights_bps, derive(ten), "{counterpart:?}");
     }
     assert_eq!(
-        split(&policy.dependency.profile.function_weights_bps),
-        (true, true)
+        policy.dependency.profile.function_weights_bps,
+        derive(&shipped.dependency.profile.function_weights_bps)
     );
+}
+
+#[test]
+fn consumer_goods_must_be_a_storable_good_and_leisure_a_period_service() {
+    let goods = "kind = \"storable\"\ncargo_class = \"general\"\ngrams_per_unit = 5000\nopening_price_micros = 240000000";
+    let as_service = TWELVE.replace(
+        goods,
+        "kind = \"service\"\ngrams_per_unit = 0\nopening_price_micros = 240000000",
+    );
+    assert_ne!(as_service, TWELVE);
+    assert!(matches!(
+        NationalGamePolicy::parse(&as_service),
+        Err(NationalGamePolicyError::Profile(_))
+    ));
+    let leisure = "kind = \"service\"\ngrams_per_unit = 0\nopening_price_micros = 300000000";
+    let as_good = TWELVE.replace(
+        leisure,
+        "kind = \"storable\"\ncargo_class = \"general\"\ngrams_per_unit = 5000\nopening_price_micros = 300000000",
+    );
+    assert_ne!(as_good, TWELVE);
+    assert!(matches!(
+        NationalGamePolicy::parse(&as_good),
+        Err(NationalGamePolicyError::Profile(_))
+    ));
 }

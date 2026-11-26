@@ -18,7 +18,7 @@ use babylon_material_circuit::{
     AccountId, CommodityKind, CorridorId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
     MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer, ServiceConnection,
     ServiceInputPolicy, SiteId, StaffingPoolBinding, StaffingWorkSource, UnitId,
-    MAX_HOUSEHOLD_NEEDS,
+    MAX_HOUSEHOLD_NEEDS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_SERVICE_CONNECTIONS,
 };
 use std::collections::BTreeMap;
 
@@ -185,7 +185,10 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         .service_inputs
         .sort_unstable_by_key(|r| (r.buyer_site_id, r.good_id, r.unit_id, r.provider_site_id));
     policies.service_connections.sort_unstable();
-    Ok(())
+    check_service_bounds(
+        policies.service_inputs.len(),
+        policies.service_connections.len(),
+    )
 }
 
 // Only missing retailer locations need these indices. Actor locations/employment
@@ -454,6 +457,15 @@ pub(super) fn purchases(
 /// want rows are bounded where they are written (`templates::household_wants`).
 fn check_bounds(purchase_rows: usize) -> Result<()> {
     if purchase_rows > MAX_HOUSEHOLD_NEEDS {
+        return Err(NationalOpeningError::Bounds);
+    }
+    Ok(())
+}
+
+/// The service tables of the opening, the dealing abroad included, stay within the engine's bounds: past
+/// them the compiler refuses, typed, before the engine would.
+fn check_service_bounds(service_inputs: usize, service_connections: usize) -> Result<()> {
+    if service_inputs > MAX_MATERIAL_CIRCUIT_ROWS || service_connections > MAX_SERVICE_CONNECTIONS {
         return Err(NationalOpeningError::Bounds);
     }
     Ok(())
@@ -1163,6 +1175,18 @@ mod retailer_index_controls {
         assert_eq!(check_bounds(MAX_HOUSEHOLD_NEEDS), Ok(()));
         assert_eq!(
             check_bounds(MAX_HOUSEHOLD_NEEDS + 1),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_service_bounds(MAX_MATERIAL_CIRCUIT_ROWS, MAX_SERVICE_CONNECTIONS),
+            Ok(())
+        );
+        assert_eq!(
+            check_service_bounds(MAX_MATERIAL_CIRCUIT_ROWS + 1, 0),
+            Err(NationalOpeningError::Bounds)
+        );
+        assert_eq!(
+            check_service_bounds(0, MAX_SERVICE_CONNECTIONS + 1),
             Err(NationalOpeningError::Bounds)
         );
     }

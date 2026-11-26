@@ -3145,11 +3145,11 @@ fn a_site_abroad_buys_its_share_at_home() {
         } else {
             assert_eq!(at_own.len(), 0);
         }
+        widest = widest.max(at_home.len());
         for (provider, cap) in at_home {
             *asked.entry(*provider).or_default() += cap;
             rows_from_abroad += 1;
         }
-        widest = widest.max(now.len() - 1);
         exports += export;
         sites += 1;
     }

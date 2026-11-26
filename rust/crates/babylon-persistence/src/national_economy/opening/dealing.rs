@@ -216,21 +216,35 @@ fn as_signed(value: u128) -> Result<i128> {
     i128::try_from(value).map_err(|_| NationalOpeningError::Arithmetic)
 }
 
+/// A stall's room: `employed x whole weight - taken x all stalls' employed`, exact in `i128`, an overflow
+/// is `Arithmetic`.
+fn room_of(stall: &Stall, taken: i128, weight: i128, all: i128) -> Result<i128> {
+    i128::from(stall.employed)
+        .checked_mul(weight)
+        .zip(taken.checked_mul(all))
+        .and_then(|(have, used)| have.checked_sub(used))
+        .ok_or(NationalOpeningError::Arithmetic)
+}
+
 /// The stall with the most room left, among those not yet used by this buyer: the lower site id on a tie.
-/// A stall's room is `employed x whole weight - taken x all stalls' employed`, exact in `i128`.
 fn most_room(
     stalls: &[Stall],
     taken: &[i128],
     used: &[bool],
     weight: i128,
     all: i128,
-) -> Option<usize> {
-    (0..stalls.len())
-        .filter(|&index| !used[index])
-        .max_by_key(|&index| {
-            let room = i128::from(stalls[index].employed) * weight - taken[index] * all;
-            (room, Reverse(stalls[index].site))
-        })
+) -> Result<Option<(usize, i128)>> {
+    let mut best: Option<(usize, i128)> = None;
+    for index in (0..stalls.len()).filter(|&index| !used[index]) {
+        let room = room_of(&stalls[index], taken[index], weight, all)?;
+        let better = best.is_none_or(|(held, held_room)| {
+            (room, Reverse(stalls[index].site)) > (held_room, Reverse(stalls[held].site))
+        });
+        if better {
+            best = Some((index, room));
+        }
+    }
+    Ok(best)
 }
 
 /// Deals buyers' weights over stalls by room alone. A stall's room is its persons at work over all stalls'
@@ -263,10 +277,9 @@ pub(super) fn deal_by_most_room(
         let mut used = vec![false; stalls.len()];
         let mut shares = Vec::<Share>::new();
         while remaining > 0 {
-            let Some(index) = most_room(stalls, &taken, &used, weight, all) else {
+            let Some((index, room)) = most_room(stalls, &taken, &used, weight, all)? else {
                 return Err(NationalOpeningError::Policy);
             };
-            let room = i128::from(stalls[index].employed) * weight - taken[index] * all;
             let last = shares.len() + 1 >= most.max(1) || used.iter().filter(|u| !**u).count() == 1;
             let own = if room > 0 {
                 (room + all - 1) / all
@@ -789,6 +802,10 @@ pub(super) fn service_rows(
     let locations = providers.get(&(good.good_id, good.unit_id));
     let mut rows = Vec::new();
     if state(actor.location).is_some() {
+        // A domestic buyer with no provider at home is skipped whole, as before the crossing.
+        if home.is_none() {
+            return Ok(rows);
+        }
         let abroad = locations
             .map(|locations| provider_abroad(locations, actor.site_id, actor.location))
             .transpose()?

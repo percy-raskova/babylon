@@ -1053,9 +1053,11 @@ financial_institutions:
   budget_rule_u8: {capped_in_order: 1, cash_in_proportion: 2}
   public_programs:
     row: [key_len_u8, key_bytes, payer_public_account_id, rank_u32, terms_tag_u8, terms, recipient_count_u32,
-          recipient_principal_ids]
-    terms_tag_u8: {per_person: 1, after_layoff: 2}
-    terms: {per_person: [amount_per_person], after_layoff: [wage_share_bps_u16, half_periods_u16]}
+          recipient_principal_ids, own_amounts_if_tag_3]
+    own_amounts_if_tag_3: one i128 a recipient, in its order
+    terms_tag_u8: {per_person: 1, after_layoff: 2, per_person_own: 3}
+    terms: {per_person: [amount_per_person], after_layoff: [wage_share_bps_u16, half_periods_u16],
+            per_person_own: [share_bps_u32]}
     canonical_keys: {programs: [key], recipients: [principal_id]}
     key: 1 to 32 bytes of a-z, 0-9 and underscore, a letter first.
     receipt_fields: [period, public_account, program_key, recipient_principal, rank, covered_persons, due, paid,
@@ -1073,6 +1075,9 @@ financial_institutions:
         (layoff_records below), without a record nothing. A household is a recipient of at most one after_layoff
         program. A state that holds one is advanced only by finish_with_staffing, which ages the records from the
         member receipts; the other finishes refuse it.
+      - per_person_own needs share_bps 1 to 100,000, one own amount above 0 for each recipient and a household cohort
+        row for each; it owes floor(own amount x persons x share_bps / 10,000) at the opening of the period, 0 for 0
+        persons. Tags 1 and 2 hold no own amounts.
       - A program's dues and the budget's standing rows of one rank are cut together in proportion; a paid amount is a
         public transfer, not wage income, and is not taxed.
   layoff_records:

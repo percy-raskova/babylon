@@ -99,7 +99,8 @@ fn decode_layoffs(c: &mut Cursor<'_>) -> Result<Vec<LayoffRecord>> {
 }
 /// Per program: key length `u8` and its bytes, payer, rank `u32`, a tag `u8`, the terms, then a `u32`
 /// count of recipients and 32 bytes each. Terms: tag 1 the amount per person, tag 2 the wage share
-/// `u16` and the half periods `u16`.
+/// `u16` and the half periods `u16`, tag 3 the share `u32`; under tag 3 only, each recipient's own
+/// amount as `i128` follows the recipients, in their order and with no count of its own.
 fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
     super::try_append_bounded_rows(out, rows, crate::MAX_PUBLIC_PROGRAMS, |b, r| {
         let key = r.key.as_str().as_bytes();
@@ -120,6 +121,10 @@ fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
                 b.extend_from_slice(&wage_share_bps.to_be_bytes());
                 b.extend_from_slice(&half_periods.to_be_bytes());
             }
+            PublicProgramTerms::PerPersonOwn { share_bps } => {
+                b.push(3);
+                b.extend_from_slice(&share_bps.to_be_bytes());
+            }
         }
         b.extend_from_slice(
             &u32::try_from(r.recipients.len())
@@ -128,6 +133,11 @@ fn append_programs(out: &mut Vec<u8>, rows: &[PublicProgram]) -> Result<()> {
         );
         for recipient in &r.recipients {
             b.extend_from_slice(&recipient.as_bytes());
+        }
+        if matches!(r.terms, PublicProgramTerms::PerPersonOwn { .. }) {
+            for amount in &r.own_amounts {
+                b.extend_from_slice(&amount.micro_units().to_be_bytes());
+            }
         }
         Ok(())
     })
@@ -149,17 +159,31 @@ fn decode_programs(c: &mut Cursor<'_>) -> Result<Vec<PublicProgram>> {
                 wage_share_bps: b.u16()?,
                 half_periods: b.u16()?,
             },
+            3 => PublicProgramTerms::PerPersonOwn {
+                share_bps: b.u32()?,
+            },
             _ => return Err(MaterialCircuitError::WireEnum),
         };
         let recipients =
             super::decode_rows(b, |b| Ok(FinalDemandPrincipalId::from_bytes(b.array()?)))?;
         accounting::ordered_rows(&recipients, |r| *r)?;
+        let mut own_amounts = Vec::new();
+        if matches!(terms, PublicProgramTerms::PerPersonOwn { .. }) {
+            for _ in &recipients {
+                let amount = accounting::decode_currency(b)?;
+                if amount.micro_units() <= 0 {
+                    return Err(MaterialCircuitError::WireNoncanonical);
+                }
+                own_amounts.push(amount);
+            }
+        }
         Ok(PublicProgram {
             key,
             payer,
             rank,
             terms,
             recipients,
+            own_amounts,
         })
     })?;
     accounting::ordered_rows(&rows, |r| r.key.clone())?;
@@ -319,9 +343,64 @@ fn decode_contributions(c: &mut Cursor<'_>) -> Result<Vec<CapitalContributionOrd
 
 #[cfg(test)]
 mod tests {
-    use super::{append_layoffs, decode_programs};
+    use super::{append_layoffs, append_programs, decode_programs};
     use crate::wire::Cursor;
-    use crate::{LayoffRecord, MaterialCircuitError, StaffingMemberId};
+    use crate::{
+        FinalDemandPrincipalId, LayoffRecord, MaterialCircuitError, PublicAccountId, PublicProgram,
+        PublicProgramKey, PublicProgramTerms, StaffingMemberId,
+    };
+    use babylon_kernel::currency::Currency;
+
+    fn own_program(amounts: [i128; 2]) -> PublicProgram {
+        PublicProgram {
+            key: PublicProgramKey::new("p").expect("a key"),
+            payer: PublicAccountId::from_bytes([9; 32]),
+            rank: 2,
+            terms: PublicProgramTerms::PerPersonOwn { share_bps: 10_000 },
+            recipients: vec![
+                FinalDemandPrincipalId::from_bytes([1; 32]),
+                FinalDemandPrincipalId::from_bytes([2; 32]),
+            ],
+            own_amounts: amounts.map(Currency::from_micro_units).to_vec(),
+        }
+    }
+
+    #[test]
+    fn a_program_of_own_amounts_round_trips() {
+        let program = own_program([5, 7]);
+        let mut out = vec![];
+        append_programs(&mut out, std::slice::from_ref(&program)).expect("written");
+        let mut expected = 1_u32.to_be_bytes().to_vec();
+        expected.push(1);
+        expected.extend_from_slice(b"p");
+        expected.extend_from_slice(&[9; 32]);
+        expected.extend_from_slice(&2_u32.to_be_bytes());
+        expected.push(3);
+        expected.extend_from_slice(&10_000_u32.to_be_bytes());
+        expected.extend_from_slice(&2_u32.to_be_bytes());
+        expected.extend_from_slice(&[1; 32]);
+        expected.extend_from_slice(&[2; 32]);
+        expected.extend_from_slice(&5_i128.to_be_bytes());
+        expected.extend_from_slice(&7_i128.to_be_bytes());
+        assert_eq!(out, expected);
+        assert_eq!(
+            decode_programs(&mut Cursor::new(&out)).expect("decoded"),
+            vec![program]
+        );
+        let tag_at = 4 + 1 + 1 + 32 + 4;
+        let mut bad_tag = out.clone();
+        bad_tag[tag_at] = 4;
+        assert_eq!(
+            decode_programs(&mut Cursor::new(&bad_tag)).err(),
+            Some(MaterialCircuitError::WireEnum)
+        );
+        let mut zero = vec![];
+        append_programs(&mut zero, &[own_program([0, 7])]).expect("written");
+        assert_eq!(
+            decode_programs(&mut Cursor::new(&zero)).err(),
+            Some(MaterialCircuitError::WireNoncanonical)
+        );
+    }
 
     /// A record of more cohorts than the byte count holds is refused, never clamped to 255.
     #[test]

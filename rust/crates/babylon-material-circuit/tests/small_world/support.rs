@@ -742,6 +742,7 @@ impl World {
                 rank: 0,
                 terms: PublicProgramTerms::PerPerson { amount_per_person },
                 recipients: vec![supported()],
+                own_amounts: vec![],
             });
         }
         if let Some((wage_share_bps, half_periods)) = fund.after_layoff {
@@ -756,6 +757,7 @@ impl World {
                     half_periods,
                 },
                 recipients,
+                own_amounts: vec![],
             });
             f.programs.sort_by(|a, b| a.key.cmp(&b.key));
         }

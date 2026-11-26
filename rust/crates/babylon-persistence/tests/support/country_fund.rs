@@ -289,6 +289,7 @@ pub fn with_fund(
                 amount_per_person: per_person,
             },
             recipients: no_earner,
+            own_amounts: vec![],
         });
     }
     if !laid_off.is_empty() {
@@ -301,6 +302,7 @@ pub fn with_fund(
                 half_periods: LAID_OFF_HALF_PERIODS,
             },
             recipients: laid_off,
+            own_amounts: vec![],
         });
     }
     programs.sort_by(|a, b| a.key.cmp(&b.key));

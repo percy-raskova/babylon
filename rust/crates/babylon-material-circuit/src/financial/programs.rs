@@ -11,6 +11,9 @@ use std::collections::BTreeMap;
 /// One claim for each program and recipient, in (program key, recipient) order. The receipt carries
 /// the claim as `due`, with nothing paid yet.
 ///
+/// A tag-3 program owes each recipient `floor(own amount x persons x share_bps / 10_000)`, the
+/// amount being the recipient's own, kept beside it in `own_amounts`.
+///
 /// A per-person program owes `amount_per_person x persons` of the recipient's cohort, read from the
 /// state as the period opens. A cohort of no persons owes nothing. An after-layoff program owes each
 /// recipient the sum, over that household's members with a record of layoffs, of what the record is
@@ -38,9 +41,11 @@ pub(crate) fn program_dues(
                 wage_share_bps,
                 half_periods,
             } => owed_by_household(state, wage_share_bps, half_periods)?,
-            PublicProgramTerms::PerPerson { .. } => BTreeMap::new(),
+            PublicProgramTerms::PerPerson { .. } | PublicProgramTerms::PerPersonOwn { .. } => {
+                BTreeMap::new()
+            }
         };
-        for &recipient in &program.recipients {
+        for (index, &recipient) in program.recipients.iter().enumerate() {
             let (covered_persons, due) = match program.terms {
                 PublicProgramTerms::PerPerson { amount_per_person } => {
                     let persons = *persons_of
@@ -51,6 +56,16 @@ pub(crate) fn program_dues(
                         .checked_mul(i128::from(persons))
                         .ok_or(MaterialCircuitError::Arithmetic)?;
                     (persons, Currency::from_micro_units(owed))
+                }
+                PublicProgramTerms::PerPersonOwn { share_bps } => {
+                    let persons = *persons_of
+                        .get(&recipient)
+                        .ok_or(MaterialCircuitError::PublicProgramInvariant)?;
+                    let own = program
+                        .own_amounts
+                        .get(index)
+                        .ok_or(MaterialCircuitError::PublicProgramInvariant)?;
+                    (persons, own_due(*own, persons, share_bps)?)
                 }
                 PublicProgramTerms::AfterLayoff { .. } => layoffs
                     .get(&recipient)
@@ -74,6 +89,16 @@ pub(crate) fn program_dues(
     }
     dues.sort_by(|a, b| (&a.0.program, a.0.recipient).cmp(&(&b.0.program, b.0.recipient)));
     Ok(dues)
+}
+
+/// `floor(own x persons x share_bps / 10_000)`, the product checked in `i128`.
+fn own_due(own: Currency, persons: u64, share_bps: u32) -> Result<Currency> {
+    let product = own
+        .micro_units()
+        .checked_mul(i128::from(persons))
+        .and_then(|n| n.checked_mul(i128::from(share_bps)))
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(Currency::from_micro_units(product.div_euclid(10_000)))
 }
 
 /// For each household, the persons covered and the amount owed over the records of its members.
@@ -188,7 +213,71 @@ mod tests {
                 amount_per_person: Currency::from_micro_units(amount),
             },
             recipients: recipients.iter().map(|&n| principal(n)).collect(),
+            own_amounts: vec![],
         }
+    }
+
+    fn own_program(share_bps: u32, recipients: &[u8], amounts: &[i128]) -> PublicProgram {
+        PublicProgram {
+            terms: PublicProgramTerms::PerPersonOwn { share_bps },
+            own_amounts: amounts
+                .iter()
+                .map(|&a| Currency::from_micro_units(a))
+                .collect(),
+            ..program("o", 0, recipients)
+        }
+    }
+
+    fn dues_of(share_bps: u32, cohorts: &[(u8, u64)], amounts: &[i128]) -> Vec<i128> {
+        let ids: Vec<u8> = cohorts.iter().map(|c| c.0).collect();
+        program_dues(&state(cohorts), &[own_program(share_bps, &ids, amounts)])
+            .expect("dues")
+            .iter()
+            .map(|(_, d)| d.micro_units())
+            .collect()
+    }
+
+    #[test]
+    fn own_amounts_are_owed_by_their_share() {
+        let cohorts = [(1, 3), (2, 2)];
+        let amounts = [846_000_000, 1_691_000_000];
+        assert_eq!(
+            dues_of(10_000, &cohorts, &amounts),
+            [2_538_000_000, 3_382_000_000]
+        );
+        assert_eq!(
+            dues_of(9_000, &cohorts, &amounts),
+            [2_284_200_000, 3_043_800_000]
+        );
+        assert_eq!(
+            dues_of(15_000, &cohorts, &amounts),
+            [3_807_000_000, 5_073_000_000]
+        );
+        assert_eq!(dues_of(5_000, &[(1, 3)], &[1]), [1]);
+        let zero =
+            program_dues(&state(&[(1, 0)]), &[own_program(10_000, &[1], &[7])]).expect("dues");
+        assert_eq!(zero[0].0.covered_persons, 0);
+        assert_eq!(zero[0].1.micro_units(), 0);
+        assert_eq!(
+            program_dues(
+                &state(&[(1, 2)]),
+                &[own_program(10_000, &[1], &[i128::MAX])]
+            )
+            .err(),
+            Some(crate::MaterialCircuitError::Arithmetic)
+        );
+    }
+
+    #[test]
+    fn a_short_list_of_amounts_is_refused() {
+        assert_eq!(
+            program_dues(
+                &state(&[(1, 3), (2, 2)]),
+                &[own_program(10_000, &[1, 2], &[5])]
+            )
+            .err(),
+            Some(crate::MaterialCircuitError::PublicProgramInvariant)
+        );
     }
 
     #[test]

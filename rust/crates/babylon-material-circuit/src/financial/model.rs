@@ -196,7 +196,12 @@ pub enum PublicProgramTerms {
         wage_share_bps: u16,
         half_periods: u16,
     },
+    /// For each person of the recipient's cohort, the recipient's own amount (`PublicProgram::own_amounts`)
+    /// times `share_bps / 10_000`, rounded down (tag 3). The amounts are fixed; the share may change.
+    PerPersonOwn { share_bps: u32 },
 }
+/// The most a tag-3 share may be: ten times the amounts.
+pub const MAX_PROGRAM_SHARE_BPS: u32 = 100_000;
 /// A named rule of one public account that pays each of its recipients every period.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicProgram {
@@ -210,6 +215,9 @@ pub struct PublicProgram {
     pub terms: PublicProgramTerms,
     /// May change. Each is the principal of a household account.
     pub recipients: Vec<FinalDemandPrincipalId>,
+    /// Under tag 3 one amount a person for each recipient, in the recipients' order; empty under tags 1 and 2.
+    /// Each amount is fixed for its recipient: a change of recipients adds or removes a recipient with its amount.
+    pub own_amounts: Vec<Currency>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicProgramReceipt {

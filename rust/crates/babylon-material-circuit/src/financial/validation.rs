@@ -3,7 +3,7 @@ use super::PublicProgramTerms;
 use super::PublicSpendingRule;
 use super::PublicTransferTreatment;
 use super::Result;
-use super::{MAX_LAYOFF_HALF_PERIODS, MAX_LAYOFF_PERIODS};
+use super::{MAX_LAYOFF_HALF_PERIODS, MAX_LAYOFF_PERIODS, MAX_PROGRAM_SHARE_BPS};
 use crate::MonetaryBook;
 use crate::{
     AccountId, CircuitAccounting, LaborCompensation, MaterialCircuitError, MaterialCircuitState,
@@ -25,7 +25,20 @@ pub(crate) fn canonicalize(f: &mut FinancialInstitutions) {
     f.programs.sort_by(|a, b| a.key.cmp(&b.key));
     f.layoffs.sort_by_key(|r| r.member_id);
     for program in &mut f.programs {
-        program.recipients.sort();
+        if program.own_amounts.len() == program.recipients.len() {
+            // An own amount stays with its recipient.
+            let mut pairs: Vec<_> = program
+                .recipients
+                .iter()
+                .copied()
+                .zip(program.own_amounts.iter().copied())
+                .collect();
+            pairs.sort_by_key(|p| p.0);
+            program.recipients = pairs.iter().map(|p| p.0).collect();
+            program.own_amounts = pairs.iter().map(|p| p.1).collect();
+        } else {
+            program.recipients.sort();
+        }
     }
 }
 fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<()> {
@@ -220,11 +233,27 @@ fn validate_programs(state: &MaterialCircuitState, f: &FinancialInstitutions) ->
         {
             return Err(invalid);
         }
+        let own_ok = match program.terms {
+            PublicProgramTerms::PerPersonOwn { share_bps } => {
+                (1..=MAX_PROGRAM_SHARE_BPS).contains(&share_bps)
+                    && program.own_amounts.len() == program.recipients.len()
+                    && program.own_amounts.iter().all(|a| a.micro_units() > 0)
+            }
+            _ => program.own_amounts.is_empty(),
+        };
+        if !own_ok {
+            return Err(invalid);
+        }
         match program.terms {
             PublicProgramTerms::PerPerson { amount_per_person } => {
                 if amount_per_person.micro_units() <= 0
                     || program.recipients.iter().any(|r| !cohort_ids.contains(r))
                 {
+                    return Err(invalid);
+                }
+            }
+            PublicProgramTerms::PerPersonOwn { .. } => {
+                if program.recipients.iter().any(|r| !cohort_ids.contains(r)) {
                     return Err(invalid);
                 }
             }
@@ -391,8 +420,86 @@ mod tests {
                 amount_per_person: Currency::from_micro_units(1),
             },
             recipients: households,
+            own_amounts: vec![],
         }];
         validate_programs(&state, &f).expect("the program validates");
+    }
+
+    fn own_state(f: &mut FinancialInstitutions, share_bps: u32, amounts: Vec<i128>) {
+        let households: Vec<_> = (0..N)
+            .map(|n| FinalDemandPrincipalId::from_bytes(bytes(1, n)))
+            .collect();
+        let payer = PublicAccountId::from_bytes([9; 32]);
+        f.public_budgets = vec![PublicBudget {
+            public_account: payer,
+            period_cap: Currency::from_micro_units(0),
+            cash_floor: Currency::from_micro_units(0),
+            rule: PublicSpendingRule::CashInProportion,
+        }];
+        f.programs = vec![PublicProgram {
+            key: PublicProgramKey::new("p").expect("a key"),
+            payer,
+            rank: 0,
+            terms: PublicProgramTerms::PerPersonOwn { share_bps },
+            recipients: households,
+            own_amounts: amounts
+                .into_iter()
+                .map(Currency::from_micro_units)
+                .collect(),
+        }];
+    }
+
+    #[test]
+    fn tag_3_is_validated() {
+        let households: Vec<_> = (0..N)
+            .map(|n| FinalDemandPrincipalId::from_bytes(bytes(1, n)))
+            .collect();
+        let state = state(&households, vec![]);
+        let ones = || vec![1_i128; usize::from(N)];
+        let mut f = FinancialInstitutions::empty();
+        let invalid = Some(crate::MaterialCircuitError::PublicProgramInvariant);
+        own_state(&mut f, 10_000, ones());
+        validate_programs(&state, &f).expect("one micro each validates");
+        for share in [1, 100_000] {
+            own_state(&mut f, share, ones());
+            validate_programs(&state, &f).expect("the ends of the share validate");
+        }
+        for share in [0, 100_001] {
+            own_state(&mut f, share, ones());
+            assert_eq!(validate_programs(&state, &f).err(), invalid);
+        }
+        let mut with_zero = ones();
+        with_zero[0] = 0;
+        own_state(&mut f, 10_000, with_zero);
+        assert_eq!(validate_programs(&state, &f).err(), invalid);
+        let mut short = ones();
+        short.pop();
+        own_state(&mut f, 10_000, short);
+        assert_eq!(validate_programs(&state, &f).err(), invalid);
+        own_state(&mut f, 10_000, ones());
+        f.programs[0].terms = PublicProgramTerms::PerPerson {
+            amount_per_person: Currency::from_micro_units(1),
+        };
+        f.programs[0].own_amounts.truncate(1);
+        assert_eq!(validate_programs(&state, &f).err(), invalid);
+    }
+
+    #[test]
+    fn amounts_are_sorted_with_their_recipients() {
+        let one = FinalDemandPrincipalId::from_bytes(bytes(1, 1));
+        let two = FinalDemandPrincipalId::from_bytes(bytes(1, 2));
+        let mut f = FinancialInstitutions::empty();
+        own_state(&mut f, 10_000, vec![20, 10]);
+        f.programs[0].recipients = vec![two, one];
+        super::canonicalize(&mut f);
+        assert_eq!(f.programs[0].recipients, vec![one, two]);
+        assert_eq!(
+            f.programs[0].own_amounts,
+            vec![
+                Currency::from_micro_units(10),
+                Currency::from_micro_units(20)
+            ]
+        );
     }
 
     /// Two thousand records are checked against the employment rows: it finishes.

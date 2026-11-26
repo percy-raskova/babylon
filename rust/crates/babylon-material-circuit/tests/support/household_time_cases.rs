@@ -659,6 +659,7 @@ fn a_benefit_per_person_follows_births() {
             amount_per_person: crate::money(10_000_000),
         },
         recipients: vec![crate::household()],
+        own_amounts: vec![],
     });
     let recurring = e.recurring.as_mut().expect("recurring household economy");
     let purchase = &mut recurring.household_purchases[0];

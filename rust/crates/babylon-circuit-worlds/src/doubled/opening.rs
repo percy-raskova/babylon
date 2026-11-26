@@ -566,6 +566,7 @@ fn add_public_accounts(
             .iter()
             .map(|&p| Household::Supported(p).principal())
             .collect(),
+        own_amounts: vec![],
     });
     let mut laid_off: Vec<_> = Workplace::ALL
         .iter()
@@ -581,6 +582,7 @@ fn add_public_accounts(
             half_periods: 13,
         },
         recipients: laid_off,
+        own_amounts: vec![],
     });
     f.programs.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(())

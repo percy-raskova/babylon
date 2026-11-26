@@ -75,7 +75,7 @@ pub use financial::{
     LayoffRecord, OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt,
     PublicProgram, PublicProgramKey, PublicProgramReceipt, PublicProgramTerms, PublicSpendingRule,
     PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt, MAX_LAYOFF_HALF_PERIODS,
-    MAX_LAYOFF_PERIODS,
+    MAX_LAYOFF_PERIODS, MAX_PROGRAM_SHARE_BPS,
 };
 pub use household_time::{
     consume_household_contributions, HouseholdContributionReceipt, HouseholdContributionUse,

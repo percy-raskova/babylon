@@ -189,6 +189,7 @@ pub(super) fn household_wants(
                 unit_id: good.unit_id,
                 basis: want.basis,
                 units_per_basis: scaled_units(want, scales.get(&household.principal_id).copied())?,
+                scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
             });
         }
     }

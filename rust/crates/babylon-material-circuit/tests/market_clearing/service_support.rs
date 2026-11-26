@@ -275,6 +275,7 @@ impl ServiceFixture {
                             unit_id: support::units(),
                             basis: HouseholdNeedBasis::Households,
                             units_per_basis: quantity,
+                            scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
                         })
                         .collect(),
                 }),

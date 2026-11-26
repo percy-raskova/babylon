@@ -170,6 +170,8 @@ pub(crate) struct Fixture {
     /// What the accounts want: account, tier, shelf good and quantity, written as a `Households`
     /// want of that many units (each account is one household).
     pub household_wants: Vec<(usize, WantTier, u8, u64)>,
+    /// The scale every want row carries, in parts in 10,000.
+    pub want_scale_bps: u32,
     /// The account the retailer's hours are paid to, and the wage for an hour. `None` pays the
     /// earlier buyer one millionth of a dollar an hour.
     pub wage: Option<(u8, Currency)>,
@@ -204,6 +206,7 @@ impl Fixture {
             output_buffer: 0,
             keep_fixed: false,
             household_wants: vec![],
+            want_scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
             wage: None,
             wage_taxes: vec![],
         }
@@ -319,6 +322,7 @@ impl Fixture {
                             unit_id: units(),
                             basis: HouseholdNeedBasis::Households,
                             units_per_basis: quantity,
+                            scale_bps: self.want_scale_bps,
                         })
                         .collect(),
                 }),

@@ -129,6 +129,8 @@ catalog_row_field_order:
   market_clearing: [count_u32, paying_order_rows_of_good_id_and_unit_id]
   # Written only when the market policy has household wants, after the market tail (catalog version 7).
   household_wants: [count_u32, rows of principal_id, tier_u8, good_id, unit_id, need_basis_u8, units_per_basis]
+  # A want row also has scale_bps u32, in 1 to 1000000 with 10000 the row as written; it is in the tail of catalog
+  # version 11 and not in the rows above.
   # A market policy that plans from spare money adds no tail: it writes u16 8 before every other byte of the
   # catalog (catalog version 8), then the bytes the same catalog writes without it.
   # A market policy that asks for adjustments adds no tail either: it writes u16 9, the count as u16 and each
@@ -138,6 +140,10 @@ catalog_row_field_order:
   # tail: the count of handling rows as u32 and each row's units as u64 big-endian, in the rows' canonical order.
   # A catalog whose every handling row has one unit writes today's bytes. Nothing reads the tail: there is no
   # catalog decoder.
+  # A catalog with a want whose scale_bps is not 10000 writes u16 11 right after the domain bytes and their 0
+  # (after u16 10 where both are written), then every byte the same catalog writes without it, then a tail (after
+  # the handling tail where both are written): the count of want rows as u32 and each row's scale_bps as u32
+  # big-endian, in the rows' order. A catalog whose every want is at 10000 writes today's bytes.
   # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
@@ -316,7 +322,9 @@ market_clearing:
   admission:
     - the order is not empty, names no product twice, and names only declared commodities
     - every storable good that a household need names is in the order; a service may be left out
-    - a household want has a positive units per basis, names a product in the order, and no key twice
+    - a household want has a positive units per basis and a scale of 1 to 1000000 parts in 10000, names a product
+      in the order, and no key twice; its quantity is floor(count x units_per_basis x scale_bps / 10000), the
+      product of count and units_per_basis first with today's refusals, and the row itself at 10000
     - a market policy has at most 262144 household wants
     - adjustments are in the order of their tags, name no kind twice, include the rules each one needs, and give a
       restart a positive number of periods of outlay

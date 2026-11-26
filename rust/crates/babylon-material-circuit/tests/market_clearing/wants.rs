@@ -248,6 +248,22 @@ fn a_want_of_a_good_that_is_not_needed() {
 }
 
 #[test]
+fn a_scaled_luxury_is_bought_when_money_reaches_it() {
+    let bought = |scale_bps: u32| {
+        let mut wanting = with_leisure(1_000, 100);
+        wanting.household_wants = vec![(2, WantTier::Luxury, 3, 7)];
+        wanting.want_scale_bps = scale_bps;
+        let (_, closed) = close(&wanting);
+        let row = want_row(&closed, 2, WantTier::Luxury, 3);
+        (row.wanted_quantity, row.bought_quantity)
+    };
+    // One household of the fixture wants 7 units a household: floor(7 x 5 / 4) = 8 at 12,500.
+    assert_eq!(bought(10_000), (7, 7));
+    assert_eq!(bought(12_500), (8, 8));
+    assert_eq!(bought(20_000), (14, 14));
+}
+
+#[test]
 fn a_luxury_waits_for_a_comfort_still_to_buy() {
     let mut wanting = with_leisure(1_000, 1_000);
     wanting.household_wants = vec![(1, WantTier::Luxury, 2, 50), (1, WantTier::Comfort, 3, 10)];

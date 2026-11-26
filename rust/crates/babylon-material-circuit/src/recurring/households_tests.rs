@@ -16,6 +16,7 @@ use crate::FinancialInstitutions;
 use crate::GoodId;
 use crate::HistoricalCostBook;
 use crate::HouseholdCohort;
+use crate::HouseholdKind;
 use crate::HouseholdNeed;
 use crate::HouseholdNeedBasis;
 use crate::HouseholdPurchasePolicy;
@@ -48,6 +49,7 @@ use crate::StaffingMemberId;
 use crate::StockCarryingValue;
 use crate::TaxBasis;
 use crate::UnitId;
+use crate::WantTier;
 use babylon_kernel::currency::Currency;
 
 fn cash(n: i128) -> Currency {
@@ -703,6 +705,7 @@ fn opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
             unit_id: u(),
             basis: HouseholdNeedBasis::Persons,
             units_per_basis: 1,
+            scale_bps: crate::WANT_SCALE_ONE_BPS,
         }],
     });
     let rows = household_rows(&mut state);
@@ -949,4 +952,36 @@ fn only_a_catalog_that_asks_quotes_goods_before_the_plans() {
     assert!(crate::recurring::prices::asks_step_down(&ask(vec![
         AdjustmentRule::GoodsStepDown
     ])));
+}
+
+#[test]
+fn a_scaled_want_is_floored_on_its_whole_quantity() {
+    let want = |units_per_basis: u64, scale_bps: u32| crate::HouseholdWant {
+        principal_id: h(),
+        tier: WantTier::Luxury,
+        good_id: g(),
+        unit_id: u(),
+        basis: HouseholdNeedBasis::Persons,
+        units_per_basis,
+        scale_bps,
+    };
+    let cohort = |persons: u64| crate::HouseholdCohort {
+        kind: HouseholdKind::Ordinary,
+        principal_id: h(),
+        households: persons,
+        persons,
+    };
+    assert_eq!(want(2, 10_000).quantity(&cohort(5)), Ok(10));
+    assert_eq!(want(2, 12_500).quantity(&cohort(5)), Ok(12));
+    assert_eq!(want(2, 20_000).quantity(&cohort(5)), Ok(20));
+    assert_eq!(want(1, 15_000).quantity(&cohort(3)), Ok(4));
+    assert_eq!(want(1, 9_000).quantity(&cohort(10)), Ok(9));
+    assert_eq!(
+        want(u64::MAX, 20_000).quantity(&cohort(1)),
+        Err(MaterialCircuitError::Arithmetic)
+    );
+    assert_eq!(
+        want(u64::MAX, 10_000).quantity(&cohort(2)),
+        Err(MaterialCircuitError::Arithmetic)
+    );
 }

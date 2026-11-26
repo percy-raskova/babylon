@@ -1190,6 +1190,7 @@ mod open_want_order_tests {
             unit_id: unit(n),
             basis: HouseholdNeedBasis::Persons,
             units_per_basis: 1,
+            scale_bps: crate::WANT_SCALE_ONE_BPS,
         }
     }
 

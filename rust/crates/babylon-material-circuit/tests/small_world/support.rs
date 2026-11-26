@@ -420,6 +420,7 @@ impl World {
                         unit_id: units(),
                         basis: HouseholdNeedBasis::Persons,
                         units_per_basis: 1,
+                        scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
                     });
                 }
             }

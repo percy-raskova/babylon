@@ -31,6 +31,36 @@ const ADJUSTMENT_CATALOG_SCHEMA_VERSION: u16 = 9;
 /// every byte the same catalog writes without it, then a tail with each handling row's units.
 const HANDLING_BLOCK_CATALOG_SCHEMA_VERSION: u16 = 10;
 
+/// A catalog with a want at a scale other than 10,000 writes this version right after the domain bytes (after
+/// version 10 where both are written), then every byte the same catalog writes without it, then a tail with each
+/// want row's scale (after the handling blocks' tail where both are written).
+const WANT_SCALE_CATALOG_SCHEMA_VERSION: u16 = 11;
+
+fn has_scaled_wants(catalog: &MaterialCatalogDefinition) -> bool {
+    catalog.market_clearing.as_ref().is_some_and(|policy| {
+        policy
+            .household_wants
+            .iter()
+            .any(|row| row.scale_bps != crate::WANT_SCALE_ONE_BPS)
+    })
+}
+
+fn append_want_scales(
+    out: &mut Vec<u8>,
+    catalog: &MaterialCatalogDefinition,
+) -> Result<(), MaterialCircuitError> {
+    let rows = catalog
+        .market_clearing
+        .as_ref()
+        .map_or(&[][..], |policy| policy.household_wants.as_slice());
+    let count = u32::try_from(rows.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
+    out.extend_from_slice(&count.to_be_bytes());
+    for row in rows {
+        out.extend_from_slice(&row.scale_bps.to_be_bytes());
+    }
+    Ok(())
+}
+
 fn append_adjustments(
     out: &mut Vec<u8>,
     rules: &[AdjustmentRule],
@@ -204,10 +234,9 @@ fn append_policy(out: &mut Vec<u8>, policy: &CapacitySupply) -> Result<(), Mater
 ///
 /// # Errors
 /// Returns the first row-bound refusal.
-pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, MaterialCircuitError> {
-    let mut out = Vec::new();
-    out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
-    out.push(0);
+/// The versions of the tails written right after the domain bytes: handling blocks (10), then want scales (11).
+/// Each says whether its tail follows the body.
+fn append_tail_versions(out: &mut Vec<u8>, catalog: &MaterialCatalogDefinition) -> (bool, bool) {
     let blocks = catalog
         .handling_coefficients
         .iter()
@@ -215,6 +244,18 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
     if blocks {
         out.extend_from_slice(&HANDLING_BLOCK_CATALOG_SCHEMA_VERSION.to_be_bytes());
     }
+    let scales = has_scaled_wants(catalog);
+    if scales {
+        out.extend_from_slice(&WANT_SCALE_CATALOG_SCHEMA_VERSION.to_be_bytes());
+    }
+    (blocks, scales)
+}
+
+pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, MaterialCircuitError> {
+    let mut out = Vec::new();
+    out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
+    out.push(0);
+    let (blocks, scales) = append_tail_versions(&mut out, catalog);
     if let Some(policy) = &catalog.market_clearing {
         append_adjustments(&mut out, &policy.adjustments)?;
     }
@@ -303,6 +344,9 @@ pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, Mate
         for row in &catalog.handling_coefficients {
             out.extend_from_slice(&row.units.to_be_bytes());
         }
+    }
+    if scales {
+        append_want_scales(&mut out, catalog)?;
     }
     Ok(out)
 }

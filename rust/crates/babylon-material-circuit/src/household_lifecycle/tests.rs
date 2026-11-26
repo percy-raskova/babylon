@@ -338,6 +338,7 @@ fn a_purchase_row_for_a_want_alone_survives_the_rebase() {
                 unit_id: UnitId::from_bytes([2; 32]),
                 basis: HouseholdNeedBasis::Persons,
                 units_per_basis: 2,
+                scale_bps: crate::WANT_SCALE_ONE_BPS,
             }],
         }),
     })

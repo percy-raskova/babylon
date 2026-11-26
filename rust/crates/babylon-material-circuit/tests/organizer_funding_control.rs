@@ -1305,6 +1305,7 @@ fn a_donor_with_a_service_want_reconciles() {
         unit_id: control::unit(3),
         basis: HouseholdNeedBasis::Households,
         units_per_basis: 1,
+        scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
     };
     let (plain_catalog, plain_state) = market_policy_opening(vec![], true);
     let plain = control::close(&plain_catalog, &plain_state, &[], &[control::collection(1)])

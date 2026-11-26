@@ -850,6 +850,7 @@ fn taxed_opening_with_a_want() -> (MaterialCatalog, MaterialCircuitState) {
             unit_id: control::unit(control::MATERIALS),
             basis: HouseholdNeedBasis::Households,
             units_per_basis: 1,
+            scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
         }],
     });
     let catalog = MaterialCatalog::try_new(definition).expect("the fixture catalog is valid");

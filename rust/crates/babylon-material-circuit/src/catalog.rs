@@ -392,6 +392,8 @@ impl MaterialCatalogDefinition {
         if policy.household_wants.len() > MAX_HOUSEHOLD_WANTS
             || policy.household_wants.iter().any(|want| {
                 want.units_per_basis == 0
+                    || want.scale_bps == 0
+                    || want.scale_bps > crate::MAX_WANT_SCALE_BPS
                     || !named.contains(&(want.good_id, want.unit_id))
                     || !want_keys.insert((want.principal_id, want.tier, want.good_id, want.unit_id))
             })
@@ -936,6 +938,7 @@ mod tests {
             unit_id: unit(n),
             basis: HouseholdNeedBasis::Persons,
             units_per_basis: units,
+            scale_bps: crate::WANT_SCALE_ONE_BPS,
         }
     }
 
@@ -1045,6 +1048,63 @@ mod tests {
             })
             .collect();
         assert!(refused(with_wants(many)));
+    }
+
+    fn scaled(bps: u32) -> HouseholdWant {
+        let mut row = want(9, WantTier::Luxury, 2, 2);
+        row.scale_bps = bps;
+        row
+    }
+
+    #[test]
+    fn a_scale_out_of_range_is_refused() {
+        for bps in [0, 1_000_001] {
+            assert!(
+                matches!(
+                    MaterialCatalog::try_new(with_wants(vec![scaled(bps)])),
+                    Err(MaterialCircuitError::MarketClearingInvariant)
+                ),
+                "{bps}"
+            );
+        }
+        for bps in [1, 1_000_000] {
+            MaterialCatalog::try_new(with_wants(vec![scaled(bps)])).expect("the scale is admitted");
+        }
+    }
+
+    #[test]
+    fn a_scale_changes_the_catalog_bytes_only_when_used() {
+        let bytes = |definition: &MaterialCatalogDefinition| {
+            crate::wire::catalog_bytes(definition).expect("bytes")
+        };
+        let head = crate::wire::MATERIAL_CATALOG_DOMAIN_BYTES.len() + 1;
+        let ones = with_wants(vec![scaled(10_000)]);
+        let ones_bytes = bytes(&ones);
+        // Wants at 10,000 write the bytes written before the scale existed: version 7 first.
+        assert_eq!(ones_bytes[head..head + 2], 7_u16.to_be_bytes());
+        let scaled_definition = with_wants(vec![scaled(12_500)]);
+        let scaled_bytes = bytes(&scaled_definition);
+        assert_eq!(scaled_bytes[head..head + 2], 11_u16.to_be_bytes());
+        let mut tail = 1_u32.to_be_bytes().to_vec();
+        tail.extend_from_slice(&12_500_u32.to_be_bytes());
+        assert!(scaled_bytes.ends_with(&tail));
+        assert_eq!(
+            scaled_bytes[head + 2..scaled_bytes.len() - tail.len()],
+            ones_bytes[head..]
+        );
+        let other = bytes(&with_wants(vec![scaled(12_501)]));
+        assert_ne!(scaled_bytes, other);
+        assert_eq!(scaled_bytes.len(), other.len());
+        // A block above 1 and a scaled want: version 10, then 11, and the two tails in that order.
+        let mut both = shop(40);
+        both.market_clearing = scaled_definition.market_clearing.clone();
+        let both_bytes = bytes(&both);
+        assert_eq!(both_bytes[head..head + 2], 10_u16.to_be_bytes());
+        assert_eq!(both_bytes[head + 2..head + 4], 11_u16.to_be_bytes());
+        let mut tails = 1_u32.to_be_bytes().to_vec();
+        tails.extend_from_slice(&40_u64.to_be_bytes());
+        tails.extend_from_slice(&tail);
+        assert!(both_bytes.ends_with(&tails));
     }
 
     #[test]

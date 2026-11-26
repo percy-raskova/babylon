@@ -1143,6 +1143,7 @@ fn every_account_wants_its_tiers() {
                 unit_id: good.unit_id,
                 basis: want.basis,
                 units_per_basis: want.units_per_basis,
+                scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
             });
         }
     }

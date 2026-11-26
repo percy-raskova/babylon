@@ -172,6 +172,7 @@ fn household_wants(world: &World) -> Vec<HouseholdWant> {
                 unit_id: ids::goods_unit(),
                 basis: HouseholdNeedBasis::Persons,
                 units_per_basis: 1,
+                scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
             });
         }
     }

@@ -787,6 +787,7 @@ fn want_opening() -> (MaterialCatalog, MaterialCircuitState) {
             unit_id: crate::units(),
             basis: HouseholdNeedBasis::Persons,
             units_per_basis: 2,
+            scale_bps: babylon_material_circuit::WANT_SCALE_ONE_BPS,
         }],
     });
     let recurring = crate::recurring_mut(&mut state);

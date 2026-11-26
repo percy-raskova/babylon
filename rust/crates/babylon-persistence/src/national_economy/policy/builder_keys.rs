@@ -3,7 +3,8 @@
 //! earlier, and each is required under schema 8 unless the plan names it optional.
 use super::{
     GameCommodity, GameFundPolicy, GameHandling, GameLuxuryScale, GameMapBasis, GameNeed,
-    GameProgram, GameProgramRecipients, GameProgramTerms, GameWant, NationalGamePolicyError,
+    GamePlaceGrant, GameProgram, GameProgramRecipients, GameProgramTerms, GameWant,
+    NationalGamePolicyError, MAX_GAME_PROGRAM_SHARE_BPS,
 };
 use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::currency::Currency;
@@ -44,6 +45,14 @@ pub(super) struct RawFund {
     wage_tax_share_bps: u16,
     operating_income_tax_share_bps: u16,
     reserve_periods: u64,
+    share_by_part: Option<BTreeMap<String, u16>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPlaceGrant {
+    part: String,
+    amount_per_period_micros: i128,
 }
 
 #[derive(Deserialize)]
@@ -55,7 +64,7 @@ pub(super) struct RawProgram {
     wage_share_bps: Option<u16>,
     half_periods: Option<u16>,
     amount_per_person_micros: Option<i128>,
-    amounts_micros: Option<BTreeMap<String, i128>>,
+    share_bps: Option<u32>,
     recipients: String,
 }
 
@@ -90,6 +99,8 @@ pub(super) struct RawKeys {
     pub(super) luxury_scale: Option<RawLuxuryScale>,
     pub(super) basis: Option<RawMapBasis>,
     pub(super) place_services: Option<Vec<String>>,
+    pub(super) country_services: Option<Vec<String>>,
+    pub(super) place_grants: Option<Vec<RawPlaceGrant>>,
 }
 
 /// The admitted keys.
@@ -99,6 +110,8 @@ pub(super) struct BuilderKeys {
     pub(super) programs: Vec<GameProgram>,
     pub(super) luxury_scales: Vec<GameLuxuryScale>,
     pub(super) place_services: Vec<String>,
+    pub(super) country_services: Vec<String>,
+    pub(super) place_grants: Vec<GamePlaceGrant>,
     pub(super) map_basis: Option<GameMapBasis>,
 }
 
@@ -113,8 +126,18 @@ pub(super) fn admit(
     let schema_8 = trades == TradeSet::Twelve;
     let wants = wants(raw.wants, schema_8, goods, paying_order)?;
     handling(goods, &raw.handling, schema_8, needs, &wants)?;
+    let place_services = service_list(raw.place_services, schema_8, goods, &[], "place_services")?;
+    let country_services = service_list(
+        raw.country_services,
+        schema_8,
+        goods,
+        &place_services,
+        "country_services",
+    )?;
     Ok(BuilderKeys {
-        place_services: place_services(raw.place_services, schema_8, goods)?,
+        place_services,
+        country_services,
+        place_grants: place_grants(raw.place_grants, schema_8)?,
         fund: fund(raw.fund, schema_8)?,
         programs: programs(raw.programs, schema_8)?,
         luxury_scales: luxury_scales(raw.luxury_scale, schema_8)?,
@@ -211,23 +234,27 @@ fn handling(
     Ok(())
 }
 
-fn place_services(
+/// K1 and K2 (and the place services): a sorted list of period services of the scenario, each once, none of
+/// them in `excluded`. `name` is the key's own name, for the refusal `Profile(name)`.
+pub(super) fn service_list(
     raw: Option<Vec<String>>,
     schema_8: bool,
     goods: &BTreeMap<String, GameCommodity>,
+    excluded: &[String],
+    name: &str,
 ) -> Result<Vec<String>, Error> {
     let mut rows = match (schema_8, raw) {
         (_, None) => return Ok(Vec::new()),
         (true, Some(rows)) => rows,
         (false, Some(_)) => return Err(Error::Shape),
     };
-    let fail = || Error::Profile("place_services".to_owned());
+    let fail = || Error::Profile(name.to_owned());
     let mut seen = BTreeSet::new();
     for key in &rows {
         let service = goods
             .get(key)
             .is_some_and(|g| matches!(g.kind, CommodityKind::PeriodService { .. }));
-        if !service || !seen.insert(key.clone()) {
+        if !service || excluded.contains(key) || !seen.insert(key.clone()) {
             return Err(fail());
         }
     }
@@ -250,11 +277,60 @@ fn fund(raw: Option<RawFund>, schema_8: bool) -> Result<Option<GameFundPolicy>, 
     {
         return Err(Error::Profile("fund".to_owned()));
     }
+    let share_by_part = raw.share_by_part.unwrap_or_default();
+    for (part, bps) in &share_by_part {
+        if !domestic_part_label_ok(part) {
+            return Err(Error::Location);
+        }
+        if *bps > 10_000 {
+            return Err(Error::Profile("fund".to_owned()));
+        }
+    }
     Ok(Some(GameFundPolicy {
         wage_tax_share_bps: raw.wage_tax_share_bps,
         operating_income_tax_share_bps: raw.operating_income_tax_share_bps,
         reserve_periods: raw.reserve_periods,
+        share_by_part,
     }))
+}
+
+/// K5: the fund's grants to a part's funded public providers, sorted by part.
+fn place_grants(
+    raw: Option<Vec<RawPlaceGrant>>,
+    schema_8: bool,
+) -> Result<Vec<GamePlaceGrant>, Error> {
+    let rows = match (schema_8, raw) {
+        (_, None) => return Ok(Vec::new()),
+        (true, Some(rows)) => rows,
+        (false, Some(_)) => return Err(Error::Shape),
+    };
+    let mut seen = BTreeSet::new();
+    let mut result = Vec::new();
+    for row in rows {
+        if !domestic_part_label_ok(&row.part) {
+            return Err(Error::Location);
+        }
+        if row.amount_per_period_micros <= 0 || !seen.insert(row.part.clone()) {
+            return Err(Error::Profile("place_grants".to_owned()));
+        }
+        result.push(GamePlaceGrant {
+            part: row.part,
+            amount_per_period: Currency::from_micro_units(row.amount_per_period_micros),
+        });
+    }
+    result.sort_by(|a, b| a.part.cmp(&b.part));
+    Ok(result)
+}
+
+/// A domestic part's label: `<hub geoid>` or `<hub geoid>/<none|below|at|above>`, the hub a county that
+/// `EconomicLocation::domestic_county` admits.
+fn domestic_part_label_ok(place: &str) -> bool {
+    match place.split_once('/') {
+        Some((hub, position)) => {
+            matches!(position, "none" | "below" | "at" | "above") && domestic_county(hub).is_ok()
+        }
+        None => domestic_county(place).is_ok(),
+    }
 }
 
 fn domestic_county(text: &str) -> Result<CountyGeoid, Error> {
@@ -266,7 +342,7 @@ fn domestic_county(text: &str) -> Result<CountyGeoid, Error> {
 fn programs(raw: Option<Vec<RawProgram>>, schema_8: bool) -> Result<Vec<GameProgram>, Error> {
     let rows = match (schema_8, raw) {
         (false, None) => return Ok(Vec::new()),
-        (true, Some(rows)) if rows.len() == 3 => rows,
+        (true, Some(rows)) if (2..=3).contains(&rows.len()) => rows,
         _ => return Err(Error::Shape),
     };
     let mut seen = BTreeSet::new();
@@ -277,47 +353,51 @@ fn programs(raw: Option<Vec<RawProgram>>, schema_8: bool) -> Result<Vec<GameProg
         }
         result.push(program(row)?);
     }
+    if !seen.contains("laid_off") || !seen.contains("no_earner") {
+        return Err(Error::Shape);
+    }
     result.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(result)
 }
 
+/// A program's own recipients and the kinds its key may take.
+fn program_kinds(
+    key: &str,
+) -> Option<(&'static [&'static str], &'static str, GameProgramRecipients)> {
+    match key {
+        "laid_off" => Some((
+            &["after_layoff"],
+            "earning_or_residence_at_opening",
+            GameProgramRecipients::EarningOrResidenceAtOpening,
+        )),
+        "no_earner" => Some((
+            &["per_person", "own_needs"],
+            "no_earner_at_opening",
+            GameProgramRecipients::NoEarnerAtOpening,
+        )),
+        "residence" => Some((
+            &["own_needs"],
+            "collective_residence_at_opening",
+            GameProgramRecipients::CollectiveResidenceAtOpening,
+        )),
+        _ => None,
+    }
+}
+
 fn program(row: RawProgram) -> Result<GameProgram, Error> {
     let fail = || Error::Profile("program".to_owned());
-    let (kind, recipients) = match row.key.as_str() {
-        "laid_off" => (
-            "after_layoff",
-            (
-                "earning_or_residence_at_opening",
-                GameProgramRecipients::EarningOrResidenceAtOpening,
-            ),
-        ),
-        "no_earner" => (
-            "per_person",
-            (
-                "no_earner_at_opening",
-                GameProgramRecipients::NoEarnerAtOpening,
-            ),
-        ),
-        "residence" => (
-            "per_person_by_place",
-            (
-                "collective_residence_at_opening",
-                GameProgramRecipients::CollectiveResidenceAtOpening,
-            ),
-        ),
-        _ => return Err(fail()),
-    };
-    if row.kind != kind || row.recipients != recipients.0 || row.rank > 255 {
+    let (kinds, recipients_text, recipients) = program_kinds(&row.key).ok_or_else(fail)?;
+    if !kinds.contains(&row.kind.as_str()) || row.recipients != recipients_text || row.rank > 255 {
         return Err(fail());
     }
     let terms = match (
-        row.key.as_str(),
+        row.kind.as_str(),
         row.wage_share_bps,
         row.half_periods,
         row.amount_per_person_micros,
-        row.amounts_micros,
+        row.share_bps,
     ) {
-        ("laid_off", Some(wage_share_bps), Some(half_periods), None, None) => {
+        ("after_layoff", Some(wage_share_bps), Some(half_periods), None, None) => {
             if !(1..=10_000).contains(&wage_share_bps) || !(1..=26).contains(&half_periods) {
                 return Err(fail());
             }
@@ -326,7 +406,7 @@ fn program(row: RawProgram) -> Result<GameProgram, Error> {
                 half_periods,
             }
         }
-        ("no_earner", None, None, Some(amount), None) => {
+        ("per_person", None, None, Some(amount), None) => {
             if amount <= 0 {
                 return Err(fail());
             }
@@ -334,16 +414,11 @@ fn program(row: RawProgram) -> Result<GameProgram, Error> {
                 amount_per_person: Currency::from_micro_units(amount),
             }
         }
-        ("residence", None, None, None, Some(amounts)) => {
-            let mut by_place = BTreeMap::new();
-            for (place, amount) in amounts {
-                let county = domestic_county(&place)?;
-                if amount <= 0 {
-                    return Err(fail());
-                }
-                by_place.insert(county, Currency::from_micro_units(amount));
+        ("own_needs", None, None, None, Some(share_bps)) => {
+            if !(1..=MAX_GAME_PROGRAM_SHARE_BPS).contains(&share_bps) {
+                return Err(fail());
             }
-            GameProgramTerms::PerPersonByPlace { amounts: by_place }
+            GameProgramTerms::OwnNeeds { share_bps }
         }
         _ => return Err(Error::Shape),
     };
@@ -351,7 +426,7 @@ fn program(row: RawProgram) -> Result<GameProgram, Error> {
         key: row.key,
         rank: row.rank,
         terms,
-        recipients: recipients.1,
+        recipients,
     })
 }
 

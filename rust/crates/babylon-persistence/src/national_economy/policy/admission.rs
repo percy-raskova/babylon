@@ -1,12 +1,13 @@
 use super::builder_keys::{
-    self, RawFund, RawHandling, RawKeys, RawLuxuryScale, RawMapBasis, RawProgram, RawWant,
+    self, RawFund, RawHandling, RawKeys, RawLuxuryScale, RawMapBasis, RawPlaceGrant, RawProgram,
+    RawWant,
 };
 use super::{
     GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
     GameHouseholdLifecyclePolicy, GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming,
     GameMachines, GameMarketPolicy, GameNeed, GamePrice, GameProcurement, GameProfile,
     GameProfileWage, GameRecipe, GameServiceReach, GameWages, InitialAgeDistribution,
-    NationalGamePolicy, NationalGamePolicyError,
+    NationalGamePolicy, NationalGamePolicyError, MAX_POLICY_BYTES, MAX_POLICY_BYTES_SCHEMA_8,
 };
 use crate::national_economy::grain::NationalGrainError;
 use crate::national_economy::grain::NationalGrainGeneration;
@@ -67,6 +68,7 @@ struct RawPolicy {
     fund: Option<RawFund>,
     programs: Option<Vec<RawProgram>>,
     luxury_scale: Option<RawLuxuryScale>,
+    place_grants: Option<Vec<RawPlaceGrant>>,
     counterpart: BTreeMap<String, RawProfile>,
     dependency: RawDependency,
 }
@@ -331,16 +333,30 @@ struct RawMarkets {
     foreign_procurement_bps: Option<u16>,
     import_bps: Option<BTreeMap<String, u16>>,
     place_services: Option<Vec<String>>,
+    crossing_services: Option<Vec<String>>,
+    country_services: Option<Vec<String>>,
     journey_timing: String,
     service_reach: String,
     paying_order: Option<Vec<String>>,
 }
 
-pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
-    if source.len() > 65_536 {
+/// Read the text under its size bound (E4): the schema is known only once the text is parsed, so a
+/// text above the older bound is parsed and refused as `Bounds` unless it is schema 8 or later.
+fn read_raw(source: &str) -> Result<RawPolicy, Error> {
+    if source.len() > MAX_POLICY_BYTES_SCHEMA_8 {
         return Err(Error::Bounds);
     }
-    let mut raw: RawPolicy = toml::from_str(source).map_err(|_| Error::Syntax)?;
+    let large = source.len() > MAX_POLICY_BYTES;
+    let raw: RawPolicy =
+        toml::from_str(source).map_err(|_| if large { Error::Bounds } else { Error::Syntax })?;
+    if large && raw.schema_version < 8 {
+        return Err(Error::Bounds);
+    }
+    Ok(raw)
+}
+
+pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
+    let mut raw = read_raw(source)?;
     validate_globals(&raw)?;
     let raw_keys = raw_keys(&mut raw);
     let trades = if raw.schema_version >= 8 {
@@ -358,10 +374,11 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     validate_aid(&raw.aid)?;
     let households = households(&raw.households, trades)?;
     let mut commodities = commodities(raw.commodity, trades)?;
+    let crossing_services = crossing_services(&mut raw.markets, trades, &commodities)?;
     let recipes = recipes(raw.process, &commodities, trades)?;
     let household_needs = needs(raw.household_needs, &commodities)?;
-    let counterparts = counterparts(raw.counterpart, trades, &commodities)?;
-    let dependency = dependency(raw.dependency, trades, &commodities)?;
+    let counterparts = counterparts(raw.counterpart, trades, &commodities, &crossing_services)?;
+    let dependency = dependency(raw.dependency, trades, &commodities, &crossing_services)?;
     let keys = builder_keys::admit(
         raw_keys,
         trades,
@@ -376,16 +393,17 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         raw.work_hours_per_person,
         &household_needs,
     )?;
-    let markets = markets(&raw.markets, trades, &commodities, &household_needs)?;
+    let markets = markets(
+        &raw.markets,
+        trades,
+        &commodities,
+        &household_needs,
+        &crossing_services,
+    )?;
     let equipment = equipment(raw.equipment, &commodities, trades)?;
     let source_digest = content_digest::sha256_of(source.as_bytes());
-    let grain_identity_policy_digest = raw
-        .companies
-        .as_ref()
-        .map_or(source_digest, |c| c.inherited_grain_policy_sha256);
-    if grain_identity_policy_digest == [0; 32] {
-        return Err(Error::Shape);
-    }
+    let grain_identity_policy_digest =
+        grain_identity_digest(raw.companies.as_ref(), source_digest)?;
     let companies = companies(raw.companies, raw.schema_version)?;
     Ok(NationalGamePolicy {
         companies,
@@ -429,10 +447,40 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         programs: keys.programs,
         luxury_scales: keys.luxury_scales,
         place_services: keys.place_services,
+        crossing_services,
+        country_services: keys.country_services,
+        place_grants: keys.place_grants,
         map_basis: keys.map_basis,
         counterparts,
         dependency,
     })
+}
+
+/// K1: the crossing services, admitted before the shares that name them.
+fn crossing_services(
+    markets: &mut RawMarkets,
+    trades: TradeSet,
+    goods: &BTreeMap<String, GameCommodity>,
+) -> Result<Vec<String>, Error> {
+    builder_keys::service_list(
+        markets.crossing_services.take(),
+        trades == TradeSet::Twelve,
+        goods,
+        &[],
+        "crossing_services",
+    )
+}
+
+/// The grain identity's policy digest: the company table's inherited one, else the text's own.
+fn grain_identity_digest(
+    companies: Option<&RawCompanies>,
+    source_digest: [u8; 32],
+) -> Result<[u8; 32], Error> {
+    let digest = companies.map_or(source_digest, |c| c.inherited_grain_policy_sha256);
+    if digest == [0; 32] {
+        return Err(Error::Shape);
+    }
+    Ok(digest)
 }
 
 /// The handling figures as written, by commodity key.
@@ -453,6 +501,8 @@ fn raw_keys(raw: &mut RawPolicy) -> RawKeys {
         luxury_scale: raw.luxury_scale.take(),
         basis: raw.grain.basis.take(),
         place_services: raw.markets.place_services.take(),
+        country_services: raw.markets.country_services.take(),
+        place_grants: raw.place_grants.take(),
     }
 }
 
@@ -1060,13 +1110,16 @@ fn shop_goods(goods: &BTreeMap<String, GameCommodity>) -> BTreeSet<&str> {
         .collect()
 }
 
-/// A table of shares of exactly the shop goods, each at most 10,000 basis points.
+/// A table of shares of exactly the shop goods and the crossing services, each at most 10,000 basis points.
 fn shares(
     name: &str,
     rows: &BTreeMap<String, u16>,
     goods: &BTreeMap<String, GameCommodity>,
+    crossing: &[String],
 ) -> Result<(), Error> {
-    if rows.keys().map(String::as_str).collect::<BTreeSet<_>>() != shop_goods(goods)
+    let mut expected = shop_goods(goods);
+    expected.extend(crossing.iter().map(String::as_str));
+    if rows.keys().map(String::as_str).collect::<BTreeSet<_>>() != expected
         || rows.values().any(|bps| *bps > 10_000)
     {
         return Err(Error::Profile(name.to_owned()));
@@ -1079,11 +1132,12 @@ fn profile(
     raw: RawProfile,
     trades: TradeSet,
     goods: &BTreeMap<String, GameCommodity>,
+    crossing: &[String],
 ) -> Result<GameProfile, Error> {
     let wage = profile_wage(key, &raw, trades)?;
     match (trades, &raw.export_bps) {
         (TradeSet::Ten, None) => {}
-        (TradeSet::Twelve, Some(rows)) => shares("export_bps", rows, goods)?,
+        (TradeSet::Twelve, Some(rows)) => shares("export_bps", rows, goods, crossing)?,
         _ => return Err(Error::Shape),
     }
     if !(1..=10_000).contains(&raw.participation_bps)
@@ -1115,6 +1169,7 @@ fn counterparts(
     raw: BTreeMap<String, RawProfile>,
     trades: TradeSet,
     goods: &BTreeMap<String, GameCommodity>,
+    crossing: &[String],
 ) -> Result<BTreeMap<ForeignCounterpart, GameProfile>, Error> {
     if raw.len() != 12 {
         return Err(Error::Shape);
@@ -1123,7 +1178,7 @@ fn counterparts(
         .map(|(key, row)| {
             let counterpart =
                 ForeignCounterpart::from_key(&key).ok_or_else(|| Error::Profile(key.clone()))?;
-            Ok((counterpart, profile(&key, row, trades, goods)?))
+            Ok((counterpart, profile(&key, row, trades, goods, crossing)?))
         })
         .collect()
 }
@@ -1131,6 +1186,7 @@ fn dependency(
     raw: RawDependency,
     trades: TradeSet,
     goods: &BTreeMap<String, GameCommodity>,
+    crossing: &[String],
 ) -> Result<GameDependencyProfile, Error> {
     if raw.missing_population_game_persons == 0 {
         return Err(Error::Profile("missing dependency population".to_owned()));
@@ -1151,6 +1207,7 @@ fn dependency(
             },
             trades,
             goods,
+            crossing,
         )?,
     })
 }
@@ -1247,6 +1304,7 @@ fn markets(
     trades: TradeSet,
     goods: &BTreeMap<String, GameCommodity>,
     needs: &[GameNeed],
+    crossing: &[String],
 ) -> Result<GameMarketPolicy, Error> {
     let paying_order = match (trades, &raw.paying_order) {
         (TradeSet::Ten, None) => None,
@@ -1264,7 +1322,7 @@ fn markets(
             GameProcurement::Single(bps)
         }
         (TradeSet::Twelve, None, Some(rows)) => {
-            shares("import_bps", rows, goods)?;
+            shares("import_bps", rows, goods, crossing)?;
             GameProcurement::ByProduct {
                 import_bps: rows.clone(),
             }

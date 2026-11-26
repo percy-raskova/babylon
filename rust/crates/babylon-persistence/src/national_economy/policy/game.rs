@@ -74,6 +74,12 @@ pub struct NationalGamePolicy {
     pub luxury_scales: Vec<GameLuxuryScale>,
     /// Period services a buyer takes only in its own place, sorted; empty before schema 8.
     pub place_services: Vec<String>,
+    /// K1: period services bought and sold across the border by shares, sorted; empty before schema 8.
+    pub crossing_services: Vec<String>,
+    /// K2: period services sold across state lines, sorted; empty before schema 8.
+    pub country_services: Vec<String>,
+    /// K5: what the fund pays a part's funded public providers a period, sorted by part; empty before schema 8.
+    pub place_grants: Vec<GamePlaceGrant>,
     /// The food figures that fold the counties into places: `Some` exactly under schema 8.
     pub map_basis: Option<GameMapBasis>,
     pub counterparts: BTreeMap<ForeignCounterpart, GameProfile>,
@@ -150,14 +156,32 @@ pub struct GameWant {
     pub units_per_basis: u64,
 }
 
-/// The national fund's terms: one share of each tax, the same in every place.
+/// The national fund's terms: one share of each tax, the same in every place unless a part has its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameFundPolicy {
     pub wage_tax_share_bps: u16,
     pub operating_income_tax_share_bps: u16,
     /// Periods of its payments the fund opens with.
     pub reserve_periods: u64,
+    /// K4: the fund's share of both taxes collected in a part, by the part's label. Empty: the two shares above
+    /// apply everywhere.
+    pub share_by_part: BTreeMap<String, u16>,
 }
+
+/// K5: what the fund pays a part's funded public providers a period (D4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GamePlaceGrant {
+    pub part: String,
+    pub amount_per_period: Currency,
+}
+
+/// The most an own-needs program's share may be: ten times the needs. Equal to the engine's
+/// `MAX_PROGRAM_SHARE_BPS` (Task 4a); Task 4 asserts the two equal at compile time.
+pub const MAX_GAME_PROGRAM_SHARE_BPS: u32 = 100_000;
+/// The most bytes a policy's text may hold under schema 7 and earlier.
+pub const MAX_POLICY_BYTES: usize = 65_536;
+/// The most bytes a policy's text may hold under schema 8 (E4).
+pub const MAX_POLICY_BYTES_SCHEMA_8: usize = 262_144;
 
 /// What a public program pays.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,9 +189,10 @@ pub enum GameProgramTerms {
     PerPerson {
         amount_per_person: Currency,
     },
-    /// One amount a person for each place named, by its hub county.
-    PerPersonByPlace {
-        amounts: BTreeMap<CountyGeoid, Currency>,
+    /// "The needs in full", times `share_bps / 10_000`: each recipient its own needs a person at its own
+    /// sellers' posted opening prices, worked out by the compiler (E8, Task 4).
+    OwnNeeds {
+        share_bps: u32,
     },
     AfterLayoff {
         wage_share_bps: u16,
@@ -358,10 +383,17 @@ impl NationalGamePolicy {
     /// # Errors
     /// Refuses unsupported versions, missing declarations, ambiguous units and overflow.
     pub fn from_captured_bytes(bytes: &[u8]) -> Result<Self, NationalGamePolicyError> {
-        if bytes.len() > 65_536 {
+        if bytes.len() > MAX_POLICY_BYTES_SCHEMA_8 {
             return Err(NationalGamePolicyError::Bounds);
         }
-        Self::parse(std::str::from_utf8(bytes).map_err(|_| NationalGamePolicyError::Syntax)?)
+        let text = std::str::from_utf8(bytes).map_err(|_| {
+            if bytes.len() > MAX_POLICY_BYTES {
+                NationalGamePolicyError::Bounds
+            } else {
+                NationalGamePolicyError::Syntax
+            }
+        })?;
+        Self::parse(text)
     }
 
     /// Decode authoring text using the same strict admission as saved captures.

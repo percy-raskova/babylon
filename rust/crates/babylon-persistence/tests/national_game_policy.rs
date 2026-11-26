@@ -5,9 +5,9 @@ use babylon_material_circuit::WantTier;
 use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage};
 use babylon_persistence::national_economy;
 use babylon_persistence::national_economy::{
-    GameFundPolicy, GameHandling, GameLuxuryScale, GameMachines, GameMapBasis, GameProcurement,
-    GameProfileWage, GameProgramRecipients, GameProgramTerms, GameWages, NationalGamePolicy,
-    NationalGamePolicyError,
+    GameFundPolicy, GameHandling, GameLuxuryScale, GameMachines, GameMapBasis, GamePlaceGrant,
+    GameProcurement, GameProfileWage, GameProgramRecipients, GameProgramTerms, GameWages,
+    NationalGamePolicy, NationalGamePolicyError, MAX_POLICY_BYTES, MAX_POLICY_BYTES_SCHEMA_8,
 };
 use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
 use std::collections::BTreeMap;
@@ -778,10 +778,11 @@ fn the_fixture_takes_the_fund_and_the_programs() {
             wage_tax_share_bps: 0,
             operating_income_tax_share_bps: 0,
             reserve_periods: 2,
+            share_by_part: BTreeMap::new(),
         })
     );
     let keys: Vec<_> = policy.programs.iter().map(|p| p.key.as_str()).collect();
-    assert_eq!(keys, ["laid_off", "no_earner", "residence"]);
+    assert_eq!(keys, ["laid_off", "no_earner"]);
     assert!(policy.programs.iter().all(|p| p.rank == 0));
     assert_eq!(
         policy.programs[0].terms,
@@ -804,17 +805,10 @@ fn the_fixture_takes_the_fund_and_the_programs() {
         policy.programs[1].recipients,
         GameProgramRecipients::NoEarnerAtOpening
     );
-    assert_eq!(
-        policy.programs[2].terms,
-        GameProgramTerms::PerPersonByPlace {
-            amounts: BTreeMap::new()
-        }
-    );
-    assert_eq!(
-        policy.programs[2].recipients,
-        GameProgramRecipients::CollectiveResidenceAtOpening
-    );
     assert_eq!(policy.luxury_scales.len(), 0);
+    assert_eq!(policy.place_grants.len(), 0);
+    assert_eq!(policy.crossing_services.len(), 0);
+    assert_eq!(policy.country_services.len(), 0);
 }
 
 #[test]
@@ -903,6 +897,9 @@ fn the_shipped_policy_keeps_its_arms() {
     assert_eq!(policy.programs.len(), 0);
     assert_eq!(policy.luxury_scales.len(), 0);
     assert_eq!(policy.place_services.len(), 0);
+    assert_eq!(policy.crossing_services.len(), 0);
+    assert_eq!(policy.country_services.len(), 0);
+    assert_eq!(policy.place_grants.len(), 0);
     assert_eq!(policy.map_basis, None);
     assert!(policy.commodities.values().all(|c| c.handling.is_none()));
     assert!(policy.recipes.values().all(|r| r.margin_bps.is_none()));
@@ -956,11 +953,15 @@ fn remove_between(text: &str, start: &str, end: &str) -> String {
 #[test]
 fn schema_8_needs_the_builder_keys() {
     let no_fund = remove_between(TWELVE, "[fund]", "reserve_periods = 2\n");
-    let no_programs = remove_between(TWELVE, "[[programs]]", "amounts_micros = {}\n");
-    let two_programs = remove_between(
+    let no_programs = remove_between(
         TWELVE,
-        "[[programs]]\nkey = \"residence\"",
-        "amounts_micros = {}\n",
+        "[[programs]]",
+        "recipients = \"no_earner_at_opening\"\n",
+    );
+    let one_program = remove_between(
+        TWELVE,
+        "[[programs]]\nkey = \"no_earner\"",
+        "recipients = \"no_earner_at_opening\"\n",
     );
     let no_basis = remove_between(TWELVE, "[grain.basis]", "food_grams_per_unit = 14000\n");
     let no_import = remove_between(TWELVE, "import_bps = {", "}\n");
@@ -991,7 +992,7 @@ fn schema_8_needs_the_builder_keys() {
     for changed in [
         no_fund,
         no_programs,
-        two_programs,
+        one_program,
         no_basis,
         no_import,
         no_export,
@@ -1025,8 +1026,8 @@ fn bad_builder_values_are_refused() {
         (TWELVE.replace("wage_tax_share_bps = 0", "wage_tax_share_bps = 10001"), profile("fund")),
         (TWELVE.replace("reserve_periods = 2", "reserve_periods = 0"), profile("fund")),
         (TWELVE.replace("reserve_periods = 2", "reserve_periods = 17"), profile("fund")),
-        (TWELVE.replace("key = \"residence\"", "key = \"other\""), profile("program")),
-        (TWELVE.replace("key = \"residence\"", "key = \"no_earner\""), profile("program")),
+        (TWELVE.replace("key = \"no_earner\"", "key = \"other\""), profile("program")),
+        (TWELVE.replace("key = \"no_earner\"", "key = \"laid_off\""), profile("program")),
         (TWELVE.replace("rank = 0\nwage_share_bps", "rank = 256\nwage_share_bps"), profile("program")),
         (TWELVE.replace("wage_share_bps = 5000", "wage_share_bps = 0"), profile("program")),
         (TWELVE.replace("wage_share_bps = 5000", "wage_share_bps = 10001"), profile("program")),
@@ -1120,30 +1121,8 @@ fn a_want_is_read_in_tier_and_key_order() {
 }
 
 #[test]
-fn residence_amounts_and_luxury_scales_are_read() {
-    let amounts = |entries: &str| {
-        TWELVE.replace(
-            "amounts_micros = {}",
-            &format!("amounts_micros = {entries}"),
-        )
-    };
+fn luxury_scales_and_place_services_are_read() {
     let scales = |entries: &str| format!("{TWELVE}\n[luxury_scale]\nby_account = {entries}\n");
-    let policy = NationalGamePolicy::parse(&amounts("{ \"26163\" = 700000000 }"))
-        .expect("an amount for Wayne");
-    assert_eq!(
-        policy.programs[2].terms,
-        GameProgramTerms::PerPersonByPlace {
-            amounts: BTreeMap::from([(
-                babylon_kernel::geography::CountyGeoid::try_from("26163").expect("county"),
-                Currency::from_micro_units(700_000_000)
-            )])
-        }
-    );
-    expect_error(
-        &amounts("{ \"99999\" = 700000000 }"),
-        NationalGamePolicyError::Location,
-    );
-    expect_error(&amounts("{ \"26163\" = 0 }"), profile("program"));
     let policy =
         NationalGamePolicy::parse(&scales("{ \"26163:earning-owner\" = 12500 }")).expect("a scale");
     assert_eq!(
@@ -1190,4 +1169,285 @@ fn residence_amounts_and_luxury_scales_are_read() {
         "place_services = [\"housing\", \"housing\"]",
     );
     expect_error(&twice, profile("place_services"));
+}
+
+// ---- Task 1b of stage 5: the keys the rulings of 26 November add (schema 8) ----
+
+/// The fixture with a crossing service: its list, and its share in every table of shares.
+fn with_crossing(list: &str) -> String {
+    TWELVE
+        .replacen(
+            "place_services = [",
+            &format!("crossing_services = {list}\nplace_services = ["),
+            1,
+        )
+        .replacen(
+            "equipment = 0 }",
+            "equipment = 0, business_services = 1500 }",
+            1,
+        )
+        .replace(
+            "equipment = 2500 }",
+            "equipment = 2500, business_services = 1000 }",
+        )
+}
+
+#[test]
+fn the_keys_of_26_november_are_refused_under_schema_7() {
+    let at = |anchor: &str, add: &str| {
+        let changed = SOURCE.replacen(anchor, &format!("{anchor}{add}"), 1);
+        assert_ne!(changed, SOURCE, "{anchor}");
+        changed
+    };
+    let cases = [
+        at(
+            "[markets]\n",
+            "crossing_services = [\"business_services\"]\n",
+        ),
+        at("[markets]\n", "country_services = [\"utility\"]\n"),
+        format!("{SOURCE}\n[[place_grants]]\npart = \"26163\"\namount_per_period_micros = 1\n"),
+    ];
+    for changed in cases {
+        assert_eq!(
+            NationalGamePolicy::parse(&changed),
+            Err(NationalGamePolicyError::Shape),
+            "{changed:.0}"
+        );
+    }
+}
+
+#[test]
+fn a_crossing_service_has_its_shares() {
+    let policy = NationalGamePolicy::parse(&with_crossing("[\"business_services\"]"))
+        .expect("a crossing service with its shares");
+    assert_eq!(policy.crossing_services, ["business_services"]);
+    let GameProcurement::ByProduct { import_bps } = &policy.markets.procurement else {
+        panic!("schema 8 procurement is by product");
+    };
+    assert_eq!(import_bps.len(), 6);
+    assert_eq!(import_bps["business_services"], 1_500);
+    let canada = &policy.counterparts[&ForeignCounterpart::Canada];
+    let export = canada.export_bps.as_ref().expect("export shares");
+    assert_eq!(export.len(), 6);
+    assert_eq!(export["business_services"], 1_000);
+
+    let ok = with_crossing("[\"business_services\"]");
+    expect_error_on(
+        &ok.replacen(", business_services = 1500", "", 1),
+        profile("import_bps"),
+    );
+    expect_error_on(
+        &ok.replacen(", business_services = 1000", "", 1),
+        profile("export_bps"),
+    );
+    // A share of a service that crosses nowhere.
+    let uncrossed = TWELVE.replacen(
+        "equipment = 0 }",
+        "equipment = 0, business_services = 1500 }",
+        1,
+    );
+    expect_error(&uncrossed, profile("import_bps"));
+    expect_error_on(&with_crossing("[\"food\"]"), profile("crossing_services"));
+    expect_error_on(
+        &with_crossing("[\"leisure\", \"leisure\"]"),
+        profile("crossing_services"),
+    );
+}
+
+fn expect_error_on(changed: &str, expected: NationalGamePolicyError) {
+    assert_eq!(NationalGamePolicy::parse(changed), Err(expected));
+}
+
+#[test]
+fn country_services_are_read_sorted() {
+    let with = |list: &str| {
+        TWELVE.replacen(
+            "place_services = [",
+            &format!("country_services = {list}\nplace_services = ["),
+            1,
+        )
+    };
+    let policy =
+        NationalGamePolicy::parse(&with("[\"utility\", \"business_services\", \"leisure\"]"))
+            .expect("country services");
+    assert_eq!(
+        policy.country_services,
+        ["business_services", "leisure", "utility"]
+    );
+    expect_error(&with("[\"housing\"]"), profile("country_services"));
+    expect_error(&with("[\"materials\"]"), profile("country_services"));
+    expect_error(&with("[\"no_such\"]"), profile("country_services"));
+    expect_error(
+        &with("[\"utility\", \"utility\"]"),
+        profile("country_services"),
+    );
+}
+
+#[test]
+fn own_needs_rows_are_read() {
+    let residence = "\n[[programs]]\nkey = \"residence\"\nkind = \"own_needs\"\nrank = 0\nshare_bps = 10000\nrecipients = \"collective_residence_at_opening\"\n";
+    let policy = NationalGamePolicy::parse(&format!("{TWELVE}{residence}")).expect("three rows");
+    assert_eq!(policy.programs.len(), 3);
+    assert_eq!(
+        policy.programs[2].terms,
+        GameProgramTerms::OwnNeeds { share_bps: 10_000 }
+    );
+    assert_eq!(
+        policy.programs[2].recipients,
+        GameProgramRecipients::CollectiveResidenceAtOpening
+    );
+    let own = TWELVE.replace(
+        "kind = \"per_person\"\nrank = 0\namount_per_person_micros = 1595033714\n",
+        "kind = \"own_needs\"\nrank = 0\nshare_bps = 9000\n",
+    );
+    assert_ne!(own, TWELVE);
+    let policy = NationalGamePolicy::parse(&own).expect("own needs for no earner");
+    assert_eq!(
+        policy.programs[1].terms,
+        GameProgramTerms::OwnNeeds { share_bps: 9_000 }
+    );
+    for bps in ["0", "100001"] {
+        expect_error(
+            &own.replace("share_bps = 9000", &format!("share_bps = {bps}")),
+            profile("program"),
+        );
+    }
+    for kind in ["per_person_by_place", "per_person"] {
+        let changed = residence.replace("own_needs", kind);
+        expect_error_on(&format!("{TWELVE}{changed}"), profile("program"));
+    }
+    expect_error(
+        &own.replace(
+            "share_bps = 9000",
+            "share_bps = 9000\namount_per_person_micros = 1",
+        ),
+        NationalGamePolicyError::Shape,
+    );
+    expect_error(
+        &own.replace("share_bps = 9000", "share_bps = 9000\nhalf_periods = 1"),
+        NationalGamePolicyError::Shape,
+    );
+    expect_error(
+        &own.replace("share_bps = 9000\n", ""),
+        NationalGamePolicyError::Shape,
+    );
+    expect_error(
+        &own.replace("share_bps = 9000", "share_bps = 9000\namounts_micros = {}"),
+        NationalGamePolicyError::Syntax,
+    );
+    let no_no_earner = remove_between(
+        &format!("{TWELVE}{residence}"),
+        "[[programs]]\nkey = \"no_earner\"",
+        "recipients = \"no_earner_at_opening\"\n",
+    );
+    expect_error_on(&no_no_earner, NationalGamePolicyError::Shape);
+}
+
+#[test]
+fn a_policy_of_schema_8_may_be_larger() {
+    let padded = |text: &str, to: usize| {
+        let mut out = text.to_owned();
+        while out.len() < to {
+            let line = "# padding\n";
+            let room = to - out.len();
+            out.push_str(&line[..room.min(line.len())]);
+        }
+        assert_eq!(out.len(), to);
+        out
+    };
+    assert_eq!(MAX_POLICY_BYTES, 65_536);
+    assert_eq!(MAX_POLICY_BYTES_SCHEMA_8, 262_144);
+    let big = padded(TWELVE, 70_000);
+    NationalGamePolicy::parse(&big).expect("schema 8 may pass 65,536 bytes");
+    NationalGamePolicy::from_captured_bytes(big.as_bytes()).expect("captured, the same");
+    let top = padded(TWELVE, MAX_POLICY_BYTES_SCHEMA_8);
+    NationalGamePolicy::parse(&top).expect("the bound itself");
+    let over = padded(TWELVE, MAX_POLICY_BYTES_SCHEMA_8 + 1);
+    expect_error_on(&over, NationalGamePolicyError::Bounds);
+    assert_eq!(
+        NationalGamePolicy::from_captured_bytes(over.as_bytes()),
+        Err(NationalGamePolicyError::Bounds)
+    );
+    let old = padded(SOURCE, 70_000);
+    expect_error_on(&old, NationalGamePolicyError::Bounds);
+    assert_eq!(
+        NationalGamePolicy::from_captured_bytes(old.as_bytes()),
+        Err(NationalGamePolicyError::Bounds)
+    );
+    let junk = "x = [".to_owned() + &"\n".repeat(70_000);
+    expect_error_on(&junk, NationalGamePolicyError::Bounds);
+    assert_eq!(
+        NationalGamePolicy::from_captured_bytes(junk.as_bytes()),
+        Err(NationalGamePolicyError::Bounds)
+    );
+    let mut not_utf8 = vec![0xff_u8; 70_000];
+    not_utf8[0] = b'#';
+    assert_eq!(
+        NationalGamePolicy::from_captured_bytes(&not_utf8),
+        Err(NationalGamePolicyError::Bounds)
+    );
+    // A small text keeps today's result.
+    assert_eq!(
+        NationalGamePolicy::from_captured_bytes(&[0xff]),
+        Err(NationalGamePolicyError::Syntax)
+    );
+}
+
+#[test]
+fn a_part_s_share_and_grant_are_read() {
+    let fund = TWELVE.replacen(
+        "reserve_periods = 2\n",
+        "reserve_periods = 2\nshare_by_part = { \"26163\" = 2600, \"01073/below\" = 0 }\n",
+        1,
+    );
+    let grants = |rows: &[(&str, i128)]| {
+        let tables = rows
+            .iter()
+            .map(|(part, micros)| {
+                format!(
+                    "\n[[place_grants]]\npart = \"{part}\"\namount_per_period_micros = {micros}\n"
+                )
+            })
+            .collect::<Vec<_>>()
+            .concat();
+        format!("{fund}{tables}")
+    };
+    let policy =
+        NationalGamePolicy::parse(&grants(&[("26163", 5_000_000), ("01073/below", 7_000_000)]))
+            .expect("shares and grants");
+    let fund_policy = policy.fund.as_ref().expect("a fund");
+    assert_eq!(
+        fund_policy.share_by_part,
+        BTreeMap::from([("01073/below".to_owned(), 0), ("26163".to_owned(), 2_600)])
+    );
+    assert_eq!(
+        policy.place_grants,
+        [
+            GamePlaceGrant {
+                part: "01073/below".to_owned(),
+                amount_per_period: Currency::from_micro_units(7_000_000)
+            },
+            GamePlaceGrant {
+                part: "26163".to_owned(),
+                amount_per_period: Currency::from_micro_units(5_000_000)
+            },
+        ]
+    );
+    expect_error_on(
+        &fund.replace("\"26163\" = 2600", "\"26163\" = 10001"),
+        profile("fund"),
+    );
+    expect_error_on(
+        &fund.replace("\"26163\" = 2600", "\"canada\" = 2600"),
+        NationalGamePolicyError::Location,
+    );
+    expect_error_on(&grants(&[("26163", 0)]), profile("place_grants"));
+    expect_error_on(
+        &grants(&[("26163", 1), ("26163", 2)]),
+        profile("place_grants"),
+    );
+    expect_error_on(
+        &grants(&[("01073/north", 1)]),
+        NationalGamePolicyError::Location,
+    );
 }

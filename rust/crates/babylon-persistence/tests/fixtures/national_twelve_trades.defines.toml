@@ -60,13 +60,6 @@ rank = 0
 amount_per_person_micros = 1595033714
 recipients = "no_earner_at_opening"
 
-[[programs]]
-key = "residence"
-kind = "per_person_by_place"
-rank = 0
-recipients = "collective_residence_at_opening"
-amounts_micros = {}
-
 # Designed time accounting. Domestic eligibility uses ACS age 16+ controls;
 # external eligibility is a fixed approximation, never a new workforce source.
 [household_time]

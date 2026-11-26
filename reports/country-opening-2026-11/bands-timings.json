@@ -1,0 +1,27 @@
+{
+  "bench": "country-opening-2026-11",
+  "periods_timed": 1,
+  "scenario": "twelve-trades",
+  "sets": [
+    {
+      "elapsed_ms": 11483,
+      "ratio_to_baseline_bps": 10000,
+      "set": "baseline"
+    },
+    {
+      "elapsed_ms": 11530,
+      "ratio_to_baseline_bps": 10040,
+      "set": "no-seekers"
+    },
+    {
+      "elapsed_ms": 12828,
+      "ratio_to_baseline_bps": 11171,
+      "set": "all-six"
+    },
+    {
+      "elapsed_ms": 12829,
+      "ratio_to_baseline_bps": 11172,
+      "set": "all-six-with-benefits"
+    }
+  ]
+}

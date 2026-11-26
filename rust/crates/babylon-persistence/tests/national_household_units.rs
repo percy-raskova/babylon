@@ -2423,7 +2423,7 @@ fn the_twelve_trades_open_on_the_bench() {
 
 /// One period of each set, timed, for the twelve trades.
 #[test]
-#[ignore = "writes reports/country-opening-2026-11/twelve-trades-timings.json"]
+#[ignore = "writes reports/country-opening-2026-11/bands-timings.json"]
 fn record_twelve_trades_timings() {
     let mut rows = Vec::new();
     let mut baseline = 0_u128;
@@ -2471,21 +2471,22 @@ fn record_twelve_trades_timings() {
         "periods_timed": 1,
         "sets": rows,
     });
-    let path = twelve_trades_path("twelve-trades-timings.json");
+    let path = twelve_trades_path("bands-timings.json");
     std::fs::create_dir_all(path.parent().expect("a directory")).expect("the directory is made");
     let text = serde_json::to_string_pretty(&record).expect("the record serializes");
     std::fs::write(path, text + "\n").expect("the record is written");
 }
 
-/// 34 periods of the baseline, of all six rules and of all six with benefits. A record over the
+/// 34 periods of the baseline, of all six rules and of all six with benefits, as `bands-<set>.json` beside
+/// Task 8b's `twelve-trades-<set>.json`, which stay. A record over the
 /// hygiene budget is written whole under the target's tmp, and its rows of the summary's periods are
 /// committed instead.
 #[test]
-#[ignore = "writes the twelve trades' records under reports/country-opening-2026-11/; TWELVE_TRADES_SET=<name> plays one"]
+#[ignore = "writes the twelve trades' records with the bands under reports/country-opening-2026-11/; TWELVE_TRADES_SET=<name> plays one"]
 fn record_twelve_trades_sets() {
     for set in twelve_trades_sets() {
         let (record, refusal) = scenario_report(Scenario::TwelveTrades, set, 34);
-        let name = format!("twelve-trades-{}", set.name());
+        let name = format!("bands-{}", set.name());
         let whole =
             Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("country-opening/{name}.json"));
         let size = write_compact_unbounded(&record, &whole);

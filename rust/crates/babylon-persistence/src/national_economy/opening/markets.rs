@@ -721,14 +721,14 @@ pub(super) fn handling_hours(policy: &NationalGamePolicy, key: &str) -> Result<u
 /// or schema 8's share of a domestic buyer's imports and of a foreign buyer's region (Task 5
 /// replaces this).
 pub(super) fn abroad_bps(builder: &Builder<'_>, buyer: SiteId, key: &str) -> Result<u16> {
-    let location = builder
-        .actors
-        .get(&buyer)
-        .ok_or(NationalOpeningError::Identity)?
-        .location;
     match &builder.policy.markets.procurement {
         GameProcurement::Single(bps) => Ok(*bps),
         GameProcurement::ByProduct { import_bps } => {
+            let location = builder
+                .actors
+                .get(&buyer)
+                .ok_or(NationalOpeningError::Identity)?
+                .location;
             let profile = match location {
                 EconomicLocation::County(_) => None,
                 EconomicLocation::Foreign(counterpart) => Some(

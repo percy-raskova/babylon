@@ -926,7 +926,9 @@ fn builder_keys_are_refused_under_schema_7() {
         at("[counterpart.\"canada\"]\n", "export_bps = { food = 1 }\n"),
         format!("{SOURCE}\n[grain.basis]\nfood_labor_hours_per_batch = 16\nfood_output_units_per_batch = 16\nfood_units_per_person = 1\nfood_grams_per_unit = 14000\n"),
         format!("{SOURCE}\n[fund]\nevidence_class = \"Designed\"\nwage_tax_share_bps = 0\noperating_income_tax_share_bps = 0\nreserve_periods = 2\n"),
-        format!("{SOURCE}\n[[programs]]\nkey = \"no_earner\"\n"),
+        format!("{SOURCE}\n[[programs]]\nkey = \"no_earner\"\nkind = \"per_person\"\nrank = 0\namount_per_person_micros = 1595033714\nrecipients = \"no_earner_at_opening\"\n"),
+        at("[commodity.food]\n", "handling_units = 1\n"),
+        at("[dependency]\n", "export_bps = { food = 1 }\n"),
         format!("{SOURCE}\n[luxury_scale]\nby_account = {{}}\n"),
         format!("{SOURCE}\n[[household_wants]]\ngood = \"food\"\ntier = \"comfort\"\nbasis = \"persons\"\nunits_per_basis = 1\n"),
     ];
@@ -935,7 +937,7 @@ fn builder_keys_are_refused_under_schema_7() {
         assert!(
             matches!(
                 NationalGamePolicy::parse(&changed),
-                Err(NationalGamePolicyError::Shape | NationalGamePolicyError::Syntax)
+                Err(NationalGamePolicyError::Shape)
             ),
             "{:?}",
             NationalGamePolicy::parse(&changed)
@@ -955,6 +957,11 @@ fn remove_between(text: &str, start: &str, end: &str) -> String {
 fn schema_8_needs_the_builder_keys() {
     let no_fund = remove_between(TWELVE, "[fund]", "reserve_periods = 2\n");
     let no_programs = remove_between(TWELVE, "[[programs]]", "amounts_micros = {}\n");
+    let two_programs = remove_between(
+        TWELVE,
+        "[[programs]]\nkey = \"residence\"",
+        "amounts_micros = {}\n",
+    );
     let no_basis = remove_between(TWELVE, "[grain.basis]", "food_grams_per_unit = 14000\n");
     let no_import = remove_between(TWELVE, "import_bps = {", "}\n");
     let no_export = TWELVE.replacen(
@@ -984,6 +991,7 @@ fn schema_8_needs_the_builder_keys() {
     for changed in [
         no_fund,
         no_programs,
+        two_programs,
         no_basis,
         no_import,
         no_export,
@@ -1027,14 +1035,39 @@ fn bad_builder_values_are_refused() {
         (TWELVE.replace("amount_per_person_micros = 1595033714", "amount_per_person_micros = 0"), profile("program")),
         (TWELVE.replace("kind = \"per_person\"", "kind = \"after_layoff\""), profile("program")),
         (TWELVE.replace("recipients = \"no_earner_at_opening\"", "recipients = \"collective_residence_at_opening\""), profile("program")),
-        (TWELVE.replace("units_per_basis = 1\n\n[[household_needs]]\ngood = \"materials\"", "units_per_basis = 0\n\n[[household_needs]]\ngood = \"materials\""), NationalGamePolicyError::HouseholdNeed("food".to_owned())),
         (TWELVE.replace("food_labor_hours_per_batch = 16", "food_labor_hours_per_batch = 0"), profile("grain basis")),
         (TWELVE.replace("food_grams_per_unit = 14000", "food_grams_per_unit = 0"), profile("grain basis")),
+        (TWELVE.replace("food_output_units_per_batch = 16", "food_output_units_per_batch = 0"), profile("grain basis")),
+        (TWELVE.replace("food_units_per_person = 1", "food_units_per_person = 0"), profile("grain basis")),
+        (TWELVE.replace("operating_income_tax_share_bps = 0", "operating_income_tax_share_bps = 10001"), profile("fund")),
+        (TWELVE.replacen("food = 4, ", "", 1), profile("workers_per_machine")),
     ];
     for (index, (changed, expected)) in cases.into_iter().enumerate() {
         assert_ne!(changed, TWELVE, "case {index} must change the input");
         let got = NationalGamePolicy::parse(&changed);
         assert_eq!(got, Err(expected), "case {index}");
+    }
+    // A want's own refusals, on top of a valid want with its handling row.
+    let with_handling = TWELVE.replacen(
+        "[commodity.consumer_goods]\n",
+        "[commodity.consumer_goods]\nhandling_hours = 1\nhandling_units = 1\n",
+        1,
+    );
+    let want = |good: &str, units: u32| {
+        format!(
+            "{with_handling}\n[[household_wants]]\ngood = \"{good}\"\ntier = \"comfort\"\nbasis = \"persons\"\nunits_per_basis = {units}\n"
+        )
+    };
+    NationalGamePolicy::parse(&want("consumer_goods", 1)).expect("the valid want");
+    for (good, units) in [
+        ("consumer_goods", 0),
+        ("no_such", 1),
+        ("resource_deposit", 1),
+    ] {
+        expect_error(
+            &want(good, units),
+            NationalGamePolicyError::HouseholdNeed(good.to_owned()),
+        );
     }
     // A handling row on a good that no need or want names.
     let changed = TWELVE.replacen(

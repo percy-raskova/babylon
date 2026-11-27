@@ -117,6 +117,8 @@ def _imports_of_goods(
     buyers = [t for t in economy.trades if t != economy.shop_trade]
     shop_good = product in economy.shop_goods and economy.shop_trade is not None
     is_equipment = trade == economy.capital_trade
+    # H0 is USD thousands a year; the firms' weights are accounts dollars a period: x1000/periods.
+    household_scale = Fraction(1000, settings.periods_per_year)
 
     def firm_weight(region: str, j: str) -> Fraction:
         force = census.firm_assignment.get((product, region, j), 0)
@@ -139,7 +141,7 @@ def _imports_of_goods(
                 row[j] = w
         if shop_good and economy.shop_trade is not None:
             served = census.retail_assignment.get((product, region), 0)
-            w = Fraction(served) * recut.households.get(trade, _ZERO) / persons
+            w = Fraction(served) * household_scale * recut.households.get(trade, _ZERO) / persons
             if w > 0:
                 row[economy.shop_trade] = w
         if row:
@@ -154,9 +156,9 @@ def _imports_of_goods(
             if coefficient > 0 and h.get(j, _ZERO) > 0:
                 total += census.trades[j].force * hpp * coefficient / h[j]
     if shop_good:
-        total += recut.households.get(trade, _ZERO)
+        total += household_scale * recut.households.get(trade, _ZERO)
     if foreign == 0 or total == 0:
-        raise _fail("import_weights", trade)
+        raise _fail("import_weights", product)
     region_weight = {r: sum(row.values(), _ZERO) for r, row in by_region.items()}
     buyer_weight: dict[str, Fraction] = {}
     for row in by_region.values():
@@ -445,7 +447,7 @@ def _trade(
     capital = economy.capital_trade
     left = q.final[capital] - exports[capital]
     if left < 0:
-        raise _fail("negative_residual", capital)
+        raise _fail("negative_residual", economy.product[capital])
     return _Trade(kx, exports, p_tilde, money, p[capital] * left)
 
 
@@ -788,7 +790,9 @@ def opening(
     tax = (grant + support + benefits - po) / denominator
     if not (0 <= tax < 1):
         raise _fail("tax_rate")
-    fund_share = benefits / (tax * (wages + oi_total))
+    if tax == 0 and benefits > 0:
+        raise _fail("tax_rate")
+    fund_share = benefits / (tax * (wages + oi_total)) if tax > 0 else _ZERO
     if not (0 <= fund_share < 1):
         raise _fail("tax_rate")
     payout = (1 - tax) * (oi_total - po)

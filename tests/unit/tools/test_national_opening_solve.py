@@ -133,7 +133,9 @@ def test_the_floor_holds_at_the_solution() -> None:
         )
         profit = q.output[j] * cost * mu[j]
         wear = out.equipment * q.machines[j] / nm
-        assert profit >= F(5, 4) * wear - F(1, s.MICROS), j
+        # Exact up to the equipment money's own rounding onto the micro grid: the prices are
+        # solved at the previous round's equipment (shortfall here 1.8e-7, under one micro).
+        assert profit >= THREE_SETTINGS.wear_cover * wear - F(1, s.MICROS), j
         assert profit <= F(5, 4) * wear + F(1, s.MICROS) * 10, j
 
 
@@ -487,6 +489,12 @@ def test_refusals_have_their_codes() -> None:
         run(world_q(coef=greedy), census)
     with pytest.raises(ReferenceBuildError, match=r"^negative_exports"):
         run(world_q(xs={}), census)
+    # Imports worth less than extraction's exports: the export factor would be below zero.
+    mining = replace(SMALL, extraction_trade=FOOD)
+    one = {t: F(1) for t in TRADES5}
+    zero = {t: F(0) for t in TRADES5}
+    with pytest.raises(ReferenceBuildError, match=r"^negative_exports"):
+        s._trade(world_q(), one, zero, SMALL_SETTINGS, mining)
     with pytest.raises(ReferenceBuildError, match=r"^tax_rate"):
         run(world_q(), one_place(keys={"no_earner_nonowner": (100, 50, 0, 10**9)}))
     with pytest.raises(ReferenceBuildError, match=r"^negative_operating_income: "):
@@ -576,6 +584,66 @@ def test_a_crossing_service_is_imported_by_businesses_only() -> None:
     cut, census, settings = service_world(F(61, 121))
     with pytest.raises(ReferenceBuildError, match=r"^import_coverage: business_services"):
         s.quantities(cut, census, settings, SERVICE_ECONOMY)
+
+
+# ---- a shop good's import weights ---------------------------------------------------
+
+GOODS_ECONOMY = economy_of(
+    (FOOD, HS, SHOP),
+    {FOOD: "food", HS: "household_services", SHOP: "distribution_transport"},
+    storable=frozenset({"food"}),
+    shop_trade=SHOP,
+    capital_trade=HS,
+    shop_goods=frozenset({"food"}),
+)
+
+
+def test_a_shop_good_s_import_weights_share_one_scale() -> None:
+    """H0 is USD thousands a year, the firms' weights are dollars a period: both on the period."""
+    settings = replace(
+        r.Settings(),
+        periods_per_year=13,
+        work_hours_per_person=1,
+        crossing=frozenset({"food"}),
+    )
+    cut = r.Recut(
+        inputs={FOOD: {HS: F(39, 10)}},
+        households={FOOD: F(13)},
+        exports={},
+        equipment=F(0),
+        import_share={FOOD: F(1, 2), HS: F(0), SHOP: F(0)},
+        domestic_output={FOOD: F(13), HS: F(39), SHOP: F(13)},
+        accounts_payroll={FOOD: F(1), HS: F(1), SHOP: F(1)},
+        accounts_jobs={FOOD: 30, HS: 30, SHOP: 30},
+        accounts_margin={FOOD: F(1, 10), HS: F(1, 10), SHOP: F(1, 10)},
+        moved={},
+        dropped={},
+    )
+
+    def count(force: int) -> r.TradeCount:
+        return r.TradeCount(30, 0, 0, 10**9, force, 1, 0, 0, 0)
+
+    region = lambda key: r.Region(key, 1, 1, 1, 1, {FOOD: 10**6})  # noqa: E731
+    census = r.Census(
+        trades={FOOD: count(100), HS: count(100), SHOP: count(100)},
+        households={"k": r.KeyCount(1, 1, 200, 0, 0, 0)},
+        places=(),
+        abroad={"r1": region("r1"), "r2": region("r2")},
+        firm_assignment={(FOOD, "r1", HS): 40, (FOOD, "r2", HS): 60},
+        retail_assignment={(FOOD, "r1"): 50},
+        crossing_force={},
+        workers_per_machine={},
+        sha256="",
+    )
+    q = s.quantities(cut, census, settings, GOODS_ECONOMY)
+    tol = F(1, 2**50)
+    # Firms: x[HS] = 3000 dollars a period, so force x 10: r1 400, r2 600. The shop: 50 of
+    # 200 persons served times H0 13 x 1000/13 = 250 in r1. Foreign 1250, all buyers 2000.
+    assert abs(q.import_cover[FOOD] - F(4, 5)) <= tol
+    assert abs(q.import_sources[FOOD]["r1"] - F(13, 25)) <= tol
+    assert abs(q.import_sources[FOOD]["r2"] - F(12, 25)) <= tol
+    assert abs(q.import_buyers[FOOD][HS] - F(4, 5)) <= tol
+    assert abs(q.import_buyers[FOOD][SHOP] - F(1, 5)) <= tol
 
 
 # ---- the committed tables (slow) ---------------------------------------------------

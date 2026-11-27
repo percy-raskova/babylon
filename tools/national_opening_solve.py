@@ -812,13 +812,20 @@ def opening(
     if shop is not None:
         oi[shop] = q.unpaid_labor[shop]
     # The shop's income is its unpaid labor, with no margin: no second term for it.
+    pub = economy.public_trade
+    gwear = grant_wear(prices.equipment, q, settings, economy)
+    if pub is not None:
+        # The provider is paid the wear of all its machines, wears those in use, and returns the
+        # difference to its owner as operating income.
+        value = gwear - wear.get(pub, _ZERO)
+        if value < 0:
+            raise _fail("negative_operating_income", pub)
+        oi[pub] = value
     po = public_owned_income(oi, {j: mu[j] for j in private if j != shop}, census.trades)
     wages = sum((Fraction(c.payroll_micros, MICROS) for c in census.trades.values()), _ZERO)
     oi_total = sum(oi.values(), _ZERO)
     persons = needs.persons
     grant = _ZERO
-    pub = economy.public_trade
-    gwear = grant_wear(prices.equipment, q, settings, economy)
     if pub is not None:
         inputs = sum(
             (q.coefficients.get(i, {}).get(pub, _ZERO) * p[i] * q.output[pub] for i in private),
@@ -843,10 +850,6 @@ def opening(
     if not (0 <= fund_share < 1):
         raise _fail("tax_rate")
     payout = (1 - tax) * (oi_total - po)
-    # The grant pays the public trade's wear on the machines in use; the trades' own wear is on the
-    # census machines. What the grant pays above `wear[public]` reaches the makers of equipment as
-    # revenue that no operating income counts.
-    extra_wear = gwear - wear.get(pub, _ZERO) if pub is not None else _ZERO
     bands = _bands(census, tax, payout, support_unit, ben_by_key)
     kept = _kept(census, bands, needs, settings, economy, fee)
     flows = _balances(
@@ -864,7 +867,6 @@ def opening(
         tr,
         p,
         wear,
-        extra_wear,
     )
     if abs(flows["1"][1]) > 1:
         raise _fail("income_identity")
@@ -963,14 +965,13 @@ def _balances(
     tr: _Trade,
     p: Mapping[str, Fraction],
     wear: Mapping[str, Fraction],
-    extra_wear: Fraction,
 ) -> dict[str, tuple[Fraction, Fraction]]:
     """O6's four balances, each as `(flow, residual)` (decision 13)."""
     spent = n.spending + fee * persons
     receipts = tax * (wages + oi_total) + (1 - tax) * po
     exported = sum((p[t] * x for t, x in tr.exports.items()), _ZERO)
     return {
-        "1": (spent, sum(bands.values(), _ZERO) + extra_wear - spent),
+        "1": (spent, sum(bands.values(), _ZERO) - spent),
         "2": (grant + support + benefits, receipts - (grant + support + benefits)),
         "3": (tr.imports_money, exported - tr.imports_money),
         "4": (tr.equipment, sum(wear.values(), _ZERO) - tr.equipment),

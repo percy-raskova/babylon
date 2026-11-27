@@ -164,8 +164,12 @@ SMALL_SETTINGS = replace(
     paying_order=("food", "household_services"),
     crossing=frozenset({"food", "equipment"}),
     country_services=frozenset(),
-    # The hand world's hours are few: one hour a person and these workers a machine put the
-    # machines in use (19.94) near its 20 census machines, as the committed tables have them.
+    # Why one hour a person and these workers a machine: the hand world's hours are few (HOURS
+    # sum to 310), so a country's 2080 hours a person would leave almost no machines in use.
+    # With one hour and these workers a machine the machines in use (`machines_in_use`, 19.94)
+    # are near the 20 machines of its census (MACHINES), as the committed tables have their
+    # machines in use near their census's count; the grant's wear then differs from the
+    # trades' own wear by a small, positive amount, not by orders of magnitude.
     work_hours_per_person=1,
     workers_per_machine={FOOD: 10, CAP: 8, HS: 50, PUB: 17},
 )
@@ -380,6 +384,27 @@ def test_the_shop_passes_on_what_it_saves() -> None:
     assert o.operating_income[SHOP] == q.unpaid_labor[SHOP]
     assert o.posted["food"] == (o.household_purchases[FOOD] + o.markup * p[FOOD] * left) / left
     assert p[FOOD] * (1 + o.markup) - o.posted["food"] == saving / left
+    assert abs(o.balances["1"][1]) <= 1
+
+
+def test_the_public_provider_s_surplus_is_its_operating_income() -> None:
+    q = world_q()
+    base = one_place()
+    # The public trade's people are all public employees: its income is public-owned in full.
+    public = replace(base.trades[PUB], public_employee_persons=10)
+    census = replace(base, trades={**base.trades, PUB: public})
+    o = run(q, census)
+    extra = s.grant_wear(o.prices.equipment, q, SMALL_SETTINGS, SMALL) - o.wear[PUB]
+    assert extra > 0
+    assert o.operating_income[PUB] == extra
+    others = {j: v for j, v in o.operating_income.items() if j != PUB}
+    mu = {j: o.prices.margins[j] for j in PRIVATE5}
+    assert o.public_owned_income == s.public_owned_income(others, mu, census.trades) + extra
+    wages = sum((F(c.payroll_micros, 10**6) for c in census.trades.values()), F(0))
+    oi_total = sum(o.operating_income.values(), F(0))
+    assert o.tax_rate * (wages + oi_total - o.public_owned_income) == (
+        o.grant + o.support + o.benefits - o.public_owned_income
+    )
     assert abs(o.balances["1"][1]) <= 1
 
 

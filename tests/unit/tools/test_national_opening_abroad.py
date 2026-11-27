@@ -540,9 +540,14 @@ def test_the_nation_balances_by_the_regions(committed: Any) -> None:
     _, _, _, _, regions = committed
     sales = sum(x.sales_micros for x in regions.values())
     purchases = sum(x.purchases_micros for x in regions.values())
-    print(f"imports {sales} micros, exports {purchases} micros")  # noqa: T201
+    written = sum(x.purchases_written_micros for x in regions.values())
+    print(  # noqa: T201
+        f"imports {sales} micros, exports at exact shares {purchases}, "
+        f"exports at written shares {written}"
+    )
     assert sales > 0
-    assert abs(purchases - sales) * 100 <= sales
+    # The written shares (basis points, as the compiler applies them), not the exact solve.
+    assert abs(written - sales) * 100 <= sales
 
 
 @pytest.mark.slow
@@ -552,6 +557,7 @@ def test_every_region_balances(committed: Any) -> None:
         print(  # noqa: T201
             f"{key}: rounds {x.rounds}, mpp {x.money_per_person_micros}, "
             f"sales {x.sales_micros}, purchases {x.purchases_micros}, "
+            f"written {x.purchases_written_micros}, "
             f"scale {x.luxury_scale_bps}, reach {[percent(v, F(1)) for v in x.reach]}"
         )
         print(f"  weights {x.function_weights_bps}, shares {dict(x.export_bps)}")  # noqa: T201

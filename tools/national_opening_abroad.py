@@ -31,6 +31,7 @@ from national_opening_tiers import (
     Row,
     Tiers,
     buy,
+    luxury_scale_bps,
     shape_of,
     tier_one_rows,
     want_rows,
@@ -72,7 +73,7 @@ class RegionOpening:
     ]  # by crossing product: the five priced goods and business services
     money_per_person_micros: int
     sales_micros: int  # a period, to the United States
-    purchases_micros: int  # a period, from it
+    purchases_micros: int  # a period, from it, at the exact shares of the solve
     luxury_scale_bps: int | None
     # Beyond the interface of the task, for the metadata.
     reach: tuple[Fraction, Fraction, Fraction] = (
@@ -81,6 +82,8 @@ class RegionOpening:
         _ZERO,
     )  # money spent over cost, by tier
     rounds: int = 0
+    # A period's purchases at the WRITTEN shares (`export_bps`, as the compiler applies them).
+    purchases_written_micros: int = 0
     sells_units: Mapping[str, Fraction] = field(default_factory=dict)  # to the country, by product
     buys_units: Mapping[str, Fraction] = field(default_factory=dict)  # from the country, by product
 
@@ -212,23 +215,10 @@ class _Solved:
     reach: tuple[Fraction, Fraction, Fraction]
 
 
-def _tier_cost(rows: Sequence[Row], account: Account, prices: Mapping[str, int]) -> Fraction:
-    total = _ZERO
-    for row in rows:
-        count = account.persons if row.basis == "persons" else account.households
-        total += row.units * count * prices[row.good]
-    return total
-
-
 def _scale_bps(account: Account, tiers: tuple[list[Row], list[Row], list[Row]]) -> int | None:
-    """Task 11, decision 10 without its bound: `floor(10_000 x (money - tier 1 - tier 2) / tier
-    3)` (rounding rule: down), None unless above 10,000."""
-    prices = account.own_prices
-    c1, c2, c3 = (_tier_cost(rows, account, prices) for rows in tiers)
-    if c3 <= 0 or account.money_micros - c1 - c2 <= c3:
-        return None
-    bps = (BASIS * (account.money_micros - c1 - c2) / c3).__floor__()
-    return bps if bps > BASIS else None
+    """Task 11, decision 10 (the one rule, in `national_opening_tiers`) without its bound, which
+    `_finish` checks."""
+    return luxury_scale_bps(account, tiers, bounded=False)
 
 
 class _Region:
@@ -494,6 +484,9 @@ def _finish(
             # Rounding rule: a period's money, half up.
             sales_micros=half_up(sales_value[k]),
             purchases_micros=half_up(sum((us_price[p] * buys[p] for p in goods), _ZERO)),
+            purchases_written_micros=half_up(
+                sum((us_price[p] * Fraction(bps[p], BASIS) * s.required[p] for p in goods), _ZERO)
+            ),
             luxury_scale_bps=s.scale_bps,
             reach=s.reach,
             rounds=rounds,

@@ -969,10 +969,16 @@ def _product(options: Sequence[Sequence[Fraction]]) -> list[tuple[Fraction, ...]
 # Luxury scales (decision 10).
 
 
-def luxury_scale_bps(account: Account, tiers: tuple[list[Row], list[Row], list[Row]]) -> int | None:
+def luxury_scale_bps(
+    account: Account,
+    tiers: tuple[list[Row], list[Row], list[Row]],
+    *,
+    bounded: bool = True,
+) -> int | None:
     """`floor(10_000 x (money - tier 1 - tier 2) / tier 3)`, each tier at the account's own prices
     and the written contents (rounding rule: down); None unless above 10,000. Above 1,000,000 is
-    `luxury_scale_bound: <part>/<key>` (the compiler refuses it)."""
+    `luxury_scale_bound: <part>/<key>` (the compiler refuses it) unless `bounded` is False, when the
+    caller checks the bound."""
     prices = account.own_prices
     c1, c2, c3 = (_cost(account, rows, prices) for rows in tiers)
     if c3 <= 0 or account.money_micros - c1 - c2 <= c3:
@@ -980,7 +986,7 @@ def luxury_scale_bps(account: Account, tiers: tuple[list[Row], list[Row], list[R
     bps = math.floor(BASIS * (account.money_micros - c1 - c2) / c3)
     if bps <= BASIS:
         return None
-    if bps > SCALE_LIMIT_BPS:
+    if bounded and bps > SCALE_LIMIT_BPS:
         raise _fail("luxury_scale_bound", f"{account.place}/{account.key}")
     return bps
 

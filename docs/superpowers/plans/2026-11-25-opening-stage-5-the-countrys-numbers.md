@@ -3195,7 +3195,7 @@ Commit `feat(reference): whole-number units, recipes and prices for the opening`
 
 ```python
 BATCHES: Final = (1, 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 64, 80, 100, 128, 160, 200, 250, 400, 500, 800,
-                  1000, 2000, 5000, 10000)
+                  1000, 2000, 5000, 10000, 20000, 50000, 100000)
 @dataclass(frozen=True)
 class Product:
     key: str; label: str; unit_label: str; kind: Literal["storable", "utility", "service"]
@@ -3215,13 +3215,24 @@ class Written:
     wage_tax_bps: int; operating_income_tax_bps: int; fund_share_bps: int
     import_bps: Mapping[str, int]
     batch_hours_lost: Mapping[str, Fraction]   # an estimate, for the metadata (decision 5)
+    demand_moved: Mapping[str, Fraction]       # by product: its makers' output moved by its buyers' rounding (5b)
+    machines_worn: Fraction                    # a period, by use at the written recipes (decision 5b)
 def handling_block(hours_per_unit: Fraction) -> tuple[int, int]: ...
+def machine_life_batches(hours_per_person: int, workers_per_machine: int, life_periods: int,
+                         labor_hours_per_batch: int) -> int: ...   # Task 6b's rule, here for a batch's wear
 def batch(trade: str, hours_per_unit: Fraction, inputs_per_unit: Mapping[str, Fraction], wage_micros: int,
-          prices: Mapping[str, int], price_micros: int, wear_micros: Callable[[int], Fraction]) -> Recipe: ...
+          prices: Mapping[str, int], price_micros: int, wear_micros: Callable[[int], Fraction],
+          shares: Mapping[str, Fraction], *, refusal: bool = True) -> Recipe: ...
+    # shares[i]: the part of product i's makers' output that this trade's recipe buys (decision 5);
+    # refusal=False leaves O5's refusal out (public provision: its fee is not its cost)
 def written(o: Opening, recut: Recut, census: Census, settings: Settings, template: TemplateFacts) -> Written: ...
+def region_maker_prices(w: Written, o: Opening, wage_micros: Mapping[str, int]) -> Mapping[str, int]: ...
+    # each product at the region's makers' own price, with no shop's charge: what Task 11 reads (decision 9)
 def region_prices(w: Written, o: Opening, wage_micros: Mapping[str, int], census: Census,
                   export_bps: Mapping[str, int] | None = None) -> Mapping[str, int]: ...
-    # moved here from Task 12 (decision 9): Task 11 reads a foreign supplier's price for an account's shop
+    # moved here from Task 12 (decision 9): a region's products as its own shops post them
+# As built, `written`, `region_maker_prices` and `region_prices` take a trailing `economy: Economy = TWELVE`, as the
+# solve's functions do, and `TemplateFacts` (labels, grams and prices by product key) is defined in this module.
 ```
 
 **Decisions:**
@@ -3236,13 +3247,20 @@ def region_prices(w: Written, o: Opening, wage_micros: Mapping[str, int], census
    and schooling for one person", "person-day care" (call 7); materials "Supplies for one household for a day",
    "household-day supplies"; housing "Housing for one household for a day", "household-day housing"; consumer goods,
    business services and leisure "<the fixture's label>, a day's food's worth", units "consumer goods bundle", "business
-   service unit", "leisure unit"; resources "An hour of extraction's output", "extraction hour"; equipment "One
+   service unit", "leisure unit"; resources "A minute of extraction's output", "extraction minute"; equipment "One
    machine", "machine"; public provision as the fixture. A service's `kind` follows `service_stage` (ruling 1, D7):
    utility, business services and housing `"utility"` (the first stage), household services, leisure and public
    provision `"service"`.
-2. **Units businesses buy.** Resources: an hour of extraction work, `u = 1 / h[extraction]`. Equipment: one machine,
-   `u = (E / p[capital]) x machine_life_periods / NM`, so `NM / life` machines are bought a period and one machine's
-   price is `E x life / NM`: wear is one machine in `life` a period (Task 4's `wear`).
+2. **Units businesses buy** (amended on 27 November: "What run C found in the build"). Resources: a MINUTE of
+   extraction work, `u = 1 / (60 x h[extraction])`. Counted by the hour a unit cost $187.62, and ten trades' use of
+   it rounded badly or to nothing; by the minute it costs $3.13. Equipment: one machine, sized by the machines IN
+   USE: `u = (E / p[capital]) x machine_life_periods / NU`, with `NU` the sum, over the trades with machines, of
+   `hours[j] / (work_hours_per_person x workers_per_machine[j])`, an exact fraction (`hours[j]` is the solve's
+   hours at work). The engine wears a machine by the batches run on it (`valuation/equipment.rs` `wear`), so only
+   the people at work wear machines: `NU / life` machines are worn and bought a period, and one machine's price is
+   `E x life / NU`. The census's `machines` count a machine for every four or forty of a site's whole force, in
+   work or seeking it; 94.5% of them are in use. They stay the count each site opens with (Task 6) and the solve's
+   shares of wear by trade (Task 10, built).
 3. **Prices.** `price_micros = half_up(p[i] u[i] x 10^6)` for every private product; public provision's is the fee.
    Minimum, maximum and step at the fixture's ratios: a quarter, four times and a fortieth, each rounded down, the
    step at least 1. A unit whose price rounds below 1,000 micros is `price_zero: <product>` (its rounding could
@@ -3251,18 +3269,35 @@ def region_prices(w: Written, o: Opening, wage_micros: Mapping[str, int], census
    price_micros / fixture opening price))`: the fixture's grams per dollar. `resource_deposit` keeps the grams of
    `resources` and extraction's recipe takes `resource_deposit` equal to its output units (the deposit rule).
    `[grain.basis]` is pinned (Task 7), so grams move no place.
-5. **Whole-number recipes** (first draft's decision 3, with two checks added). For each of the eleven trades with a
-   recipe, per unit of output: hours `h[j] u[j]`, inputs `a[i][j] u[j] / u[i]`. `batch` tries `n` in `BATCHES` in
-   order: `L = half_up(h u n)`, each input `half_up(a u n / u_i)`; skip `n` if `L` or any input is 0 (every input is
-   kept: the spike's section 4). The rounded cost a unit is `(wage x L + sum inputs x price) / n` at written prices;
-   the exact cost is `wage x h u + sum a u / u_i x price`, also at written prices, so the error is the rounding's
-   alone. Take the first `n` whose error is at most 1/200 and that passes O5's refusal as Task 14b reads it:
-   `price x n >= L x wage + sum inputs x price + wear per batch`, wear per batch `machine price / (ceil(160 x
-   workers_per_machine / L) x life)` (Task 6). If none, the `n` of least error at most 1/100 that passes the refusal
-   (ties: the smaller `n`); if none, `recipe_rounding: <trade>`. Planned batches are whole (`actors.rs`: `employed x
-   160 / L` rounded down), so each site loses less than one batch of hours; `batch_hours_lost[j] = sites x L / 2 /
-   hours[j]` is written to the metadata as an estimate. One machine takes thousands of hours, so capital goods'
-   estimate is the largest; it is reported, not refused.
+5. **Whole-number recipes** (amended on 27 November: "What run C found in the build"). For each of the eleven
+   trades with a recipe, per unit of output: hours `h[j] u[j]`, inputs `a[i][j] u[j] / u[i]`. `batch` tries `n` in
+   `BATCHES` in order: `L = half_up(h u n)`, each input `half_up(a u n / u_i)`; skip `n` if `L` or any input is 0
+   (every input is kept: the spike's section 4). A batch is judged on three sides, each an exact fraction:
+   - its cost: the rounded cost a unit is `(wage x L + sum inputs x price) / n` at written prices; the exact cost
+     is `wage x h u + sum a u / u_i x price`, also at written prices, so the error is the rounding's alone;
+   - its hours: `|L / (h u n) - 1|`, which moves the trade's own need of workers by as much;
+   - its suppliers: for each input `i`, `shares[i] x |input / (a u n / u_i) - 1|`, with `shares[i] = a[i][j] x
+     x[j] / x[i]`, the part of product `i`'s makers' output that this trade buys: how far this recipe's rounding
+     moves what those makers are asked for. A use of a product whose makers have no output is
+     `recipe_demand: <product>`.
+
+   Take the first `n` whose cost error is at most 1/200, whose hours error is at most 1/400, whose every supplier
+   error is at most 1/1000, and that passes O5's refusal as Task 14b reads it: `price x n >= L x wage + sum inputs
+   x price + wear per batch`, wear per batch `machine price / machine_life_batches(L)`, which is Task 6b's rule:
+   `max(1, half_up(work_hours_per_person x workers_per_machine x machine_life_periods / L))`. If none,
+   `recipe_rounding: <trade>`; there is no second rule. (The first rule judged the cost alone and took the
+   smallest batch within it. Counted on the committed tables with resources by the minute, that left one recipe's
+   hours 1.2% over, one trade's use of a product 96% over, and what businesses ask of extraction 1.4% over.)
+   Planned batches are whole (`actors.rs`: `employed x 160 / L` rounded down), so each site loses less than one
+   batch of hours; `batch_hours_lost[j] = sites x L / 2 / hours[j]` is written to the metadata as an estimate. One
+   machine takes thousands of hours, so capital goods' estimate is the largest; it is reported, not refused.
+5b. **Two checks on the written recipes** (27 November). After the eleven recipes are chosen: for each product,
+   `demand_moved[i]` is the sum over its buying trades of `shares[i] x (input / (a u n / u_i) - 1)`, signed; above
+   1/200 in size it is `recipe_demand: <product>`. And the machines worn a period by use, `machines_worn`, are the
+   sum over the trades with machines of `(hours[j] / L[j]) / machine_life_batches(L[j])`: if `machines_worn x
+   machine price` is further than 1/200 from the equipment money `E`, it is `machine_wear`. Both figures go to the
+   metadata. The builder refuses to write recipes that would not let the opening close; Task 15 then measures the
+   opening itself.
 6. **Margins written.** `margin_bps` is `half_up(mu x 10_000)` for a trade off the floor and `ceil(mu x 10_000)` on
    it, so a floored margin never falls under its floor by rounding. Public provision has none.
 7. **Handling blocks** (O9, the shop as it is; R3). A shop good's exact hours a unit are `rho x p[i] u[i] /
@@ -3289,15 +3324,36 @@ def region_prices(w: Written, o: Opening, wage_micros: Mapping[str, int], census
    price of the good x (10_000 - export_bps) + the country's written price x export_bps) / 10_000)` plus the
    charge; with `export_bps` not given, the national price plus the charge as today (Task 11 needs only the
    region's makers' prices; Task 12 passes the shares it writes in each round). Public provision's fee as at home.
+   Task 11 prices an account's shop abroad from the region's MAKERS' prices and adds the shop's charge itself, so
+   it reads `region_maker_prices`: each product's `own_price` at the region's wage, public provision at its fee.
+   `region_prices` builds on it for the region's own shops (27 November).
 
 - [ ] **Step 1: Write the failing tests:**
   - `a_recipe_takes_the_smallest_batch_within_half_a_percent`: hours a unit 7/1000, one input of 1/3 unit a unit,
-    wage $20, input price $2, output price $1, no wear: `n = 1000`, `L = 7`, input 333 (errors at 400, 800 are 1.03%
-    and 1.34%; at 1,000, 0.083%).
+    wage $20, input price $2, output price $1, no wear, the input's share 1/2: `n = 1000`, `L = 7`, input 333
+    (cost errors at 400, 800 are 1.03% and 1.34%; at 1,000, 0.083%).
   - `a_recipe_under_cost_is_refused`: the same with the output price at 805,860 micros (the exact cost, 121/150 of
     a dollar, less a thousandth): every batch within 1% costs at least 806,000 micros a unit, so none passes O5's
     refusal: `recipe_rounding: <trade>`.
   - `a_trade_that_cannot_round_is_refused`: an input of `10^-7` of a unit a unit gives `recipe_rounding: <trade>`.
+  - `a_batch_waits_for_its_hours` (27 November): hours a unit 1/300, one input of 1 unit a unit with share 0, wage
+    $30, input price $10, output price $20, no wear: `n = 50_000`, `L = 167`, input 50,000. (At 200 the cost is
+    within 1/200, but `L = 1` stands for 2/3 of an hour; at 20,000 the hours are 1/200 off; at 50,000, 1/500.)
+  - `a_batch_waits_for_its_supplier` (27 November): hours a unit 1/10, one input of 3/1000 unit a unit, wage $20,
+    input price $1, output price $5, no wear. With share 1/2: `n = 1000`, `L = 100`, input 3 (at 200 the input is
+    1 for 0.6, which moves its makers by a third). With share 1/1000: `n = 200`, `L = 20`, input 1 (a small buyer
+    may round coarsely: two thirds of 1/1000 is under 1/1000).
+  - `a_machine_s_life_is_its_workers_hours` (27 November): `machine_life_batches(160, 4, 100, L)` is 4,000 at `L =
+    16`, 508 at 126, 8 at 7,724 and 1 at 100,000; `machine_life_batches(160, 40, 100, 410)` is 1,561.
+  - `the_machine_is_sized_by_the_machines_in_use` (27 November): a hand `Opening` of two trades with machines,
+    hours at work 6,400 and 64,000, 4 and 40 workers a machine, equipment money $1,100 a period, `p[capital]` 1/2,
+    life 100: `NU = 10 + 10 = 20` and `u[equipment] = 2,200 x 100 / 20 = 11,000` accounts dollars. The census's
+    machine counts, set to 11 and 11, change nothing.
+  - `recipes_that_move_a_product_are_refused` (27 November; decision 5b's two checks, called on hand recipes): six
+    buying trades, each with 1/6 of one product's output and an input rounded 0.6% over, so that each recipe is
+    within its own 1/1000: `demand_moved` is 0.6% and the check is `recipe_demand: <product>`; with five of them
+    at 0.6% and one exact it is 0.5% and passes. And machines worn that cost 1% more than the equipment money are
+    `machine_wear`; at 1/200 over they pass.
   - `a_block_takes_the_fewest_units_within_half_a_percent`: exact 7/60 hours a unit gives `(5, 43)`; exact 1/3000
     gives `handling_rounding`.
   - `prices_and_their_bounds_follow_the_fixture_ratios`: a price of 280,000,000 gives 70,000,000, 1,120,000,000 and
@@ -3315,11 +3371,16 @@ def region_prices(w: Written, o: Opening, wage_micros: Mapping[str, int], census
     services prices it at `own_price` of the written recipe at that wage; its shop's food with `export_bps` 2,000 is
     `ceil((region's food x 8_000 + national food x 2_000) / 10_000)` plus the charge at its shop wage (E7's
     estimate: region's food 600,001 and national 1,000,000 give 680,001).
-  - On the committed tables (slow): `rounded_recipes_cost_within_one_percent` (every recipe within 1%, no input 0,
-    every private trade passes O5's refusal at written figures); `handling_blocks_are_close`;
-    `the_import_shares_written_meet_the_accounts` (`import_bps x foreign weight / total weight` within one basis point
-    of `IMP` for each good; business services' `import_bps / 10_000` within one basis point of `m /
-    business_demand`). Print each recipe's `n`, `L`, error and `batch_hours_lost`, and the kinds written.
+  - On the committed tables (slow): `rounded_recipes_keep_three_sides` (every recipe's cost within 1/200 and its
+    hours within 1/400, no input 0, every private trade passes O5's refusal at written figures; `demand_moved`
+    within 1/200 for every product; `machines_worn x machine price` within 1/200 of `E`);
+    `handling_blocks_are_close`; `the_import_shares_written_meet_the_accounts` (`import_bps x foreign weight / total
+    weight` within one basis point of `IMP` for each good; business services' `import_bps / 10_000` within one
+    basis point of `m / business_demand`). Print each recipe's `n`, `L`, its three errors and `batch_hours_lost`,
+    `demand_moved` by product, the machine's price, the machines in use, the machines worn and what they cost
+    against the equipment money, and the kinds written. The lead's prototype of this rule on the committed tables
+    gave the batches in "What run C found in the build". Where yours differ, print both and say why in the
+    hand-off: while the bounds hold, a different batch is a finding and not a refusal.
 - [ ] **Step 2: Run them and see them fail. Step 3: Implement. Step 4: Run them and the gate.**
 - [ ] **Step 5: Commit** with the subject above.
 
@@ -3402,7 +3463,7 @@ def tiers(o: Opening, census: Census, w: Written, settings: Settings) -> Tiers: 
    (`Place.sellers`; ruling 6, D6, E7). The compiled price is the average over the makers Task 7d deals the shop,
    rounded up, which the builder cannot know, so this is an ESTIMATE, and the metadata says so: `ceil((written
    price x (10_000 - import_bps) + the price of the region of the shop's foreign second supplier (`Seller.abroad`,
-   `region_prices` of Task 10b) x import_bps) / 10_000)` plus `ceil(hours x w_retailer / units)`; a shop whose
+   `region_maker_prices` of Task 10b) x import_bps) / 10_000)` plus `ceil(hours x w_retailer / units)`; a shop whose
    second supplier is domestic, the written price plus that charge. Task 15 reports the gap between this estimate
    and the compiled prices. Those are the benefit (decision 6) and the
    luxury scales (decision 10).
@@ -3825,7 +3886,9 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
    one's capacity and use (Task 11, decision 12); for each trade its persons at work, wage, hours, output, inputs,
    margin (accounts and written), wear, operating income, public-owned part, tax, payout, what firms, households, public
    bodies and the regions take, what its buyers save abroad, and `batch_hours_lost`; each recipe's exact and rounded
-   cost and error; each want's exact and written units; each product's `demand_gap` and `own_price_gap`;
+   cost and its three errors (27 November); each product's `demand_moved`; the machines in use, the machines worn a
+   period and what they cost against the equipment money; each want's exact and written units; each product's
+   `demand_gap` and `own_price_gap`;
    `state_services` with each service of the place's `idle` and `unserved` shares (Task 11, decision 12); the four
    balances at the exact solve and as written; each key's money a person and reach, nationally and by place; the scaled
    accounts; each place's body (taxes, payout, payments, its share and its grant), and the parts whose payout alone
@@ -3882,6 +3945,61 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
   subject above.
 
 What the player would see: the numbers of the rebuilt country, on the bench first.
+
+### Task 6b: A machine's life in batches follows its workers' hours (compiler)
+
+Commit `fix(economy): a machine's life in batches follows its workers' hours`. Added on 27 November ("What run C
+found in the build"). It is built after Task 13 and before Task 14a, which is the first to compile the rebuilt
+scenario.
+
+**Why, read from the code.** The engine wears a machine by the batches run on it: `CostClose::wear`
+(`babylon-material-circuit/src/valuation/equipment.rs`) takes the batches used from a cohort's
+`remaining_service_batches`. Task 6 gave a machine `service_batches_per_unit = batches_per_unit_per_period x
+machine_life_periods`, with `batches_per_unit_per_period = ceil(160 x workers_per_machine / L)`. That is a life of
+`machine_life_periods` periods only where `L` divides the machine's hours a period, as in the fixture (16 into
+640, 160 into 6,400). The builder's recipes have other batches (126 hours for food, 7,724 for one machine).
+Rounded up to a whole batch a period, a machine would last up to eleven times its life, and the country would buy
+about 13% fewer machines a period than its accounts say (counted on the committed tables).
+
+**Files:**
+- Modify: `rust/crates/babylon-persistence/src/national_economy/opening/equipment.rs` (`definitions`, the
+  `GameMachines::Workers` arm only)
+- Test: `equipment.rs` crate tests; `tests/national_twelve_trades.rs` (no pin moves)
+
+**Interfaces:**
+
+```rust
+/// A machine's life in batches under schema 8: the batches its workers run in `life_periods` periods, to the nearest
+/// batch (a half up) and at least 1: max(1, floor((2 x hours x workers x life + L) / (2 x L))), in u128.
+/// # Errors
+/// `Policy` for a batch of 0 hours; `Arithmetic` on overflow.
+fn machine_life_batches(hours_per_person: u64, workers_per_machine: u64, life_periods: u64,
+    labor_hours_per_batch: u64) -> Result<u64>;
+```
+
+**Decisions:**
+1. Under schema 8 (`GameMachines::Workers`) a trade's definition keeps `batches_per_unit_per_period = ceil(160 x
+   workers_per_machine / L)`, the most batches a machine can serve in a period, and takes `service_batches_per_unit
+   = machine_life_batches(...)`. Nothing else of Task 6 changes: a site's machines are still `machines_for(force,
+   workers_per_machine)`, and the cohorts open at every age of the new life.
+2. `GameMachines::Batches` (schema 7 and the shipped world) is untouched and keeps every byte.
+3. The twelve-trade fixture keeps every byte too: its batches divide its machines' hours (`640 x 100 / 16 = 6,400 x
+   100 / 160 = 4,000`, today's figure). If a pin of the fixture or of the shipped world moves, stop and return
+   blocked=true with it.
+4. Left as it is: `wear_per_period` (Task 4) sizes a public provider's grant for all its machines, in use or not.
+   That is about 5% above its wear by use, under 0.2% of the provider's costs.
+
+- [ ] **Step 1: Write the failing tests** (crate): `a_machine_s_life_follows_its_workers_hours`: with 160 hours a
+  person and a life of 100 periods, 4 workers and `L = 16` give 4,000; `L = 126` gives 508 (not 600); `L = 7_724`
+  gives 8 (not 100); `L = 100_000` gives 1; 40 workers and `L = 410` give 1,561 (not 1,600); `L = 0` is `Policy`.
+  And `a_definition_takes_the_life_of_its_trade_s_batch`: a copy of the fixture's policy with food's batch at 126
+  hours gives food's definition `batches_per_unit_per_period = 6` and `service_batches_per_unit = 508`.
+- [ ] **Step 2: Run them and see them fail. Step 3: Implement. Step 4: Run** `binary(national_twelve_trades)`,
+  `binary(shipped_world_bytes)`, `binary(national_household_units)`, the crate.
+- [ ] **Step 5: Gate and commit** with the subject above.
+
+What the player would see: every trade's machines wear out in about a hundred periods of full work, the machine
+makers' own among them, so every trade comes back to buy machines.
 
 ### Task 14a: The fixture retired onto the rebuilt scenario
 
@@ -4934,3 +5052,72 @@ Where a line below says a finding waits for Part II, the next section says where
 - **What the border did** (Task 7e's hand-over, on a copy with business services crossing): all 1,670 home buying
   workplaces have a row abroad; the 88 buying workplaces abroad are dealt over all 1,054 home providers in 1,136
   rows, the widest of them 90, and no provider is asked more than 1.001 times its room.
+
+## What run C found in the build (27 November)
+
+Run C built Tasks 9 and 10 and stopped at Task 10b, on the lead's own rule, with the tool written and nothing
+committed. Every figure below is counted on the solve of the committed tables.
+
+- **Three trades had no batch.** A unit of resources was an hour of extraction's output, $187.62. Consumer goods,
+  leisure and business services use 0.19, 0.30 and 0.33 of such a unit for 10,000 units of their own, so the input
+  rounded to nothing at every batch, and the rule refuses a recipe that loses an input. Dropping the input was not
+  open: the three trades take 6.2% of what businesses buy from extraction.
+- **The rule looked at one side.** It took the smallest batch whose cost a unit was within 1/200 of the exact
+  cost. A buyer's cost barely feels a small input, but the input's makers feel its rounding in full. With
+  resources by the minute and that rule, one recipe's hours were 1.2% over, one trade's use of a product was 96%
+  over, and what businesses ask of extraction was 1.4% over. The opening's own tests ask each trade's work within
+  1%. The lead had mended the same fault twice in the dealing (Tasks 7e and 7d) and had not counted it here.
+- **Machines wear by the batches run on them** (`valuation/equipment.rs` `wear`), and the plan's machine did not
+  follow that in two places. A machine's life in batches was rounded up to a whole batch a period, so a machine
+  lasted up to eleven times its life wherever a batch does not divide the machine's hours: the machine makers' own
+  machines would have lasted over a thousand periods. And the machine was priced by the census's count, a machine
+  for every four or forty of a site's whole force, of which 94.5% are in use. With the batches below, the two
+  together would have bought 17.45% less equipment a period than the accounts' equipment money: about 13 points
+  from the life and 5.5 from the machines not in use.
+
+**What changed.** Task 10b's decision 2 counts resources by the minute ($3.13 a unit) and prices the machine by
+the machines in use. Its decision 5 judges a batch on three sides (its cost within 1/200, its hours within 1/400,
+each supplier's output moved by at most 1/1000), tries batches up to 100,000 units, and has no second rule. Its
+decision 5b refuses recipes that together move a product's output by more than 1/200, or whose wear costs more
+than 1/200 away from the equipment money. Task 6b, new, gives a machine the life in batches that its workers'
+hours make. No ruling of the Director's is touched: these are the plan's own units and roundings.
+
+**The lead's prototype of the amended rule** on the committed tables. The build must come to these batches or
+say why not.
+
+| Trade | Units a batch | Hours a batch | A machine's life in batches | Cost error | Hours error |
+|-------|--------------:|--------------:|----------------------------:|-----------:|------------:|
+| Food | 5,000 | 126 | 508 | 0.008% | 0.110% |
+| Extraction | 10,000 | 167 | 383 | 0.067% | 0.200% |
+| Energy and utilities | 50,000 | 281 | 228 | 0.023% | 0.051% |
+| Manufacturing | 1,000 | 51 | 1,255 | 0.366% | 0.115% |
+| Consumer goods | 5,000 | 109 | 587 | 0.008% | 0.217% |
+| Capital goods | 1 | 7,724 | 8 | 0.004% | 0.004% |
+| Construction and housing | 1,000 | 97 | 660 | 0.133% | 0.174% |
+| Household services | 800 | 410 | 1,561 | 0.009% | 0.016% |
+| Leisure and hospitality | 5,000 | 299 | 2,140 | 0.121% | 0.150% |
+| Business services | 10,000 | 269 | 2,379 | 0.064% | 0.088% |
+| Public provision | 16 | 71 | 9,014 | 0.065% | 0.218% |
+
+Every private trade passes the refusal. The least room over cost and wear is household services' 0.66% of its
+price, then leisure's 0.84%. Each product's output is moved by all its buyers together by at most 0.167%
+(resources; housing 0.118%). The machine costs $771,252.84. The machines in use are 8,871,895.5 of 9,388,617
+counted. The machines worn a period by use are 88,977.8, and they cost 68.624 thousand million dollars against
+equipment money of 68.425: 0.29% over, which is the machine makers' own life of 8 batches standing for 8.29.
+
+**Left as it is, and said.** The solve (Task 10, built) shares wear among the trades by the census's machines; by
+the machines in use a trade's share differs by at most 1.2%. The compiler's `wear_per_period` (Task 4, built)
+sizes a public provider's grant for all its machines, in use or not: about 5% above its wear by use, under 0.2%
+of the provider's costs.
+
+**What the lead confirms from Task 10's review.** The households' part of a shop good's import weights is `H0 x
+1000 / 13`, a period's dollars (H0 is USD thousands a year). A residence with no resident out of work is paid
+nothing. `the_floor_holds_at_the_solution` keeps its tolerance of one micro, with its cause written in the test.
+
+**Where the code binds** (run C's hand-overs). The census is read as built: `places` is an object keyed by the
+part's label; a part's rows of a key are at `places[<part>].keys.<key>`; `firm_assignment` is read from
+`assignment.sites` and `retail_assignment` from `assignment.households`; `sources.country_services` is compared as
+a set. Wayne's part is labelled `26163`. `Quantities` and `Opening` are keyed by trade, but for `tier_one`,
+`posted` and `tier_quantities`, which are keyed by the product of a need. `TemplateFacts` is defined in
+`tools/national_opening_units.py`, since `written` takes it; Task 13 imports it from there. One solve of the
+committed tables takes about 225 seconds, and a slow test module pays it once.

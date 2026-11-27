@@ -3070,7 +3070,12 @@ def solve(recut: Recut, census: Census, settings: Settings) -> Opening: ...
    machines[public] / NU - S[public] - fee x domestic persons`: its wear (27 November) is the compiler's own
    (`wear_per_period`, Task 4), a machine's wear for each of the census's public machines at the machine sized by
    the machines in use, `NU = sum over the trades with machines of hours[j] / (work_hours_per_person x
-   workers_per_machine[j])` (Task 10b, decision 2); the trades' costs keep `wear[j] = e x M[j] / NM`. Support `SUP =
+   workers_per_machine[j])` (Task 10b, decision 2); the trades' costs keep `wear[j] = e x M[j] / NM`. The provider
+   is paid the wear of all its machines and wears those in use, so the difference is its operating income:
+   `OI[public] = e x machines[public] / NU - wear[public]`, below 0 `negative_operating_income`. It is counted in
+   `sum OI` and, the provider being public-owned, in `PO`: its owner, the public body, gets it back as tax and
+   payout. So `G` and `PO` rise by the same sum, the tax rate and the households' money do not move, and decision
+   13's balances keep their words, with no term added. Support `SUP =
    reserve persons x s`, `s = t1q[food] x p[food]`: one period of
    the food need at the producer's price (Task 4, decision 6; `support_unit_price` reads the commodity's price).
    Benefits `BEN` (decision 10). `W` is every trade's census payroll. Then `t = (G + SUP + BEN - PO) / (W + sum OI -
@@ -5143,7 +5148,9 @@ part's label; a part's rows of a key are at `places[<part>].keys.<key>`; `firm_a
 a set. Wayne's part is labelled `26163`. `Quantities` and `Opening` are keyed by trade, but for `tier_one`,
 `posted` and `tier_quantities`, which are keyed by the product of a need. `TemplateFacts` is defined in
 `tools/national_opening_units.py`, since `written` takes it; Task 13 imports it from there. One solve of the
-committed tables takes about 225 seconds, and a slow test module pays it once.
+committed tables takes about 225 seconds, and a slow test module pays it once. The solve's small hand world has
+one hour a person and its own workers a machine, so that its machines in use are near its census's count. The
+tiers' national posted price of a shop good sits on the tier grid, since the shops' saving a unit is a fraction.
 
 **A second stop, in Task 11 (27 November, 01:30).** Run C2 built Task 10b, whose batches equal the table above row
 for row, and stopped in Task 11's review. The tool is built and committed with two tests marked as expected
@@ -5152,8 +5159,11 @@ failures, each waiting for the lead.
 - **The fund opened $94.4 million a period short** of the benefits and the grants, against an allowance of $18.8
   million. The cause is the lead's amendment of the same night: Task 11 took each public provider's wear at the
   written machine price, as the compiler pays it ($1,890.4 million a period), while Task 10 had sized the grant
-  and the tax on the solve's share ($1,786.3 million). Task 10's grant now takes the compiler's wear, so the tax
-  pays for it.
+  on the solve's share ($1,786.3 million). Task 10's grant now takes the compiler's wear. The first build of
+  that left the households' money $104 million short of their spending and named the gap in the first balance;
+  its reviewer asked where the money goes. It goes back: the provider is paid the wear of all its machines and
+  wears those in use, so the difference is the provider's operating income, which its owner, the public body,
+  receives as tax and payout. The grant and the public-owned income rise together, and nothing else moves.
 - **The public-owned income did not sum.** Task 11's decision 1 gives a public-owned workplace O5's margin on its
   own wage; Task 10's `PO` shared a trade's income by persons alone. By the plan's words the places' parts came
   to $27,931.7 million against `PO` of $28,374.9 million, and the first build took the public workers' own mean
@@ -5161,9 +5171,10 @@ failures, each waiting for the lead.
   decision's words.
 - **Eight of 1,896 accounts cannot pay for their own needs** at the opening. Six are collective residences, short
   by $10,535 to $70,055 a period for the whole residence: a residence is paid for its residents with no job, and
-  these have working residents on little or no pay. Two are households that earn, in the lower-paid half:
-  Kusilvak, Alaska (`02158/at`), with $575.73 a person against needs of $737.78, 1,122 of its 3,376 people at
-  work; and Pima, Arizona (`04019/above`), with $1,283.03 against $1,299.46. O12 and ruling 3 promise the needs
+  these have working residents on little or no pay. Two are households that earn, in the lower-paid half: the
+  part `02158/at` of the pooled place around Kusilvak, Alaska, with $575.73 a person against needs of $737.78,
+  1,122 of its 3,376 people at work; and the part `04019/above` of the pooled place around Pima, Arizona, with
+  $1,283.03 against $1,299.46. O12 and ruling 3 promise the needs
   to households with no earner, and those are all covered. The plan's test had asked it of every account, which
   no ruling says. It now asserts what is ruled and records the rest; the Director is told, since a floor for
   households that earn too little would be theirs to rule.

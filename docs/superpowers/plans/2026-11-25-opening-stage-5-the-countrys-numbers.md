@@ -3544,8 +3544,11 @@ def tiers(o: Opening, census: Census, w: Written, settings: Settings) -> Tiers: 
     - the public-owned payout `Q_c = (1 - t) PO_c`, which the part's body receives from its public-owned sites;
     - payments `P_c = grant_c + reserve_c x s`, where `grant_c` is its public providers' grants as the compiler
       makes them (Task 4, decision 8: `payroll + inputs at planned batches + wear - fee receipts`):
-      `payroll_c,public + (G_inputs) x emp_c,public / emp_public + wear[public] x public_machines_c /
-      machines[public] - fee x public_persons_served_c`, `G_inputs = sum_i a[i][public] p[i] x[public] - S[public]`.
+      `payroll_c,public + (G_inputs) x emp_c,public / emp_public + wear_c - fee x public_persons_served_c`,
+      `G_inputs = sum_i a[i][public] p[i] x[public] - S[public]`, and `wear_c = public_machines_c x the written
+      machine price / machine_life_periods`: the compiler's `wear_per_period` (Task 4), a machine's wear for each
+      of the part's public machines, in use or not, at the price Task 10b writes (27 November: the machine is
+      sized by the machines in use, so this is about 6% above the solve's `wear[public]` share).
     A part with `T_c > 0` and `T_c + Q_c >= P_c` sends the rest to the fund: `share_by_part_bps[c] = 10_000 -
     floor(10_000 x (P_c - Q_c) / T_c)`, at least 0 and at most 10,000 (D4's formula with the payout netted, since
     the part's body also receives `Q_c`: lead's decision E5), and has no grant. By its share it keeps `floor(10_000 x
@@ -3712,7 +3715,8 @@ def regions(o: Opening, census: Census, w: Written, t: Tiers, settings: Settings
    for a crossing service `sigma` is read from the census's `crossing_force`, E2),
    valued at the region's prices: `S_r`. A region with none sells nothing and buys nothing (`export_bps` 0).
 3. **What a region needs.** In units a period, with the written recipes: `A[i][j] = inputs / n`; machines as an
-   input, `sum over trades (L_j / n_j) / (160 x workers_per_machine[j] x life)` units of equipment a unit of `j`;
+   input, `1 / (n_j x machine_life_batches(L_j))` units of equipment a unit of `j` (Task 10b's rule, as the
+   engine wears a machine by the batches run on it: 27 November);
    public provision 1 a person; retail hours from the blocks on the shop goods its households buy. Its households are
    one account (`PooledExternal`: persons, households from the census) whose money a person `mpp` buys the written
    tiers by R4 at the region's prices (tier 1 needs, the wants, then scaled luxuries if money is left: call 20 holds
@@ -3867,7 +3871,9 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
    which the tax was sized, is written and printed), and for each part (its kept taxes, payout and grant against its
    payments; the 1/100 applies to the nation and the fund, each part's residual is written to the metadata and the
    largest printed); 3, exports at written prices and shares (Task 12) against imports at the regions' written prices;
-   4, wear at the written machine price over the census's machines against equipment bought at the written price. Each
+   4, the machines worn a period by use at the written recipes (`Written.machines_worn`, Task 10b decision 5b) at
+   the written machine price, against the equipment money `E` (27 November: the census's machines count the idle
+   ones too, and are not what is worn). Each
    residual over its flow at most 1/100, else `balance: <n>` (the build refuses to write numbers that do not close).
 6. **Metadata** (the builder's balance sheet, design 8.1): `contract: NationalOpeningNumbersV1`, `issue: PER-371`; the
    sha256 of the accounts and pay files and of the census's JSON text (decompressed, not the `.gz` bytes), the template
@@ -3935,7 +3941,8 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
     nation and for the fund with its grants.
   - `every_observed_job_is_needed_as_written` (slow): for each trade, the hours its written recipe needs for what
     the opening's buyers take (recipes' inputs at census hours, households' bought units of Task 11, exports, the
-    machines due, public provision's need) within 1% of its census hours; retail hours through the blocks within 1%.
+    machines due, which are the machines worn by use, `Written.machines_worn`, less those bought abroad, public
+    provision's need) within 1% of its census hours; retail hours through the blocks within 1%.
 - [ ] **Step 2: Run them and see them fail. Step 3: Implement.**
 - [ ] **Step 4: Build twice** into two folders made with `mktemp -d -p /media/user/dev-ssd`, `cmp` both files, then
   build into the repository and commit nothing yet. Hand over the metadata's head figures, each beside the
@@ -5080,7 +5087,10 @@ the machines in use. Its decision 5 judges a batch on three sides (its cost with
 each supplier's output moved by at most 1/1000), tries batches up to 100,000 units, and has no second rule. Its
 decision 5b refuses recipes that together move a product's output by more than 1/200, or whose wear costs more
 than 1/200 away from the equipment money. Task 6b, new, gives a machine the life in batches that its workers'
-hours make. No ruling of the Director's is touched: these are the plan's own units and roundings.
+hours make. Three later tasks follow the machine: Task 11 estimates a public provider's wear at the written
+machine price, as the compiler makes it; Task 12 gives a region its machines by the machine's life in batches;
+Task 13's fourth balance is the machines worn by use against the equipment money. No ruling of the Director's is
+touched: these are the plan's own units and roundings.
 
 **The lead's prototype of the amended rule** on the committed tables. The build must come to these batches or
 say why not.

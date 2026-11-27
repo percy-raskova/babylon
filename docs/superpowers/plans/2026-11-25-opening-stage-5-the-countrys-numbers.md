@@ -3921,7 +3921,10 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
    solve's steps, its second start's result; the regeneration command
    `UV_PROJECT_ENVIRONMENT=.venv mise exec -- uv run --frozen python tools/make_national_opening_numbers.py`. JSON
    with `indent=2, sort_keys=True` and a trailing newline; every `Fraction` written as the string `"n/d"` and beside it
-   a decimal string to 9 places, rounded half up (for reading only).
+   a decimal string to 9 places, rounded half up (for reading only). A fraction whose numerator or denominator
+   passes 256 bits is written as `long: <n> over <d> bits` in place of `n/d` (27 November: the exact solve's
+   fractions hold thousands of digits, and written whole the metadata passes the 1,048,576 bytes a committed file
+   may hold); the three keys Task 15 reads keep their exact values.
 7. **The scenario is not a reference table** and is not registered; the census it reads is (Task 8).
 8. **Run time and the tests.** One build reads the tables (under a second), solves the nation (seconds), rounds,
    solves the tiers twice (the slowest part: about 20 steps of 19 evaluations over about 1,100 accounts, up to a
@@ -3958,7 +3961,11 @@ def build(*, accounts: Path, pay: Path, census: Path, settings: Settings = Setti
   - `every_observed_job_is_needed_as_written` (slow): for each trade, the hours its written recipe needs for what
     the opening's buyers take (recipes' inputs at census hours, households' bought units of Task 11, exports, the
     machines due, which are the machines worn by use, `Written.machines_worn`, less those bought abroad, public
-    provision's need) within 1% of its census hours; retail hours through the blocks within 1%.
+    provision's need) within 1% of its census hours; retail hours through the blocks within 1%. The households'
+    units are those at written figures and NATIONAL posted prices, `D x (1 + demand_gap)`, where the national
+    accounts close (as Task 15's `every_trade_needs_its_workers`). The same count with every account buying at its
+    own sellers' prices is written to the metadata as `jobs_at_own_prices` and printed, and nothing is asserted of
+    it (Task 11, decision 12; "What the builder's numbers found at the households' own prices").
 - [ ] **Step 2: Run them and see them fail. Step 3: Implement.**
 - [ ] **Step 4: Build twice** into two folders made with `mktemp -d -p /media/user/dev-ssd`, `cmp` both files, then
   build into the repository and commit nothing yet. Hand over the metadata's head figures, each beside the
@@ -4010,7 +4017,10 @@ fn machine_life_batches(hours_per_person: u64, workers_per_machine: u64, life_pe
    100 / 160 = 4,000`, today's figure). If a pin of the fixture or of the shipped world moves, stop and return
    blocked=true with it.
 4. Left as it is: `wear_per_period` (Task 4) sizes a public provider's grant for all its machines, in use or not.
-   That is about 5% above its wear by use, under 0.2% of the provider's costs.
+   That is about 6% above its wear by use, under 0.2% of the provider's costs. The difference is the provider's
+   earnings, and its part's public body gets them back: `ownership` (`opening/financial.rs`) gives a public site a
+   claim of its part's public account and a distribution of all its earnings. Task 10's solve counts it so
+   (decision 8, 27 November).
 
 - [ ] **Step 1: Write the failing tests** (crate): `a_machine_s_life_follows_its_workers_hours`: with 160 hours a
   person and a life of 100 periods, 4 workers and `L = 16` give 4,000; `L = 126` gives 508 (not 600); `L = 7_724`
@@ -4184,16 +4194,16 @@ country's, and cheaper in the shop too: the gain from cheap foreign labor in the
 
 Commit `test(persistence): the rebuilt opening's report before any period`.
 
-**What the rulings of 26 November add to it.** Each part's public body opens even, the fund paying the poorer
-parts' providers (ruling 4, D4): asserted for every part. The benefit is each account's own needs, worked out by the
-compiler (ruling 3, E8): every account reaches tier 1, and the compiled dues are held against the builder's estimate
-(within 1% for the fund's whole), with the spread by account reported. Business services cross the border by shares
-(ruling 2, E2): the trade balance counts them. The shop posts what it pays (E7): the report gives the gap between
-the builder's estimate of a shop's price and the compiled one.
-Utility, leisure and business services are sold across state lines (ruling 5, D5): the report gives how much of
-each crosses one, and, for the services that stay in their state or place, each state's use against its own
-providers. The shop posts what it pays (ruling 6, D6): the report gives its prices. Services are regrouped (ruling
-1, D7): the report names what is still spread by O4 and what stays bent (housing cannot buy business services).
+**What the rulings of 26 November add to it.** Each part's public body opens even, the fund paying the poorer parts'
+providers (ruling 4, D4): asserted for every part. The benefit is each account's own needs, worked out by the compiler
+(ruling 3, E8): every account with no earner reaches tier 1, and the compiled dues are held against the builder's
+estimate (within 1% for the fund's whole), with the spread by account reported. Business services cross the border by
+shares (ruling 2, E2): the trade balance counts them. The shop posts what it pays (E7): the report gives the gap
+between the builder's estimate of a shop's price and the compiled one. Utility, leisure and business services are sold
+across state lines (ruling 5, D5): the report gives how much of each crosses one, and, for the services that stay in
+their state or place, each state's use against its own providers. The shop posts what it pays (ruling 6, D6): the
+report gives its prices. Services are regrouped (ruling 1, D7): the report names what is still spread by O4 and what
+stays bent (housing cannot buy business services).
 
 **Files:**
 - Create: `rust/crates/babylon-persistence/tests/national_rebuilt_opening.rs`, `tests/support/opening_ledger.rs`;
@@ -4314,6 +4324,11 @@ pub fn opening_ledger(opening: &EconomicOpening, policy: &NationalGamePolicy) ->
     `O4_inventories`, with their sum by reason) and states what stays bent: housing and business services
     are first-stage and cannot buy one another or utility. Nothing asserted.
   - `tier_money_is_within_one_percent_of_its_sizes`.
+  - `what_households_pay_over_the_national_price_is_reported` (27 November; "What the builder's numbers found at
+    the households' own prices"): for each product households buy, over every domestic account, the units it
+    takes at its own sellers' posted prices (decision 1), what it pays for them, and those units at the national
+    posted price; the report gives the three sums, the share paid over the national price, and the sum over the
+    products, beside the builder's own count from the metadata's `own_price_gap`. Nothing asserted.
   - The shipped world's pins: `binary(shipped_world_bytes)` in the gate.
 - [ ] **Step 2: Run them.** A test that fails on a figure is reported with the figure, never loosened: the lead
   decides whether the builder or the compiler is wrong.
@@ -5184,3 +5199,42 @@ Also from Task 11's hand-over, counted and not asserted: tier contents in whole 
 luxuries: 15, 6, 37, 16, 8, 105, 24 and leisure 1,332); every product's demand within 0.6% of the accounts';
 206 parts send a share to the fund and the fund pays 110; 114 accounts have a luxury scale. The share of use
 that its own state cannot serve is 4.7% for household services, 7.8% for housing and 9.6% for public provision.
+
+**What the builder's numbers found at the households' own prices (27 November, 04:40).** Run C4 built the public
+provider's income, Task 11's two tests as ruled, and Tasks 12 and 13. The scenario and its metadata are committed
+(42,882 and 687,637 bytes). The four balances as written close within 0.3% of their flows. The eight short
+accounts are the same eight (the residences by $10,531 to $71,136 a period; `02158/at` by $546,717 and
+`04019/above` by $303,825).
+
+One figure is far from what the plan expected. Task 11's decision 12 gave the prototype's size for what own prices
+move: 0.7% under to 2.4% over, by product. On the build, with every account buying at its own sellers' prices,
+leisure is bought 14.4% under what is made (housing 3.2% over, the others within 0.9%). Leisure and hospitality
+has buyers for 85.8% of its census hours, where every other trade has them for 99.2% to 101.7%.
+
+The lead counted the cause on the builder's own chain, one run of the committed tables:
+
+- Households hold $824.2 thousand million a period and spend all of it. At their own sellers' prices the units
+  they take cost $14.7 thousand million more than at the national prices, 1.8%. Of that, $11.3 thousand million
+  is care and schools, the largest thing they buy ($385.6 thousand million a period): its buyers pay 2.9% over
+  the national price on average. Consumer goods take $1.2 thousand million more, business services $0.9.
+- The makers' own prices, weighted by their employees, average to the national price exactly, for every service.
+  So the makers are not dear: the buyers are dealt the dearer makers. Weighted by the persons who buy, the
+  sellers of care and schools pay 2.0% more than the trade's average wage.
+- Leisure is the last want in the order of paying, so it loses what the dearer care takes. With care and schools
+  alone at the national price for every account, leisure's gap is 4.8%; with care and schools alone at own
+  prices, 10.7%.
+- About half of it is one seller a buyer (ruling 7). With each account paying the average of its own place's
+  makers for care and housing, which is what shared custom would give, leisure's gap is 7.2% and the sum paid
+  over national prices $5.1 thousand million. The other half lies between places: a richer place pays more for
+  care and asks for more of it. With every account at its state's average the gap is 3.8%; at the nation's, 0.3%.
+
+No list of tiers can close it, as decision 12 said: what is made cannot all be bought at prices above the makers'
+average. Nothing in the builder is wrong by its own rules, and no rule is changed here. Task 13's jobs test
+asserts the national posted prices, as Task 15's does, and the count at own prices is written beside it. Task 15
+now also reports what households pay over the national price, counted on the compiled opening, and the bench
+shows what the first periods make of it. The Director is told: it follows from two things ruled on 26 November
+(one seller a household for now; care and housing bought at home), and whether shared custom for households is
+built before the bench is theirs to order.
+
+The scripts and their output are in the lead's notes (`stage5/own-prices/`: `make.py`, `count.py` to
+`count4.py`).

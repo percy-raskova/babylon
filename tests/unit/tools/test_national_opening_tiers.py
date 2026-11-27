@@ -119,24 +119,29 @@ NEEDS_ECONOMY = r.Economy(
 )
 SHAPE = t.shape_of(r.Settings(), NEEDS_ECONOMY)
 POSTED = {p: F((i + 1) * M) for i, p in enumerate(PRODUCTS)}
-ZSTAR = [F(5), F(3), F(4), F(6), F(2), F(3), F(7), F(5, 4), F(5, 2)]
+# Contents on the grid chosen so that the first start (`z0`, half of tier 1) is dearer in tier 2 than the
+# nine unknowns' own size and the accounts reach leisure at it: the solve from `z0` is then regular.
+ZSTAR = [F(20), F(8), F(6), F(18), F(8), F(4), F(20), F(5, 4), F(40)]
 
 
 def hand_problem() -> tuple[t.TierProblem, dict[str, F]]:
-    """Sixty accounts of three persons and a household whose money runs from just above tier 1
-    to far above tier 3, and the demand that buying `ZSTAR` makes."""
-    accts = [
-        account(f"P{i}", 3, 1, (1204 + extra) * M, {})
-        for i, extra in enumerate(range(10, 2400, 40))
-    ]
+    """Forty-eight accounts of three persons and a household, whose money runs from tier 1 alone to
+    a third above the three tiers at `ZSTAR` (the richest are scaled), and the demand that buying
+    `ZSTAR` makes."""
     comfort, luxury = t.contents_of(SHAPE, ZSTAR)
     c2 = sum((comfort[g] * POSTED[g] for g in SHAPE.tier2), F(0))
     c3 = sum((luxury[g] * POSTED[g] for g in SHAPE.tier3), F(0))
     cbar = c2 / F(3, 5)
     sizes = (c2 / cbar, c3 / cbar)
-    blank = t.TierProblem(
-        accts, POSTED, dict.fromkeys(SHAPE.tier2, F(1)), cbar, sizes, SHAPE, NEEDS_ECONOMY
+    empty = t.TierProblem(
+        [], POSTED, dict.fromkeys(SHAPE.tier2, F(1)), cbar, sizes, SHAPE, NEEDS_ECONOMY
     )
+    ones = t._Evaluator(empty).ones[KEY]
+    tier_one = t._cost(account("P", 3, 1, 0, {}), ones, POSTED)
+    accts = [
+        account(f"P{k}", 3, 1, int(tier_one + 3 * (c2 + c3) * F(k, 36)), {}) for k in range(48)
+    ]
+    blank = replace(empty, accounts=accts)
     ev = t._Evaluator(blank)
     rows = t.want_rows(SHAPE, comfort, luxury, drop_zero=False)
     t2 = [x for x in rows if x.tier == 2]
@@ -152,17 +157,18 @@ def hand_problem() -> tuple[t.TierProblem, dict[str, F]]:
 
 def test_the_tier_solve_recovers_known_contents() -> None:
     problem, spending = hand_problem()
-    z, steps = t.solve_contents(problem, t.start_two(problem, spending))
-    assert steps <= 10
-    assert all(abs(a - b) <= F(1, 2**30) for a, b in zip(z, ZSTAR, strict=True))
-    residual, patterns = t._Evaluator(problem).numeric(z)
-    assert all(v == 0 for v in residual)
-    # The first start of decision 7 is what the committed tables take; on sixty hand accounts
-    # whose richer half never reaches leisure it may be singular (a hand artifact).
     start = t.start_one(problem, spending)
     assert len(start) == 9 and all(v > 0 for v in start)
-    again, _ = t.solve_contents(problem, [v * F(9, 10) for v in ZSTAR])
-    assert all(abs(a - b) <= F(1, 2**30) for a, b in zip(again, ZSTAR, strict=True))
+    # At z0 some accounts reach leisure (the last row of tier 3), so leisure has a column.
+    _, patterns = t._Evaluator(problem).numeric(start)
+    late = SHAPE.tier3.index("leisure")
+    assert any(p[2] or (p[0] == 3 and p[1] >= late) for p in patterns)
+    for first in (start, t.start_two(problem, spending), [v * F(9, 10) for v in ZSTAR]):
+        z, steps = t.solve_contents(problem, first)
+        assert steps <= 10
+        assert all(abs(a - b) <= F(1, 2**30) for a, b in zip(z, ZSTAR, strict=True))
+        residual, _ = t._Evaluator(problem).numeric(z)
+        assert all(v == 0 for v in residual)
 
 
 def test_the_held_patterns_give_the_true_residual() -> None:
@@ -454,8 +460,8 @@ def two_places() -> tuple[r.Census, s.Opening, u.Written]:
         },
         20_000_000,
         {
-            FOOD_T: place_trade(60, 30 * M, 0, 0),
-            HS_T: place_trade(10, 5 * M, 0, 0),
+            FOOD_T: place_trade(60, 36 * M, 0, 0),
+            HS_T: place_trade(10, 8 * M, 4, 3 * M),
         },
     )
     two = hand_place(
@@ -467,13 +473,18 @@ def two_places() -> tuple[r.Census, s.Opening, u.Written]:
         },
         21_500_000,
         {
-            FOOD_T: place_trade(40, 20 * M, 0, 0),
-            HS_T: place_trade(30, 15 * M, 0, 0),
+            FOOD_T: place_trade(40, 14 * M, 0, 0),
+            HS_T: place_trade(30, 12 * M, 6, 3 * M),
         },
     )
     trades = {
         FOOD_T: hand_trade(employee_persons=100, payroll_micros=50 * M),
-        HS_T: hand_trade(employee_persons=40, payroll_micros=20 * M),
+        HS_T: hand_trade(
+            employee_persons=40,
+            payroll_micros=20 * M,
+            public_employee_persons=10,
+            public_payroll_micros=6 * M,
+        ),
     }
     census = hand_census((one, two), trades)
     o = hand_opening(
@@ -500,6 +511,13 @@ def test_place_money_sums_to_the_nation() -> None:
     incomes = t.place_incomes(o, census)
     oi = sum((i.private + i.public_owned for i in incomes.values()), F(0))
     assert oi == sum(o.operating_income.values(), F(0))
+    # The places pay unlike wages (food 0.6 against 0.35 million an employee; the public workers of
+    # household services 0.75 against 0.5), so each O5 margin term is not 0, and the public-owned
+    # part follows the public workers (10 of 40 persons) while its terms sum to 0 as well.
+    assert sum((i.public_owned for i in incomes.values()), F(0)) == F(60) * 10 / 40
+    plain = F(100) * 60 / 100 + F(60) * 10 / 40  # place 01001's share of OI with no margin term
+    first = incomes["01001"]
+    assert first.private + first.public_owned != plain
     accts = t.accounts(o, census, w, ECON)
     support = t.support_micros(w)
     by_key: dict[r.HouseholdKey, F] = dict.fromkeys(r.HOUSEHOLD_KEYS, F(0))
@@ -509,7 +527,8 @@ def test_place_money_sums_to_the_nation() -> None:
         )
         if a.key in ("no_earner_nonowner", "no_earner_owner", "collective_residence"):
             by_key[a.key] += F((est or 0) * a.persons, M)
-    payout = (1 - tax) * oi
+    # The households' payout is the private part: the public-owned part goes to the part's body.
+    payout = (1 - tax) * (oi - sum((i.public_owned for i in incomes.values()), F(0)))
     bands = s._bands(census, tax, payout, F(support, M), by_key)
     nation = sum(bands.values(), F(0)) * M
     money = sum(a.money_micros for a in accts)
@@ -752,14 +771,19 @@ def decimal(value: F, places: int = 4) -> str:
     return f"{'-' if value < 0 else ''}{scaled // 10**places}.{scaled % 10**places:0{places}d}"
 
 
+# Counted on the committed tables (27 November): 8 of 1,896 accounts cannot reach their own tier 1,
+# six collective residences and two earning accounts (02158/at, 04019/above). The plan (Task 11,
+# Step 1) asks that none fail; the lead or the Director rules whether the residence or earning
+# rule changes or the plan's text is amended. Until then the assertion stands as the plan has it
+# and the test is an expected failure that names them: it is strict, so it turns red the day the
+# accounts open and the mark must be removed.
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True,
+    reason="8 accounts of the committed tables (6 residences, 02158/at, 04019/above) cannot reach"
+    " their own tier 1: awaiting the lead's ruling (change the rule or amend the plan)",
+)
 def test_no_account_opens_without_its_tier_one(committed: Any) -> None:
-    """The plan asks that every account's money reach tier 1 at its own prices and that one that
-    does not be printed. On the committed tables 8 of 1,896 accounts do not (collective residences
-    whose employed residents have no wage in the census, and two counties whose earnings fall short
-    of their own prices): that is the data, and play (poorer households are never scored as
-    failure), so the shortfall is printed with each account's place, key and gap and bounded by
-    what was counted, not asserted away."""
     _, _, _, settings, tiers = committed
     shape = t.shape_of(settings, r.TWELVE)
     short = []
@@ -771,20 +795,7 @@ def test_no_account_opens_without_its_tier_one(committed: Any) -> None:
     print(f"accounts short of tier 1: {len(short)} of {len(tiers.accounts)}")  # noqa: T201
     for place, key, gap in short:
         print(f"  {place}/{key}: short {gap} micros")  # noqa: T201
-    assert [(p, k) for p, k, _ in short] == COUNTED_SHORT
-
-
-# Counted on the committed tables (27 November): the accounts that cannot reach their own tier 1.
-COUNTED_SHORT: list[tuple[str, str]] = [
-    ("02066/at", "collective_residence"),
-    ("02158/at", "earning_lower_paid_half"),
-    ("04019/above", "earning_lower_paid_half"),
-    ("04019/above", "collective_residence"),
-    ("21117/below", "collective_residence"),
-    ("22019/below", "collective_residence"),
-    ("29189/below", "collective_residence"),
-    ("51013/above", "collective_residence"),
-]
+    assert not short
 
 
 @pytest.mark.slow
@@ -868,6 +879,12 @@ def test_the_services_of_the_places_are_counted(committed: Any) -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True,
+    reason="the fund's receipts fall short of BEN + grants by the public wear the compiler sizes on"
+    " the written machine price (Task 10 sizes the grant on the solve's wear share): awaiting the"
+    " lead's ruling (size the grant and tax on the written wear, or amend the plan's bound)",
+)
 def test_the_fund_closes_with_its_grants(committed: Any) -> None:
     o, w, census, settings, tiers = committed
     receipts = sum(
@@ -887,8 +904,8 @@ def test_the_fund_closes_with_its_grants(committed: Any) -> None:
         F(0),
     )
     # The compiler's wear of a public provider's machines (written machine price, every machine
-    # of the part) is above the solve's `wear[public]` share (27 November, Task 11 decision 11):
-    # the fund's receipts fall short of `BEN + grants` by exactly that difference.
+    # of the part) is above the solve's `wear[public]` share (27 November, Task 11 decision 11).
+    # The plan's bound has no term for it: the difference is printed, not added to the bound.
     wear = sum(
         (
             F(
@@ -915,4 +932,17 @@ def test_the_fund_closes_with_its_grants(committed: Any) -> None:
         f"parts sending a share {sending} paid by the fund {len(tiers.place_grant_micros)} of "
         f"{len(shares)}; lowest share {shares[0]} highest {shares[-1]}"
     )
-    assert abs(receipts - o.benefits - grants + wear_gap) <= long_parts + 1
+    assert abs(receipts - o.benefits - grants) <= long_parts + 1
+
+
+@pytest.mark.slow
+def test_no_payout_is_dropped(committed: Any) -> None:
+    """A part with private operating income and no owner households would drop its payout from
+    the accounts' money (`_drafts`); on the committed tables none does."""
+    o, _, census, _, _ = committed
+    incomes = t.place_incomes(o, census)
+    dropped = [
+        p.label for p in census.places if p.owner_households <= 0 and incomes[p.label].private > 0
+    ]
+    print(f"parts whose payout has no owner household: {dropped}")  # noqa: T201
+    assert dropped == []

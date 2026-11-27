@@ -736,7 +736,12 @@ def solve_contents(problem: TierProblem, start: Sequence[Fraction]) -> tuple[lis
         for _ in range(MAX_HALVINGS + 1):
             candidate = [to_grid(z[k] + dz[k] * scale, TIER_GRID) for k in range(n)]
             if candidate == z:
-                return z, step
+                # A step that rounds back to `z` has converged only when it was the whole step, or
+                # when every residual is within TINY; a halved one that does so is another halving.
+                if scale == _ONE or all(abs(r) <= TINY for r in residual):
+                    return z, step
+                scale /= 2
+                continue
             if all(v >= 0 for v in candidate):
                 new_residual, new_patterns = evaluator.numeric(candidate)
                 if _ssr(new_residual) < before:
@@ -757,28 +762,35 @@ def solve_contents(problem: TierProblem, start: Sequence[Fraction]) -> tuple[lis
 
 
 def national_prices(o: Opening, w: Written, economy: Economy) -> dict[str, Fraction]:
-    """The national posted price of a unit of each product households buy, micros (decision 2): a
-    shop good as households pay it on average (what the shop paid, less its saving, plus its
-    charge: `Hs / (fin - X)`), any other the producer's price, public provision its fee. A price of
-    the solve only; rounding rule: to the nearest 1/TIER_GRID, a half up."""
+    """The national posted price of a unit of each product households buy, micros, at the WRITTEN
+    figures (decision 2): any product but a shop good at its written price (`Product.price_micros`,
+    public provision its fee); a shop good as households pay it on average (ruling 6): the written
+    price less the shops' saving a unit, plus the charge `ceil(hours x wage[shop] / units)`. A price
+    of the solve only (nothing is written from it). Rounding rules: the shop's wage in micros an
+    hour, half up (as `_Prices`); the charge a unit, up; the saving a unit exact, and the price
+    on `TIER_GRID` (to the nearest 1/TIER_GRID, a half up) only where the saving makes it
+    fractional."""
     q = o.quantities
     out: dict[str, Fraction] = {}
     trade_of = _trade_of(economy)
+    shop = economy.shop_trade
+    shop_wage = half_up(q.wage[shop] * MICROS) if shop is not None else 0
     for product, trade in sorted(trade_of.items()):
         made = w.products[product]
-        if trade == economy.public_trade:
-            out[product] = Fraction(made.price_micros)
-            continue
         if trade in (economy.capital_trade, economy.extraction_trade):
             continue
-        res = q.final[trade] - o.exports.get(trade, _ZERO)
-        p = o.prices.prices[trade]
-        if product in economy.shop_goods and economy.shop_trade is not None:
-            hs = o.household_purchases[trade] + o.markup * p * res
-            posted = hs / res if res > 0 else p * (1 + o.markup)
+        if made.handling is not None and shop is not None and product in economy.shop_goods:
+            res = q.final[trade] - o.exports.get(trade, _ZERO)
+            saving = (
+                o.shop_saving.get(trade, _ZERO) / res * made.dollars_per_unit * MICROS
+                if res > 0
+                else _ZERO
+            )
+            hours, units = made.handling
+            charge = -((-(hours * shop_wage)) // units)
+            out[product] = to_grid(Fraction(made.price_micros + charge) - saving, TIER_GRID)
         else:
-            posted = p
-        out[product] = to_grid(posted * made.dollars_per_unit * MICROS, TIER_GRID)
+            out[product] = Fraction(made.price_micros)
     return out
 
 
@@ -931,7 +943,8 @@ def whole_contents(
             score = (abs(bought - demand[product]), -sum(combo, _ZERO), combo)
             if best is None or score[:2] < best[:2]:
                 best = score
-        assert best is not None
+        if best is None:
+            raise _fail("tiers_unsolved", f"whole units: {product}")
         for (kind, _), units in zip(rows, best[2], strict=True):
             (comfort if kind == "comfort" else luxury)[product] = units
     return (
